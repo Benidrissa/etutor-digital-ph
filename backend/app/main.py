@@ -2,6 +2,7 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.middleware.rate_limit import RateLimitMiddleware
 from app.api.v1.router import api_v1_router
 from app.infrastructure.config.settings import settings
 
@@ -33,6 +34,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add rate limiting middleware
+app.add_middleware(RateLimitMiddleware, global_rate_limit=100)
 
 
 # Root health check
