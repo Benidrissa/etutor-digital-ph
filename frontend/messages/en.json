@@ -47,7 +47,18 @@
     "subtitle": "Your public health learning platform",
     "streak": "Day streak",
     "nextReview": "Next review",
-    "continueModule": "Continue module"
+    "continueModule": "Continue module",
+    "activeToday": "Active today!",
+    "keepStreakGoing": "Keep your streak going",
+    "startStreak": "Start your learning streak",
+    "averageScore": "Average quiz score",
+    "weeklyStudyTime": "This week",
+    "dueReviews": "Due reviews",
+    "inProgress": "In progress",
+    "overallProgress": "Overall progress",
+    "minutes": "minutes",
+    "modules": "modules",
+    "cards": "cards"
   },
   "ModuleCard": {
     "locked": "Locked",

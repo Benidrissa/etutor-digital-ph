@@ -47,7 +47,18 @@
     "subtitle": "Votre plateforme d'apprentissage en santé publique",
     "streak": "Jours consécutifs",
     "nextReview": "Prochaine révision",
-    "continueModule": "Continuer le module"
+    "continueModule": "Continuer le module",
+    "activeToday": "Actif aujourd'hui !",
+    "keepStreakGoing": "Maintenez votre série",
+    "startStreak": "Commencez votre série d'apprentissage",
+    "averageScore": "Score moyen aux quiz",
+    "weeklyStudyTime": "Cette semaine",
+    "dueReviews": "Révisions dues",
+    "inProgress": "En cours",
+    "overallProgress": "Progrès global",
+    "minutes": "minutes",
+    "modules": "modules",
+    "cards": "cartes"
   },
   "ModuleCard": {
     "locked": "Verrouillé",
