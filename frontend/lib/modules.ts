@@ -1,4 +1,21 @@
 export type ModuleStatus = 'locked' | 'in-progress' | 'completed';
+export type UnitStatus = 'pending' | 'in-progress' | 'completed';
+
+export interface Unit {
+  id: string;
+  number: number;
+  title: {
+    en: string;
+    fr: string;
+  };
+  description?: {
+    en: string;
+    fr: string;
+  };
+  status: UnitStatus;
+  estimatedMinutes: number;
+  type: 'lesson' | 'quiz' | 'case-study';
+}
 
 export interface Module {
   id: string;
@@ -7,11 +24,20 @@ export interface Module {
     en: string;
     fr: string;
   };
+  description?: {
+    en: string;
+    fr: string;
+  };
   level: 1 | 2 | 3 | 4;
   status: ModuleStatus;
   completionPercentage: number;
   estimatedHours: number;
   prerequisites: string[]; // Module IDs
+  learningObjectives?: {
+    en: string[];
+    fr: string[];
+  };
+  units?: Unit[];
 }
 
 export const CURRICULUM_MODULES: Module[] = [
@@ -20,14 +46,111 @@ export const CURRICULUM_MODULES: Module[] = [
     id: 'M01',
     number: 1,
     title: {
-      en: 'Introduction to Public Health',
-      fr: 'Introduction à la santé publique'
+      en: 'Foundations of Public Health',
+      fr: 'Fondements de la Santé Publique'
+    },
+    description: {
+      en: 'Concepts, history and global vision of public health in West African context',
+      fr: 'Concepts, histoire et vision globale de la santé publique en contexte AOF'
     },
     level: 1,
     status: 'in-progress',
     completionPercentage: 75,
     estimatedHours: 20,
-    prerequisites: []
+    prerequisites: [],
+    learningObjectives: {
+      en: [
+        'Define public health and distinguish it from clinical medicine',
+        'Understand the historical evolution of public health practice',
+        'Identify core functions of public health systems in West Africa',
+        'Analyze major determinants of health in ECOWAS countries',
+        'Apply systems thinking to public health challenges'
+      ],
+      fr: [
+        'Définir la santé publique et la distinguer de la médecine clinique',
+        'Comprendre l\'évolution historique de la pratique de santé publique',
+        'Identifier les fonctions essentielles des systèmes de santé publique en Afrique de l\'Ouest',
+        'Analyser les déterminants majeurs de la santé dans les pays de la CEDEAO',
+        'Appliquer la pensée systémique aux défis de santé publique'
+      ]
+    },
+    units: [
+      {
+        id: 'M01-U01',
+        number: 1,
+        title: {
+          en: 'What is Public Health?',
+          fr: 'Qu\'est-ce que la santé publique ?'
+        },
+        description: {
+          en: 'Core concepts and definitions of public health practice',
+          fr: 'Concepts et définitions essentiels de la pratique de santé publique'
+        },
+        status: 'completed',
+        estimatedMinutes: 45,
+        type: 'lesson'
+      },
+      {
+        id: 'M01-U02',
+        number: 2,
+        title: {
+          en: 'History of Public Health',
+          fr: 'Histoire de la santé publique'
+        },
+        description: {
+          en: 'Evolution of public health from antiquity to modern West Africa',
+          fr: 'Évolution de la santé publique de l\'antiquité à l\'Afrique de l\'Ouest moderne'
+        },
+        status: 'completed',
+        estimatedMinutes: 50,
+        type: 'lesson'
+      },
+      {
+        id: 'M01-U03',
+        number: 3,
+        title: {
+          en: 'Health Systems in West Africa',
+          fr: 'Systèmes de santé en Afrique de l\'Ouest'
+        },
+        description: {
+          en: 'Structure and organization of health systems across ECOWAS countries',
+          fr: 'Structure et organisation des systèmes de santé dans les pays CEDEAO'
+        },
+        status: 'in-progress',
+        estimatedMinutes: 60,
+        type: 'lesson'
+      },
+      {
+        id: 'M01-U04',
+        number: 4,
+        title: {
+          en: 'Practice Quiz: Foundations',
+          fr: 'Quiz pratique : Fondements'
+        },
+        description: {
+          en: 'Test your understanding of public health fundamentals',
+          fr: 'Testez votre compréhension des fondements de la santé publique'
+        },
+        status: 'pending',
+        estimatedMinutes: 25,
+        type: 'quiz'
+      },
+      {
+        id: 'M01-U05',
+        number: 5,
+        title: {
+          en: 'Case Study: Health Challenge Analysis',
+          fr: 'Étude de cas : Analyse de défi sanitaire'
+        },
+        description: {
+          en: 'Apply systems thinking to a real West African health challenge',
+          fr: 'Appliquer la pensée systémique à un véritable défi sanitaire ouest-africain'
+        },
+        status: 'pending',
+        estimatedMinutes: 40,
+        type: 'case-study'
+      }
+    ]
   },
   {
     id: 'M02', 
@@ -293,4 +416,18 @@ export function getLevelProgress(level: 1 | 2 | 3 | 4): {
     totalModules,
     averageCompletion: Math.round(averageCompletion)
   };
+}
+
+/**
+ * Get a module by its ID
+ */
+export function getModuleById(moduleId: string): Module | undefined {
+  return CURRICULUM_MODULES.find(module => module.id === moduleId);
+}
+
+/**
+ * Get prerequisite modules for a given module
+ */
+export function getPrerequisiteModules(module: Module): Module[] {
+  return CURRICULUM_MODULES.filter(m => module.prerequisites.includes(m.id));
 }

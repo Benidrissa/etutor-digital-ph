@@ -93,5 +93,33 @@
     "modulesCompleted": "modules completed",
     "totalHours": "{count} total hours",
     "estimatedCompletion": "Estimated 6-12 months to complete"
+  },
+  "ModuleOverview": {
+    "backToModules": "Back to Modules",
+    "level": "Level {level}",
+    "estimatedDuration": "Estimated duration",
+    "hours": "{count, plural, one {# hour} other {# hours}}",
+    "learningObjectives": "Learning Objectives",
+    "moduleDescription": "Module Description",
+    "units": "Units",
+    "progress": "Progress",
+    "progressPercent": "{percent}% complete",
+    "continueReading": "Continue Reading",
+    "startReading": "Start Reading",
+    "viewFlashcards": "View Flashcards",
+    "takeFinalQuiz": "Take Final Quiz",
+    "prerequisites": "Prerequisites",
+    "prerequisitesDescription": "Complete these modules first:",
+    "locked": "Module Locked",
+    "lockedDescription": "Complete the prerequisites to unlock this module",
+    "unitStatus": {
+      "pending": "Not started",
+      "in-progress": "In progress", 
+      "completed": "Completed"
+    },
+    "unitNumber": "Unit {number}",
+    "readingTime": "{minutes} min read",
+    "practiceQuiz": "Practice Quiz",
+    "caseStudy": "Case Study"
   }
 }
