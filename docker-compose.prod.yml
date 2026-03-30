@@ -63,6 +63,9 @@ services:
   frontend:
     image: etutor-frontend:latest
     container_name: etutor-frontend
+    environment:
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
     depends_on:
       backend:
         condition: service_healthy
