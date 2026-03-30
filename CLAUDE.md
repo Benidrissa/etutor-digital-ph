@@ -11,8 +11,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Planned Tech Stack
 
 - **Frontend:** Next.js 15 + React 19, Tailwind CSS + shadcn/ui, Zustand, TanStack Query, next-intl (i18n), next-pwa + Workbox (offline/PWA)
-- **Backend:** FastAPI (Python 3.12), PostgreSQL 16 (Supabase), Redis 7, Celery
-- **Auth:** Supabase Auth (email, Google/LinkedIn OAuth, JWT + refresh tokens)
+- **Backend:** FastAPI (Python 3.12), PostgreSQL 16, Redis 7, Celery
+- **Auth:** Local FastAPI auth — passwordless TOTP MFA (Microsoft/Google Authenticator) + email magic link recovery. No Supabase. JWTs issued by backend.
 - **AI/RAG:** Anthropic Claude 3.5 Sonnet, Anthropic Python SDK, pgvector (PostgreSQL), OpenAI text-embedding-3-small
 - **Deploy:** GitHub Actions + Docker, Fly.io or Railway, Cloudflare Workers (CDN), Sentry + PostHog
 

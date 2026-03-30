@@ -94,11 +94,11 @@ Rendre la formation en santé publique de niveau expert accessible à tous les p
 
 ### Epic 1 : Authentification & Profil Utilisateur
 
-**US-001** *(P0 — CRITIQUE)* — En tant qu'utilisateur, je veux m'inscrire avec mon email, Google ou LinkedIn afin d'accéder à la plateforme.
-- **AC1:** Formulaire inscription avec email + mot de passe (min 8 chars, 1 majuscule, 1 chiffre)
-- **AC2:** OAuth Google et LinkedIn fonctionnels
-- **AC3:** Email de vérification envoyé dans les 30s
-- **AC4:** Redirection vers profil initial après vérification
+**US-001** *(P0 — CRITIQUE)* — En tant qu'utilisateur, je veux m'inscrire avec mon email et configurer l'authentification MFA afin d'accéder à la plateforme de manière sécurisée sans mot de passe.
+- **AC1:** Formulaire inscription avec nom + email (pas de mot de passe)
+- **AC2:** Génération d'un QR code TOTP à scanner avec Microsoft/Google Authenticator
+- **AC3:** Validation du code 6 chiffres pour confirmer la configuration MFA
+- **AC4:** Redirection vers profil initial après vérification MFA
 
 **US-002** *(P0 — CRITIQUE)* — En tant que nouvel utilisateur, je veux compléter une évaluation diagnostique de 20 minutes afin d'être placé dans le bon niveau de départ.
 - **AC1:** 20 questions couvrant 4 domaines (fondements SP, épidémiologie, biostatistiques, systèmes de santé)
@@ -123,10 +123,10 @@ Rendre la formation en santé publique de niveau expert accessible à tous les p
 - **AC3:** Suppression effective sous 48h avec email de confirmation
 - **AC4:** Données anonymisées dans les analytics
 
-**US-006** *(P1 — ÉLEVÉE)* — En tant qu'utilisateur, je veux réinitialiser mon mot de passe via email afin de récupérer l'accès à mon compte.
-- **AC1:** Lien "Mot de passe oublié" sur la page de connexion
-- **AC2:** Email avec lien de reset (expiration 1h)
-- **AC3:** Nouveau mot de passe validé avec les mêmes critères que l'inscription
+**US-006** *(P1 — ÉLEVÉE)* — En tant qu'utilisateur, je veux récupérer l'accès à mon compte si mon authentificateur MFA est perdu afin de reconfigurer un nouvel appareil.
+- **AC1:** Lien "J'ai perdu mon authentificateur" sur la page de connexion
+- **AC2:** Email avec magic link de récupération (expiration 1h)
+- **AC3:** Après clic sur le lien : authentifié et invité à reconfigurer MFA sur un nouvel appareil
 
 ---
 
@@ -418,7 +418,7 @@ Rendre la formation en santé publique de niveau expert accessible à tous les p
 | Backend API | FastAPI (Python 3.12) | Performance asynchrone, typage fort, documentation auto |
 | Base de données | PostgreSQL 16 (Supabase) | Open-source, Row Level Security, temps réel |
 | Cache | Redis 7 | Cache sessions, queue Celery, rate limiting |
-| Auth | Supabase Auth | Email, OAuth (Google/LinkedIn), JWT |
+| Auth | Local FastAPI (pyotp + python-jose) | Passwordless TOTP MFA + email magic link recovery, JWT |
 | LLM | Anthropic Claude 3.5 Sonnet | Meilleure performance multilangue FR/EN, RAG |
 | Vector DB | pgvector (extension PostgreSQL) | Embeddings dans PostgreSQL existant, pas de service supplémentaire |
 | Orchestration IA | Anthropic Python SDK | Appels Claude API directs, streaming SSE, pas de middleware LangChain/LlamaIndex |
@@ -436,7 +436,7 @@ Rendre la formation en santé publique de niveau expert accessible à tous les p
 └──────────────────────┬──────────────────────────────┘
                        │ HTTPS / WebSocket
 ┌──────────────────────▼──────────────────────────────┐
-│  BACKEND   │ FastAPI · Supabase Auth · PostgreSQL    │
+│  BACKEND   │ FastAPI · Local Auth (TOTP MFA) · PostgreSQL │
 │            │ Redis · Celery (async tasks)            │
 └──────────────────────┬──────────────────────────────┘
                        │ API calls
@@ -692,7 +692,7 @@ tutor_conversations {
 | World Bank Health | Indicateurs santé, financement | api.worldbank.org/v2/indicator | Mensuelle |
 | WHO AFRO Open Data | Bulletins épidémiologiques régionaux | who.int/afro/data | Hebdomadaire |
 | PubMed API (E-utils) | Articles récents santé publique AOF | eutils.ncbi.nlm.nih.gov | Mensuelle |
-| Supabase Auth | Authentification, gestion sessions | SDK Supabase | Temps réel |
+| Local Auth (FastAPI) | Authentification TOTP MFA, JWT, magic link recovery | pyotp, python-jose | Temps réel |
 | Resend / Sendgrid | Emails transactionnels, rappels | API email | Événementiel |
 | Cloudflare | CDN, Edge caching, DDoS protection | Workers SDK | Continu |
 | Sentry | Monitoring erreurs frontend + backend | Sentry SDK | Continu |
