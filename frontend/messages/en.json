@@ -10,7 +10,22 @@
     "modules": "Modules",
     "flashcards": "Flashcards",
     "tutor": "AI Tutor",
-    "settings": "Settings"
+    "settings": "Settings",
+    "dashboardDescription": "Navigate to your learning dashboard",
+    "modulesDescription": "Browse available learning modules",
+    "flashcardsDescription": "Review flashcards and spaced repetition",
+    "tutorDescription": "Chat with your AI learning tutor",
+    "settingsDescription": "Manage your account and preferences",
+    "mobileNavigation": "Mobile navigation",
+    "desktopNavigation": "Desktop navigation",
+    "expandSidebar": "Expand sidebar",
+    "collapseSidebar": "Collapse sidebar",
+    "languageSettings": "Language settings",
+    "breadcrumbNavigation": "Breadcrumb navigation",
+    "navigateTo": "Navigate to",
+    "lessons": "Lessons",
+    "quiz": "Quiz",
+    "caseStudy": "Case Study"
   },
   "Auth": {
     "login": "Sign in",
