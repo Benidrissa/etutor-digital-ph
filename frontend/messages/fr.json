@@ -1,0 +1,31 @@
+{
+  "Common": {
+    "appName": "SantePublique AOF",
+    "loading": "Chargement...",
+    "offline": "Vous êtes hors ligne — contenu en cache disponible",
+    "error": "Une erreur est survenue"
+  },
+  "Navigation": {
+    "dashboard": "Tableau de bord",
+    "modules": "Modules",
+    "flashcards": "Flashcards",
+    "tutor": "Tuteur IA",
+    "settings": "Paramètres"
+  },
+  "Auth": {
+    "login": "Se connecter",
+    "register": "Créer un compte",
+    "email": "Adresse email",
+    "password": "Mot de passe",
+    "withGoogle": "Continuer avec Google",
+    "withLinkedIn": "Continuer avec LinkedIn"
+  },
+  "Dashboard": {
+    "title": "Tableau de bord",
+    "welcome": "Bienvenue sur SantePublique AOF",
+    "subtitle": "Votre plateforme d'apprentissage en santé publique",
+    "streak": "Jours consécutifs",
+    "nextReview": "Prochaine révision",
+    "continueModule": "Continuer le module"
+  }
+}

@@ -1,0 +1,197 @@
+---
+name: ui-design
+description: Design and review UI layouts for the SantePublique AOF learning platform. Use when planning page layouts, reviewing designs, or making visual decisions. Enforces the health/education design system with green/gold palette, mobile-first, offline indicators, and learning UX patterns.
+user-invocable: true
+---
+
+# SantePublique AOF UI Design System
+
+Design interfaces for SantePublique AOF — a mobile-first, bilingual learning platform for public health professionals across 15 ECOWAS West African countries.
+
+## Design philosophy
+
+This is a **learning tool for health professionals**, not a consumer social app. The UI must communicate:
+- **Trust** — health/education authority, professional credibility
+- **Clarity** — content readability above all, even in bright sunlight
+- **Accessibility** — works on low-end Android phones, 320px screens, slow connections
+- **Progress** — learners must always see where they are and what's next
+- **Calm** — reduce cognitive load; the learning content is already dense
+
+## Color system (health + Africa identity)
+
+Palette inspired by health (green) and West African identity (gold/earth):
+
+```css
+/* Primary — health, trust, progress */
+--color-primary:          #0F766E;   /* Teal green — health/wellbeing */
+--color-primary-dark:     #115E59;
+--color-primary-light:    #14B8A6;
+--color-primary-50:       #F0FDFA;   /* Very light tint for backgrounds */
+
+/* Accent — Africa, warmth, achievement */
+--color-accent:           #D97706;   /* Gold/amber — achievement, Africa */
+--color-accent-dark:      #B45309;
+--color-accent-light:     #FDE68A;
+--color-accent-50:        #FFFBEB;
+
+/* Neutrals — text, borders, surfaces */
+--color-text-primary:     #1C1917;   /* Stone 900 */
+--color-text-secondary:   #57534E;   /* Stone 600 */
+--color-text-muted:       #A8A29E;   /* Stone 400 */
+--color-border:           #E7E5E4;   /* Stone 200 */
+--color-border-strong:    #D6D3D1;   /* Stone 300 */
+--color-surface:          #FFFFFF;
+--color-surface-raised:   #FAFAF9;   /* Stone 50 */
+--color-surface-sunken:   #F5F5F4;   /* Stone 100 */
+
+/* Status — learning states */
+--color-success:          #16A34A;   /* Correct answer, module complete */
+--color-success-light:    #DCFCE7;
+--color-warning:          #D97706;   /* Needs attention, due reviews */
+--color-warning-light:    #FEF3C7;
+--color-danger:           #DC2626;   /* Wrong answer, failed quiz */
+--color-danger-light:     #FEE2E2;
+--color-info:             #2563EB;   /* In progress, informational */
+--color-info-light:       #DBEAFE;
+
+/* Learning-specific */
+--color-streak:           #F59E0B;   /* Daily streak flame */
+--color-locked:           #D6D3D1;   /* Locked module */
+```
+
+Map these to Tailwind config via `tailwind.config.ts` — use Tailwind classes, not raw CSS variables.
+
+## Typography
+
+- Primary font: Inter (400, 500, 600)
+- Monospace: JetBrains Mono (code sandbox, statistics formulas)
+- Minimum 16px body text on mobile (prevents iOS zoom)
+- Scale: 14px / 16px / 18px / 20px / 24px / 30px / 36px
+- Line height: 1.5 for body, 1.25 for headings
+- High contrast for outdoor readability
+
+## Layout rules — mobile-first
+
+- **Mobile (320–767px)**: single column, bottom nav, full-width cards
+- **Tablet (768–1023px)**: optional sidebar, 2-column where useful
+- **Desktop (1024–1440px)**: sidebar nav, wider content area
+- Padding: 16px (mobile), 24px (tablet+)
+- Max content width: 768px for reading content (optimal line length)
+- Touch targets: minimum 44×44px
+
+### Mobile navigation
+```
+┌────────────────────────┐
+│ [←] Module 3 / Unit 2  │  ← Top bar with breadcrumb
+├────────────────────────┤
+│                        │
+│   (Content area)       │
+│                        │
+├────────────────────────┤
+│ 🏠  📚  🃏  🤖  ⚙️  │  ← Bottom nav (Dashboard, Modules, Cards, Tutor, Settings)
+└────────────────────────┘
+```
+
+### Desktop navigation
+```
+┌──────┬─────────────────┐
+│      │ Breadcrumb       │
+│ Side │─────────────────│
+│ bar  │                  │
+│ nav  │ (Content area)   │
+│      │                  │
+└──────┴─────────────────┘
+```
+
+## Learning-specific design patterns
+
+### Module map (dashboard)
+- Grid of module cards showing: number, title, status icon, progress ring
+- States: locked (gray, lock icon), in-progress (primary, progress %), completed (green, check)
+- Prerequisite lines connecting dependent modules
+- Current streak prominently displayed
+
+### Lesson viewer
+- Clean reading layout, max 768px width
+- Progress bar at top (thin, primary color)
+- Bilingual term highlights: tap to toggle FR↔EN
+- Source citations: subtle, at section end
+- "Continue" button fixed at bottom on mobile
+
+### Quiz interface
+- One question per screen on mobile
+- Large answer buttons: full width, min 48px height, clear padding
+- After answer: green/red background flash → explanation card
+- Progress: "3/10" with thin progress bar
+- Summary screen with score, time, weak areas
+
+### Flashcard deck
+- Card centered, max 400px width
+- Tap to flip (front → back)
+- Swipe or 4 rating buttons below: Again / Hard / Good / Easy
+- "Due today: 12 cards" counter
+- Session summary when deck complete
+
+### AI Tutor chat
+- Chat bubbles: user (right, primary tint), AI (left, surface-raised)
+- Streaming indicator: 3 animated dots
+- Source chips below AI messages: clickable reference links
+- Quick-reply suggestions above input
+- Daily message counter: "42/50 messages today"
+
+### Progress indicators
+- Circular progress ring for module completion
+- Linear progress bar for lesson/quiz progress
+- Streak flame with day count
+- Calendar heat map for review consistency
+
+## What to design (correct patterns)
+
+- **Dashboard**: Module grid with progress + streak counter + review reminder
+- **Lists**: Clean card lists with clear hierarchy, not dense data tables
+- **Login**: Simple form, language selector, no hero section
+- **Navigation**: Bottom bar (mobile) / sidebar (desktop), clear active state
+- **Cards**: Subtle border or shadow-sm, rounded-lg
+- **Buttons**: rounded-md (6px), solid primary color, min 44px height
+- **Loading**: Skeleton loaders with animate-pulse during AI generation
+- **Success**: Confetti-free — just a green check + congratulations text
+
+## What NEVER to design (banned patterns)
+
+- Dense data tables for learning content (use cards)
+- Tiny text or touch targets below 44px
+- Desktop-only layouts without mobile consideration
+- Animations that consume battery or data
+- Gradient overload or glassmorphism effects
+- Complex multi-step wizards (keep flows short)
+- Auto-playing video or audio
+
+## Dark mode
+
+Support dark mode for:
+- Battery saving on OLED screens (common on mid-range Android)
+- Evening study sessions
+- Map all color tokens to dark equivalents in Tailwind config
+
+## Offline indicator
+
+Always show a clear but non-intrusive offline banner:
+```
+┌────────────────────────────────┐
+│ 📡 You are offline — cached   │  ← Yellow banner, dismissible
+│    content available           │
+└────────────────────────────────┘
+```
+
+## Page review checklist
+
+When reviewing any UI design or implementation:
+1. Does it work at 320px width? (Test first)
+2. Are ALL touch targets ≥ 44×44px?
+3. Is ALL text internationalized (FR/EN via next-intl)?
+4. Is the font size ≥ 16px on mobile?
+5. Is color contrast ≥ 4.5:1 (WCAG AA)?
+6. Does it work offline with cached content?
+7. Does it feel like a learning platform or a SaaS dashboard?
+8. Is the reading experience comfortable for 15-minute sessions?
+9. Are loading states clear during AI content generation?

@@ -1,0 +1,31 @@
+{
+  "Common": {
+    "appName": "SantePublique AOF",
+    "loading": "Loading...",
+    "offline": "You are offline — cached content available",
+    "error": "An error occurred"
+  },
+  "Navigation": {
+    "dashboard": "Dashboard",
+    "modules": "Modules",
+    "flashcards": "Flashcards",
+    "tutor": "AI Tutor",
+    "settings": "Settings"
+  },
+  "Auth": {
+    "login": "Sign in",
+    "register": "Create account",
+    "email": "Email address",
+    "password": "Password",
+    "withGoogle": "Continue with Google",
+    "withLinkedIn": "Continue with LinkedIn"
+  },
+  "Dashboard": {
+    "title": "Dashboard",
+    "welcome": "Welcome to SantePublique AOF",
+    "subtitle": "Your public health learning platform",
+    "streak": "Day streak",
+    "nextReview": "Next review",
+    "continueModule": "Continue module"
+  }
+}
