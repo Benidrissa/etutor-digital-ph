@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**SantéPublique AOF** — an adaptive, bilingual (FR/EN), mobile-first learning platform for public health professionals in West Africa. Uses AI (Claude API + RAG) to generate personalized content from 3 reference textbooks and real African health data (DHIS2, DHS, WHO AFRO).
+**SantePublique AOF** — an adaptive, bilingual (FR/EN), mobile-first learning platform for public health professionals in West Africa. Uses AI (Claude API + RAG) to generate personalized content from 3 reference textbooks and real African health data (DHIS2, DHS, WHO AFRO).
 
 **Current status:** Planning/specification phase. No source code exists yet. The repo contains a comprehensive SRS (`docs/SRS_SantePublique_AOF.md`), a detailed syllabus (`docs/syllabus_sante_publique_AOF.md`), and 3 reference PDFs in `resources/`.
 
@@ -13,17 +13,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Frontend:** Next.js 15 + React 19, Tailwind CSS + shadcn/ui, Zustand, TanStack Query, next-intl (i18n), next-pwa + Workbox (offline/PWA)
 - **Backend:** FastAPI (Python 3.12), PostgreSQL 16 (Supabase), Redis 7, Celery
 - **Auth:** Supabase Auth (email, Google/LinkedIn OAuth, JWT + refresh tokens)
-- **AI/RAG:** Anthropic Claude 3.5 Sonnet, ChromaDB or pgvector, LangChain/LlamaIndex, OpenAI text-embedding-3-small
+- **AI/RAG:** Anthropic Claude 3.5 Sonnet, Anthropic Python SDK, pgvector (PostgreSQL), OpenAI text-embedding-3-small
 - **Deploy:** GitHub Actions + Docker, Fly.io or Railway, Cloudflare Workers (CDN), Sentry + PostHog
 
 ## Architecture (4-layer)
 
 ```
-Frontend (Next.js/React PWA) → Backend (FastAPI + Supabase) → AI/RAG (Claude + ChromaDB) → External Data (DHIS2, DHS, WHO, PubMed)
+Frontend (Next.js/React PWA) → Backend (FastAPI + Supabase) → AI/RAG (Claude + pgvector) → External Data (DHIS2, DHS, WHO, PubMed)
 ```
 
 Key architectural decisions:
-- RAG pipeline indexes 3 reference PDFs into 512-token chunks with embeddings in ChromaDB
+- RAG pipeline indexes 3 reference PDFs into 512-token chunks with embeddings in pgvector (PostgreSQL)
+- No LangChain/LlamaIndex — Anthropic Python SDK called directly for simplicity
 - Content (lessons, quizzes, flashcards, case studies) is generated on first access then cached in `generated_content` table
 - Adaptive testing uses CAT algorithm; flashcard scheduling uses FSRS spaced repetition
 - Pyodide runs Python/R in-browser for biostatistics exercises
