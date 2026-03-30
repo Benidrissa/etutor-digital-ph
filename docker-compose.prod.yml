@@ -1,0 +1,93 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: etutor-postgres
+    environment:
+      POSTGRES_DB: santepublique_aof
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - etutor-data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: etutor-redis
+    volumes:
+      - redisdata:/data
+    networks:
+      - etutor-data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: etutor-backend:latest
+    container_name: etutor-backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/santepublique_aof
+      REDIS_URL: redis://redis:6379/0
+      APP_ENV: production
+      CORS_ORIGINS: https://etutor.elearning.portfolio2.kimbetien.com
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - etutor-data
+      - proxy
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxy
+      traefik.http.routers.etutor-api.rule: Host(`api.elearning.portfolio2.kimbetien.com`)
+      traefik.http.routers.etutor-api.entrypoints: websecure
+      traefik.http.routers.etutor-api.tls.certresolver: letsencrypt
+      traefik.http.services.etutor-api.loadbalancer.server.port: "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  frontend:
+    image: etutor-frontend:latest
+    container_name: etutor-frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - proxy
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxy
+      traefik.http.routers.etutor-web.rule: Host(`etutor.elearning.portfolio2.kimbetien.com`)
+      traefik.http.routers.etutor-web.entrypoints: websecure
+      traefik.http.routers.etutor-web.tls.certresolver: letsencrypt
+      traefik.http.services.etutor-web.loadbalancer.server.port: "3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  etutor-data:
+    driver: bridge
+  proxy:
+    external: true

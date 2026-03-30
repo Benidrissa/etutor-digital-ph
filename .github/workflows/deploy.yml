@@ -1,0 +1,131 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+      - name: Backend lint & test
+        working-directory: backend
+        run: |
+          uv sync
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run pytest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Frontend lint & build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+        env:
+          NEXT_PUBLIC_API_URL: https://api.elearning.portfolio2.kimbetien.com
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
+
+  build-and-deploy:
+    name: Build & Deploy
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          load: true
+          tags: etutor-backend:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          load: true
+          tags: etutor-frontend:latest
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://api.elearning.portfolio2.kimbetien.com
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
+
+      - name: Save images and transfer to server
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          # Save images to tar
+          docker save etutor-backend:latest etutor-frontend:latest | gzip > images.tar.gz
+
+          # Setup SSH
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H 167.86.115.58 >> ~/.ssh/known_hosts
+
+          # Transfer images
+          scp -i ~/.ssh/deploy_key images.tar.gz deploy@167.86.115.58:~/etutor/images.tar.gz
+
+      - name: Rsync compose and config
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          rsync -avz -e "ssh -i ~/.ssh/deploy_key" \
+            docker-compose.prod.yml \
+            deploy@167.86.115.58:~/etutor/docker-compose.yml
+
+      - name: Deploy on server
+        uses: appleboy/ssh-action@v1
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DEPLOY_SHA: ${{ github.sha }}
+        with:
+          host: 167.86.115.58
+          username: deploy
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: POSTGRES_PASSWORD,ANTHROPIC_API_KEY,DEPLOY_SHA
+          script: |
+            set -e
+            cd ~/etutor
+
+            # Load pre-built images (no docker pull needed)
+            docker load < images.tar.gz
+            rm -f images.tar.gz
+
+            # Write .env
+            cat > .env << EOF
+            POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+            ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+            EOF
+
+            # Deploy
+            docker compose up -d
+
+            # Record deploy SHA
+            echo "${DEPLOY_SHA}" > .deploy-sha
+
+            # Wait for services to be healthy
+            sleep 15
+            docker compose ps
+
+            # Cleanup
+            docker image prune -f
