@@ -1,4 +1,5 @@
 .PHONY: dev-infra dev-infra-down backend-install backend-dev backend-lint backend-test \
+       backend-celery-worker backend-celery-beat backend-celery-flower \
        frontend-install frontend-dev frontend-lint frontend-test \
        db-migrate db-revision lint test
 
@@ -21,6 +22,15 @@ backend-lint:
 
 backend-test:
 	cd backend && uv run pytest
+
+backend-celery-worker:
+	cd backend && uv run celery -A app.tasks.celery_app worker --loglevel=info
+
+backend-celery-beat:
+	cd backend && uv run celery -A app.tasks.celery_app beat --loglevel=info
+
+backend-celery-flower:
+	cd backend && uv run celery -A app.tasks.celery_app flower
 
 # Frontend
 frontend-install:

@@ -52,7 +52,9 @@
       "Bash(npm run:*)",
       "Bash(git rm:*)",
       "Bash(rm -rf /home/bitraore/devprojects/etutor_digital_ph/frontend/.git)",
-      "Bash(gh pr:*)"
+      "Bash(gh pr:*)",
+      "Bash(git cherry-pick:*)",
+      "Bash(uv sync:*)"
     ],
     "additionalDirectories": [
       "/home/bitraore/devprojects/etutor_digital_ph/frontend/.git"
