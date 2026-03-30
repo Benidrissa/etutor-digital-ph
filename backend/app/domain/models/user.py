@@ -1,0 +1,36 @@
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+from typing import TYPE_CHECKING
+
+from sqlalchemy import String, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.domain.models.base import Base
+
+if TYPE_CHECKING:
+    from app.domain.models.conversation import TutorConversation
+    from app.domain.models.flashcard import FlashcardReview
+    from app.domain.models.progress import UserModuleProgress
+    from app.domain.models.quiz import QuizAttempt
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String, unique=True, index=True)
+    name: Mapped[str] = mapped_column(String)
+    preferred_language: Mapped[str] = mapped_column(String(2), server_default="fr")
+    country: Mapped[str | None] = mapped_column(String)
+    professional_role: Mapped[str | None] = mapped_column(String)
+    current_level: Mapped[int] = mapped_column(server_default="1")
+    streak_days: Mapped[int] = mapped_column(server_default="0")
+    last_active: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    module_progress: Mapped[list[UserModuleProgress]] = relationship(back_populates="user")
+    quiz_attempts: Mapped[list[QuizAttempt]] = relationship(back_populates="user")
+    flashcard_reviews: Mapped[list[FlashcardReview]] = relationship(back_populates="user")
+    tutor_conversations: Mapped[list[TutorConversation]] = relationship(back_populates="user")
