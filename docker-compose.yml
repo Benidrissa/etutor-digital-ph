@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: santepublique-postgres
     environment:
       POSTGRES_DB: santepublique_aof
@@ -29,17 +29,6 @@ services:
       timeout: 5s
       retries: 5
 
-  chromadb:
-    image: chromadb/chroma:latest
-    container_name: santepublique-chromadb
-    ports:
-      - "8100:8000"
-    volumes:
-      - chromadata:/chroma/chroma
-    environment:
-      ANONYMIZED_TELEMETRY: "false"
-
 volumes:
   pgdata:
   redisdata:
-  chromadata:

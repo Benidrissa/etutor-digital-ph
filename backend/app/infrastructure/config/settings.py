@@ -25,9 +25,9 @@ class Settings(BaseSettings):
     # OpenAI Embeddings
     openai_api_key: str = ""
 
-    # ChromaDB
-    chromadb_host: str = "localhost"
-    chromadb_port: int = 8100
+    # Embeddings
+    embedding_model: str = "text-embedding-3-small"
+    embedding_dimensions: int = 1536
 
     # App
     app_env: str = "development"
