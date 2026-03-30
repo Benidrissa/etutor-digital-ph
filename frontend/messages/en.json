@@ -27,5 +27,24 @@
     "streak": "Day streak",
     "nextReview": "Next review",
     "continueModule": "Continue module"
+  },
+  "ModuleCard": {
+    "locked": "Locked",
+    "completed": "Completed",
+    "progress": "{percent}% completed",
+    "hours": "{count, plural, one {# hour} other {# hours}}",
+    "prerequisitesRequired": "Prerequisites required",
+    "review": "Review",
+    "continue": "Continue",
+    "start": "Start"
+  },
+  "ModuleMap": {
+    "title": "Learning Modules",
+    "subtitle": "Track your progress through the public health curriculum",
+    "progress": "{completed}/{total} modules",
+    "overallProgress": "Overall Progress",
+    "modulesCompleted": "modules completed",
+    "totalHours": "{count} total hours",
+    "estimatedCompletion": "Estimated 6-12 months to complete"
   }
 }

@@ -27,5 +27,24 @@
     "streak": "Jours consécutifs",
     "nextReview": "Prochaine révision",
     "continueModule": "Continuer le module"
+  },
+  "ModuleCard": {
+    "locked": "Verrouillé",
+    "completed": "Terminé",
+    "progress": "{percent}% terminé",
+    "hours": "{count, plural, one {# heure} other {# heures}}",
+    "prerequisitesRequired": "Prérequis nécessaires",
+    "review": "Réviser",
+    "continue": "Continuer",
+    "start": "Commencer"
+  },
+  "ModuleMap": {
+    "title": "Modules d'apprentissage",
+    "subtitle": "Suivez votre progression dans le curriculum de santé publique",
+    "progress": "{completed}/{total} modules",
+    "overallProgress": "Progression globale",
+    "modulesCompleted": "modules terminés",
+    "totalHours": "{count} heures au total",
+    "estimatedCompletion": "Durée estimée : 6-12 mois"
   }
 }

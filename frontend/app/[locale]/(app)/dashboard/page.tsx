@@ -1,11 +1,11 @@
 import { getTranslations } from "next-intl/server";
 import {
   Card,
-  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { DashboardClient } from "./dashboard-client";
 
 export default async function DashboardPage() {
   const t = await getTranslations("Dashboard");
@@ -37,12 +37,7 @@ export default async function DashboardPage() {
       </div>
 
       <div className="mt-8">
-        <h2 className="text-lg font-medium">Modules</h2>
-        <Card className="mt-4">
-          <CardContent className="py-12 text-center text-muted-foreground">
-            Module map coming soon
-          </CardContent>
-        </Card>
+        <DashboardClient />
       </div>
     </div>
   );
