@@ -1,0 +1,85 @@
+name: Claude Code Autonomous
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [labeled]
+
+concurrency:
+  group: claude-${{ github.event.issue.number || github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  claude:
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'issues' && github.event.label.name == 'claude' && github.event.issue.state == 'open')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Configure git for push
+        run: |
+          git config user.name "claude[bot]"
+          git config user.email "claude[bot]@users.noreply.github.com"
+          git config push.autoSetupRemote true
+          git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/${{ github.repository }}.git
+
+      - uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.PAT_TOKEN }}
+          model: "claude-sonnet-4-20250514"
+          trigger_phrase: "@claude"
+          timeout_minutes: 360
+          allowed_tools: |
+            Bash
+            Read
+            Write
+            Edit
+            Glob
+            Grep
+          custom_instructions: |
+            You are working on the SantéPublique AOF e-learning platform. Read CLAUDE.md fully before any work.
+
+            IMPORTANT: Read and follow the skill files in .claude/skills/ before writing code:
+            - Backend work (services/**): Read .claude/skills/fastapi-service/SKILL.md
+            - React components (apps/**/*.tsx): Read .claude/skills/react-components/SKILL.md
+            - Tests: Read .claude/skills/testing/SKILL.md
+            Always read the relevant skill file BEFORE writing any code in that area.
+
+            IMPORTANT: Git is already configured for push. You can git push and use gh CLI freely.
+
+            When implementing a story:
+            1. Create a feature branch from main:
+               git checkout -b feat/US-XXXX-short-description
+            2. Read relevant docs in docs/ for context before writing code
+            3. Implement in phases: domain model → service layer → controller → tests
+            4. Commit your work:
+               git add -A && git commit -m "feat(scope): description (US-XXXX)"
+            5. Push the branch:
+               git push -u origin feat/US-XXXX-short-description
+            6. Create a PR targeting 'main'. CRITICAL: the PR body MUST contain "Closes #N"
+               where N is the issue number, so the issue auto-closes on merge:
+               gh pr create --base main --title "feat(scope): description" --body "Closes #N"
+            7. Add labels:
+               gh pr edit --add-label claude
+            8. Merge the PR:
+               gh pr merge --merge --delete-branch
+            9. After merge, verify the issue is closed. If not, close it manually:
+               gh issue close N
+
+            You MUST push your branch and create+merge the PR. Do not just comment on the issue.
