@@ -1,3 +1,4 @@
+from app.domain.models.auth import MagicLink, RefreshToken, TOTPSecret
 from app.domain.models.base import Base
 from app.domain.models.content import GeneratedContent
 from app.domain.models.conversation import TutorConversation
@@ -14,7 +15,10 @@ __all__ = [
     "GeneratedContent",
     "TutorConversation",
     "FlashcardReview",
+    "MagicLink",
     "Module",
+    "RefreshToken",
+    "TOTPSecret",
     "UserModuleProgress",
     "QuizAttempt",
     "User",
