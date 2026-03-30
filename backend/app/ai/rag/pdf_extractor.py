@@ -197,7 +197,7 @@ class PDFTextExtractor:
             page_num = page_data["page_number"]
 
             # Look for chapter starts
-            chapter_match = re.search(chapter_pattern, text, re.IGNORECASE)
+            chapter_match = re.search(chapter_pattern, text)
 
             if chapter_match:
                 # Save previous chapter if exists
