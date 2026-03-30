@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: dev
           fetch-depth: 0
           token: ${{ secrets.PAT_TOKEN }}
 
@@ -53,33 +53,56 @@ jobs:
             Glob
             Grep
           custom_instructions: |
-            You are working on the SantePublique AOF e-learning platform. Read CLAUDE.md fully before any work.
+            You are working on the SantePublique AOF e-learning platform.
+            Read CLAUDE.md fully before any work.
+
+            ## Skills — MUST READ before writing code
 
             IMPORTANT: Read and follow the skill files in .claude/skills/ before writing code:
-            - Backend work (services/**): Read .claude/skills/fastapi-service/SKILL.md
-            - React components (apps/**/*.tsx): Read .claude/skills/react-components/SKILL.md
-            - Tests: Read .claude/skills/testing/SKILL.md
-            Always read the relevant skill file BEFORE writing any code in that area.
+            - Backend (backend/**): Read .claude/skills/fastapi-service/SKILL.md
+            - React components (frontend/components/**): Read .claude/skills/react-components/SKILL.md
+            - Next.js pages/layouts (frontend/app/**): Read .claude/skills/nextjs-app-router/SKILL.md
+            - UI design decisions: Read .claude/skills/ui-design/SKILL.md
+            - Tests (backend/tests/**, frontend/**/*.test.*): Read .claude/skills/testing/SKILL.md
+
+            Always read the relevant skill file(s) BEFORE writing any code in that area.
+            Multiple skills may apply (e.g. a new page needs both nextjs-app-router AND react-components).
+
+            ## Key constraints (from skills)
+
+            - Mobile-first: 320px minimum, 44×44px touch targets, <150KB JS bundle
+            - Bilingual: ALL text via next-intl (FR/EN), never hardcode strings
+            - Backend: async SQLAlchemy, Pydantic V2, structlog, Alembic for ALL migrations
+            - Frontend: Tailwind + shadcn/ui ONLY, no other CSS or component libraries
+            - AI: Claude API keys server-side only, SSE streaming for generated content
+            - Every generated content must include sources_cited
+
+            ## Git workflow
 
             IMPORTANT: Git is already configured for push. You can git push and use gh CLI freely.
 
             When implementing a story:
-            1. Create a feature branch from main:
-               git checkout -b feat/US-XXXX-short-description
-            2. Read relevant docs in docs/ for context before writing code
-            3. Implement in phases: domain model → service layer → controller → tests
-            4. Commit your work:
-               git add -A && git commit -m "feat(scope): description (US-XXXX)"
-            5. Push the branch:
-               git push -u origin feat/US-XXXX-short-description
-            6. Create a PR targeting 'main'. CRITICAL: the PR body MUST contain "Closes #N"
+            1. Create a feature branch from dev:
+               git checkout dev && git pull origin dev
+               git checkout -b feature/issue-N-short-description
+            2. Read relevant docs in docs/ and skills in .claude/skills/ before writing code
+            3. Implement in phases: domain model → service layer → API routes → frontend → tests
+            4. Run lint and tests before committing:
+               cd backend && uv run ruff check . && uv run pytest
+               cd frontend && npm run lint && npm run build
+            5. Commit your work:
+               git add -A && git commit -m "feat(scope): description (#N)"
+            6. Push the branch:
+               git push -u origin feature/issue-N-short-description
+            7. Create a PR targeting 'dev'. CRITICAL: the PR body MUST contain "Closes #N"
                where N is the issue number, so the issue auto-closes on merge:
-               gh pr create --base main --title "feat(scope): description" --body "Closes #N"
-            7. Add labels:
-               gh pr edit --add-label claude
-            8. Merge the PR:
-               gh pr merge --merge --delete-branch
-            9. After merge, verify the issue is closed. If not, close it manually:
-               gh issue close N
+               gh pr create --base dev --title "feat(scope): description" --body "Closes #N
 
-            You MUST push your branch and create+merge the PR. Do not just comment on the issue.
+               ## Summary
+               - bullet points of what changed
+
+               ## Test plan
+               - [ ] how to verify"
+            8. Do NOT merge the PR — the maintainer will review and merge locally.
+
+            You MUST push your branch and create the PR. Do not just comment on the issue.

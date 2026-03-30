@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **SantePublique AOF** — an adaptive, bilingual (FR/EN), mobile-first learning platform for public health professionals in West Africa. Uses AI (Claude API + RAG) to generate personalized content from 3 reference textbooks and real African health data (DHIS2, DHS, WHO AFRO).
 
-**Current status:** Planning/specification phase. No source code exists yet. The repo contains a comprehensive SRS (`docs/SRS_SantePublique_AOF.md`), a detailed syllabus (`docs/syllabus_sante_publique_AOF.md`), and 3 reference PDFs in `resources/`.
+**Current status:** Phase 0 scaffolding complete. Monorepo with `backend/` (FastAPI) and `frontend/` (Next.js 15) fully initialized. Backend has health endpoints with tests passing. Frontend has App Router with FR/EN i18n, Tailwind + shadcn/ui, and mobile-first navigation. Docker Compose, CI/CD, and Alembic are configured. Next: DB schema migrations, Supabase Auth, RAG pipeline.
 
 ## Planned Tech Stack
 
