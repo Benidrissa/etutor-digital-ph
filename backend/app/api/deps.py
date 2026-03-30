@@ -8,7 +8,7 @@ from app.domain.repositories.implementations.user_repository import UserReposito
 from app.domain.services.auth_service import AuthService
 from app.domain.services.placement_service import PlacementService
 from app.infrastructure.config.settings import Settings
-from app.infrastructure.persistence.database import get_db_session
+from app.infrastructure.persistence.database import get_db_session as get_database_session
 
 
 @lru_cache
@@ -17,8 +17,12 @@ def get_settings() -> Settings:
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    async for session in get_db_session():
+    async for session in get_database_session():
         yield session
+
+
+# Alias for compatibility with local auth service
+get_db_session = get_db
 
 
 async def get_user_repository(db: AsyncSession = Depends(get_db)) -> UserRepository:

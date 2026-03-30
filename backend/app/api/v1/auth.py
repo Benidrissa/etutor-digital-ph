@@ -1,7 +1,9 @@
-"""Authentication endpoints for SantePublique AOF.
+"""Authentication endpoints for SantePublique AOF (DEPRECATED).
 
-Handles user registration, login, profile management, and placement tests.
-Auth flows: Frontend → Supabase Auth → Backend JWT validation.
+DEPRECATED: This file contains Supabase Auth endpoints that are being replaced
+by local TOTP MFA authentication in /api/v1/local_auth.py.
+
+TODO: Remove this file once migration to local auth is complete.
 """
 
 from typing import Any

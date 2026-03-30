@@ -1,6 +1,6 @@
 ---
 name: fastapi-service
-description: Build and modify FastAPI backend for the SantePublique AOF learning platform. Use when creating endpoints, domain models, services, RAG pipelines, or Celery tasks. Enforces the 4-layer architecture (Backend → AI/RAG → External Data), async SQLAlchemy, Pydantic V2, Supabase Auth, mobile-first API design, and the exact data model from the SRS.
+description: Build and modify FastAPI backend for the SantePublique AOF learning platform. Use when creating endpoints, domain models, services, RAG pipelines, or Celery tasks. Enforces the 4-layer architecture (Backend → AI/RAG → External Data), async SQLAlchemy, Pydantic V2, Local Auth (TOTP MFA), mobile-first API design, and the exact data model from the SRS.
 user-invocable: true
 ---
 
@@ -9,7 +9,7 @@ user-invocable: true
 Build the production-grade FastAPI backend for SantePublique AOF — an adaptive, bilingual (FR/EN), mobile-first learning platform for public health professionals in West Africa. This backend sits in the second layer of a 4-layer architecture:
 
 ```
-Frontend (Next.js 15 PWA) → [THIS] Backend (FastAPI + Supabase) → AI/RAG (Claude + ChromaDB) → External Data (DHIS2, DHS, WHO, PubMed)
+Frontend (Next.js 15 PWA) → [THIS] Backend (FastAPI + PostgreSQL) → AI/RAG (Claude + ChromaDB) → External Data (DHIS2, DHS, WHO, PubMed)
 ```
 
 ## Before writing any backend code
@@ -23,12 +23,12 @@ Frontend (Next.js 15 PWA) → [THIS] Backend (FastAPI + Supabase) → AI/RAG (Cl
 
 - Python 3.12 with type hints (mypy strict)
 - FastAPI + uvicorn
-- SQLAlchemy 2.0 async mode (asyncpg) with PostgreSQL 16 (Supabase)
+- SQLAlchemy 2.0 async mode (asyncpg) with PostgreSQL 16
 - Alembic for ALL schema changes (NEVER `metadata.create_all()`)
 - Redis 7 for caching (generated content, sessions, rate limiting)
 - Celery for async tasks (content generation, data pipeline ETL)
 - Pydantic V2 for all schemas
-- Supabase Auth (JWT validation) — email, Google OAuth, LinkedIn OAuth
+- Local Auth (TOTP MFA) (JWT validation) — email, Google OAuth, LinkedIn OAuth
 - Anthropic Claude 3.5 Sonnet API (server-side only) for content generation
 - ChromaDB / pgvector for RAG vector store
 - Claude Agent SDK (Anthropic) for RAG orchestration and agentic workflows
@@ -81,7 +81,7 @@ backend/
 │   │   │   ├── flashcard.py        # flashcard_reviews table (FSRS state)
 │   │   │   └── conversation.py     # tutor_conversations table
 │   │   ├── services/
-│   │   │   ├── auth_service.py           # Supabase Auth validation, placement test
+│   │   │   ├── auth_service.py           # Local Auth (TOTP MFA) validation, placement test
 │   │   │   ├── module_service.py         # Prerequisite checks, unlock logic (80% threshold)
 │   │   │   ├── lesson_service.py         # Content generation orchestration
 │   │   │   ├── quiz_service.py           # CAT algorithm, scoring, question selection
@@ -114,7 +114,7 @@ backend/
 │   │   ├── who_client.py           # WHO AFRO Open Data — bulletins (weekly)
 │   │   ├── worldbank_client.py     # World Bank — health indicators (monthly)
 │   │   ├── pubmed_client.py        # PubMed E-utils — recent AOF articles (monthly)
-│   │   └── supabase_auth.py        # Supabase Auth SDK wrapper
+│   │   └── auth_local.py        # Local Auth (TOTP MFA) SDK wrapper
 │   │
 │   ├── infrastructure/
 │   │   ├── persistence/            # SQLAlchemy repository implementations
@@ -245,7 +245,7 @@ class TutorConversation(Base):
 
 ## API endpoints (map to SRS functional requirements)
 
-### FR-01: Authentication & Account (Supabase Auth)
+### FR-01: Authentication & Account (Local Auth (TOTP MFA))
 ```
 POST   /api/v1/auth/register          # Email + profile (language, country, role)
 POST   /api/v1/auth/login             # Email/password → JWT
@@ -377,7 +377,7 @@ async def generate_lesson(chunks, language, country, level, bloom_level) -> Gene
 - Rate limit: 50 tutor messages/day per user (free tier)
 - Every generated response MUST include `sources_cited` array
 
-### Supabase Auth
+### Local Auth (TOTP MFA)
 - Validate JWT on every protected endpoint
 - Public endpoints: health, OAuth callbacks
 - Extract `user_id`, `preferred_language`, `country` from JWT claims

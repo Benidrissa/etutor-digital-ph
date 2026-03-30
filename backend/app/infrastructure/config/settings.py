@@ -15,7 +15,15 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
-    # Supabase Auth
+    # Local JWT Auth
+    jwt_secret: str = "your-secret-key-change-in-production"
+
+    # Email Service
+    resend_api_key: str = ""
+    from_email: str = "noreply@santepublique-aof.org"
+    frontend_url: str = "http://localhost:3000"
+
+    # Supabase Auth (deprecated - will be removed)
     supabase_url: str = ""
     supabase_anon_key: str = ""
     supabase_service_role_key: str = ""
