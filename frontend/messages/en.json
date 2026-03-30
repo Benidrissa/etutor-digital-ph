@@ -17,8 +17,29 @@
     "register": "Create account",
     "email": "Email address",
     "password": "Password",
+    "name": "Full name",
+    "confirmPassword": "Confirm password",
     "withGoogle": "Continue with Google",
-    "withLinkedIn": "Continue with LinkedIn"
+    "withLinkedIn": "Continue with LinkedIn",
+    "alreadyHaveAccount": "Already have an account?",
+    "dontHaveAccount": "Don't have an account?",
+    "signUp": "Sign up",
+    "signIn": "Sign in here",
+    "emailVerificationSent": "Verification email sent! Please check your inbox.",
+    "passwordRequirements": "Password must be at least 8 characters with 1 uppercase letter and 1 digit",
+    "passwordsDoNotMatch": "Passwords do not match",
+    "emailRequired": "Email is required",
+    "nameRequired": "Name is required",
+    "passwordRequired": "Password is required",
+    "emailInvalid": "Please enter a valid email address",
+    "registrationFailed": "Registration failed. Please try again.",
+    "duplicateEmail": "An account with this email already exists",
+    "weakPassword": "Password is too weak. Please follow the requirements.",
+    "networkError": "Network error. Please check your connection and try again."
+  },
+  "LanguageSwitcher": {
+    "switchTo": "Switch to French",
+    "currentLanguage": "English"
   },
   "Dashboard": {
     "title": "Dashboard",

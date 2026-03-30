@@ -7,8 +7,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import Link from "next/link";
 
-export default async function LoginPage() {
+interface LoginPageProps {
+  params: {
+    locale: string;
+  };
+}
+
+export default async function LoginPage({ params }: LoginPageProps) {
   const t = await getTranslations("Auth");
   const tCommon = await getTranslations("Common");
 
@@ -55,6 +62,15 @@ export default async function LoginPage() {
         <Button variant="outline" className="w-full min-h-11">
           {t("withLinkedIn")}
         </Button>
+        <div className="text-center text-sm mt-4">
+          <span className="text-muted-foreground">{t("dontHaveAccount")} </span>
+          <Link 
+            href={`/${params.locale}/register`}
+            className="font-medium text-primary hover:underline"
+          >
+            {t("signUp")}
+          </Link>
+        </div>
       </CardContent>
     </Card>
   );
