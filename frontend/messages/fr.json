@@ -10,7 +10,22 @@
     "modules": "Modules",
     "flashcards": "Flashcards",
     "tutor": "Tuteur IA",
-    "settings": "Paramètres"
+    "settings": "Paramètres",
+    "dashboardDescription": "Accéder à votre tableau de bord d'apprentissage",
+    "modulesDescription": "Parcourir les modules d'apprentissage disponibles",
+    "flashcardsDescription": "Réviser les flashcards et la répétition espacée",
+    "tutorDescription": "Discuter avec votre tuteur IA d'apprentissage",
+    "settingsDescription": "Gérer votre compte et vos préférences",
+    "mobileNavigation": "Navigation mobile",
+    "desktopNavigation": "Navigation de bureau",
+    "expandSidebar": "Développer la barre latérale",
+    "collapseSidebar": "Réduire la barre latérale",
+    "languageSettings": "Paramètres de langue",
+    "breadcrumbNavigation": "Navigation de fil d'Ariane",
+    "navigateTo": "Naviguer vers",
+    "lessons": "Leçons",
+    "quiz": "Quiz",
+    "caseStudy": "Étude de cas"
   },
   "Auth": {
     "login": "Se connecter",
@@ -47,7 +62,18 @@
     "subtitle": "Votre plateforme d'apprentissage en santé publique",
     "streak": "Jours consécutifs",
     "nextReview": "Prochaine révision",
-    "continueModule": "Continuer le module"
+    "continueModule": "Continuer le module",
+    "activeToday": "Actif aujourd'hui !",
+    "keepStreakGoing": "Maintenez votre série",
+    "startStreak": "Commencez votre série d'apprentissage",
+    "averageScore": "Score moyen aux quiz",
+    "weeklyStudyTime": "Cette semaine",
+    "dueReviews": "Révisions dues",
+    "inProgress": "En cours",
+    "overallProgress": "Progrès global",
+    "minutes": "minutes",
+    "modules": "modules",
+    "cards": "cartes"
   },
   "ModuleCard": {
     "locked": "Verrouillé",
