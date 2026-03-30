@@ -54,7 +54,13 @@
       "Bash(rm -rf /home/bitraore/devprojects/etutor_digital_ph/frontend/.git)",
       "Bash(gh pr:*)",
       "Bash(git cherry-pick:*)",
-      "Bash(uv sync:*)"
+      "Bash(uv sync:*)",
+      "Read(//home/bitraore/.cache/ms-playwright/**)",
+      "Bash(npm ls:*)",
+      "Bash(1 --prefix /home/bitraore/devprojects/etutor_digital_ph/frontend)",
+      "Read(//home/bitraore/**)",
+      "Bash(npm root:*)",
+      "Bash(NODE_PATH=/home/bitraore/devprojects/ecowas_pams/node_modules node validate-deploy.mjs)"
     ],
     "additionalDirectories": [
       "/home/bitraore/devprojects/etutor_digital_ph/frontend/.git"
