@@ -77,32 +77,32 @@ jobs:
             - AI: Claude API keys server-side only, SSE streaming for generated content
             - Every generated content must include sources_cited
 
-            ## Git workflow
+            ## Git workflow — MANDATORY
 
-            IMPORTANT: Git is already configured for push. You can git push and use gh CLI freely.
+            Git is already configured for push. You can git push and use gh CLI freely.
 
-            When implementing a story:
-            1. Create a feature branch from dev:
-               git checkout dev && git pull origin dev
-               git checkout -b feature/issue-N-short-description
-            2. Read relevant docs in docs/ and skills in .claude/skills/ before writing code
-            3. Implement in phases: domain model → service layer → API routes → frontend → tests
-            4. Run lint and tests before committing:
-               cd backend && uv run ruff check . && uv run pytest
-               cd frontend && npm run lint && npm run build
-            5. Commit your work:
+            CRITICAL: Your task is NOT complete until a PR exists. Follow ALL steps:
+
+            STEP 1 — Branch from dev:
+               git checkout dev && git pull origin dev && git checkout -b feature/issue-N-short-desc
+
+            STEP 2 — Implement (read skills first, then code)
+
+            STEP 3 — Lint and test:
+               cd backend && uv run ruff check --fix . && uv run ruff format . && uv run pytest
+
+            STEP 4 — Commit:
                git add -A && git commit -m "feat(scope): description (#N)"
-            6. Push the branch:
-               git push -u origin feature/issue-N-short-description
-            7. Create a PR targeting 'dev'. CRITICAL: the PR body MUST contain "Closes #N"
-               where N is the issue number, so the issue auto-closes on merge:
-               gh pr create --base dev --title "feat(scope): description" --body "Closes #N
 
-               ## Summary
-               - bullet points of what changed
+            STEP 5 — Push:
+               git push -u origin feature/issue-N-short-desc
 
-               ## Test plan
-               - [ ] how to verify"
-            8. Do NOT merge the PR — the maintainer will review and merge locally.
+            STEP 6 — Create PR (MANDATORY — do NOT skip this step):
+               gh pr create --base dev --title "feat(scope): short description" --body "Closes #N"
 
-            You MUST push your branch and create the PR. Do not just comment on the issue.
+            STEP 7 — Verify PR was created:
+               gh pr list --head feature/issue-N-short-desc
+
+            If step 6 fails, retry it. If push fails, retry it. The PR MUST exist when you finish.
+            Do NOT merge the PR — the maintainer reviews and merges.
+            Do NOT just comment on the issue without creating a PR.
