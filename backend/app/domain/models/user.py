@@ -12,6 +12,7 @@ from app.domain.models.base import Base
 if TYPE_CHECKING:
     from app.domain.models.conversation import TutorConversation
     from app.domain.models.flashcard import FlashcardReview
+    from app.domain.models.lesson_reading import LessonReading
     from app.domain.models.progress import UserModuleProgress
     from app.domain.models.quiz import QuizAttempt
 
@@ -33,4 +34,5 @@ class User(Base):
     module_progress: Mapped[list[UserModuleProgress]] = relationship(back_populates="user")
     quiz_attempts: Mapped[list[QuizAttempt]] = relationship(back_populates="user")
     flashcard_reviews: Mapped[list[FlashcardReview]] = relationship(back_populates="user")
+    lesson_readings: Mapped[list[LessonReading]] = relationship(back_populates="user")
     tutor_conversations: Mapped[list[TutorConversation]] = relationship(back_populates="user")
