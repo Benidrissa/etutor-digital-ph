@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ssh deploy@167.86.115.58 \"cat /opt/hello/docker-compose.yml\")",
+      "Bash(ssh deploy@167.86.115.58 \"cat /opt/brvm/docker-compose.prod.yml\")",
+      "Bash(ssh deploy@167.86.115.58 \"cat /opt/brvm/docker-compose.infra.yml\")",
+      "Bash(ssh deploy@167.86.115.58 \"cat /opt/brvm/Makefile\")",
+      "Bash(ssh deploy@167.86.115.58 \"cat /opt/portainer/docker-compose.yml\")",
+      "Bash(ssh deploy@167.86.115.58 \"cat /opt/dozzle/docker-compose.yml\")",
+      "Bash(ssh deploy@167.86.115.58 \"ls -la /opt/infra/ && cat /opt/infra/docker-compose.yml 2>/dev/null || echo ''no compose in /opt/infra''\")",
+      "Bash(ssh deploy@167.86.115.58 \"ls -la /opt/brvm/.github/workflows/ 2>/dev/null && cat /opt/brvm/.github/workflows/*.yml 2>/dev/null | head -100\")",
+      "Bash(ssh deploy@167.86.115.58 \"ls -la /opt/backups/\")",
+      "Bash(ssh deploy@167.86.115.58 \"ls -la /opt/server-docs/ && cat /opt/server-docs/* 2>/dev/null | head -80\")",
+      "Bash(ssh deploy@167.86.115.58 \"cat /opt/brvm/scripts/deploy.sh 2>/dev/null\")",
+      "Bash(ssh deploy@167.86.115.58 \"cat /opt/brvm/.github/workflows/deploy-production.yml\")",
+      "Bash(ssh deploy@167.86.115.58 \"crontab -l 2>/dev/null || echo ''no crontab''\")",
+      "Bash(ssh deploy@167.86.115.58 \"docker volume ls\")",
+      "Bash(ssh deploy@167.86.115.58 \"ls -la ~/pmas/services/\")",
+      "Bash(git commit -m \"Initial commit: SRS, syllabus, reference PDFs, and CLAUDE.md:*)"
+    ]
+  }
+}
