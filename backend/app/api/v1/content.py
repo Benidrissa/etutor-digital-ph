@@ -1,0 +1,292 @@
+"""Content generation API endpoints."""
+
+from collections.abc import AsyncGenerator
+from uuid import UUID
+
+import structlog
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.ai.claude_service import ClaudeService
+from app.ai.rag.embeddings import EmbeddingService
+from app.ai.rag.retriever import SemanticRetriever
+from app.api.deps import get_db
+from app.api.v1.schemas.content import (
+    ErrorResponse,
+    LessonGenerationRequest,
+    LessonResponse,
+    StreamingEvent,
+)
+from app.domain.services.lesson_service import LessonGenerationService
+from app.infrastructure.config.settings import get_settings
+
+logger = structlog.get_logger()
+router = APIRouter(prefix="/content", tags=["content"])
+
+
+def get_claude_service() -> ClaudeService:
+    """Dependency to get Claude service."""
+    return ClaudeService()
+
+
+def get_semantic_retriever() -> SemanticRetriever:
+    """Dependency to get semantic retriever."""
+    settings = get_settings()
+    embedding_service = EmbeddingService(
+        api_key=settings.openai_api_key, model=settings.embedding_model
+    )
+    return SemanticRetriever(embedding_service)
+
+
+def get_lesson_service(
+    claude_service: ClaudeService = Depends(get_claude_service),
+    semantic_retriever: SemanticRetriever = Depends(get_semantic_retriever),
+) -> LessonGenerationService:
+    """Dependency to get lesson generation service."""
+    return LessonGenerationService(claude_service, semantic_retriever)
+
+
+@router.post(
+    "/generate-lesson",
+    response_model=LessonResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid request"},
+        404: {"model": ErrorResponse, "description": "Module not found"},
+        500: {"model": ErrorResponse, "description": "Generation failed"},
+    },
+)
+async def generate_lesson(
+    request: LessonGenerationRequest,
+    lesson_service: LessonGenerationService = Depends(get_lesson_service),
+    session: AsyncSession = Depends(get_db),
+) -> LessonResponse:
+    """
+    Generate or retrieve cached lesson content.
+
+    This endpoint generates pedagogical lesson content using RAG (Retrieval-Augmented Generation)
+    and Claude API. It performs the following steps:
+
+    1. **Cache Check**: First checks if lesson already exists in cache
+    2. **RAG Retrieval**: Searches top-8 relevant chunks from vector store
+    3. **Content Generation**: Uses Claude API with specialized pedagogical prompts
+    4. **Caching**: Stores generated content for future requests
+
+    The generated lesson includes:
+    - Contextualized introduction for West Africa
+    - Key concepts adapted to user's level
+    - Concrete examples from user's country/region
+    - Synthesis and key takeaways
+    - Source citations from reference materials
+
+    **Rate Limiting**: Content generation is subject to API limits.
+    Use streaming endpoint for real-time generation feedback.
+    """
+    try:
+        logger.info(
+            "Lesson generation requested",
+            module_id=str(request.module_id),
+            unit_id=request.unit_id,
+            language=request.language,
+            country=request.country,
+            level=request.level,
+        )
+
+        lesson_response = await lesson_service.get_or_generate_lesson(
+            module_id=request.module_id,
+            unit_id=request.unit_id,
+            language=request.language,
+            country=request.country,
+            level=request.level,
+            session=session,
+        )
+
+        logger.info(
+            "Lesson generation completed",
+            lesson_id=str(lesson_response.id),
+            cached=lesson_response.cached,
+        )
+
+        return lesson_response
+
+    except ValueError as e:
+        logger.warning("Invalid lesson generation request", error=str(e))
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "module_not_found", "message": str(e)},
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": "invalid_request", "message": str(e)},
+            )
+
+    except Exception as e:
+        logger.error("Lesson generation failed", error=str(e), exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "generation_failed",
+                "message": "Une erreur interne s'est produite lors de la génération",
+            },
+        )
+
+
+@router.post(
+    "/generate-lesson/stream",
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {"description": "Invalid request"},
+        404: {"description": "Module not found"},
+        500: {"description": "Generation failed"},
+    },
+)
+async def stream_lesson_generation(
+    request: LessonGenerationRequest,
+    lesson_service: LessonGenerationService = Depends(get_lesson_service),
+    session: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """
+    Stream lesson generation in real-time using Server-Sent Events (SSE).
+
+    This endpoint provides real-time feedback during lesson generation:
+
+    **Event Types:**
+    - `chunk`: Incremental content as it's generated
+    - `complete`: Final lesson object when generation finishes
+    - `error`: Error information if generation fails
+
+    **Response Format:**
+    ```
+    event: chunk
+    data: "Generating lesson content..."
+
+    event: complete
+    data: {"id": "...", "content": {...}, ...}
+    ```
+
+    **Client Implementation:**
+    ```javascript
+    const eventSource = new EventSource('/api/v1/content/generate-lesson/stream');
+    eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        // Handle streaming updates
+    };
+    ```
+
+    **Benefits:**
+    - Real-time progress feedback (critical for 8s+ generation time)
+    - Better UX on slow connections (2G/3G Africa)
+    - Client can display loading states and partial content
+    """
+
+    async def generate_events() -> AsyncGenerator[str, None]:
+        """Generate SSE events for streaming response."""
+        try:
+            logger.info(
+                "Starting lesson streaming generation",
+                module_id=str(request.module_id),
+                unit_id=request.unit_id,
+            )
+
+            async for event in lesson_service.stream_lesson_generation(
+                module_id=request.module_id,
+                unit_id=request.unit_id,
+                language=request.language,
+                country=request.country,
+                level=request.level,
+                session=session,
+            ):
+                yield event.to_sse_format()
+
+            logger.info("Lesson streaming generation completed")
+
+        except Exception as e:
+            logger.error("Lesson streaming generation failed", error=str(e), exc_info=True)
+            error_event = StreamingEvent(
+                event="error",
+                data={
+                    "error": "streaming_failed",
+                    "message": "Erreur lors de la génération en streaming",
+                },
+            )
+            yield error_event.to_sse_format()
+
+    return StreamingResponse(
+        generate_events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Cache-Control",
+        },
+    )
+
+
+@router.get(
+    "/lessons/{lesson_id}",
+    response_model=LessonResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Lesson not found"},
+    },
+)
+async def get_lesson(
+    lesson_id: UUID,
+    session: AsyncSession = Depends(get_db),
+) -> LessonResponse:
+    """
+    Retrieve a previously generated lesson by ID.
+
+    **Use Cases:**
+    - Retrieve cached lessons for offline viewing
+    - Load lessons from bookmarks/favorites
+    - Delta sync for mobile clients
+
+    **Caching Strategy:**
+    - Lessons are cached indefinitely once generated
+    - Content validation flag indicates quality review status
+    - Cache invalidation only on manual content updates
+    """
+    from sqlalchemy import select
+
+    from app.domain.models.content import GeneratedContent
+
+    try:
+        query = select(GeneratedContent).where(
+            GeneratedContent.id == lesson_id,
+            GeneratedContent.content_type == "lesson",
+        )
+        result = await session.execute(query)
+        lesson_content = result.scalar_one_or_none()
+
+        if not lesson_content:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "lesson_not_found", "message": f"Lesson {lesson_id} not found"},
+            )
+
+        from app.api.v1.schemas.content import LessonContent
+
+        return LessonResponse(
+            id=lesson_content.id,
+            module_id=lesson_content.module_id,
+            unit_id=lesson_content.content.get("unit_id", ""),
+            language=lesson_content.language,
+            level=lesson_content.level,
+            country_context=lesson_content.country_context or "",
+            content=LessonContent(**lesson_content.content),
+            generated_at=lesson_content.generated_at.isoformat(),
+            cached=True,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to retrieve lesson", lesson_id=str(lesson_id), error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "retrieval_failed", "message": "Failed to retrieve lesson"},
+        )
