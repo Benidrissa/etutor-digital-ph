@@ -5,7 +5,7 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from app.domain.models.base import Base
+from app.domain.models import Base  # noqa: F401 — imports all models for autogenerate
 from app.infrastructure.config.settings import settings
 
 config = context.config

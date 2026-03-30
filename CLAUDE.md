@@ -47,6 +47,16 @@ Key architectural decisions:
 - **Level 3 (Advanced, 100h):** M08-M12 — Advanced stats/epi, health programming, data viz
 - **Level 4 (Expert, 70h):** M13-M15 — Policy, health systems strengthening, research capstone
 
+## CRITICAL — Do NOT Re-scaffold
+
+The monorepo is fully scaffolded. **DO NOT** recreate, overwrite, or restructure:
+- `backend/` — FastAPI with uv (NOT Poetry), directory structure in `.claude/skills/fastapi-service/SKILL.md`
+- `frontend/` — Next.js 15 with npm, Tailwind + shadcn/ui, next-intl (FR/EN)
+- `docker-compose.yml`, `Makefile`, `.github/workflows/ci.yml`
+- Alembic migrations in `backend/migrations/` (NOT `backend/alembic/`)
+
+When implementing an issue, **build on top of what exists**. Read the existing code first. If a file already exists, edit it — do not create a parallel version.
+
 ## Regulatory Compliance
 
 Must align with: GDPR, Senegal Loi 2008-12, Ghana Data Protection Act 2012, Nigeria NDPR 2019, Côte d'Ivoire Loi n°2013-450. Claude API keys must remain server-side only.

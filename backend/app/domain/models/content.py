@@ -1,0 +1,35 @@
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Boolean, ForeignKey, Integer, String, func
+from sqlalchemy.dialects.postgresql import JSON
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.domain.models.base import Base
+
+if TYPE_CHECKING:
+    from app.domain.models.flashcard import FlashcardReview
+    from app.domain.models.module import Module
+    from app.domain.models.quiz import QuizAttempt
+
+
+class GeneratedContent(Base):
+    __tablename__ = "generated_content"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    module_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("modules.id"), index=True)
+    content_type: Mapped[str] = mapped_column(String, index=True)  # lesson|quiz|flashcard|case
+    language: Mapped[str] = mapped_column(String(2), index=True)  # fr|en
+    level: Mapped[int] = mapped_column(Integer)
+    content: Mapped[dict] = mapped_column(JSON)
+    sources_cited: Mapped[list | None] = mapped_column(JSON)
+    country_context: Mapped[str | None] = mapped_column(String)
+    generated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    validated: Mapped[bool] = mapped_column(Boolean, server_default="false")
+
+    module: Mapped[Module] = relationship(back_populates="generated_content")
+    quiz_attempts: Mapped[list[QuizAttempt]] = relationship(back_populates="quiz")
+    flashcard_reviews: Mapped[list[FlashcardReview]] = relationship(back_populates="card")
