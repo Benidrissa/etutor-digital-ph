@@ -53,7 +53,7 @@ jobs:
             Glob
             Grep
           custom_instructions: |
-            You are working on the SantéPublique AOF e-learning platform. Read CLAUDE.md fully before any work.
+            You are working on the SantePublique AOF e-learning platform. Read CLAUDE.md fully before any work.
 
             IMPORTANT: Read and follow the skill files in .claude/skills/ before writing code:
             - Backend work (services/**): Read .claude/skills/fastapi-service/SKILL.md

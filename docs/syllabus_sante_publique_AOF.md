@@ -1,4 +1,4 @@
-# Santé Publique & Analyse des Données — Afrique de l'Ouest
+# Sante Publique & Analyse des Données — Afrique de l'Ouest
 ## Programme de Formation Bilingue FR/EN | Public Health Training Syllabus
 
 > **Digital Health & Data Analysis | West Africa Contextualized**  
@@ -100,7 +100,7 @@
 
 ---
 
-### M01 — Foundations of Public Health / Fondements de la Santé Publique
+### M01 — Foundations of Public Health / Fondements de la Sante Publique
 > *Ce que veut dire "santé publique" — concepts, histoire et vision globale en contexte AOF*
 
 **⏱ Durée :** 20h | **Sources :** 📗 Donaldson Ch.1,13 · 📘 Scutchfield Ch.1,2,3,4
@@ -121,7 +121,7 @@
 - Les fonctions essentielles de santé publique (OPS/PAHO framework)
 
 #### 🌍 Contextualisation Afrique de l'Ouest
-**FR :** Cas d'étude : L'épidémie Ebola 2014-2016 en Guinée, Sierra Leone, Libéria — analyse des systèmes de santé défaillants et réponse. Comparaison des indicateurs de santé CEDEAO 2024. Rôle de l'OOAS (Organisation Ouest Africaine de la Santé) et de l'ECOWAS dans la gouvernance sanitaire régionale.
+**FR :** Cas d'étude : L'épidémie Ebola 2014-2016 en Guinée, Sierra Leone, Libéria — analyse des systèmes de santé défaillants et réponse. Comparaison des indicateurs de santé CEDEAO 2024. Rôle de l'OOAS (Organisation Ouest Africaine de la Sante) et de l'ECOWAS dans la gouvernance sanitaire régionale.
 
 **EN :** Case study: The 2014-2016 Ebola epidemic in Guinea, Sierra Leone, Liberia — health system failures & response analysis. Comparison of ECOWAS 2024 health indicators. Role of WAHO and ECOWAS in regional health governance.
 
@@ -146,7 +146,7 @@
 
 ---
 
-### M02 — Introduction to Health Data & Statistics / Introduction aux Données de Santé
+### M02 — Introduction to Health Data & Statistics / Introduction aux Données de Sante
 > *Comprendre, collecter et lire les données de santé — les bases du raisonnement statistique*
 
 **⏱ Durée :** 22h | **Sources :** 📙 Biostatistics Ch.1,2,3 · 📗 Donaldson Ch.2 (intro) · 📘 Scutchfield Ch.13
@@ -194,7 +194,7 @@
 
 ---
 
-### M03 — Health Systems in West Africa / Systèmes de Santé en Afrique de l'Ouest
+### M03 — Health Systems in West Africa / Systèmes de Sante en Afrique de l'Ouest
 > *Architecture, financement et performance des systèmes de santé des pays CEDEAO*
 
 **⏱ Durée :** 18h | **Sources :** 📗 Donaldson Ch.6 · 📘 Scutchfield Ch.6,7,8,28
@@ -275,7 +275,7 @@
 
 ---
 
-### M05 — Biostatistics for Public Health / Biostatistiques pour la Santé Publique
+### M05 — Biostatistics for Public Health / Biostatistiques pour la Sante Publique
 > *Probabilités, distributions, estimation et tests d'hypothèse appliqués à la santé*
 
 **⏱ Durée :** 28h | **Sources :** 📙 Biostatistics Ch.4,5,6,7,8,9
@@ -331,7 +331,7 @@
 
 ---
 
-### M07 — Public Health Tools & Practice / Outils et Pratiques de Santé Publique
+### M07 — Public Health Tools & Practice / Outils et Pratiques de Sante Publique
 > *Leadership, évaluation communautaire, performance, gestion des données de santé*
 
 **⏱ Durée :** 20h | **Sources :** 📘 Scutchfield Ch.9,10,11,12,14,15,16
@@ -350,7 +350,7 @@
 ---
 
 ## NIVEAU 3 — AVANCÉ / ADVANCED
-> *Santé numérique, surveillance, analyses complexes*
+> *Sante numérique, surveillance, analyses complexes*
 
 ---
 
@@ -401,7 +401,7 @@
 - Tests non-paramétriques : Wilcoxon, Mann-Whitney, Kruskal-Wallis
 - Tables de vie, Kaplan-Meier, log-rank test, Cox proportional hazards
 
-#### 🌍 Contextualisation AOF + Recherche en Santé
+#### 🌍 Contextualisation AOF + Recherche en Sante
 **FR :** Projet d'analyse : Régression logistique pour identifier les déterminants de la mortalité infantile au Sénégal (données DHS 2019). ANOVA pour comparer les taux de vaccination entre 5 pays AOF. Analyse de survie sur données de patients VIH/SIDA sous TAR au Ghana.
 
 #### 🧩 Activités pédagogiques
@@ -419,7 +419,7 @@
 
 ---
 
-### M10 — Digital Health & Health Information Systems / Santé Numérique et HMIS
+### M10 — Digital Health & Health Information Systems / Sante Numérique et HMIS
 > *Technologies numériques pour la santé en AOF : DHIS2, mHealth, IA, interopérabilité*
 
 **⏱ Durée :** 20h | **Sources :** 📘 Scutchfield Ch.13 | **Outils :** DHIS2, OpenMRS, ODK, FHIR
@@ -437,7 +437,7 @@
 
 ---
 
-### M11 — Environmental Health & One Health / Santé Environnementale et One Health
+### M11 — Environmental Health & One Health / Sante Environnementale et One Health
 > *Changement climatique, eau, assainissement, interface animal-humain-environnement en AOF*
 
 **⏱ Durée :** 16h | **Sources :** 📗 Donaldson Ch.12 · 📘 Scutchfield Ch.23
@@ -454,7 +454,7 @@
 
 ---
 
-### M12 — Maternal, Child & Community Health / Santé Maternelle, Infantile et Communautaire
+### M12 — Maternal, Child & Community Health / Sante Maternelle, Infantile et Communautaire
 > *Réduire la mortalité maternelle et infantile — SMNI et santé communautaire en AOF*
 
 **⏱ Durée :** 20h | **Sources :** 📗 Donaldson Ch.8 · 📘 Scutchfield Ch.25
@@ -472,7 +472,7 @@
 - Les 3 retards dans la mortalité maternelle (Thaddeus & Maine)
 - PTME : protocoles, couverture, défis en AOF
 - Nutrition : allaitement maternel, ANJE, malnutrition aigüe sévère (MAS)
-- Agents de Santé Communautaires (ASC/CHW) : modèles AOF
+- Agents de Sante Communautaires (ASC/CHW) : modèles AOF
 - Suivi des indicateurs SMNI avec DHIS2
 
 #### 🌍 Contextualisation AOF
@@ -561,18 +561,18 @@
 
 | # | Module | Niveau | Durée | Sources principales |
 |---|---|---|---|---|
-| M01 | Fondements de la Santé Publique | 1 | 20h | 📗 Ch.1,13 · 📘 Ch.1-4 |
-| M02 | Introduction aux Données de Santé | 1 | 22h | 📙 Ch.1-3 · 📘 Ch.13 |
-| M03 | Systèmes de Santé en AOF | 1 | 18h | 📗 Ch.6 · 📘 Ch.6-8,28 |
+| M01 | Fondements de la Sante Publique | 1 | 20h | 📗 Ch.1,13 · 📘 Ch.1-4 |
+| M02 | Introduction aux Données de Sante | 1 | 22h | 📙 Ch.1-3 · 📘 Ch.13 |
+| M03 | Systèmes de Sante en AOF | 1 | 18h | 📗 Ch.6 · 📘 Ch.6-8,28 |
 | M04 | Épidémiologie Appliquée | 2 | 25h | 📗 Ch.2 · 📘 Ch.11,13 |
-| M05 | Biostatistiques pour la Santé | 2 | 28h | 📙 Ch.4-9 |
+| M05 | Biostatistiques pour la Sante | 2 | 28h | 📙 Ch.4-9 |
 | M06 | Maladies et Déterminants en AOF | 2 | 22h | 📗 Ch.3-5 · 📘 Ch.17-25 |
-| M07 | Outils et Pratiques de Santé Publique | 2 | 20h | 📘 Ch.9-16 |
+| M07 | Outils et Pratiques de Sante Publique | 2 | 20h | 📘 Ch.9-16 |
 | M08 | Surveillance Épidémiologique Numérique | 3 | 22h | 📗 Ch.2,3 · DHIS2 |
 | M09 | Statistiques Avancées & Analyse | 3 | 28h | 📙 Ch.10-14 |
-| M10 | Santé Numérique et HMIS | 3 | 20h | 📘 Ch.13 · DHIS2/FHIR |
-| M11 | Santé Environnementale & One Health | 3 | 16h | 📗 Ch.12 · 📘 Ch.23 |
-| M12 | Santé Maternelle, Infantile & Communautaire | 3 | 20h | 📗 Ch.8 · 📘 Ch.25 |
+| M10 | Sante Numérique et HMIS | 3 | 20h | 📘 Ch.13 · DHIS2/FHIR |
+| M11 | Sante Environnementale & One Health | 3 | 16h | 📗 Ch.12 · 📘 Ch.23 |
+| M12 | Sante Maternelle, Infantile & Communautaire | 3 | 20h | 📗 Ch.8 · 📘 Ch.25 |
 | M13 | Leadership, Politique & Gouvernance | 4 | 22h | 📘 Ch.9,16,29 · 📗 Ch.6,7 |
 | M14 | Recherche et Évaluation Avancées | 4 | 24h | 📙 Ch.7-14 · 📘 Ch.17 |
 | M15 | Projet Intégratif Capstone | 4 | 24h | Tous les livres |

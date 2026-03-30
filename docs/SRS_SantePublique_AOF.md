@@ -1,7 +1,7 @@
 # Software Requirements Specification
-## SantéPublique AOF Learning Platform
+## SantePublique AOF Learning Platform
 
-> **Application Web Mobile-First Bilingue pour la Formation en Santé Publique — Afrique de l'Ouest**  
+> **Application Web Mobile-First Bilingue pour la Formation en Sante Publique — Afrique de l'Ouest**  
 > Version : 1.0-draft | Statut : Draft pour validation | Audience : Développeurs, Product Owner, Parties prenantes
 
 ---
@@ -26,7 +26,7 @@
 
 ## 1. Introduction et Portée
 
-Ce document définit les exigences fonctionnelles et non-fonctionnelles pour le développement de **SantéPublique AOF**, une plateforme d'apprentissage en ligne adaptative, bilingue (FR/EN) et mobile-first, destinée aux professionnels de santé et étudiants en Afrique de l'Ouest.
+Ce document définit les exigences fonctionnelles et non-fonctionnelles pour le développement de **SantePublique AOF**, une plateforme d'apprentissage en ligne adaptative, bilingue (FR/EN) et mobile-first, destinée aux professionnels de santé et étudiants en Afrique de l'Ouest.
 
 La plateforme génère dynamiquement du contenu pédagogique à partir de 3 ouvrages de référence en santé publique, contextualise chaque leçon dans le contexte de l'Afrique de l'Ouest, et adapte l'expérience au niveau de progression de chaque utilisateur.
 
@@ -80,46 +80,328 @@ Rendre la formation en santé publique de niveau expert accessible à tous les p
 |---|---|---|---|
 | 🩺 **Dr. Aminata** — Médecin districtale, Mali | Médecin, 8 ans d'expérience, supervise 12 centres de santé | Épidémiologie pratique, surveillance DHIS2, rapports district | Android milieu de gamme, 3G instable, sessions 15min |
 | 📊 **Kofi** — Data Analyst, Ghana MoH | Informaticien en santé, configure DHIS2, veut maîtriser biostatistique et R | Statistiques avancées, R/Python, DHIS2 analytique | Laptop + smartphone, WiFi bureau lent, Anglophone |
-| 🎓 **Fatou** — Étudiante MPH, Dakar | Master en Santé Publique, prépare examens, bilingue FR/EN | Contenu structuré, flashcards, quiz d'entraînement | Android basique, WiFi campus, budget limité |
-| 🏥 **Ibrahim** — Directeur Santé, Burkina | Cadre supérieur MoH, 15 ans expérience | Leadership, politiques, gouvernance, évaluation programmes | iPad + smartphone haut de gamme, peu de temps |
+| 🎓 **Fatou** — Étudiante MPH, Dakar | Master en Sante Publique, prépare examens, bilingue FR/EN | Contenu structuré, flashcards, quiz d'entraînement | Android basique, WiFi campus, budget limité |
+| 🏥 **Ibrahim** — Directeur Sante, Burkina | Cadre supérieur MoH, 15 ans expérience | Leadership, politiques, gouvernance, évaluation programmes | iPad + smartphone haut de gamme, peu de temps |
 
 ---
 
 ## 4. User Stories
 
-### Epic 1 : Authentification & Profil
+> Convention: Chaque story suit le format "En tant que [persona], je veux [action] afin de [bénéfice]" avec critères d'acceptation.
+> Priorités: CRITIQUE (P0) · ÉLEVÉE (P1) · MOYENNE (P2) · BASSE (P3)
 
-- **US-001** *(CRITIQUE)* — En tant qu'utilisateur, je veux m'inscrire avec mon email ou Google/LinkedIn afin d'accéder à la plateforme.
-- **US-002** *(CRITIQUE)* — En tant que nouvel utilisateur, je veux compléter une évaluation diagnostique de 20 minutes afin d'être automatiquement placé dans le bon niveau de départ.
-- **US-003** *(CRITIQUE)* — En tant qu'utilisateur, je veux choisir ma langue préférée (FR ou EN) et basculer entre les deux à tout moment.
+---
 
-### Epic 2 : Navigation & Progression
+### Epic 1 : Authentification & Profil Utilisateur
 
-- **US-010** *(CRITIQUE)* — En tant qu'apprenant, je veux voir mon tableau de bord de progression avec le % de completion de chaque module, mon streak quotidien et mes prochaines révisions planifiées.
-- **US-011** *(CRITIQUE)* — En tant qu'apprenant, je veux que les modules se débloquent automatiquement quand j'atteins 80% de maîtrise sur le module précédent.
-- **US-012** *(ÉLEVÉE)* — En tant qu'apprenant, je veux pouvoir sauter à un module plus avancé si je démontre déjà la maîtrise (test de placement).
+**US-001** *(P0 — CRITIQUE)* — En tant qu'utilisateur, je veux m'inscrire avec mon email, Google ou LinkedIn afin d'accéder à la plateforme.
+- **AC1:** Formulaire inscription avec email + mot de passe (min 8 chars, 1 majuscule, 1 chiffre)
+- **AC2:** OAuth Google et LinkedIn fonctionnels
+- **AC3:** Email de vérification envoyé dans les 30s
+- **AC4:** Redirection vers profil initial après vérification
 
-### Epic 3 : Contenu Généré par IA
+**US-002** *(P0 — CRITIQUE)* — En tant que nouvel utilisateur, je veux compléter une évaluation diagnostique de 20 minutes afin d'être placé dans le bon niveau de départ.
+- **AC1:** 20 questions couvrant 4 domaines (fondements SP, épidémiologie, biostatistiques, systèmes de santé)
+- **AC2:** Placement automatique dans un des 4 niveaux
+- **AC3:** Résultat affiché avec explication du niveau attribué
+- **AC4:** Option de refaire le test après 3 mois
 
-- **US-020** *(CRITIQUE)* — En tant qu'apprenant, je veux que chaque leçon soit générée dynamiquement depuis les 3 livres sources, avec des exemples spécifiques à mon pays.
-- **US-021** *(CRITIQUE)* — En tant qu'apprenant, je veux avoir accès à un tuteur virtuel (Claude) que je peux interroger en FR ou EN sur n'importe quel concept du curriculum.
-- **US-022** *(CRITIQUE)* — En tant qu'apprenant, je veux que chaque concept soit illustré par un cas réel d'Afrique de l'Ouest avec des données récentes.
+**US-003** *(P0 — CRITIQUE)* — En tant qu'utilisateur, je veux choisir ma langue (FR/EN) et basculer entre les deux à tout moment.
+- **AC1:** Sélection de langue au premier accès
+- **AC2:** Switch instantané FR↔EN dans la barre de navigation
+- **AC3:** Préférence persistée en base de données
+- **AC4:** Contenu UI et contenu généré suivent la langue choisie
 
-### Epic 4 : Quiz & Évaluation
+**US-004** *(P1 — ÉLEVÉE)* — En tant qu'utilisateur, je veux éditer mon profil (nom, pays, rôle, langue) afin de personnaliser mon expérience.
+- **AC1:** Page profil avec tous les champs éditables
+- **AC2:** Changement de pays met à jour la contextualisation du contenu
+- **AC3:** Validation des champs avec feedback en temps réel
 
-- **US-030** *(CRITIQUE)* — En tant qu'apprenant, je veux répondre à des quiz formatifs (10 questions) après chaque sous-unité, avec feedback immédiat et explication.
-- **US-031** *(ÉLEVÉE)* — En tant qu'apprenant, je veux que la difficulté des questions s'adapte automatiquement à ma performance (algorithme adaptatif CAT).
-- **US-032** *(CRITIQUE)* — En tant qu'apprenant, je veux voir l'explication détaillée de chaque mauvaise réponse avec renvoi aux chapitres sources.
+**US-005** *(P1 — ÉLEVÉE)* — En tant qu'utilisateur, je veux supprimer mon compte et exporter mes données afin de respecter mon droit RGPD.
+- **AC1:** Bouton "Supprimer mon compte" avec confirmation en 2 étapes
+- **AC2:** Export JSON de toutes les données personnelles
+- **AC3:** Suppression effective sous 48h avec email de confirmation
+- **AC4:** Données anonymisées dans les analytics
 
-### Epic 5 : Flashcards & Révision Espacée
+**US-006** *(P1 — ÉLEVÉE)* — En tant qu'utilisateur, je veux réinitialiser mon mot de passe via email afin de récupérer l'accès à mon compte.
+- **AC1:** Lien "Mot de passe oublié" sur la page de connexion
+- **AC2:** Email avec lien de reset (expiration 1h)
+- **AC3:** Nouveau mot de passe validé avec les mêmes critères que l'inscription
 
-- **US-040** *(CRITIQUE)* — En tant qu'apprenant, je veux accéder à des flashcards bilingues (FR/EN) pour chaque concept clé d'un module.
-- **US-041** *(ÉLEVÉE)* — En tant qu'apprenant, je veux que le système planifie automatiquement mes révisions avec l'algorithme de répétition espacée (FSRS ou SM-2).
+---
 
-### Epic 6 : Données & Pratique
+### Epic 2 : Dashboard & Navigation
 
-- **US-050** *(ÉLEVÉE)* — En tant qu'apprenant niveau intermédiaire+, je veux avoir accès à un sandbox de données (datasets DHIS2/DHS réels) pour des exercices d'analyse guidés.
-- **US-051** *(ÉLEVÉE)* — En tant qu'apprenant, je veux exécuter du code R ou Python de base dans le navigateur (sandboxé) pour les exercices de biostatistique.
+**US-010** *(P0 — CRITIQUE)* — En tant qu'apprenant, je veux voir mon tableau de bord avec la progression par module, mon streak et mes prochaines révisions.
+- **AC1:** Carte des 15 modules avec statut visuel (verrouillé/en cours/complété)
+- **AC2:** Pourcentage de complétion par module
+- **AC3:** Compteur de streak quotidien
+- **AC4:** Liste des 5 prochaines révisions flashcards planifiées
+- **AC5:** Score moyen aux quiz affiché
+
+**US-011** *(P0 — CRITIQUE)* — En tant qu'apprenant, je veux que les modules se débloquent automatiquement quand j'atteins 80% de maîtrise sur le module précédent.
+- **AC1:** Module verrouillé visuellement avec icône cadenas
+- **AC2:** Déverrouillage automatique quand score quiz ≥ 80% sur le prérequis
+- **AC3:** Notification in-app lors du déverrouillage
+- **AC4:** Modules sans prérequis (M01) accessibles immédiatement
+
+**US-012** *(P1 — ÉLEVÉE)* — En tant qu'apprenant avancé, je veux pouvoir sauter à un module supérieur via un test de placement afin de ne pas perdre de temps.
+- **AC1:** Bouton "Tester mes acquis" sur chaque module verrouillé
+- **AC2:** Mini-quiz de 10 questions ciblées sur le module
+- **AC3:** Score ≥ 85% débloque le module et marque le prérequis comme "acquis par test"
+
+**US-013** *(P2 — MOYENNE)* — En tant qu'apprenant, je veux recevoir des recommandations personnalisées sur quoi étudier ensuite.
+- **AC1:** Section "Recommandé pour vous" sur le dashboard
+- **AC2:** Basé sur : modules en cours, révisions en retard, points faibles aux quiz
+- **AC3:** Maximum 3 recommandations affichées
+
+**US-014** *(P2 — MOYENNE)* — En tant qu'apprenant, je veux voir mon calendrier d'étude avec les révisions planifiées.
+- **AC1:** Vue calendrier mensuelle avec jours de révision marqués
+- **AC2:** Détail des cartes à réviser par jour
+- **AC3:** Synchronisation avec l'algorithme FSRS
+
+---
+
+### Epic 3 : Structure des Modules & Contenu
+
+**US-020** *(P0 — CRITIQUE)* — En tant qu'apprenant, je veux accéder à une page d'aperçu de module avec objectifs, durée estimée et unités.
+- **AC1:** Titre, description, objectifs d'apprentissage (FR/EN)
+- **AC2:** Durée estimée et nombre d'unités
+- **AC3:** Barre de progression du module
+- **AC4:** Liste des unités avec statut (à faire/en cours/fait)
+
+**US-021** *(P0 — CRITIQUE)* — En tant qu'apprenant, je veux lire des leçons générées dynamiquement depuis les 3 livres sources, contextualisées pour mon pays.
+- **AC1:** Contenu de 400-600 mots par unité, structuré (Intro → Concept → Exemple AOF → Points clés)
+- **AC2:** Exemples spécifiques au pays de l'utilisateur
+- **AC3:** 3-5 termes techniques affichés en FR et EN
+- **AC4:** Citations des sources (livre + chapitre) visibles
+- **AC5:** Contenu streamé en SSE avec skeleton loader pendant la génération
+
+**US-022** *(P0 — CRITIQUE)* — En tant qu'apprenant, je veux que chaque concept soit illustré par un cas réel d'Afrique de l'Ouest avec des données récentes.
+- **AC1:** Au moins 1 exemple AOF par leçon avec données datées
+- **AC2:** Données issues de DHIS2, DHS, ou WHO AFRO
+- **AC3:** Source et année des données citées
+
+**US-023** *(P1 — ÉLEVÉE)* — En tant qu'apprenant, je veux que le contenu généré soit validé par un expert avant publication.
+- **AC1:** Contenu généré marqué "draft" par défaut
+- **AC2:** Queue de validation visible pour les admins/experts
+- **AC3:** Statut "validé" requis avant affichage aux autres utilisateurs
+- **AC4:** Fallback: premier utilisateur voit le contenu "draft" avec avertissement
+
+---
+
+### Epic 4 : Tuteur Virtuel IA
+
+**US-030** *(P0 — CRITIQUE)* — En tant qu'apprenant, je veux avoir accès à un tuteur virtuel (Claude) que je peux interroger en FR ou EN sur n'importe quel concept du curriculum.
+- **AC1:** Interface chat accessible depuis chaque module
+- **AC2:** Réponses basées sur les 3 sources indexées + données AOF
+- **AC3:** Chaque réponse cite la source (livre + chapitre)
+- **AC4:** Historique de conversation conservé par module
+- **AC5:** Limite de 50 messages/jour affichée avec compteur
+
+**US-031** *(P1 — ÉLEVÉE)* — En tant qu'apprenant, je veux que le tuteur me suggère des exercices complémentaires quand je pose des questions.
+- **AC1:** Suggestion contextuelle de quiz, flashcards ou exercices liés
+- **AC2:** Liens cliquables vers les ressources suggérées
+
+**US-032** *(P2 — MOYENNE)* — En tant qu'apprenant, je veux que le tuteur s'adapte à mon niveau de compréhension.
+- **AC1:** Réponses simplifiées pour niveau 1, techniques pour niveaux 3-4
+- **AC2:** Détection de questions répétées → reformulation différente
+
+---
+
+### Epic 5 : Quiz & Évaluation
+
+**US-040** *(P0 — CRITIQUE)* — En tant qu'apprenant, je veux répondre à des quiz formatifs (10 questions) après chaque sous-unité avec feedback immédiat.
+- **AC1:** 10 QCM avec 4 options chacune
+- **AC2:** Feedback immédiat après chaque réponse (correct/incorrect)
+- **AC3:** Explication détaillée avec renvoi au chapitre source
+- **AC4:** Score final affiché avec récapitulatif
+
+**US-041** *(P1 — ÉLEVÉE)* — En tant qu'apprenant, je veux que la difficulté des questions s'adapte à ma performance (algorithme CAT).
+- **AC1:** Questions classées par difficulté (1-5)
+- **AC2:** Niveau estimé par modèle IRT simplifié
+- **AC3:** Question suivante sélectionnée à ±0.5 niveau de l'estimation courante
+- **AC4:** Pool minimum de 50 questions par module
+
+**US-042** *(P0 — CRITIQUE)* — En tant qu'apprenant, je veux passer une évaluation sommative (20 questions, 80% pour valider) à la fin de chaque module.
+- **AC1:** 20 questions couvrant toutes les unités du module
+- **AC2:** Score ≥ 80% marque le module comme complété
+- **AC3:** Score < 80% : feedback sur les unités à revoir, retry possible après 24h
+- **AC4:** Nombre de tentatives enregistré
+
+**US-043** *(P2 — MOYENNE)* — En tant qu'apprenant, je veux voir mon historique de quiz et mes tendances de performance.
+- **AC1:** Liste de toutes les tentatives avec scores et dates
+- **AC2:** Graphique d'évolution des scores par module
+- **AC3:** Identification des domaines faibles
+
+---
+
+### Epic 6 : Flashcards & Révision Espacée
+
+**US-050** *(P0 — CRITIQUE)* — En tant qu'apprenant, je veux accéder à des flashcards bilingues (FR/EN) pour chaque concept clé.
+- **AC1:** Carte recto (terme/question) → verso (définition + exemple AOF)
+- **AC2:** Contenu bilingue FR/EN sur chaque carte
+- **AC3:** Formule mathématique affichée si applicable (LaTeX rendu)
+
+**US-051** *(P1 — ÉLEVÉE)* — En tant qu'apprenant, je veux que le système planifie mes révisions avec l'algorithme FSRS.
+- **AC1:** Notation utilisateur : Facile / Bien / Difficile / Oublié
+- **AC2:** Date de prochaine révision calculée par FSRS
+- **AC3:** Paramètres stability/difficulty mis à jour après chaque révision
+
+**US-052** *(P1 — ÉLEVÉE)* — En tant qu'apprenant, je veux un mode "révision du jour" limité à 15 minutes.
+- **AC1:** Sélection automatique des 10-20 cartes les plus urgentes
+- **AC2:** Timer visible (15 min max)
+- **AC3:** Progression sauvegardée si session interrompue
+
+**US-053** *(P2 — MOYENNE)* — En tant qu'apprenant, je veux recevoir des notifications push pour mes rappels de révision.
+- **AC1:** Notification push quotidienne si cartes dues
+- **AC2:** Heure de notification configurable dans les paramètres
+- **AC3:** Opt-out possible
+
+---
+
+### Epic 7 : Données Réelles & Exercices Pratiques
+
+**US-060** *(P1 — ÉLEVÉE)* — En tant qu'apprenant intermédiaire+, je veux accéder à une bibliothèque de datasets AOF pour des exercices d'analyse.
+- **AC1:** 20+ datasets préformatés (DHIS2, DHS, WHO AFRO)
+- **AC2:** Chaque dataset avec : source, année, variables, taille, description
+- **AC3:** Filtrage par pays, thème, niveau de difficulté
+
+**US-061** *(P1 — ÉLEVÉE)* — En tant qu'apprenant, je veux exécuter du code Python dans le navigateur pour les exercices de biostatistique.
+- **AC1:** Éditeur de code intégré avec coloration syntaxique
+- **AC2:** Exécution via Pyodide (Python in browser)
+- **AC3:** Bibliothèques disponibles : pandas, numpy, scipy, matplotlib, statsmodels
+- **AC4:** Code pré-rempli avec espaces à compléter
+- **AC5:** Vérification automatique des résultats
+
+**US-062** *(P1 — ÉLEVÉE)* — En tant qu'apprenant, je veux suivre des cas pratiques guidés avec données AOF réelles.
+- **AC1:** Scénario contextualisé (ex: analyse paludisme Ghana)
+- **AC2:** Données intégrées + questions guidées étape par étape
+- **AC3:** Correction commentée avec explication méthodologique
+
+---
+
+### Epic 8 : Mode Offline & PWA
+
+**US-070** *(P0 — CRITIQUE)* — En tant qu'apprenant sur réseau instable, je veux installer l'app comme PWA sur mon téléphone.
+- **AC1:** Manifest PWA valide, installable depuis Chrome/Safari
+- **AC2:** Icône sur écran d'accueil
+- **AC3:** Splash screen au lancement
+
+**US-071** *(P0 — CRITIQUE)* — En tant qu'apprenant, je veux accéder au dernier module consulté et à mes flashcards hors connexion.
+- **AC1:** Service Worker cache le dernier module complètement (leçons + quiz)
+- **AC2:** Flashcards dues disponibles offline
+- **AC3:** Indicateur visuel "mode hors-ligne" dans le header
+- **AC4:** Bannière de reconnexion quand le réseau revient
+
+**US-072** *(P1 — ÉLEVÉE)* — En tant qu'apprenant, je veux que mes actions offline se synchronisent quand je retrouve une connexion.
+- **AC1:** Réponses quiz sauvegardées localement en IndexedDB
+- **AC2:** Révisions flashcards synchronisées au retour en ligne
+- **AC3:** Résolution de conflits : dernière écriture gagne
+- **AC4:** Notification de synchronisation réussie
+
+---
+
+### Epic 9 : Internationalisation & Accessibilité
+
+**US-080** *(P0 — CRITIQUE)* — En tant qu'apprenant, je veux que toute l'interface soit disponible en français et en anglais.
+- **AC1:** 100% des textes UI traduits via next-intl
+- **AC2:** Contenu généré disponible dans les deux langues
+- **AC3:** Formats de date, nombre adaptés à la locale
+
+**US-081** *(P1 — ÉLEVÉE)* — En tant qu'apprenant malvoyant, je veux naviguer au clavier et utiliser un lecteur d'écran.
+- **AC1:** Navigation clavier complète (tab, enter, escape)
+- **AC2:** Rôles ARIA sur tous les composants interactifs
+- **AC3:** Contraste ≥ 4.5:1 (WCAG 2.1 AA)
+- **AC4:** Taille minimale de texte 16px sur mobile
+
+---
+
+### Epic 10 : Certification & Gamification
+
+**US-090** *(P2 — MOYENNE)* — En tant qu'apprenant, je veux recevoir un certificat PDF à la complétion d'un niveau.
+- **AC1:** Certificat généré automatiquement au score ≥ 80% sur tous les modules du niveau
+- **AC2:** PDF téléchargeable avec nom, date, niveau, score
+- **AC3:** URL de vérification unique sur le certificat
+
+**US-091** *(P2 — MOYENNE)* — En tant qu'apprenant, je veux partager mon certificat sur LinkedIn.
+- **AC1:** Bouton "Partager sur LinkedIn" avec pré-remplissage
+- **AC2:** Badge numérique associé au certificat
+
+**US-092** *(P2 — MOYENNE)* — En tant qu'apprenant, je veux voir des badges et récompenses pour ma progression.
+- **AC1:** Badge "Premier module complété", "Streak 7 jours", "100 flashcards révisées"
+- **AC2:** Affichage sur le profil utilisateur
+
+---
+
+### Epic 11 : Administration & Modération
+
+**US-100** *(P1 — ÉLEVÉE)* — En tant qu'administrateur, je veux voir un tableau de bord avec les statistiques d'utilisation.
+- **AC1:** Nombre d'utilisateurs actifs (DAU/MAU)
+- **AC2:** Modules les plus/moins populaires
+- **AC3:** Score moyen par module
+- **AC4:** Taux de complétion par niveau
+
+**US-101** *(P1 — ÉLEVÉE)* — En tant qu'expert pédagogique, je veux valider le contenu IA avant publication.
+- **AC1:** Queue de contenu à valider avec filtres (type, module, langue)
+- **AC2:** Interface de review : voir le contenu, approuver, rejeter, demander régénération
+- **AC3:** Historique des validations
+
+**US-102** *(P2 — MOYENNE)* — En tant qu'administrateur, je veux gérer les utilisateurs (désactiver, changer rôle).
+- **AC1:** Liste des utilisateurs avec recherche et filtres
+- **AC2:** Actions : désactiver, réactiver, promouvoir en expert/admin
+- **AC3:** Log d'audit des actions admin
+
+---
+
+### Epic 12 : Notifications & Engagement
+
+**US-110** *(P2 — MOYENNE)* — En tant qu'apprenant, je veux recevoir des rappels pour maintenir mon streak d'apprentissage.
+- **AC1:** Notification push quotidienne configurable
+- **AC2:** Email de rappel si inactif depuis 3 jours
+- **AC3:** Opt-out granulaire (push, email, in-app)
+
+**US-111** *(P2 — MOYENNE)* — En tant qu'apprenant, je veux recevoir des notifications in-app pour les événements importants.
+- **AC1:** Module débloqué, certificat disponible, nouveau contenu
+- **AC2:** Badge de notification avec compteur
+- **AC3:** Centre de notifications avec historique
+
+---
+
+### Epic 13 : Performance & Monitoring
+
+**US-120** *(P0 — CRITIQUE)* — En tant qu'utilisateur sur réseau 3G, je veux que la page charge en moins de 3 secondes.
+- **AC1:** TTI < 3s sur Moto G4 simulé (Lighthouse)
+- **AC2:** FCP < 1.5s
+- **AC3:** Bundle JS initial < 150KB gzippé
+
+**US-121** *(P1 — ÉLEVÉE)* — En tant qu'apprenant, je veux que la génération IA soit rapide avec un feedback visuel.
+- **AC1:** Leçon générée en < 8s (P95) avec streaming SSE
+- **AC2:** Quiz généré en < 5s (P95)
+- **AC3:** Skeleton loader + progress indicator pendant la génération
+- **AC4:** Fallback gracieux si l'API Claude est indisponible (contenu cache ou message d'erreur)
+
+---
+
+### Epic 14 : Infrastructure & DevOps
+
+**US-130** *(P0 — CRITIQUE)* — En tant que développeur, je veux un pipeline CI/CD automatisé.
+- **AC1:** GitHub Actions : lint, test, build, deploy sur push
+- **AC2:** Environnements dev/staging/prod séparés
+- **AC3:** Docker Compose pour développement local
+
+**US-131** *(P0 — CRITIQUE)* — En tant que développeur, je veux un pipeline d'indexation RAG pour les 3 livres PDF.
+- **AC1:** Extraction PDF → texte (PyMuPDF)
+- **AC2:** Chunking en segments de 512 tokens avec overlap
+- **AC3:** Embeddings via text-embedding-3-small
+- **AC4:** Stockage dans ChromaDB avec métadonnées (source, chapitre, page, niveau)
+- **AC5:** Script reproductible et idempotent
+
+**US-132** *(P0 — CRITIQUE)* — En tant que développeur, je veux un schéma de base de données avec migrations.
+- **AC1:** Toutes les tables définies dans la section 9 implémentées
+- **AC2:** Migrations Alembic versionnées
+- **AC3:** Row Level Security activé sur Supabase
+- **AC4:** Seeds de données pour les 15 modules
 
 ---
 
@@ -138,8 +420,8 @@ Rendre la formation en santé publique de niveau expert accessible à tous les p
 | Cache | Redis 7 | Cache sessions, queue Celery, rate limiting |
 | Auth | Supabase Auth | Email, OAuth (Google/LinkedIn), JWT |
 | LLM | Anthropic Claude 3.5 Sonnet | Meilleure performance multilangue FR/EN, RAG |
-| Vector DB | ChromaDB / pgvector | Embeddings des 3 livres, recherche sémantique |
-| Orchestration IA | LangChain / LlamaIndex | RAG pipeline, agents, tool calling |
+| Vector DB | pgvector (extension PostgreSQL) | Embeddings dans PostgreSQL existant, pas de service supplémentaire |
+| Orchestration IA | Anthropic Python SDK | Appels Claude API directs, streaming SSE, pas de middleware LangChain/LlamaIndex |
 | Code Sandbox | Pyodide (Python in browser) | Exécution Python côté client, sécurisé |
 | CDN | Cloudflare Workers | Edge caching, optimisation AOF (nœuds Afrique) |
 | Monitoring | Sentry + PostHog | Erreurs + analytics privacy-first |
@@ -159,8 +441,8 @@ Rendre la formation en santé publique de niveau expert accessible à tous les p
 └──────────────────────┬──────────────────────────────┘
                        │ API calls
 ┌──────────────────────▼──────────────────────────────┐
-│  IA / RAG  │ Anthropic Claude API · ChromaDB         │
-│            │ LangChain · OpenAI Embeddings · PyMuPDF │
+│  IA / RAG  │ Anthropic Claude API · Anthropic SDK      │
+│            │ pgvector · OpenAI Embeddings · PyMuPDF   │
 └──────────────────────┬──────────────────────────────┘
                        │ ETL pipelines
 ┌──────────────────────▼──────────────────────────────┐
@@ -186,7 +468,7 @@ PHASE 1 — INDEXATION DES SOURCES
 PHASE 2 — EMBEDDINGS
   ├── Modèle : text-embedding-3-small (OpenAI) ou claude-3-haiku
   ├── Dimensions : 1536
-  └── Stockage : ChromaDB avec métadonnées (source, chapitre, niveau, pays)
+  └── Stockage : pgvector (PostgreSQL) avec métadonnées (source, chapitre, niveau, pays)
 
 PHASE 3 — GÉNÉRATION DYNAMIQUE (à la demande utilisateur)
   ├── Input  : {module_id} + {level} + {langue} + {pays} + {objectif}
@@ -486,7 +768,7 @@ tutor_conversations {
 - 1× Lead Developer Full-Stack (Next.js + FastAPI)
 - 1× AI/ML Engineer (RAG, Claude API)
 - 1× UI/UX Designer (mobile-first)
-- 1× Expert Santé Publique AOF (validation contenu)
+- 1× Expert Sante Publique AOF (validation contenu)
 
 **Extended Team (Phase 3+)**
 - 1× DevOps/Infrastructure Engineer
@@ -507,4 +789,4 @@ tutor_conversations {
 
 ---
 
-*SantéPublique AOF Platform · SRS v1.0 · 2025 · Basé sur : Donaldson's Essential Public Health · Principles of Public Health Practice (Scutchfield & Keck) · Biostatistics for the Biological and Health Sciences (Triola) · Sources de données : WHO AFRO · ECOWAS/CEDEAO · DHIS2 · DHS Program · World Bank*
+*SantePublique AOF Platform · SRS v1.0 · 2025 · Basé sur : Donaldson's Essential Public Health · Principles of Public Health Practice (Scutchfield & Keck) · Biostatistics for the Biological and Health Sciences (Triola) · Sources de données : WHO AFRO · ECOWAS/CEDEAO · DHIS2 · DHS Program · World Bank*
