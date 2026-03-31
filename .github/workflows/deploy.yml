@@ -128,9 +128,11 @@ jobs:
             # Deploy
             docker compose up -d
 
-            # Run database migrations
+            # Run database migrations then restart backend to pick up schema changes
             sleep 10
             docker compose exec -T -e PYTHONPATH=/app backend uv run alembic upgrade head || echo "Migration warning (may already be applied)"
+            docker compose restart backend
+            sleep 10
 
             # Record deploy SHA
             echo "${DEPLOY_SHA}" > .deploy-sha
