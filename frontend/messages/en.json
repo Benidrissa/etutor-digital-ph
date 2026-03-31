@@ -109,7 +109,8 @@
     "accountRecovered": "Account Recovered",
     "setupNewAuthenticator": "Please set up your authenticator app with the new QR code below",
     "newBackupCodes": "New backup codes (save these securely):",
-    "continueToLogin": "Continue to Login"
+    "continueToLogin": "Continue to Login",
+    "logout": "Logout"
   },
   "LanguageSwitcher": {
     "switchTo": "Switch to French",

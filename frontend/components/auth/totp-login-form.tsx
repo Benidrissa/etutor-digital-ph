@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { z } from 'zod';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -17,6 +17,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { authClient, AuthError } from '@/lib/auth';
+import { useAuth } from '@/lib/hooks/use-auth';
 
 const createLoginSchema = (t: (key: string) => string) => z.object({
   email: z.string().min(1, t('emailRequired')).email(t('emailInvalid')),
@@ -42,10 +43,15 @@ export function TOTPLoginForm({ locale }: TOTPLoginFormProps) {
   const t = useTranslations('Auth');
   const tCommon = useTranslations('Common');
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { login } = useAuth();
   
   const [isLoading, setIsLoading] = useState(false);
   const [showMagicLink, setShowMagicLink] = useState(false);
   const [magicLinkSent, setMagicLinkSent] = useState(false);
+
+  // Get return URL from search params
+  const returnUrl = searchParams.get('returnUrl') || `/${locale}/dashboard`;
 
   // Login form
   const loginSchema = createLoginSchema(t);
@@ -77,13 +83,10 @@ export function TOTPLoginForm({ locale }: TOTPLoginFormProps) {
     setIsLoading(true);
     
     try {
-      const response = await authClient.login({
-        email: data.email,
-        totp_code: data.totp_code,
-      });
+      await login(data.email, data.totp_code);
       
-      // Login successful - redirect to dashboard
-      router.push(`/${locale}/dashboard`);
+      // Login successful - redirect to return URL or dashboard
+      router.push(returnUrl);
     } catch (error) {
       console.error('Login error:', error);
       

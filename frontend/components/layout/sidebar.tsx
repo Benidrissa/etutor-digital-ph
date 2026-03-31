@@ -14,16 +14,28 @@ import {
   ChevronLeft,
   ChevronRight,
   Menu,
+  LogOut,
 } from "lucide-react";
 import { LocaleSwitcher } from "@/components/shared/locale-switcher";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/hooks/use-auth";
 
 export function Sidebar() {
   const t = useTranslations("Navigation");
   const tCommon = useTranslations("Common");
+  const tAuth = useTranslations("Auth");
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const { user, logout } = useAuth();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
 
   const navItems = [
     { 
@@ -129,7 +141,23 @@ export function Sidebar() {
         })}
       </nav>
       
-      <div className="border-t p-2">
+      <div className="border-t p-2 space-y-2">
+        {/* User info section */}
+        {!isCollapsed && user && (
+          <div className="p-2 rounded-md bg-muted/50">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-semibold">
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{user.name}</p>
+                <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Language switcher */}
         {!isCollapsed ? (
           <div className="p-2">
             <LocaleSwitcher />
@@ -146,6 +174,25 @@ export function Sidebar() {
             </Button>
           </div>
         )}
+
+        {/* Logout button */}
+        <div className={cn("p-2", isCollapsed && "flex justify-center")}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleLogout}
+            className={cn(
+              "min-h-11 text-destructive hover:text-destructive hover:bg-destructive/10",
+              isCollapsed 
+                ? "min-w-11 p-2" 
+                : "w-full justify-start gap-3 px-3"
+            )}
+            aria-label={tAuth("logout")}
+          >
+            <LogOut className="h-4 w-4 shrink-0" />
+            {!isCollapsed && <span>{tAuth("logout")}</span>}
+          </Button>
+        </div>
       </div>
     </aside>
   );
