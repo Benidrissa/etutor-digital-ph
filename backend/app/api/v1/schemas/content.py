@@ -189,6 +189,115 @@ class FlashcardSetResponse(BaseModel):
     }
 
 
+# Quiz Generation Schemas
+
+
+class QuizGenerationRequest(BaseModel):
+    """Request schema for quiz generation."""
+
+    module_id: UUID = Field(..., description="UUID of the target module")
+    unit_id: str = Field(..., description="Unit identifier within the module")
+    language: Literal["fr", "en"] = Field(..., description="Content language")
+    difficulty_level: Literal["easy", "medium", "hard"] = Field(
+        ..., description="Overall difficulty level"
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "module_id": "550e8400-e29b-41d4-a716-446655440000",
+                "unit_id": "1.1",
+                "language": "fr",
+                "difficulty_level": "medium",
+            }
+        }
+    }
+
+
+class QuizOption(BaseModel):
+    """Single quiz option."""
+
+    text: str = Field(..., description="Option text")
+    is_correct: bool = Field(..., description="Whether this option is correct")
+
+
+class QuizQuestion(BaseModel):
+    """Single quiz question."""
+
+    question: str = Field(..., description="Question text")
+    options: list[QuizOption] = Field(
+        ..., min_length=4, max_length=4, description="4 answer options"
+    )
+    explanation: str = Field(..., description="Explanation for the correct answer")
+    difficulty: Literal["easy", "medium", "hard"] = Field(..., description="Question difficulty")
+    source_reference: str = Field(..., description="Source citation for the question")
+
+
+class QuizContent(BaseModel):
+    """Structured quiz content."""
+
+    title: str = Field(..., description="Quiz title")
+    questions: list[QuizQuestion] = Field(
+        ..., min_length=10, max_length=10, description="10 quiz questions"
+    )
+    estimated_duration_minutes: int = Field(..., description="Estimated time to complete")
+    sources_cited: list[str] = Field(..., description="All source citations")
+
+
+class QuizResponse(BaseModel):
+    """Response schema for generated quiz."""
+
+    id: UUID = Field(default_factory=uuid.uuid4, description="Generated content ID")
+    module_id: UUID = Field(..., description="Module ID")
+    unit_id: str = Field(..., description="Unit identifier")
+    content_type: Literal["quiz"] = Field(default="quiz", description="Content type")
+    language: Literal["fr", "en"] = Field(..., description="Content language")
+    difficulty_level: str = Field(..., description="Overall difficulty level")
+    content: QuizContent = Field(..., description="Structured quiz content")
+    generated_at: str = Field(..., description="Generation timestamp (ISO format)")
+    cached: bool = Field(default=False, description="Whether content was retrieved from cache")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "id": "550e8400-e29b-41d4-a716-446655440002",
+                "module_id": "550e8400-e29b-41d4-a716-446655440000",
+                "unit_id": "1.1",
+                "content_type": "quiz",
+                "language": "fr",
+                "difficulty_level": "medium",
+                "content": {
+                    "title": "Quiz - Introduction à la surveillance épidémiologique",
+                    "questions": [
+                        {
+                            "question": "Quelle est la définition de la surveillance épidémiologique ?",
+                            "options": [
+                                {
+                                    "text": "Un système de suivi des maladies chroniques",
+                                    "is_correct": False,
+                                },
+                                {
+                                    "text": "La collecte systématique de données sanitaires",
+                                    "is_correct": True,
+                                },
+                                {"text": "Un traitement médical préventif", "is_correct": False},
+                                {"text": "Une méthode de diagnostic clinique", "is_correct": False},
+                            ],
+                            "explanation": "La surveillance épidémiologique est la collecte systématique, l'analyse et l'interprétation des données sanitaires pour guider les actions de santé publique.",
+                            "difficulty": "easy",
+                            "source_reference": "Donaldson Ch.4, p.67",
+                        }
+                    ],
+                    "estimated_duration_minutes": 15,
+                    "sources_cited": ["Donaldson Ch.4, p.67", "Scutchfield Ch.8, p.145"],
+                },
+                "generated_at": "2026-03-30T22:45:00Z",
+                "cached": False,
+            }
+        }
+    }
+
+
 class ErrorResponse(BaseModel):
     """Error response schema."""
 
