@@ -1,6 +1,7 @@
 import asyncio
 from logging.config import fileConfig
 
+import sqlalchemy as sa
 from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
@@ -17,6 +18,9 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+VERSION_TABLE_PK = sa.String(128)
+
+
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
@@ -24,13 +28,23 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        version_table_pk_column_type=VERSION_TABLE_PK,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection):  # type: ignore[no-untyped-def]
-    context.configure(connection=connection, target_metadata=target_metadata)
+    # Widen alembic_version.version_num if it exists and is too narrow.
+    # This is idempotent and runs before any migration.
+    connection.execute(
+        sa.text("ALTER TABLE IF EXISTS alembic_version ALTER COLUMN version_num TYPE VARCHAR(128)")
+    )
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        version_table_pk_column_type=VERSION_TABLE_PK,
+    )
     with context.begin_transaction():
         context.run_migrations()
 
