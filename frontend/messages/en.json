@@ -300,5 +300,41 @@
     "error": "Error loading flashcards",
     "tryAgain": "Try again",
     "offline": "You're offline - showing cached cards"
+  },
+  "LessonViewer": {
+    "level": "Level {level}",
+    "readingTime": "10-15 min read",
+    "cached": "Cached",
+    "unitTitle": "Unit {unit}",
+    "introduction": "Introduction",
+    "keyConcepts": "Key Concepts",
+    "conceptTitle": "Concept {number}",
+    "westAfricanExample": "West African Example",
+    "synthesis": "Summary",
+    "keyPoints": "Key Takeaways",
+    "markComplete": "Mark as Complete",
+    "completed": "Completed",
+    "error": "Error",
+    "streamError": "Failed to stream lesson content. Please refresh and try again.",
+    "loadError": "Failed to load lesson. Please refresh and try again."
+  },
+  "BilingualTooltip": {
+    "french": "FR",
+    "english": "EN"
+  },
+  "SourceCitations": {
+    "title": "Sources",
+    "sourceDetails": "Source details",
+    "clickToView": "Click to view:",
+    "availableInLibrary": "Available in course reference library",
+    "footnote": "{count, plural, one {# source cited} other {# sources cited}}"
+  },
+  "LessonPage": {
+    "modules": "Modules",
+    "backToModule": "Back to Module",
+    "metadata": {
+      "title": "{unit} - {module}",
+      "notFound": "Lesson Not Found"
+    }
   }
 }

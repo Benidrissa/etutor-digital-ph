@@ -1,0 +1,305 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
+import { CheckCircle, Clock } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { LessonSkeleton } from './lesson-skeleton';
+import { BilingualTooltip } from './bilingual-tooltip';
+import { SourceCitations } from './source-citations';
+
+interface LessonContent {
+  introduction: string;
+  concepts: string[];
+  aof_example: string;
+  synthesis: string;
+  key_points: string[];
+  sources_cited: string[];
+}
+
+interface LessonData {
+  id: string;
+  module_id: string;
+  unit_id: string;
+  language: 'fr' | 'en';
+  level: number;
+  country_context: string;
+  content: LessonContent;
+  cached: boolean;
+}
+
+interface LessonViewerProps {
+  moduleId: string;
+  unitId: string;
+  language: 'fr' | 'en';
+  level: number;
+  countryContext: string;
+  onComplete: () => void;
+}
+
+export function LessonViewer({
+  moduleId,
+  unitId,
+  language,
+  level,
+  countryContext,
+  onComplete
+}: LessonViewerProps) {
+  const [lessonData, setLessonData] = useState<LessonData | null>(null);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isCompleted, setIsCompleted] = useState(false);
+  
+  const t = useTranslations('LessonViewer');
+
+  useEffect(() => {
+    let eventSource: EventSource | null = null;
+    
+    const startStreaming = async () => {
+      try {
+        setIsStreaming(true);
+        setError(null);
+        
+        // First check if cached content exists
+        const cachedResponse = await fetch(`/api/v1/lessons/${moduleId}/${unitId}?language=${language}&level=${level}&country=${countryContext}`);
+        
+        if (cachedResponse.ok) {
+          const cachedData = await cachedResponse.json();
+          if (cachedData.cached) {
+            setLessonData(cachedData);
+            setIsStreaming(false);
+            return;
+          }
+        }
+
+        // If no cached content, start streaming
+        const streamUrl = `/api/v1/lessons/${moduleId}/${unitId}/stream?language=${language}&level=${level}&country=${countryContext}`;
+        eventSource = new EventSource(streamUrl);
+        
+        eventSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            
+            if (data.event === 'chunk') {
+              // For now, we'll just handle chunks in the complete event
+            } else if (data.event === 'complete') {
+              setLessonData(data.data);
+              setIsStreaming(false);
+              eventSource?.close();
+            }
+          } catch (e) {
+            console.error('Error parsing SSE data:', e);
+          }
+        };
+        
+        eventSource.onerror = (event) => {
+          console.error('SSE error:', event);
+          setError(t('streamError'));
+          setIsStreaming(false);
+          eventSource?.close();
+        };
+        
+      } catch (err) {
+        console.error('Error starting lesson stream:', err);
+        setError(t('loadError'));
+        setIsStreaming(false);
+      }
+    };
+
+    startStreaming();
+
+    return () => {
+      eventSource?.close();
+    };
+  }, [moduleId, unitId, language, level, countryContext, t]);
+
+  const handleMarkComplete = async () => {
+    try {
+      const response = await fetch(`/api/v1/progress/complete-lesson`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          module_id: moduleId,
+          unit_id: unitId
+        })
+      });
+      
+      if (response.ok) {
+        setIsCompleted(true);
+        onComplete();
+      }
+    } catch (err) {
+      console.error('Error marking lesson complete:', err);
+    }
+  };
+
+  const renderBilingualText = (text: string) => {
+    // Simple regex to detect potential bilingual terms (words followed by parentheses with translations)
+    const bilingualRegex = /(\w+(?:\s+\w+)*)\s*\(([^)]+)\)/g;
+    
+    return text.split(bilingualRegex).map((part, index) => {
+      if (index % 3 === 0) {
+        return part; // Regular text
+      } else if (index % 3 === 1) {
+        // This is the main term
+        const translation = text.split(bilingualRegex)[index + 1];
+        if (translation) {
+          const [termFr, termEn] = language === 'fr' ? [part, translation] : [translation, part];
+          return (
+            <BilingualTooltip
+              key={index}
+              term={part}
+              termFr={termFr}
+              termEn={termEn}
+            >
+              {part}
+            </BilingualTooltip>
+          );
+        }
+        return part;
+      } else {
+        return null; // Skip the translation part as it's handled by the tooltip
+      }
+    });
+  };
+
+
+  if (error) {
+    return (
+      <div className="container mx-auto max-w-4xl px-4 py-6">
+        <Card className="border-red-200">
+          <CardContent className="p-6 text-center">
+            <div className="text-red-600 font-medium mb-2">{t('error')}</div>
+            <p className="text-gray-600">{error}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isStreaming && !lessonData) {
+    return <LessonSkeleton />;
+  }
+
+  if (!lessonData) {
+    return <LessonSkeleton />;
+  }
+
+  const { content } = lessonData;
+
+  return (
+    <div className="container mx-auto max-w-4xl px-4 py-6">
+      {/* Header */}
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-3">
+          <Badge variant="outline">{t('level', { level })}</Badge>
+          <div className="flex items-center text-gray-600">
+            <Clock className="w-4 h-4 mr-1" />
+            {t('readingTime')}
+          </div>
+          {lessonData.cached && (
+            <Badge variant="secondary">{t('cached')}</Badge>
+          )}
+        </div>
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3">
+          {t('unitTitle', { unit: unitId })}
+        </h1>
+      </div>
+
+      {/* Main Content */}
+      <Card className="mb-6">
+        <CardContent className="p-6 md:p-8">
+          {/* Introduction */}
+          <div className="mb-8">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">
+              {t('introduction')}
+            </h2>
+            <p className="text-base md:text-lg leading-relaxed text-gray-700">
+              {renderBilingualText(content.introduction)}
+            </p>
+          </div>
+
+          {/* Key Concepts */}
+          <div className="mb-8">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">
+              {t('keyConcepts')}
+            </h2>
+            <div className="space-y-6">
+              {content.concepts.map((concept, index) => (
+                <div key={index}>
+                  <h3 className="text-lg font-medium text-gray-800 mb-3">
+                    {t('conceptTitle', { number: index + 1 })}
+                  </h3>
+                  <p className="text-base leading-relaxed text-gray-700">
+                    {renderBilingualText(concept)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* West African Example */}
+          <div className="mb-8 bg-teal-50 border-l-4 border-teal-400 p-6 rounded-r-lg">
+            <h3 className="text-lg font-semibold text-teal-800 mb-3">
+              {t('westAfricanExample')}
+            </h3>
+            <p className="text-base leading-relaxed text-teal-700">
+              {renderBilingualText(content.aof_example)}
+            </p>
+          </div>
+
+          {/* Synthesis */}
+          <div className="mb-8">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">
+              {t('synthesis')}
+            </h2>
+            <p className="text-base md:text-lg leading-relaxed text-gray-700">
+              {renderBilingualText(content.synthesis)}
+            </p>
+          </div>
+
+          {/* Key Points */}
+          <div className="mb-8">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">
+              {t('keyPoints')}
+            </h2>
+            <ul className="space-y-3">
+              {content.key_points.map((point, index) => (
+                <li key={index} className="flex items-start gap-3">
+                  <div className="w-2 h-2 bg-teal-500 rounded-full mt-3 flex-shrink-0" />
+                  <span className="text-base leading-relaxed text-gray-700">
+                    {renderBilingualText(point)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Source Citations */}
+      <SourceCitations sources={content.sources_cited} />
+
+      {/* Mark as Complete Button */}
+      <div className="mt-8 text-center">
+        <Button
+          onClick={handleMarkComplete}
+          disabled={isCompleted || isStreaming}
+          className="min-h-11 px-8"
+          size="lg"
+        >
+          {isCompleted ? (
+            <>
+              <CheckCircle className="w-4 h-4 mr-2" />
+              {t('completed')}
+            </>
+          ) : (
+            t('markComplete')
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}

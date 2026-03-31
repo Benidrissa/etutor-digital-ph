@@ -84,20 +84,6 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
     ));
   }, [currentQuestionIndex, currentState.selectedOption, questionStartTime]);
   
-  const handleNextQuestion = useCallback(() => {
-    if (currentQuestionIndex < totalQuestions - 1) {
-      setCurrentQuestionIndex(prev => prev + 1);
-    } else {
-      handleFinishQuiz();
-    }
-  }, [currentQuestionIndex, totalQuestions, handleFinishQuiz]);
-  
-  const handlePreviousQuestion = useCallback(() => {
-    if (currentQuestionIndex > 0) {
-      setCurrentQuestionIndex(prev => prev - 1);
-    }
-  }, [currentQuestionIndex]);
-  
   const handleFinishQuiz = useCallback(async () => {
     if (isSubmitting) return;
     
@@ -133,6 +119,20 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
       setIsSubmitting(false);
     }
   }, [quiz, questionStates, startTime, isSubmitting, onComplete, onError, t]);
+
+  const handleNextQuestion = useCallback(() => {
+    if (currentQuestionIndex < totalQuestions - 1) {
+      setCurrentQuestionIndex(prev => prev + 1);
+    } else {
+      handleFinishQuiz();
+    }
+  }, [currentQuestionIndex, totalQuestions, handleFinishQuiz]);
+  
+  const handlePreviousQuestion = useCallback(() => {
+    if (currentQuestionIndex > 0) {
+      setCurrentQuestionIndex(prev => prev - 1);
+    }
+  }, [currentQuestionIndex]);
   
   const isCorrect = currentState.selectedOption === currentQuestion.correct_answer;
   const canNavigatePrevious = currentQuestionIndex > 0;
