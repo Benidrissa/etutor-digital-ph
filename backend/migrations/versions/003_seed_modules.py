@@ -21,7 +21,7 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     modules_table = table(
         "modules",
-        column("id", sa.String),
+        column("id", sa.Uuid),
         column("module_number", sa.Integer),
         column("level", sa.Integer),
         column("title_fr", sa.String),
@@ -37,7 +37,7 @@ def upgrade() -> None:
     modules = [
         # === Level 1 — Beginner (60h) ===
         {
-            "id": str(uuid4()),
+            "id": uuid4(),
             "module_number": 1,
             "level": 1,
             "title_fr": "Fondements de la Sante Publique",
@@ -50,7 +50,7 @@ def upgrade() -> None:
             "books_sources": '{"donaldson": ["ch1", "ch13"], "scutchfield": ["ch1", "ch2", "ch3", "ch4"]}',
         },
         {
-            "id": str(uuid4()),
+            "id": uuid4(),
             "module_number": 2,
             "level": 1,
             "title_fr": "Introduction aux Donnees de Sante & Statistiques",
@@ -63,7 +63,7 @@ def upgrade() -> None:
             "books_sources": '{"triola": ["ch1", "ch2", "ch3"], "donaldson": ["ch2"], "scutchfield": ["ch13"]}',
         },
         {
-            "id": str(uuid4()),
+            "id": uuid4(),
             "module_number": 3,
             "level": 1,
             "title_fr": "Systemes de Sante en Afrique de l'Ouest",
@@ -77,7 +77,7 @@ def upgrade() -> None:
         },
         # === Level 2 — Intermediate (90h) ===
         {
-            "id": str(uuid4()),
+            "id": uuid4(),
             "module_number": 4,
             "level": 2,
             "title_fr": "Epidemiologie Appliquee",
@@ -90,7 +90,7 @@ def upgrade() -> None:
             "books_sources": '{"donaldson": ["ch2"], "scutchfield": ["ch11", "ch13"]}',
         },
         {
-            "id": str(uuid4()),
+            "id": uuid4(),
             "module_number": 5,
             "level": 2,
             "title_fr": "Biostatistiques pour la Sante Publique",
@@ -103,7 +103,7 @@ def upgrade() -> None:
             "books_sources": '{"triola": ["ch4", "ch5", "ch6", "ch7", "ch8", "ch9"]}',
         },
         {
-            "id": str(uuid4()),
+            "id": uuid4(),
             "module_number": 6,
             "level": 2,
             "title_fr": "Maladies et Determinants en AOF",
@@ -116,7 +116,7 @@ def upgrade() -> None:
             "books_sources": '{"donaldson": ["ch3", "ch4", "ch5"], "scutchfield": ["ch17", "ch18", "ch22", "ch25"]}',
         },
         {
-            "id": str(uuid4()),
+            "id": uuid4(),
             "module_number": 7,
             "level": 2,
             "title_fr": "Outils et Pratiques de Sante Publique",
@@ -130,7 +130,7 @@ def upgrade() -> None:
         },
         # === Level 3 — Advanced (100h) ===
         {
-            "id": str(uuid4()),
+            "id": uuid4(),
             "module_number": 8,
             "level": 3,
             "title_fr": "Surveillance Epidemiologique Numerique",
@@ -143,7 +143,7 @@ def upgrade() -> None:
             "books_sources": '{"donaldson": ["ch2", "ch3"], "scutchfield": ["ch13"]}',
         },
         {
-            "id": str(uuid4()),
+            "id": uuid4(),
             "module_number": 9,
             "level": 3,
             "title_fr": "Statistiques Avancees et Analyse de Donnees",
@@ -156,7 +156,7 @@ def upgrade() -> None:
             "books_sources": '{"triola": ["ch10", "ch11", "ch12", "ch13", "ch14"]}',
         },
         {
-            "id": str(uuid4()),
+            "id": uuid4(),
             "module_number": 10,
             "level": 3,
             "title_fr": "Sante Numerique et Systemes d'Information Sanitaire",
@@ -169,7 +169,7 @@ def upgrade() -> None:
             "books_sources": '{"scutchfield": ["ch13"]}',
         },
         {
-            "id": str(uuid4()),
+            "id": uuid4(),
             "module_number": 11,
             "level": 3,
             "title_fr": "Sante Environnementale et One Health",
@@ -182,7 +182,7 @@ def upgrade() -> None:
             "books_sources": '{"donaldson": ["ch12"], "scutchfield": ["ch23"]}',
         },
         {
-            "id": str(uuid4()),
+            "id": uuid4(),
             "module_number": 12,
             "level": 3,
             "title_fr": "Sante Maternelle, Infantile et Communautaire",
@@ -196,7 +196,7 @@ def upgrade() -> None:
         },
         # === Level 4 — Expert (70h) ===
         {
-            "id": str(uuid4()),
+            "id": uuid4(),
             "module_number": 13,
             "level": 4,
             "title_fr": "Leadership, Politique et Gouvernance",
@@ -209,7 +209,7 @@ def upgrade() -> None:
             "books_sources": '{"scutchfield": ["ch9", "ch16", "ch19", "ch29"], "donaldson": ["ch6", "ch7"]}',
         },
         {
-            "id": str(uuid4()),
+            "id": uuid4(),
             "module_number": 14,
             "level": 4,
             "title_fr": "Recherche et Evaluation Avancees",
@@ -222,7 +222,7 @@ def upgrade() -> None:
             "books_sources": '{"triola": ["ch7", "ch8", "ch9", "ch10", "ch14"], "scutchfield": ["ch17", "ch12"]}',
         },
         {
-            "id": str(uuid4()),
+            "id": uuid4(),
             "module_number": 15,
             "level": 4,
             "title_fr": "Projet Integratif Capstone",
