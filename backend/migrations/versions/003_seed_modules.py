@@ -6,11 +6,8 @@ Create Date: 2026-03-30
 """
 
 from collections.abc import Sequence
-from uuid import uuid4
 
-import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.sql import column, table
 
 revision: str = "003_seed_modules"
 down_revision: str | None = "002_rls_policies"
@@ -19,192 +16,25 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    modules_table = table(
-        "modules",
-        column("id", sa.Uuid),
-        column("module_number", sa.Integer),
-        column("level", sa.Integer),
-        column("title_fr", sa.String),
-        column("title_en", sa.String),
-        column("description_fr", sa.String),
-        column("description_en", sa.String),
-        column("estimated_hours", sa.Integer),
-        column("bloom_level", sa.String),
-    )
-
-    modules = [
-        # === Level 1 — Beginner (60h) ===
-        {
-            "id": uuid4(),
-            "module_number": 1,
-            "level": 1,
-            "title_fr": "Fondements de la Sante Publique",
-            "title_en": "Foundations of Public Health",
-            "description_fr": "Concepts, histoire et vision globale de la sante publique en contexte AOF",
-            "description_en": "Concepts, history and global vision of public health in West African context",
-            "estimated_hours": 20,
-            "bloom_level": "Remember",
-        },
-        {
-            "id": uuid4(),
-            "module_number": 2,
-            "level": 1,
-            "title_fr": "Introduction aux Donnees de Sante & Statistiques",
-            "title_en": "Introduction to Health Data & Statistics",
-            "description_fr": "Comprendre, collecter et lire les donnees de sante — bases du raisonnement statistique",
-            "description_en": "Understanding, collecting and reading health data — basics of statistical reasoning",
-            "estimated_hours": 22,
-            "bloom_level": "Understand",
-        },
-        {
-            "id": uuid4(),
-            "module_number": 3,
-            "level": 1,
-            "title_fr": "Systemes de Sante en Afrique de l'Ouest",
-            "title_en": "Health Systems in West Africa",
-            "description_fr": "Architecture, financement et performance des systemes de sante des pays CEDEAO",
-            "description_en": "Architecture, financing and performance of health systems in ECOWAS countries",
-            "estimated_hours": 18,
-            "bloom_level": "Understand",
-        },
-        # === Level 2 — Intermediate (90h) ===
-        {
-            "id": uuid4(),
-            "module_number": 4,
-            "level": 2,
-            "title_fr": "Epidemiologie Appliquee",
-            "title_en": "Applied Epidemiology",
-            "description_fr": "Mesurer la maladie dans les populations — methodes et indicateurs pour la sante publique en AOF",
-            "description_en": "Measuring disease in populations — methods and indicators for public health in West Africa",
-            "estimated_hours": 25,
-            "bloom_level": "Apply",
-        },
-        {
-            "id": uuid4(),
-            "module_number": 5,
-            "level": 2,
-            "title_fr": "Biostatistiques pour la Sante Publique",
-            "title_en": "Biostatistics for Public Health",
-            "description_fr": "Probabilites, distributions, estimation et tests d'hypothese appliques a la sante",
-            "description_en": "Probabilities, distributions, estimation and hypothesis testing applied to health",
-            "estimated_hours": 28,
-            "bloom_level": "Apply",
-        },
-        {
-            "id": uuid4(),
-            "module_number": 6,
-            "level": 2,
-            "title_fr": "Maladies et Determinants en AOF",
-            "title_en": "Diseases & Health Determinants in West Africa",
-            "description_fr": "Profil epidemiologique, maladies prioritaires et determinants sociaux en Afrique de l'Ouest",
-            "description_en": "Epidemiological profile, priority diseases and social determinants in West Africa",
-            "estimated_hours": 22,
-            "bloom_level": "Analyze",
-        },
-        {
-            "id": uuid4(),
-            "module_number": 7,
-            "level": 2,
-            "title_fr": "Outils et Pratiques de Sante Publique",
-            "title_en": "Public Health Tools & Practice",
-            "description_fr": "Leadership, evaluation communautaire, performance, gestion des donnees de sante",
-            "description_en": "Leadership, community assessment, performance, health data management",
-            "estimated_hours": 20,
-            "bloom_level": "Apply",
-        },
-        # === Level 3 — Advanced (100h) ===
-        {
-            "id": uuid4(),
-            "module_number": 8,
-            "level": 3,
-            "title_fr": "Surveillance Epidemiologique Numerique",
-            "title_en": "Digital Epidemiological Surveillance",
-            "description_fr": "Systemes de surveillance, alerte precoce et donnees en temps reel pour la riposte en AOF",
-            "description_en": "Surveillance systems, early warning and real-time data for response in West Africa",
-            "estimated_hours": 22,
-            "bloom_level": "Analyze",
-        },
-        {
-            "id": uuid4(),
-            "module_number": 9,
-            "level": 3,
-            "title_fr": "Statistiques Avancees et Analyse de Donnees",
-            "title_en": "Advanced Statistics & Data Analysis",
-            "description_fr": "Regression, ANOVA, tests non-parametriques, analyse de survie pour la recherche en sante",
-            "description_en": "Regression, ANOVA, non-parametric tests, survival analysis for health research",
-            "estimated_hours": 28,
-            "bloom_level": "Analyze",
-        },
-        {
-            "id": uuid4(),
-            "module_number": 10,
-            "level": 3,
-            "title_fr": "Sante Numerique et Systemes d'Information Sanitaire",
-            "title_en": "Digital Health & Health Information Systems",
-            "description_fr": "Technologies numeriques pour la sante en AOF : DHIS2, mHealth, IA, interoperabilite",
-            "description_en": "Digital technologies for health in West Africa: DHIS2, mHealth, AI, interoperability",
-            "estimated_hours": 20,
-            "bloom_level": "Apply",
-        },
-        {
-            "id": uuid4(),
-            "module_number": 11,
-            "level": 3,
-            "title_fr": "Sante Environnementale et One Health",
-            "title_en": "Environmental Health & One Health",
-            "description_fr": "Changement climatique, eau, assainissement, interface animal-humain-environnement en AOF",
-            "description_en": "Climate change, water, sanitation, animal-human-environment interface in West Africa",
-            "estimated_hours": 16,
-            "bloom_level": "Analyze",
-        },
-        {
-            "id": uuid4(),
-            "module_number": 12,
-            "level": 3,
-            "title_fr": "Sante Maternelle, Infantile et Communautaire",
-            "title_en": "Maternal, Child & Community Health",
-            "description_fr": "Reduire la mortalite maternelle et infantile — SMNI et sante communautaire en AOF",
-            "description_en": "Reducing maternal and child mortality — MCH and community health in West Africa",
-            "estimated_hours": 20,
-            "bloom_level": "Apply",
-        },
-        # === Level 4 — Expert (70h) ===
-        {
-            "id": uuid4(),
-            "module_number": 13,
-            "level": 4,
-            "title_fr": "Leadership, Politique et Gouvernance",
-            "title_en": "Leadership, Policy & Governance",
-            "description_fr": "Elaborer et influencer des politiques de sante publique en Afrique de l'Ouest",
-            "description_en": "Developing and influencing public health policies in West Africa",
-            "estimated_hours": 22,
-            "bloom_level": "Evaluate",
-        },
-        {
-            "id": uuid4(),
-            "module_number": 14,
-            "level": 4,
-            "title_fr": "Recherche et Evaluation Avancees",
-            "title_en": "Advanced Research & Evaluation",
-            "description_fr": "Concevoir, conduire et evaluer la recherche en sante publique et les programmes de sante",
-            "description_en": "Designing, conducting and evaluating public health research and health programs",
-            "estimated_hours": 24,
-            "bloom_level": "Evaluate",
-        },
-        {
-            "id": uuid4(),
-            "module_number": 15,
-            "level": 4,
-            "title_fr": "Projet Integratif Capstone",
-            "title_en": "Integrative Capstone Project",
-            "description_fr": "Synthese de toutes les competences — projet de sante publique numerique pour un district AOF reel",
-            "description_en": "Synthesis of all skills — digital public health project for a real West African district",
-            "estimated_hours": 24,
-            "bloom_level": "Create",
-        },
-    ]
-
-    op.bulk_insert(modules_table, modules)
+    op.execute("""
+        INSERT INTO modules (id, module_number, level, title_fr, title_en, description_fr, description_en, estimated_hours, bloom_level)
+        VALUES
+        (gen_random_uuid(), 1, 1, 'Fondements de la Sante Publique', 'Foundations of Public Health', 'Concepts, histoire et vision globale de la sante publique en contexte AOF', 'Concepts, history and global vision of public health in West African context', 20, 'Remember'),
+        (gen_random_uuid(), 2, 1, 'Introduction aux Donnees de Sante & Statistiques', 'Introduction to Health Data & Statistics', 'Comprendre, collecter et lire les donnees de sante — bases du raisonnement statistique', 'Understanding, collecting and reading health data — basics of statistical reasoning', 22, 'Understand'),
+        (gen_random_uuid(), 3, 1, 'Systemes de Sante en Afrique de l''Ouest', 'Health Systems in West Africa', 'Architecture, financement et performance des systemes de sante des pays CEDEAO', 'Architecture, financing and performance of health systems in ECOWAS countries', 18, 'Understand'),
+        (gen_random_uuid(), 4, 2, 'Epidemiologie Appliquee', 'Applied Epidemiology', 'Mesurer la maladie dans les populations — methodes et indicateurs pour la sante publique en AOF', 'Measuring disease in populations — methods and indicators for public health in West Africa', 25, 'Apply'),
+        (gen_random_uuid(), 5, 2, 'Biostatistiques pour la Sante Publique', 'Biostatistics for Public Health', 'Probabilites, distributions, estimation et tests d''hypothese appliques a la sante', 'Probabilities, distributions, estimation and hypothesis testing applied to health', 28, 'Apply'),
+        (gen_random_uuid(), 6, 2, 'Maladies et Determinants en AOF', 'Diseases & Health Determinants in West Africa', 'Profil epidemiologique, maladies prioritaires et determinants sociaux en Afrique de l''Ouest', 'Epidemiological profile, priority diseases and social determinants in West Africa', 22, 'Analyze'),
+        (gen_random_uuid(), 7, 2, 'Outils et Pratiques de Sante Publique', 'Public Health Tools & Practice', 'Leadership, evaluation communautaire, performance, gestion des donnees de sante', 'Leadership, community assessment, performance, health data management', 20, 'Apply'),
+        (gen_random_uuid(), 8, 3, 'Surveillance Epidemiologique Numerique', 'Digital Epidemiological Surveillance', 'Systemes de surveillance, alerte precoce et donnees en temps reel pour la riposte en AOF', 'Surveillance systems, early warning and real-time data for response in West Africa', 22, 'Analyze'),
+        (gen_random_uuid(), 9, 3, 'Statistiques Avancees et Analyse de Donnees', 'Advanced Statistics & Data Analysis', 'Regression, ANOVA, tests non-parametriques, analyse de survie pour la recherche en sante', 'Regression, ANOVA, non-parametric tests, survival analysis for health research', 28, 'Analyze'),
+        (gen_random_uuid(), 10, 3, 'Sante Numerique et Systemes d''Information Sanitaire', 'Digital Health & Health Information Systems', 'Technologies numeriques pour la sante en AOF : DHIS2, mHealth, IA, interoperabilite', 'Digital technologies for health in West Africa: DHIS2, mHealth, AI, interoperability', 20, 'Apply'),
+        (gen_random_uuid(), 11, 3, 'Sante Environnementale et One Health', 'Environmental Health & One Health', 'Changement climatique, eau, assainissement, interface animal-humain-environnement en AOF', 'Climate change, water, sanitation, animal-human-environment interface in West Africa', 16, 'Analyze'),
+        (gen_random_uuid(), 12, 3, 'Sante Maternelle, Infantile et Communautaire', 'Maternal, Child & Community Health', 'Reduire la mortalite maternelle et infantile — SMNI et sante communautaire en AOF', 'Reducing maternal and child mortality — MCH and community health in West Africa', 20, 'Apply'),
+        (gen_random_uuid(), 13, 4, 'Leadership, Politique et Gouvernance', 'Leadership, Policy & Governance', 'Elaborer et influencer des politiques de sante publique en Afrique de l''Ouest', 'Developing and influencing public health policies in West Africa', 22, 'Evaluate'),
+        (gen_random_uuid(), 14, 4, 'Recherche et Evaluation Avancees', 'Advanced Research & Evaluation', 'Concevoir, conduire et evaluer la recherche en sante publique et les programmes de sante', 'Designing, conducting and evaluating public health research and health programs', 24, 'Evaluate'),
+        (gen_random_uuid(), 15, 4, 'Projet Integratif Capstone', 'Integrative Capstone Project', 'Synthese de toutes les competences — projet de sante publique numerique pour un district AOF reel', 'Synthesis of all skills — digital public health project for a real West African district', 24, 'Create')
+    """)
 
 
 def downgrade() -> None:
