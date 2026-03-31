@@ -12,8 +12,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "001_add_totp_mfa_auth_tables"
-down_revision: str | None = None
+revision: str = "007_add_totp_mfa_auth_tables"
+down_revision: str | None = "006_detailed_m01_m03_seed"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
