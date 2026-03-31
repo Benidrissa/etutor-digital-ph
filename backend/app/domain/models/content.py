@@ -13,7 +13,7 @@ from app.domain.models.base import Base
 if TYPE_CHECKING:
     from app.domain.models.flashcard import FlashcardReview
     from app.domain.models.module import Module
-    from app.domain.models.quiz import QuizAttempt
+    from app.domain.models.quiz import QuizAttempt, SummativeAssessmentAttempt
 
 
 class GeneratedContent(Base):
@@ -32,4 +32,7 @@ class GeneratedContent(Base):
 
     module: Mapped[Module] = relationship(back_populates="generated_content")
     quiz_attempts: Mapped[list[QuizAttempt]] = relationship(back_populates="quiz")
+    summative_attempts: Mapped[list[SummativeAssessmentAttempt]] = relationship(
+        back_populates="assessment"
+    )
     flashcard_reviews: Mapped[list[FlashcardReview]] = relationship(back_populates="card")

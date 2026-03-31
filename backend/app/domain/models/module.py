@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from app.domain.models.content import GeneratedContent
     from app.domain.models.conversation import TutorConversation
     from app.domain.models.progress import UserModuleProgress
+    from app.domain.models.quiz import SummativeAssessmentAttempt
 
 
 class Module(Base):
@@ -35,3 +36,6 @@ class Module(Base):
     user_progress: Mapped[list[UserModuleProgress]] = relationship(back_populates="module")
     generated_content: Mapped[list[GeneratedContent]] = relationship(back_populates="module")
     tutor_conversations: Mapped[list[TutorConversation]] = relationship(back_populates="module")
+    summative_attempts: Mapped[list[SummativeAssessmentAttempt]] = relationship(
+        back_populates="module"
+    )
