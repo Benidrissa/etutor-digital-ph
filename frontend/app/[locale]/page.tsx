@@ -1,5 +1,12 @@
-import { redirect } from "next/navigation";
+import { redirect } from "@/i18n/routing";
 
-export default function LocaleRoot() {
-  redirect("dashboard");
+interface LocaleRootProps {
+  params: Promise<{
+    locale: string;
+  }>;
+}
+
+export default async function LocaleRoot({ params }: LocaleRootProps) {
+  const { locale } = await params;
+  redirect({ href: "/dashboard", locale });
 }
