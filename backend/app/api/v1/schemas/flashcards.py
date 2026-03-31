@@ -205,7 +205,9 @@ class UpcomingReviewsResponse(BaseModel):
     user_id: UUID = Field(..., description="User ID")
     today_due_count: int = Field(..., description="Total cards due today")
     has_due_cards: bool = Field(..., description="Whether user has cards due today")
-    upcoming_sessions: list[UpcomingReviewSession] = Field(..., description="Next 5 review sessions")
+    upcoming_sessions: list[UpcomingReviewSession] = Field(
+        ..., description="Next 5 review sessions"
+    )
 
     model_config = {
         "json_schema_extra": {

@@ -140,7 +140,12 @@
     "tomorrow": "Demain",
     "noUpcomingReviews": "Aucune révision programmée",
     "keepLearning": "Terminez des modules pour générer des flashcards",
-    "errorLoading": "Erreur lors du chargement des révisions"
+    "errorLoading": "Erreur lors du chargement des révisions",
+    "signInToSeeProgress": "Connectez-vous pour voir vos progrès",
+    "signInDescription": "Suivez vos statistiques d'apprentissage, votre série et vos révisions à venir.",
+    "signIn": "Se connecter",
+    "errorOccurred": "Une erreur s'est produite",
+    "unableToLoadStats": "Impossible de charger les statistiques du tableau de bord"
   },
   "ModuleCard": {
     "locked": "Verrouillé",
@@ -334,7 +339,8 @@
     "cardsReadyForReview": "cartes prêtes pour révision",
     "target": "Objectif",
     "startReviewSession": "Commencer la Session de Révision",
-    "reviewDescription": "Révisez les flashcards avec répétition espacée pour un apprentissage efficace"
+    "reviewDescription": "Révisez les flashcards avec répétition espacée pour un apprentissage efficace",
+    "redirectingToLogin": "Redirection vers la connexion..."
   },
   "Onboarding": {
     "welcome": "Bienvenue sur SantePublique AOF",
@@ -404,7 +410,10 @@
     "description": "Complétez cette évaluation de 20 questions pour nous aider à déterminer votre niveau optimal de départ.",
     "instructions": "Répondez à toutes les questions du mieux que vous pouvez. Cette évaluation nous aidera à personnaliser votre parcours d'apprentissage.",
     "timeLimit": "Limite de temps : 20 minutes",
+    "timeLimitSubtext": "Temps de complétion recommandé",
     "numberOfQuestions": "20 questions couvrant 4 domaines",
+    "numberOfQuestionsSubtext": "Évaluation complète",
+    "assessmentDomains": "Domaines d'évaluation",
     "domains": {
       "foundations": "Fondements de Santé Publique",
       "epidemiology": "Épidémiologie", 
@@ -443,7 +452,6 @@
       "timeExpired": "Le temps a expiré. Votre évaluation a été soumise automatiquement."
     }
   },
-<<<<<<< HEAD
   "SummativeAssessment": {
     "pageTitle": "Évaluation Sommative",
     "pageDescription": "Évaluation complète de fin de module",
@@ -508,8 +516,7 @@
     "backToDashboard": "Retour au Tableau de Bord",
     "attemptedAt": "Terminé",
     "attemptId": "ID de Tentative"
-  }
-=======
+  },
   "Profile": {
     "title": "Profil",
     "description": "Gérez votre compte et vos préférences d'apprentissage",
@@ -544,7 +551,7 @@
     },
     "levels": {
       "level1": "Débutant",
-      "level2": "Intermédiaire", 
+      "level2": "Intermédiaire",
       "level3": "Avancé",
       "level4": "Expert"
     },
@@ -561,6 +568,5 @@
       "student": "Étudiant/e",
       "other": "Autre"
     }
->>>>>>> 0c8526b (feat(profile): implement user profile page with view and edit functionality)
   }
 }

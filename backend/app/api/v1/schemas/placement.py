@@ -1,7 +1,5 @@
 """Placement test API schemas."""
 
-from typing import Any
-
 from pydantic import BaseModel, Field
 
 
@@ -35,9 +33,7 @@ class PlacementTestResponse(BaseModel):
 class PlacementTestSubmission(BaseModel):
     """Placement test submission from user."""
 
-    answers: dict[str, str] = Field(
-        ..., description="User answers: question_id -> selected_option"
-    )
+    answers: dict[str, str] = Field(..., description="User answers: question_id -> selected_option")
     time_taken_sec: int = Field(..., ge=1, description="Time taken in seconds")
 
 

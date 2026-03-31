@@ -26,19 +26,20 @@ export interface DashboardStats {
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
+  const { authClient } = await import('./auth');
+  
   // Get user's timezone offset for accurate streak calculations
   const timezoneOffset = -new Date().getTimezoneOffset() / 60; // Convert to hours
   const offsetString = timezoneOffset >= 0 ? 
     `+${timezoneOffset.toString().padStart(2, '0')}:00` : 
     `${timezoneOffset.toString().padStart(3, '0')}:00`;
 
-  return apiFetch<DashboardStats>("/api/v1/dashboard/stats", {
+  return authClient.authenticatedFetch<DashboardStats>("/api/v1/dashboard/stats", {
     headers: {
       "X-Timezone-Offset": offsetString,
     },
   });
 }
-<<<<<<< HEAD
 
 export interface UpcomingReviewSession {
   date: string;
@@ -55,12 +56,9 @@ export interface UpcomingReviewsResponse {
 }
 
 export async function getUpcomingReviews(): Promise<UpcomingReviewsResponse> {
-  return apiFetch<UpcomingReviewsResponse>("/api/v1/flashcards/upcoming");
+  const { authClient } = await import('./auth');
+  return authClient.authenticatedFetch<UpcomingReviewsResponse>("/api/v1/flashcards/upcoming");
 }
-<<<<<<< HEAD
-=======
-=======
->>>>>>> b699694 (feat(pwa): implement PWA manifest and install prompt (#43))
 
 // Quiz API Types
 export interface QuizQuestion {

@@ -7,7 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
-from ...api.deps import get_current_user, get_db_session
+from app.api.deps import get_db as get_db_session
+from app.api.deps_local_auth import get_current_user
+
 from ...domain.models.quiz import PlacementTestAttempt
 from ...domain.models.user import User
 from ...domain.repositories.implementations.user_repository import UserRepository
@@ -40,10 +42,7 @@ async def get_placement_test_questions(
 
         # Check if user has existing placement result
         existing_result = await placement_service.get_placement_result(current_user.id)
-        if existing_result:
-            # Check if user can retake (3 months limitation)
-            # For now, we'll allow retaking if current_level is 1 or no attempts in last 3 months
-            if current_user.current_level > 1:
+        if existing_result and current_user.current_level > 1:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Placement test can only be retaken after 3 months",
@@ -302,7 +301,10 @@ def _get_english_questions() -> list[dict[str, Any]]:
             "question": "Which organization provides global health leadership?",
             "options": [
                 {"id": "a", "text": "World Health Organization (WHO)"},
-                {"id": "b", "text": "United Nations Educational Scientific and Cultural Organization (UNESCO)"},
+                {
+                    "id": "b",
+                    "text": "United Nations Educational Scientific and Cultural Organization (UNESCO)",
+                },
                 {"id": "c", "text": "International Monetary Fund (IMF)"},
                 {"id": "d", "text": "World Bank"},
             ],
@@ -315,7 +317,10 @@ def _get_english_questions() -> list[dict[str, Any]]:
             "question": "What is the definition of epidemiology?",
             "options": [
                 {"id": "a", "text": "The study of individual diseases"},
-                {"id": "b", "text": "The study of the distribution and determinants of health-related states in populations"},
+                {
+                    "id": "b",
+                    "text": "The study of the distribution and determinants of health-related states in populations",
+                },
                 {"id": "c", "text": "The study of hospital management"},
                 {"id": "d", "text": "The study of medical treatments"},
             ],
@@ -323,12 +328,15 @@ def _get_english_questions() -> list[dict[str, Any]]:
         },
         {
             "id": "7",
-            "domain": "epidemiology", 
+            "domain": "epidemiology",
             "question": "What is the attack rate in an outbreak?",
             "options": [
                 {"id": "a", "text": "The number of deaths"},
                 {"id": "b", "text": "The number of hospitalizations"},
-                {"id": "c", "text": "The proportion of exposed individuals who develop the disease"},
+                {
+                    "id": "c",
+                    "text": "The proportion of exposed individuals who develop the disease",
+                },
                 {"id": "d", "text": "The duration of the outbreak"},
             ],
             "correct_answer": "c",
@@ -363,7 +371,10 @@ def _get_english_questions() -> list[dict[str, Any]]:
             "question": "What is the purpose of contact tracing?",
             "options": [
                 {"id": "a", "text": "To treat patients"},
-                {"id": "b", "text": "To identify and monitor people who may have been exposed to an infectious disease"},
+                {
+                    "id": "b",
+                    "text": "To identify and monitor people who may have been exposed to an infectious disease",
+                },
                 {"id": "c", "text": "To count the number of cases"},
                 {"id": "d", "text": "To develop vaccines"},
             ],
@@ -400,7 +411,10 @@ def _get_english_questions() -> list[dict[str, Any]]:
             "question": "What is the difference between correlation and causation?",
             "options": [
                 {"id": "a", "text": "They are the same thing"},
-                {"id": "b", "text": "Correlation implies a relationship, causation implies one variable causes another"},
+                {
+                    "id": "b",
+                    "text": "Correlation implies a relationship, causation implies one variable causes another",
+                },
                 {"id": "c", "text": "Causation is weaker than correlation"},
                 {"id": "d", "text": "Correlation only applies to negative relationships"},
             ],
@@ -411,7 +425,10 @@ def _get_english_questions() -> list[dict[str, Any]]:
             "domain": "biostatistics",
             "question": "What is a confidence interval?",
             "options": [
-                {"id": "a", "text": "A range of values likely to contain the true population parameter"},
+                {
+                    "id": "a",
+                    "text": "A range of values likely to contain the true population parameter",
+                },
                 {"id": "b", "text": "The exact value of a statistic"},
                 {"id": "c", "text": "The number of observations"},
                 {"id": "d", "text": "The average of all measurements"},
@@ -437,7 +454,10 @@ def _get_english_questions() -> list[dict[str, Any]]:
             "question": "What are the main components of a health system?",
             "options": [
                 {"id": "a", "text": "Hospitals and clinics only"},
-                {"id": "b", "text": "Service delivery, health workforce, information, financing, governance, medical products"},
+                {
+                    "id": "b",
+                    "text": "Service delivery, health workforce, information, financing, governance, medical products",
+                },
                 {"id": "c", "text": "Doctors and nurses only"},
                 {"id": "d", "text": "Government policies only"},
             ],
@@ -450,7 +470,10 @@ def _get_english_questions() -> list[dict[str, Any]]:
             "options": [
                 {"id": "a", "text": "Free healthcare for everyone"},
                 {"id": "b", "text": "Government-only healthcare"},
-                {"id": "c", "text": "Ensuring all people have access to needed health services without financial hardship"},
+                {
+                    "id": "c",
+                    "text": "Ensuring all people have access to needed health services without financial hardship",
+                },
                 {"id": "d", "text": "Private healthcare for all"},
             ],
             "correct_answer": "c",
@@ -473,7 +496,10 @@ def _get_english_questions() -> list[dict[str, Any]]:
             "question": "What is health financing?",
             "options": [
                 {"id": "a", "text": "Building hospitals"},
-                {"id": "b", "text": "The function of raising, pooling and purchasing health services"},
+                {
+                    "id": "b",
+                    "text": "The function of raising, pooling and purchasing health services",
+                },
                 {"id": "c", "text": "Training healthcare workers"},
                 {"id": "d", "text": "Importing medical equipment"},
             ],
@@ -487,7 +513,10 @@ def _get_english_questions() -> list[dict[str, Any]]:
                 {"id": "a", "text": "Emergency care only"},
                 {"id": "b", "text": "Hospital-based care"},
                 {"id": "c", "text": "Specialist care"},
-                {"id": "d", "text": "Essential health care based on practical, scientifically sound methods"},
+                {
+                    "id": "d",
+                    "text": "Essential health care based on practical, scientifically sound methods",
+                },
             ],
             "correct_answer": "d",
         },
@@ -505,7 +534,10 @@ def _get_french_questions() -> list[dict[str, Any]]:
             "options": [
                 {"id": "a", "text": "Traiter les patients individuels"},
                 {"id": "b", "text": "Gérer les hôpitaux"},
-                {"id": "c", "text": "Prévenir les maladies et promouvoir la santé dans les populations"},
+                {
+                    "id": "c",
+                    "text": "Prévenir les maladies et promouvoir la santé dans les populations",
+                },
                 {"id": "d", "text": "Mener des recherches médicales"},
             ],
             "correct_answer": "c",
@@ -552,7 +584,10 @@ def _get_french_questions() -> list[dict[str, Any]]:
             "question": "Quelle organisation fournit le leadership mondial en santé ?",
             "options": [
                 {"id": "a", "text": "Organisation mondiale de la santé (OMS)"},
-                {"id": "b", "text": "Organisation des Nations Unies pour l'éducation, la science et la culture (UNESCO)"},
+                {
+                    "id": "b",
+                    "text": "Organisation des Nations Unies pour l'éducation, la science et la culture (UNESCO)",
+                },
                 {"id": "c", "text": "Fonds monétaire international (FMI)"},
                 {"id": "d", "text": "Banque mondiale"},
             ],
@@ -565,7 +600,10 @@ def _get_french_questions() -> list[dict[str, Any]]:
             "question": "Quelle est la définition de l'épidémiologie ?",
             "options": [
                 {"id": "a", "text": "L'étude des maladies individuelles"},
-                {"id": "b", "text": "L'étude de la distribution et des déterminants des états liés à la santé dans les populations"},
+                {
+                    "id": "b",
+                    "text": "L'étude de la distribution et des déterminants des états liés à la santé dans les populations",
+                },
                 {"id": "c", "text": "L'étude de la gestion hospitalière"},
                 {"id": "d", "text": "L'étude des traitements médicaux"},
             ],
@@ -603,7 +641,10 @@ def _get_french_questions() -> list[dict[str, Any]]:
                 {"id": "a", "text": "Nombre total de cas"},
                 {"id": "b", "text": "Nombre de cas existants à un moment donné"},
                 {"id": "c", "text": "Nombre de décès"},
-                {"id": "d", "text": "Nombre de nouveaux cas survenant dans une période de temps spécifique"},
+                {
+                    "id": "d",
+                    "text": "Nombre de nouveaux cas survenant dans une période de temps spécifique",
+                },
             ],
             "correct_answer": "d",
         },
@@ -613,7 +654,10 @@ def _get_french_questions() -> list[dict[str, Any]]:
             "question": "Quel est le but du traçage des contacts ?",
             "options": [
                 {"id": "a", "text": "Traiter les patients"},
-                {"id": "b", "text": "Identifier et surveiller les personnes qui ont pu être exposées à une maladie infectieuse"},
+                {
+                    "id": "b",
+                    "text": "Identifier et surveiller les personnes qui ont pu être exposées à une maladie infectieuse",
+                },
                 {"id": "c", "text": "Compter le nombre de cas"},
                 {"id": "d", "text": "Développer des vaccins"},
             ],
@@ -650,7 +694,10 @@ def _get_french_questions() -> list[dict[str, Any]]:
             "question": "Quelle est la différence entre corrélation et causalité ?",
             "options": [
                 {"id": "a", "text": "C'est la même chose"},
-                {"id": "b", "text": "La corrélation implique une relation, la causalité implique qu'une variable cause l'autre"},
+                {
+                    "id": "b",
+                    "text": "La corrélation implique une relation, la causalité implique qu'une variable cause l'autre",
+                },
                 {"id": "c", "text": "La causalité est plus faible que la corrélation"},
                 {"id": "d", "text": "La corrélation ne s'applique qu'aux relations négatives"},
             ],
@@ -661,7 +708,10 @@ def _get_french_questions() -> list[dict[str, Any]]:
             "domain": "biostatistics",
             "question": "Qu'est-ce qu'un intervalle de confiance ?",
             "options": [
-                {"id": "a", "text": "Une plage de valeurs susceptible de contenir le vrai paramètre de population"},
+                {
+                    "id": "a",
+                    "text": "Une plage de valeurs susceptible de contenir le vrai paramètre de population",
+                },
                 {"id": "b", "text": "La valeur exacte d'une statistique"},
                 {"id": "c", "text": "Le nombre d'observations"},
                 {"id": "d", "text": "La moyenne de toutes les mesures"},
@@ -687,7 +737,10 @@ def _get_french_questions() -> list[dict[str, Any]]:
             "question": "Quels sont les principaux composants d'un système de santé ?",
             "options": [
                 {"id": "a", "text": "Hôpitaux et cliniques seulement"},
-                {"id": "b", "text": "Prestation de services, personnel de santé, information, financement, gouvernance, produits médicaux"},
+                {
+                    "id": "b",
+                    "text": "Prestation de services, personnel de santé, information, financement, gouvernance, produits médicaux",
+                },
                 {"id": "c", "text": "Médecins et infirmières seulement"},
                 {"id": "d", "text": "Politiques gouvernementales seulement"},
             ],
@@ -700,7 +753,10 @@ def _get_french_questions() -> list[dict[str, Any]]:
             "options": [
                 {"id": "a", "text": "Soins de santé gratuits pour tous"},
                 {"id": "b", "text": "Soins de santé gouvernementaux seulement"},
-                {"id": "c", "text": "S'assurer que tous ont accès aux services de santé nécessaires sans difficultés financières"},
+                {
+                    "id": "c",
+                    "text": "S'assurer que tous ont accès aux services de santé nécessaires sans difficultés financières",
+                },
                 {"id": "d", "text": "Soins de santé privés pour tous"},
             ],
             "correct_answer": "c",
@@ -710,7 +766,10 @@ def _get_french_questions() -> list[dict[str, Any]]:
             "domain": "data_analysis",
             "question": "Quel est le rôle des systèmes d'information sanitaire ?",
             "options": [
-                {"id": "a", "text": "Collecter, analyser et utiliser les données de santé pour la prise de décision"},
+                {
+                    "id": "a",
+                    "text": "Collecter, analyser et utiliser les données de santé pour la prise de décision",
+                },
                 {"id": "b", "text": "Stocker les dossiers médicaux seulement"},
                 {"id": "c", "text": "Compter les patients"},
                 {"id": "d", "text": "Programmer les rendez-vous"},
@@ -723,7 +782,10 @@ def _get_french_questions() -> list[dict[str, Any]]:
             "question": "Qu'est-ce que le financement de la santé ?",
             "options": [
                 {"id": "a", "text": "Construire des hôpitaux"},
-                {"id": "b", "text": "La fonction de lever, mutualiser et acheter les services de santé"},
+                {
+                    "id": "b",
+                    "text": "La fonction de lever, mutualiser et acheter les services de santé",
+                },
                 {"id": "c", "text": "Former les agents de santé"},
                 {"id": "d", "text": "Importer du matériel médical"},
             ],
@@ -737,7 +799,10 @@ def _get_french_questions() -> list[dict[str, Any]]:
                 {"id": "a", "text": "Soins d'urgence seulement"},
                 {"id": "b", "text": "Soins hospitaliers"},
                 {"id": "c", "text": "Soins spécialisés"},
-                {"id": "d", "text": "Soins de santé essentiels basés sur des méthodes pratiques et scientifiquement fondées"},
+                {
+                    "id": "d",
+                    "text": "Soins de santé essentiels basés sur des méthodes pratiques et scientifiquement fondées",
+                },
             ],
             "correct_answer": "d",
         },

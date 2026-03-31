@@ -3,18 +3,41 @@
 import { useTranslations } from 'next-intl';
 import { useQuery } from '@tanstack/react-query';
 import { getDashboardStats } from '@/lib/api';
+import { authClient } from '@/lib/auth';
 import { StreakCounter } from './streak-counter';
 import { StatsCard } from './stats-card';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
 export function DashboardStats() {
   const t = useTranslations('Dashboard');
+  const isAuthenticated = authClient.isAuthenticated();
+  
   const { data: stats, isLoading, error } = useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: getDashboardStats,
     refetchInterval: 30000, // Refetch every 30 seconds to keep streak up to date
     staleTime: 10000, // Consider data fresh for 10 seconds
+    enabled: isAuthenticated, // Only fetch if user is authenticated
   });
+
+  // Show friendly message for unauthenticated users
+  if (!isAuthenticated) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-center">{t('signInToSeeProgress')}</CardTitle>
+        </CardHeader>
+        <CardContent className="text-center">
+          <p className="text-muted-foreground mb-4">{t('signInDescription')}</p>
+          <Link href="/login">
+            <Button>{t('signIn')}</Button>
+          </Link>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -33,8 +56,8 @@ export function DashboardStats() {
     return (
       <Card className="p-4">
         <div className="text-center text-muted-foreground">
-          <p>An error occurred</p>
-          <p className="text-sm mt-1">Unable to load dashboard statistics</p>
+          <p>{t('errorOccurred')}</p>
+          <p className="text-sm mt-1">{t('unableToLoadStats')}</p>
         </div>
       </Card>
     );
