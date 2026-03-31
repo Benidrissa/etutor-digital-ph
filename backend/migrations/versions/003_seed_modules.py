@@ -30,8 +30,6 @@ def upgrade() -> None:
         column("description_en", sa.String),
         column("estimated_hours", sa.Integer),
         column("bloom_level", sa.String),
-        column("prereq_modules", sa.String),
-        column("books_sources", sa.String),
     )
 
     modules = [
@@ -46,8 +44,6 @@ def upgrade() -> None:
             "description_en": "Concepts, history and global vision of public health in West African context",
             "estimated_hours": 20,
             "bloom_level": "Remember",
-            "prereq_modules": "{}",
-            "books_sources": '{"donaldson": ["ch1", "ch13"], "scutchfield": ["ch1", "ch2", "ch3", "ch4"]}',
         },
         {
             "id": uuid4(),
@@ -59,8 +55,6 @@ def upgrade() -> None:
             "description_en": "Understanding, collecting and reading health data — basics of statistical reasoning",
             "estimated_hours": 22,
             "bloom_level": "Understand",
-            "prereq_modules": "{}",
-            "books_sources": '{"triola": ["ch1", "ch2", "ch3"], "donaldson": ["ch2"], "scutchfield": ["ch13"]}',
         },
         {
             "id": uuid4(),
@@ -72,8 +66,6 @@ def upgrade() -> None:
             "description_en": "Architecture, financing and performance of health systems in ECOWAS countries",
             "estimated_hours": 18,
             "bloom_level": "Understand",
-            "prereq_modules": "{}",
-            "books_sources": '{"donaldson": ["ch6"], "scutchfield": ["ch6", "ch7", "ch8", "ch28"]}',
         },
         # === Level 2 — Intermediate (90h) ===
         {
@@ -86,8 +78,6 @@ def upgrade() -> None:
             "description_en": "Measuring disease in populations — methods and indicators for public health in West Africa",
             "estimated_hours": 25,
             "bloom_level": "Apply",
-            "prereq_modules": "{}",
-            "books_sources": '{"donaldson": ["ch2"], "scutchfield": ["ch11", "ch13"]}',
         },
         {
             "id": uuid4(),
@@ -99,8 +89,6 @@ def upgrade() -> None:
             "description_en": "Probabilities, distributions, estimation and hypothesis testing applied to health",
             "estimated_hours": 28,
             "bloom_level": "Apply",
-            "prereq_modules": "{}",
-            "books_sources": '{"triola": ["ch4", "ch5", "ch6", "ch7", "ch8", "ch9"]}',
         },
         {
             "id": uuid4(),
@@ -112,8 +100,6 @@ def upgrade() -> None:
             "description_en": "Epidemiological profile, priority diseases and social determinants in West Africa",
             "estimated_hours": 22,
             "bloom_level": "Analyze",
-            "prereq_modules": "{}",
-            "books_sources": '{"donaldson": ["ch3", "ch4", "ch5"], "scutchfield": ["ch17", "ch18", "ch22", "ch25"]}',
         },
         {
             "id": uuid4(),
@@ -125,8 +111,6 @@ def upgrade() -> None:
             "description_en": "Leadership, community assessment, performance, health data management",
             "estimated_hours": 20,
             "bloom_level": "Apply",
-            "prereq_modules": "{}",
-            "books_sources": '{"scutchfield": ["ch9", "ch10", "ch11", "ch12", "ch14", "ch15", "ch16"]}',
         },
         # === Level 3 — Advanced (100h) ===
         {
@@ -139,8 +123,6 @@ def upgrade() -> None:
             "description_en": "Surveillance systems, early warning and real-time data for response in West Africa",
             "estimated_hours": 22,
             "bloom_level": "Analyze",
-            "prereq_modules": "{}",
-            "books_sources": '{"donaldson": ["ch2", "ch3"], "scutchfield": ["ch13"]}',
         },
         {
             "id": uuid4(),
@@ -152,8 +134,6 @@ def upgrade() -> None:
             "description_en": "Regression, ANOVA, non-parametric tests, survival analysis for health research",
             "estimated_hours": 28,
             "bloom_level": "Analyze",
-            "prereq_modules": "{}",
-            "books_sources": '{"triola": ["ch10", "ch11", "ch12", "ch13", "ch14"]}',
         },
         {
             "id": uuid4(),
@@ -165,8 +145,6 @@ def upgrade() -> None:
             "description_en": "Digital technologies for health in West Africa: DHIS2, mHealth, AI, interoperability",
             "estimated_hours": 20,
             "bloom_level": "Apply",
-            "prereq_modules": "{}",
-            "books_sources": '{"scutchfield": ["ch13"]}',
         },
         {
             "id": uuid4(),
@@ -178,8 +156,6 @@ def upgrade() -> None:
             "description_en": "Climate change, water, sanitation, animal-human-environment interface in West Africa",
             "estimated_hours": 16,
             "bloom_level": "Analyze",
-            "prereq_modules": "{}",
-            "books_sources": '{"donaldson": ["ch12"], "scutchfield": ["ch23"]}',
         },
         {
             "id": uuid4(),
@@ -191,8 +167,6 @@ def upgrade() -> None:
             "description_en": "Reducing maternal and child mortality — MCH and community health in West Africa",
             "estimated_hours": 20,
             "bloom_level": "Apply",
-            "prereq_modules": "{}",
-            "books_sources": '{"donaldson": ["ch8"], "scutchfield": ["ch25"]}',
         },
         # === Level 4 — Expert (70h) ===
         {
@@ -205,8 +179,6 @@ def upgrade() -> None:
             "description_en": "Developing and influencing public health policies in West Africa",
             "estimated_hours": 22,
             "bloom_level": "Evaluate",
-            "prereq_modules": "{}",
-            "books_sources": '{"scutchfield": ["ch9", "ch16", "ch19", "ch29"], "donaldson": ["ch6", "ch7"]}',
         },
         {
             "id": uuid4(),
@@ -218,8 +190,6 @@ def upgrade() -> None:
             "description_en": "Designing, conducting and evaluating public health research and health programs",
             "estimated_hours": 24,
             "bloom_level": "Evaluate",
-            "prereq_modules": "{}",
-            "books_sources": '{"triola": ["ch7", "ch8", "ch9", "ch10", "ch14"], "scutchfield": ["ch17", "ch12"]}',
         },
         {
             "id": uuid4(),
@@ -231,8 +201,6 @@ def upgrade() -> None:
             "description_en": "Synthesis of all skills — digital public health project for a real West African district",
             "estimated_hours": 24,
             "bloom_level": "Create",
-            "prereq_modules": "{}",
-            "books_sources": '{"donaldson": ["all"], "scutchfield": ["all"], "triola": ["all"]}',
         },
     ]
 
