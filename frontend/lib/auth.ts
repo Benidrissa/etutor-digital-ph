@@ -1,6 +1,6 @@
 /**
  * Local authentication API client with TOTP MFA support.
- * Replaces Supabase Auth with our local FastAPI backend.
+ * Passwordless TOTP MFA + email magic link recovery.
  */
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";

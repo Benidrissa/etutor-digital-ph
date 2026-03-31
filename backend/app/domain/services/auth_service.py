@@ -1,7 +1,7 @@
 """Authentication service for SantePublique AOF.
 
-Handles user profile management, OAuth integration, and auth-related business logic.
-Works with Supabase Auth as the primary authentication provider.
+Handles user profile management and auth-related business logic.
+Works with local FastAPI auth (pyotp + python-jose).
 """
 
 from datetime import UTC, datetime
@@ -60,7 +60,7 @@ class AuthService:
         """Create new user profile.
 
         Args:
-            user_id: Supabase user UUID
+            user_id: User UUID
             email: User email address
             name: Display name
             preferred_language: "fr" or "en"
@@ -227,8 +227,7 @@ class AuthService:
             user_id: User UUID to delete
 
         Note:
-            This only deletes data in our database. Supabase Auth user
-            must be deleted separately through their Admin API.
+            Deletes all user data from the database (GDPR right to erasure).
         """
         user = await self.user_repo.get_by_id(user_id)
         if not user:
