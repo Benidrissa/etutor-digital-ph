@@ -218,6 +218,7 @@
     "failedToSubmit": "Failed to submit quiz. Please try again.",
     "networkError": "Network error. Please check your connection and try again."
   },
+<<<<<<< HEAD
   "ChatTutor": {
     "title": "AI Tutor",
     "placeholder": "Ask me anything about public health...",
@@ -253,5 +254,53 @@
     "welcomeMessage": "Hello! I'm your AI tutor for public health. Ask me anything about the modules, concepts, or get help with your studies.",
     "emptyState": "Start a conversation",
     "emptyStateDescription": "Ask questions, request quizzes, or get explanations about public health topics"
+=======
+  "Flashcards": {
+    "title": "Flashcards",
+    "loading": "Loading flashcards...",
+    "noCardsToday": "No cards due today!",
+    "wellDone": "Well done! Come back tomorrow for more reviews.",
+    "cardCount": "Card {current} of {total}",
+    "showAnswer": "Show Answer",
+    "tapToReveal": "Tap to reveal answer",
+    "swipeInstructions": "Swipe or tap to rate difficulty",
+    "rateCard": "Rate your recall:",
+    "again": "Again",
+    "hard": "Hard", 
+    "good": "Good",
+    "easy": "Easy",
+    "ratingDescription": {
+      "again": "Didn't remember at all",
+      "hard": "Remembered with difficulty", 
+      "good": "Remembered correctly",
+      "easy": "Very easy to remember"
+    },
+    "sessionComplete": "Session Complete!",
+    "cardsReviewed": "Cards reviewed: {count}",
+    "timeSpent": "Time spent: {minutes}m {seconds}s",
+    "accuracy": "Accuracy: {percent}%", 
+    "newInterval": "Next review: {date}",
+    "continueSession": "Continue",
+    "finishSession": "Finish Session",
+    "sessionSummary": "Session Summary",
+    "againCount": "Again: {count}",
+    "hardCount": "Hard: {count}",
+    "goodCount": "Good: {count}", 
+    "easyCount": "Easy: {count}",
+    "streakDays": "Learning streak: {days} days",
+    "dailyTarget": "Daily target achieved!",
+    "keepLearning": "Keep up the great work!",
+    "source": "Source: {source}",
+    "formula": "Formula:",
+    "example": "Example:",
+    "definition": "Definition",
+    "term": "Term",
+    "frontSide": "Front",
+    "backSide": "Back",
+    "flipCard": "Flip card",
+    "error": "Error loading flashcards",
+    "tryAgain": "Try again",
+    "offline": "You're offline - showing cached cards"
+>>>>>>> f748cdb (feat(flashcards): Implement swipe deck UI with bilingual display (#32))
   }
 }
