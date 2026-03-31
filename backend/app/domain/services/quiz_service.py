@@ -1,8 +1,7 @@
-"""Quiz generation service using RAG + Claude API."""
+"""Quiz generation service using Claude API and RAG."""
 
 import json
 import uuid
-from typing import Any
 from uuid import UUID
 
 import structlog
@@ -10,17 +9,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.claude_service import ClaudeService
-from app.ai.prompts.quiz import QUIZ_GENERATION_PROMPT, QUIZ_GENERATION_PROMPT_EN
 from app.ai.rag.retriever import SemanticRetriever
-from app.api.v1.schemas.content import QuizContent, QuizResponse
+from app.api.v1.schemas.quiz import QuizContent, QuizResponse
 from app.domain.models.content import GeneratedContent
-from app.domain.models.module import Module
 
 logger = structlog.get_logger()
 
 
-class QuizGenerationService:
-    """Service for generating quiz content using RAG + Claude API."""
+class QuizService:
+    """Service for generating and managing quiz content."""
 
     def __init__(self, claude_service: ClaudeService, semantic_retriever: SemanticRetriever):
         self.claude_service = claude_service
@@ -31,374 +28,366 @@ class QuizGenerationService:
         module_id: UUID,
         unit_id: str,
         language: str,
-        difficulty_level: str,
+        country: str,
+        level: int,
+        num_questions: int,
         session: AsyncSession,
     ) -> QuizResponse:
         """
-        Get existing quiz or generate new one.
+        Get existing quiz from cache or generate new one using RAG + Claude API.
 
         Args:
-            module_id: Target module UUID
+            module_id: Module ID for the quiz
             unit_id: Unit identifier within module
             language: Content language (fr/en)
-            difficulty_level: Overall difficulty level
+            country: User's country for contextualization
+            level: Learning level (1-4)
+            num_questions: Number of questions to generate (5-15)
             session: Database session
 
         Returns:
-            QuizResponse with generated or cached content
+            QuizResponse with quiz content and metadata
 
         Raises:
             ValueError: If module not found or invalid parameters
-            Exception: If generation fails
+            Exception: If quiz generation fails
         """
         try:
-            # Check if quiz already exists in cache
-            cached_quiz = await self._get_cached_quiz(
-                module_id=module_id,
-                unit_id=unit_id,
-                language=language,
-                difficulty_level=difficulty_level,
-                session=session,
+            # Check cache first
+            query = select(GeneratedContent).where(
+                GeneratedContent.module_id == module_id,
+                GeneratedContent.content_type == "quiz",
+                GeneratedContent.language == language,
+                GeneratedContent.level == level,
+                GeneratedContent.content["unit_id"].astext == unit_id,
+                GeneratedContent.content["questions"]
+                .as_("json")
+                .op("@>")('[{"questions": [{}] for _ in range(num_questions)}]'),
             )
+
+            # Simplified cache lookup - look for any quiz for this module/unit/language/level
+            query = select(GeneratedContent).where(
+                GeneratedContent.module_id == module_id,
+                GeneratedContent.content_type == "quiz",
+                GeneratedContent.language == language,
+                GeneratedContent.level == level,
+            )
+
+            result = await session.execute(query)
+            cached_quiz = result.scalar_one_or_none()
 
             if cached_quiz:
                 logger.info(
-                    "Quiz found in cache",
+                    "Retrieved quiz from cache",
                     quiz_id=str(cached_quiz.id),
                     module_id=str(module_id),
                     unit_id=unit_id,
                 )
-                return self._build_quiz_response(cached_quiz, cached=True)
 
-            # Generate new quiz
+                return QuizResponse(
+                    id=cached_quiz.id,
+                    module_id=cached_quiz.module_id,
+                    unit_id=cached_quiz.content.get("unit_id", unit_id),
+                    language=cached_quiz.language,
+                    level=cached_quiz.level,
+                    country_context=cached_quiz.country_context or country,
+                    content=QuizContent(**cached_quiz.content),
+                    generated_at=cached_quiz.generated_at.isoformat(),
+                    cached=True,
+                )
+
+            # Generate new quiz using RAG + Claude
             logger.info(
                 "Generating new quiz",
                 module_id=str(module_id),
                 unit_id=unit_id,
-                language=language,
-                difficulty_level=difficulty_level,
+                num_questions=num_questions,
             )
 
-            # Verify module exists
-            module = await self._get_module(module_id, session)
-            if not module:
-                raise ValueError(f"Module {module_id} not found")
-
-            # Retrieve relevant content using RAG
-            relevant_chunks = await self._retrieve_relevant_content(
-                module=module, unit_id=unit_id, language=language
-            )
-
-            # Generate quiz content using Claude
             quiz_content = await self._generate_quiz_content(
-                chunks=relevant_chunks,
-                language=language,
-                difficulty_level=difficulty_level,
-                module=module,
-                unit_id=unit_id,
-            )
-
-            # Save to database
-            generated_quiz = await self._save_quiz_to_db(
                 module_id=module_id,
                 unit_id=unit_id,
                 language=language,
-                difficulty_level=difficulty_level,
-                content=quiz_content,
-                session=session,
+                country=country,
+                level=level,
+                num_questions=num_questions,
             )
 
+            # Store in cache
+            generated_content = GeneratedContent(
+                id=uuid.uuid4(),
+                module_id=module_id,
+                content_type="quiz",
+                language=language,
+                level=level,
+                content=quiz_content.model_dump(),
+                sources_cited=self._extract_sources_from_quiz(quiz_content),
+                country_context=country,
+                validated=False,
+            )
+
+            session.add(generated_content)
+            await session.commit()
+            await session.refresh(generated_content)
+
             logger.info(
-                "Quiz generated successfully",
-                quiz_id=str(generated_quiz.id),
+                "Quiz generated and cached",
+                quiz_id=str(generated_content.id),
+                num_questions=len(quiz_content.questions),
+            )
+
+            return QuizResponse(
+                id=generated_content.id,
+                module_id=module_id,
+                unit_id=unit_id,
+                language=language,
+                level=level,
+                country_context=country,
+                content=quiz_content,
+                generated_at=generated_content.generated_at.isoformat(),
+                cached=False,
+            )
+
+        except Exception as e:
+            logger.error(
+                "Quiz generation failed",
                 module_id=str(module_id),
                 unit_id=unit_id,
+                error=str(e),
+                exc_info=True,
             )
-
-            return self._build_quiz_response(generated_quiz, cached=False)
-
-        except ValueError as e:
-            logger.warning("Invalid quiz generation parameters", error=str(e))
             raise
-
-        except Exception as e:
-            logger.error("Quiz generation failed", error=str(e), exc_info=True)
-            raise Exception(f"Failed to generate quiz: {e}")
-
-    async def _get_cached_quiz(
-        self,
-        module_id: UUID,
-        unit_id: str,
-        language: str,
-        difficulty_level: str,
-        session: AsyncSession,
-    ) -> GeneratedContent | None:
-        """Check if quiz already exists in cache."""
-        query = select(GeneratedContent).where(
-            GeneratedContent.module_id == module_id,
-            GeneratedContent.content_type == "quiz",
-            GeneratedContent.language == language,
-            GeneratedContent.content["unit_id"].astext == unit_id,
-            GeneratedContent.content["difficulty_level"].astext == difficulty_level,
-        )
-        result = await session.execute(query)
-        return result.scalar_one_or_none()
-
-    async def _get_module(self, module_id: UUID, session: AsyncSession) -> Module | None:
-        """Get module by ID."""
-        query = select(Module).where(Module.id == module_id)
-        result = await session.execute(query)
-        return result.scalar_one_or_none()
-
-    async def _retrieve_relevant_content(
-        self, module: Module, unit_id: str, language: str
-    ) -> list[dict[str, Any]]:
-        """Retrieve relevant content chunks using semantic search."""
-        try:
-            # Build search query based on module and unit
-            search_query = f"Module {module.module_number} Unit {unit_id}"
-
-            # Add module title for better context
-            if language == "fr" and module.title_fr:
-                search_query += f" {module.title_fr}"
-            elif language == "en" and module.title_en:
-                search_query += f" {module.title_en}"
-
-            logger.info(
-                "Searching for relevant content",
-                search_query=search_query,
-                module_id=str(module.id),
-            )
-
-            # Retrieve relevant chunks (top-8 as per SRS)
-            chunks = await self.semantic_retriever.search(
-                query=search_query,
-                k=8,
-                filters={"level": {"$lte": module.level}},
-            )
-
-            logger.info(f"Retrieved {len(chunks)} relevant chunks")
-            return chunks
-
-        except Exception as e:
-            logger.error("Content retrieval failed", error=str(e))
-            # Return empty list to allow generation with base knowledge
-            return []
 
     async def _generate_quiz_content(
         self,
-        chunks: list[dict[str, Any]],
-        language: str,
-        difficulty_level: str,
-        module: Module,
-        unit_id: str,
-    ) -> dict[str, Any]:
-        """Generate quiz content using Claude API."""
-        try:
-            # Prepare content for Claude
-            content_text = self._format_chunks_for_generation(chunks)
-
-            # Select appropriate prompt template
-            prompt_template = (
-                QUIZ_GENERATION_PROMPT if language == "fr" else QUIZ_GENERATION_PROMPT_EN
-            )
-
-            # Format prompt with content
-            system_prompt = prompt_template.format(
-                language=language,
-                content=content_text,
-            )
-
-            # Generate content using Claude
-            user_message = f"""
-Crée un quiz formatif de 10 QCM pour:
-- Module: {module.title_fr if language == "fr" else module.title_en}
-- Unité: {unit_id}
-- Niveau de difficulté: {difficulty_level}
-
-Distribution requise:
-- 3 questions faciles
-- 4 questions moyennes
-- 3 questions difficiles
-
-Assure-toi que chaque question ait exactement 4 options avec une seule réponse correcte.
-"""
-
-            response = await self.claude_service.generate_content(
-                system_prompt=system_prompt,
-                user_message=user_message,
-                max_tokens=4000,
-            )
-
-            # Parse JSON response
-            try:
-                quiz_data = json.loads(response)
-                return self._validate_and_clean_quiz_data(quiz_data)
-            except json.JSONDecodeError as e:
-                logger.error("Invalid JSON response from Claude", error=str(e))
-                raise Exception("Failed to parse quiz content from AI response")
-
-        except Exception as e:
-            logger.error("Quiz content generation failed", error=str(e), exc_info=True)
-            raise Exception(f"Failed to generate quiz content: {e}")
-
-    def _format_chunks_for_generation(self, chunks: list[dict[str, Any]]) -> str:
-        """Format retrieved chunks for Claude input."""
-        if not chunks:
-            return "Aucun contenu spécifique trouvé. Générez basé sur vos connaissances en santé publique."
-
-        formatted_chunks = []
-        for i, chunk in enumerate(chunks, 1):
-            text = chunk.get("text", "")
-            metadata = chunk.get("metadata", {})
-            source = metadata.get("source", "Unknown")
-
-            formatted_chunks.append(f"""
-Extrait {i}:
-Source: {source}
-Contenu: {text}
-""")
-
-        return "\n".join(formatted_chunks)
-
-    def _validate_and_clean_quiz_data(self, quiz_data: dict[str, Any]) -> dict[str, Any]:
-        """Validate and clean quiz data from Claude response."""
-        # Ensure required fields exist
-        if "title" not in quiz_data:
-            quiz_data["title"] = "Quiz - Évaluation formative"
-
-        if "questions" not in quiz_data or not isinstance(quiz_data["questions"], list):
-            raise ValueError("Invalid quiz format: missing or invalid questions")
-
-        # Ensure exactly 10 questions
-        questions = quiz_data["questions"][:10]  # Take first 10 if more
-        if len(questions) < 10:
-            raise ValueError(f"Insufficient questions generated: {len(questions)}/10")
-
-        # Validate each question structure
-        cleaned_questions = []
-        difficulty_count = {"easy": 0, "medium": 0, "hard": 0}
-
-        for i, question in enumerate(questions):
-            if not self._validate_question_structure(question):
-                logger.warning(f"Invalid question {i + 1} structure, skipping")
-                continue
-
-            # Count difficulties
-            difficulty = question.get("difficulty", "medium")
-            if difficulty in difficulty_count:
-                difficulty_count[difficulty] += 1
-
-            cleaned_questions.append(question)
-
-        quiz_data["questions"] = cleaned_questions
-
-        # Set defaults if missing
-        if "estimated_duration_minutes" not in quiz_data:
-            quiz_data["estimated_duration_minutes"] = 15
-
-        if "sources_cited" not in quiz_data:
-            quiz_data["sources_cited"] = []
-
-        logger.info(
-            "Quiz validation completed",
-            total_questions=len(cleaned_questions),
-            difficulty_distribution=difficulty_count,
-        )
-
-        return quiz_data
-
-    def _validate_question_structure(self, question: dict[str, Any]) -> bool:
-        """Validate individual question structure."""
-        required_fields = ["question", "options", "explanation", "difficulty", "source_reference"]
-
-        for field in required_fields:
-            if field not in question:
-                return False
-
-        # Validate options
-        options = question.get("options", [])
-        if not isinstance(options, list) or len(options) != 4:
-            return False
-
-        # Ensure exactly one correct answer
-        correct_count = sum(1 for opt in options if opt.get("is_correct", False))
-        return correct_count == 1
-
-    async def _save_quiz_to_db(
-        self,
         module_id: UUID,
         unit_id: str,
         language: str,
-        difficulty_level: str,
-        content: dict[str, Any],
-        session: AsyncSession,
-    ) -> GeneratedContent:
-        """Save generated quiz to database."""
-        # Add metadata to content
-        content_with_metadata = {
-            **content,
-            "unit_id": unit_id,
-            "difficulty_level": difficulty_level,
-            "generation_metadata": {
-                "questions_count": len(content.get("questions", [])),
-                "estimated_duration": content.get("estimated_duration_minutes", 15),
-            },
+        country: str,
+        level: int,
+        num_questions: int,
+    ) -> QuizContent:
+        """
+        Generate quiz content using RAG retrieval and Claude API.
+
+        Args:
+            module_id: Module ID for context
+            unit_id: Unit identifier
+            language: Content language
+            country: User's country for examples
+            level: Learning level (1-4)
+            num_questions: Number of questions to generate
+
+        Returns:
+            QuizContent with generated questions and metadata
+        """
+        try:
+            # Retrieve relevant content chunks using RAG
+            search_query = f"module {module_id} unit {unit_id} public health epidemiology concepts"
+            retrieved_chunks = await self.semantic_retriever.retrieve_chunks(
+                query=search_query,
+                top_k=8,  # Get more chunks for quiz questions
+                module_filter=str(module_id) if module_id else None,
+            )
+
+            # Build context from retrieved chunks
+            context_text = "\n\n".join(
+                [f"Source: {chunk.source_reference}\n{chunk.content}" for chunk in retrieved_chunks]
+            )
+
+            # Generate quiz using Claude API with structured prompt
+            quiz_prompt = self._build_quiz_prompt(
+                context=context_text,
+                unit_id=unit_id,
+                language=language,
+                country=country,
+                level=level,
+                num_questions=num_questions,
+            )
+
+            response = await self.claude_service.generate_content(quiz_prompt)
+
+            # Parse Claude's response into structured quiz content
+            quiz_data = self._parse_quiz_response(response, unit_id, num_questions)
+
+            return QuizContent(**quiz_data)
+
+        except Exception as e:
+            logger.error("Quiz content generation failed", error=str(e))
+            raise
+
+    def _build_quiz_prompt(
+        self,
+        context: str,
+        unit_id: str,
+        language: str,
+        country: str,
+        level: int,
+        num_questions: int,
+    ) -> str:
+        """Build the prompt for Claude API to generate quiz questions."""
+
+        lang_instruction = "in French" if language == "fr" else "in English"
+        level_desc = {
+            1: "beginner (basic concepts, definitions)",
+            2: "intermediate (application, analysis)",
+            3: "advanced (synthesis, evaluation)",
+            4: "expert (research, policy implications)",
         }
 
-        # Extract sources for the sources_cited field
-        sources_cited = content.get("sources_cited", [])
+        return f"""You are creating a multiple-choice quiz for public health professionals in West Africa.
 
-        # Create database record
-        generated_content = GeneratedContent(
-            id=uuid.uuid4(),
-            module_id=module_id,
-            content_type="quiz",
-            language=language,
-            level=1,  # Will be determined by module level in production
-            content=content_with_metadata,
-            sources_cited=sources_cited,
-            country_context=None,  # Can be added later for country-specific quizzes
-            validated=False,  # Will be validated by content reviewers
-        )
+CONTEXT MATERIAL:
+{context}
 
-        session.add(generated_content)
-        await session.commit()
-        await session.refresh(generated_content)
+QUIZ REQUIREMENTS:
+- Target audience: Public health professionals in {country}
+- Language: {lang_instruction}
+- Level: {level_desc.get(level, "intermediate")}
+- Unit: {unit_id}
+- Number of questions: {num_questions}
+- Format: Multiple choice with exactly 4 options each
+- Include explanations and source citations
 
-        logger.info(
-            "Quiz saved to database",
-            quiz_id=str(generated_content.id),
-            module_id=str(module_id),
-        )
+INSTRUCTIONS:
+1. Create {num_questions} multiple-choice questions based on the provided context
+2. Each question must have exactly 4 options (A, B, C, D)
+3. Only ONE option should be correct
+4. Include clear explanations for why the correct answer is right
+5. Add source citations from the context material
+6. Use examples relevant to {country} and West African context when possible
+7. Progress from easier to harder questions
+8. Focus on practical applications for public health work
 
-        return generated_content
+RESPONSE FORMAT (JSON):
+{{
+  "title": "Quiz title",
+  "description": "Brief description of quiz content",
+  "questions": [
+    {{
+      "id": "q1",
+      "question": "Question text here?",
+      "options": [
+        "Option A text",
+        "Option B text",
+        "Option C text",
+        "Option D text"
+      ],
+      "correct_answer": 1,
+      "explanation": "Explanation of why option B is correct and why others are wrong.",
+      "sources_cited": ["Source reference from context"],
+      "difficulty": "easy|medium|hard"
+    }}
+  ],
+  "time_limit_minutes": {max(10, num_questions * 1.5)},
+  "passing_score": 70.0
+}}
 
-    def _build_quiz_response(
-        self, generated_content: GeneratedContent, cached: bool
-    ) -> QuizResponse:
-        """Build QuizResponse from GeneratedContent."""
-        content_data = generated_content.content
+Generate the quiz now, ensuring all questions are relevant to public health practice in West Africa."""
 
-        # Extract metadata
-        unit_id = content_data.get("unit_id", "")
-        difficulty_level = content_data.get("difficulty_level", "medium")
+    def _parse_quiz_response(self, response: str, unit_id: str, expected_questions: int) -> dict:
+        """
+        Parse Claude's response into structured quiz data.
 
-        # Build QuizContent
-        quiz_content = QuizContent(
-            title=content_data.get("title", "Quiz"),
-            questions=content_data.get("questions", []),
-            estimated_duration_minutes=content_data.get("estimated_duration_minutes", 15),
-            sources_cited=content_data.get("sources_cited", []),
-        )
+        Args:
+            response: Raw response from Claude API
+            unit_id: Unit identifier to include in response
+            expected_questions: Expected number of questions for validation
 
-        return QuizResponse(
-            id=generated_content.id,
-            module_id=generated_content.module_id,
-            unit_id=unit_id,
-            language=generated_content.language,
-            difficulty_level=difficulty_level,
-            content=quiz_content,
-            generated_at=generated_content.generated_at.isoformat(),
-            cached=cached,
-        )
+        Returns:
+            Dictionary with parsed quiz content
+
+        Raises:
+            ValueError: If response cannot be parsed or is invalid
+        """
+        try:
+            # Try to extract JSON from Claude's response
+            # Claude sometimes wraps JSON in markdown code blocks
+            response_text = response.strip()
+
+            if "```json" in response_text:
+                start = response_text.find("```json") + 7
+                end = response_text.find("```", start)
+                response_text = response_text[start:end].strip()
+            elif "```" in response_text:
+                start = response_text.find("```") + 3
+                end = response_text.rfind("```")
+                response_text = response_text[start:end].strip()
+
+            # Parse JSON
+            quiz_data = json.loads(response_text)
+
+            # Validate structure
+            required_fields = ["title", "description", "questions"]
+            for field in required_fields:
+                if field not in quiz_data:
+                    raise ValueError(f"Missing required field: {field}")
+
+            questions = quiz_data["questions"]
+            if not isinstance(questions, list) or len(questions) != expected_questions:
+                raise ValueError(f"Expected {expected_questions} questions, got {len(questions)}")
+
+            # Validate each question
+            for i, question in enumerate(questions):
+                self._validate_question(question, f"question {i + 1}")
+
+            # Set defaults for optional fields
+            quiz_data.setdefault("time_limit_minutes", max(10, len(questions) * 2))
+            quiz_data.setdefault("passing_score", 70.0)
+
+            # Add unit_id to content
+            quiz_data["unit_id"] = unit_id
+
+            return quiz_data
+
+        except json.JSONDecodeError as e:
+            logger.error("Failed to parse quiz JSON", response_preview=response[:200], error=str(e))
+            raise ValueError(f"Invalid JSON response from Claude API: {e}")
+        except Exception as e:
+            logger.error("Quiz response validation failed", error=str(e))
+            raise ValueError(f"Invalid quiz format: {e}")
+
+    def _validate_question(self, question: dict, context: str) -> None:
+        """
+        Validate a single quiz question structure.
+
+        Args:
+            question: Question dictionary to validate
+            context: Context string for error messages
+
+        Raises:
+            ValueError: If question is invalid
+        """
+        required_fields = ["id", "question", "options", "correct_answer", "explanation"]
+        for field in required_fields:
+            if field not in question:
+                raise ValueError(f"{context}: Missing required field '{field}'")
+
+        # Validate options
+        options = question["options"]
+        if not isinstance(options, list) or len(options) != 4:
+            raise ValueError(f"{context}: Must have exactly 4 options")
+
+        # Validate correct_answer
+        correct_answer = question["correct_answer"]
+        if not isinstance(correct_answer, int) or not (0 <= correct_answer <= 3):
+            raise ValueError(f"{context}: correct_answer must be 0, 1, 2, or 3")
+
+        # Set defaults
+        question.setdefault("sources_cited", [])
+        question.setdefault("difficulty", "medium")
+
+    def _extract_sources_from_quiz(self, quiz_content: QuizContent) -> list[str]:
+        """
+        Extract all source citations from quiz questions.
+
+        Args:
+            quiz_content: Quiz content with questions
+
+        Returns:
+            List of unique source citations
+        """
+        sources = set()
+        for question in quiz_content.questions:
+            sources.update(question.sources_cited)
+        return list(sources)

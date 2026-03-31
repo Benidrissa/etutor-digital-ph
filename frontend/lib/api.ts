@@ -35,3 +35,102 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     },
   });
 }
+
+// Quiz API Types
+export interface QuizQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  correct_answer: number;
+  explanation: string;
+  sources_cited: string[];
+  difficulty: string;
+}
+
+export interface QuizContent {
+  title: string;
+  description: string;
+  questions: QuizQuestion[];
+  time_limit_minutes?: number;
+  passing_score: number;
+}
+
+export interface Quiz {
+  id: string;
+  module_id: string;
+  unit_id: string;
+  language: string;
+  level: number;
+  country_context: string;
+  content: QuizContent;
+  generated_at: string;
+  cached: boolean;
+}
+
+export interface QuizAnswerSubmission {
+  question_id: string;
+  selected_option: number;
+  time_taken_seconds: number;
+}
+
+export interface QuizAttemptRequest {
+  quiz_id: string;
+  answers: QuizAnswerSubmission[];
+  total_time_seconds: number;
+}
+
+export interface QuizAttemptResult {
+  question_id: string;
+  user_answer: number;
+  correct_answer: number;
+  is_correct: boolean;
+  explanation: string;
+  time_taken_seconds: number;
+}
+
+export interface QuizAttemptResponse {
+  attempt_id: string;
+  quiz_id: string;
+  score: number;
+  total_questions: number;
+  correct_answers: number;
+  total_time_seconds: number;
+  passed: boolean;
+  results: QuizAttemptResult[];
+  attempted_at: string;
+}
+
+// Quiz API Functions
+export async function generateQuiz(params: {
+  module_id: string;
+  unit_id: string;
+  language: string;
+  country: string;
+  level: number;
+  num_questions?: number;
+}): Promise<Quiz> {
+  return apiFetch<Quiz>("/api/v1/quiz/generate", {
+    method: "POST",
+    body: JSON.stringify({
+      module_id: params.module_id,
+      unit_id: params.unit_id,
+      language: params.language,
+      country: params.country,
+      level: params.level,
+      num_questions: params.num_questions || 10,
+    }),
+  });
+}
+
+export async function getQuiz(quizId: string): Promise<Quiz> {
+  return apiFetch<Quiz>(`/api/v1/quiz/${quizId}`);
+}
+
+export async function submitQuizAttempt(
+  request: QuizAttemptRequest
+): Promise<QuizAttemptResponse> {
+  return apiFetch<QuizAttemptResponse>("/api/v1/quiz/attempt", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
