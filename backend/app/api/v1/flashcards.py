@@ -2,7 +2,7 @@
 
 import uuid
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -429,16 +429,16 @@ async def get_upcoming_reviews(
 ) -> UpcomingReviewsResponse:
     """
     Get upcoming flashcard review sessions grouped by date.
-    
+
     Returns the next 5 review sessions with module information and card counts.
     Used for the dashboard upcoming reviews widget.
-    
+
     **Features:**
     - Groups cards by review date and module
-    - Shows card counts per session  
+    - Shows card counts per session
     - Identifies overdue reviews (highlighted in red in UI)
     - Includes today's due cards count for "Start review" button
-    
+
     **Mobile Optimization:**
     - Returns minimal data for quick loading
     - Pre-grouped for easy UI rendering
@@ -446,13 +446,13 @@ async def get_upcoming_reviews(
     """
     try:
         logger.info("Fetching upcoming reviews", user_id=str(current_user.id))
-        
+
         now = datetime.utcnow()
         today = now.date()
-        
+
         # Get all scheduled flashcard reviews for the next 2 weeks
         two_weeks_from_now = now + timedelta(days=14)
-        
+
         review_query = (
             select(FlashcardReview, GeneratedContent)
             .join(GeneratedContent, FlashcardReview.card_id == GeneratedContent.id)
@@ -465,25 +465,25 @@ async def get_upcoming_reviews(
             )
             .order_by(FlashcardReview.next_review.asc())
         )
-        
+
         result = await session.execute(review_query)
         upcoming_reviews = result.all()
-        
+
         # Count today's due cards
         today_due_count = 0
-        
+
         # Group reviews by date and module
         reviews_by_date = defaultdict(lambda: defaultdict(int))
-        
+
         for review, content in upcoming_reviews:
             review_date = review.next_review.date()
-            
+
             # Count today's cards
             if review_date <= today:
                 # Count individual flashcards in the set
                 flashcards = content.content.get("flashcards", [])
                 today_due_count += len(flashcards)
-            
+
             # Get module info from content
             module_name = content.module_id or "General Review"
             # Simplify module names for display
@@ -495,48 +495,50 @@ async def get_upcoming_reviews(
                     module_name = f"{module_num}: Health Foundations"
                 else:
                     module_name = f"Module {module_name}"
-            
+
             # Count flashcards in this review
             flashcards = content.content.get("flashcards", [])
             reviews_by_date[review_date][module_name] += len(flashcards)
-        
+
         # Convert to response format - get next 5 sessions
         upcoming_sessions = []
         processed_dates = 0
-        
+
         for review_date in sorted(reviews_by_date.keys()):
             if processed_dates >= 5:
                 break
-                
+
             for module_name, card_count in reviews_by_date[review_date].items():
                 if processed_dates >= 5:
                     break
-                    
+
                 is_overdue = review_date < today
-                
-                upcoming_sessions.append({
-                    "date": review_date.isoformat(),
-                    "module_name": module_name,
-                    "card_count": card_count,
-                    "is_overdue": is_overdue,
-                })
-                
+
+                upcoming_sessions.append(
+                    {
+                        "date": review_date.isoformat(),
+                        "module_name": module_name,
+                        "card_count": card_count,
+                        "is_overdue": is_overdue,
+                    }
+                )
+
                 processed_dates += 1
-        
+
         logger.info(
             "Upcoming reviews fetched successfully",
             user_id=str(current_user.id),
             today_due_count=today_due_count,
             sessions_count=len(upcoming_sessions),
         )
-        
+
         return UpcomingReviewsResponse(
             user_id=current_user.id,
             today_due_count=today_due_count,
             has_due_cards=today_due_count > 0,
             upcoming_sessions=upcoming_sessions,
         )
-        
+
     except Exception as e:
         logger.error("Failed to fetch upcoming reviews", error=str(e), exc_info=True)
         raise HTTPException(

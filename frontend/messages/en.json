@@ -452,7 +452,6 @@
       "timeExpired": "Time has expired. Your assessment has been automatically submitted."
     }
   },
-<<<<<<< HEAD
   "SummativeAssessment": {
     "pageTitle": "Summative Assessment",
     "pageDescription": "End-of-module comprehensive assessment",
@@ -512,13 +511,12 @@
     "canRetryNow": "You can retry this assessment immediately or wait for additional study time.",
     "canRetryAfter": "You can retry this assessment after {time}",
     "contactSupport": "If you continue to have difficulty, please contact support.",
-    "retryAssessment": "Retry Assessment", 
+    "retryAssessment": "Retry Assessment",
     "continueToNextModule": "Continue to Next Module",
     "backToDashboard": "Back to Dashboard",
     "attemptedAt": "Completed",
     "attemptId": "Attempt ID"
-  }
-=======
+  },
   "Profile": {
     "title": "Profile",
     "description": "Manage your account and learning preferences",
@@ -548,12 +546,12 @@
     "cancel": "Cancel",
     "save": "Save Changes",
     "languages": {
-      "french": "Français",
+      "french": "Fran\u00e7ais",
       "english": "English"
     },
     "levels": {
       "level1": "Beginner",
-      "level2": "Intermediate", 
+      "level2": "Intermediate",
       "level3": "Advanced",
       "level4": "Expert"
     },
@@ -570,6 +568,5 @@
       "student": "Student",
       "other": "Other"
     }
->>>>>>> 0c8526b (feat(profile): implement user profile page with view and edit functionality)
   }
 }

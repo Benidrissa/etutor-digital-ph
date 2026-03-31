@@ -1,16 +1,21 @@
 """User profile management endpoints."""
 
-import uuid
-from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from structlog import get_logger
 
-from ...api.deps import get_current_user, get_db_session
+from app.api.deps import get_db as get_db_session
+from app.api.deps_local_auth import get_current_user
+
 from ...domain.models.user import User
 from ...domain.repositories.implementations.user_repository import UserRepository
 from ...domain.services.auth_service import AuthService
-from .schemas.users import OnboardingRequest, ProfileUpdateResponse, UpdateProfileRequest, UserProfileResponse
+from .schemas.users import (
+    OnboardingRequest,
+    ProfileUpdateResponse,
+    UpdateProfileRequest,
+    UserProfileResponse,
+)
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/users", tags=["Users"])
@@ -63,7 +68,7 @@ async def update_user_profile(
     try:
         user_repo = UserRepository(db)
         auth_service = AuthService(user_repo)
-        
+
         # Check if country is changing for re-contextualization flag
         country_changed = request.country is not None and request.country != current_user.country
 
@@ -77,11 +82,11 @@ async def update_user_profile(
         if request.professional_role is not None:
             updates["professional_role"] = request.professional_role
 
-        updated_profile = await auth_service.update_user_profile(current_user.id, updates)
+        await auth_service.update_user_profile(current_user.id, updates)
         updated_user = await user_repo.get_by_id(current_user.id)
 
         logger.info("User profile updated", user_id=str(current_user.id))
-        
+
         profile_response = UserProfileResponse(
             id=str(updated_user.id),
             email=updated_user.email,
@@ -95,10 +100,9 @@ async def update_user_profile(
             last_active=updated_user.last_active.isoformat(),
             created_at=updated_user.created_at.isoformat(),
         )
-        
+
         return ProfileUpdateResponse(
-            profile=profile_response,
-            content_recontextualization_required=country_changed
+            profile=profile_response, content_recontextualization_required=country_changed
         )
 
     except Exception as e:
@@ -211,8 +215,6 @@ async def upload_avatar(
         auth_service = AuthService(user_repo)
 
         # Generate unique filename
-        file_extension = file.filename.split(".")[-1] if file.filename else "jpg"
-        avatar_filename = f"avatar_{current_user.id}_{uuid.uuid4().hex[:8]}.{file_extension}"
 
         # For MVP, we'll store avatars as base64 data URLs
         # In production, you'd upload to cloud storage (S3, Cloudinary, etc.)
