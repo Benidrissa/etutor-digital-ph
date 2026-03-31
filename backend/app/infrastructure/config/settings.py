@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
 
+    # Monitoring
+    sentry_dsn: str = ""
+    sentry_traces_sample_rate: float = 0.2
+    sentry_profiles_sample_rate: float = 0.1
+
     # App
     app_env: str = "development"
     cors_origins: str = "http://localhost:3000"

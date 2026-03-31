@@ -46,7 +46,7 @@ export function FlashcardDeck({
   const t = useTranslations('Flashcards');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
-  const [sessionStartTime] = useState(Date.now());
+  const [sessionStartTime] = useState(() => Date.now());
   const [reviewedRatings, setReviewedRatings] = useState<string[]>([]);
   const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);

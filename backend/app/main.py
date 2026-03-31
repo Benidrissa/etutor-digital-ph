@@ -1,3 +1,4 @@
+import sentry_sdk
 import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -5,6 +6,30 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.middleware.rate_limit import RateLimitMiddleware
 from app.api.v1.router import api_v1_router
 from app.infrastructure.config.settings import settings
+
+
+def _scrub_pii(event, hint):
+    """Strip PII from Sentry events for GDPR compliance."""
+    if "user" in event:
+        event["user"].pop("ip_address", None)
+        event["user"].pop("email", None)
+    request = event.get("request", {})
+    headers = request.get("headers", {})
+    for sensitive in ("Authorization", "Cookie", "X-Forwarded-For"):
+        headers.pop(sensitive, None)
+    return event
+
+
+if settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.app_env,
+        release="santepublique-aof-backend@0.1.0",
+        traces_sample_rate=settings.sentry_traces_sample_rate,
+        profiles_sample_rate=settings.sentry_profiles_sample_rate,
+        send_default_pii=False,
+        before_send=_scrub_pii,
+    )
 
 structlog.configure(
     processors=[

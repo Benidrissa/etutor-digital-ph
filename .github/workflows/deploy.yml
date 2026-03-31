@@ -61,6 +61,10 @@ jobs:
           tags: etutor-frontend:latest
           build-args: |
             NEXT_PUBLIC_API_URL=https://api.elearning.portfolio2.kimbetien.com
+            NEXT_PUBLIC_SENTRY_DSN=${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
+            SENTRY_ORG=${{ secrets.SENTRY_ORG }}
+            SENTRY_PROJECT=${{ secrets.SENTRY_PROJECT }}
+            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,scope=frontend,mode=max
 
@@ -93,12 +97,16 @@ jobs:
         env:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
+          NEXT_PUBLIC_POSTHOG_KEY: ${{ secrets.NEXT_PUBLIC_POSTHOG_KEY }}
+          NEXT_PUBLIC_POSTHOG_HOST: ${{ secrets.NEXT_PUBLIC_POSTHOG_HOST }}
           DEPLOY_SHA: ${{ github.sha }}
         with:
           host: 167.86.115.58
           username: deploy
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: POSTGRES_PASSWORD,ANTHROPIC_API_KEY,DEPLOY_SHA
+          envs: POSTGRES_PASSWORD,ANTHROPIC_API_KEY,SENTRY_DSN,NEXT_PUBLIC_SENTRY_DSN,NEXT_PUBLIC_POSTHOG_KEY,NEXT_PUBLIC_POSTHOG_HOST,DEPLOY_SHA
           script: |
             set -e
             cd ~/etutor
@@ -111,6 +119,10 @@ jobs:
             cat > .env << EOF
             POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
             ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+            SENTRY_DSN=${SENTRY_DSN}
+            NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN}
+            NEXT_PUBLIC_POSTHOG_KEY=${NEXT_PUBLIC_POSTHOG_KEY}
+            NEXT_PUBLIC_POSTHOG_HOST=${NEXT_PUBLIC_POSTHOG_HOST}
             EOF
 
             # Deploy

@@ -137,15 +137,12 @@ export function FlashcardsContainer() {
     },
   });
 
+  const cardsCount = dueCards?.cards?.length ?? 0;
   useEffect(() => {
     if (!isLoading) {
-      if (dueCards && dueCards.cards.length > 0) {
-        setSessionState('ready');
-      } else {
-        setSessionState('summary');
-      }
+      setSessionState(cardsCount > 0 ? 'ready' : 'summary');
     }
-  }, [isLoading, dueCards]);
+  }, [isLoading, cardsCount]);
 
   const handleStartSession = () => {
     setSessionState('reviewing');

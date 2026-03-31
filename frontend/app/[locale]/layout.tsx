@@ -3,6 +3,7 @@ import { getMessages } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { QueryProvider } from "@/lib/query-provider";
+import { PostHogProvider } from "@/lib/posthog-provider";
 
 export default async function LocaleLayout({
   children,
@@ -21,7 +22,9 @@ export default async function LocaleLayout({
 
   return (
     <NextIntlClientProvider messages={messages}>
-      <QueryProvider>{children}</QueryProvider>
+      <PostHogProvider>
+        <QueryProvider>{children}</QueryProvider>
+      </PostHogProvider>
     </NextIntlClientProvider>
   );
 }

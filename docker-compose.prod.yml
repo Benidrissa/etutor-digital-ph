@@ -38,6 +38,7 @@ services:
       APP_ENV: production
       CORS_ORIGINS: https://etutor.elearning.portfolio2.kimbetien.com
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      SENTRY_DSN: ${SENTRY_DSN}
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,6 +67,9 @@ services:
     environment:
       HOSTNAME: "0.0.0.0"
       PORT: "3000"
+      NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN}
+      NEXT_PUBLIC_POSTHOG_KEY: ${NEXT_PUBLIC_POSTHOG_KEY}
+      NEXT_PUBLIC_POSTHOG_HOST: ${NEXT_PUBLIC_POSTHOG_HOST:-https://eu.i.posthog.com}
     depends_on:
       backend:
         condition: service_healthy

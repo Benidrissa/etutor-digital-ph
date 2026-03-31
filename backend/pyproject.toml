@@ -29,6 +29,7 @@ dependencies = [
     "pyotp>=2.9.0",
     "qrcode[pil]>=8.2",
     "resend>=2.26.0",
+    "sentry-sdk[fastapi]>=2.19.0",
 ]
 
 [dependency-groups]
