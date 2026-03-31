@@ -176,30 +176,33 @@ export default async function ModuleOverviewPage({ params }: ModuleOverviewPageP
               <CardContent>
                 <div className="space-y-3">
                   {moduleData.units.map((unit) => (
-                    <div
+                    <Link
                       key={unit.id}
-                      className="flex items-center gap-4 p-4 border border-stone-200 rounded-lg hover:border-stone-300 transition-colors"
+                      href={unit.type === 'lesson' ? `/modules/${moduleId}/lessons/${unit.id}` : `/modules/${moduleId}/${unit.type}/${unit.id}`}
+                      className="block"
                     >
-                      <div className="flex items-center gap-3 flex-1">
-                        {getStatusIcon(unit.status)}
-                        <div className="flex items-center gap-2 text-stone-600">
-                          {getTypeIcon(unit.type)}
-                          <span className="text-sm font-medium">
-                            {t('unitNumber', { number: unit.number })}
-                          </span>
-                        </div>
-                        <div className="flex-1">
-                          <h4 className="font-medium text-stone-900">{unit.title[language]}</h4>
-                          {unit.description && (
-                            <p className="text-sm text-stone-600 mt-1">{unit.description[language]}</p>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-stone-500">
-                          <Clock className="w-4 h-4" />
-                          {t('readingTime', { minutes: unit.estimatedMinutes })}
+                      <div className="flex items-center gap-4 p-4 border border-stone-200 rounded-lg hover:border-stone-300 hover:bg-stone-50 transition-colors cursor-pointer">
+                        <div className="flex items-center gap-3 flex-1">
+                          {getStatusIcon(unit.status)}
+                          <div className="flex items-center gap-2 text-stone-600">
+                            {getTypeIcon(unit.type)}
+                            <span className="text-sm font-medium">
+                              {t('unitNumber', { number: unit.number })}
+                            </span>
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="font-medium text-stone-900">{unit.title[language]}</h4>
+                            {unit.description && (
+                              <p className="text-sm text-stone-600 mt-1">{unit.description[language]}</p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-sm text-stone-500">
+                            <Clock className="w-4 h-4" />
+                            {t('readingTime', { minutes: unit.estimatedMinutes })}
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               </CardContent>
@@ -211,10 +214,12 @@ export default async function ModuleOverviewPage({ params }: ModuleOverviewPageP
         <div className="space-y-4">
           {/* Continue Learning */}
           {nextUnit ? (
-            <Button className="w-full min-h-11" size="lg">
-              <Play className="w-4 h-4 mr-2" />
-              {nextUnit.status === 'in-progress' ? t('continueReading') : t('startReading')}
-            </Button>
+            <Link href={`/modules/${moduleId}/lessons/${nextUnit.id}`} className="block">
+              <Button className="w-full min-h-11" size="lg">
+                <Play className="w-4 h-4 mr-2" />
+                {nextUnit.status === 'in-progress' ? t('continueReading') : t('startReading')}
+              </Button>
+            </Link>
           ) : (
             <Button className="w-full min-h-11" size="lg">
               <CheckCircle className="w-4 h-4 mr-2" />

@@ -301,134 +301,40 @@
     "tryAgain": "Réessayer",
     "offline": "Vous êtes hors ligne - affichage des cartes en cache"
   },
-<<<<<<< HEAD
-  "Onboarding": {
-    "welcome": "Bienvenue sur SantePublique AOF",
-    "subtitle": "Configurons votre expérience d'apprentissage personnalisée",
-    "step": "Étape {current} de {total}",
-    "next": "Suivant",
-    "previous": "Précédent",
-    "complete": "Terminer la Configuration",
-    "step1": {
-      "title": "Choisissez Votre Langue",
-      "description": "Sélectionnez votre langue préférée pour l'apprentissage",
-      "french": "Français",
-      "english": "English"
-    },
-    "step2": {
-      "title": "Sélectionnez Votre Pays",
-      "description": "Choisissez votre pays CEDEAO pour un contenu localisé",
-      "selectCountry": "Sélectionnez votre pays",
-      "countries": {
-        "benin": "Bénin",
-        "burkina-faso": "Burkina Faso",
-        "cabo-verde": "Cabo Verde",
-        "cote-divoire": "Côte d'Ivoire",
-        "gambia": "Gambie",
-        "ghana": "Ghana",
-        "guinea": "Guinée",
-        "guinea-bissau": "Guinée-Bissau",
-        "liberia": "Libéria",
-        "mali": "Mali",
-        "niger": "Niger",
-        "nigeria": "Nigeria",
-        "senegal": "Sénégal",
-        "sierra-leone": "Sierra Leone",
-        "togo": "Togo"
-      }
-    },
-    "step3": {
-      "title": "Rôle Professionnel",
-      "description": "Parlez-nous de votre parcours professionnel",
-      "selectRole": "Sélectionnez votre rôle",
-      "roles": {
-        "medecin": "Médecin",
-        "infirmier": "Infirmier",
-        "data-analyst": "Analyste de données",
-        "etudiant": "Étudiant",
-        "cadre": "Cadre/Administrateur",
-        "autre": "Autre"
-      }
-    },
-    "step4": {
-      "title": "Niveau de Compétence",
-      "description": "Comment évalueriez-vous vos connaissances en santé publique ?",
-      "selectLevel": "Sélectionnez votre niveau",
-      "levels": {
-        "debutant": "Débutant",
-        "intermediaire": "Intermédiaire",
-        "avance": "Avancé"
-      }
-    },
-    "completing": "Finalisation de la configuration...",
-    "success": "Configuration terminée !",
-    "error": "Échec de la configuration. Veuillez réessayer.",
-    "redirecting": "Redirection vers l'évaluation diagnostique..."
-=======
-  "SummativeAssessment": {
-    "pageTitle": "Évaluation Sommative",
-    "pageDescription": "Évaluation complète de fin de module",
-    "summativeAssessment": "Évaluation Sommative",
-    "description": "Il s'agit d'une évaluation complète couvrant tous les objectifs d'apprentissage de ce module. Vous devez obtenir au moins 80% pour réussir et débloquer le module suivant.",
-    "requirements": "Exigences",
-    "requirement1": "Répondre aux 20 questions",
-    "requirement2": "Terminer en 30 minutes",
-    "requirement3": "Obtenir au moins 80% pour réussir",
-    "requirement4": "Aucun feedback immédiat pendant l'évaluation",
-    "importantNotes": "Notes Importantes",
-    "note1": "Vous pouvez réviser et modifier vos réponses avant de soumettre",
-    "note2": "Les résultats et explications sont montrés seulement après achèvement",
-    "note3": "Les tentatives échouées ont une période d'attente de 24 heures",
-    "instructions": "Lisez chaque question attentivement et sélectionnez la meilleure réponse. Aucun feedback immédiat ne sera fourni.",
-    "question": "Question {current} sur {total}",
-    "progress": "{answered} sur {total} répondues",
-    "timeWarning": "Attention : Il ne reste que {minutes} minutes !",
-    "timeUpAutoSubmitFailed": "Temps expiré mais la soumission automatique a échoué. Veuillez essayer de soumettre manuellement.",
-    "completeAllQuestions": "Veuillez répondre à toutes les questions. {count} questions restantes.",
-    "failedToSubmit": "Échec de la soumission de l'évaluation. Veuillez réessayer.",
-    "selectOneAnswer": "Sélectionnez une réponse",
-    "previous": "Précédent",
-    "next": "Suivant",
-    "finishAssessment": "Terminer l'Évaluation",
-    "submitting": "Soumission...",
-    "importantNotice": "Avis Important",
-    "noImmediateFeedback": "Aucun feedback immédiat ne sera affiché pendant l'évaluation",
-    "passingScore": "Vous devez obtenir 80% ou plus pour réussir ce module",
-    "canReviewAnswers": "Vous pouvez réviser et modifier vos réponses avant de soumettre",
-    "checkingEligibility": "Vérification de l'éligibilité à l'évaluation...",
-    "cannotAttempt": "Impossible de Tenter l'Évaluation",
-    "alreadyPassed": "Vous avez déjà réussi cette évaluation avec un score de {score}%",
-    "cooldownActive": "Vous devez attendre jusqu'à {time} avant de tenter à nouveau",
-    "attemptHistory": "Historique des Tentatives",
-    "totalAttempts": "Total des tentatives",
-    "lastScore": "Dernier score",
-    "generatingAssessment": "Génération de votre évaluation...",
-    "failedToCheckEligibility": "Échec de la vérification de l'éligibilité à l'évaluation",
-    "failedToGenerateAssessment": "Échec de la génération de l'évaluation",
-    "startAssessment": "Commencer l'Évaluation"
+  "LessonViewer": {
+    "level": "Niveau {level}",
+    "readingTime": "Lecture 10-15 min",
+    "cached": "En cache",
+    "unitTitle": "Unité {unit}",
+    "introduction": "Introduction",
+    "keyConcepts": "Concepts Clés",
+    "conceptTitle": "Concept {number}",
+    "westAfricanExample": "Exemple Ouest-Africain",
+    "synthesis": "Synthèse",
+    "keyPoints": "Points Clés",
+    "markComplete": "Marquer comme Terminé",
+    "completed": "Terminé",
+    "error": "Erreur",
+    "streamError": "Échec du streaming du contenu de la leçon. Veuillez actualiser et réessayer.",
+    "loadError": "Échec du chargement de la leçon. Veuillez actualiser et réessayer."
   },
-  "SummativeAssessmentResults": {
-    "congratulations": "Félicitations ! Vous avez Réussi !",
-    "notPassed": "Évaluation Non Réussie",
-    "scoreOutOf": "{correct} bonnes réponses sur {total}",
-    "moduleUnlocked": "Module Suivant Débloqué !",
-    "assessmentSummary": "Résumé de l'Évaluation",
-    "correctAnswers": "Bonnes Réponses",
-    "timeSpent": "Temps Passé",
-    "attemptNumber": "Tentative",
-    "yourScore": "Votre Score",
-    "passingScore": "Réussite : {score}%",
-    "domainBreakdown": "Performance par Domaine d'Apprentissage",
-    "domainBreakdownDescription": "Votre performance dans les différents domaines de connaissance",
-    "reviewRecommended": "Révision recommandée pour {domain}",
-    "canRetryNow": "Vous pouvez reprendre cette évaluation immédiatement ou attendre du temps d'étude supplémentaire.",
-    "canRetryAfter": "Vous pouvez reprendre cette évaluation après {time}",
-    "contactSupport": "Si vous continuez à avoir des difficultés, veuillez contacter le support.",
-    "retryAssessment": "Reprendre l'Évaluation",
-    "continueToNextModule": "Continuer au Module Suivant",
-    "backToDashboard": "Retour au Tableau de Bord",
-    "attemptedAt": "Terminé",
-    "attemptId": "ID de Tentative"
->>>>>>> 3d0e726 (feat: implement summative assessment with 20 questions and 80% pass gate)
+  "BilingualTooltip": {
+    "french": "FR",
+    "english": "EN"
+  },
+  "SourceCitations": {
+    "title": "Sources",
+    "sourceDetails": "Détails de la source",
+    "clickToView": "Cliquez pour voir :",
+    "availableInLibrary": "Disponible dans la bibliothèque de référence du cours",
+    "footnote": "{count, plural, one {# source citée} other {# sources citées}}"
+  },
+  "LessonPage": {
+    "modules": "Modules",
+    "backToModule": "Retour au Module",
+    "metadata": {
+      "title": "{unit} - {module}",
+      "notFound": "Leçon Introuvable"
+    }
   }
 }

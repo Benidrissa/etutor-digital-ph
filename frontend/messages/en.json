@@ -301,134 +301,40 @@
     "tryAgain": "Try again",
     "offline": "You're offline - showing cached cards"
   },
-<<<<<<< HEAD
-  "Onboarding": {
-    "welcome": "Welcome to SantePublique AOF",
-    "subtitle": "Let's set up your personalized learning experience",
-    "step": "Step {current} of {total}",
-    "next": "Next",
-    "previous": "Previous",
-    "complete": "Complete Setup",
-    "step1": {
-      "title": "Choose Your Language",
-      "description": "Select your preferred language for learning",
-      "french": "Français",
-      "english": "English"
-    },
-    "step2": {
-      "title": "Select Your Country",
-      "description": "Choose your ECOWAS country for localized content",
-      "selectCountry": "Select your country",
-      "countries": {
-        "benin": "Benin",
-        "burkina-faso": "Burkina Faso",
-        "cabo-verde": "Cabo Verde",
-        "cote-divoire": "Côte d'Ivoire",
-        "gambia": "Gambia",
-        "ghana": "Ghana",
-        "guinea": "Guinea",
-        "guinea-bissau": "Guinea-Bissau",
-        "liberia": "Liberia",
-        "mali": "Mali",
-        "niger": "Niger",
-        "nigeria": "Nigeria",
-        "senegal": "Senegal",
-        "sierra-leone": "Sierra Leone",
-        "togo": "Togo"
-      }
-    },
-    "step3": {
-      "title": "Professional Role",
-      "description": "Tell us about your professional background",
-      "selectRole": "Select your role",
-      "roles": {
-        "medecin": "Physician (Médecin)",
-        "infirmier": "Nurse (Infirmier)",
-        "data-analyst": "Data Analyst",
-        "etudiant": "Student (Étudiant)",
-        "cadre": "Manager/Administrator (Cadre)",
-        "autre": "Other (Autre)"
-      }
-    },
-    "step4": {
-      "title": "Skill Level",
-      "description": "How would you assess your public health knowledge?",
-      "selectLevel": "Select your level",
-      "levels": {
-        "debutant": "Beginner (Débutant)",
-        "intermediaire": "Intermediate (Intermédiaire)",
-        "avance": "Advanced (Avancé)"
-      }
-    },
-    "completing": "Completing setup...",
-    "success": "Setup complete!",
-    "error": "Setup failed. Please try again.",
-    "redirecting": "Redirecting to diagnostic assessment..."
-=======
-  "SummativeAssessment": {
-    "pageTitle": "Summative Assessment",
-    "pageDescription": "End-of-module comprehensive assessment",
-    "summativeAssessment": "Summative Assessment",
-    "description": "This is a comprehensive assessment covering all learning objectives for this module. You must score at least 80% to pass and unlock the next module.",
-    "requirements": "Requirements",
-    "requirement1": "Answer all 20 questions",
-    "requirement2": "Complete within 30 minutes",
-    "requirement3": "Score at least 80% to pass",
-    "requirement4": "No immediate feedback during assessment",
-    "importantNotes": "Important Notes",
-    "note1": "You can review and change your answers before submitting",
-    "note2": "Results and explanations are shown only after completion",
-    "note3": "Failed attempts have a 24-hour cooldown period",
-    "instructions": "Read each question carefully and select the best answer. No immediate feedback will be provided.",
-    "question": "Question {current} of {total}",
-    "progress": "{answered} of {total} answered",
-    "timeWarning": "Warning: Only {minutes} minutes remaining!",
-    "timeUpAutoSubmitFailed": "Time expired but auto-submit failed. Please try submitting manually.",
-    "completeAllQuestions": "Please answer all questions. {count} questions remaining.",
-    "failedToSubmit": "Failed to submit assessment. Please try again.",
-    "selectOneAnswer": "Select one answer",
-    "previous": "Previous",
-    "next": "Next",
-    "finishAssessment": "Finish Assessment",
-    "submitting": "Submitting...",
-    "importantNotice": "Important Notice",
-    "noImmediateFeedback": "No immediate feedback will be shown during the assessment",
-    "passingScore": "You need 80% or higher to pass this module",
-    "canReviewAnswers": "You can review and change your answers before submitting",
-    "checkingEligibility": "Checking assessment eligibility...",
-    "cannotAttempt": "Cannot Attempt Assessment",
-    "alreadyPassed": "You have already passed this assessment with a score of {score}%",
-    "cooldownActive": "You must wait until {time} before attempting again",
-    "attemptHistory": "Attempt History",
-    "totalAttempts": "Total attempts",
-    "lastScore": "Last score",
-    "generatingAssessment": "Generating your assessment...",
-    "failedToCheckEligibility": "Failed to check assessment eligibility",
-    "failedToGenerateAssessment": "Failed to generate assessment",
-    "startAssessment": "Start Assessment"
+  "LessonViewer": {
+    "level": "Level {level}",
+    "readingTime": "10-15 min read",
+    "cached": "Cached",
+    "unitTitle": "Unit {unit}",
+    "introduction": "Introduction",
+    "keyConcepts": "Key Concepts",
+    "conceptTitle": "Concept {number}",
+    "westAfricanExample": "West African Example",
+    "synthesis": "Summary",
+    "keyPoints": "Key Takeaways",
+    "markComplete": "Mark as Complete",
+    "completed": "Completed",
+    "error": "Error",
+    "streamError": "Failed to stream lesson content. Please refresh and try again.",
+    "loadError": "Failed to load lesson. Please refresh and try again."
   },
-  "SummativeAssessmentResults": {
-    "congratulations": "Congratulations! You Passed!",
-    "notPassed": "Assessment Not Passed",
-    "scoreOutOf": "{correct} out of {total} correct answers",
-    "moduleUnlocked": "Next Module Unlocked!",
-    "assessmentSummary": "Assessment Summary",
-    "correctAnswers": "Correct Answers",
-    "timeSpent": "Time Spent",
-    "attemptNumber": "Attempt",
-    "yourScore": "Your Score",
-    "passingScore": "Passing: {score}%",
-    "domainBreakdown": "Performance by Learning Domain",
-    "domainBreakdownDescription": "Your performance across different areas of knowledge",
-    "reviewRecommended": "Review recommended for {domain}",
-    "canRetryNow": "You can retry this assessment immediately or wait for additional study time.",
-    "canRetryAfter": "You can retry this assessment after {time}",
-    "contactSupport": "If you continue to have difficulty, please contact support.",
-    "retryAssessment": "Retry Assessment", 
-    "continueToNextModule": "Continue to Next Module",
-    "backToDashboard": "Back to Dashboard",
-    "attemptedAt": "Completed",
-    "attemptId": "Attempt ID"
->>>>>>> 3d0e726 (feat: implement summative assessment with 20 questions and 80% pass gate)
+  "BilingualTooltip": {
+    "french": "FR",
+    "english": "EN"
+  },
+  "SourceCitations": {
+    "title": "Sources",
+    "sourceDetails": "Source details",
+    "clickToView": "Click to view:",
+    "availableInLibrary": "Available in course reference library",
+    "footnote": "{count, plural, one {# source cited} other {# sources cited}}"
+  },
+  "LessonPage": {
+    "modules": "Modules",
+    "backToModule": "Back to Module",
+    "metadata": {
+      "title": "{unit} - {module}",
+      "notFound": "Lesson Not Found"
+    }
   }
 }
