@@ -94,7 +94,19 @@ class QuizGenerationRequest(BaseModel):
     country: str = Field(description="User's country for contextualization")
     level: int = Field(description="User's learning level (1-4)", ge=1, le=4)
     num_questions: int = Field(
-        description="Number of questions to generate", ge=5, le=15, default=10
+        description="Number of questions to generate", ge=5, le=20, default=10
+    )
+
+
+class SummativeAssessmentRequest(BaseModel):
+    """Request to generate or retrieve a summative assessment."""
+
+    module_id: UUID = Field(description="Module ID to generate assessment for")
+    language: str = Field(description="Content language", pattern="^(fr|en)$")
+    country: str = Field(description="User's country for contextualization")
+    level: int = Field(description="User's learning level (1-4)", ge=1, le=4)
+    num_questions: int = Field(
+        description="Number of questions (fixed at 20 for summative)", default=20, ge=20, le=20
     )
 
 
@@ -161,6 +173,37 @@ class QuizAttemptResponse(BaseModel):
                 "attempted_at": "2024-01-15T11:00:00Z",
             }
         }
+
+
+class SummativeAssessmentResponse(BaseModel):
+    """Response after submitting a summative assessment attempt."""
+
+    attempt_id: UUID = Field(description="Assessment attempt ID")
+    assessment_id: UUID = Field(description="Assessment content ID")
+    score: float = Field(description="Final score percentage (0-100)")
+    total_questions: int = Field(description="Total number of questions (always 20)")
+    correct_answers: int = Field(description="Number of correct answers")
+    total_time_seconds: int = Field(description="Total time taken")
+    passed: bool = Field(description="Whether user passed (score >= 80%)")
+    results: list[QuizAttemptResult] = Field(description="Per-question results")
+    domain_breakdown: dict[str, dict[str, int]] = Field(
+        description="Performance breakdown by learning domain"
+    )
+    module_unlocked: bool = Field(description="Whether next module was unlocked")
+    can_retry: bool = Field(description="Whether user can retry (false if passed or must wait)")
+    next_retry_at: str | None = Field(description="ISO timestamp when retry is allowed")
+    attempt_count: int = Field(description="Total number of attempts for this module")
+    attempted_at: str = Field(description="ISO timestamp when attempt was submitted")
+
+
+class SummativeAssessmentAttemptCheck(BaseModel):
+    """Response for checking if user can attempt summative assessment."""
+
+    can_attempt: bool = Field(description="Whether user can attempt assessment")
+    last_attempt_score: float | None = Field(description="Score from last attempt if any")
+    attempt_count: int = Field(description="Number of previous attempts")
+    next_retry_at: str | None = Field(description="When next retry is allowed if blocked")
+    reason: str | None = Field(description="Reason if cannot attempt")
 
 
 class ErrorResponse(BaseModel):
