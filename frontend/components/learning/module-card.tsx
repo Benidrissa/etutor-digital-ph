@@ -31,7 +31,10 @@ export function ModuleCard({ module, isUnlocked, onClick }: ModuleCardProps) {
       return 'bg-stone-50 border-stone-200 opacity-60';
     }
     if (module.status === 'completed') {
-      return 'bg-green-50 border-green-200';
+      return 'bg-green-50 border-green-200 shadow-sm';
+    }
+    if (module.status === 'unlocked') {
+      return 'bg-teal-50 border-teal-200 shadow-sm animate-in fade-in duration-500';
     }
     return 'bg-teal-50 border-teal-200';
   };

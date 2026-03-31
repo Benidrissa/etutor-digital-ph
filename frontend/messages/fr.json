@@ -300,5 +300,19 @@
     "error": "Erreur lors du chargement des flashcards",
     "tryAgain": "Réessayer",
     "offline": "Vous êtes hors ligne - affichage des cartes en cache"
+  },
+  "ModuleUnlockNotification": {
+    "congratulations": "Félicitations !",
+    "moduleUnlocked": "Vous avez débloqué un nouveau module",
+    "level": "Niveau",
+    "startNow": "Commencer maintenant",
+    "later": "Plus tard",
+    "dismiss": "Fermer la notification"
+  },
+  "PrerequisiteSuccessNotification": {
+    "readyToUnlock": "Prêt à débloquer :",
+    "unlockNow": "Débloquer maintenant",
+    "later": "Plus tard",
+    "dismiss": "Fermer la notification"
   }
 }

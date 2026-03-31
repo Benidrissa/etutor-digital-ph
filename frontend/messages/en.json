@@ -300,5 +300,19 @@
     "error": "Error loading flashcards",
     "tryAgain": "Try again",
     "offline": "You're offline - showing cached cards"
+  },
+  "ModuleUnlockNotification": {
+    "congratulations": "Congratulations!",
+    "moduleUnlocked": "You've unlocked a new module",
+    "level": "Level",
+    "startNow": "Start Now",
+    "later": "Later",
+    "dismiss": "Dismiss notification"
+  },
+  "PrerequisiteSuccessNotification": {
+    "readyToUnlock": "Ready to unlock:",
+    "unlockNow": "Unlock Now",
+    "later": "Later",
+    "dismiss": "Dismiss notification"
   }
 }
