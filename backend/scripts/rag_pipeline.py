@@ -241,7 +241,9 @@ async def search(query: str, top_k: int, source: str | None, language: str | Non
 
 def sync_run(async_func):
     """Run async function in sync context."""
-    return asyncio.run(async_func())
+    def wrapper(*args, **kwargs):
+        return asyncio.run(async_func(*args, **kwargs))
+    return wrapper
 
 
 # Make commands async-compatible
