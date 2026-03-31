@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { z } from 'zod';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -34,14 +34,11 @@ const createMagicLinkSchema = (t: (key: string) => string) => z.object({
 type LoginForm = z.infer<ReturnType<typeof createLoginSchema>>;
 type MagicLinkForm = z.infer<ReturnType<typeof createMagicLinkSchema>>;
 
-interface TOTPLoginFormProps {
-  locale: string;
-}
-
-export function TOTPLoginForm({ locale }: TOTPLoginFormProps) {
+export function TOTPLoginForm() {
   const t = useTranslations('Auth');
   const tCommon = useTranslations('Common');
   const router = useRouter();
+  const locale = useLocale();
   
   const [isLoading, setIsLoading] = useState(false);
   const [showMagicLink, setShowMagicLink] = useState(false);
