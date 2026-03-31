@@ -14,10 +14,13 @@ from app.ai.rag.retriever import SemanticRetriever
 from app.api.deps import get_db
 from app.api.v1.schemas.content import (
     ErrorResponse,
+    FlashcardGenerationRequest,
+    FlashcardSetResponse,
     LessonGenerationRequest,
     LessonResponse,
     StreamingEvent,
 )
+from app.domain.services.flashcard_service import FlashcardGenerationService
 from app.domain.services.lesson_service import LessonGenerationService
 from app.infrastructure.config.settings import get_settings
 
@@ -45,6 +48,14 @@ def get_lesson_service(
 ) -> LessonGenerationService:
     """Dependency to get lesson generation service."""
     return LessonGenerationService(claude_service, semantic_retriever)
+
+
+def get_flashcard_service(
+    claude_service: ClaudeService = Depends(get_claude_service),
+    semantic_retriever: SemanticRetriever = Depends(get_semantic_retriever),
+) -> FlashcardGenerationService:
+    """Dependency to get flashcard generation service."""
+    return FlashcardGenerationService(claude_service, semantic_retriever)
 
 
 @router.post(
@@ -289,4 +300,101 @@ async def get_lesson(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": "retrieval_failed", "message": "Failed to retrieve lesson"},
+        )
+
+
+@router.post(
+    "/generate-flashcards",
+    response_model=FlashcardSetResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid request"},
+        404: {"model": ErrorResponse, "description": "Module not found"},
+        500: {"model": ErrorResponse, "description": "Generation failed"},
+    },
+)
+async def generate_flashcards(
+    request: FlashcardGenerationRequest,
+    flashcard_service: FlashcardGenerationService = Depends(get_flashcard_service),
+    session: AsyncSession = Depends(get_db),
+) -> FlashcardSetResponse:
+    """
+    Generate or retrieve cached bilingual flashcard set.
+
+    This endpoint generates 15-30 bilingual flashcards using RAG (Retrieval-Augmented Generation)
+    and Claude API. It performs the following steps:
+
+    1. **Cache Check**: First checks if flashcard set already exists in cache
+    2. **RAG Retrieval**: Searches top-12 relevant chunks from vector store
+    3. **Content Generation**: Uses Claude API with specialized flashcard prompts
+    4. **Caching**: Stores generated content for future requests
+
+    Each flashcard includes:
+    - **term**: Key concept or terminology
+    - **definition_fr**: French definition (50-100 words)
+    - **definition_en**: English definition (50-100 words)
+    - **example_aof**: Concrete West African example (1-2 sentences)
+    - **formula**: LaTeX mathematical formula if applicable
+    - **sources_cited**: Source references from textbooks
+
+    **Content Types Supported:**
+    - Public health terminology and definitions
+    - Epidemiological concepts and methods
+    - Biostatistics formulas (Triola textbook)
+    - Health system indicators (WHO, DHIS2)
+    - Country-specific examples from ECOWAS region
+
+    **LaTeX Support**: Mathematical formulas are rendered using LaTeX syntax.
+    Example: `$\\frac{\\text{cases}}{\\text{population}} \\times 100,000$`
+
+    **Rate Limiting**: Content generation is subject to API limits.
+    Cached results are returned instantly.
+    """
+    try:
+        logger.info(
+            "Flashcard generation requested",
+            module_id=str(request.module_id),
+            language=request.language,
+            country=request.country,
+            level=request.level,
+        )
+
+        flashcard_response = await flashcard_service.get_or_generate_flashcard_set(
+            module_id=request.module_id,
+            language=request.language,
+            country=request.country,
+            level=request.level,
+            session=session,
+        )
+
+        logger.info(
+            "Flashcard generation completed",
+            flashcard_set_id=str(flashcard_response.id),
+            flashcard_count=len(flashcard_response.flashcards),
+            cached=flashcard_response.cached,
+        )
+
+        return flashcard_response
+
+    except ValueError as e:
+        logger.warning("Invalid flashcard generation request", error=str(e))
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "module_not_found", "message": str(e)},
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": "invalid_request", "message": str(e)},
+            )
+
+    except Exception as e:
+        logger.error("Flashcard generation failed", error=str(e), exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "generation_failed",
+                "message": "Une erreur interne s'est produite lors de la génération des flashcards",
+            },
         )

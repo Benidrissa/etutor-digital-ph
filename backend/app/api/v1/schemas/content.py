@@ -106,6 +106,89 @@ class StreamingEvent(BaseModel):
         return f"event: {self.event}\ndata: {data_str}\n\n"
 
 
+class FlashcardGenerationRequest(BaseModel):
+    """Request schema for flashcard generation."""
+
+    module_id: UUID = Field(..., description="UUID of the target module")
+    language: Literal["fr", "en"] = Field(..., description="Content language")
+    country: str = Field(..., description="User's country code (ECOWAS)")
+    level: int = Field(..., ge=1, le=4, description="User's competency level (1-4)")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "module_id": "550e8400-e29b-41d4-a716-446655440000",
+                "language": "fr",
+                "country": "SN",
+                "level": 2,
+            }
+        }
+    }
+
+
+class FlashcardContent(BaseModel):
+    """Individual flashcard content structure."""
+
+    term: str = Field(..., description="Key term or concept")
+    definition_fr: str = Field(..., description="French definition (50-100 words)")
+    definition_en: str = Field(..., description="English definition (50-100 words)")
+    example_aof: str = Field(..., description="West African example (1-2 sentences)")
+    formula: str | None = Field(None, description="LaTeX formula if applicable")
+    sources_cited: list[str] = Field(..., description="Source citations")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "term": "Surveillance épidémiologique",
+                "definition_fr": "Collecte systématique et continue de données sur l'état de santé des populations pour guider les actions de santé publique.",
+                "definition_en": "Systematic and continuous collection of data on population health status to guide public health actions.",
+                "example_aof": "Au Sénégal, le système de surveillance du paludisme collecte des données hebdomadaires dans tous les centres de santé.",
+                "formula": None,
+                "sources_cited": ["Donaldson Ch.4, p.67"],
+            }
+        }
+    }
+
+
+class FlashcardSetResponse(BaseModel):
+    """Response schema for generated flashcard set."""
+
+    id: UUID = Field(default_factory=uuid.uuid4, description="Generated content ID")
+    module_id: UUID = Field(..., description="Module ID")
+    content_type: Literal["flashcard"] = Field(default="flashcard", description="Content type")
+    language: Literal["fr", "en"] = Field(..., description="Content language")
+    level: int = Field(..., description="Target competency level")
+    country_context: str = Field(..., description="Country context")
+    flashcards: list[FlashcardContent] = Field(..., description="List of flashcards (15-30)")
+    generated_at: str = Field(..., description="Generation timestamp (ISO format)")
+    cached: bool = Field(default=False, description="Whether content was retrieved from cache")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "id": "550e8400-e29b-41d4-a716-446655440002",
+                "module_id": "550e8400-e29b-41d4-a716-446655440000",
+                "content_type": "flashcard",
+                "language": "fr",
+                "level": 2,
+                "country_context": "SN",
+                "flashcards": [
+                    {
+                        "term": "Surveillance épidémiologique",
+                        "definition_fr": "Collecte systématique et continue de données...",
+                        "definition_en": "Systematic and continuous collection of data...",
+                        "example_aof": "Au Sénégal, le système de surveillance...",
+                        "formula": None,
+                        "sources_cited": ["Donaldson Ch.4, p.67"],
+                    }
+                ],
+                "generated_at": "2026-03-31T02:45:00Z",
+                "cached": False,
+            }
+        }
+    }
+
+
 class ErrorResponse(BaseModel):
     """Error response schema."""
 
