@@ -5,6 +5,12 @@
     "offline": "You are offline — cached content available",
     "error": "An error occurred"
   },
+  "PWA": {
+    "installTitle": "Install App",
+    "installDescription": "Add SantePublique AOF to your home screen for quick access and an optimized experience.",
+    "install": "Install",
+    "later": "Later"
+  },
   "Navigation": {
     "dashboard": "Dashboard",
     "modules": "Modules",

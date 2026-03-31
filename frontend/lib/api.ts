@@ -38,6 +38,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     },
   });
 }
+<<<<<<< HEAD
 
 export interface UpcomingReviewSession {
   date: string;
@@ -58,6 +59,8 @@ export async function getUpcomingReviews(): Promise<UpcomingReviewsResponse> {
 }
 <<<<<<< HEAD
 =======
+=======
+>>>>>>> b699694 (feat(pwa): implement PWA manifest and install prompt (#43))
 
 // Quiz API Types
 export interface QuizQuestion {
@@ -219,4 +222,3 @@ export async function submitSummativeAssessmentAttempt(
     body: JSON.stringify(request),
   });
 }
->>>>>>> 3d0e726 (feat: implement summative assessment with 20 questions and 80% pass gate)

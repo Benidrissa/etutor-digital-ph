@@ -5,6 +5,12 @@
     "offline": "Vous êtes hors ligne — contenu en cache disponible",
     "error": "Une erreur est survenue"
   },
+  "PWA": {
+    "installTitle": "Installer l'application",
+    "installDescription": "Ajoutez SantePublique AOF à votre écran d'accueil pour un accès rapide et une expérience optimisée.",
+    "install": "Installer",
+    "later": "Plus tard"
+  },
   "Navigation": {
     "dashboard": "Tableau de bord",
     "modules": "Modules",
