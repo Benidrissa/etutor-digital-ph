@@ -1,0 +1,280 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - navigation "Desktop navigation" [ref=e4]:
+        - generic [ref=e5]:
+          - generic [ref=e6]: SantePublique AOF
+          - button "Collapse sidebar" [ref=e7]:
+            - img
+        - navigation [ref=e8]:
+          - link "Navigate to your learning dashboard" [ref=e9] [cursor=pointer]:
+            - /url: /dashboard
+            - img [ref=e10]
+            - generic [ref=e13]: Dashboard
+          - link "Browse available learning modules" [ref=e14] [cursor=pointer]:
+            - /url: /modules
+            - img [ref=e15]
+            - generic [ref=e17]: Modules
+          - link "Review flashcards and spaced repetition" [ref=e18] [cursor=pointer]:
+            - /url: /flashcards
+            - img [ref=e19]
+            - generic [ref=e21]: Flashcards
+          - link "Chat with your AI learning tutor" [ref=e22] [cursor=pointer]:
+            - /url: /tutor
+            - img [ref=e23]
+            - generic [ref=e26]: AI Tutor
+          - link "View and edit your profile" [ref=e27] [cursor=pointer]:
+            - /url: /profile
+            - img [ref=e28]
+            - generic [ref=e31]: Profile
+          - link "Manage your account and preferences" [ref=e32] [cursor=pointer]:
+            - /url: /settings
+            - img [ref=e33]
+            - generic [ref=e36]: Settings
+        - button "Switch to French" [ref=e39]:
+          - img [ref=e40]: 🇬🇧
+          - generic [ref=e41]: EN
+      - main [ref=e43]:
+        - generic [ref=e44]:
+          - heading "Dashboard" [level=1] [ref=e45]
+          - paragraph [ref=e46]: Your public health learning platform
+          - generic [ref=e48]:
+            - generic [ref=e50]: Sign in to see your progress
+            - generic [ref=e51]:
+              - paragraph [ref=e52]: Track your learning stats, streak, and upcoming reviews.
+              - link "Sign In" [ref=e53] [cursor=pointer]:
+                - /url: /login
+                - button "Sign In" [ref=e54]
+          - generic [ref=e56]:
+            - generic [ref=e58]:
+              - img [ref=e59]
+              - text: Upcoming Reviews
+            - generic [ref=e62]:
+              - img [ref=e63]
+              - paragraph [ref=e65]: Error loading reviews
+          - generic [ref=e67]:
+            - generic [ref=e68]:
+              - generic [ref=e70]:
+                - generic [ref=e71]:
+                  - 'heading "Level 1: Beginner" [level=3] [ref=e72]'
+                  - paragraph [ref=e73]: Foundations, health data intro, West African health systems
+                - generic [ref=e74]:
+                  - generic [ref=e75]: 0/3 modules
+                  - generic [ref=e79]: 25%
+              - generic [ref=e80]:
+                - generic [ref=e81] [cursor=pointer]:
+                  - generic [ref=e82]:
+                    - generic [ref=e83]:
+                      - generic [ref=e84]:
+                        - generic [ref=e85]: "1"
+                        - img [ref=e86]
+                      - generic [ref=e89]: 20 hours
+                    - generic [ref=e90]: Foundations of Public Health
+                  - generic [ref=e92]:
+                    - paragraph [ref=e96]: 75% completed
+                    - button "Continue" [ref=e97]
+                - generic [ref=e98] [cursor=pointer]:
+                  - generic [ref=e99]:
+                    - generic [ref=e100]:
+                      - generic [ref=e101]:
+                        - generic [ref=e102]: "2"
+                        - img [ref=e103]
+                      - generic [ref=e106]: 20 hours
+                    - generic [ref=e107]: Health Data Fundamentals
+                  - generic [ref=e109]:
+                    - paragraph [ref=e110]: Prerequisites required
+                    - button "Start" [disabled]
+                - generic [ref=e111] [cursor=pointer]:
+                  - generic [ref=e112]:
+                    - generic [ref=e113]:
+                      - generic [ref=e114]:
+                        - generic [ref=e115]: "3"
+                        - img [ref=e116]
+                      - generic [ref=e119]: 20 hours
+                    - generic [ref=e120]: West African Health Systems
+                  - generic [ref=e122]:
+                    - paragraph [ref=e123]: Prerequisites required
+                    - button "Start" [disabled]
+            - generic [ref=e124]:
+              - generic [ref=e126]:
+                - generic [ref=e127]:
+                  - 'heading "Level 2: Intermediate" [level=3] [ref=e128]'
+                  - paragraph [ref=e129]: Epidemiology, surveillance, DHIS2, biostatistics
+                - generic [ref=e130]:
+                  - generic [ref=e131]: 0/4 modules
+                  - generic [ref=e134]: 0%
+              - generic [ref=e135]:
+                - generic [ref=e136] [cursor=pointer]:
+                  - generic [ref=e137]:
+                    - generic [ref=e138]:
+                      - generic [ref=e139]:
+                        - generic [ref=e140]: "4"
+                        - img [ref=e141]
+                      - generic [ref=e144]: 25 hours
+                    - generic [ref=e145]: Epidemiology Principles
+                  - generic [ref=e147]:
+                    - paragraph [ref=e148]: Prerequisites required
+                    - button "Start" [disabled]
+                - generic [ref=e149] [cursor=pointer]:
+                  - generic [ref=e150]:
+                    - generic [ref=e151]:
+                      - generic [ref=e152]:
+                        - generic [ref=e153]: "5"
+                        - img [ref=e154]
+                      - generic [ref=e157]: 20 hours
+                    - generic [ref=e158]: Disease Surveillance
+                  - generic [ref=e160]:
+                    - paragraph [ref=e161]: Prerequisites required
+                    - button "Start" [disabled]
+                - generic [ref=e162] [cursor=pointer]:
+                  - generic [ref=e163]:
+                    - generic [ref=e164]:
+                      - generic [ref=e165]:
+                        - generic [ref=e166]: "6"
+                        - img [ref=e167]
+                      - generic [ref=e170]: 25 hours
+                    - generic [ref=e171]: DHIS2 and Health Information Systems
+                  - generic [ref=e173]:
+                    - paragraph [ref=e174]: Prerequisites required
+                    - button "Start" [disabled]
+                - generic [ref=e175] [cursor=pointer]:
+                  - generic [ref=e176]:
+                    - generic [ref=e177]:
+                      - generic [ref=e178]:
+                        - generic [ref=e179]: "7"
+                        - img [ref=e180]
+                      - generic [ref=e183]: 20 hours
+                    - generic [ref=e184]: Biostatistics Fundamentals
+                  - generic [ref=e186]:
+                    - paragraph [ref=e187]: Prerequisites required
+                    - button "Start" [disabled]
+            - generic [ref=e188]:
+              - generic [ref=e190]:
+                - generic [ref=e191]:
+                  - 'heading "Level 3: Advanced" [level=3] [ref=e192]'
+                  - paragraph [ref=e193]: Advanced stats/epi, health programming, data viz
+                - generic [ref=e194]:
+                  - generic [ref=e195]: 0/5 modules
+                  - generic [ref=e198]: 0%
+              - generic [ref=e199]:
+                - generic [ref=e200] [cursor=pointer]:
+                  - generic [ref=e201]:
+                    - generic [ref=e202]:
+                      - generic [ref=e203]:
+                        - generic [ref=e204]: "8"
+                        - img [ref=e205]
+                      - generic [ref=e208]: 25 hours
+                    - generic [ref=e209]: Advanced Statistics
+                  - generic [ref=e211]:
+                    - paragraph [ref=e212]: Prerequisites required
+                    - button "Start" [disabled]
+                - generic [ref=e213] [cursor=pointer]:
+                  - generic [ref=e214]:
+                    - generic [ref=e215]:
+                      - generic [ref=e216]:
+                        - generic [ref=e217]: "9"
+                        - img [ref=e218]
+                      - generic [ref=e221]: 25 hours
+                    - generic [ref=e222]: Advanced Epidemiology
+                  - generic [ref=e224]:
+                    - paragraph [ref=e225]: Prerequisites required
+                    - button "Start" [disabled]
+                - generic [ref=e226] [cursor=pointer]:
+                  - generic [ref=e227]:
+                    - generic [ref=e228]:
+                      - generic [ref=e229]:
+                        - generic [ref=e230]: "10"
+                        - img [ref=e231]
+                      - generic [ref=e234]: 20 hours
+                    - generic [ref=e235]: Health Program Development
+                  - generic [ref=e237]:
+                    - paragraph [ref=e238]: Prerequisites required
+                    - button "Start" [disabled]
+                - generic [ref=e239] [cursor=pointer]:
+                  - generic [ref=e240]:
+                    - generic [ref=e241]:
+                      - generic [ref=e242]:
+                        - generic [ref=e243]: "11"
+                        - img [ref=e244]
+                      - generic [ref=e247]: 15 hours
+                    - generic [ref=e248]: Data Visualization
+                  - generic [ref=e250]:
+                    - paragraph [ref=e251]: Prerequisites required
+                    - button "Start" [disabled]
+                - generic [ref=e252] [cursor=pointer]:
+                  - generic [ref=e253]:
+                    - generic [ref=e254]:
+                      - generic [ref=e255]:
+                        - generic [ref=e256]: "12"
+                        - img [ref=e257]
+                      - generic [ref=e260]: 15 hours
+                    - generic [ref=e261]: Health Economics
+                  - generic [ref=e263]:
+                    - paragraph [ref=e264]: Prerequisites required
+                    - button "Start" [disabled]
+            - generic [ref=e265]:
+              - generic [ref=e267]:
+                - generic [ref=e268]:
+                  - 'heading "Level 4: Expert" [level=3] [ref=e269]'
+                  - paragraph [ref=e270]: Policy, health systems strengthening, research capstone
+                - generic [ref=e271]:
+                  - generic [ref=e272]: 0/3 modules
+                  - generic [ref=e275]: 0%
+              - generic [ref=e276]:
+                - generic [ref=e277] [cursor=pointer]:
+                  - generic [ref=e278]:
+                    - generic [ref=e279]:
+                      - generic [ref=e280]:
+                        - generic [ref=e281]: "13"
+                        - img [ref=e282]
+                      - generic [ref=e285]: 25 hours
+                    - generic [ref=e286]: Health Policy and Governance
+                  - generic [ref=e288]:
+                    - paragraph [ref=e289]: Prerequisites required
+                    - button "Start" [disabled]
+                - generic [ref=e290] [cursor=pointer]:
+                  - generic [ref=e291]:
+                    - generic [ref=e292]:
+                      - generic [ref=e293]:
+                        - generic [ref=e294]: "14"
+                        - img [ref=e295]
+                      - generic [ref=e298]: 25 hours
+                    - generic [ref=e299]: Health Systems Strengthening
+                  - generic [ref=e301]:
+                    - paragraph [ref=e302]: Prerequisites required
+                    - button "Start" [disabled]
+                - generic [ref=e303] [cursor=pointer]:
+                  - generic [ref=e304]:
+                    - generic [ref=e305]:
+                      - generic [ref=e306]:
+                        - generic [ref=e307]: "15"
+                        - img [ref=e308]
+                      - generic [ref=e311]: 20 hours
+                    - generic [ref=e312]: Research Capstone Project
+                  - generic [ref=e314]:
+                    - paragraph [ref=e315]: Prerequisites required
+                    - button "Start" [disabled]
+            - generic [ref=e316]:
+              - heading "Overall Progress" [level=3] [ref=e317]
+              - generic [ref=e318]:
+                - generic [ref=e319]:
+                  - generic [ref=e320]: "Level 1: Beginner"
+                  - generic [ref=e321]: 0/3 modules completed
+                - generic [ref=e322]:
+                  - generic [ref=e323]: "Level 2: Intermediate"
+                  - generic [ref=e324]: 0/4 modules completed
+                - generic [ref=e325]:
+                  - generic [ref=e326]: "Level 3: Advanced"
+                  - generic [ref=e327]: 0/5 modules completed
+                - generic [ref=e328]:
+                  - generic [ref=e329]: "Level 4: Expert"
+                  - generic [ref=e330]: 0/3 modules completed
+              - generic [ref=e331]: 320 total hours • Estimated 6-12 months to complete
+    - button "Open AI Tutor" [ref=e332]:
+      - generic [ref=e333]:
+        - img
+  - alert [ref=e334]
+```
