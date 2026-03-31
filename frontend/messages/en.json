@@ -300,5 +300,68 @@
     "error": "Error loading flashcards",
     "tryAgain": "Try again",
     "offline": "You're offline - showing cached cards"
+  },
+  "Onboarding": {
+    "welcome": "Welcome to SantePublique AOF",
+    "subtitle": "Let's set up your personalized learning experience",
+    "step": "Step {current} of {total}",
+    "next": "Next",
+    "previous": "Previous",
+    "complete": "Complete Setup",
+    "step1": {
+      "title": "Choose Your Language",
+      "description": "Select your preferred language for learning",
+      "french": "Français",
+      "english": "English"
+    },
+    "step2": {
+      "title": "Select Your Country",
+      "description": "Choose your ECOWAS country for localized content",
+      "selectCountry": "Select your country",
+      "countries": {
+        "benin": "Benin",
+        "burkina-faso": "Burkina Faso",
+        "cabo-verde": "Cabo Verde",
+        "cote-divoire": "Côte d'Ivoire",
+        "gambia": "Gambia",
+        "ghana": "Ghana",
+        "guinea": "Guinea",
+        "guinea-bissau": "Guinea-Bissau",
+        "liberia": "Liberia",
+        "mali": "Mali",
+        "niger": "Niger",
+        "nigeria": "Nigeria",
+        "senegal": "Senegal",
+        "sierra-leone": "Sierra Leone",
+        "togo": "Togo"
+      }
+    },
+    "step3": {
+      "title": "Professional Role",
+      "description": "Tell us about your professional background",
+      "selectRole": "Select your role",
+      "roles": {
+        "medecin": "Physician (Médecin)",
+        "infirmier": "Nurse (Infirmier)",
+        "data-analyst": "Data Analyst",
+        "etudiant": "Student (Étudiant)",
+        "cadre": "Manager/Administrator (Cadre)",
+        "autre": "Other (Autre)"
+      }
+    },
+    "step4": {
+      "title": "Skill Level",
+      "description": "How would you assess your public health knowledge?",
+      "selectLevel": "Select your level",
+      "levels": {
+        "debutant": "Beginner (Débutant)",
+        "intermediaire": "Intermediate (Intermédiaire)",
+        "avance": "Advanced (Avancé)"
+      }
+    },
+    "completing": "Completing setup...",
+    "success": "Setup complete!",
+    "error": "Setup failed. Please try again.",
+    "redirecting": "Redirecting to diagnostic assessment..."
   }
 }

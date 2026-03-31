@@ -300,5 +300,68 @@
     "error": "Erreur lors du chargement des flashcards",
     "tryAgain": "Réessayer",
     "offline": "Vous êtes hors ligne - affichage des cartes en cache"
+  },
+  "Onboarding": {
+    "welcome": "Bienvenue sur SantePublique AOF",
+    "subtitle": "Configurons votre expérience d'apprentissage personnalisée",
+    "step": "Étape {current} de {total}",
+    "next": "Suivant",
+    "previous": "Précédent",
+    "complete": "Terminer la Configuration",
+    "step1": {
+      "title": "Choisissez Votre Langue",
+      "description": "Sélectionnez votre langue préférée pour l'apprentissage",
+      "french": "Français",
+      "english": "English"
+    },
+    "step2": {
+      "title": "Sélectionnez Votre Pays",
+      "description": "Choisissez votre pays CEDEAO pour un contenu localisé",
+      "selectCountry": "Sélectionnez votre pays",
+      "countries": {
+        "benin": "Bénin",
+        "burkina-faso": "Burkina Faso",
+        "cabo-verde": "Cabo Verde",
+        "cote-divoire": "Côte d'Ivoire",
+        "gambia": "Gambie",
+        "ghana": "Ghana",
+        "guinea": "Guinée",
+        "guinea-bissau": "Guinée-Bissau",
+        "liberia": "Libéria",
+        "mali": "Mali",
+        "niger": "Niger",
+        "nigeria": "Nigeria",
+        "senegal": "Sénégal",
+        "sierra-leone": "Sierra Leone",
+        "togo": "Togo"
+      }
+    },
+    "step3": {
+      "title": "Rôle Professionnel",
+      "description": "Parlez-nous de votre parcours professionnel",
+      "selectRole": "Sélectionnez votre rôle",
+      "roles": {
+        "medecin": "Médecin",
+        "infirmier": "Infirmier",
+        "data-analyst": "Analyste de données",
+        "etudiant": "Étudiant",
+        "cadre": "Cadre/Administrateur",
+        "autre": "Autre"
+      }
+    },
+    "step4": {
+      "title": "Niveau de Compétence",
+      "description": "Comment évalueriez-vous vos connaissances en santé publique ?",
+      "selectLevel": "Sélectionnez votre niveau",
+      "levels": {
+        "debutant": "Débutant",
+        "intermediaire": "Intermédiaire",
+        "avance": "Avancé"
+      }
+    },
+    "completing": "Finalisation de la configuration...",
+    "success": "Configuration terminée !",
+    "error": "Échec de la configuration. Veuillez réessayer.",
+    "redirecting": "Redirection vers l'évaluation diagnostique..."
   }
 }
