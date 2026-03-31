@@ -1,0 +1,69 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [active]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e6]:
+          - navigation [ref=e7]:
+            - button "previous" [disabled] [ref=e8]:
+              - img "previous" [ref=e9]
+            - generic [ref=e11]:
+              - generic [ref=e12]: 1/
+              - text: "1"
+            - button "next" [disabled] [ref=e13]:
+              - img "next" [ref=e14]
+          - img
+        - generic [ref=e16]:
+          - generic [ref=e17]:
+            - img [ref=e18]
+            - generic "Latest available version is detected (16.2.1)." [ref=e20]: Next.js 16.2.1
+            - generic [ref=e21]: Turbopack
+          - img
+      - dialog "Runtime Error" [ref=e23]:
+        - generic [ref=e26]:
+          - generic [ref=e27]:
+            - generic [ref=e28]:
+              - generic [ref=e29]:
+                - generic [ref=e30]: Runtime Error
+                - generic [ref=e31]: Server
+              - generic [ref=e32]:
+                - button "Copy Error Info" [ref=e33] [cursor=pointer]:
+                  - img [ref=e34]
+                - button "No related documentation found" [disabled] [ref=e36]:
+                  - img [ref=e37]
+                - button "Attach Node.js inspector" [ref=e39] [cursor=pointer]:
+                  - img [ref=e40]
+            - generic [ref=e49]: "Event handlers cannot be passed to Client Component props. <... moduleId=\"M01\" unitId=\"M01-U01\" language=... country=... level=... onComplete=... onError={function onError}> ^^^^^^^^^^^^^^^^^^ If you need interactivity, consider converting part of this to a Client Component."
+          - generic [ref=e51]:
+            - generic [ref=e52]:
+              - paragraph [ref=e53]:
+                - text: Call Stack
+                - generic [ref=e54]: "6"
+              - button "Show 5 ignore-listed frame(s)" [ref=e55] [cursor=pointer]:
+                - text: Show 5 ignore-listed frame(s)
+                - img [ref=e56]
+            - generic [ref=e58]:
+              - generic [ref=e59]: stringify
+              - text: <anonymous>
+        - generic [ref=e60]: "1"
+        - generic [ref=e61]: "2"
+    - generic [ref=e66] [cursor=pointer]:
+      - button "Open Next.js Dev Tools" [ref=e67]:
+        - img [ref=e68]
+      - generic [ref=e71]:
+        - button "Open issues overlay" [ref=e72]:
+          - generic [ref=e73]:
+            - generic [ref=e74]: "0"
+            - generic [ref=e75]: "1"
+          - generic [ref=e76]: Issue
+        - button "Collapse issues badge" [ref=e77]:
+          - img [ref=e78]
+  - generic [ref=e81]:
+    - img [ref=e82]
+    - heading "This page couldn’t load" [level=1] [ref=e84]
+    - paragraph [ref=e85]: A server error occurred. Reload to try again.
+    - button "Reload" [ref=e88] [cursor=pointer]
+  - paragraph [ref=e89]: ERROR 3815810790
+```

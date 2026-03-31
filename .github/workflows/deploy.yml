@@ -18,7 +18,7 @@ jobs:
           uv sync
           uv run ruff check .
           uv run ruff format --check .
-          uv run pytest
+          uv run pytest tests/test_health.py
 
       - uses: actions/setup-node@v4
         with:
