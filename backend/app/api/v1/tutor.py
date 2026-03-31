@@ -78,10 +78,12 @@ async def chat_with_tutor(
                 yield f"data: {json.dumps(chunk)}\n\n"
 
         except Exception as e:
-            logger.error("Error streaming tutor response", error=str(e), user_id=str(current_user.id))
+            logger.error(
+                "Error streaming tutor response", error=str(e), user_id=str(current_user.id)
+            )
             error_chunk = {
                 "type": "error",
-                "data": {"message": "An error occurred. Please try again."}
+                "data": {"message": "An error occurred. Please try again."},
             }
             yield f"data: {json.dumps(error_chunk)}\n\n"
 
@@ -92,7 +94,7 @@ async def chat_with_tutor(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # Disable nginx buffering
-        }
+        },
     )
 
 
@@ -130,10 +132,7 @@ async def get_conversation(
     )
 
     if not conversation:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Conversation not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
 
     return TutorConversationResponse(**conversation)
 

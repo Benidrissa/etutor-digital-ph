@@ -16,9 +16,7 @@ class TutorContext:
     context_id: str | None = None
 
 
-def get_socratic_system_prompt(
-    context: TutorContext, rag_chunks: list[dict[str, Any]]
-) -> str:
+def get_socratic_system_prompt(context: TutorContext, rag_chunks: list[dict[str, Any]]) -> str:
     """
     Generate the Socratic system prompt for the AI tutor.
 
@@ -240,39 +238,45 @@ def get_activity_suggestions(
     suggestions = []
 
     # Base suggestions for all contexts
-    suggestions.extend([
-        {
-            "type": "flashcards",
-            "description": f"Créer des flashcards pour mémoriser les termes clés de: {topic}",
-            "action": "study_flashcards"
-        },
-        {
-            "type": "quiz",
-            "description": f"Passer un quiz pour évaluer ta compréhension de: {topic}",
-            "action": "take_quiz"
-        }
-    ])
+    suggestions.extend(
+        [
+            {
+                "type": "flashcards",
+                "description": f"Créer des flashcards pour mémoriser les termes clés de: {topic}",
+                "action": "study_flashcards",
+            },
+            {
+                "type": "quiz",
+                "description": f"Passer un quiz pour évaluer ta compréhension de: {topic}",
+                "action": "take_quiz",
+            },
+        ]
+    )
 
     # Level-specific suggestions
     if user_level >= 2:
-        suggestions.append({
-            "type": "case_study",
-            "description": f"Analyser une étude de cas pratique sur: {topic}",
-            "action": "study_case"
-        })
+        suggestions.append(
+            {
+                "type": "case_study",
+                "description": f"Analyser une étude de cas pratique sur: {topic}",
+                "action": "study_case",
+            }
+        )
 
     if user_level >= 3:
-        suggestions.extend([
-            {
-                "type": "exercise",
-                "description": f"Pratiquer avec des données réelles sur: {topic}",
-                "action": "practice_exercise"
-            },
-            {
-                "type": "simulation",
-                "description": f"Utiliser le simulateur Python/R pour: {topic}",
-                "action": "open_sandbox"
-            }
-        ])
+        suggestions.extend(
+            [
+                {
+                    "type": "exercise",
+                    "description": f"Pratiquer avec des données réelles sur: {topic}",
+                    "action": "practice_exercise",
+                },
+                {
+                    "type": "simulation",
+                    "description": f"Utiliser le simulateur Python/R pour: {topic}",
+                    "action": "open_sandbox",
+                },
+            ]
+        )
 
     return suggestions[:3]  # Limite à 3 suggestions maximum

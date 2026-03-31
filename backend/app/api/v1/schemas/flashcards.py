@@ -1,8 +1,7 @@
 """Schemas for flashcard review endpoints."""
 
-import uuid
 from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -10,7 +9,7 @@ from pydantic import BaseModel, Field
 
 class FlashcardData(BaseModel):
     """Individual flashcard data for review session."""
-    
+
     id: str = Field(..., description="Unique card identifier (content_id_index)")
     card_id: UUID = Field(..., description="Generated content ID")
     card_index: int = Field(..., description="Index within flashcard set")
@@ -18,8 +17,8 @@ class FlashcardData(BaseModel):
     definition_fr: str = Field(..., description="French definition")
     definition_en: str = Field(..., description="English definition")
     example_aof: str = Field(..., description="West African example")
-    formula: Optional[str] = Field(None, description="LaTeX formula if applicable")
-    sources_cited: List[str] = Field(..., description="Source citations")
+    formula: str | None = Field(None, description="LaTeX formula if applicable")
+    sources_cited: list[str] = Field(..., description="Source citations")
     review_id: UUID = Field(..., description="Review record ID")
     due_date: str = Field(..., description="Due date (ISO format)")
     stability: float = Field(..., description="FSRS stability parameter")
@@ -40,7 +39,7 @@ class FlashcardData(BaseModel):
                 "review_id": "550e8400-e29b-41d4-a716-446655440001",
                 "due_date": "2026-03-31T09:00:00Z",
                 "stability": 2.5,
-                "difficulty": 4.2
+                "difficulty": 4.2,
             }
         }
     }
@@ -48,9 +47,9 @@ class FlashcardData(BaseModel):
 
 class FlashcardDueResponse(BaseModel):
     """Response for due flashcards query."""
-    
+
     user_id: UUID = Field(..., description="User ID")
-    cards: List[FlashcardData] = Field(..., description="Due flashcards")
+    cards: list[FlashcardData] = Field(..., description="Due flashcards")
     total_due: int = Field(..., description="Total cards due for review")
     session_target: int = Field(..., description="Recommended session size")
 
@@ -72,11 +71,11 @@ class FlashcardDueResponse(BaseModel):
                         "review_id": "550e8400-e29b-41d4-a716-446655440001",
                         "due_date": "2026-03-31T09:00:00Z",
                         "stability": 2.5,
-                        "difficulty": 4.2
+                        "difficulty": 4.2,
                     }
                 ],
                 "total_due": 15,
-                "session_target": 15
+                "session_target": 15,
             }
         }
     }
@@ -84,18 +83,14 @@ class FlashcardDueResponse(BaseModel):
 
 class FlashcardReviewRequest(BaseModel):
     """Request to submit a flashcard review."""
-    
+
     review_id: UUID = Field(..., description="Review record ID")
     card_id: UUID = Field(..., description="Generated content ID")
     card_index: int = Field(..., description="Index within flashcard set")
     rating: Literal["again", "hard", "good", "easy"] = Field(
-        ..., 
-        description="FSRS rating: again=1, hard=2, good=3, easy=4"
+        ..., description="FSRS rating: again=1, hard=2, good=3, easy=4"
     )
-    reviewed_at: Optional[datetime] = Field(
-        None,
-        description="Review timestamp (for offline sync)"
-    )
+    reviewed_at: datetime | None = Field(None, description="Review timestamp (for offline sync)")
 
     model_config = {
         "json_schema_extra": {
@@ -104,7 +99,7 @@ class FlashcardReviewRequest(BaseModel):
                 "card_id": "550e8400-e29b-41d4-a716-446655440000",
                 "card_index": 0,
                 "rating": "good",
-                "reviewed_at": "2026-03-31T10:30:00Z"
+                "reviewed_at": "2026-03-31T10:30:00Z",
             }
         }
     }
@@ -112,7 +107,7 @@ class FlashcardReviewRequest(BaseModel):
 
 class FlashcardReviewResponse(BaseModel):
     """Response after submitting a flashcard review."""
-    
+
     review_id: UUID = Field(..., description="Review record ID")
     card_id: UUID = Field(..., description="Generated content ID")
     rating: str = Field(..., description="Submitted rating")
@@ -130,7 +125,7 @@ class FlashcardReviewResponse(BaseModel):
                 "next_review_date": "2026-04-02T09:00:00Z",
                 "stability": 3.0,
                 "difficulty": 4.1,
-                "show_again": False
+                "show_again": False,
             }
         }
     }
@@ -138,12 +133,11 @@ class FlashcardReviewResponse(BaseModel):
 
 class FlashcardSessionRequest(BaseModel):
     """Request to record a completed flashcard session."""
-    
+
     cards_reviewed: int = Field(..., description="Number of cards reviewed")
     session_duration_seconds: int = Field(..., description="Session duration in seconds")
-    review_ratings: List[Literal["again", "hard", "good", "easy"]] = Field(
-        ...,
-        description="List of all ratings in session"
+    review_ratings: list[Literal["again", "hard", "good", "easy"]] = Field(
+        ..., description="List of all ratings in session"
     )
 
     model_config = {
@@ -151,7 +145,7 @@ class FlashcardSessionRequest(BaseModel):
             "example": {
                 "cards_reviewed": 15,
                 "session_duration_seconds": 900,
-                "review_ratings": ["good", "easy", "hard", "good", "again", "good"]
+                "review_ratings": ["good", "easy", "hard", "good", "again", "good"],
             }
         }
     }
@@ -159,13 +153,13 @@ class FlashcardSessionRequest(BaseModel):
 
 class FlashcardSessionResponse(BaseModel):
     """Response after recording a flashcard session."""
-    
+
     session_id: UUID = Field(..., description="Session identifier")
     user_id: UUID = Field(..., description="User ID")
     cards_reviewed: int = Field(..., description="Cards reviewed in session")
     session_duration_seconds: int = Field(..., description="Session duration")
     accuracy_percentage: float = Field(..., description="Percentage of good/easy ratings")
-    rating_distribution: Dict[str, int] = Field(..., description="Count by rating type")
+    rating_distribution: dict[str, int] = Field(..., description="Count by rating type")
     streak_days: int = Field(..., description="Current learning streak")
     daily_target_met: bool = Field(..., description="Whether daily target was achieved")
 
@@ -177,14 +171,9 @@ class FlashcardSessionResponse(BaseModel):
                 "cards_reviewed": 15,
                 "session_duration_seconds": 900,
                 "accuracy_percentage": 80.0,
-                "rating_distribution": {
-                    "again": 1,
-                    "hard": 2,
-                    "good": 8,
-                    "easy": 4
-                },
+                "rating_distribution": {"again": 1, "hard": 2, "good": 8, "easy": 4},
                 "streak_days": 7,
-                "daily_target_met": True
+                "daily_target_met": True,
             }
         }
     }

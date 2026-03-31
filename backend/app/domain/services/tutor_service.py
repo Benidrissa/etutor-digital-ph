@@ -105,9 +105,7 @@ class TutorService:
             )
 
             # Perform RAG retrieval
-            rag_chunks = await self._retrieve_relevant_context(
-                message, user, module_id, session
-            )
+            rag_chunks = await self._retrieve_relevant_context(message, user, module_id, session)
 
             yield {
                 "type": "sources_retrieved",
@@ -150,19 +148,21 @@ class TutorService:
             async with self.anthropic.messages.stream(
                 model="claude-3-5-sonnet-20241022",
                 system=system_prompt,
-                messages=[{"role": msg["role"], "content": msg["content"]} for msg in conversation_history],
+                messages=[
+                    {"role": msg["role"], "content": msg["content"]} for msg in conversation_history
+                ],
                 max_tokens=1000,
                 temperature=0.7,
             ) as stream:
                 async for event in stream:
                     if event.type == "content_block_delta" and hasattr(event.delta, "text"):
-                            chunk_text = event.delta.text
-                            full_response += chunk_text
-                            yield {
-                                "type": "content",
-                                "data": {"text": chunk_text},
-                                "conversation_id": str(conversation.id),
-                            }
+                        chunk_text = event.delta.text
+                        full_response += chunk_text
+                        yield {
+                            "type": "content",
+                            "data": {"text": chunk_text},
+                            "conversation_id": str(conversation.id),
+                        }
 
             # Extract sources and activity suggestions from response
             sources_cited = self._extract_sources_from_response(full_response, chunks_dict)
@@ -279,17 +279,21 @@ class TutorService:
                 except (ValueError, TypeError):
                     pass
 
-            summaries.append({
-                "id": conv.id,
-                "module_id": conv.module_id,
-                "message_count": len(conv.messages),
-                "last_message_at": last_message_at,
-                "preview": preview,
-            })
+            summaries.append(
+                {
+                    "id": conv.id,
+                    "module_id": conv.module_id,
+                    "message_count": len(conv.messages),
+                    "last_message_at": last_message_at,
+                    "preview": preview,
+                }
+            )
 
         return {"conversations": summaries, "total": total}
 
-    async def get_tutor_stats(self, user_id: str | uuid.UUID, session: AsyncSession) -> dict[str, Any]:
+    async def get_tutor_stats(
+        self, user_id: str | uuid.UUID, session: AsyncSession
+    ) -> dict[str, Any]:
         """Get tutor usage statistics for a user."""
         # Convert user_id to UUID if it's a string
         if isinstance(user_id, str):
@@ -412,16 +416,22 @@ class TutorService:
     ) -> list[dict[str, str]]:
         """Prepare conversation history for Claude API."""
         # Limit to last 10 messages to stay within context limits
-        messages = conversation.messages[-10:] if len(conversation.messages) > 10 else conversation.messages
+        messages = (
+            conversation.messages[-10:]
+            if len(conversation.messages) > 10
+            else conversation.messages
+        )
 
         # Convert to Claude format (role and content only)
         claude_messages = []
         for msg in messages:
             if msg.get("role") and msg.get("content"):
-                claude_messages.append({
-                    "role": msg["role"],
-                    "content": msg["content"],
-                })
+                claude_messages.append(
+                    {
+                        "role": msg["role"],
+                        "content": msg["content"],
+                    }
+                )
 
         return claude_messages
 
@@ -471,8 +481,14 @@ class TutorService:
 
         # Look for key health topics
         health_topics = [
-            "surveillance", "épidémiologie", "biostatistics", "paludisme",
-            "santé publique", "vaccination", "nutrition", "hygiène"
+            "surveillance",
+            "épidémiologie",
+            "biostatistics",
+            "paludisme",
+            "santé publique",
+            "vaccination",
+            "nutrition",
+            "hygiène",
         ]
 
         topic = "santé publique"  # default

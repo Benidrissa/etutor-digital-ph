@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
-from app.api.v1.auth import get_current_user
+from app.api.deps_local_auth import get_current_user
 from app.api.v1.schemas.dashboard import DashboardStatsResponse
 from app.domain.models.user import User
 from app.domain.services.dashboard_service import DashboardService

@@ -400,7 +400,7 @@ Rendre la formation en santé publique de niveau expert accessible à tous les p
 **US-132** *(P0 — CRITIQUE)* — En tant que développeur, je veux un schéma de base de données avec migrations.
 - **AC1:** Toutes les tables définies dans la section 9 implémentées
 - **AC2:** Migrations Alembic versionnées
-- **AC3:** Row Level Security activé sur Supabase
+- **AC3:** Row Level Security activé sur PostgreSQL
 - **AC4:** Seeds de données pour les 15 modules
 
 ---
@@ -416,7 +416,7 @@ Rendre la formation en santé publique de niveau expert accessible à tous les p
 | PWA | next-pwa + Workbox | Cache offline, push notifications, installation mobile |
 | State Management | Zustand + TanStack Query | Légèreté, gestion cache serveur |
 | Backend API | FastAPI (Python 3.12) | Performance asynchrone, typage fort, documentation auto |
-| Base de données | PostgreSQL 16 (Supabase) | Open-source, Row Level Security, temps réel |
+| Base de données | PostgreSQL 16 (pgvector) | Open-source, Row Level Security, self-hosted |
 | Cache | Redis 7 | Cache sessions, queue Celery, rate limiting |
 | Auth | Local FastAPI (pyotp + python-jose) | Passwordless TOTP MFA + email magic link recovery, JWT |
 | LLM | Anthropic Claude 3.5 Sonnet | Meilleure performance multilangue FR/EN, RAG |
@@ -740,7 +740,7 @@ tutor_conversations {
 
 ### Mesures techniques
 
-- **Chiffrement au repos :** AES-256 (Supabase)
+- **Chiffrement au repos :** AES-256 (PostgreSQL)
 - **Transit :** HTTPS/TLS 1.3 obligatoire
 - **Logs :** Conservation maximale 90 jours
 - **Analytics :** Pseudonymisation des données (PostHog privacy mode)

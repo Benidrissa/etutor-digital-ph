@@ -2,21 +2,20 @@
 
 import uuid
 from datetime import datetime, timedelta
-from typing import List
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import and_, desc, select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
 from app.api.deps_local_auth import get_current_user
 from app.api.v1.schemas.flashcards import (
+    FlashcardDueResponse,
     FlashcardReviewRequest,
     FlashcardReviewResponse,
     FlashcardSessionRequest,
     FlashcardSessionResponse,
-    FlashcardDueResponse,
 )
 from app.domain.models.content import GeneratedContent
 from app.domain.models.flashcard import FlashcardReview
@@ -41,15 +40,15 @@ async def get_due_flashcards(
 ) -> FlashcardDueResponse:
     """
     Get flashcards due for review for the current user.
-    
+
     Returns flashcards that are scheduled for review today or earlier.
     Used for daily flashcard sessions and spaced repetition.
-    
+
     **FSRS Algorithm:**
     - Cards are scheduled based on previous review performance
     - "Again" cards appear again in same session
     - Other ratings schedule for future dates based on stability/difficulty
-    
+
     **Mobile Optimization:**
     - Returns card data with bilingual content
     - Includes progress information for session UI
@@ -57,42 +56,49 @@ async def get_due_flashcards(
     """
     try:
         logger.info("Fetching due flashcards", user_id=str(current_user.id))
-        
+
         now = datetime.utcnow()
-        
+
         # Get all flashcard reviews due for this user
-        review_query = select(FlashcardReview, GeneratedContent).join(
-            GeneratedContent, FlashcardReview.card_id == GeneratedContent.id
-        ).where(
-            and_(
-                FlashcardReview.user_id == current_user.id,
-                FlashcardReview.next_review <= now,
-                GeneratedContent.content_type == "flashcard"
+        review_query = (
+            select(FlashcardReview, GeneratedContent)
+            .join(GeneratedContent, FlashcardReview.card_id == GeneratedContent.id)
+            .where(
+                and_(
+                    FlashcardReview.user_id == current_user.id,
+                    FlashcardReview.next_review <= now,
+                    GeneratedContent.content_type == "flashcard",
+                )
             )
-        ).order_by(FlashcardReview.next_review.asc())
-        
+            .order_by(FlashcardReview.next_review.asc())
+        )
+
         result = await session.execute(review_query)
         due_reviews = result.all()
-        
+
         # If no reviews found, look for new flashcards that haven't been reviewed yet
         if not due_reviews:
             # Get flashcard sets appropriate for user's level
-            new_cards_query = select(GeneratedContent).where(
-                and_(
-                    GeneratedContent.content_type == "flashcard",
-                    GeneratedContent.language == current_user.preferred_language,
-                    GeneratedContent.level <= current_user.current_level,
-                    ~GeneratedContent.id.in_(
-                        select(FlashcardReview.card_id).where(
-                            FlashcardReview.user_id == current_user.id
-                        )
+            new_cards_query = (
+                select(GeneratedContent)
+                .where(
+                    and_(
+                        GeneratedContent.content_type == "flashcard",
+                        GeneratedContent.language == current_user.preferred_language,
+                        GeneratedContent.level <= current_user.current_level,
+                        ~GeneratedContent.id.in_(
+                            select(FlashcardReview.card_id).where(
+                                FlashcardReview.user_id == current_user.id
+                            )
+                        ),
                     )
                 )
-            ).limit(20)  # Limit new cards per session
-            
+                .limit(20)
+            )  # Limit new cards per session
+
             new_result = await session.execute(new_cards_query)
             new_cards = new_result.scalars().all()
-            
+
             if new_cards:
                 # Create initial review records for new cards
                 for card in new_cards:
@@ -106,48 +112,50 @@ async def get_due_flashcards(
                         difficulty=5.0,
                     )
                     session.add(new_review)
-                
+
                 await session.commit()
-                
+
                 # Re-fetch the due reviews
                 result = await session.execute(review_query)
                 due_reviews = result.all()
-        
+
         # Build response
         cards_data = []
         for review, content in due_reviews:
             # Extract individual flashcards from content
             flashcards = content.content.get("flashcards", [])
             for i, card_data in enumerate(flashcards):
-                cards_data.append({
-                    "id": f"{content.id}_{i}",
-                    "card_id": content.id,
-                    "card_index": i,
-                    "term": card_data.get("term", ""),
-                    "definition_fr": card_data.get("definition_fr", ""),
-                    "definition_en": card_data.get("definition_en", ""),
-                    "example_aof": card_data.get("example_aof", ""),
-                    "formula": card_data.get("formula"),
-                    "sources_cited": card_data.get("sources_cited", []),
-                    "review_id": review.id,
-                    "due_date": review.next_review.isoformat(),
-                    "stability": review.stability,
-                    "difficulty": review.difficulty,
-                })
-        
+                cards_data.append(
+                    {
+                        "id": f"{content.id}_{i}",
+                        "card_id": content.id,
+                        "card_index": i,
+                        "term": card_data.get("term", ""),
+                        "definition_fr": card_data.get("definition_fr", ""),
+                        "definition_en": card_data.get("definition_en", ""),
+                        "example_aof": card_data.get("example_aof", ""),
+                        "formula": card_data.get("formula"),
+                        "sources_cited": card_data.get("sources_cited", []),
+                        "review_id": review.id,
+                        "due_date": review.next_review.isoformat(),
+                        "stability": review.stability,
+                        "difficulty": review.difficulty,
+                    }
+                )
+
         logger.info(
             "Due flashcards fetched successfully",
             user_id=str(current_user.id),
             cards_count=len(cards_data),
         )
-        
+
         return FlashcardDueResponse(
             user_id=current_user.id,
             cards=cards_data,
             total_due=len(cards_data),
             session_target=min(20, len(cards_data)),  # Reasonable daily target
         )
-        
+
     except Exception as e:
         logger.error("Failed to fetch due flashcards", error=str(e), exc_info=True)
         raise HTTPException(
@@ -177,20 +185,20 @@ async def submit_flashcard_review(
 ) -> FlashcardReviewResponse:
     """
     Submit a flashcard review with FSRS rating.
-    
+
     Updates the spaced repetition schedule based on user's performance rating.
-    
+
     **FSRS Ratings:**
     - `again`: Forgot completely (1) - card shown again in same session
     - `hard`: Recalled with difficulty (2) - shorter interval
     - `good`: Recalled correctly (3) - standard interval
     - `easy`: Recalled easily (4) - longer interval
-    
+
     **Algorithm:**
     - Calculates new stability and difficulty based on previous performance
     - Schedules next review date using FSRS parameters
     - "Again" cards are rescheduled for immediate review
-    
+
     **Mobile Offline Support:**
     - Reviews are queued when offline and submitted when connection restored
     - Includes timestamp for proper scheduling calculation
@@ -202,7 +210,7 @@ async def submit_flashcard_review(
             card_id=str(review_request.card_id),
             rating=review_request.rating,
         )
-        
+
         # Get existing review record
         review_query = select(FlashcardReview).where(
             and_(
@@ -210,10 +218,10 @@ async def submit_flashcard_review(
                 FlashcardReview.user_id == current_user.id,
             )
         )
-        
+
         result = await session.execute(review_query)
         review = result.scalar_one_or_none()
-        
+
         if not review:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -222,11 +230,11 @@ async def submit_flashcard_review(
                     "message": f"Review {review_request.review_id} not found",
                 },
             )
-        
+
         # Calculate FSRS parameters (simplified implementation)
         rating_values = {"again": 1, "hard": 2, "good": 3, "easy": 4}
         rating_value = rating_values.get(review_request.rating, 3)
-        
+
         # Update stability and difficulty based on rating
         if rating_value == 1:  # Again
             new_stability = max(0.1, review.stability * 0.5)
@@ -241,7 +249,7 @@ async def submit_flashcard_review(
             next_review = datetime.utcnow().replace(
                 hour=9, minute=0, second=0, microsecond=0
             ) + timedelta(days=interval_days)
-        elif rating_value == 3:  # Good  
+        elif rating_value == 3:  # Good
             new_stability = review.stability * 1.2
             new_difficulty = max(1.0, review.difficulty - 0.1)
             # Standard interval
@@ -257,16 +265,16 @@ async def submit_flashcard_review(
             next_review = datetime.utcnow().replace(
                 hour=9, minute=0, second=0, microsecond=0
             ) + timedelta(days=interval_days)
-        
+
         # Update review record
         review.rating = review_request.rating
         review.stability = new_stability
         review.difficulty = new_difficulty
         review.next_review = next_review
         review.reviewed_at = review_request.reviewed_at or datetime.utcnow()
-        
+
         await session.commit()
-        
+
         logger.info(
             "Flashcard review processed successfully",
             user_id=str(current_user.id),
@@ -275,7 +283,7 @@ async def submit_flashcard_review(
             new_difficulty=new_difficulty,
             next_review=next_review.isoformat(),
         )
-        
+
         return FlashcardReviewResponse(
             review_id=review.id,
             card_id=review.card_id,
@@ -285,7 +293,7 @@ async def submit_flashcard_review(
             difficulty=new_difficulty,
             show_again=rating_value == 1,  # Show again if rated "again"
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -316,16 +324,16 @@ async def complete_flashcard_session(
 ) -> FlashcardSessionResponse:
     """
     Complete a flashcard review session.
-    
+
     Records session statistics and updates user progress.
     Used for tracking learning analytics and session summaries.
-    
+
     **Session Metrics:**
     - Cards reviewed count
     - Time spent in session
     - Accuracy by rating distribution
     - Cards mastered vs. need more practice
-    
+
     **Progress Updates:**
     - Updates user streak if daily target met
     - Records session for dashboard analytics
@@ -337,7 +345,7 @@ async def complete_flashcard_session(
             cards_reviewed=session_request.cards_reviewed,
             session_duration=session_request.session_duration_seconds,
         )
-        
+
         # Calculate session statistics
         total_reviews = len(session_request.review_ratings)
         rating_counts = {
@@ -346,23 +354,24 @@ async def complete_flashcard_session(
             "good": sum(1 for r in session_request.review_ratings if r == "good"),
             "easy": sum(1 for r in session_request.review_ratings if r == "easy"),
         }
-        
+
         accuracy_percentage = (
             (rating_counts["good"] + rating_counts["easy"]) / total_reviews * 100
-            if total_reviews > 0 else 0
+            if total_reviews > 0
+            else 0
         )
-        
+
         # Update user's last_active timestamp
         current_user.last_active = datetime.utcnow()
-        
+
         # Check if user met daily target (20 cards or available cards)
         daily_target_met = session_request.cards_reviewed >= min(20, total_reviews)
-        
+
         if daily_target_met:
             # Update streak if it's a new day
             today = datetime.utcnow().date()
             last_active_date = current_user.last_active.date()
-            
+
             if last_active_date < today:
                 if (today - last_active_date).days == 1:
                     # Consecutive day - increment streak
@@ -371,16 +380,16 @@ async def complete_flashcard_session(
                     # Gap in activity - reset streak
                     current_user.streak_days = 1
             # Same day activity doesn't change streak
-        
+
         await session.commit()
-        
+
         logger.info(
             "Flashcard session recorded successfully",
             user_id=str(current_user.id),
             accuracy=accuracy_percentage,
             streak_days=current_user.streak_days,
         )
-        
+
         return FlashcardSessionResponse(
             session_id=uuid.uuid4(),
             user_id=current_user.id,
@@ -391,7 +400,7 @@ async def complete_flashcard_session(
             streak_days=current_user.streak_days,
             daily_target_met=daily_target_met,
         )
-        
+
     except Exception as e:
         logger.error("Failed to record flashcard session", error=str(e), exc_info=True)
         raise HTTPException(
