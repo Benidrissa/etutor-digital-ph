@@ -1,0 +1,825 @@
+
+> frontend@0.1.0 test:e2e
+> npx playwright test
+
+
+Running 86 tests using 8 workers
+
+[1A[2K[1/86] [chromium] › e2e/auth.spec.ts:66:7 › Login Page › switches label to Backup Code for 8-digit input
+[1A[2K[2/86] [chromium] › e2e/auth.spec.ts:42:7 › Login Page › accepts 6-digit TOTP code and submits
+[1A[2K[3/86] [chromium] › e2e/auth.spec.ts:35:7 › Login Page › shows TOTP code validation error for short code
+[1A[2K[4/86] [chromium] › e2e/auth.spec.ts:71:7 › Login Page › navigates to magic link recovery flow
+[1A[2K[5/86] [chromium] › e2e/auth.spec.ts:78:7 › Login Page › magic link form validates email
+[1A[2K[6/86] [chromium] › e2e/auth.spec.ts:8:7 › Login Page › renders login form with all fields
+[1A[2K[7/86] [chromium] › e2e/auth.spec.ts:15:7 › Login Page › shows validation errors on empty submit
+[1A[2K[8/86] [chromium] › e2e/auth.spec.ts:21:7 › Login Page › rejects invalid email with browser validation
+[1A[2K[9/86] [chromium] › e2e/auth.spec.ts:84:7 › Login Page › magic link back button returns to login
+[1A[2K[10/86] [chromium] › e2e/auth.spec.ts:92:7 › Login Page › has link to registration page
+[1A[2K[11/86] [chromium] › e2e/auth.spec.ts:105:7 › Registration Page › renders step 1 registration form
+[1A[2K[12/86] [chromium] › e2e/auth.spec.ts:114:7 › Registration Page › shows validation errors on empty submit
+[1A[2K[13/86] [chromium] › e2e/auth.spec.ts:121:7 › Registration Page › fills registration form and submits to TOTP step
+[1A[2K[14/86] [chromium] › e2e/auth.spec.ts:148:7 › Registration Page › TOTP step shows backup codes and accepts verification
+[1A[2K[15/86] [chromium] › e2e/auth.spec.ts:194:7 › Registration Page › back to registration button works from TOTP step
+[1A[2K[16/86] [chromium] › e2e/auth.spec.ts:218:7 › Registration Page › has link to login page
+[1A[2K[17/86] [chromium] › e2e/auth.spec.ts:224:7 › Registration Page › ECOWAS country dropdown has all 15 countries
+[1A[2K[18/86] [chromium] › e2e/dashboard.spec.ts:32:7 › Dashboard › renders dashboard page with title and subtitle
+[1A[2K[19/86] [chromium] › e2e/dashboard.spec.ts:38:7 › Dashboard › displays streak and key stat cards
+[1A[2K[20/86] [chromium] › e2e/dashboard.spec.ts:65:7 › Dashboard › shows loading skeletons before data loads
+[1A[2K[21/86] [chromium] › e2e/dashboard.spec.ts:82:7 › Dashboard › shows error state when API fails
+[1A[2K[22/86] [chromium] › e2e/i18n.spec.ts:4:7 › Internationalization (FR/EN) › login page renders in English at /en/login
+[1A[2K[23/86] [chromium] › e2e/i18n.spec.ts:11:7 › Internationalization (FR/EN) › login page renders in French at /fr/login
+[1A[2K[24/86] [chromium] › e2e/i18n.spec.ts:18:7 › Internationalization (FR/EN) › register page renders in English at /en/register
+[1A[2K[25/86] [chromium] › e2e/i18n.spec.ts:25:7 › Internationalization (FR/EN) › register page renders in French at /fr/register
+[1A[2K[26/86] [chromium] › e2e/i18n.spec.ts:31:7 › Internationalization (FR/EN) › locale switcher toggles between EN and FR
+[1A[2K[27/86] [chromium] › e2e/i18n.spec.ts:43:7 › Internationalization (FR/EN) › dashboard renders in English
+[1A[2K[28/86] [chromium] › e2e/i18n.spec.ts:69:7 › Internationalization (FR/EN) › modules page renders in English
+[1A[2K[29/86] [chromium] › e2e/i18n.spec.ts:79:7 › Internationalization (FR/EN) › navigation items visible on dashboard
+[1A[2K[30/86] [chromium] › e2e/modules.spec.ts:11:7 › Modules Page › renders modules page with Learning Modules heading
+[1A[2K[31/86] [chromium] › e2e/modules.spec.ts:20:7 › Modules Page › displays curriculum levels
+[1A[2K[32/86] [chromium] › e2e/modules.spec.ts:27:7 › Modules Page › shows module cards with titles
+[1A[2K[33/86] [chromium] › e2e/modules.spec.ts:33:7 › Modules Page › locked modules have disabled buttons
+[1A[2K[34/86] [chromium] › e2e/modules.spec.ts:42:7 › Modules Page › shows overall progress summary section
+[1A[2K[35/86] [chromium] › e2e/modules.spec.ts:50:7 › Modules Page › clicking an unlocked module navigates to module overview
+[1A[2K[36/86] [chromium] › e2e/modules.spec.ts:69:7 › Module Overview Page › renders module overview with back button
+[1A[2K[37/86] [chromium] › e2e/modules.spec.ts:74:7 › Module Overview Page › displays learning objectives section
+[1A[2K[38/86] [chromium] › e2e/modules.spec.ts:79:7 › Module Overview Page › displays units section heading
+[1A[2K[39/86] [chromium] › e2e/modules.spec.ts:84:7 › Module Overview Page › shows progress percentage
+[1A[2K[40/86] [chromium] › e2e/modules.spec.ts:90:7 › Module Overview Page › back button navigates to modules list
+[1A[2K  1) [chromium] › e2e/dashboard.spec.ts:82:7 › Dashboard › shows error state when API fails ────────
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: getByText('An error occurred')
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 10000ms[22m
+    [2m  - waiting for getByText('An error occurred')[22m
+
+
+      86 |
+      87 |     await page.goto('/en/dashboard');
+    > 88 |     await expect(page.getByText('An error occurred')).toBeVisible({ timeout: 10000 });
+         |                                                       ^
+      89 |   });
+      90 | });
+      91 |
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/dashboard.spec.ts:88:55
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/dashboard-Dashboard-shows-error-state-when-API-fails-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/dashboard-Dashboard-shows-error-state-when-API-fails-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/dashboard-Dashboard-shows-error-state-when-API-fails-chromium/error-context.md
+
+
+[1A[2K[41/86] [chromium] › e2e/quiz.spec.ts:42:7 › Quiz Components - Unit Tests via Auth Pages › quiz translations are loaded
+[1A[2K[42/86] [chromium] › e2e/quiz.spec.ts:58:7 › Quiz Error Handling › navigating to quiz for nonexistent module shows 404
+[1A[2K[43/86] [chromium] › e2e/quiz.spec.ts:24:7 › Quiz Page - Current State › quiz page loads or shows error
+[1A[2K[44/86] [mobile-chrome] › e2e/auth.spec.ts:8:7 › Login Page › renders login form with all fields
+[1A[2K[45/86] [mobile-chrome] › e2e/auth.spec.ts:15:7 › Login Page › shows validation errors on empty submit
+[1A[2K[46/86] [mobile-chrome] › e2e/auth.spec.ts:21:7 › Login Page › rejects invalid email with browser validation
+[1A[2K[47/86] [mobile-chrome] › e2e/auth.spec.ts:35:7 › Login Page › shows TOTP code validation error for short code
+[1A[2K[48/86] [mobile-chrome] › e2e/auth.spec.ts:42:7 › Login Page › accepts 6-digit TOTP code and submits
+[1A[2K[49/86] [mobile-chrome] › e2e/auth.spec.ts:66:7 › Login Page › switches label to Backup Code for 8-digit input
+[1A[2K[50/86] [mobile-chrome] › e2e/auth.spec.ts:78:7 › Login Page › magic link form validates email
+[1A[2K[51/86] [mobile-chrome] › e2e/auth.spec.ts:84:7 › Login Page › magic link back button returns to login
+[1A[2K[52/86] [mobile-chrome] › e2e/auth.spec.ts:71:7 › Login Page › navigates to magic link recovery flow
+[1A[2K[53/86] [mobile-chrome] › e2e/auth.spec.ts:105:7 › Registration Page › renders step 1 registration form
+[1A[2K[54/86] [mobile-chrome] › e2e/auth.spec.ts:114:7 › Registration Page › shows validation errors on empty submit
+[1A[2K[55/86] [mobile-chrome] › e2e/auth.spec.ts:121:7 › Registration Page › fills registration form and submits to TOTP step
+[1A[2K[56/86] [mobile-chrome] › e2e/auth.spec.ts:148:7 › Registration Page › TOTP step shows backup codes and accepts verification
+[1A[2K[57/86] [mobile-chrome] › e2e/auth.spec.ts:194:7 › Registration Page › back to registration button works from TOTP step
+[1A[2K[58/86] [mobile-chrome] › e2e/auth.spec.ts:92:7 › Login Page › has link to registration page
+[1A[2K[59/86] [mobile-chrome] › e2e/auth.spec.ts:218:7 › Registration Page › has link to login page
+[1A[2K[60/86] [mobile-chrome] › e2e/auth.spec.ts:224:7 › Registration Page › ECOWAS country dropdown has all 15 countries
+[1A[2K[61/86] [mobile-chrome] › e2e/dashboard.spec.ts:32:7 › Dashboard › renders dashboard page with title and subtitle
+[1A[2K[62/86] [mobile-chrome] › e2e/dashboard.spec.ts:38:7 › Dashboard › displays streak and key stat cards
+[1A[2K[63/86] [mobile-chrome] › e2e/dashboard.spec.ts:65:7 › Dashboard › shows loading skeletons before data loads
+[1A[2K[64/86] [mobile-chrome] › e2e/dashboard.spec.ts:82:7 › Dashboard › shows error state when API fails
+[1A[2K[65/86] [mobile-chrome] › e2e/i18n.spec.ts:4:7 › Internationalization (FR/EN) › login page renders in English at /en/login
+[1A[2K[66/86] [mobile-chrome] › e2e/i18n.spec.ts:11:7 › Internationalization (FR/EN) › login page renders in French at /fr/login
+[1A[2K[67/86] [mobile-chrome] › e2e/i18n.spec.ts:18:7 › Internationalization (FR/EN) › register page renders in English at /en/register
+[1A[2K[68/86] [mobile-chrome] › e2e/i18n.spec.ts:25:7 › Internationalization (FR/EN) › register page renders in French at /fr/register
+[1A[2K[69/86] [mobile-chrome] › e2e/i18n.spec.ts:31:7 › Internationalization (FR/EN) › locale switcher toggles between EN and FR
+[1A[2K  2) [mobile-chrome] › e2e/dashboard.spec.ts:32:7 › Dashboard › renders dashboard page with title and subtitle 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/en/dashboard", waiting until "load"[22m
+
+
+      31 |
+      32 |   test('renders dashboard page with title and subtitle', async ({ page }) => {
+    > 33 |     await page.goto('/en/dashboard');
+         |                ^
+      34 |     await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+      35 |     await expect(page.getByText('Your public health learning platform')).toBeVisible();
+      36 |   });
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/dashboard.spec.ts:33:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/dashboard-Dashboard-render-3d5c9-age-with-title-and-subtitle-mobile-chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/dashboard-Dashboard-render-3d5c9-age-with-title-and-subtitle-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/dashboard-Dashboard-render-3d5c9-age-with-title-and-subtitle-mobile-chrome/error-context.md
+
+
+[1A[2K  3) [mobile-chrome] › e2e/dashboard.spec.ts:65:7 › Dashboard › shows loading skeletons before data loads 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/en/dashboard", waiting until "load"[22m
+
+
+      74 |     });
+      75 |
+    > 76 |     await page.goto('/en/dashboard');
+         |                ^
+      77 |     // Skeleton cards should appear (they have animate-pulse class)
+      78 |     const skeletons = page.locator('.animate-pulse');
+      79 |     await expect(skeletons.first()).toBeVisible();
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/dashboard.spec.ts:76:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/dashboard-Dashboard-shows--55cc1-skeletons-before-data-loads-mobile-chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/dashboard-Dashboard-shows--55cc1-skeletons-before-data-loads-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/dashboard-Dashboard-shows--55cc1-skeletons-before-data-loads-mobile-chrome/error-context.md
+
+
+[1A[2K  4) [mobile-chrome] › e2e/dashboard.spec.ts:82:7 › Dashboard › shows error state when API fails ───
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/en/dashboard", waiting until "load"[22m
+
+
+      85 |     );
+      86 |
+    > 87 |     await page.goto('/en/dashboard');
+         |                ^
+      88 |     await expect(page.getByText('An error occurred')).toBeVisible({ timeout: 10000 });
+      89 |   });
+      90 | });
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/dashboard.spec.ts:87:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/dashboard-Dashboard-shows-error-state-when-API-fails-mobile-chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/dashboard-Dashboard-shows-error-state-when-API-fails-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/dashboard-Dashboard-shows-error-state-when-API-fails-mobile-chrome/error-context.md
+
+
+[1A[2K  5) [mobile-chrome] › e2e/i18n.spec.ts:4:7 › Internationalization (FR/EN) › login page renders in English at /en/login 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/en/login", waiting until "load"[22m
+
+
+      3 | test.describe('Internationalization (FR/EN)', () => {
+      4 |   test('login page renders in English at /en/login', async ({ page }) => {
+    > 5 |     await page.goto('/en/login');
+        |                ^
+      6 |     await expect(page.getByText('Sign in', { exact: true }).first()).toBeVisible();
+      7 |     await expect(page.locator('label[for="email"]')).toContainText('Email');
+      8 |     await expect(page.locator('#totp_code')).toBeVisible();
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/i18n.spec.ts:5:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/i18n-Internationalization--f7bd0-ders-in-English-at-en-login-mobile-chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/i18n-Internationalization--f7bd0-ders-in-English-at-en-login-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/i18n-Internationalization--f7bd0-ders-in-English-at-en-login-mobile-chrome/error-context.md
+
+
+[1A[2K[70/86] [mobile-chrome] › e2e/i18n.spec.ts:69:7 › Internationalization (FR/EN) › modules page renders in English
+[1A[2K[71/86] [mobile-chrome] › e2e/i18n.spec.ts:43:7 › Internationalization (FR/EN) › dashboard renders in English
+[1A[2K[72/86] [mobile-chrome] › e2e/i18n.spec.ts:79:7 › Internationalization (FR/EN) › navigation items visible on dashboard
+[1A[2K  6) [mobile-chrome] › e2e/i18n.spec.ts:11:7 › Internationalization (FR/EN) › login page renders in French at /fr/login 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/fr/login", waiting until "load"[22m
+
+
+      10 |
+      11 |   test('login page renders in French at /fr/login', async ({ page }) => {
+    > 12 |     await page.goto('/fr/login');
+         |                ^
+      13 |     // French translations — check the page loaded with French locale
+      14 |     await expect(page.locator('#email')).toBeVisible();
+      15 |     await expect(page.locator('#totp_code')).toBeVisible();
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/i18n.spec.ts:12:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/i18n-Internationalization--50551-nders-in-French-at-fr-login-mobile-chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/i18n-Internationalization--50551-nders-in-French-at-fr-login-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/i18n-Internationalization--50551-nders-in-French-at-fr-login-mobile-chrome/error-context.md
+
+
+[1A[2K  7) [mobile-chrome] › e2e/i18n.spec.ts:31:7 › Internationalization (FR/EN) › locale switcher toggles between EN and FR 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/en/login", waiting until "load"[22m
+
+
+      30 |
+      31 |   test('locale switcher toggles between EN and FR', async ({ page }) => {
+    > 32 |     await page.goto('/en/login');
+         |                ^
+      33 |
+      34 |     // Find and click the locale switcher button
+      35 |     const switcher = page.getByRole('button', { name: /Switch to|Changer/ });
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/i18n.spec.ts:32:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/i18n-Internationalization--09010-r-toggles-between-EN-and-FR-mobile-chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/i18n-Internationalization--09010-r-toggles-between-EN-and-FR-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/i18n-Internationalization--09010-r-toggles-between-EN-and-FR-mobile-chrome/error-context.md
+
+
+[1A[2K  8) [mobile-chrome] › e2e/i18n.spec.ts:25:7 › Internationalization (FR/EN) › register page renders in French at /fr/register 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/fr/register", waiting until "load"[22m
+
+
+      24 |
+      25 |   test('register page renders in French at /fr/register', async ({ page }) => {
+    > 26 |     await page.goto('/fr/register');
+         |                ^
+      27 |     await expect(page.locator('#name')).toBeVisible();
+      28 |     await expect(page.locator('#email')).toBeVisible();
+      29 |   });
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/i18n.spec.ts:26:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/i18n-Internationalization--29198-rs-in-French-at-fr-register-mobile-chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/i18n-Internationalization--29198-rs-in-French-at-fr-register-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/i18n-Internationalization--29198-rs-in-French-at-fr-register-mobile-chrome/error-context.md
+
+
+[1A[2K[73/86] [mobile-chrome] › e2e/modules.spec.ts:11:7 › Modules Page › renders modules page with Learning Modules heading
+[1A[2K  9) [mobile-chrome] › e2e/i18n.spec.ts:18:7 › Internationalization (FR/EN) › register page renders in English at /en/register 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/en/register", waiting until "load"[22m
+
+
+      17 |
+      18 |   test('register page renders in English at /en/register', async ({ page }) => {
+    > 19 |     await page.goto('/en/register');
+         |                ^
+      20 |     await expect(page.locator('#name')).toBeVisible();
+      21 |     await expect(page.locator('#email')).toBeVisible();
+      22 |     await expect(page.locator('label[for="name"]')).toContainText('Full name');
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/i18n.spec.ts:19:16
+
+    attachment #1: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/i18n-Internationalization--65008-s-in-English-at-en-register-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/i18n-Internationalization--65008-s-in-English-at-en-register-mobile-chrome/error-context.md
+
+
+[1A[2K[74/86] [mobile-chrome] › e2e/modules.spec.ts:20:7 › Modules Page › displays curriculum levels
+[1A[2K[75/86] [mobile-chrome] › e2e/modules.spec.ts:27:7 › Modules Page › shows module cards with titles
+[1A[2K[76/86] [mobile-chrome] › e2e/modules.spec.ts:33:7 › Modules Page › locked modules have disabled buttons
+[1A[2K[77/86] [mobile-chrome] › e2e/modules.spec.ts:42:7 › Modules Page › shows overall progress summary section
+[1A[2K  10) [mobile-chrome] › e2e/i18n.spec.ts:43:7 › Internationalization (FR/EN) › dashboard renders in English 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/en/dashboard", waiting until "load"[22m
+
+
+      63 |     );
+      64 |
+    > 65 |     await page.goto('/en/dashboard');
+         |                ^
+      66 |     await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+      67 |   });
+      68 |
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/i18n.spec.ts:65:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/i18n-Internationalization-FR-EN-dashboard-renders-in-English-mobile-chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/i18n-Internationalization-FR-EN-dashboard-renders-in-English-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/i18n-Internationalization-FR-EN-dashboard-renders-in-English-mobile-chrome/error-context.md
+
+
+[1A[2K  11) [mobile-chrome] › e2e/i18n.spec.ts:69:7 › Internationalization (FR/EN) › modules page renders in English 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/en/modules", waiting until "load"[22m
+
+
+      73 |     });
+      74 |
+    > 75 |     await page.goto('/en/modules');
+         |                ^
+      76 |     await expect(page.getByRole('heading', { name: 'Learning Modules' }).first()).toBeVisible();
+      77 |   });
+      78 |
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/i18n.spec.ts:75:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/i18n-Internationalization--df9eb-les-page-renders-in-English-mobile-chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/i18n-Internationalization--df9eb-les-page-renders-in-English-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/i18n-Internationalization--df9eb-les-page-renders-in-English-mobile-chrome/error-context.md
+
+
+[1A[2K[78/86] [mobile-chrome] › e2e/modules.spec.ts:50:7 › Modules Page › clicking an unlocked module navigates to module overview
+[1A[2K[79/86] [mobile-chrome] › e2e/modules.spec.ts:69:7 › Module Overview Page › renders module overview with back button
+[1A[2K  12) [mobile-chrome] › e2e/i18n.spec.ts:79:7 › Internationalization (FR/EN) › navigation items visible on dashboard 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/en/dashboard", waiting until "load"[22m
+
+
+       99 |     );
+      100 |
+    > 101 |     await page.goto('/en/dashboard');
+          |                ^
+      102 |     // Dashboard heading is visible on all viewports
+      103 |     await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+      104 |   });
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/i18n.spec.ts:101:16
+
+    attachment #1: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/i18n-Internationalization--8a14b--items-visible-on-dashboard-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/i18n-Internationalization--8a14b--items-visible-on-dashboard-mobile-chrome/error-context.md
+
+
+[1A[2K  13) [mobile-chrome] › e2e/modules.spec.ts:33:7 › Modules Page › locked modules have disabled buttons 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/en/modules", waiting until "load"[22m
+
+
+      32 |
+      33 |   test('locked modules have disabled buttons', async ({ page }) => {
+    > 34 |     await page.goto('/en/modules');
+         |                ^
+      35 |     // Look for disabled "Start" buttons (locked modules)
+      36 |     const disabledButtons = page.locator('button:disabled', { hasText: 'Start' });
+      37 |     // There should be some locked modules
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/modules.spec.ts:34:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/modules-Modules-Page-locked-modules-have-disabled-buttons-mobile-chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/modules-Modules-Page-locked-modules-have-disabled-buttons-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/modules-Modules-Page-locked-modules-have-disabled-buttons-mobile-chrome/error-context.md
+
+
+[1A[2K  14) [mobile-chrome] › e2e/modules.spec.ts:11:7 › Modules Page › renders modules page with Learning Modules heading 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/en/modules", waiting until "load"[22m
+
+
+      10 |
+      11 |   test('renders modules page with Learning Modules heading', async ({ page }) => {
+    > 12 |     await page.goto('/en/modules');
+         |                ^
+      13 |     // The main content area has the heading
+      14 |     await expect(page.getByRole('heading', { name: 'Learning Modules' }).first()).toBeVisible();
+      15 |     await expect(
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/modules.spec.ts:12:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/modules-Modules-Page-rende-8863a-th-Learning-Modules-heading-mobile-chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/modules-Modules-Page-rende-8863a-th-Learning-Modules-heading-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/modules-Modules-Page-rende-8863a-th-Learning-Modules-heading-mobile-chrome/error-context.md
+
+
+[1A[2K[80/86] [mobile-chrome] › e2e/modules.spec.ts:74:7 › Module Overview Page › displays learning objectives section
+[1A[2K[81/86] [mobile-chrome] › e2e/modules.spec.ts:79:7 › Module Overview Page › displays units section heading
+[1A[2K[82/86] [mobile-chrome] › e2e/modules.spec.ts:84:7 › Module Overview Page › shows progress percentage
+[1A[2K  15) [mobile-chrome] › e2e/modules.spec.ts:20:7 › Modules Page › displays curriculum levels ───────
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/en/modules", waiting until "load"[22m
+
+
+      19 |
+      20 |   test('displays curriculum levels', async ({ page }) => {
+    > 21 |     await page.goto('/en/modules');
+         |                ^
+      22 |     // Check for level headings in the main content
+      23 |     await expect(page.getByText('Beginner').first()).toBeVisible();
+      24 |     await expect(page.getByText('Intermediate').first()).toBeVisible();
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/modules.spec.ts:21:16
+
+    attachment #1: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/modules-Modules-Page-displays-curriculum-levels-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/modules-Modules-Page-displays-curriculum-levels-mobile-chrome/error-context.md
+
+
+[1A[2K  16) [mobile-chrome] › e2e/modules.spec.ts:27:7 › Modules Page › shows module cards with titles ───
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/en/modules", waiting until "load"[22m
+
+
+      26 |
+      27 |   test('shows module cards with titles', async ({ page }) => {
+    > 28 |     await page.goto('/en/modules');
+         |                ^
+      29 |     // First module should always be visible
+      30 |     await expect(page.getByText('Foundations of Public Health').first()).toBeVisible();
+      31 |   });
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/modules.spec.ts:28:16
+
+    attachment #1: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/modules-Modules-Page-shows-module-cards-with-titles-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/modules-Modules-Page-shows-module-cards-with-titles-mobile-chrome/error-context.md
+
+
+[1A[2K  17) [mobile-chrome] › e2e/modules.spec.ts:42:7 › Modules Page › shows overall progress summary section 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/en/modules", waiting until "load"[22m
+
+
+      41 |
+      42 |   test('shows overall progress summary section', async ({ page }) => {
+    > 43 |     await page.goto('/en/modules');
+         |                ^
+      44 |     // Scroll to the bottom to find the progress summary
+      45 |     const progressHeading = page.getByRole('heading', { name: 'Overall Progress' });
+      46 |     await progressHeading.scrollIntoViewIfNeeded();
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/modules.spec.ts:43:16
+
+    attachment #1: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/modules-Modules-Page-shows-overall-progress-summary-section-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/modules-Modules-Page-shows-overall-progress-summary-section-mobile-chrome/error-context.md
+
+
+[1A[2K[83/86] [mobile-chrome] › e2e/modules.spec.ts:90:7 › Module Overview Page › back button navigates to modules list
+[1A[2K[84/86] [mobile-chrome] › e2e/quiz.spec.ts:24:7 › Quiz Page - Current State › quiz page loads or shows error
+[1A[2K[85/86] [mobile-chrome] › e2e/quiz.spec.ts:42:7 › Quiz Components - Unit Tests via Auth Pages › quiz translations are loaded
+[1A[2K  18) [mobile-chrome] › e2e/modules.spec.ts:50:7 › Modules Page › clicking an unlocked module navigates to module overview 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/en/modules", waiting until "load"[22m
+
+
+      49 |
+      50 |   test('clicking an unlocked module navigates to module overview', async ({ page }) => {
+    > 51 |     await page.goto('/en/modules');
+         |                ^
+      52 |     // Click the first module card's action button
+      53 |     const startButtons = page.locator('button:not(:disabled)', { hasText: /Start|Continue/ });
+      54 |     if ((await startButtons.count()) > 0) {
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/modules.spec.ts:51:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/modules-Modules-Page-click-3b278-avigates-to-module-overview-mobile-chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/modules-Modules-Page-click-3b278-avigates-to-module-overview-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/modules-Modules-Page-click-3b278-avigates-to-module-overview-mobile-chrome/error-context.md
+
+
+[1A[2K  19) [mobile-chrome] › e2e/modules.spec.ts:69:7 › Module Overview Page › renders module overview with back button 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/en/modules/M01", waiting until "load"[22m
+
+
+      68 |
+      69 |   test('renders module overview with back button', async ({ page }) => {
+    > 70 |     await page.goto('/en/modules/M01');
+         |                ^
+      71 |     await expect(page.getByText('Back to Modules')).toBeVisible();
+      72 |   });
+      73 |
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/modules.spec.ts:70:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/modules-Module-Overview-Pa-5ee5d-e-overview-with-back-button-mobile-chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/modules-Module-Overview-Pa-5ee5d-e-overview-with-back-button-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/modules-Module-Overview-Pa-5ee5d-e-overview-with-back-button-mobile-chrome/error-context.md
+
+
+[1A[2K[86/86] [mobile-chrome] › e2e/quiz.spec.ts:58:7 › Quiz Error Handling › navigating to quiz for nonexistent module shows 404
+[1A[2K  20) [mobile-chrome] › e2e/modules.spec.ts:74:7 › Module Overview Page › displays learning objectives section 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/en/modules/M01", waiting until "load"[22m
+
+
+      73 |
+      74 |   test('displays learning objectives section', async ({ page }) => {
+    > 75 |     await page.goto('/en/modules/M01');
+         |                ^
+      76 |     await expect(page.getByText('Learning Objectives')).toBeVisible();
+      77 |   });
+      78 |
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/modules.spec.ts:75:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/modules-Module-Overview-Pa-78696-learning-objectives-section-mobile-chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/modules-Module-Overview-Pa-78696-learning-objectives-section-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/modules-Module-Overview-Pa-78696-learning-objectives-section-mobile-chrome/error-context.md
+
+
+[1A[2K  21) [mobile-chrome] › e2e/modules.spec.ts:84:7 › Module Overview Page › shows progress percentage 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/en/modules/M01", waiting until "load"[22m
+
+
+      83 |
+      84 |   test('shows progress percentage', async ({ page }) => {
+    > 85 |     await page.goto('/en/modules/M01');
+         |                ^
+      86 |     // Progress section shows a percentage
+      87 |     await expect(page.getByText(/\d+%/).first()).toBeVisible();
+      88 |   });
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/modules.spec.ts:85:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/modules-Module-Overview-Page-shows-progress-percentage-mobile-chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/modules-Module-Overview-Page-shows-progress-percentage-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/modules-Module-Overview-Page-shows-progress-percentage-mobile-chrome/error-context.md
+
+
+[1A[2K  22) [mobile-chrome] › e2e/modules.spec.ts:90:7 › Module Overview Page › back button navigates to modules list 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/en/modules/M01", waiting until "load"[22m
+
+
+      89 |
+      90 |   test('back button navigates to modules list', async ({ page }) => {
+    > 91 |     await page.goto('/en/modules/M01');
+         |                ^
+      92 |     await page.getByText('Back to Modules').click();
+      93 |     await expect(page).toHaveURL(/\/modules$/);
+      94 |   });
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/modules.spec.ts:91:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/modules-Module-Overview-Pa-7294e-n-navigates-to-modules-list-mobile-chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/modules-Module-Overview-Pa-7294e-n-navigates-to-modules-list-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/modules-Module-Overview-Pa-7294e-n-navigates-to-modules-list-mobile-chrome/error-context.md
+
+
+[1A[2K  23) [mobile-chrome] › e2e/quiz.spec.ts:42:7 › Quiz Components - Unit Tests via Auth Pages › quiz translations are loaded 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/en/login", waiting until "load"[22m
+
+
+      42 |   test('quiz translations are loaded', async ({ page }) => {
+      43 |     // Verify quiz i18n keys exist by checking the messages file loads
+    > 44 |     await page.goto('/en/login');
+         |                ^
+      45 |     // If we can load any page, the i18n bundle including Quiz keys is available
+      46 |     await expect(page.getByText('SantePublique AOF')).toBeVisible();
+      47 |   });
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/quiz.spec.ts:44:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/quiz-Quiz-Components---Uni-0308e-uiz-translations-are-loaded-mobile-chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/quiz-Quiz-Components---Uni-0308e-uiz-translations-are-loaded-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/quiz-Quiz-Components---Uni-0308e-uiz-translations-are-loaded-mobile-chrome/error-context.md
+
+
+[1A[2K  24) [mobile-chrome] › e2e/modules.spec.ts:79:7 › Module Overview Page › displays units section heading 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/en/modules/M01", waiting until "load"[22m
+
+
+      78 |
+      79 |   test('displays units section heading', async ({ page }) => {
+    > 80 |     await page.goto('/en/modules/M01');
+         |                ^
+      81 |     await expect(page.getByText('Units', { exact: true }).first()).toBeVisible();
+      82 |   });
+      83 |
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/modules.spec.ts:80:16
+
+    attachment #1: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/modules-Module-Overview-Page-displays-units-section-heading-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/modules-Module-Overview-Page-displays-units-section-heading-mobile-chrome/error-context.md
+
+
+[1A[2K  25) [mobile-chrome] › e2e/quiz.spec.ts:24:7 › Quiz Page - Current State › quiz page loads or shows error 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - navigating to "https://etutor.elearning.portfolio2.kimbetien.com/en/modules/M01/quiz?unit=M01-U01", waiting until "load"[22m
+
+
+      23 |
+      24 |   test('quiz page loads or shows error', async ({ page }) => {
+    > 25 |     const response = await page.goto('/en/modules/M01/quiz?unit=M01-U01');
+         |                                 ^
+      26 |     // The quiz page may show a runtime error (server/client component mismatch)
+      27 |     // or may load the quiz. Either outcome is valid for this UAT check.
+      28 |     // We just confirm the page responded.
+        at /home/bitraore/devprojects/etutor_digital_ph/frontend/e2e/quiz.spec.ts:25:33
+
+    attachment #1: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/quiz-Quiz-Page---Current-S-04369-z-page-loads-or-shows-error-mobile-chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+[1A[2K  25 failed
+    [chromium] › e2e/dashboard.spec.ts:82:7 › Dashboard › shows error state when API fails ─────────
+    [mobile-chrome] › e2e/dashboard.spec.ts:32:7 › Dashboard › renders dashboard page with title and subtitle 
+    [mobile-chrome] › e2e/dashboard.spec.ts:65:7 › Dashboard › shows loading skeletons before data loads 
+    [mobile-chrome] › e2e/dashboard.spec.ts:82:7 › Dashboard › shows error state when API fails ────
+    [mobile-chrome] › e2e/i18n.spec.ts:4:7 › Internationalization (FR/EN) › login page renders in English at /en/login 
+    [mobile-chrome] › e2e/i18n.spec.ts:11:7 › Internationalization (FR/EN) › login page renders in French at /fr/login 
+    [mobile-chrome] › e2e/i18n.spec.ts:18:7 › Internationalization (FR/EN) › register page renders in English at /en/register 
+    [mobile-chrome] › e2e/i18n.spec.ts:25:7 › Internationalization (FR/EN) › register page renders in French at /fr/register 
+    [mobile-chrome] › e2e/i18n.spec.ts:31:7 › Internationalization (FR/EN) › locale switcher toggles between EN and FR 
+    [mobile-chrome] › e2e/i18n.spec.ts:43:7 › Internationalization (FR/EN) › dashboard renders in English 
+    [mobile-chrome] › e2e/i18n.spec.ts:69:7 › Internationalization (FR/EN) › modules page renders in English 
+    [mobile-chrome] › e2e/i18n.spec.ts:79:7 › Internationalization (FR/EN) › navigation items visible on dashboard 
+    [mobile-chrome] › e2e/modules.spec.ts:11:7 › Modules Page › renders modules page with Learning Modules heading 
+    [mobile-chrome] › e2e/modules.spec.ts:20:7 › Modules Page › displays curriculum levels ─────────
+    [mobile-chrome] › e2e/modules.spec.ts:27:7 › Modules Page › shows module cards with titles ─────
+    [mobile-chrome] › e2e/modules.spec.ts:33:7 › Modules Page › locked modules have disabled buttons 
+    [mobile-chrome] › e2e/modules.spec.ts:42:7 › Modules Page › shows overall progress summary section 
+    [mobile-chrome] › e2e/modules.spec.ts:50:7 › Modules Page › clicking an unlocked module navigates to module overview 
+    [mobile-chrome] › e2e/modules.spec.ts:69:7 › Module Overview Page › renders module overview with back button 
+    [mobile-chrome] › e2e/modules.spec.ts:74:7 › Module Overview Page › displays learning objectives section 
+    [mobile-chrome] › e2e/modules.spec.ts:79:7 › Module Overview Page › displays units section heading 
+    [mobile-chrome] › e2e/modules.spec.ts:84:7 › Module Overview Page › shows progress percentage ──
+    [mobile-chrome] › e2e/modules.spec.ts:90:7 › Module Overview Page › back button navigates to modules list 
+    [mobile-chrome] › e2e/quiz.spec.ts:24:7 › Quiz Page - Current State › quiz page loads or shows error 
+    [mobile-chrome] › e2e/quiz.spec.ts:42:7 › Quiz Components - Unit Tests via Auth Pages › quiz translations are loaded 
+  61 passed (3.5m)
+
+To open last HTML report run:
+[36m[39m
+[36m  npx playwright show-report[39m
+[36m[39m

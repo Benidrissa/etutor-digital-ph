@@ -1,0 +1,56 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e7]: SantePublique AOF
+      - generic [ref=e8]: Create account
+    - generic [ref=e10]:
+      - generic [ref=e11]:
+        - generic [ref=e12]: Full name *
+        - textbox "Full name *" [ref=e13]:
+          - /placeholder: Dr. John Doe
+          - text: Dr. UAT Validator
+      - generic [ref=e14]:
+        - generic [ref=e15]: Email address *
+        - textbox "Email address *" [ref=e16]:
+          - /placeholder: john@example.com
+          - text: uat-1774984283923@etutor-test.local
+      - generic [ref=e17]:
+        - generic [ref=e18]: Preferred Language *
+        - combobox "Preferred Language *" [ref=e19]:
+          - option "Français"
+          - option "English" [selected]
+      - generic [ref=e20]:
+        - text: Country (Optional)
+        - combobox "Country (Optional)" [ref=e21]:
+          - option "Select your country"
+          - option "Sénégal" [selected]
+          - option "Ghana"
+          - option "Nigeria"
+          - option "Côte d'Ivoire"
+          - option "Burkina Faso"
+          - option "Mali"
+          - option "Niger"
+          - option "Guinée"
+          - option "Sierra Leone"
+          - option "Liberia"
+          - option "Guinée-Bissau"
+          - option "Cap-Vert"
+          - option "Gambie"
+          - option "Togo"
+          - option "Bénin"
+      - generic [ref=e22]:
+        - text: Professional Role (Optional)
+        - textbox "Professional Role (Optional)" [ref=e23]:
+          - /placeholder: e.g., Epidemiologist, Health Officer
+          - text: Public Health Specialist
+      - paragraph [ref=e24]: "[object Object]"
+      - button "Continue to MFA Setup" [ref=e25]
+      - generic [ref=e26]:
+        - generic [ref=e27]: Already have an account?
+        - link "Sign in" [ref=e28] [cursor=pointer]:
+          - /url: /en/login
+  - alert [ref=e29]
+```
