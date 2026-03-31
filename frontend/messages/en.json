@@ -243,6 +243,7 @@
   },
   "ChatTutor": {
     "title": "AI Tutor",
+    "tutorPageDescription": "Get personalized help with your public health studies from your AI tutor",
     "placeholder": "Ask me anything about public health...",
     "send": "Send",
     "typing": "The tutor is typing...",
@@ -278,7 +279,15 @@
     "emptyStateDescription": "Ask questions, request quizzes, or get explanations about public health topics",
     "moreThan99": "99+",
     "publicHealthFundamentals": "Public Health Fundamentals",
-    "epidemiologyBasics": "Epidemiology Basics"
+    "epidemiologyBasics": "Epidemiology Basics",
+    "newConversation": "New Conversation",
+    "noConversations": "No conversations yet",
+    "noConversationsDescription": "Start your first conversation with the AI tutor",
+    "startFirstConversation": "Start First Conversation",
+    "selectConversation": "Select a conversation",
+    "selectConversationDescription": "Choose a conversation from the sidebar or start a new one",
+    "messageCount": "{count} {count, plural, one {message} other {messages}}",
+    "cancel": "Cancel"
   },
   "Flashcards": {
     "title": "Flashcards",

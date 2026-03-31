@@ -243,6 +243,7 @@
   },
   "ChatTutor": {
     "title": "Tuteur IA",
+    "tutorPageDescription": "Obtenez une aide personnalisée pour vos études en santé publique grâce à votre tuteur IA",
     "placeholder": "Demandez-moi n'importe quoi sur la santé publique...",
     "send": "Envoyer",
     "typing": "Le tuteur écrit...",
@@ -278,7 +279,15 @@
     "emptyStateDescription": "Posez des questions, demandez des quiz, ou obtenez des explications sur les sujets de santé publique",
     "moreThan99": "99+",
     "publicHealthFundamentals": "Fondamentaux de la Santé Publique",
-    "epidemiologyBasics": "Bases de l'Épidémiologie"
+    "epidemiologyBasics": "Bases de l'Épidémiologie",
+    "newConversation": "Nouvelle Conversation",
+    "noConversations": "Aucune conversation encore",
+    "noConversationsDescription": "Commencez votre première conversation avec le tuteur IA",
+    "startFirstConversation": "Commencer la Première Conversation",
+    "selectConversation": "Sélectionner une conversation",
+    "selectConversationDescription": "Choisissez une conversation dans la barre latérale ou commencez-en une nouvelle",
+    "messageCount": "{count} {count, plural, one {message} other {messages}}",
+    "cancel": "Annuler"
   },
   "Flashcards": {
     "title": "Flashcards",
