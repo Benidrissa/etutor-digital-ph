@@ -108,7 +108,9 @@ class TestFlashcardGenerationService:
         mock_semantic_retriever.search.return_value = sample_search_results
 
         # Mock Claude API response
-        mock_claude_service.generate_structured_content.return_value = json.dumps(sample_flashcard_data)
+        mock_claude_service.generate_structured_content.return_value = json.dumps(
+            sample_flashcard_data
+        )
 
         # Act
         result = await flashcard_service.get_or_generate_flashcard_set(
