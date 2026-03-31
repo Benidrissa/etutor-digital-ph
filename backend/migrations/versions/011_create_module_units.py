@@ -42,7 +42,7 @@ def upgrade() -> None:
     )
 
     # Now seed with M01-M03 unit data
-    module_units_table = table(
+    table(
         "module_units",
         column("id", sa.String),
         column("module_id", sa.String),
@@ -59,7 +59,6 @@ def upgrade() -> None:
     # Get module IDs (we'll need to look these up)
     # For now, we'll use subqueries to find the module IDs by module_number
 
-    units_data = []
 
     # M01 Units - Foundations of Public Health
     m01_units = [
