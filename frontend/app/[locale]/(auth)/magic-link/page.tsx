@@ -12,7 +12,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { TOTPRegisterForm } from '@/components/auth/totp-register-form';
 import { authClient, AuthError, RegisterResponse } from '@/lib/auth';
 
 interface MagicLinkPageProps {

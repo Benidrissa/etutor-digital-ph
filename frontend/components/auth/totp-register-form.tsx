@@ -108,7 +108,7 @@ export function TOTPRegisterForm({ locale }: TOTPRegisterFormProps) {
     setIsLoading(true);
     
     try {
-      const authResponse = await authClient.verifyTOTP(
+      await authClient.verifyTOTP(
         registerResponse.user_id,
         data.totp_code
       );
@@ -213,7 +213,7 @@ export function TOTPRegisterForm({ locale }: TOTPRegisterFormProps) {
                 <option value="SN">Sénégal</option>
                 <option value="GH">Ghana</option>
                 <option value="NG">Nigeria</option>
-                <option value="CI">Côte d'Ivoire</option>
+                <option value="CI">Côte d&apos;Ivoire</option>
                 <option value="BF">Burkina Faso</option>
                 <option value="ML">Mali</option>
                 <option value="NE">Niger</option>

@@ -1,11 +1,4 @@
 import { getTranslations } from "next-intl/server";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { DashboardClient } from "./dashboard-client";
 import { DashboardStats } from "@/components/dashboard/dashboard-stats";
 

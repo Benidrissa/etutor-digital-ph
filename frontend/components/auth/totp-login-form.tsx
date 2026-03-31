@@ -77,7 +77,7 @@ export function TOTPLoginForm({ locale }: TOTPLoginFormProps) {
     setIsLoading(true);
     
     try {
-      const response = await authClient.login({
+      await authClient.login({
         email: data.email,
         totp_code: data.totp_code,
       });

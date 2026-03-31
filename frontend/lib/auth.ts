@@ -125,7 +125,7 @@ class AuthClient {
             ...options,
             headers,
           });
-        } catch (refreshError) {
+        } catch {
           // Refresh failed, clear tokens and re-throw
           this.clearTokens();
           throw error;
