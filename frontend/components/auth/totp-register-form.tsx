@@ -22,7 +22,7 @@ import { authClient, RegisterResponse, AuthError } from '@/lib/auth';
 const createRegistrationSchema = (t: (key: string) => string) => z.object({
   name: z.string().min(2, t('nameRequired')).max(100, t('nameTooLong')),
   email: z.string().min(1, t('emailRequired')).email(t('emailInvalid')),
-  preferred_language: z.enum(['fr', 'en'], { required_error: t('languageRequired') }),
+  preferred_language: z.enum(['fr', 'en'], { message: t('languageRequired') }),
   country: z.string().optional(),
   professional_role: z.string().optional(),
 });
