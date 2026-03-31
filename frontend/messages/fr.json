@@ -109,7 +109,8 @@
     "accountRecovered": "Compte récupéré",
     "setupNewAuthenticator": "Veuillez configurer votre application d'authentification avec le nouveau code QR ci-dessous",
     "newBackupCodes": "Nouveaux codes de secours (sauvegardez-les en sécurité) :",
-    "continueToLogin": "Continuer vers la connexion"
+    "continueToLogin": "Continuer vers la connexion",
+    "logout": "Se déconnecter"
   },
   "LanguageSwitcher": {
     "switchTo": "Passer en anglais",
