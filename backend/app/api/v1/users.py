@@ -70,7 +70,7 @@ async def update_user_profile(
         if request.professional_role is not None:
             updates["professional_role"] = request.professional_role
 
-        updated_profile = await auth_service.update_user_profile(current_user.id, updates)
+        await auth_service.update_user_profile(current_user.id, updates)
         updated_user = await user_repo.get_by_id(current_user.id)
 
         logger.info("User profile updated", user_id=str(current_user.id))
