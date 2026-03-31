@@ -2,7 +2,7 @@
   "mcpServers": {
     "playwright": {
       "command": "/home/bitraore/.nvm/versions/node/v18.20.8/bin/playwright-mcp",
-      "args": ["--headless", "--browser", "chromium"]
+      "args": ["--browser", "chromium"]
     }
   }
 }

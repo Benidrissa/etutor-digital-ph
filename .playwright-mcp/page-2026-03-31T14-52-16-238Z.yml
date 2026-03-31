@@ -1,0 +1,50 @@
+- generic [ref=e1]:
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e7]: SantePublique AOF
+      - generic [ref=e8]: Créer un compte
+    - generic [ref=e10]:
+      - generic [ref=e11]:
+        - generic [ref=e12]: Nom complet *
+        - textbox "Nom complet *" [ref=e13]:
+          - /placeholder: Dr. Jean Dupont
+          - text: Dr. Amadou Diallo
+      - generic [ref=e14]:
+        - generic [ref=e15]: Adresse email *
+        - textbox "Adresse email *" [active] [ref=e16]:
+          - /placeholder: jean@exemple.com
+          - text: amadou.e2e@example.com
+      - generic [ref=e17]:
+        - generic [ref=e18]: Langue préférée *
+        - combobox "Langue préférée *" [ref=e19]:
+          - option "Français" [selected]
+          - option "English"
+      - generic [ref=e20]:
+        - text: Pays (Optionnel)
+        - combobox "Pays (Optionnel)" [ref=e21]:
+          - option "Sélectionnez votre pays"
+          - option "Sénégal" [selected]
+          - option "Ghana"
+          - option "Nigeria"
+          - option "Côte d'Ivoire"
+          - option "Burkina Faso"
+          - option "Mali"
+          - option "Niger"
+          - option "Guinée"
+          - option "Sierra Leone"
+          - option "Liberia"
+          - option "Guinée-Bissau"
+          - option "Cap-Vert"
+          - option "Gambie"
+          - option "Togo"
+          - option "Bénin"
+      - generic [ref=e22]:
+        - text: Rôle professionnel (Optionnel)
+        - textbox "Rôle professionnel (Optionnel)" [ref=e23]:
+          - /placeholder: ex. Épidémiologiste, Agent de santé
+      - button "Continuer vers la configuration MFA" [ref=e24]
+      - generic [ref=e25]:
+        - generic [ref=e26]: Vous avez déjà un compte ?
+        - link "Se connecter" [ref=e27] [cursor=pointer]:
+          - /url: /fr/login
+  - alert [ref=e28]

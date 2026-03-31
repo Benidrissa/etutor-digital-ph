@@ -26,11 +26,13 @@ interface PlacementTestData {
   total_questions: number;
   time_limit_minutes: number;
   instructions: { [key: string]: string };
-  domains: { [key: string]: Record<string, unknown> };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  domains: { [key: string]: any };
 }
 
 interface PlacementTestInterfaceProps {
-  onComplete: (result: Record<string, unknown>) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onComplete: (result: any) => void;
   locale: string;
 }
 
