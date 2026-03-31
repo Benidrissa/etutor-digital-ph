@@ -443,7 +443,6 @@
       "timeExpired": "Le temps a expiré. Votre évaluation a été soumise automatiquement."
     }
   },
-<<<<<<< HEAD
   "SummativeAssessment": {
     "pageTitle": "Évaluation Sommative",
     "pageDescription": "Évaluation complète de fin de module",
@@ -508,8 +507,7 @@
     "backToDashboard": "Retour au Tableau de Bord",
     "attemptedAt": "Terminé",
     "attemptId": "ID de Tentative"
-  }
-=======
+  },
   "Profile": {
     "title": "Profil",
     "description": "Gérez votre compte et vos préférences d'apprentissage",
@@ -561,6 +559,5 @@
       "student": "Étudiant/e",
       "other": "Autre"
     }
->>>>>>> 0c8526b (feat(profile): implement user profile page with view and edit functionality)
   }
 }

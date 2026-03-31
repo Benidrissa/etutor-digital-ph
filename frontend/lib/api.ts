@@ -38,7 +38,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     },
   });
 }
-<<<<<<< HEAD
+
 
 export interface UpcomingReviewSession {
   date: string;
@@ -57,10 +57,6 @@ export interface UpcomingReviewsResponse {
 export async function getUpcomingReviews(): Promise<UpcomingReviewsResponse> {
   return apiFetch<UpcomingReviewsResponse>("/api/v1/flashcards/upcoming");
 }
-<<<<<<< HEAD
-=======
-=======
->>>>>>> b699694 (feat(pwa): implement PWA manifest and install prompt (#43))
 
 // Quiz API Types
 export interface QuizQuestion {

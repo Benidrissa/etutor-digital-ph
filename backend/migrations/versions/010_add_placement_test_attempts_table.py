@@ -1,6 +1,6 @@
 """add_placement_test_attempts_table
 
-Revision ID: 010_add_placement_test_attempts_table  
+Revision ID: 010_add_placement_test_attempts_table
 Revises: 09a53bdc050e
 Create Date: 2026-03-31 03:49:00.000000
 """
@@ -39,9 +39,7 @@ def upgrade() -> None:
     )
 
     # Add indexes for performance
-    op.create_index(
-        "ix_placement_test_attempts_user_id", "placement_test_attempts", ["user_id"]
-    )
+    op.create_index("ix_placement_test_attempts_user_id", "placement_test_attempts", ["user_id"])
     op.create_index(
         "ix_placement_test_attempts_attempted_at", "placement_test_attempts", ["attempted_at"]
     )

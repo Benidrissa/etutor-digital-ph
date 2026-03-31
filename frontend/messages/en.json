@@ -443,7 +443,6 @@
       "timeExpired": "Time has expired. Your assessment has been automatically submitted."
     }
   },
-<<<<<<< HEAD
   "SummativeAssessment": {
     "pageTitle": "Summative Assessment",
     "pageDescription": "End-of-module comprehensive assessment",
@@ -508,8 +507,7 @@
     "backToDashboard": "Back to Dashboard",
     "attemptedAt": "Completed",
     "attemptId": "Attempt ID"
-  }
-=======
+  },
   "Profile": {
     "title": "Profile",
     "description": "Manage your account and learning preferences",
@@ -561,6 +559,5 @@
       "student": "Student",
       "other": "Other"
     }
->>>>>>> 0c8526b (feat(profile): implement user profile page with view and edit functionality)
   }
 }

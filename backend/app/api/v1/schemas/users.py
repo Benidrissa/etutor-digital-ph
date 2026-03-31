@@ -41,6 +41,6 @@ class UpdateProfileRequest(BaseModel):
 
 class ProfileUpdateResponse(BaseModel):
     """Response after profile update with re-contextualization flag."""
-    
+
     profile: UserProfileResponse
     content_recontextualization_required: bool = False
