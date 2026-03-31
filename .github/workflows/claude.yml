@@ -8,6 +8,10 @@ on:
   issues:
     types: [labeled]
 
+# One run per issue — prevents duplicate work on the same issue.
+# GitHub Actions does not natively support max-N concurrent runs.
+# To limit total parallel runs, use GitHub's org-level runner concurrency
+# or limit labels to 3 issues at a time.
 concurrency:
   group: claude-${{ github.event.issue.number || github.event.pull_request.number || github.run_id }}
   cancel-in-progress: false
@@ -100,9 +104,12 @@ jobs:
             STEP 6 — Create PR (MANDATORY — do NOT skip this step):
                gh pr create --base dev --title "feat(scope): short description" --body "Closes #N"
 
-            STEP 7 — Verify PR was created:
-               gh pr list --head feature/issue-N-short-desc
+            STEP 7 — Merge the PR:
+               gh pr merge --squash --delete-branch
 
-            If step 6 fails, retry it. If push fails, retry it. The PR MUST exist when you finish.
-            Do NOT merge the PR — the maintainer reviews and merges.
-            Do NOT just comment on the issue without creating a PR.
+            STEP 8 — Verify issue is closed:
+               gh issue view N --json state
+
+            If step 6 fails, retry it. If step 7 fails, retry it.
+            The PR MUST be created AND merged when you finish.
+            Do NOT just comment on the issue without creating and merging a PR.
