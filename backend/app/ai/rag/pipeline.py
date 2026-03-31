@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.rag.chunker import TextChunker, detect_language, extract_text_from_pdf
 from app.ai.rag.embeddings import EmbeddingService
 from app.domain.models.document_chunk import DocumentChunk
-from app.infrastructure.persistence.database import get_session
+from app.infrastructure.persistence.database import async_session_factory
 
 logger = structlog.get_logger()
 
@@ -83,7 +83,7 @@ class RAGPipeline:
         # Store in database
         session_provided = session is not None
         if not session_provided:
-            async with get_session() as session:
+            async with async_session_factory() as session:
                 return await self._store_chunks(chunks, embeddings, session)
         else:
             return await self._store_chunks(chunks, embeddings, session)
@@ -225,7 +225,7 @@ class RAGPipeline:
         """
         session_provided = session is not None
         if not session_provided:
-            async with get_session() as session:
+            async with async_session_factory() as session:
                 return await self._clear_chunks(source, session)
         else:
             return await self._clear_chunks(source, session)
@@ -253,7 +253,7 @@ class RAGPipeline:
         """Get statistics about the current state of the pipeline."""
         session_provided = session is not None
         if not session_provided:
-            async with get_session() as session:
+            async with async_session_factory() as session:
                 return await self._get_stats(session)
         else:
             return await self._get_stats(session)
