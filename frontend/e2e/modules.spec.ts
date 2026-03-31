@@ -41,10 +41,10 @@ test.describe('Modules Page', () => {
 
   test('shows overall progress summary section', async ({ page }) => {
     await page.goto('/en/modules');
-    // The summary section has a teal background
-    const progressSection = page.locator('.bg-teal-50');
-    await expect(progressSection).toBeVisible();
-    await expect(progressSection.getByText('Overall Progress')).toBeVisible();
+    // Scroll to the bottom to find the progress summary
+    const progressHeading = page.getByRole('heading', { name: 'Overall Progress' });
+    await progressHeading.scrollIntoViewIfNeeded();
+    await expect(progressHeading).toBeVisible();
   });
 
   test('clicking an unlocked module navigates to module overview', async ({ page }) => {

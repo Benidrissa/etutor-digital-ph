@@ -99,7 +99,7 @@ test.describe('Internationalization (FR/EN)', () => {
     );
 
     await page.goto('/en/dashboard');
-    // At least one nav element should contain "Dashboard"
-    await expect(page.getByText('Dashboard').first()).toBeVisible();
+    // Dashboard heading is visible on all viewports
+    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
   });
 });

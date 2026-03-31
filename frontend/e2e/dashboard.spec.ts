@@ -58,8 +58,8 @@ test.describe('Dashboard', () => {
     // In progress card
     await expect(page.getByText('In progress')).toBeVisible();
 
-    // Overall progress card
-    await expect(page.getByText('Overall progress')).toBeVisible();
+    // Overall progress card (exact match to avoid matching module map heading)
+    await expect(page.getByText('Overall progress', { exact: true })).toBeVisible();
   });
 
   test('shows loading skeletons before data loads', async ({ page }) => {
