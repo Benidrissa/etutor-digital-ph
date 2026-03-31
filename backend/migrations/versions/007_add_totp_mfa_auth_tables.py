@@ -27,8 +27,10 @@ def upgrade() -> None:
         sa.Column("secret", sa.String(32), nullable=False),
         sa.Column("backup_codes", sa.Text(), nullable=True),
         sa.Column("is_verified", sa.Boolean(), nullable=False, server_default=sa.text("false")),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
-        sa.Column("verified_at", sa.DateTime(), nullable=True),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
+        sa.Column("verified_at", sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(
             ["user_id"],
             ["users.id"],
@@ -44,9 +46,11 @@ def upgrade() -> None:
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("user_id", sa.UUID(), nullable=False),
         sa.Column("token_hash", sa.String(128), nullable=False),
-        sa.Column("expires_at", sa.DateTime(), nullable=False),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
-        sa.Column("last_used_at", sa.DateTime(), nullable=True),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
+        sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("user_agent", sa.String(500), nullable=True),
         sa.Column("ip_address", sa.String(45), nullable=True),
         sa.ForeignKeyConstraint(
@@ -67,9 +71,11 @@ def upgrade() -> None:
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("user_id", sa.UUID(), nullable=False),
         sa.Column("token_hash", sa.String(128), nullable=False),
-        sa.Column("expires_at", sa.DateTime(), nullable=False),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
-        sa.Column("used_at", sa.DateTime(), nullable=True),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
+        sa.Column("used_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("ip_address", sa.String(45), nullable=True),
         sa.ForeignKeyConstraint(
             ["user_id"],
