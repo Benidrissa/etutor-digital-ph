@@ -140,7 +140,12 @@
     "tomorrow": "Demain",
     "noUpcomingReviews": "Aucune révision programmée",
     "keepLearning": "Terminez des modules pour générer des flashcards",
-    "errorLoading": "Erreur lors du chargement des révisions"
+    "errorLoading": "Erreur lors du chargement des révisions",
+    "signInToSeeProgress": "Connectez-vous pour voir vos progrès",
+    "signInDescription": "Suivez vos statistiques d'apprentissage, votre série et vos révisions à venir.",
+    "signIn": "Se connecter",
+    "errorOccurred": "Une erreur s'est produite",
+    "unableToLoadStats": "Impossible de charger les statistiques du tableau de bord"
   },
   "ModuleCard": {
     "locked": "Verrouillé",
@@ -334,7 +339,8 @@
     "cardsReadyForReview": "cartes prêtes pour révision",
     "target": "Objectif",
     "startReviewSession": "Commencer la Session de Révision",
-    "reviewDescription": "Révisez les flashcards avec répétition espacée pour un apprentissage efficace"
+    "reviewDescription": "Révisez les flashcards avec répétition espacée pour un apprentissage efficace",
+    "redirectingToLogin": "Redirection vers la connexion..."
   },
   "Onboarding": {
     "welcome": "Bienvenue sur SantePublique AOF",

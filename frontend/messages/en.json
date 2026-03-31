@@ -140,7 +140,12 @@
     "tomorrow": "Tomorrow",
     "noUpcomingReviews": "No reviews scheduled",
     "keepLearning": "Complete modules to generate flashcards",
-    "errorLoading": "Error loading reviews"
+    "errorLoading": "Error loading reviews",
+    "signInToSeeProgress": "Sign in to see your progress",
+    "signInDescription": "Track your learning stats, streak, and upcoming reviews.",
+    "signIn": "Sign In",
+    "errorOccurred": "An error occurred",
+    "unableToLoadStats": "Unable to load dashboard statistics"
   },
   "ModuleCard": {
     "locked": "Locked",
@@ -334,7 +339,8 @@
     "cardsReadyForReview": "cards ready for review",
     "target": "Target",
     "startReviewSession": "Start Review Session",
-    "reviewDescription": "Review flashcards with spaced repetition for effective learning"
+    "reviewDescription": "Review flashcards with spaced repetition for effective learning",
+    "redirectingToLogin": "Redirecting to login..."
   },
   "Onboarding": {
     "welcome": "Welcome to SantePublique AOF",

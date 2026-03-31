@@ -3,11 +3,12 @@
 import { useState, useEffect } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { useQuery, useMutation } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import { FlashcardDeck } from '@/components/learning/flashcard-deck';
 import { FlashcardSessionSummary } from '@/components/learning/flashcard-session-summary';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { fetchApi } from '@/lib/api';
+import { authClient, AuthError } from '@/lib/auth';
 
 interface FlashcardData {
   id: string;
@@ -51,18 +52,31 @@ type SessionState = 'loading' | 'ready' | 'reviewing' | 'summary';
 export function FlashcardsContainer() {
   const t = useTranslations('Flashcards');
   const locale = useLocale();
+  const router = useRouter();
   const [sessionState, setSessionState] = useState<SessionState>('loading');
   const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
+  
+  // Check authentication status
+  const isAuthenticated = authClient.isAuthenticated();
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.push(`/${locale}/login`);
+      return;
+    }
+  }, [isAuthenticated, router, locale]);
 
   // Fetch due flashcards
   const { data: dueCards, isLoading, error, refetch } = useQuery({
     queryKey: ['flashcards', 'due'],
     queryFn: async () => {
-      const response = await fetchApi<FlashcardDueResponse>('/api/v1/flashcards/due');
+      const response = await authClient.authenticatedFetch<FlashcardDueResponse>('/api/v1/flashcards/due');
       return response;
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
+    enabled: isAuthenticated, // Only fetch if authenticated
   });
 
   // Submit flashcard review
@@ -78,7 +92,7 @@ export function FlashcardsContainer() {
     }) => {
       const [contentId, cardIndex] = cardId.split('_');
       
-      await fetchApi('/api/v1/flashcards/review', {
+      await authClient.authenticatedFetch('/api/v1/flashcards/review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -98,7 +112,7 @@ export function FlashcardsContainer() {
       sessionDuration: number;
       ratings: string[];
     }) => {
-      const response = await fetchApi<{
+      const response = await authClient.authenticatedFetch<{
         session_id: string;
         user_id: string;
         cards_reviewed: number;
@@ -172,6 +186,17 @@ export function FlashcardsContainer() {
     refetch(); // Get more cards if available
     setSessionState('reviewing');
   };
+
+  // Don't render anything while redirecting unauthenticated users
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-muted-foreground">{t('redirectingToLogin')}</p>
+        </div>
+      </div>
+    );
+  }
 
   if (error) {
     return (
