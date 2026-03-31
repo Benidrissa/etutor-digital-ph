@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from app.domain.models.flashcard import FlashcardReview
     from app.domain.models.lesson_reading import LessonReading
     from app.domain.models.progress import UserModuleProgress
-    from app.domain.models.quiz import QuizAttempt, SummativeAssessmentAttempt
+    from app.domain.models.quiz import PlacementTestAttempt, QuizAttempt, SummativeAssessmentAttempt
 
 
 class User(Base):
@@ -43,6 +43,7 @@ class User(Base):
     summative_attempts: Mapped[list[SummativeAssessmentAttempt]] = relationship(
         back_populates="user"
     )
+    placement_attempts: Mapped[list[PlacementTestAttempt]] = relationship(back_populates="user")
     flashcard_reviews: Mapped[list[FlashcardReview]] = relationship(back_populates="user")
     lesson_readings: Mapped[list[LessonReading]] = relationship(back_populates="user")
     tutor_conversations: Mapped[list[TutorConversation]] = relationship(back_populates="user")
