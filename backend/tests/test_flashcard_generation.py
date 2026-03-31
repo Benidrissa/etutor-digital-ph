@@ -108,7 +108,7 @@ class TestFlashcardGenerationService:
         mock_semantic_retriever.search.return_value = sample_search_results
 
         # Mock Claude API response
-        mock_claude_service.generate_content.return_value = json.dumps(sample_flashcard_data)
+        mock_claude_service.generate_structured_content.return_value = json.dumps(sample_flashcard_data)
 
         # Act
         result = await flashcard_service.get_or_generate_flashcard_set(
@@ -137,7 +137,7 @@ class TestFlashcardGenerationService:
 
         # Verify service calls
         mock_semantic_retriever.search.assert_called_once()
-        mock_claude_service.generate_content.assert_called_once()
+        mock_claude_service.generate_structured_content.assert_called_once()
         session.add.assert_called_once()
         session.commit.assert_called_once()
 
@@ -188,7 +188,7 @@ class TestFlashcardGenerationService:
 
         # Verify no generation calls were made
         mock_semantic_retriever.search.assert_not_called()
-        mock_claude_service.generate_content.assert_not_called()
+        mock_claude_service.generate_structured_content.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_generate_flashcard_set_no_search_results(
@@ -238,7 +238,7 @@ class TestFlashcardGenerationService:
         session.execute.return_value.scalar_one_or_none.return_value = None
 
         mock_semantic_retriever.search.return_value = sample_search_results
-        mock_claude_service.generate_content.side_effect = Exception("API Error")
+        mock_claude_service.generate_structured_content.side_effect = Exception("API Error")
 
         # Act & Assert
         with pytest.raises(ValueError, match="Content generation failed"):
@@ -269,7 +269,7 @@ class TestFlashcardGenerationService:
         session.execute.return_value.scalar_one_or_none.return_value = None
 
         mock_semantic_retriever.search.return_value = sample_search_results
-        mock_claude_service.generate_content.return_value = "Invalid JSON"
+        mock_claude_service.generate_structured_content.return_value = "Invalid JSON"
 
         # Act & Assert
         with pytest.raises(ValueError, match="Invalid JSON response"):

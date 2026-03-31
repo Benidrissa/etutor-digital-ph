@@ -185,7 +185,7 @@ class FlashcardGenerationService:
 
         # Call Claude API
         try:
-            response = await self.claude_service.generate_content(
+            response = await self.claude_service.generate_structured_content(
                 system_prompt=system_prompt,
                 user_prompt=rag_context,
                 max_tokens=8000,  # Large token budget for 15-30 flashcards
