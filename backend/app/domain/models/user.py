@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import String, func
+from sqlalchemy import DateTime, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.models.base import Base
@@ -29,8 +29,8 @@ class User(Base):
     professional_role: Mapped[str | None] = mapped_column(String)
     current_level: Mapped[int] = mapped_column(server_default="1")
     streak_days: Mapped[int] = mapped_column(server_default="0")
-    last_active: Mapped[datetime] = mapped_column(server_default=func.now())
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    last_active: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # Auth relationships
     totp_secret: Mapped[TOTPSecret | None] = relationship(back_populates="user")
