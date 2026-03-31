@@ -232,7 +232,14 @@
     "error": "Quiz Error",
     "failedToLoad": "Failed to load quiz. Please try again.",
     "failedToSubmit": "Failed to submit quiz. Please try again.",
-    "networkError": "Network error. Please check your connection and try again."
+    "networkError": "Network error. Please check your connection and try again.",
+    "tryAgain": "Try Again",
+    "questions": "Questions",
+    "minutes": "Minutes",
+    "level": "Level",
+    "cached": "Cached",
+    "totalQuestions": "Total Questions",
+    "quizCompleteScreenReader": "Quiz completed with {score}% score. {correct} out of {total} questions correct. Time taken: {time}. {passed, select, true {Quiz passed.} other {Quiz not passed.}}"
   },
   "ChatTutor": {
     "title": "AI Tutor",
@@ -268,7 +275,10 @@
     "loading": "Loading conversation...",
     "welcomeMessage": "Hello! I'm your AI tutor for public health. Ask me anything about the modules, concepts, or get help with your studies.",
     "emptyState": "Start a conversation",
-    "emptyStateDescription": "Ask questions, request quizzes, or get explanations about public health topics"
+    "emptyStateDescription": "Ask questions, request quizzes, or get explanations about public health topics",
+    "moreThan99": "99+",
+    "publicHealthFundamentals": "Public Health Fundamentals",
+    "epidemiologyBasics": "Epidemiology Basics"
   },
   "Flashcards": {
     "title": "Flashcards",
@@ -315,7 +325,16 @@
     "flipCard": "Flip card",
     "error": "Error loading flashcards",
     "tryAgain": "Try again",
-    "offline": "You're offline - showing cached cards"
+    "offline": "You're offline - showing cached cards",
+    "ratingBreakdown": "Rating Breakdown",
+    "goodProgress": "Good progress! Keep practicing to improve your recall.",
+    "dontWorryProgress": "Don't worry, spaced repetition will help you improve over time!",
+    "day": "day",
+    "days": "days",
+    "cardsReadyForReview": "cards ready for review",
+    "target": "Target",
+    "startReviewSession": "Start Review Session",
+    "reviewDescription": "Review flashcards with spaced repetition for effective learning"
   },
   "Onboarding": {
     "welcome": "Welcome to SantePublique AOF",

@@ -232,7 +232,14 @@
     "error": "Erreur du Quiz",
     "failedToLoad": "Échec du chargement du quiz. Veuillez réessayer.",
     "failedToSubmit": "Échec de la soumission du quiz. Veuillez réessayer.",
-    "networkError": "Erreur réseau. Vérifiez votre connexion et réessayez."
+    "networkError": "Erreur réseau. Vérifiez votre connexion et réessayez.",
+    "tryAgain": "Réessayer",
+    "questions": "Questions",
+    "minutes": "Minutes",
+    "level": "Niveau",
+    "cached": "En Cache",
+    "totalQuestions": "Total Questions",
+    "quizCompleteScreenReader": "Quiz terminé avec {score}% de score. {correct} sur {total} questions correctes. Temps pris : {time}. {passed, select, true {Quiz réussi.} other {Quiz non réussi.}}"
   },
   "ChatTutor": {
     "title": "Tuteur IA",
@@ -268,7 +275,10 @@
     "loading": "Chargement de la conversation...",
     "welcomeMessage": "Bonjour ! Je suis votre tuteur IA pour la santé publique. Demandez-moi n'importe quoi sur les modules, les concepts, ou obtenez de l'aide avec vos études.",
     "emptyState": "Commencer une conversation",
-    "emptyStateDescription": "Posez des questions, demandez des quiz, ou obtenez des explications sur les sujets de santé publique"
+    "emptyStateDescription": "Posez des questions, demandez des quiz, ou obtenez des explications sur les sujets de santé publique",
+    "moreThan99": "99+",
+    "publicHealthFundamentals": "Fondamentaux de la Santé Publique",
+    "epidemiologyBasics": "Bases de l'Épidémiologie"
   },
   "Flashcards": {
     "title": "Flashcards",
@@ -315,7 +325,16 @@
     "flipCard": "Retourner la carte",
     "error": "Erreur lors du chargement des flashcards",
     "tryAgain": "Réessayer",
-    "offline": "Vous êtes hors ligne - affichage des cartes en cache"
+    "offline": "Vous êtes hors ligne - affichage des cartes en cache",
+    "ratingBreakdown": "Répartition des Évaluations",
+    "goodProgress": "Bon progrès ! Continuez à pratiquer pour améliorer votre mémorisation.",
+    "dontWorryProgress": "Ne vous inquiétez pas, la répétition espacée vous aidera à vous améliorer avec le temps !",
+    "day": "jour",
+    "days": "jours",
+    "cardsReadyForReview": "cartes prêtes pour révision",
+    "target": "Objectif",
+    "startReviewSession": "Commencer la Session de Révision",
+    "reviewDescription": "Révisez les flashcards avec répétition espacée pour un apprentissage efficace"
   },
   "Onboarding": {
     "welcome": "Bienvenue sur SantePublique AOF",
