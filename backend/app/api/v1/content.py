@@ -24,7 +24,7 @@ from app.api.v1.schemas.content import (
 )
 from app.domain.services.flashcard_service import FlashcardGenerationService
 from app.domain.services.lesson_service import LessonGenerationService
-from app.domain.services.quiz_service import QuizGenerationService
+from app.domain.services.quiz_service import QuizService
 from app.infrastructure.config.settings import get_settings
 
 logger = structlog.get_logger()
@@ -64,9 +64,9 @@ def get_flashcard_service(
 def get_quiz_service(
     claude_service: ClaudeService = Depends(get_claude_service),
     semantic_retriever: SemanticRetriever = Depends(get_semantic_retriever),
-) -> QuizGenerationService:
+) -> QuizService:
     """Dependency to get quiz generation service."""
-    return QuizGenerationService(claude_service, semantic_retriever)
+    return QuizService(claude_service, semantic_retriever)
 
 
 @router.post(
@@ -423,7 +423,7 @@ async def generate_flashcards(
 )
 async def generate_quiz(
     request: QuizGenerationRequest,
-    quiz_service: QuizGenerationService = Depends(get_quiz_service),
+    quiz_service: QuizService = Depends(get_quiz_service),
     session: AsyncSession = Depends(get_db),
 ) -> QuizResponse:
     """
