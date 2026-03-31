@@ -138,7 +138,7 @@ async def db_session(engine):
 
 @pytest.fixture
 def auth_headers():
-    token = create_test_supabase_jwt(user_id="test-user", language="fr", country="senegal")
+    token = create_test_jwt(user_id="test-user", language="fr", country="senegal")
     return {"Authorization": f"Bearer {token}"}
 ```
 

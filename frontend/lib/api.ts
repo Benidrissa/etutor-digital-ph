@@ -12,6 +12,9 @@ export async function apiFetch<T>(
   return res.json();
 }
 
+// Alias for backward compatibility and common usage
+export const fetchApi = apiFetch;
+
 export interface DashboardStats {
   streak_days: number;
   average_quiz_score: number;

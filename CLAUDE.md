@@ -6,20 +6,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **SantePublique AOF** — an adaptive, bilingual (FR/EN), mobile-first learning platform for public health professionals in West Africa. Uses AI (Claude API + RAG) to generate personalized content from 3 reference textbooks and real African health data (DHIS2, DHS, WHO AFRO).
 
-**Current status:** Phase 0 scaffolding complete. Monorepo with `backend/` (FastAPI) and `frontend/` (Next.js 15) fully initialized. Backend has health endpoints with tests passing. Frontend has App Router with FR/EN i18n, Tailwind + shadcn/ui, and mobile-first navigation. Docker Compose, CI/CD, and Alembic are configured. Next: DB schema migrations, Supabase Auth, RAG pipeline.
+**Current status:** Phase 0 scaffolding complete. Monorepo with `backend/` (FastAPI) and `frontend/` (Next.js 15) fully initialized. Backend has health endpoints with tests passing. Frontend has App Router with FR/EN i18n, Tailwind + shadcn/ui, and mobile-first navigation. Docker Compose, CI/CD, and Alembic are configured. Next: DB schema migrations, RAG pipeline.
 
 ## Planned Tech Stack
 
 - **Frontend:** Next.js 15 + React 19, Tailwind CSS + shadcn/ui, Zustand, TanStack Query, next-intl (i18n), next-pwa + Workbox (offline/PWA)
 - **Backend:** FastAPI (Python 3.12), PostgreSQL 16, Redis 7, Celery
-- **Auth:** Local FastAPI auth — passwordless TOTP MFA (Microsoft/Google Authenticator) + email magic link recovery. No Supabase. JWTs issued by backend.
+- **Auth:** Local FastAPI auth — passwordless TOTP MFA (Microsoft/Google Authenticator) + email magic link recovery. JWTs issued by backend (pyotp + python-jose).
 - **AI/RAG:** Anthropic Claude 3.5 Sonnet, Anthropic Python SDK, pgvector (PostgreSQL), OpenAI text-embedding-3-small
 - **Deploy:** GitHub Actions + Docker, Fly.io or Railway, Cloudflare Workers (CDN), Sentry + PostHog
 
 ## Architecture (4-layer)
 
 ```
-Frontend (Next.js/React PWA) → Backend (FastAPI + Supabase) → AI/RAG (Claude + pgvector) → External Data (DHIS2, DHS, WHO, PubMed)
+Frontend (Next.js/React PWA) → Backend (FastAPI + PostgreSQL) → AI/RAG (Claude + pgvector) → External Data (DHIS2, DHS, WHO, PubMed)
 ```
 
 Key architectural decisions:

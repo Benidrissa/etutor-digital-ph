@@ -23,12 +23,6 @@ class Settings(BaseSettings):
     from_email: str = "noreply@santepublique-aof.org"
     frontend_url: str = "http://localhost:3000"
 
-    # Supabase Auth (deprecated - will be removed)
-    supabase_url: str = ""
-    supabase_anon_key: str = ""
-    supabase_service_role_key: str = ""
-    supabase_jwt_secret: str = ""
-
     # Anthropic Claude API
     anthropic_api_key: str = ""
 
