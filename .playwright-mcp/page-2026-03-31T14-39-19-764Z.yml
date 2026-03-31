@@ -1,0 +1,259 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - banner [ref=e5]:
+        - generic [ref=e6]:
+          - generic [ref=e7]: SantePublique AOF
+          - button "Passer en anglais" [ref=e8]:
+            - img [ref=e9]: 🇫🇷
+            - generic [ref=e10]: FR
+      - main [ref=e11]:
+        - generic [ref=e12]:
+          - heading "Tableau de bord" [level=1] [ref=e13]
+          - paragraph [ref=e14]: Votre plateforme d'apprentissage en santé publique
+          - generic [ref=e30]:
+            - generic [ref=e31]:
+              - heading "Modules d'apprentissage" [level=2] [ref=e32]
+              - paragraph [ref=e33]: Suivez votre progression dans le curriculum de santé publique
+            - generic [ref=e34]:
+              - generic [ref=e36]:
+                - generic [ref=e37]:
+                  - 'heading "Niveau 1 : Débutant" [level=3] [ref=e38]'
+                  - paragraph [ref=e39]: Fondements, introduction aux données de santé, systèmes de santé ouest-africains
+                - generic [ref=e40]:
+                  - generic [ref=e41]: 0/3 modules
+                  - generic [ref=e45]: 25%
+              - generic [ref=e46]:
+                - generic [ref=e47] [cursor=pointer]:
+                  - generic [ref=e48]:
+                    - generic [ref=e49]:
+                      - generic [ref=e50]:
+                        - generic [ref=e51]: "1"
+                        - img [ref=e52]
+                      - generic [ref=e55]: 20 heures
+                    - generic [ref=e56]: Fondements de la Santé Publique
+                  - generic [ref=e58]:
+                    - paragraph [ref=e62]: 75% terminé
+                    - button "Continuer" [ref=e63]
+                - generic [ref=e64] [cursor=pointer]:
+                  - generic [ref=e65]:
+                    - generic [ref=e66]:
+                      - generic [ref=e67]:
+                        - generic [ref=e68]: "2"
+                        - img [ref=e69]
+                      - generic [ref=e72]: 20 heures
+                    - generic [ref=e73]: Fondamentaux des données de santé
+                  - generic [ref=e75]:
+                    - paragraph [ref=e76]: Prérequis nécessaires
+                    - button "Commencer" [disabled]
+                - generic [ref=e77] [cursor=pointer]:
+                  - generic [ref=e78]:
+                    - generic [ref=e79]:
+                      - generic [ref=e80]:
+                        - generic [ref=e81]: "3"
+                        - img [ref=e82]
+                      - generic [ref=e85]: 20 heures
+                    - generic [ref=e86]: Systèmes de santé ouest-africains
+                  - generic [ref=e88]:
+                    - paragraph [ref=e89]: Prérequis nécessaires
+                    - button "Commencer" [disabled]
+            - generic [ref=e90]:
+              - generic [ref=e92]:
+                - generic [ref=e93]:
+                  - 'heading "Niveau 2 : Intermédiaire" [level=3] [ref=e94]'
+                  - paragraph [ref=e95]: Épidémiologie, surveillance, DHIS2, biostatistiques
+                - generic [ref=e96]:
+                  - generic [ref=e97]: 0/4 modules
+                  - generic [ref=e100]: 0%
+              - generic [ref=e101]:
+                - generic [ref=e102] [cursor=pointer]:
+                  - generic [ref=e103]:
+                    - generic [ref=e104]:
+                      - generic [ref=e105]:
+                        - generic [ref=e106]: "4"
+                        - img [ref=e107]
+                      - generic [ref=e110]: 25 heures
+                    - generic [ref=e111]: Principes d'épidémiologie
+                  - generic [ref=e113]:
+                    - paragraph [ref=e114]: Prérequis nécessaires
+                    - button "Commencer" [disabled]
+                - generic [ref=e115] [cursor=pointer]:
+                  - generic [ref=e116]:
+                    - generic [ref=e117]:
+                      - generic [ref=e118]:
+                        - generic [ref=e119]: "5"
+                        - img [ref=e120]
+                      - generic [ref=e123]: 20 heures
+                    - generic [ref=e124]: Surveillance des maladies
+                  - generic [ref=e126]:
+                    - paragraph [ref=e127]: Prérequis nécessaires
+                    - button "Commencer" [disabled]
+                - generic [ref=e128] [cursor=pointer]:
+                  - generic [ref=e129]:
+                    - generic [ref=e130]:
+                      - generic [ref=e131]:
+                        - generic [ref=e132]: "6"
+                        - img [ref=e133]
+                      - generic [ref=e136]: 25 heures
+                    - generic [ref=e137]: DHIS2 et systèmes d'information sanitaire
+                  - generic [ref=e139]:
+                    - paragraph [ref=e140]: Prérequis nécessaires
+                    - button "Commencer" [disabled]
+                - generic [ref=e141] [cursor=pointer]:
+                  - generic [ref=e142]:
+                    - generic [ref=e143]:
+                      - generic [ref=e144]:
+                        - generic [ref=e145]: "7"
+                        - img [ref=e146]
+                      - generic [ref=e149]: 20 heures
+                    - generic [ref=e150]: Fondamentaux de biostatistique
+                  - generic [ref=e152]:
+                    - paragraph [ref=e153]: Prérequis nécessaires
+                    - button "Commencer" [disabled]
+            - generic [ref=e154]:
+              - generic [ref=e156]:
+                - generic [ref=e157]:
+                  - 'heading "Niveau 3 : Avancé" [level=3] [ref=e158]'
+                  - paragraph [ref=e159]: Stats/épi avancées, programmation sanitaire, visualisation
+                - generic [ref=e160]:
+                  - generic [ref=e161]: 0/5 modules
+                  - generic [ref=e164]: 0%
+              - generic [ref=e165]:
+                - generic [ref=e166] [cursor=pointer]:
+                  - generic [ref=e167]:
+                    - generic [ref=e168]:
+                      - generic [ref=e169]:
+                        - generic [ref=e170]: "8"
+                        - img [ref=e171]
+                      - generic [ref=e174]: 25 heures
+                    - generic [ref=e175]: Statistiques avancées
+                  - generic [ref=e177]:
+                    - paragraph [ref=e178]: Prérequis nécessaires
+                    - button "Commencer" [disabled]
+                - generic [ref=e179] [cursor=pointer]:
+                  - generic [ref=e180]:
+                    - generic [ref=e181]:
+                      - generic [ref=e182]:
+                        - generic [ref=e183]: "9"
+                        - img [ref=e184]
+                      - generic [ref=e187]: 25 heures
+                    - generic [ref=e188]: Épidémiologie avancée
+                  - generic [ref=e190]:
+                    - paragraph [ref=e191]: Prérequis nécessaires
+                    - button "Commencer" [disabled]
+                - generic [ref=e192] [cursor=pointer]:
+                  - generic [ref=e193]:
+                    - generic [ref=e194]:
+                      - generic [ref=e195]:
+                        - generic [ref=e196]: "10"
+                        - img [ref=e197]
+                      - generic [ref=e200]: 20 heures
+                    - generic [ref=e201]: Développement de programmes de santé
+                  - generic [ref=e203]:
+                    - paragraph [ref=e204]: Prérequis nécessaires
+                    - button "Commencer" [disabled]
+                - generic [ref=e205] [cursor=pointer]:
+                  - generic [ref=e206]:
+                    - generic [ref=e207]:
+                      - generic [ref=e208]:
+                        - generic [ref=e209]: "11"
+                        - img [ref=e210]
+                      - generic [ref=e213]: 15 heures
+                    - generic [ref=e214]: Visualisation de données
+                  - generic [ref=e216]:
+                    - paragraph [ref=e217]: Prérequis nécessaires
+                    - button "Commencer" [disabled]
+                - generic [ref=e218] [cursor=pointer]:
+                  - generic [ref=e219]:
+                    - generic [ref=e220]:
+                      - generic [ref=e221]:
+                        - generic [ref=e222]: "12"
+                        - img [ref=e223]
+                      - generic [ref=e226]: 15 heures
+                    - generic [ref=e227]: Économie de la santé
+                  - generic [ref=e229]:
+                    - paragraph [ref=e230]: Prérequis nécessaires
+                    - button "Commencer" [disabled]
+            - generic [ref=e231]:
+              - generic [ref=e233]:
+                - generic [ref=e234]:
+                  - 'heading "Niveau 4 : Expert" [level=3] [ref=e235]'
+                  - paragraph [ref=e236]: Politique, renforcement systèmes de santé, recherche finale
+                - generic [ref=e237]:
+                  - generic [ref=e238]: 0/3 modules
+                  - generic [ref=e241]: 0%
+              - generic [ref=e242]:
+                - generic [ref=e243] [cursor=pointer]:
+                  - generic [ref=e244]:
+                    - generic [ref=e245]:
+                      - generic [ref=e246]:
+                        - generic [ref=e247]: "13"
+                        - img [ref=e248]
+                      - generic [ref=e251]: 25 heures
+                    - generic [ref=e252]: Politique de santé et gouvernance
+                  - generic [ref=e254]:
+                    - paragraph [ref=e255]: Prérequis nécessaires
+                    - button "Commencer" [disabled]
+                - generic [ref=e256] [cursor=pointer]:
+                  - generic [ref=e257]:
+                    - generic [ref=e258]:
+                      - generic [ref=e259]:
+                        - generic [ref=e260]: "14"
+                        - img [ref=e261]
+                      - generic [ref=e264]: 25 heures
+                    - generic [ref=e265]: Renforcement des systèmes de santé
+                  - generic [ref=e267]:
+                    - paragraph [ref=e268]: Prérequis nécessaires
+                    - button "Commencer" [disabled]
+                - generic [ref=e269] [cursor=pointer]:
+                  - generic [ref=e270]:
+                    - generic [ref=e271]:
+                      - generic [ref=e272]:
+                        - generic [ref=e273]: "15"
+                        - img [ref=e274]
+                      - generic [ref=e277]: 20 heures
+                    - generic [ref=e278]: Projet de recherche final
+                  - generic [ref=e280]:
+                    - paragraph [ref=e281]: Prérequis nécessaires
+                    - button "Commencer" [disabled]
+            - generic [ref=e282]:
+              - heading "Progression globale" [level=3] [ref=e283]
+              - generic [ref=e284]:
+                - generic [ref=e285]:
+                  - generic [ref=e286]: "Niveau 1 : Débutant"
+                  - generic [ref=e287]: 0/3 modules terminés
+                - generic [ref=e288]:
+                  - generic [ref=e289]: "Niveau 2 : Intermédiaire"
+                  - generic [ref=e290]: 0/4 modules terminés
+                - generic [ref=e291]:
+                  - generic [ref=e292]: "Niveau 3 : Avancé"
+                  - generic [ref=e293]: 0/5 modules terminés
+                - generic [ref=e294]:
+                  - generic [ref=e295]: "Niveau 4 : Expert"
+                  - generic [ref=e296]: 0/3 modules terminés
+              - generic [ref=e297]: "320 heures au total • Durée estimée : 6-12 mois"
+    - navigation "Navigation mobile" [ref=e298]:
+      - generic [ref=e299]:
+        - link "Accéder à votre tableau de bord d'apprentissage" [ref=e300] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e301]
+          - generic [ref=e304]: Tableau de bord
+        - link "Parcourir les modules d'apprentissage disponibles" [ref=e305] [cursor=pointer]:
+          - /url: /modules
+          - img [ref=e306]
+          - generic [ref=e308]: Modules
+        - link "Réviser les flashcards et la répétition espacée" [ref=e309] [cursor=pointer]:
+          - /url: /flashcards
+          - img [ref=e310]
+          - generic [ref=e312]: Flashcards
+        - link "Discuter avec votre tuteur IA d'apprentissage" [ref=e313] [cursor=pointer]:
+          - /url: /tutor
+          - img [ref=e314]
+          - generic [ref=e317]: Tuteur IA
+        - link "Gérer votre compte et vos préférences" [ref=e318] [cursor=pointer]:
+          - /url: /settings
+          - img [ref=e319]
+          - generic [ref=e322]: Paramètres
+  - button "Ouvrir le Tuteur IA" [ref=e323]:
+    - generic [ref=e324]:
+      - img

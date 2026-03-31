@@ -1,0 +1,22 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e7]: SantePublique AOF
+      - generic [ref=e8]: Se connecter
+    - generic [ref=e10]:
+      - generic [ref=e11]:
+        - generic [ref=e12]: Adresse email *
+        - textbox "Adresse email *" [ref=e13]:
+          - /placeholder: jean@exemple.com
+      - generic [ref=e14]:
+        - generic [ref=e15]: Code d'authentification *
+        - textbox "Code d'authentification *" [ref=e16]:
+          - /placeholder: "123456"
+        - paragraph [ref=e17]: Entrez le code à 6 chiffres de votre application d'authentification
+      - button "Se connecter" [ref=e18]
+      - button "Perdu votre appareil d'authentification ?" [ref=e20]
+      - generic [ref=e21]:
+        - generic [ref=e22]: Vous n'avez pas de compte ?
+        - link "S'inscrire" [ref=e23] [cursor=pointer]:
+          - /url: /fr/register
+  - alert [ref=e24]

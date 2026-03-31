@@ -1,0 +1,2 @@
+[     888ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/flashcards/due:0
+[    3055ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/flashcards/due:0
