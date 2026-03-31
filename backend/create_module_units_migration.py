@@ -19,8 +19,8 @@ next_number = max(numbers) + 1 if numbers else 11
 migration_content = f'''"""Create module_units table for unit-level content organization.
 
 Revision ID: {next_number:03d}_create_module_units
-Revises: 010_add_placement_test_attempts_table 
-Create Date: {datetime.now().strftime('%Y-%m-%d')}
+Revises: 010_add_placement_test_attempts_table
+Create Date: {datetime.now().strftime("%Y-%m-%d")}
 """
 
 from collections.abc import Sequence
@@ -61,11 +61,11 @@ def upgrade() -> None:
     module_units_table = table(
         "module_units",
         column("id", sa.String),
-        column("module_id", sa.String), 
+        column("module_id", sa.String),
         column("unit_number", sa.Integer),
         column("unit_id", sa.String),
         column("title_fr", sa.String),
-        column("title_en", sa.String), 
+        column("title_en", sa.String),
         column("description_fr", sa.String),
         column("description_en", sa.String),
         column("learning_objectives", sa.String),
@@ -82,7 +82,7 @@ def upgrade() -> None:
         {{
             "id": str(uuid4()),
             "unit_number": 1,
-            "unit_id": "1.1", 
+            "unit_id": "1.1",
             "title_fr": "Définition et Histoire de la Santé Publique",
             "title_en": "Definition and History of Public Health",
             "description_fr": "Les concepts fondamentaux, l'évolution historique et les figures marquantes de la santé publique mondiale et en Afrique.",
@@ -143,7 +143,7 @@ def upgrade() -> None:
             "unit_number": 3,
             "unit_id": "2.3",
             "title_fr": "Introduction aux Probabilités",
-            "title_en": "Introduction to Probability", 
+            "title_en": "Introduction to Probability",
             "description_fr": "Concepts de base des probabilités appliqués aux phénomènes de santé et aux tests diagnostiques.",
             "description_en": "Basic probability concepts applied to health phenomena and diagnostic tests.",
             "learning_objectives": '{{"fr": ["Calculer des probabilités simples", "Appliquer le théorème de Bayes", "Évaluer sensibilité/spécificité"], "en": ["Calculate simple probabilities", "Apply Bayes theorem", "Evaluate sensitivity/specificity"]}}',
@@ -151,7 +151,7 @@ def upgrade() -> None:
         }},
     ]
 
-    # M03 Units - Health Systems in West Africa  
+    # M03 Units - Health Systems in West Africa
     m03_units = [
         {{
             "id": str(uuid4()),
@@ -182,7 +182,7 @@ def upgrade() -> None:
             "title_fr": "Performance et Gouvernance",
             "title_en": "Performance and Governance",
             "description_fr": "Évaluation de la performance des systèmes de santé et mécanismes de gouvernance en AOF.",
-            "description_en": "Health systems performance evaluation and governance mechanisms in West Africa.", 
+            "description_en": "Health systems performance evaluation and governance mechanisms in West Africa.",
             "learning_objectives": '{{"fr": ["Utiliser le cadre OMS de performance", "Mesurer l\'efficience", "Renforcer la gouvernance"], "en": ["Use WHO performance framework", "Measure efficiency", "Strengthen governance"]}}',
             "estimated_minutes": 60,
         }},
@@ -196,7 +196,7 @@ def upgrade() -> None:
         unit["module_id"] = "(SELECT id FROM modules WHERE module_number = 1 LIMIT 1)"
         all_units.append(unit)
 
-    # Add M02 units  
+    # Add M02 units
     for unit in m02_units:
         unit["module_id"] = "(SELECT id FROM modules WHERE module_number = 2 LIMIT 1)"
         all_units.append(unit)

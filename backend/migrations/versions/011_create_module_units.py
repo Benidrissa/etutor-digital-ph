@@ -1,7 +1,7 @@
 """Create module_units table for unit-level content organization.
 
 Revision ID: 011_create_module_units
-Revises: 010_add_placement_test_attempts_table 
+Revises: 010_add_placement_test_attempts_table
 Create Date: 2026-03-31
 """
 
@@ -37,17 +37,19 @@ def upgrade() -> None:
     )
 
     # Create composite index for efficient queries
-    op.create_index("idx_module_units_module_unit", "module_units", ["module_id", "unit_id"], unique=True)
+    op.create_index(
+        "idx_module_units_module_unit", "module_units", ["module_id", "unit_id"], unique=True
+    )
 
     # Now seed with M01-M03 unit data
     module_units_table = table(
         "module_units",
         column("id", sa.String),
-        column("module_id", sa.String), 
+        column("module_id", sa.String),
         column("unit_number", sa.Integer),
         column("unit_id", sa.String),
         column("title_fr", sa.String),
-        column("title_en", sa.String), 
+        column("title_en", sa.String),
         column("description_fr", sa.String),
         column("description_en", sa.String),
         column("learning_objectives", sa.String),
@@ -64,12 +66,12 @@ def upgrade() -> None:
         {
             "id": str(uuid4()),
             "unit_number": 1,
-            "unit_id": "1.1", 
+            "unit_id": "1.1",
             "title_fr": "Définition et Histoire de la Santé Publique",
             "title_en": "Definition and History of Public Health",
             "description_fr": "Les concepts fondamentaux, l'évolution historique et les figures marquantes de la santé publique mondiale et en Afrique.",
             "description_en": "Fundamental concepts, historical evolution and key figures in global public health and in Africa.",
-            "learning_objectives": '{"fr": ["Définir la santé publique selon l'OMS", "Identifier les étapes historiques majeures", "Reconnaître les pionniers AOF"], "en": ["Define public health according to WHO", "Identify major historical stages", "Recognize West African pioneers"]}',
+            "learning_objectives": '{"fr": ["Définir la santé publique selon l\'OMS", "Identifier les étapes historiques majeures", "Reconnaître les pionniers AOF"], "en": ["Define public health according to WHO", "Identify major historical stages", "Recognize West African pioneers"]}',
             "estimated_minutes": 45,
         },
         {
@@ -80,7 +82,7 @@ def upgrade() -> None:
             "title_en": "Social Determinants of Health",
             "description_fr": "L'impact des facteurs socioéconomiques, culturels et environnementaux sur la santé des populations en Afrique de l'Ouest.",
             "description_en": "The impact of socioeconomic, cultural and environmental factors on population health in West Africa.",
-            "learning_objectives": '{"fr": ["Analyser les inégalités de santé", "Évaluer l'impact de la pauvreté", "Proposer des interventions sociales"], "en": ["Analyze health inequalities", "Evaluate poverty impact", "Propose social interventions"]}',
+            "learning_objectives": '{"fr": ["Analyser les inégalités de santé", "Évaluer l\'impact de la pauvreté", "Proposer des interventions sociales"], "en": ["Analyze health inequalities", "Evaluate poverty impact", "Propose social interventions"]}',
             "estimated_minutes": 50,
         },
         {
@@ -91,7 +93,7 @@ def upgrade() -> None:
             "title_en": "Public Health Approaches",
             "description_fr": "Les stratégies préventives, curatives et promotionnelles de santé publique adaptées au contexte ouest-africain.",
             "description_en": "Preventive, curative and health promotion strategies adapted to the West African context.",
-            "learning_objectives": '{"fr": ["Distinguer prévention primaire/secondaire/tertiaire", "Appliquer l'approche One Health", "Planifier des interventions communautaires"], "en": ["Distinguish primary/secondary/tertiary prevention", "Apply One Health approach", "Plan community interventions"]}',
+            "learning_objectives": '{"fr": ["Distinguer prévention primaire/secondaire/tertiaire", "Appliquer l\'approche One Health", "Planifier des interventions communautaires"], "en": ["Distinguish primary/secondary/tertiary prevention", "Apply One Health approach", "Plan community interventions"]}',
             "estimated_minutes": 55,
         },
     ]
@@ -125,7 +127,7 @@ def upgrade() -> None:
             "unit_number": 3,
             "unit_id": "2.3",
             "title_fr": "Introduction aux Probabilités",
-            "title_en": "Introduction to Probability", 
+            "title_en": "Introduction to Probability",
             "description_fr": "Concepts de base des probabilités appliqués aux phénomènes de santé et aux tests diagnostiques.",
             "description_en": "Basic probability concepts applied to health phenomena and diagnostic tests.",
             "learning_objectives": '{"fr": ["Calculer des probabilités simples", "Appliquer le théorème de Bayes", "Évaluer sensibilité/spécificité"], "en": ["Calculate simple probabilities", "Apply Bayes theorem", "Evaluate sensitivity/specificity"]}',
@@ -133,7 +135,7 @@ def upgrade() -> None:
         },
     ]
 
-    # M03 Units - Health Systems in West Africa  
+    # M03 Units - Health Systems in West Africa
     m03_units = [
         {
             "id": str(uuid4()),
@@ -154,7 +156,7 @@ def upgrade() -> None:
             "title_en": "Health Financing and Coverage",
             "description_fr": "Mécanismes de financement, assurance maladie et couverture sanitaire universelle en Afrique de l'Ouest.",
             "description_en": "Financing mechanisms, health insurance and universal health coverage in West Africa.",
-            "learning_objectives": '{"fr": ["Analyser les sources de financement", "Évaluer l'équité financière", "Planifier la CSU"], "en": ["Analyze financing sources", "Evaluate financial equity", "Plan UHC"]}',
+            "learning_objectives": '{"fr": ["Analyser les sources de financement", "Évaluer l\'équité financière", "Planifier la CSU"], "en": ["Analyze financing sources", "Evaluate financial equity", "Plan UHC"]}',
             "estimated_minutes": 55,
         },
         {
@@ -164,8 +166,8 @@ def upgrade() -> None:
             "title_fr": "Performance et Gouvernance",
             "title_en": "Performance and Governance",
             "description_fr": "Évaluation de la performance des systèmes de santé et mécanismes de gouvernance en AOF.",
-            "description_en": "Health systems performance evaluation and governance mechanisms in West Africa.", 
-            "learning_objectives": '{"fr": ["Utiliser le cadre OMS de performance", "Mesurer l'efficience", "Renforcer la gouvernance"], "en": ["Use WHO performance framework", "Measure efficiency", "Strengthen governance"]}',
+            "description_en": "Health systems performance evaluation and governance mechanisms in West Africa.",
+            "learning_objectives": '{"fr": ["Utiliser le cadre OMS de performance", "Mesurer l\'efficience", "Renforcer la gouvernance"], "en": ["Use WHO performance framework", "Measure efficiency", "Strengthen governance"]}',
             "estimated_minutes": 60,
         },
     ]
@@ -178,7 +180,7 @@ def upgrade() -> None:
         unit["module_id"] = "(SELECT id FROM modules WHERE module_number = 1 LIMIT 1)"
         all_units.append(unit)
 
-    # Add M02 units  
+    # Add M02 units
     for unit in m02_units:
         unit["module_id"] = "(SELECT id FROM modules WHERE module_number = 2 LIMIT 1)"
         all_units.append(unit)
