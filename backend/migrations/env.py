@@ -35,11 +35,6 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection):  # type: ignore[no-untyped-def]
-    # Widen alembic_version.version_num if it exists and is too narrow.
-    # This is idempotent and runs before any migration.
-    connection.execute(
-        sa.text("ALTER TABLE IF EXISTS alembic_version ALTER COLUMN version_num TYPE VARCHAR(128)")
-    )
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
@@ -55,8 +50,20 @@ async def run_async_migrations() -> None:
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
+
+    # Widen alembic_version.version_num before Alembic touches it.
+    # Must run in its own committed transaction.
+    async with connectable.connect() as connection:
+        await connection.execute(
+            sa.text(
+                "ALTER TABLE IF EXISTS alembic_version ALTER COLUMN version_num TYPE VARCHAR(128)"
+            )
+        )
+        await connection.commit()
+
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
+
     await connectable.dispose()
 
 
