@@ -108,7 +108,7 @@ export function QuizResults({ quiz, result, onRetry, onContinue }: QuizResultsPr
                 <div className="text-2xl font-bold text-stone-900">
                   {quiz.content.questions.length}
                 </div>
-                <div className="text-sm text-stone-600">Total Questions</div>
+                <div className="text-sm text-stone-600">{t('totalQuestions')}</div>
               </div>
             </div>
           </div>
@@ -235,10 +235,13 @@ export function QuizResults({ quiz, result, onRetry, onContinue }: QuizResultsPr
       {/* Summary Stats for Screen Readers */}
       <div className="sr-only">
         <p>
-          Quiz completed with {result.score}% score. 
-          {result.correct_answers} out of {result.total_questions} questions correct. 
-          Time taken: {formatTime(result.total_time_seconds)}.
-          {isPassed ? ' Quiz passed.' : ' Quiz not passed.'}
+          {t('quizCompleteScreenReader', {
+            score: result.score,
+            correct: result.correct_answers,
+            total: result.total_questions,
+            time: formatTime(result.total_time_seconds),
+            passed: isPassed.toString()
+          })}
         </p>
       </div>
     </div>

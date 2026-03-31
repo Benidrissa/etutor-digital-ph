@@ -101,7 +101,7 @@ export function FlashcardSessionSummary({
               <span>🔥</span>
               <span className="font-semibold">{stats.streakDays}</span>
               <span className="text-muted-foreground text-sm">
-                {stats.streakDays === 1 ? 'day' : 'days'}
+                {stats.streakDays === 1 ? t('day') : t('days')}
               </span>
             </div>
           </div>
@@ -111,7 +111,7 @@ export function FlashcardSessionSummary({
       {/* Rating distribution */}
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle className="text-lg">Rating Breakdown</CardTitle>
+          <CardTitle className="text-lg">{t('ratingBreakdown')}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 gap-3">
@@ -152,8 +152,8 @@ export function FlashcardSessionSummary({
           {stats.accuracyPercentage >= 80 
             ? t('keepLearning')
             : stats.accuracyPercentage >= 60 
-            ? "Good progress! Keep practicing to improve your recall."
-            : "Don't worry, spaced repetition will help you improve over time!"
+            ? t('goodProgress')
+            : t('dontWorryProgress')
           }
         </p>
       </div>

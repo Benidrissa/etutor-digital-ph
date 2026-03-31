@@ -5,16 +5,24 @@
     "offline": "Vous êtes hors ligne — contenu en cache disponible",
     "error": "Une erreur est survenue"
   },
+  "PWA": {
+    "installTitle": "Installer l'application",
+    "installDescription": "Ajoutez SantePublique AOF à votre écran d'accueil pour un accès rapide et une expérience optimisée.",
+    "install": "Installer",
+    "later": "Plus tard"
+  },
   "Navigation": {
     "dashboard": "Tableau de bord",
     "modules": "Modules",
     "flashcards": "Flashcards",
     "tutor": "Tuteur IA",
+    "profile": "Profil",
     "settings": "Paramètres",
     "dashboardDescription": "Accéder à votre tableau de bord d'apprentissage",
     "modulesDescription": "Parcourir les modules d'apprentissage disponibles",
     "flashcardsDescription": "Réviser les flashcards et la répétition espacée",
     "tutorDescription": "Discuter avec votre tuteur IA d'apprentissage",
+    "profileDescription": "Voir et modifier votre profil",
     "settingsDescription": "Gérer votre compte et vos préférences",
     "mobileNavigation": "Navigation mobile",
     "desktopNavigation": "Navigation de bureau",
@@ -124,7 +132,15 @@
     "overallProgress": "Progrès global",
     "minutes": "minutes",
     "modules": "modules",
-    "cards": "cartes"
+    "cards": "cartes",
+    "upcomingReviews": "Révisions à Venir",
+    "startReview": "Commencer la Révision",
+    "dueToday": "{count, plural, one {# carte due} other {# cartes dues}}",
+    "today": "Aujourd'hui",
+    "tomorrow": "Demain",
+    "noUpcomingReviews": "Aucune révision programmée",
+    "keepLearning": "Terminez des modules pour générer des flashcards",
+    "errorLoading": "Erreur lors du chargement des révisions"
   },
   "ModuleCard": {
     "locked": "Verrouillé",
@@ -216,7 +232,14 @@
     "error": "Erreur du Quiz",
     "failedToLoad": "Échec du chargement du quiz. Veuillez réessayer.",
     "failedToSubmit": "Échec de la soumission du quiz. Veuillez réessayer.",
-    "networkError": "Erreur réseau. Vérifiez votre connexion et réessayez."
+    "networkError": "Erreur réseau. Vérifiez votre connexion et réessayez.",
+    "tryAgain": "Réessayer",
+    "questions": "Questions",
+    "minutes": "Minutes",
+    "level": "Niveau",
+    "cached": "En Cache",
+    "totalQuestions": "Total Questions",
+    "quizCompleteScreenReader": "Quiz terminé avec {score}% de score. {correct} sur {total} questions correctes. Temps pris : {time}. {passed, select, true {Quiz réussi.} other {Quiz non réussi.}}"
   },
   "ChatTutor": {
     "title": "Tuteur IA",
@@ -252,7 +275,10 @@
     "loading": "Chargement de la conversation...",
     "welcomeMessage": "Bonjour ! Je suis votre tuteur IA pour la santé publique. Demandez-moi n'importe quoi sur les modules, les concepts, ou obtenez de l'aide avec vos études.",
     "emptyState": "Commencer une conversation",
-    "emptyStateDescription": "Posez des questions, demandez des quiz, ou obtenez des explications sur les sujets de santé publique"
+    "emptyStateDescription": "Posez des questions, demandez des quiz, ou obtenez des explications sur les sujets de santé publique",
+    "moreThan99": "99+",
+    "publicHealthFundamentals": "Fondamentaux de la Santé Publique",
+    "epidemiologyBasics": "Bases de l'Épidémiologie"
   },
   "Flashcards": {
     "title": "Flashcards",
@@ -299,42 +325,242 @@
     "flipCard": "Retourner la carte",
     "error": "Erreur lors du chargement des flashcards",
     "tryAgain": "Réessayer",
-    "offline": "Vous êtes hors ligne - affichage des cartes en cache"
+    "offline": "Vous êtes hors ligne - affichage des cartes en cache",
+    "ratingBreakdown": "Répartition des Évaluations",
+    "goodProgress": "Bon progrès ! Continuez à pratiquer pour améliorer votre mémorisation.",
+    "dontWorryProgress": "Ne vous inquiétez pas, la répétition espacée vous aidera à vous améliorer avec le temps !",
+    "day": "jour",
+    "days": "jours",
+    "cardsReadyForReview": "cartes prêtes pour révision",
+    "target": "Objectif",
+    "startReviewSession": "Commencer la Session de Révision",
+    "reviewDescription": "Révisez les flashcards avec répétition espacée pour un apprentissage efficace"
   },
-  "LessonViewer": {
-    "level": "Niveau {level}",
-    "readingTime": "Lecture 10-15 min",
-    "cached": "En cache",
-    "unitTitle": "Unité {unit}",
-    "introduction": "Introduction",
-    "keyConcepts": "Concepts Clés",
-    "conceptTitle": "Concept {number}",
-    "westAfricanExample": "Exemple Ouest-Africain",
-    "synthesis": "Synthèse",
-    "keyPoints": "Points Clés",
-    "markComplete": "Marquer comme Terminé",
-    "completed": "Terminé",
-    "error": "Erreur",
-    "streamError": "Échec du streaming du contenu de la leçon. Veuillez actualiser et réessayer.",
-    "loadError": "Échec du chargement de la leçon. Veuillez actualiser et réessayer."
+  "Onboarding": {
+    "welcome": "Bienvenue sur SantePublique AOF",
+    "subtitle": "Configurons votre expérience d'apprentissage personnalisée",
+    "step": "Étape {current} de {total}",
+    "next": "Suivant",
+    "previous": "Précédent",
+    "complete": "Terminer la Configuration",
+    "step1": {
+      "title": "Choisissez Votre Langue",
+      "description": "Sélectionnez votre langue préférée pour l'apprentissage",
+      "french": "Français",
+      "english": "English"
+    },
+    "step2": {
+      "title": "Sélectionnez Votre Pays",
+      "description": "Choisissez votre pays CEDEAO pour un contenu localisé",
+      "selectCountry": "Sélectionnez votre pays",
+      "countries": {
+        "benin": "Bénin",
+        "burkina-faso": "Burkina Faso",
+        "cabo-verde": "Cabo Verde",
+        "cote-divoire": "Côte d'Ivoire",
+        "gambia": "Gambie",
+        "ghana": "Ghana",
+        "guinea": "Guinée",
+        "guinea-bissau": "Guinée-Bissau",
+        "liberia": "Libéria",
+        "mali": "Mali",
+        "niger": "Niger",
+        "nigeria": "Nigeria",
+        "senegal": "Sénégal",
+        "sierra-leone": "Sierra Leone",
+        "togo": "Togo"
+      }
+    },
+    "step3": {
+      "title": "Rôle Professionnel",
+      "description": "Parlez-nous de votre parcours professionnel",
+      "selectRole": "Sélectionnez votre rôle",
+      "roles": {
+        "medecin": "Médecin",
+        "infirmier": "Infirmier",
+        "data-analyst": "Analyste de données",
+        "etudiant": "Étudiant",
+        "cadre": "Cadre/Administrateur",
+        "autre": "Autre"
+      }
+    },
+    "step4": {
+      "title": "Niveau de Compétence",
+      "description": "Comment évalueriez-vous vos connaissances en santé publique ?",
+      "selectLevel": "Sélectionnez votre niveau",
+      "levels": {
+        "debutant": "Débutant",
+        "intermediaire": "Intermédiaire",
+        "avance": "Avancé"
+      }
+    },
+    "completing": "Finalisation de la configuration...",
+    "success": "Configuration terminée !",
+    "error": "Échec de la configuration. Veuillez réessayer.",
+    "redirecting": "Redirection vers l'évaluation diagnostique..."
   },
-  "BilingualTooltip": {
-    "french": "FR",
-    "english": "EN"
-  },
-  "SourceCitations": {
-    "title": "Sources",
-    "sourceDetails": "Détails de la source",
-    "clickToView": "Cliquez pour voir :",
-    "availableInLibrary": "Disponible dans la bibliothèque de référence du cours",
-    "footnote": "{count, plural, one {# source citée} other {# sources citées}}"
-  },
-  "LessonPage": {
-    "modules": "Modules",
-    "backToModule": "Retour au Module",
-    "metadata": {
-      "title": "{unit} - {module}",
-      "notFound": "Leçon Introuvable"
+  "PlacementTest": {
+    "title": "Évaluation Diagnostique",
+    "description": "Complétez cette évaluation de 20 questions pour nous aider à déterminer votre niveau optimal de départ.",
+    "instructions": "Répondez à toutes les questions du mieux que vous pouvez. Cette évaluation nous aidera à personnaliser votre parcours d'apprentissage.",
+    "timeLimit": "Limite de temps : 20 minutes",
+    "numberOfQuestions": "20 questions couvrant 4 domaines",
+    "domains": {
+      "foundations": "Fondements de Santé Publique",
+      "epidemiology": "Épidémiologie", 
+      "biostatistics": "Biostatistiques",
+      "healthSystems": "Systèmes de Santé"
+    },
+    "startTest": "Commencer l'Évaluation",
+    "skipTest": "Passer l'Évaluation",
+    "skipWarning": "Si vous sautez cette évaluation, vous commencerez au Niveau 1 (Débutant).",
+    "question": "Question {current} sur {total}",
+    "timeRemaining": "Temps restant : {time}",
+    "selectAnswer": "Sélectionnez une réponse pour continuer",
+    "previous": "Précédent",
+    "next": "Suivant", 
+    "submit": "Soumettre l'Évaluation",
+    "submitting": "Évaluation de vos réponses...",
+    "results": {
+      "title": "Résultats de l'Évaluation",
+      "assignedLevel": "Votre niveau assigné : Niveau {level}",
+      "levelDescriptions": {
+        "1": "Débutant - Construire les connaissances de base",
+        "2": "Intermédiaire - Développer les compétences clés", 
+        "3": "Avancé - Renforcer les compétences spécialisées",
+        "4": "Expert - Maîtriser les concepts avancés"
+      },
+      "overallScore": "Score global : {score}%",
+      "domainBreakdown": "Performance par Domaine",
+      "strongAreas": "Vos forces :",
+      "recommendations": "Parcours d'apprentissage recommandé :",
+      "continueToLearning": "Continuer vers le Tableau de Bord",
+      "retakeAvailable": "Vous pouvez repasser cette évaluation dans 3 mois"
+    },
+    "error": {
+      "failedToLoad": "Échec du chargement de l'évaluation. Veuillez réessayer.",
+      "failedToSubmit": "Échec de la soumission de l'évaluation. Veuillez vérifier votre connexion et réessayer.",
+      "timeExpired": "Le temps a expiré. Votre évaluation a été soumise automatiquement."
     }
+  },
+<<<<<<< HEAD
+  "SummativeAssessment": {
+    "pageTitle": "Évaluation Sommative",
+    "pageDescription": "Évaluation complète de fin de module",
+    "summativeAssessment": "Évaluation Sommative",
+    "description": "Il s'agit d'une évaluation complète couvrant tous les objectifs d'apprentissage de ce module. Vous devez obtenir au moins 80% pour réussir et débloquer le module suivant.",
+    "requirements": "Exigences",
+    "requirement1": "Répondre aux 20 questions",
+    "requirement2": "Terminer en 30 minutes",
+    "requirement3": "Obtenir au moins 80% pour réussir",
+    "requirement4": "Aucun feedback immédiat pendant l'évaluation",
+    "importantNotes": "Notes Importantes",
+    "note1": "Vous pouvez réviser et modifier vos réponses avant de soumettre",
+    "note2": "Les résultats et explications sont montrés seulement après achèvement",
+    "note3": "Les tentatives échouées ont une période d'attente de 24 heures",
+    "instructions": "Lisez chaque question attentivement et sélectionnez la meilleure réponse. Aucun feedback immédiat ne sera fourni.",
+    "question": "Question {current} sur {total}",
+    "progress": "{answered} sur {total} répondues",
+    "timeWarning": "Attention : Il ne reste que {minutes} minutes !",
+    "timeUpAutoSubmitFailed": "Temps expiré mais la soumission automatique a échoué. Veuillez essayer de soumettre manuellement.",
+    "completeAllQuestions": "Veuillez répondre à toutes les questions. {count} questions restantes.",
+    "failedToSubmit": "Échec de la soumission de l'évaluation. Veuillez réessayer.",
+    "selectOneAnswer": "Sélectionnez une réponse",
+    "previous": "Précédent",
+    "next": "Suivant",
+    "finishAssessment": "Terminer l'Évaluation",
+    "submitting": "Soumission...",
+    "importantNotice": "Avis Important",
+    "noImmediateFeedback": "Aucun feedback immédiat ne sera affiché pendant l'évaluation",
+    "passingScore": "Vous devez obtenir 80% ou plus pour réussir ce module",
+    "canReviewAnswers": "Vous pouvez réviser et modifier vos réponses avant de soumettre",
+    "checkingEligibility": "Vérification de l'éligibilité à l'évaluation...",
+    "cannotAttempt": "Impossible de Tenter l'Évaluation",
+    "alreadyPassed": "Vous avez déjà réussi cette évaluation avec un score de {score}%",
+    "cooldownActive": "Vous devez attendre jusqu'à {time} avant de tenter à nouveau",
+    "attemptHistory": "Historique des Tentatives",
+    "totalAttempts": "Total des tentatives",
+    "lastScore": "Dernier score",
+    "generatingAssessment": "Génération de votre évaluation...",
+    "failedToCheckEligibility": "Échec de la vérification de l'éligibilité à l'évaluation",
+    "failedToGenerateAssessment": "Échec de la génération de l'évaluation",
+    "startAssessment": "Commencer l'Évaluation"
+  },
+  "SummativeAssessmentResults": {
+    "congratulations": "Félicitations ! Vous avez Réussi !",
+    "notPassed": "Évaluation Non Réussie",
+    "scoreOutOf": "{correct} bonnes réponses sur {total}",
+    "moduleUnlocked": "Module Suivant Débloqué !",
+    "assessmentSummary": "Résumé de l'Évaluation",
+    "correctAnswers": "Bonnes Réponses",
+    "timeSpent": "Temps Passé",
+    "attemptNumber": "Tentative",
+    "yourScore": "Votre Score",
+    "passingScore": "Réussite : {score}%",
+    "domainBreakdown": "Performance par Domaine d'Apprentissage",
+    "domainBreakdownDescription": "Votre performance dans les différents domaines de connaissance",
+    "reviewRecommended": "Révision recommandée pour {domain}",
+    "canRetryNow": "Vous pouvez reprendre cette évaluation immédiatement ou attendre du temps d'étude supplémentaire.",
+    "canRetryAfter": "Vous pouvez reprendre cette évaluation après {time}",
+    "contactSupport": "Si vous continuez à avoir des difficultés, veuillez contacter le support.",
+    "retryAssessment": "Reprendre l'Évaluation",
+    "continueToNextModule": "Continuer au Module Suivant",
+    "backToDashboard": "Retour au Tableau de Bord",
+    "attemptedAt": "Terminé",
+    "attemptId": "ID de Tentative"
+  }
+=======
+  "Profile": {
+    "title": "Profil",
+    "description": "Gérez votre compte et vos préférences d'apprentissage",
+    "name": "Nom",
+    "email": "Email",
+    "language": "Langue",
+    "country": "Pays",
+    "role": "Rôle professionnel",
+    "currentLevel": "Niveau actuel",
+    "avatar": "Photo de profil",
+    "avatarDescription": "Télécharger une photo de profil (max 2MB)",
+    "uploadAvatar": "Choisir un fichier",
+    "avatarSizeError": "La taille du fichier doit être inférieure à 2MB",
+    "avatarTypeError": "Seules les images JPEG, PNG et WebP sont prises en charge",
+    "avatarLimits": "Formats pris en charge : JPEG, PNG, WebP. Taille maximale : 2MB",
+    "editProfile": "Modifier le profil",
+    "editProfileDescription": "Mettre à jour vos informations personnelles et préférences d'apprentissage",
+    "accountInfo": "Informations du compte",
+    "joinDate": "Membre depuis",
+    "streak": "Série",
+    "streakDays": "{days} jours",
+    "profileNotFound": "Profil non trouvé",
+    "recontextualizationAlert": "Votre contenu est en cours de mise à jour pour votre nouveau pays. Cela peut prendre quelques minutes.",
+    "emailReadonly": "Contactez le support pour changer l'email",
+    "levelReadonly": "Déterminé par les résultats du test de placement",
+    "edit": "Modifier",
+    "cancel": "Annuler",
+    "save": "Sauvegarder",
+    "languages": {
+      "french": "Français",
+      "english": "English"
+    },
+    "levels": {
+      "level1": "Débutant",
+      "level2": "Intermédiaire", 
+      "level3": "Avancé",
+      "level4": "Expert"
+    },
+    "roles": {
+      "doctor": "Médecin",
+      "nurse": "Infirmier/ère",
+      "epidemiologist": "Épidémiologiste",
+      "biostatistician": "Biostatisticien/ne",
+      "health_data_analyst": "Analyste de données de santé",
+      "public_health_researcher": "Chercheur/euse en santé publique",
+      "health_policy_analyst": "Analyste de politiques de santé",
+      "community_health_worker": "Agent de santé communautaire",
+      "health_program_manager": "Gestionnaire de programmes de santé",
+      "student": "Étudiant/e",
+      "other": "Autre"
+    }
+>>>>>>> 0c8526b (feat(profile): implement user profile page with view and edit functionality)
   }
 }

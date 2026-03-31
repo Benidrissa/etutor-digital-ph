@@ -5,16 +5,24 @@
     "offline": "You are offline — cached content available",
     "error": "An error occurred"
   },
+  "PWA": {
+    "installTitle": "Install App",
+    "installDescription": "Add SantePublique AOF to your home screen for quick access and an optimized experience.",
+    "install": "Install",
+    "later": "Later"
+  },
   "Navigation": {
     "dashboard": "Dashboard",
     "modules": "Modules",
     "flashcards": "Flashcards",
     "tutor": "AI Tutor",
+    "profile": "Profile",
     "settings": "Settings",
     "dashboardDescription": "Navigate to your learning dashboard",
     "modulesDescription": "Browse available learning modules",
     "flashcardsDescription": "Review flashcards and spaced repetition",
     "tutorDescription": "Chat with your AI learning tutor",
+    "profileDescription": "View and edit your profile",
     "settingsDescription": "Manage your account and preferences",
     "mobileNavigation": "Mobile navigation",
     "desktopNavigation": "Desktop navigation",
@@ -124,7 +132,15 @@
     "overallProgress": "Overall progress",
     "minutes": "minutes",
     "modules": "modules",
-    "cards": "cards"
+    "cards": "cards",
+    "upcomingReviews": "Upcoming Reviews",
+    "startReview": "Start Review",
+    "dueToday": "{count, plural, one {# card due} other {# cards due}}",
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "noUpcomingReviews": "No reviews scheduled",
+    "keepLearning": "Complete modules to generate flashcards",
+    "errorLoading": "Error loading reviews"
   },
   "ModuleCard": {
     "locked": "Locked",
@@ -216,7 +232,14 @@
     "error": "Quiz Error",
     "failedToLoad": "Failed to load quiz. Please try again.",
     "failedToSubmit": "Failed to submit quiz. Please try again.",
-    "networkError": "Network error. Please check your connection and try again."
+    "networkError": "Network error. Please check your connection and try again.",
+    "tryAgain": "Try Again",
+    "questions": "Questions",
+    "minutes": "Minutes",
+    "level": "Level",
+    "cached": "Cached",
+    "totalQuestions": "Total Questions",
+    "quizCompleteScreenReader": "Quiz completed with {score}% score. {correct} out of {total} questions correct. Time taken: {time}. {passed, select, true {Quiz passed.} other {Quiz not passed.}}"
   },
   "ChatTutor": {
     "title": "AI Tutor",
@@ -252,7 +275,10 @@
     "loading": "Loading conversation...",
     "welcomeMessage": "Hello! I'm your AI tutor for public health. Ask me anything about the modules, concepts, or get help with your studies.",
     "emptyState": "Start a conversation",
-    "emptyStateDescription": "Ask questions, request quizzes, or get explanations about public health topics"
+    "emptyStateDescription": "Ask questions, request quizzes, or get explanations about public health topics",
+    "moreThan99": "99+",
+    "publicHealthFundamentals": "Public Health Fundamentals",
+    "epidemiologyBasics": "Epidemiology Basics"
   },
   "Flashcards": {
     "title": "Flashcards",
@@ -299,42 +325,242 @@
     "flipCard": "Flip card",
     "error": "Error loading flashcards",
     "tryAgain": "Try again",
-    "offline": "You're offline - showing cached cards"
+    "offline": "You're offline - showing cached cards",
+    "ratingBreakdown": "Rating Breakdown",
+    "goodProgress": "Good progress! Keep practicing to improve your recall.",
+    "dontWorryProgress": "Don't worry, spaced repetition will help you improve over time!",
+    "day": "day",
+    "days": "days",
+    "cardsReadyForReview": "cards ready for review",
+    "target": "Target",
+    "startReviewSession": "Start Review Session",
+    "reviewDescription": "Review flashcards with spaced repetition for effective learning"
   },
-  "LessonViewer": {
-    "level": "Level {level}",
-    "readingTime": "10-15 min read",
-    "cached": "Cached",
-    "unitTitle": "Unit {unit}",
-    "introduction": "Introduction",
-    "keyConcepts": "Key Concepts",
-    "conceptTitle": "Concept {number}",
-    "westAfricanExample": "West African Example",
-    "synthesis": "Summary",
-    "keyPoints": "Key Takeaways",
-    "markComplete": "Mark as Complete",
-    "completed": "Completed",
-    "error": "Error",
-    "streamError": "Failed to stream lesson content. Please refresh and try again.",
-    "loadError": "Failed to load lesson. Please refresh and try again."
+  "Onboarding": {
+    "welcome": "Welcome to SantePublique AOF",
+    "subtitle": "Let's set up your personalized learning experience",
+    "step": "Step {current} of {total}",
+    "next": "Next",
+    "previous": "Previous",
+    "complete": "Complete Setup",
+    "step1": {
+      "title": "Choose Your Language",
+      "description": "Select your preferred language for learning",
+      "french": "Français",
+      "english": "English"
+    },
+    "step2": {
+      "title": "Select Your Country",
+      "description": "Choose your ECOWAS country for localized content",
+      "selectCountry": "Select your country",
+      "countries": {
+        "benin": "Benin",
+        "burkina-faso": "Burkina Faso",
+        "cabo-verde": "Cabo Verde",
+        "cote-divoire": "Côte d'Ivoire",
+        "gambia": "Gambia",
+        "ghana": "Ghana",
+        "guinea": "Guinea",
+        "guinea-bissau": "Guinea-Bissau",
+        "liberia": "Liberia",
+        "mali": "Mali",
+        "niger": "Niger",
+        "nigeria": "Nigeria",
+        "senegal": "Senegal",
+        "sierra-leone": "Sierra Leone",
+        "togo": "Togo"
+      }
+    },
+    "step3": {
+      "title": "Professional Role",
+      "description": "Tell us about your professional background",
+      "selectRole": "Select your role",
+      "roles": {
+        "medecin": "Physician (Médecin)",
+        "infirmier": "Nurse (Infirmier)",
+        "data-analyst": "Data Analyst",
+        "etudiant": "Student (Étudiant)",
+        "cadre": "Manager/Administrator (Cadre)",
+        "autre": "Other (Autre)"
+      }
+    },
+    "step4": {
+      "title": "Skill Level",
+      "description": "How would you assess your public health knowledge?",
+      "selectLevel": "Select your level",
+      "levels": {
+        "debutant": "Beginner (Débutant)",
+        "intermediaire": "Intermediate (Intermédiaire)",
+        "avance": "Advanced (Avancé)"
+      }
+    },
+    "completing": "Completing setup...",
+    "success": "Setup complete!",
+    "error": "Setup failed. Please try again.",
+    "redirecting": "Redirecting to diagnostic assessment..."
   },
-  "BilingualTooltip": {
-    "french": "FR",
-    "english": "EN"
-  },
-  "SourceCitations": {
-    "title": "Sources",
-    "sourceDetails": "Source details",
-    "clickToView": "Click to view:",
-    "availableInLibrary": "Available in course reference library",
-    "footnote": "{count, plural, one {# source cited} other {# sources cited}}"
-  },
-  "LessonPage": {
-    "modules": "Modules",
-    "backToModule": "Back to Module",
-    "metadata": {
-      "title": "{unit} - {module}",
-      "notFound": "Lesson Not Found"
+  "PlacementTest": {
+    "title": "Diagnostic Assessment",
+    "description": "Complete this 20-question assessment to help us determine your optimal starting level.",
+    "instructions": "Answer all questions to the best of your ability. This assessment will help us personalize your learning journey.",
+    "timeLimit": "Time limit: 20 minutes",
+    "numberOfQuestions": "20 questions covering 4 domains",
+    "domains": {
+      "foundations": "Public Health Foundations",
+      "epidemiology": "Epidemiology", 
+      "biostatistics": "Biostatistics",
+      "healthSystems": "Health Systems"
+    },
+    "startTest": "Start Assessment",
+    "skipTest": "Skip Assessment",
+    "skipWarning": "If you skip this assessment, you will start at Level 1 (Beginner).",
+    "question": "Question {current} of {total}",
+    "timeRemaining": "Time remaining: {time}",
+    "selectAnswer": "Select an answer to continue",
+    "previous": "Previous",
+    "next": "Next", 
+    "submit": "Submit Assessment",
+    "submitting": "Evaluating your responses...",
+    "results": {
+      "title": "Assessment Results",
+      "assignedLevel": "Your assigned level: Level {level}",
+      "levelDescriptions": {
+        "1": "Beginner - Build foundational knowledge",
+        "2": "Intermediate - Develop core competencies", 
+        "3": "Advanced - Strengthen specialized skills",
+        "4": "Expert - Master advanced concepts"
+      },
+      "overallScore": "Overall Score: {score}%",
+      "domainBreakdown": "Performance by Domain",
+      "strongAreas": "Your strengths:",
+      "recommendations": "Recommended learning path:",
+      "continueToLearning": "Continue to Dashboard",
+      "retakeAvailable": "You can retake this assessment in 3 months"
+    },
+    "error": {
+      "failedToLoad": "Failed to load assessment. Please try again.",
+      "failedToSubmit": "Failed to submit assessment. Please check your connection and try again.",
+      "timeExpired": "Time has expired. Your assessment has been automatically submitted."
     }
+  },
+<<<<<<< HEAD
+  "SummativeAssessment": {
+    "pageTitle": "Summative Assessment",
+    "pageDescription": "End-of-module comprehensive assessment",
+    "summativeAssessment": "Summative Assessment",
+    "description": "This is a comprehensive assessment covering all learning objectives for this module. You must score at least 80% to pass and unlock the next module.",
+    "requirements": "Requirements",
+    "requirement1": "Answer all 20 questions",
+    "requirement2": "Complete within 30 minutes",
+    "requirement3": "Score at least 80% to pass",
+    "requirement4": "No immediate feedback during assessment",
+    "importantNotes": "Important Notes",
+    "note1": "You can review and change your answers before submitting",
+    "note2": "Results and explanations are shown only after completion",
+    "note3": "Failed attempts have a 24-hour cooldown period",
+    "instructions": "Read each question carefully and select the best answer. No immediate feedback will be provided.",
+    "question": "Question {current} of {total}",
+    "progress": "{answered} of {total} answered",
+    "timeWarning": "Warning: Only {minutes} minutes remaining!",
+    "timeUpAutoSubmitFailed": "Time expired but auto-submit failed. Please try submitting manually.",
+    "completeAllQuestions": "Please answer all questions. {count} questions remaining.",
+    "failedToSubmit": "Failed to submit assessment. Please try again.",
+    "selectOneAnswer": "Select one answer",
+    "previous": "Previous",
+    "next": "Next",
+    "finishAssessment": "Finish Assessment",
+    "submitting": "Submitting...",
+    "importantNotice": "Important Notice",
+    "noImmediateFeedback": "No immediate feedback will be shown during the assessment",
+    "passingScore": "You need 80% or higher to pass this module",
+    "canReviewAnswers": "You can review and change your answers before submitting",
+    "checkingEligibility": "Checking assessment eligibility...",
+    "cannotAttempt": "Cannot Attempt Assessment",
+    "alreadyPassed": "You have already passed this assessment with a score of {score}%",
+    "cooldownActive": "You must wait until {time} before attempting again",
+    "attemptHistory": "Attempt History",
+    "totalAttempts": "Total attempts",
+    "lastScore": "Last score",
+    "generatingAssessment": "Generating your assessment...",
+    "failedToCheckEligibility": "Failed to check assessment eligibility",
+    "failedToGenerateAssessment": "Failed to generate assessment",
+    "startAssessment": "Start Assessment"
+  },
+  "SummativeAssessmentResults": {
+    "congratulations": "Congratulations! You Passed!",
+    "notPassed": "Assessment Not Passed",
+    "scoreOutOf": "{correct} out of {total} correct answers",
+    "moduleUnlocked": "Next Module Unlocked!",
+    "assessmentSummary": "Assessment Summary",
+    "correctAnswers": "Correct Answers",
+    "timeSpent": "Time Spent",
+    "attemptNumber": "Attempt",
+    "yourScore": "Your Score",
+    "passingScore": "Passing: {score}%",
+    "domainBreakdown": "Performance by Learning Domain",
+    "domainBreakdownDescription": "Your performance across different areas of knowledge",
+    "reviewRecommended": "Review recommended for {domain}",
+    "canRetryNow": "You can retry this assessment immediately or wait for additional study time.",
+    "canRetryAfter": "You can retry this assessment after {time}",
+    "contactSupport": "If you continue to have difficulty, please contact support.",
+    "retryAssessment": "Retry Assessment", 
+    "continueToNextModule": "Continue to Next Module",
+    "backToDashboard": "Back to Dashboard",
+    "attemptedAt": "Completed",
+    "attemptId": "Attempt ID"
+  }
+=======
+  "Profile": {
+    "title": "Profile",
+    "description": "Manage your account and learning preferences",
+    "name": "Name",
+    "email": "Email",
+    "language": "Language",
+    "country": "Country",
+    "role": "Professional Role",
+    "currentLevel": "Current Level",
+    "avatar": "Profile Picture",
+    "avatarDescription": "Upload a profile picture (max 2MB)",
+    "uploadAvatar": "Choose file",
+    "avatarSizeError": "File size must be under 2MB",
+    "avatarTypeError": "Only JPEG, PNG, and WebP images are supported",
+    "avatarLimits": "Supported formats: JPEG, PNG, WebP. Maximum size: 2MB",
+    "editProfile": "Edit Profile",
+    "editProfileDescription": "Update your personal information and learning preferences",
+    "accountInfo": "Account Information",
+    "joinDate": "Member since",
+    "streak": "Streak",
+    "streakDays": "{days} days",
+    "profileNotFound": "Profile not found",
+    "recontextualizationAlert": "Your content is being updated for your new country. This may take a few minutes.",
+    "emailReadonly": "Contact support to change email",
+    "levelReadonly": "Determined by placement test results",
+    "edit": "Edit",
+    "cancel": "Cancel",
+    "save": "Save Changes",
+    "languages": {
+      "french": "Français",
+      "english": "English"
+    },
+    "levels": {
+      "level1": "Beginner",
+      "level2": "Intermediate", 
+      "level3": "Advanced",
+      "level4": "Expert"
+    },
+    "roles": {
+      "doctor": "Doctor",
+      "nurse": "Nurse",
+      "epidemiologist": "Epidemiologist",
+      "biostatistician": "Biostatistician",
+      "health_data_analyst": "Health Data Analyst",
+      "public_health_researcher": "Public Health Researcher",
+      "health_policy_analyst": "Health Policy Analyst",
+      "community_health_worker": "Community Health Worker",
+      "health_program_manager": "Health Program Manager",
+      "student": "Student",
+      "other": "Other"
+    }
+>>>>>>> 0c8526b (feat(profile): implement user profile page with view and edit functionality)
   }
 }

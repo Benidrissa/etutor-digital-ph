@@ -25,6 +25,7 @@ class UserProfileResponse(BaseModel):
     professional_role: str | None
     current_level: int
     streak_days: int
+    avatar_url: str | None
     last_active: str
     created_at: str
 
@@ -36,3 +37,10 @@ class UpdateProfileRequest(BaseModel):
     preferred_language: str | None = Field(None, pattern="^(fr|en)$")
     country: str | None = None
     professional_role: str | None = None
+
+
+class ProfileUpdateResponse(BaseModel):
+    """Response after profile update with re-contextualization flag."""
+    
+    profile: UserProfileResponse
+    content_recontextualization_required: bool = False

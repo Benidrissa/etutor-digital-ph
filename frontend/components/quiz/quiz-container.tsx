@@ -152,7 +152,7 @@ export function QuizContainer({
               {error || t('networkError')}
             </p>
             <Button onClick={loadQuiz} variant="outline">
-              Try Again
+              {t('tryAgain')}
             </Button>
           </CardContent>
         </Card>
@@ -183,7 +183,7 @@ export function QuizContainer({
                 <div className="text-2xl font-bold text-stone-900">
                   {quiz.content.questions.length}
                 </div>
-                <div className="text-sm text-stone-600">Questions</div>
+                <div className="text-sm text-stone-600">{t('questions')}</div>
               </div>
               
               {quiz.content.time_limit_minutes && (
@@ -191,7 +191,7 @@ export function QuizContainer({
                   <div className="text-2xl font-bold text-stone-900">
                     {quiz.content.time_limit_minutes}
                   </div>
-                  <div className="text-sm text-stone-600">Minutes</div>
+                  <div className="text-sm text-stone-600">{t('minutes')}</div>
                 </div>
               )}
               
@@ -229,11 +229,11 @@ export function QuizContainer({
             {/* Additional Info */}
             <div className="flex flex-wrap gap-2 justify-center">
               <Badge variant="outline">
-                Level {level}
+                {t('level')} {level}
               </Badge>
               {quiz.cached && (
                 <Badge variant="secondary">
-                  Cached
+                  {t('cached')}
                 </Badge>
               )}
               <Badge variant="outline">
