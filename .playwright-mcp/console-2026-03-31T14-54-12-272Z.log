@@ -1,0 +1,14 @@
+[     703ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[    4229ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[   34387ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[   35594ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[   66635ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[   67789ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[   97966ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[   99122ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[  104444ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://etutor.elearning.portfolio2.kimbetien.com/modules/M01?_rsc=1lnnm:0
+[  104647ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://etutor.elearning.portfolio2.kimbetien.com/modules/M01:0
+[  106982ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[  108138ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[  111190ms] [WARNING] The resource https://etutor.elearning.portfolio2.kimbetien.com/_next/static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2 was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally. @ https://etutor.elearning.portfolio2.kimbetien.com/fr/dashboard:0
+[  111190ms] [WARNING] The resource https://etutor.elearning.portfolio2.kimbetien.com/_next/static/media/70bc3e132a0a741e-s.p.1409xf.ylxg8g.woff2 was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally. @ https://etutor.elearning.portfolio2.kimbetien.com/fr/dashboard:0
