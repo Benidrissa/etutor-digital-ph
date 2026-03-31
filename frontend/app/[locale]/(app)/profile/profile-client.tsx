@@ -32,7 +32,7 @@ const fetchUserProfile = async () => {
   return response.json();
 };
 
-const updateProfile = async (data: any) => {
+const updateProfile = async (data: Record<string, unknown>) => {
   // In real implementation, call PATCH /api/v1/users/me
   const response = await fetch("/api/v1/users/me", {
     method: "PATCH",

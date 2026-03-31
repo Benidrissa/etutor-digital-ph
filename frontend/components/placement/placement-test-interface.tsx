@@ -26,11 +26,11 @@ interface PlacementTestData {
   total_questions: number;
   time_limit_minutes: number;
   instructions: { [key: string]: string };
-  domains: { [key: string]: any };
+  domains: { [key: string]: Record<string, unknown> };
 }
 
 interface PlacementTestInterfaceProps {
-  onComplete: (result: any) => void;
+  onComplete: (result: Record<string, unknown>) => void;
   locale: string;
 }
 
