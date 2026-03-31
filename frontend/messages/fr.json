@@ -301,7 +301,6 @@
     "tryAgain": "Réessayer",
     "offline": "Vous êtes hors ligne - affichage des cartes en cache"
   },
-<<<<<<< HEAD
   "Onboarding": {
     "welcome": "Bienvenue sur SantePublique AOF",
     "subtitle": "Configurons votre expérience d'apprentissage personnalisée",
@@ -364,7 +363,51 @@
     "success": "Configuration terminée !",
     "error": "Échec de la configuration. Veuillez réessayer.",
     "redirecting": "Redirection vers l'évaluation diagnostique..."
-=======
+  },
+  "PlacementTest": {
+    "title": "Évaluation Diagnostique",
+    "description": "Complétez cette évaluation de 20 questions pour nous aider à déterminer votre niveau optimal de départ.",
+    "instructions": "Répondez à toutes les questions du mieux que vous pouvez. Cette évaluation nous aidera à personnaliser votre parcours d'apprentissage.",
+    "timeLimit": "Limite de temps : 20 minutes",
+    "numberOfQuestions": "20 questions couvrant 4 domaines",
+    "domains": {
+      "foundations": "Fondements de Santé Publique",
+      "epidemiology": "Épidémiologie", 
+      "biostatistics": "Biostatistiques",
+      "healthSystems": "Systèmes de Santé"
+    },
+    "startTest": "Commencer l'Évaluation",
+    "skipTest": "Passer l'Évaluation",
+    "skipWarning": "Si vous sautez cette évaluation, vous commencerez au Niveau 1 (Débutant).",
+    "question": "Question {current} sur {total}",
+    "timeRemaining": "Temps restant : {time}",
+    "selectAnswer": "Sélectionnez une réponse pour continuer",
+    "previous": "Précédent",
+    "next": "Suivant", 
+    "submit": "Soumettre l'Évaluation",
+    "submitting": "Évaluation de vos réponses...",
+    "results": {
+      "title": "Résultats de l'Évaluation",
+      "assignedLevel": "Votre niveau assigné : Niveau {level}",
+      "levelDescriptions": {
+        "1": "Débutant - Construire les connaissances de base",
+        "2": "Intermédiaire - Développer les compétences clés", 
+        "3": "Avancé - Renforcer les compétences spécialisées",
+        "4": "Expert - Maîtriser les concepts avancés"
+      },
+      "overallScore": "Score global : {score}%",
+      "domainBreakdown": "Performance par Domaine",
+      "strongAreas": "Vos forces :",
+      "recommendations": "Parcours d'apprentissage recommandé :",
+      "continueToLearning": "Continuer vers le Tableau de Bord",
+      "retakeAvailable": "Vous pouvez repasser cette évaluation dans 3 mois"
+    },
+    "error": {
+      "failedToLoad": "Échec du chargement de l'évaluation. Veuillez réessayer.",
+      "failedToSubmit": "Échec de la soumission de l'évaluation. Veuillez vérifier votre connexion et réessayer.",
+      "timeExpired": "Le temps a expiré. Votre évaluation a été soumise automatiquement."
+    }
+  },
   "SummativeAssessment": {
     "pageTitle": "Évaluation Sommative",
     "pageDescription": "Évaluation complète de fin de module",
@@ -429,6 +472,6 @@
     "backToDashboard": "Retour au Tableau de Bord",
     "attemptedAt": "Terminé",
     "attemptId": "ID de Tentative"
->>>>>>> 3d0e726 (feat: implement summative assessment with 20 questions and 80% pass gate)
+  }
   }
 }
