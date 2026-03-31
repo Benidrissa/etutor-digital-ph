@@ -1,13 +1,16 @@
 """User profile management endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import uuid
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from structlog import get_logger
 
 from ...api.deps import get_current_user, get_db_session
 from ...domain.models.user import User
 from ...domain.repositories.implementations.user_repository import UserRepository
 from ...domain.services.auth_service import AuthService
-from .schemas.users import OnboardingRequest, UpdateProfileRequest, UserProfileResponse
+from .schemas.users import OnboardingRequest, ProfileUpdateResponse, UpdateProfileRequest, UserProfileResponse
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/users", tags=["Users"])
@@ -31,17 +34,18 @@ async def get_current_user_profile(
         professional_role=current_user.professional_role,
         current_level=current_user.current_level,
         streak_days=current_user.streak_days,
+        avatar_url=current_user.avatar_url,
         last_active=current_user.last_active.isoformat(),
         created_at=current_user.created_at.isoformat(),
     )
 
 
-@router.patch("/me", response_model=UserProfileResponse)
+@router.patch("/me", response_model=ProfileUpdateResponse)
 async def update_user_profile(
     request: UpdateProfileRequest,
     current_user: User = Depends(get_current_user),
     db=Depends(get_db_session),
-) -> UserProfileResponse:
+) -> ProfileUpdateResponse:
     """Update user profile.
 
     Args:
@@ -59,6 +63,9 @@ async def update_user_profile(
     try:
         user_repo = UserRepository(db)
         auth_service = AuthService(user_repo)
+        
+        # Check if country is changing for re-contextualization flag
+        country_changed = request.country is not None and request.country != current_user.country
 
         updates = {}
         if request.name is not None:
@@ -74,7 +81,8 @@ async def update_user_profile(
         updated_user = await user_repo.get_by_id(current_user.id)
 
         logger.info("User profile updated", user_id=str(current_user.id))
-        return UserProfileResponse(
+        
+        profile_response = UserProfileResponse(
             id=str(updated_user.id),
             email=updated_user.email,
             name=updated_user.name,
@@ -83,8 +91,14 @@ async def update_user_profile(
             professional_role=updated_user.professional_role,
             current_level=updated_user.current_level,
             streak_days=updated_user.streak_days,
+            avatar_url=updated_user.avatar_url,
             last_active=updated_user.last_active.isoformat(),
             created_at=updated_user.created_at.isoformat(),
+        )
+        
+        return ProfileUpdateResponse(
+            profile=profile_response,
+            content_recontextualization_required=country_changed
         )
 
     except Exception as e:
@@ -148,6 +162,7 @@ async def complete_onboarding(
             professional_role=updated_user.professional_role,
             current_level=updated_user.current_level,
             streak_days=updated_user.streak_days,
+            avatar_url=updated_user.avatar_url,
             last_active=updated_user.last_active.isoformat(),
             created_at=updated_user.created_at.isoformat(),
         )
@@ -156,4 +171,84 @@ async def complete_onboarding(
         logger.error("Onboarding completion failed", user_id=str(current_user.id), error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Onboarding completion failed"
+        )
+
+
+@router.post("/me/avatar", response_model=UserProfileResponse)
+async def upload_avatar(
+    current_user: User = Depends(get_current_user),
+    db=Depends(get_db_session),
+    file: UploadFile = File(...),
+) -> UserProfileResponse:
+    """Upload user avatar.
+
+    Args:
+        current_user: Current authenticated user
+        db: Database session
+        file: Avatar image file (max 2MB)
+
+    Returns:
+        Updated user profile with avatar URL
+
+    Raises:
+        400: Invalid file type/size or upload failed
+        500: Upload failed
+    """
+    # Validate file
+    if file.size and file.size > 2 * 1024 * 1024:  # 2MB limit
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="File size exceeds 2MB limit"
+        )
+
+    if file.content_type not in ["image/jpeg", "image/jpg", "image/png", "image/webp"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file type. Supported formats: JPEG, PNG, WebP",
+        )
+
+    try:
+        user_repo = UserRepository(db)
+        auth_service = AuthService(user_repo)
+
+        # Generate unique filename
+        file_extension = file.filename.split(".")[-1] if file.filename else "jpg"
+        avatar_filename = f"avatar_{current_user.id}_{uuid.uuid4().hex[:8]}.{file_extension}"
+
+        # For MVP, we'll store avatars as base64 data URLs
+        # In production, you'd upload to cloud storage (S3, Cloudinary, etc.)
+        contents = await file.read()
+        if len(contents) > 2 * 1024 * 1024:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="File size exceeds 2MB limit"
+            )
+
+        # Create data URL for MVP
+        import base64
+
+        encoded_content = base64.b64encode(contents).decode("utf-8")
+        avatar_url = f"data:{file.content_type};base64,{encoded_content}"
+
+        # Update user profile with avatar URL
+        await auth_service.update_user_profile(current_user.id, {"avatar_url": avatar_url})
+        updated_user = await user_repo.get_by_id(current_user.id)
+
+        logger.info("Avatar uploaded successfully", user_id=str(current_user.id))
+        return UserProfileResponse(
+            id=str(updated_user.id),
+            email=updated_user.email,
+            name=updated_user.name,
+            preferred_language=updated_user.preferred_language,
+            country=updated_user.country,
+            professional_role=updated_user.professional_role,
+            current_level=updated_user.current_level,
+            streak_days=updated_user.streak_days,
+            avatar_url=updated_user.avatar_url,
+            last_active=updated_user.last_active.isoformat(),
+            created_at=updated_user.created_at.isoformat(),
+        )
+
+    except Exception as e:
+        logger.error("Avatar upload failed", user_id=str(current_user.id), error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Avatar upload failed"
         )

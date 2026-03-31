@@ -10,11 +10,13 @@
     "modules": "Modules",
     "flashcards": "Flashcards",
     "tutor": "AI Tutor",
+    "profile": "Profile",
     "settings": "Settings",
     "dashboardDescription": "Navigate to your learning dashboard",
     "modulesDescription": "Browse available learning modules",
     "flashcardsDescription": "Review flashcards and spaced repetition",
     "tutorDescription": "Chat with your AI learning tutor",
+    "profileDescription": "View and edit your profile",
     "settingsDescription": "Manage your account and preferences",
     "mobileNavigation": "Mobile navigation",
     "desktopNavigation": "Desktop navigation",
@@ -416,6 +418,7 @@
       "timeExpired": "Time has expired. Your assessment has been automatically submitted."
     }
   },
+<<<<<<< HEAD
   "SummativeAssessment": {
     "pageTitle": "Summative Assessment",
     "pageDescription": "End-of-module comprehensive assessment",
@@ -481,5 +484,58 @@
     "attemptedAt": "Completed",
     "attemptId": "Attempt ID"
   }
+=======
+  "Profile": {
+    "title": "Profile",
+    "description": "Manage your account and learning preferences",
+    "name": "Name",
+    "email": "Email",
+    "language": "Language",
+    "country": "Country",
+    "role": "Professional Role",
+    "currentLevel": "Current Level",
+    "avatar": "Profile Picture",
+    "avatarDescription": "Upload a profile picture (max 2MB)",
+    "uploadAvatar": "Choose file",
+    "avatarSizeError": "File size must be under 2MB",
+    "avatarTypeError": "Only JPEG, PNG, and WebP images are supported",
+    "avatarLimits": "Supported formats: JPEG, PNG, WebP. Maximum size: 2MB",
+    "editProfile": "Edit Profile",
+    "editProfileDescription": "Update your personal information and learning preferences",
+    "accountInfo": "Account Information",
+    "joinDate": "Member since",
+    "streak": "Streak",
+    "streakDays": "{days} days",
+    "profileNotFound": "Profile not found",
+    "recontextualizationAlert": "Your content is being updated for your new country. This may take a few minutes.",
+    "emailReadonly": "Contact support to change email",
+    "levelReadonly": "Determined by placement test results",
+    "edit": "Edit",
+    "cancel": "Cancel",
+    "save": "Save Changes",
+    "languages": {
+      "french": "Français",
+      "english": "English"
+    },
+    "levels": {
+      "level1": "Beginner",
+      "level2": "Intermediate", 
+      "level3": "Advanced",
+      "level4": "Expert"
+    },
+    "roles": {
+      "doctor": "Doctor",
+      "nurse": "Nurse",
+      "epidemiologist": "Epidemiologist",
+      "biostatistician": "Biostatistician",
+      "health_data_analyst": "Health Data Analyst",
+      "public_health_researcher": "Public Health Researcher",
+      "health_policy_analyst": "Health Policy Analyst",
+      "community_health_worker": "Community Health Worker",
+      "health_program_manager": "Health Program Manager",
+      "student": "Student",
+      "other": "Other"
+    }
+>>>>>>> 0c8526b (feat(profile): implement user profile page with view and edit functionality)
   }
 }

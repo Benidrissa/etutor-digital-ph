@@ -10,11 +10,13 @@
     "modules": "Modules",
     "flashcards": "Flashcards",
     "tutor": "Tuteur IA",
+    "profile": "Profil",
     "settings": "Paramètres",
     "dashboardDescription": "Accéder à votre tableau de bord d'apprentissage",
     "modulesDescription": "Parcourir les modules d'apprentissage disponibles",
     "flashcardsDescription": "Réviser les flashcards et la répétition espacée",
     "tutorDescription": "Discuter avec votre tuteur IA d'apprentissage",
+    "profileDescription": "Voir et modifier votre profil",
     "settingsDescription": "Gérer votre compte et vos préférences",
     "mobileNavigation": "Navigation mobile",
     "desktopNavigation": "Navigation de bureau",
@@ -416,6 +418,7 @@
       "timeExpired": "Le temps a expiré. Votre évaluation a été soumise automatiquement."
     }
   },
+<<<<<<< HEAD
   "SummativeAssessment": {
     "pageTitle": "Évaluation Sommative",
     "pageDescription": "Évaluation complète de fin de module",
@@ -481,5 +484,58 @@
     "attemptedAt": "Terminé",
     "attemptId": "ID de Tentative"
   }
+=======
+  "Profile": {
+    "title": "Profil",
+    "description": "Gérez votre compte et vos préférences d'apprentissage",
+    "name": "Nom",
+    "email": "Email",
+    "language": "Langue",
+    "country": "Pays",
+    "role": "Rôle professionnel",
+    "currentLevel": "Niveau actuel",
+    "avatar": "Photo de profil",
+    "avatarDescription": "Télécharger une photo de profil (max 2MB)",
+    "uploadAvatar": "Choisir un fichier",
+    "avatarSizeError": "La taille du fichier doit être inférieure à 2MB",
+    "avatarTypeError": "Seules les images JPEG, PNG et WebP sont prises en charge",
+    "avatarLimits": "Formats pris en charge : JPEG, PNG, WebP. Taille maximale : 2MB",
+    "editProfile": "Modifier le profil",
+    "editProfileDescription": "Mettre à jour vos informations personnelles et préférences d'apprentissage",
+    "accountInfo": "Informations du compte",
+    "joinDate": "Membre depuis",
+    "streak": "Série",
+    "streakDays": "{days} jours",
+    "profileNotFound": "Profil non trouvé",
+    "recontextualizationAlert": "Votre contenu est en cours de mise à jour pour votre nouveau pays. Cela peut prendre quelques minutes.",
+    "emailReadonly": "Contactez le support pour changer l'email",
+    "levelReadonly": "Déterminé par les résultats du test de placement",
+    "edit": "Modifier",
+    "cancel": "Annuler",
+    "save": "Sauvegarder",
+    "languages": {
+      "french": "Français",
+      "english": "English"
+    },
+    "levels": {
+      "level1": "Débutant",
+      "level2": "Intermédiaire", 
+      "level3": "Avancé",
+      "level4": "Expert"
+    },
+    "roles": {
+      "doctor": "Médecin",
+      "nurse": "Infirmier/ère",
+      "epidemiologist": "Épidémiologiste",
+      "biostatistician": "Biostatisticien/ne",
+      "health_data_analyst": "Analyste de données de santé",
+      "public_health_researcher": "Chercheur/euse en santé publique",
+      "health_policy_analyst": "Analyste de politiques de santé",
+      "community_health_worker": "Agent de santé communautaire",
+      "health_program_manager": "Gestionnaire de programmes de santé",
+      "student": "Étudiant/e",
+      "other": "Autre"
+    }
+>>>>>>> 0c8526b (feat(profile): implement user profile page with view and edit functionality)
   }
 }

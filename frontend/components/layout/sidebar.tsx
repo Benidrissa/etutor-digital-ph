@@ -10,6 +10,7 @@ import {
   CreditCard,
   Bot,
   Settings,
+  User,
   ChevronLeft,
   ChevronRight,
   Menu,
@@ -48,6 +49,12 @@ export function Sidebar() {
       label: t("tutor"), 
       icon: Bot,
       description: t("tutorDescription") 
+    },
+    { 
+      href: "/profile", 
+      label: t("profile"), 
+      icon: User,
+      description: t("profileDescription") 
     },
     { 
       href: "/settings", 
