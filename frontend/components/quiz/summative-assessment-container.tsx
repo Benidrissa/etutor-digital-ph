@@ -161,7 +161,7 @@ export function SummativeAssessmentContainer({
             {attemptCheck.reason === 'already_passed' && (
               <Alert>
                 <AlertDescription>
-                  {t('alreadyPassed', { score: attemptCheck.last_attempt_score })}
+                  {t('alreadyPassed', { score: Number(attemptCheck.last_attempt_score ?? 0) })}
                 </AlertDescription>
               </Alert>
             )}

@@ -52,6 +52,35 @@ export function SummativeAssessmentInterface({
   const totalQuestions = assessment.content.questions.length;
   const progressPercent = ((currentQuestionIndex + 1) / totalQuestions) * 100;
   
+  const handleTimeUp = useCallback(async () => {
+    if (isSubmitting) return;
+
+    const totalTimeSeconds = Math.floor((Date.now() - startTime) / 1000);
+
+    const answers: QuizAnswerSubmission[] = assessment.content.questions.map((question, index) => ({
+      question_id: question.id,
+      selected_option: questionStates[index].selectedOption ?? -1,
+      time_taken_seconds: questionStates[index].timeSpentSeconds,
+    }));
+
+    setIsSubmitting(true);
+
+    try {
+      const result = await submitSummativeAssessmentAttempt({
+        quiz_id: assessment.id,
+        answers,
+        total_time_seconds: totalTimeSeconds,
+      });
+
+      onComplete(result);
+    } catch (error) {
+      console.error('Auto-submit failed:', error);
+      onError(t('timeUpAutoSubmitFailed'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [assessment, questionStates, startTime, isSubmitting, onComplete, onError, t]);
+
   // Timer countdown effect
   useEffect(() => {
     if (timeRemaining <= 0) {
@@ -98,36 +127,6 @@ export function SummativeAssessmentInterface({
   useEffect(() => {
     setQuestionStartTime(Date.now());
   }, [currentQuestionIndex]);
-  
-  const handleTimeUp = useCallback(async () => {
-    if (isSubmitting) return;
-    
-    // Auto-submit with current answers (including unanswered questions as -1)
-    const totalTimeSeconds = Math.floor((Date.now() - startTime) / 1000);
-    
-    const answers: QuizAnswerSubmission[] = assessment.content.questions.map((question, index) => ({
-      question_id: question.id,
-      selected_option: questionStates[index].selectedOption ?? -1, // -1 for unanswered
-      time_taken_seconds: questionStates[index].timeSpentSeconds,
-    }));
-    
-    setIsSubmitting(true);
-    
-    try {
-      const result = await submitSummativeAssessmentAttempt({
-        quiz_id: assessment.id,
-        answers,
-        total_time_seconds: totalTimeSeconds,
-      });
-      
-      onComplete(result);
-    } catch (error) {
-      console.error('Auto-submit failed:', error);
-      onError(t('timeUpAutoSubmitFailed'));
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [assessment, questionStates, startTime, isSubmitting, onComplete, onError, t]);
   
   const handleOptionSelect = useCallback((optionIndex: number) => {
     setQuestionStates(prev => prev.map((state, index) => 

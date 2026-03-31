@@ -14,9 +14,5 @@ export default withSentryConfig(withNextIntl(nextConfig), {
   authToken: process.env.SENTRY_AUTH_TOKEN,
   silent: !process.env.CI,
   hideSourceMaps: true,
-  disableLogger: true,
   tunnelRoute: "/monitoring",
-  autoInstrumentServerFunctions: true,
-  autoInstrumentMiddleware: true,
-  autoInstrumentAppDirectory: true,
 });
