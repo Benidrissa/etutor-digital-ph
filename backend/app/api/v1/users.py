@@ -3,8 +3,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from structlog import get_logger
 
-from app.api.deps_local_auth import get_current_user
 from app.api.deps import get_db as get_db_session
+from app.api.deps_local_auth import get_current_user
+
 from ...domain.models.user import User
 from ...domain.repositories.implementations.user_repository import UserRepository
 from ...domain.services.auth_service import AuthService
