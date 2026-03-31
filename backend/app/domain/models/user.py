@@ -32,9 +32,7 @@ class User(Base):
     last_active: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # Auth relationships
     totp_secret: Mapped[TOTPSecret | None] = relationship(back_populates="user")
