@@ -140,7 +140,12 @@
     "tomorrow": "Tomorrow",
     "noUpcomingReviews": "No reviews scheduled",
     "keepLearning": "Complete modules to generate flashcards",
-    "errorLoading": "Error loading reviews"
+    "errorLoading": "Error loading reviews",
+    "signInToSeeProgress": "Sign in to see your progress",
+    "signInDescription": "Track your learning stats, streak, and upcoming reviews.",
+    "signIn": "Sign In",
+    "errorOccurred": "An error occurred",
+    "unableToLoadStats": "Unable to load dashboard statistics"
   },
   "ModuleCard": {
     "locked": "Locked",
@@ -343,7 +348,8 @@
     "cardsReadyForReview": "cards ready for review",
     "target": "Target",
     "startReviewSession": "Start Review Session",
-    "reviewDescription": "Review flashcards with spaced repetition for effective learning"
+    "reviewDescription": "Review flashcards with spaced repetition for effective learning",
+    "redirectingToLogin": "Redirecting to login..."
   },
   "Onboarding": {
     "welcome": "Welcome to SantePublique AOF",
@@ -413,7 +419,10 @@
     "description": "Complete this 20-question assessment to help us determine your optimal starting level.",
     "instructions": "Answer all questions to the best of your ability. This assessment will help us personalize your learning journey.",
     "timeLimit": "Time limit: 20 minutes",
+    "timeLimitSubtext": "Recommended completion time",
     "numberOfQuestions": "20 questions covering 4 domains",
+    "numberOfQuestionsSubtext": "Comprehensive assessment",
+    "assessmentDomains": "Assessment Domains",
     "domains": {
       "foundations": "Public Health Foundations",
       "epidemiology": "Epidemiology", 
@@ -511,7 +520,7 @@
     "canRetryNow": "You can retry this assessment immediately or wait for additional study time.",
     "canRetryAfter": "You can retry this assessment after {time}",
     "contactSupport": "If you continue to have difficulty, please contact support.",
-    "retryAssessment": "Retry Assessment", 
+    "retryAssessment": "Retry Assessment",
     "continueToNextModule": "Continue to Next Module",
     "backToDashboard": "Back to Dashboard",
     "attemptedAt": "Completed",
@@ -546,12 +555,12 @@
     "cancel": "Cancel",
     "save": "Save Changes",
     "languages": {
-      "french": "Français",
+      "french": "Fran\u00e7ais",
       "english": "English"
     },
     "levels": {
       "level1": "Beginner",
-      "level2": "Intermediate", 
+      "level2": "Intermediate",
       "level3": "Advanced",
       "level4": "Expert"
     },

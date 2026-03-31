@@ -43,10 +43,10 @@ async def get_placement_test_questions(
         # Check if user has existing placement result
         existing_result = await placement_service.get_placement_result(current_user.id)
         if existing_result and current_user.current_level > 1:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Placement test can only be retaken after 3 months",
-            )
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Placement test can only be retaken after 3 months",
+                )
 
         # Get placement test questions (hardcoded for now)
         questions = _get_placement_questions(current_user.preferred_language)

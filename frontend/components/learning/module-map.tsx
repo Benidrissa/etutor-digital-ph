@@ -22,11 +22,6 @@ export function ModuleMap({ onModuleClick }: ModuleMapProps) {
   
   return (
     <div className="space-y-8">
-      <div className="text-center">
-        <h2 className="text-xl font-semibold text-stone-900">{t('title')}</h2>
-        <p className="mt-1 text-sm text-stone-600">{t('subtitle')}</p>
-      </div>
-      
       {levels.map((level) => {
         const levelModules = getModulesByLevel(level);
         const levelProgress = getLevelProgress(level);

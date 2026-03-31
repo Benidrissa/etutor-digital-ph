@@ -1,0 +1,57 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - navigation "Navigation de bureau" [ref=e4]:
+        - generic [ref=e5]:
+          - generic [ref=e6]: SantePublique AOF
+          - button "Réduire la barre latérale" [ref=e7]:
+            - img
+        - navigation [ref=e8]:
+          - link "Accéder à votre tableau de bord d'apprentissage" [ref=e9] [cursor=pointer]:
+            - /url: /dashboard
+            - img [ref=e10]
+            - generic [ref=e13]: Tableau de bord
+          - link "Parcourir les modules d'apprentissage disponibles" [ref=e14] [cursor=pointer]:
+            - /url: /modules
+            - img [ref=e15]
+            - generic [ref=e17]: Modules
+          - link "Réviser les flashcards et la répétition espacée" [ref=e18] [cursor=pointer]:
+            - /url: /flashcards
+            - img [ref=e19]
+            - generic [ref=e21]: Flashcards
+          - link "Discuter avec votre tuteur IA d'apprentissage" [ref=e22] [cursor=pointer]:
+            - /url: /tutor
+            - img [ref=e23]
+            - generic [ref=e26]: Tuteur IA
+          - link "Voir et modifier votre profil" [ref=e27] [cursor=pointer]:
+            - /url: /profile
+            - img [ref=e28]
+            - generic [ref=e31]: Profil
+          - link "Gérer votre compte et vos préférences" [ref=e32] [cursor=pointer]:
+            - /url: /settings
+            - img [ref=e33]
+            - generic [ref=e36]: Paramètres
+        - button "Passer en anglais" [ref=e39]:
+          - img [ref=e40]: 🇫🇷
+          - generic [ref=e41]: FR
+      - generic [ref=e42]:
+        - navigation "Navigation de fil d'Ariane" [ref=e43]:
+          - img [ref=e44]
+          - img [ref=e47]
+          - generic [ref=e49]:
+            - link "Naviguer vers Tableau de bord" [ref=e50] [cursor=pointer]:
+              - /url: /dashboard
+              - text: Tableau de bord
+            - img [ref=e51]
+          - generic [ref=e54]: Profile
+        - main [ref=e55]:
+          - generic [ref=e56]:
+            - generic [ref=e57]:
+              - heading "Profil" [level=1] [ref=e58]
+              - paragraph [ref=e59]: Gérez votre compte et vos préférences d'apprentissage
+            - status [ref=e61]:
+              - generic [ref=e62]: Loading...
+    - button "Ouvrir le Tuteur IA" [ref=e63]:
+      - generic [ref=e64]:
+        - img
+  - alert [ref=e65]
