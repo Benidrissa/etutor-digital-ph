@@ -177,3 +177,56 @@ class FlashcardSessionResponse(BaseModel):
             }
         }
     }
+
+
+class UpcomingReviewSession(BaseModel):
+    """Single upcoming review session data."""
+
+    date: str = Field(..., description="Review date (YYYY-MM-DD)")
+    module_name: str = Field(..., description="Module name for this session")
+    card_count: int = Field(..., description="Number of cards due on this date")
+    is_overdue: bool = Field(..., description="Whether this session is overdue")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "date": "2026-03-31",
+                "module_name": "M01: Foundations of Public Health",
+                "card_count": 12,
+                "is_overdue": False,
+            }
+        }
+    }
+
+
+class UpcomingReviewsResponse(BaseModel):
+    """Response for upcoming reviews query."""
+
+    user_id: UUID = Field(..., description="User ID")
+    today_due_count: int = Field(..., description="Total cards due today")
+    has_due_cards: bool = Field(..., description="Whether user has cards due today")
+    upcoming_sessions: list[UpcomingReviewSession] = Field(..., description="Next 5 review sessions")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "user_id": "550e8400-e29b-41d4-a716-446655440000",
+                "today_due_count": 15,
+                "has_due_cards": True,
+                "upcoming_sessions": [
+                    {
+                        "date": "2026-03-31",
+                        "module_name": "M01: Foundations of Public Health",
+                        "card_count": 15,
+                        "is_overdue": False,
+                    },
+                    {
+                        "date": "2026-04-01",
+                        "module_name": "M02: Health Data Systems",
+                        "card_count": 8,
+                        "is_overdue": False,
+                    },
+                ],
+            }
+        }
+    }

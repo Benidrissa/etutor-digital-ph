@@ -124,7 +124,15 @@
     "overallProgress": "Progrès global",
     "minutes": "minutes",
     "modules": "modules",
-    "cards": "cartes"
+    "cards": "cartes",
+    "upcomingReviews": "Révisions à Venir",
+    "startReview": "Commencer la Révision",
+    "dueToday": "{count, plural, one {# carte due} other {# cartes dues}}",
+    "today": "Aujourd'hui",
+    "tomorrow": "Demain",
+    "noUpcomingReviews": "Aucune révision programmée",
+    "keepLearning": "Terminez des modules pour générer des flashcards",
+    "errorLoading": "Erreur lors du chargement des révisions"
   },
   "ModuleCard": {
     "locked": "Verrouillé",

@@ -124,7 +124,15 @@
     "overallProgress": "Overall progress",
     "minutes": "minutes",
     "modules": "modules",
-    "cards": "cards"
+    "cards": "cards",
+    "upcomingReviews": "Upcoming Reviews",
+    "startReview": "Start Review",
+    "dueToday": "{count, plural, one {# card due} other {# cards due}}",
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "noUpcomingReviews": "No reviews scheduled",
+    "keepLearning": "Complete modules to generate flashcards",
+    "errorLoading": "Error loading reviews"
   },
   "ModuleCard": {
     "locked": "Locked",
