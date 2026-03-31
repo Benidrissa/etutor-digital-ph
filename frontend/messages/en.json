@@ -404,7 +404,10 @@
     "description": "Complete this 20-question assessment to help us determine your optimal starting level.",
     "instructions": "Answer all questions to the best of your ability. This assessment will help us personalize your learning journey.",
     "timeLimit": "Time limit: 20 minutes",
+    "timeLimitSubtext": "Recommended completion time",
     "numberOfQuestions": "20 questions covering 4 domains",
+    "numberOfQuestionsSubtext": "Comprehensive assessment",
+    "assessmentDomains": "Assessment Domains",
     "domains": {
       "foundations": "Public Health Foundations",
       "epidemiology": "Epidemiology", 

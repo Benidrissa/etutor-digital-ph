@@ -43,7 +43,7 @@ export function PlacementTestIntro({ onStartTest, onSkipTest }: PlacementTestInt
               <Clock className="h-8 w-8 text-blue-600" />
               <div>
                 <h3 className="font-semibold text-blue-900">{t('timeLimit')}</h3>
-                <p className="text-sm text-blue-700">Recommended completion time</p>
+                <p className="text-sm text-blue-700">{t('timeLimitSubtext')}</p>
               </div>
             </div>
 
@@ -51,7 +51,7 @@ export function PlacementTestIntro({ onStartTest, onSkipTest }: PlacementTestInt
               <Target className="h-8 w-8 text-green-600" />
               <div>
                 <h3 className="font-semibold text-green-900">{t('numberOfQuestions')}</h3>
-                <p className="text-sm text-green-700">Comprehensive assessment</p>
+                <p className="text-sm text-green-700">{t('numberOfQuestionsSubtext')}</p>
               </div>
             </div>
           </div>
@@ -60,7 +60,7 @@ export function PlacementTestIntro({ onStartTest, onSkipTest }: PlacementTestInt
           <div>
             <h3 className="font-semibold mb-3 flex items-center">
               <BookOpen className="h-5 w-5 mr-2" />
-              Assessment Domains
+              {t('assessmentDomains')}
             </h3>
             <div className="grid gap-2 md:grid-cols-2">
               <Badge variant="outline" className="justify-start p-3">

@@ -404,7 +404,10 @@
     "description": "Complétez cette évaluation de 20 questions pour nous aider à déterminer votre niveau optimal de départ.",
     "instructions": "Répondez à toutes les questions du mieux que vous pouvez. Cette évaluation nous aidera à personnaliser votre parcours d'apprentissage.",
     "timeLimit": "Limite de temps : 20 minutes",
+    "timeLimitSubtext": "Temps de complétion recommandé",
     "numberOfQuestions": "20 questions couvrant 4 domaines",
+    "numberOfQuestionsSubtext": "Évaluation complète",
+    "assessmentDomains": "Domaines d'évaluation",
     "domains": {
       "foundations": "Fondements de Santé Publique",
       "epidemiology": "Épidémiologie", 
