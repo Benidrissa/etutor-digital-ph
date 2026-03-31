@@ -1,6 +1,5 @@
 """User profile management endpoints."""
 
-
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from structlog import get_logger
 
