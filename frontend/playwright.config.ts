@@ -29,12 +29,13 @@ export default defineConfig({
     },
   ],
 
-  webServer: process.env.CI
-    ? undefined
-    : {
-        command: 'npm run dev',
-        url: BASE_URL,
-        reuseExistingServer: true,
-        timeout: 60_000,
-      },
+  webServer:
+    process.env.CI || process.env.NO_WEB_SERVER
+      ? undefined
+      : {
+          command: 'npm run dev',
+          url: BASE_URL,
+          reuseExistingServer: true,
+          timeout: 60_000,
+        },
 });
