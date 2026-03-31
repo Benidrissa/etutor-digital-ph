@@ -178,3 +178,61 @@
 [ 1923347ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
 [ 1924577ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/flashcards/upcoming:0
 [ 1924578ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 1954773ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 1955932ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 1984796ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/flashcards/upcoming:0
+[ 1985965ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/flashcards/upcoming:0
+[ 1986138ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 1987324ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2017494ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2018693ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2046137ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/flashcards/upcoming:0
+[ 2047335ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/flashcards/upcoming:0
+[ 2048829ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2049976ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2080131ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2081349ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2107488ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/flashcards/upcoming:0
+[ 2108700ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/flashcards/upcoming:0
+[ 2111512ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2112696ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2143160ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2144320ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2168847ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/flashcards/upcoming:0
+[ 2170052ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/flashcards/upcoming:0
+[ 2174524ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2175736ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2205887ms] [ERROR] Access to fetch at 'https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats' from origin 'https://etutor.elearning.portfolio2.kimbetien.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ https://etutor.elearning.portfolio2.kimbetien.com/fr/dashboard:0
+[ 2205889ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2207082ms] [ERROR] Access to fetch at 'https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats' from origin 'https://etutor.elearning.portfolio2.kimbetien.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ https://etutor.elearning.portfolio2.kimbetien.com/fr/dashboard:0
+[ 2207082ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2230216ms] [ERROR] Access to fetch at 'https://api.elearning.portfolio2.kimbetien.com/api/v1/flashcards/upcoming' from origin 'https://etutor.elearning.portfolio2.kimbetien.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ https://etutor.elearning.portfolio2.kimbetien.com/fr/dashboard:0
+[ 2230216ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://api.elearning.portfolio2.kimbetien.com/api/v1/flashcards/upcoming:0
+[ 2231347ms] [ERROR] Access to fetch at 'https://api.elearning.portfolio2.kimbetien.com/api/v1/flashcards/upcoming' from origin 'https://etutor.elearning.portfolio2.kimbetien.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ https://etutor.elearning.portfolio2.kimbetien.com/fr/dashboard:0
+[ 2231348ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://api.elearning.portfolio2.kimbetien.com/api/v1/flashcards/upcoming:0
+[ 2237248ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2238445ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2268624ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2269808ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2292551ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/flashcards/upcoming:0
+[ 2294781ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/flashcards/upcoming:0
+[ 2299971ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2301170ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2331337ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2332521ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2354939ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/flashcards/upcoming:0
+[ 2356126ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/flashcards/upcoming:0
+[ 2362691ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2363889ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2394061ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2395247ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2416294ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/flashcards/upcoming:0
+[ 2417504ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/flashcards/upcoming:0
+[ 2426858ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2430389ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2460775ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2461962ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2477636ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/flashcards/upcoming:0
+[ 2478863ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/flashcards/upcoming:0
+[ 2492217ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0
+[ 2493399ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.elearning.portfolio2.kimbetien.com/api/v1/dashboard/stats:0

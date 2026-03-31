@@ -22,7 +22,7 @@ class TOTPSecret(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), unique=True, index=True)
-    secret: Mapped[str] = mapped_column(String(32))  # Base32 encoded secret
+    secret: Mapped[str] = mapped_column(String(64))  # Base32 encoded TOTP secret
     backup_codes: Mapped[str | None] = mapped_column(Text)  # JSON array of backup codes
     is_verified: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
