@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/card";
 import { DashboardClient } from "./dashboard-client";
 import { DashboardStats } from "@/components/dashboard/dashboard-stats";
+import { UpcomingReviews } from "@/components/dashboard/upcoming-reviews";
 
 export default async function DashboardPage() {
   const t = await getTranslations("Dashboard");
@@ -19,6 +20,10 @@ export default async function DashboardPage() {
 
       <div className="mt-6">
         <DashboardStats />
+      </div>
+
+      <div className="mt-8">
+        <UpcomingReviews />
       </div>
 
       <div className="mt-8">

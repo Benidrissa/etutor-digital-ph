@@ -96,12 +96,12 @@ export function ChatPanel({ isOpen, onClose, moduleId, className }: ChatPanelPro
         timestamp: new Date(),
         sources: [
           {
-            title: 'Public Health Fundamentals',
+            title: t('publicHealthFundamentals'),
             chapter: 3,
             page: 45
           },
           {
-            title: 'Epidemiology Basics',
+            title: t('epidemiologyBasics'),
             chapter: 1,
             page: 12
           }

@@ -5,16 +5,24 @@
     "offline": "You are offline — cached content available",
     "error": "An error occurred"
   },
+  "PWA": {
+    "installTitle": "Install App",
+    "installDescription": "Add SantePublique AOF to your home screen for quick access and an optimized experience.",
+    "install": "Install",
+    "later": "Later"
+  },
   "Navigation": {
     "dashboard": "Dashboard",
     "modules": "Modules",
     "flashcards": "Flashcards",
     "tutor": "AI Tutor",
+    "profile": "Profile",
     "settings": "Settings",
     "dashboardDescription": "Navigate to your learning dashboard",
     "modulesDescription": "Browse available learning modules",
     "flashcardsDescription": "Review flashcards and spaced repetition",
     "tutorDescription": "Chat with your AI learning tutor",
+    "profileDescription": "View and edit your profile",
     "settingsDescription": "Manage your account and preferences",
     "mobileNavigation": "Mobile navigation",
     "desktopNavigation": "Desktop navigation",
@@ -124,7 +132,15 @@
     "overallProgress": "Overall progress",
     "minutes": "minutes",
     "modules": "modules",
-    "cards": "cards"
+    "cards": "cards",
+    "upcomingReviews": "Upcoming Reviews",
+    "startReview": "Start Review",
+    "dueToday": "{count, plural, one {# card due} other {# cards due}}",
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "noUpcomingReviews": "No reviews scheduled",
+    "keepLearning": "Complete modules to generate flashcards",
+    "errorLoading": "Error loading reviews"
   },
   "ModuleCard": {
     "locked": "Locked",
@@ -216,7 +232,14 @@
     "error": "Quiz Error",
     "failedToLoad": "Failed to load quiz. Please try again.",
     "failedToSubmit": "Failed to submit quiz. Please try again.",
-    "networkError": "Network error. Please check your connection and try again."
+    "networkError": "Network error. Please check your connection and try again.",
+    "tryAgain": "Try Again",
+    "questions": "Questions",
+    "minutes": "Minutes",
+    "level": "Level",
+    "cached": "Cached",
+    "totalQuestions": "Total Questions",
+    "quizCompleteScreenReader": "Quiz completed with {score}% score. {correct} out of {total} questions correct. Time taken: {time}. {passed, select, true {Quiz passed.} other {Quiz not passed.}}"
   },
   "ChatTutor": {
     "title": "AI Tutor",
@@ -252,7 +275,10 @@
     "loading": "Loading conversation...",
     "welcomeMessage": "Hello! I'm your AI tutor for public health. Ask me anything about the modules, concepts, or get help with your studies.",
     "emptyState": "Start a conversation",
-    "emptyStateDescription": "Ask questions, request quizzes, or get explanations about public health topics"
+    "emptyStateDescription": "Ask questions, request quizzes, or get explanations about public health topics",
+    "moreThan99": "99+",
+    "publicHealthFundamentals": "Public Health Fundamentals",
+    "epidemiologyBasics": "Epidemiology Basics"
   },
   "Flashcards": {
     "title": "Flashcards",
@@ -299,7 +325,16 @@
     "flipCard": "Flip card",
     "error": "Error loading flashcards",
     "tryAgain": "Try again",
-    "offline": "You're offline - showing cached cards"
+    "offline": "You're offline - showing cached cards",
+    "ratingBreakdown": "Rating Breakdown",
+    "goodProgress": "Good progress! Keep practicing to improve your recall.",
+    "dontWorryProgress": "Don't worry, spaced repetition will help you improve over time!",
+    "day": "day",
+    "days": "days",
+    "cardsReadyForReview": "cards ready for review",
+    "target": "Target",
+    "startReviewSession": "Start Review Session",
+    "reviewDescription": "Review flashcards with spaced repetition for effective learning"
   },
   "Onboarding": {
     "welcome": "Welcome to SantePublique AOF",
@@ -408,6 +443,7 @@
       "timeExpired": "Time has expired. Your assessment has been automatically submitted."
     }
   },
+<<<<<<< HEAD
   "SummativeAssessment": {
     "pageTitle": "Summative Assessment",
     "pageDescription": "End-of-module comprehensive assessment",
@@ -473,5 +509,58 @@
     "attemptedAt": "Completed",
     "attemptId": "Attempt ID"
   }
+=======
+  "Profile": {
+    "title": "Profile",
+    "description": "Manage your account and learning preferences",
+    "name": "Name",
+    "email": "Email",
+    "language": "Language",
+    "country": "Country",
+    "role": "Professional Role",
+    "currentLevel": "Current Level",
+    "avatar": "Profile Picture",
+    "avatarDescription": "Upload a profile picture (max 2MB)",
+    "uploadAvatar": "Choose file",
+    "avatarSizeError": "File size must be under 2MB",
+    "avatarTypeError": "Only JPEG, PNG, and WebP images are supported",
+    "avatarLimits": "Supported formats: JPEG, PNG, WebP. Maximum size: 2MB",
+    "editProfile": "Edit Profile",
+    "editProfileDescription": "Update your personal information and learning preferences",
+    "accountInfo": "Account Information",
+    "joinDate": "Member since",
+    "streak": "Streak",
+    "streakDays": "{days} days",
+    "profileNotFound": "Profile not found",
+    "recontextualizationAlert": "Your content is being updated for your new country. This may take a few minutes.",
+    "emailReadonly": "Contact support to change email",
+    "levelReadonly": "Determined by placement test results",
+    "edit": "Edit",
+    "cancel": "Cancel",
+    "save": "Save Changes",
+    "languages": {
+      "french": "Français",
+      "english": "English"
+    },
+    "levels": {
+      "level1": "Beginner",
+      "level2": "Intermediate", 
+      "level3": "Advanced",
+      "level4": "Expert"
+    },
+    "roles": {
+      "doctor": "Doctor",
+      "nurse": "Nurse",
+      "epidemiologist": "Epidemiologist",
+      "biostatistician": "Biostatistician",
+      "health_data_analyst": "Health Data Analyst",
+      "public_health_researcher": "Public Health Researcher",
+      "health_policy_analyst": "Health Policy Analyst",
+      "community_health_worker": "Community Health Worker",
+      "health_program_manager": "Health Program Manager",
+      "student": "Student",
+      "other": "Other"
+    }
+>>>>>>> 0c8526b (feat(profile): implement user profile page with view and edit functionality)
   }
 }

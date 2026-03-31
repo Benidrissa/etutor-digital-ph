@@ -29,8 +29,16 @@ class User(Base):
     professional_role: Mapped[str | None] = mapped_column(String)
     current_level: Mapped[int] = mapped_column(server_default="1")
     streak_days: Mapped[int] = mapped_column(server_default="0")
+<<<<<<< HEAD
     last_active: Mapped[datetime] = mapped_column(server_default=func.now())
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+=======
+    avatar_url: Mapped[str | None] = mapped_column(String)
+    last_active: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+>>>>>>> 0c8526b (feat(profile): implement user profile page with view and edit functionality)
 
     # Auth relationships
     totp_secret: Mapped[TOTPSecret | None] = relationship(back_populates="user")

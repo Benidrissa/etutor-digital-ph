@@ -7,7 +7,7 @@ export async function generateMetadata({ params }: { params: { locale: string } 
   
   return {
     title: t('title'),
-    description: 'Review flashcards with spaced repetition for effective learning',
+    description: t('reviewDescription'),
   };
 }
 

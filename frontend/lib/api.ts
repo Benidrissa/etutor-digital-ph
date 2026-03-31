@@ -39,7 +39,28 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   });
 }
 <<<<<<< HEAD
+
+export interface UpcomingReviewSession {
+  date: string;
+  module_name: string;
+  card_count: number;
+  is_overdue: boolean;
+}
+
+export interface UpcomingReviewsResponse {
+  user_id: string;
+  today_due_count: number;
+  has_due_cards: boolean;
+  upcoming_sessions: UpcomingReviewSession[];
+}
+
+export async function getUpcomingReviews(): Promise<UpcomingReviewsResponse> {
+  return apiFetch<UpcomingReviewsResponse>("/api/v1/flashcards/upcoming");
+}
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> b699694 (feat(pwa): implement PWA manifest and install prompt (#43))
 
 // Quiz API Types
 export interface QuizQuestion {
@@ -201,4 +222,3 @@ export async function submitSummativeAssessmentAttempt(
     body: JSON.stringify(request),
   });
 }
->>>>>>> 3d0e726 (feat: implement summative assessment with 20 questions and 80% pass gate)

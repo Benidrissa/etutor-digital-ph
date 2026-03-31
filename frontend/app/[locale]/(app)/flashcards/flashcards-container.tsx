@@ -230,10 +230,10 @@ export function FlashcardsContainer() {
             <div className="text-6xl">📚</div>
             <div className="space-y-2">
               <p className="text-lg">
-                <strong>{dueCards.cards.length}</strong> cards ready for review
+                <strong>{dueCards.cards.length}</strong> {t('cardsReadyForReview')}
               </p>
               <p className="text-muted-foreground">
-                Target: {dueCards.session_target} cards
+                {t('target')}: {dueCards.session_target} {t('cards')}
               </p>
             </div>
             <Button 
@@ -241,7 +241,7 @@ export function FlashcardsContainer() {
               className="w-full min-h-11"
               size="lg"
             >
-              Start Review Session
+              {t('startReviewSession')}
             </Button>
           </CardContent>
         </Card>

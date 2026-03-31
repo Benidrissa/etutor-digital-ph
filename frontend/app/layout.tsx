@@ -16,6 +16,22 @@ export const metadata: Metadata = {
   title: "SantePublique AOF",
   description:
     "Plateforme d'apprentissage adaptative en santé publique pour l'Afrique de l'Ouest",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "SantePublique AOF",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  themeColor: "#22c55e",
+  viewport: {
+    width: "device-width",
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+  },
 };
 
 export default function RootLayout({
@@ -25,6 +41,13 @@ export default function RootLayout({
 }>) {
   return (
     <html className={`${inter.variable} ${jetbrainsMono.variable}`}>
+      <head>
+        {/* Apple iOS splash screen icons */}
+        <link rel="apple-touch-startup-image" href="/icon-512x512.svg" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="SantePublique AOF" />
+      </head>
       <body className="min-h-dvh bg-background font-sans text-foreground antialiased">
         {children}
       </body>
