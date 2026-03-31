@@ -2,12 +2,11 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from structlog import get_logger
-from uuid import UUID
 
 from ...api.deps import get_current_user, get_db_session
 from ...domain.models.user import User
-from ...domain.services.auth_service import AuthService
 from ...domain.repositories.implementations.user_repository import UserRepository
+from ...domain.services.auth_service import AuthService
 from .schemas.users import OnboardingRequest, UpdateProfileRequest, UserProfileResponse
 
 logger = get_logger(__name__)
@@ -19,7 +18,7 @@ async def get_current_user_profile(
     current_user: User = Depends(get_current_user),
 ) -> UserProfileResponse:
     """Get current user profile.
-    
+
     Returns:
         Current user's profile information
     """
@@ -44,15 +43,15 @@ async def update_user_profile(
     db=Depends(get_db_session),
 ) -> UserProfileResponse:
     """Update user profile.
-    
+
     Args:
         request: Updated profile fields
         current_user: Current authenticated user
         db: Database session
-        
+
     Returns:
         Updated user profile
-        
+
     Raises:
         400: Invalid update data
         500: Update failed
@@ -60,7 +59,7 @@ async def update_user_profile(
     try:
         user_repo = UserRepository(db)
         auth_service = AuthService(user_repo)
-        
+
         updates = {}
         if request.name is not None:
             updates["name"] = request.name
@@ -70,10 +69,10 @@ async def update_user_profile(
             updates["country"] = request.country
         if request.professional_role is not None:
             updates["professional_role"] = request.professional_role
-            
+
         updated_profile = await auth_service.update_user_profile(current_user.id, updates)
         updated_user = await user_repo.get_by_id(current_user.id)
-        
+
         logger.info("User profile updated", user_id=str(current_user.id))
         return UserProfileResponse(
             id=str(updated_user.id),
@@ -87,12 +86,11 @@ async def update_user_profile(
             last_active=updated_user.last_active.isoformat(),
             created_at=updated_user.created_at.isoformat(),
         )
-        
+
     except Exception as e:
         logger.error("Profile update failed", user_id=str(current_user.id), error=str(e))
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Profile update failed"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Profile update failed"
         )
 
 
@@ -103,18 +101,18 @@ async def complete_onboarding(
     db=Depends(get_db_session),
 ) -> UserProfileResponse:
     """Complete user onboarding flow.
-    
+
     Updates user profile with onboarding data including language preference,
     country, professional role, and skill level.
-    
+
     Args:
         request: Onboarding data (language, country, role, level)
         current_user: Current authenticated user
         db: Database session
-        
+
     Returns:
         Updated user profile
-        
+
     Raises:
         400: Invalid onboarding data
         500: Update failed
@@ -122,25 +120,25 @@ async def complete_onboarding(
     try:
         user_repo = UserRepository(db)
         auth_service = AuthService(user_repo)
-        
+
         updates = {
             "preferred_language": request.preferred_language,
             "country": request.country,
             "professional_role": request.professional_role,
             "current_level": request.current_level,
         }
-        
+
         await auth_service.update_user_profile(current_user.id, updates)
         updated_user = await user_repo.get_by_id(current_user.id)
-        
+
         logger.info(
             "User onboarding completed",
             user_id=str(current_user.id),
             country=request.country,
             role=request.professional_role,
-            level=request.current_level
+            level=request.current_level,
         )
-        
+
         return UserProfileResponse(
             id=str(updated_user.id),
             email=updated_user.email,
@@ -153,10 +151,9 @@ async def complete_onboarding(
             last_active=updated_user.last_active.isoformat(),
             created_at=updated_user.created_at.isoformat(),
         )
-        
+
     except Exception as e:
         logger.error("Onboarding completion failed", user_id=str(current_user.id), error=str(e))
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Onboarding completion failed"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Onboarding completion failed"
         )

@@ -5,8 +5,10 @@ from pydantic import BaseModel, Field
 
 class OnboardingRequest(BaseModel):
     """User onboarding profile update request."""
-    
-    preferred_language: str = Field(..., pattern="^(fr|en)$", description="User's preferred language")
+
+    preferred_language: str = Field(
+        ..., pattern="^(fr|en)$", description="User's preferred language"
+    )
     country: str = Field(..., description="ECOWAS country code")
     professional_role: str = Field(..., description="Professional role")
     current_level: int = Field(..., ge=1, le=4, description="Self-assessed skill level (1-4)")
@@ -14,7 +16,7 @@ class OnboardingRequest(BaseModel):
 
 class UserProfileResponse(BaseModel):
     """User profile response."""
-    
+
     id: str
     email: str
     name: str
@@ -29,7 +31,7 @@ class UserProfileResponse(BaseModel):
 
 class UpdateProfileRequest(BaseModel):
     """User profile update request."""
-    
+
     name: str | None = Field(None, max_length=100)
     preferred_language: str | None = Field(None, pattern="^(fr|en)$")
     country: str | None = None

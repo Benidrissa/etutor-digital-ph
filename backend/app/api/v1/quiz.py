@@ -28,7 +28,7 @@ from app.domain.models.content import GeneratedContent
 from app.domain.models.module import Module
 from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import QuizAttempt, SummativeAssessmentAttempt
-from app.domain.services.quiz_service import QuizService
+from app.domain.services.quiz_service import QuizGenerationService
 from app.infrastructure.config.settings import get_settings
 
 logger = structlog.get_logger()
@@ -52,9 +52,9 @@ def get_semantic_retriever() -> SemanticRetriever:
 def get_quiz_service(
     claude_service: ClaudeService = Depends(get_claude_service),
     semantic_retriever: SemanticRetriever = Depends(get_semantic_retriever),
-) -> QuizService:
+) -> QuizGenerationService:
     """Dependency to get quiz service."""
-    return QuizService(claude_service, semantic_retriever)
+    return QuizGenerationService(claude_service, semantic_retriever)
 
 
 @router.post(
@@ -69,7 +69,7 @@ def get_quiz_service(
 )
 async def generate_quiz(
     request: QuizGenerationRequest,
-    quiz_service: QuizService = Depends(get_quiz_service),
+    quiz_service: QuizGenerationService = Depends(get_quiz_service),
     session: AsyncSession = Depends(get_db),
 ) -> QuizResponse:
     """
@@ -394,7 +394,7 @@ async def submit_quiz_attempt(
 )
 async def generate_summative_assessment(
     request: SummativeAssessmentRequest,
-    quiz_service: QuizService = Depends(get_quiz_service),
+    quiz_service: QuizGenerationService = Depends(get_quiz_service),
     session: AsyncSession = Depends(get_db),
 ) -> QuizResponse:
     """
