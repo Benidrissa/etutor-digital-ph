@@ -38,8 +38,6 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     },
   });
 }
-<<<<<<< HEAD
-=======
 
 // Quiz API Types
 export interface QuizQuestion {
@@ -201,4 +199,3 @@ export async function submitSummativeAssessmentAttempt(
     body: JSON.stringify(request),
   });
 }
->>>>>>> 3d0e726 (feat: implement summative assessment with 20 questions and 80% pass gate)
