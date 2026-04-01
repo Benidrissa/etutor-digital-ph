@@ -141,9 +141,15 @@ class SemanticRetriever:
         params["min_similarity"] = min_similarity
         params["limit"] = top_k
 
-        # Execute query
+        # Execute query with proper parameter binding
         try:
-            result = await session.execute(text(query_str), params)
+            # Convert embedding list to string format for PostgreSQL vector type
+            embedding_str = "[" + ",".join(map(str, query_embedding)) + "]"
+            params["query_embedding"] = embedding_str
+
+            # Use bindparams to properly bind all named parameters
+            query_obj = text(query_str).bindparams(**params)
+            result = await session.execute(query_obj)
             rows = result.fetchall()
         except Exception as e:
             logger.error("Semantic search query failed", error=str(e))
