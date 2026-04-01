@@ -613,6 +613,13 @@
     "availableInLibrary": "Available in reference library",
     "footnote": "{count, plural, one {# source cited} other {# sources cited}}"
   },
+  "Sync": {
+    "pending": "{count, plural, one {# action pending} other {# actions pending}}",
+    "syncing": "Syncing...",
+    "successQuiz": "{count, plural, one {# quiz synced} other {# quizzes synced}}",
+    "successFlashcards": "{count, plural, one {# flashcard updated} other {# flashcards updated}}",
+    "successLessons": "{count, plural, one {# lesson synced} other {# lessons synced}}"
+  },
   "Profile": {
     "title": "Profile",
     "description": "Manage your account and learning preferences",
