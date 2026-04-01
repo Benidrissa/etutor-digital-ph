@@ -36,9 +36,10 @@ interface ChatPanelProps {
   moduleId?: string;
   conversationId?: string | null;
   className?: string;
+  embedded?: boolean;
 }
 
-export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className }: ChatPanelProps) {
+export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className, embedded = false }: ChatPanelProps) {
   const t = useTranslations('ChatTutor');
   const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -210,13 +211,17 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
     <>
       <div 
         className={cn(
-          // Mobile: Full screen overlay
-          'fixed inset-0 z-50 bg-background',
-          // Desktop: Side panel
-          'md:relative md:inset-auto md:w-96 md:border-l',
-          // Animation
-          'transition-transform duration-300 ease-in-out',
-          isOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0',
+          embedded
+            ? 'flex flex-col h-full w-full bg-background'
+            : cn(
+                // Mobile: Full screen overlay
+                'fixed inset-0 z-50 flex flex-col bg-background',
+                // Desktop: Side panel
+                'md:relative md:inset-auto md:w-96 md:border-l',
+                // Animation
+                'transition-transform duration-300 ease-in-out',
+                isOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'
+              ),
           className
         )}
       >
