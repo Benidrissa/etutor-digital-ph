@@ -1,0 +1,54 @@
+name: Bug Report
+description: Report a bug found in production or testing
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug description
+      description: What happened vs what was expected
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - backend
+        - frontend
+        - both
+        - deployment
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error logs or screenshots
+      description: Paste relevant error messages, console output, or screenshots
+    validations:
+      required: false
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - critical (production broken)
+        - high (blocks other work)
+        - medium (normal)
+        - low (cosmetic)
+    validations:
+      required: true

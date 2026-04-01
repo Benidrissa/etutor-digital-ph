@@ -1,0 +1,66 @@
+name: Claude Task
+description: Structured task for Claude agent to implement
+labels: ["claude"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What to implement
+      description: Clear description of the feature or fix needed
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - backend
+        - frontend
+        - both
+        - infrastructure
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checklist of conditions that must be met
+      value: |
+        - [ ]
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: textarea
+    id: files
+    attributes:
+      label: Files likely to change
+      description: Hint which files or directories are involved (optional)
+    validations:
+      required: false
+
+  - type: textarea
+    id: tests
+    attributes:
+      label: Required tests
+      description: What tests must be added or pass
+      value: |
+        - [ ] Backend pytest passes
+        - [ ] Frontend lint + build passes
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - critical (production broken)
+        - high (blocks other work)
+        - medium (normal)
+        - low (nice to have)
+    validations:
+      required: true

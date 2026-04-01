@@ -8,6 +8,29 @@ jobs:
   test:
     name: Lint & Test
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: santepublique_aof_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -18,7 +41,11 @@ jobs:
           uv sync
           uv run ruff check .
           uv run ruff format --check .
-          uv run pytest tests/test_health.py
+          uv run pytest --cov --cov-fail-under=40
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/santepublique_aof_test
+          REDIS_URL: redis://localhost:6379/0
+          APP_ENV: test
 
       - uses: actions/setup-node@v4
         with:

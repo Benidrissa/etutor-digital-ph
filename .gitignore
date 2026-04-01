@@ -38,3 +38,7 @@ Thumbs.db
 dist/
 build/
 coverage/
+
+# Claude Code / Playwright MCP
+.playwright-mcp/
+.claude/settings.local.json
