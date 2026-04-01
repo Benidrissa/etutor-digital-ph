@@ -548,6 +548,42 @@
     "attemptedAt": "Completed",
     "attemptId": "Attempt ID"
   },
+  "LessonViewer": {
+    "error": "An error occurred",
+    "streamError": "Streaming error occurred",
+    "loadError": "Error loading lesson",
+    "level": "Level {level}",
+    "readingTime": "5-10 min read",
+    "cached": "Cached",
+    "unitTitle": "Unit {unit}",
+    "introduction": "Introduction",
+    "keyConcepts": "Key Concepts",
+    "conceptTitle": "Concept {number}",
+    "westAfricanExample": "West African Example",
+    "synthesis": "Synthesis",
+    "keyPoints": "Key Points",
+    "markComplete": "Mark as Complete",
+    "completed": "Completed"
+  },
+  "LessonPage": {
+    "modules": "Modules",
+    "backToModule": "Back to Module",
+    "metadata": {
+      "notFound": "Lesson not found",
+      "title": "{unit} - {module}"
+    }
+  },
+  "BilingualTooltip": {
+    "french": "French",
+    "english": "English"
+  },
+  "SourceCitations": {
+    "title": "Sources Cited",
+    "sourceDetails": "Source details",
+    "clickToView": "Click to view:",
+    "availableInLibrary": "Available in reference library",
+    "footnote": "{count, plural, one {# source cited} other {# sources cited}}"
+  },
   "Profile": {
     "title": "Profile",
     "description": "Manage your account and learning preferences",

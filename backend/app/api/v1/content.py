@@ -249,6 +249,177 @@ async def stream_lesson_generation(
 
 
 @router.get(
+    "/lessons/{module_id}/{unit_id}",
+    response_model=LessonResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid request"},
+        404: {"model": ErrorResponse, "description": "Module or unit not found"},
+        500: {"model": ErrorResponse, "description": "Generation failed"},
+    },
+)
+async def get_or_generate_lesson_by_module_and_unit(
+    module_id: str,
+    unit_id: str,
+    language: str = "fr",
+    level: int = 1,
+    country: str = "SN",
+    lesson_service: LessonGenerationService = Depends(get_lesson_service),
+    session: AsyncSession = Depends(get_db),
+) -> LessonResponse:
+    """
+    Get or generate lesson content by module and unit ID.
+
+    This endpoint provides the main interface for the frontend to request lessons.
+    It checks for cached content first, then generates new content if needed.
+
+    **Parameters:**
+    - **module_id**: Module identifier (e.g., "M01")
+    - **unit_id**: Unit identifier (e.g., "M01-U03")
+    - **language**: Content language ("fr" or "en")
+    - **level**: User's level (1-4)
+    - **country**: Country context for examples (ISO 2-letter code)
+
+    **Returns:**
+    - Cached lesson if available
+    - Newly generated lesson if not cached
+    - Error if module/unit not found
+    """
+    try:
+        logger.info(
+            "Lesson request by module/unit",
+            module_id=module_id,
+            unit_id=unit_id,
+            language=language,
+            level=level,
+            country=country,
+        )
+
+        # Convert module_id to UUID if it follows the expected format
+        # For now, we'll use the string directly since the service expects it
+        lesson_response = await lesson_service.get_or_generate_lesson(
+            module_id=module_id,
+            unit_id=unit_id,
+            language=language,
+            country=country,
+            level=level,
+            session=session,
+        )
+
+        logger.info(
+            "Lesson request completed",
+            lesson_id=str(lesson_response.id),
+            cached=lesson_response.cached,
+        )
+
+        return lesson_response
+
+    except ValueError as e:
+        logger.warning("Invalid lesson request", error=str(e))
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "module_or_unit_not_found", "message": str(e)},
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": "invalid_request", "message": str(e)},
+            )
+
+    except Exception as e:
+        logger.error("Lesson request failed", error=str(e), exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "generation_failed",
+                "message": "Une erreur interne s'est produite lors de la génération",
+            },
+        )
+
+
+@router.get(
+    "/lessons/{module_id}/{unit_id}/stream",
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {"description": "Invalid request"},
+        404: {"description": "Module or unit not found"},
+        500: {"description": "Generation failed"},
+    },
+)
+async def stream_lesson_by_module_and_unit(
+    module_id: str,
+    unit_id: str,
+    language: str = "fr",
+    level: int = 1,
+    country: str = "SN",
+    lesson_service: LessonGenerationService = Depends(get_lesson_service),
+    session: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """
+    Stream lesson generation by module and unit ID in real-time using Server-Sent Events (SSE).
+
+    **Parameters:**
+    - **module_id**: Module identifier (e.g., "M01")
+    - **unit_id**: Unit identifier (e.g., "M01-U03")
+    - **language**: Content language ("fr" or "en")
+    - **level**: User's level (1-4)
+    - **country**: Country context for examples (ISO 2-letter code)
+
+    **Event Types:**
+    - `chunk`: Incremental content as it's generated
+    - `complete`: Final lesson object when generation finishes
+    - `error`: Error information if generation fails
+    """
+
+    async def generate_events() -> AsyncGenerator[str, None]:
+        """Generate SSE events for streaming response."""
+        try:
+            logger.info(
+                "Starting lesson streaming by module/unit",
+                module_id=module_id,
+                unit_id=unit_id,
+                language=language,
+                level=level,
+                country=country,
+            )
+
+            async for event in lesson_service.stream_lesson_generation(
+                module_id=module_id,
+                unit_id=unit_id,
+                language=language,
+                country=country,
+                level=level,
+                session=session,
+            ):
+                yield event.to_sse_format()
+
+            logger.info("Lesson streaming generation completed")
+
+        except Exception as e:
+            logger.error("Lesson streaming generation failed", error=str(e), exc_info=True)
+            error_event = StreamingEvent(
+                event="error",
+                data={
+                    "error": "streaming_failed",
+                    "message": "Erreur lors de la génération en streaming",
+                },
+            )
+            yield error_event.to_sse_format()
+
+    return StreamingResponse(
+        generate_events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Cache-Control",
+        },
+    )
+
+
+@router.get(
     "/lessons/{lesson_id}",
     response_model=LessonResponse,
     responses={
