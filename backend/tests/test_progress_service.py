@@ -365,6 +365,36 @@ class TestGetModuleProgress:
         assert "in_progress" in statuses
 
 
+class TestUnitNumberToUnitId:
+    def test_converts_basic_format(self):
+        assert ProgressService._unit_number_to_unit_id("1.1", 1) == "M01-U01"
+
+    def test_converts_with_padding(self):
+        assert ProgressService._unit_number_to_unit_id("1.2", 1) == "M01-U02"
+
+    def test_converts_module_number_padded(self):
+        assert ProgressService._unit_number_to_unit_id("12.3", 12) == "M12-U03"
+
+    def test_converts_high_unit_ordinal(self):
+        assert ProgressService._unit_number_to_unit_id("3.10", 3) == "M03-U10"
+
+    def test_returns_input_on_invalid_format(self):
+        assert ProgressService._unit_number_to_unit_id("bad", 1) == "bad"
+
+    def test_returns_input_on_single_part(self):
+        assert ProgressService._unit_number_to_unit_id("M01-U01", 1) == "M01-U01"
+
+    def test_roundtrip_with_lesson_service(self):
+        from app.domain.services.lesson_service import LessonGenerationService
+
+        unit_id = "M01-U03"
+        module_number = 1
+        unit_number = LessonGenerationService._unit_id_to_unit_number(unit_id, module_number)
+        assert unit_number is not None
+        result = ProgressService._unit_number_to_unit_id(unit_number, module_number)
+        assert result == unit_id
+
+
 class TestProgressServiceIntegration:
     async def test_tracking_lesson_updates_last_accessed(
         self, progress_service, mock_db, user_id, module_id, lesson_id
