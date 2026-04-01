@@ -330,7 +330,7 @@ class TutorService:
         if isinstance(user_id, str):
             user_id = uuid.UUID(user_id)
 
-        today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
 
         query = select(TutorConversation).where(
             TutorConversation.user_id == user_id,
