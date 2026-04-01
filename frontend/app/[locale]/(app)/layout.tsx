@@ -7,7 +7,7 @@ import { ChatLayout } from "@/components/chat/chat-layout";
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <ChatLayout>
-      <div className="flex min-h-dvh flex-col md:flex-row">
+      <div className="flex h-dvh overflow-hidden flex-col md:flex-row">
         <Sidebar />
         <div className="flex flex-1 flex-col min-h-0">
           <Header />
