@@ -35,9 +35,10 @@ interface ChatPanelProps {
   onClose: () => void;
   moduleId?: string;
   className?: string;
+  embedded?: boolean;
 }
 
-export function ChatPanel({ isOpen, onClose, moduleId, className }: ChatPanelProps) {
+export function ChatPanel({ isOpen, onClose, moduleId, className, embedded = false }: ChatPanelProps) {
   const t = useTranslations('ChatTutor');
   const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -210,13 +211,17 @@ export function ChatPanel({ isOpen, onClose, moduleId, className }: ChatPanelPro
     <>
       <div 
         className={cn(
-          // Mobile: Full screen overlay
-          'fixed inset-0 z-50 bg-background',
-          // Desktop: Side panel
-          'md:relative md:inset-auto md:w-96 md:border-l',
-          // Animation
-          'transition-transform duration-300 ease-in-out',
-          isOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0',
+          embedded
+            ? 'flex flex-col h-full w-full bg-background'
+            : [
+                // Mobile: Full screen overlay
+                'fixed inset-0 z-50 bg-background',
+                // Desktop: Side panel
+                'md:relative md:inset-auto md:w-96 md:border-l',
+                // Animation
+                'transition-transform duration-300 ease-in-out',
+                isOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0',
+              ],
           className
         )}
       >
@@ -256,10 +261,10 @@ export function ChatPanel({ isOpen, onClose, moduleId, className }: ChatPanelPro
         />
 
         {/* Messages */}
-        <div className="flex-1 flex flex-col min-h-0">
+        <div className="flex flex-col flex-1 min-h-0">
           <div
             ref={scrollAreaRef}
-            className="flex-1 overflow-y-auto px-4 py-2"
+            className="flex-1 overflow-y-auto px-4 py-2 min-h-0"
           >
             {isLoading && messages.length <= 1 ? (
               <ChatSkeleton />
