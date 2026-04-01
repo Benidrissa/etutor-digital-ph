@@ -15,6 +15,7 @@ celery_app = Celery(
     include=[
         "app.tasks.content_generation",
         "app.tasks.data_etl",
+        "app.tasks.rag_indexing",
     ],
 )
 

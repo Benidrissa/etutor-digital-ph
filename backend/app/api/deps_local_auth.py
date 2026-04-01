@@ -23,6 +23,7 @@ class AuthenticatedUser:
         self.country = jwt_payload.get("country")
         self.current_level = jwt_payload.get("current_level", 1)
         self.professional_role = jwt_payload.get("professional_role")
+        self.role = jwt_payload.get("role", "user")
 
         # JWT metadata
         self.exp = jwt_payload.get("exp", 0)

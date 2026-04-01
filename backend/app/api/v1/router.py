@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.api.v1.admin.rag import router as admin_rag_router
 from app.api.v1.content import router as content_router
 from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.flashcards import router as flashcards_router
@@ -20,3 +21,4 @@ api_v1_router.include_router(content_router)
 api_v1_router.include_router(quiz_router)
 api_v1_router.include_router(flashcards_router)
 api_v1_router.include_router(tutor_router)
+api_v1_router.include_router(admin_rag_router)

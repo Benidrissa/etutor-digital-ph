@@ -638,5 +638,44 @@
       "student": "Étudiant/e",
       "other": "Autre"
     }
+  },
+  "Admin": {
+    "backToApp": "Retour à l'application",
+    "adminPanel": "Panneau d'administration",
+    "RagIndex": {
+      "title": "Gestion de l'index RAG",
+      "subtitle": "Gérer l'index vectoriel pour le contenu généré par IA",
+      "indexHealth": "État de l'index",
+      "indexHealthDesc": "État actuel de l'index vectoriel RAG",
+      "totalChunks": "Total segments",
+      "totalTokens": "Total tokens",
+      "sources": "Sources",
+      "chunkCount": "{count} segments",
+      "lastIndexed": "Dernier indexage :",
+      "reindexSource": "Réindexer",
+      "deleteSource": "Supprimer",
+      "confirmDelete": "Supprimer tous les segments de la source \"{source}\" ? Cette action est irréversible.",
+      "reindexAll": "Réindexer toutes les sources",
+      "reindexing": "Mise en file d'attente…",
+      "reindexQueued": "Réindexage mis en file d'attente (ID : {jobId})",
+      "reindexFailed": "Échec du déclenchement du réindexage. Veuillez réessayer.",
+      "uploadPdf": "Téléverser un nouveau PDF",
+      "uploadPdfDesc": "Ajouter un nouveau document à l'index RAG",
+      "sourceId": "Identifiant de source",
+      "sourceIdPlaceholder": "ex. donaldson, triola, scutchfield",
+      "pdfFile": "Fichier PDF",
+      "uploading": "Téléversement en cours…",
+      "uploadAndIndex": "Téléverser et indexer",
+      "uploadQueued": "Téléversement accepté, indexage en file d'attente (ID : {jobId})",
+      "uploadFailed": "Échec du téléversement. Veuillez réessayer.",
+      "jobHistory": "Historique des tâches d'indexage",
+      "jobHistoryDesc": "Tâches d'indexage récentes et leur statut",
+      "noJobs": "Aucune tâche d'indexage trouvée.",
+      "jobId": "ID de tâche",
+      "chunksIndexed": "{count} segments indexés",
+      "totalChunksIndexed": "{count} segments indexés au total",
+      "error": "Erreur",
+      "loadError": "Échec du chargement de l'état de l'index."
+    }
   }
 }

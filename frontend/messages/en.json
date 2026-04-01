@@ -638,5 +638,44 @@
       "student": "Student",
       "other": "Other"
     }
+  },
+  "Admin": {
+    "backToApp": "Back to App",
+    "adminPanel": "Admin Panel",
+    "RagIndex": {
+      "title": "RAG Index Management",
+      "subtitle": "Manage the vector index for AI-generated content",
+      "indexHealth": "Index Health",
+      "indexHealthDesc": "Current state of the RAG vector index",
+      "totalChunks": "Total Chunks",
+      "totalTokens": "Total Tokens",
+      "sources": "Sources",
+      "chunkCount": "{count} chunks",
+      "lastIndexed": "Last indexed:",
+      "reindexSource": "Re-index",
+      "deleteSource": "Remove",
+      "confirmDelete": "Remove all chunks for source \"{source}\"? This cannot be undone.",
+      "reindexAll": "Re-index All Sources",
+      "reindexing": "Queuing re-index…",
+      "reindexQueued": "Re-index job queued (ID: {jobId})",
+      "reindexFailed": "Failed to trigger re-index. Please try again.",
+      "uploadPdf": "Upload New PDF",
+      "uploadPdfDesc": "Add a new document to the RAG index",
+      "sourceId": "Source ID",
+      "sourceIdPlaceholder": "e.g. donaldson, triola, scutchfield",
+      "pdfFile": "PDF File",
+      "uploading": "Uploading…",
+      "uploadAndIndex": "Upload & Index",
+      "uploadQueued": "Upload accepted, indexing queued (ID: {jobId})",
+      "uploadFailed": "Upload failed. Please try again.",
+      "jobHistory": "Indexing Job History",
+      "jobHistoryDesc": "Recent indexing jobs and their status",
+      "noJobs": "No indexing jobs found.",
+      "jobId": "Job ID",
+      "chunksIndexed": "{count} chunks indexed",
+      "totalChunksIndexed": "{count} total chunks indexed",
+      "error": "Error",
+      "loadError": "Failed to load index status."
+    }
   }
 }
