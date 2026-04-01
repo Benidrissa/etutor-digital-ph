@@ -97,6 +97,7 @@ jobs:
         env:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
           NEXT_PUBLIC_POSTHOG_KEY: ${{ secrets.NEXT_PUBLIC_POSTHOG_KEY }}
@@ -106,7 +107,7 @@ jobs:
           host: 167.86.115.58
           username: deploy
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: POSTGRES_PASSWORD,ANTHROPIC_API_KEY,SENTRY_DSN,NEXT_PUBLIC_SENTRY_DSN,NEXT_PUBLIC_POSTHOG_KEY,NEXT_PUBLIC_POSTHOG_HOST,DEPLOY_SHA
+          envs: POSTGRES_PASSWORD,ANTHROPIC_API_KEY,OPENAI_API_KEY,SENTRY_DSN,NEXT_PUBLIC_SENTRY_DSN,NEXT_PUBLIC_POSTHOG_KEY,NEXT_PUBLIC_POSTHOG_HOST,DEPLOY_SHA
           script: |
             set -e
             cd ~/etutor
@@ -119,6 +120,7 @@ jobs:
             cat > .env << EOF
             POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
             ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+            OPENAI_API_KEY=${OPENAI_API_KEY}
             SENTRY_DSN=${SENTRY_DSN}
             NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN}
             NEXT_PUBLIC_POSTHOG_KEY=${NEXT_PUBLIC_POSTHOG_KEY}
