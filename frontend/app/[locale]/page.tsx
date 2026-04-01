@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { redirect } from '@/i18n/routing';
 
-export default function LocaleRoot() {
-  redirect("/dashboard");
+export default function RootPage({ params }: { params: { locale: string } }) {
+  redirect({ href: '/dashboard', locale: params.locale });
 }
