@@ -4,7 +4,7 @@ Handles user profile management and auth-related business logic.
 Works with local FastAPI auth (pyotp + python-jose).
 """
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -92,7 +92,7 @@ class AuthService:
             professional_role=professional_role,
             current_level=1,  # Start at beginner level
             streak_days=0,
-            last_active=datetime.now(UTC),
+            last_active=datetime.utcnow(),
         )
 
         created_user = await self.user_repo.create(user)
@@ -148,7 +148,7 @@ class AuthService:
                 setattr(user, field, value)
 
         # Update last_active timestamp
-        user.last_active = datetime.now(UTC)
+        user.last_active = datetime.utcnow()
 
         updated_user = await self.user_repo.update(user)
 
@@ -174,8 +174,8 @@ class AuthService:
         if not user:
             raise ValueError(f"User {user_id} not found")
 
-        now = datetime.now(UTC)
-        last_active = user.last_active.replace(tzinfo=UTC)
+        now = datetime.utcnow()
+        last_active = user.last_active
 
         # Calculate days since last activity
         days_diff = (now.date() - last_active.date()).days

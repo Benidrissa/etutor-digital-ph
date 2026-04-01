@@ -2,7 +2,6 @@
 
 import re
 import uuid
-from datetime import UTC
 from uuid import UUID
 
 import structlog
@@ -589,7 +588,7 @@ async def can_attempt_summative_assessment(
         # Check 24h cooldown
         from datetime import datetime
 
-        now = datetime.now(UTC)
+        now = datetime.utcnow()
         if latest_attempt.can_retry_at and now < latest_attempt.can_retry_at:
             return SummativeAssessmentAttemptCheck(
                 can_attempt=False,
@@ -763,7 +762,7 @@ async def submit_summative_assessment_attempt(
         # Set retry cooldown if failed (24 hours)
         from datetime import datetime, timedelta
 
-        can_retry_at = None if passed else datetime.now(UTC) + timedelta(hours=24)
+        can_retry_at = None if passed else datetime.utcnow() + timedelta(hours=24)
 
         # Check if module should be unlocked
         module_unlocked = False
@@ -789,7 +788,7 @@ async def submit_summative_assessment_attempt(
                     completion_pct=100.0,
                     quiz_score_avg=score,
                     time_spent_minutes=request.total_time_seconds // 60,
-                    last_accessed=datetime.now(UTC),
+                    last_accessed=datetime.utcnow(),
                 )
                 session.add(new_progress)
                 module_unlocked = True

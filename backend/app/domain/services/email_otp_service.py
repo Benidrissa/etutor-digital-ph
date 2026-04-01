@@ -1,7 +1,7 @@
 """Email OTP service for registration and login verification."""
 
 import secrets
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -71,7 +71,7 @@ class EmailOTPService:
 
             # Generate new OTP
             otp_code = self.generate_otp_code()
-            expires_at = datetime.now(UTC) + timedelta(minutes=self.otp_expiry_minutes)
+            expires_at = datetime.utcnow() + timedelta(minutes=self.otp_expiry_minutes)
 
             # Store OTP
             otp_record = EmailOTP(
@@ -82,7 +82,7 @@ class EmailOTPService:
                 purpose="registration",
                 attempts=0,
                 expires_at=expires_at,
-                created_at=datetime.now(UTC),
+                created_at=datetime.utcnow(),
                 ip_address=ip_address,
             )
             self.db.add(otp_record)
@@ -147,7 +147,7 @@ class EmailOTPService:
 
             # Generate new OTP
             otp_code = self.generate_otp_code()
-            expires_at = datetime.now(UTC) + timedelta(minutes=self.otp_expiry_minutes)
+            expires_at = datetime.utcnow() + timedelta(minutes=self.otp_expiry_minutes)
 
             # Store OTP
             otp_record = EmailOTP(
@@ -158,7 +158,7 @@ class EmailOTPService:
                 purpose="login",
                 attempts=0,
                 expires_at=expires_at,
-                created_at=datetime.now(UTC),
+                created_at=datetime.utcnow(),
                 ip_address=ip_address,
             )
             self.db.add(otp_record)
@@ -219,7 +219,7 @@ class EmailOTPService:
                 raise OTPError("OTP not found or already verified")
 
             # Check if expired
-            if otp_record.expires_at < datetime.now(UTC):
+            if otp_record.expires_at < datetime.utcnow():
                 raise OTPError("OTP has expired")
 
             # Check attempts
@@ -236,7 +236,7 @@ class EmailOTPService:
                 raise OTPError(f"Invalid OTP code. {attempts_left} attempts remaining.")
 
             # Mark as verified
-            otp_record.verified_at = datetime.now(UTC)
+            otp_record.verified_at = datetime.utcnow()
 
             # Get user info if available
             user_info = None
@@ -289,7 +289,7 @@ class EmailOTPService:
         """
         try:
             # Check rate limit by email
-            window_start = datetime.now(UTC) - timedelta(seconds=self.rate_limit_window)
+            window_start = datetime.utcnow() - timedelta(seconds=self.rate_limit_window)
 
             email_count = await self.db.scalar(
                 select(func.count(EmailOTP.id)).where(
@@ -332,7 +332,7 @@ class EmailOTPService:
         try:
             await self.db.execute(
                 select(EmailOTP).where(
-                    and_(EmailOTP.email == email, EmailOTP.expires_at < datetime.now(UTC))
+                    and_(EmailOTP.email == email, EmailOTP.expires_at < datetime.utcnow())
                 )
             )
             await self.db.commit()
