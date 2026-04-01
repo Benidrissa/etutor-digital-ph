@@ -4,9 +4,24 @@ export async function apiFetch<T>(
   path: string,
   options?: RequestInit
 ): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options?.headers as Record<string, string>),
+  };
+
+  if (typeof window !== "undefined") {
+    try {
+      const { authClient } = await import("./auth");
+      const token = await authClient.getValidToken();
+      headers["Authorization"] = `Bearer ${token}`;
+    } catch {
+      // No valid token — proceed without auth header (unauthenticated call)
+    }
+  }
+
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
-    headers: { "Content-Type": "application/json", ...options?.headers },
+    headers,
   });
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.json();

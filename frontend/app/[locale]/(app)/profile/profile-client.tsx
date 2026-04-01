@@ -7,7 +7,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +18,8 @@ import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { Upload, User as UserIcon, AlertTriangle, CheckCircle } from "lucide-react";
+import { Link } from "@/i18n/routing";
+import { Upload, User as UserIcon, AlertTriangle, CheckCircle, ClipboardList } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -438,6 +439,22 @@ export function ProfileClient() {
               <p className="text-xs text-muted-foreground">{t("levelReadonly")}</p>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Placement Test Retake */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ClipboardList className="h-5 w-5" />
+            {t("placementTest")}
+          </CardTitle>
+          <CardDescription>{t("placementTestDescription")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Link href="/placement-test" className={buttonVariants({ variant: "default" })}>
+            {t("retakePlacementTest")}
+          </Link>
         </CardContent>
       </Card>
     </div>
