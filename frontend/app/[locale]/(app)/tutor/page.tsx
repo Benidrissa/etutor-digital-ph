@@ -14,8 +14,8 @@ export default async function TutorPage() {
   const t = await getTranslations('ChatTutor');
   
   return (
-    <div className="flex h-[calc(100vh-theme(space.16))] md:h-[calc(100vh-theme(space.14))] flex-col">
-      <div className="border-b bg-background p-4">
+    <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
+      <div className="border-b bg-background p-4 shrink-0">
         <h1 className="text-2xl font-bold">{t('title')}</h1>
         <p className="text-muted-foreground">{t('tutorPageDescription')}</p>
       </div>
