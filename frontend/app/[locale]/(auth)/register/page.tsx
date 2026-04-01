@@ -1,9 +1,12 @@
-import { TOTPRegisterForm } from '@/components/auth/totp-register-form';
+import { redirect } from '@/i18n/routing';
 
-export default function RegisterPage() {
-  return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <TOTPRegisterForm />
-    </div>
-  );
+interface Props {
+  params: {
+    locale: string;
+  };
+}
+
+export default function RegisterPage({ params }: Props) {
+  // Redirect to the registration options page where users can choose between TOTP and email OTP
+  redirect({ href: '/register-options', locale: params.locale });
 }

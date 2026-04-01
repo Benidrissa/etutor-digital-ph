@@ -173,3 +173,98 @@ class EmailService:
         except Exception as e:
             logger.error("Failed to send welcome email", email=email, error=str(e))
             return False
+
+    async def send_otp_email(self, email: str, otp_code: str, purpose: str, language: str = "fr") -> bool:
+        """Send an OTP verification code via email.
+
+        Args:
+            email: User's email address
+            otp_code: 6-digit OTP code
+            purpose: Purpose of the OTP (registration/login)
+            language: User's preferred language (fr/en)
+
+        Returns:
+            True if email was sent successfully, False otherwise
+        """
+        try:
+            if language == "en":
+                if purpose == "registration":
+                    subject = "Your SantePublique AOF verification code"
+                    html_content = f"""
+                    <h2>Verification Code</h2>
+                    <p>Thank you for registering with SantePublique AOF.</p>
+                    <p>Your verification code is:</p>
+                    <div style="background-color: #f5f5f5; padding: 20px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 8px; border-radius: 8px; margin: 20px 0;">
+                        {otp_code}
+                    </div>
+                    <p>Enter this code in the app to complete your registration.</p>
+                    <p style="color: #666;">This code will expire in 10 minutes.</p>
+                    <p style="color: #666;">If you didn't request this code, please ignore this email.</p>
+                    <hr>
+                    <p style="color: #666; font-size: 12px;">SantePublique AOF - Advancing Public Health in West Africa</p>
+                    """
+                else:
+                    subject = "Your SantePublique AOF login code"
+                    html_content = f"""
+                    <h2>Login Verification</h2>
+                    <p>Your login verification code is:</p>
+                    <div style="background-color: #f5f5f5; padding: 20px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 8px; border-radius: 8px; margin: 20px 0;">
+                        {otp_code}
+                    </div>
+                    <p>Enter this code in the app to complete your login.</p>
+                    <p style="color: #666;">This code will expire in 10 minutes.</p>
+                    <hr>
+                    <p style="color: #666; font-size: 12px;">SantePublique AOF - Advancing Public Health in West Africa</p>
+                    """
+            else:  # French
+                if purpose == "registration":
+                    subject = "Votre code de vérification SantePublique AOF"
+                    html_content = f"""
+                    <h2>Code de vérification</h2>
+                    <p>Merci de vous être inscrit(e) sur SantePublique AOF.</p>
+                    <p>Votre code de vérification est :</p>
+                    <div style="background-color: #f5f5f5; padding: 20px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 8px; border-radius: 8px; margin: 20px 0;">
+                        {otp_code}
+                    </div>
+                    <p>Saisissez ce code dans l'application pour terminer votre inscription.</p>
+                    <p style="color: #666;">Ce code expirera dans 10 minutes.</p>
+                    <p style="color: #666;">Si vous n'avez pas demandé ce code, ignorez cet email.</p>
+                    <hr>
+                    <p style="color: #666; font-size: 12px;">SantePublique AOF - Faire progresser la santé publique en Afrique de l'Ouest</p>
+                    """
+                else:
+                    subject = "Votre code de connexion SantePublique AOF"
+                    html_content = f"""
+                    <h2>Vérification de connexion</h2>
+                    <p>Votre code de vérification de connexion est :</p>
+                    <div style="background-color: #f5f5f5; padding: 20px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 8px; border-radius: 8px; margin: 20px 0;">
+                        {otp_code}
+                    </div>
+                    <p>Saisissez ce code dans l'application pour terminer votre connexion.</p>
+                    <p style="color: #666;">Ce code expirera dans 10 minutes.</p>
+                    <hr>
+                    <p style="color: #666; font-size: 12px;">SantePublique AOF - Faire progresser la santé publique en Afrique de l'Ouest</p>
+                    """
+
+            # Send email using Resend
+            response = resend.Emails.send(
+                {
+                    "from": self.from_email,
+                    "to": [email],
+                    "subject": subject,
+                    "html": html_content,
+                }
+            )
+
+            logger.info(
+                "OTP email sent",
+                email=email,
+                purpose=purpose,
+                language=language,
+                message_id=response.get("id"),
+            )
+            return True
+
+        except Exception as e:
+            logger.error("Failed to send OTP email", email=email, purpose=purpose, error=str(e))
+            return False

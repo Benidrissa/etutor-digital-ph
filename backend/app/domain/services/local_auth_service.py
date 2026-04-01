@@ -10,6 +10,7 @@ from structlog import get_logger
 
 from app.domain.models.auth import MagicLink, RefreshToken, TOTPSecret
 from app.domain.models.user import User
+from app.domain.services.email_otp_service import EmailOTPService
 from app.domain.services.email_service import EmailService
 from app.domain.services.jwt_auth_service import JWTAuthService
 from app.domain.services.totp_service import TOTPService
@@ -31,6 +32,7 @@ class LocalAuthService:
         self.jwt_service = JWTAuthService()
         self.totp_service = TOTPService()
         self.email_service = EmailService()
+        self.email_otp_service = EmailOTPService(db)
 
     async def register_user(
         self,
@@ -511,3 +513,268 @@ class LocalAuthService:
             await self.db.rollback()
             logger.error("Logout failed", error=str(e))
             return False
+
+    async def register_user_with_email_otp(
+        self,
+        email: str,
+        name: str,
+        preferred_language: str = "fr",
+        country: str | None = None,
+        professional_role: str | None = None,
+        ip_address: str | None = None,
+    ) -> dict[str, Any]:
+        """Register a new user and send email OTP for verification.
+
+        Args:
+            email: User email
+            name: User full name
+            preferred_language: User preferred language (fr/en)
+            country: User's country (ECOWAS code)
+            professional_role: Professional role
+            ip_address: Client IP address for rate limiting
+
+        Returns:
+            Dict with user info and OTP details
+
+        Raises:
+            AuthenticationError: If user already exists or OTP sending fails
+        """
+        try:
+            # Check if user already exists
+            existing_user = await self.db.scalar(select(User).where(User.email == email))
+            if existing_user:
+                raise AuthenticationError("User already exists")
+
+            # Create user (without TOTP setup)
+            user = User(
+                id=uuid4(),
+                email=email,
+                name=name,
+                preferred_language=preferred_language,
+                country=country,
+                professional_role=professional_role,
+                current_level=1,  # Will be set after placement test
+                streak_days=0,
+                last_active=datetime.now(UTC),
+                created_at=datetime.now(UTC),
+            )
+            self.db.add(user)
+            await self.db.commit()
+
+            # Send email OTP
+            otp_result = await self.email_otp_service.send_registration_otp(
+                email, user.id, preferred_language, ip_address
+            )
+
+            logger.info("User registration with email OTP initiated", user_id=str(user.id), email=email)
+
+            return {
+                "user_id": str(user.id),
+                "email": email,
+                "name": name,
+                "verification_method": "email_otp",
+                "otp_id": otp_result["otp_id"],
+                "expires_at": otp_result["expires_at"],
+                "expires_in_seconds": otp_result["expires_in_seconds"],
+            }
+
+        except AuthenticationError:
+            await self.db.rollback()
+            raise
+        except Exception as e:
+            await self.db.rollback()
+            logger.error("Email OTP registration failed", email=email, error=str(e))
+            raise AuthenticationError(f"Registration failed: {e}")
+
+    async def verify_email_otp_registration(
+        self, otp_id: str, otp_code: str, ip_address: str | None = None
+    ) -> dict[str, Any]:
+        """Verify email OTP and complete registration.
+
+        Args:
+            otp_id: OTP record ID
+            otp_code: 6-digit OTP code
+            ip_address: Client IP address
+
+        Returns:
+            Dict with access token and user info
+
+        Raises:
+            AuthenticationError: If verification fails
+        """
+        try:
+            # Verify OTP
+            otp_result = await self.email_otp_service.verify_otp(otp_id, otp_code, ip_address)
+
+            if not otp_result["verified"] or otp_result["purpose"] != "registration":
+                raise AuthenticationError("Invalid OTP verification")
+
+            # Get user
+            user = otp_result.get("user")
+            if not user:
+                raise AuthenticationError("User not found after OTP verification")
+
+            user_obj = await self.db.scalar(select(User).where(User.id == UUID(user["id"])))
+            if not user_obj:
+                raise AuthenticationError("User not found")
+
+            # Create tokens
+            access_token = self.jwt_service.create_access_token(
+                user_id=user["id"],
+                email=user["email"],
+                preferred_language=user["preferred_language"],
+                country=user["country"],
+                current_level=user["current_level"],
+            )
+
+            refresh_token = self.jwt_service.create_refresh_token()
+            refresh_record = RefreshToken(
+                id=uuid4(),
+                user_id=user_obj.id,
+                token_hash=self.jwt_service.hash_token(refresh_token),
+                expires_at=self.jwt_service.get_token_expiry("refresh"),
+                created_at=datetime.now(UTC),
+            )
+            self.db.add(refresh_record)
+
+            await self.db.commit()
+
+            # Send welcome email
+            await self.email_service.send_welcome_email(
+                user["email"], user["name"], user["preferred_language"]
+            )
+
+            logger.info("Email OTP registration completed", user_id=user["id"], email=user["email"])
+
+            return {
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "token_type": "bearer",
+                "expires_in": self.jwt_service.access_token_expire_minutes * 60,
+                "user": user,
+            }
+
+        except AuthenticationError:
+            await self.db.rollback()
+            raise
+        except Exception as e:
+            await self.db.rollback()
+            logger.error("Email OTP registration verification failed", otp_id=otp_id, error=str(e))
+            raise AuthenticationError(f"Verification failed: {e}")
+
+    async def send_login_otp(
+        self, email: str, ip_address: str | None = None
+    ) -> dict[str, Any]:
+        """Send OTP for login verification.
+
+        Args:
+            email: User email
+            ip_address: Client IP address for rate limiting
+
+        Returns:
+            Dict with OTP details
+
+        Raises:
+            AuthenticationError: If user not found or OTP sending fails
+        """
+        try:
+            # Get user to check language preference
+            user = await self.db.scalar(select(User).where(User.email == email))
+            if not user:
+                # Don't reveal if email exists or not
+                raise AuthenticationError("Invalid credentials")
+
+            # Send login OTP
+            otp_result = await self.email_otp_service.send_login_otp(
+                email, user.preferred_language, ip_address
+            )
+
+            logger.info("Login OTP sent", email=email)
+
+            return {
+                "otp_id": otp_result["otp_id"],
+                "expires_at": otp_result["expires_at"],
+                "expires_in_seconds": otp_result["expires_in_seconds"],
+                "message": "Login verification code sent to your email",
+            }
+
+        except AuthenticationError:
+            raise
+        except Exception as e:
+            logger.error("Failed to send login OTP", email=email, error=str(e))
+            raise AuthenticationError("Failed to send login verification code")
+
+    async def verify_login_otp(
+        self, otp_id: str, otp_code: str, ip_address: str | None = None
+    ) -> dict[str, Any]:
+        """Verify login OTP and authenticate user.
+
+        Args:
+            otp_id: OTP record ID
+            otp_code: 6-digit OTP code
+            ip_address: Client IP address
+
+        Returns:
+            Dict with access token and user info
+
+        Raises:
+            AuthenticationError: If verification fails
+        """
+        try:
+            # Verify OTP
+            otp_result = await self.email_otp_service.verify_otp(otp_id, otp_code, ip_address)
+
+            if not otp_result["verified"] or otp_result["purpose"] != "login":
+                raise AuthenticationError("Invalid OTP verification")
+
+            # Get user
+            user = otp_result.get("user")
+            if not user:
+                raise AuthenticationError("User not found after OTP verification")
+
+            user_obj = await self.db.scalar(select(User).where(User.id == UUID(user["id"])))
+            if not user_obj:
+                raise AuthenticationError("User not found")
+
+            # Update user activity
+            user_obj.last_active = datetime.now(UTC)
+
+            # Create tokens
+            access_token = self.jwt_service.create_access_token(
+                user_id=user["id"],
+                email=user["email"],
+                preferred_language=user["preferred_language"],
+                country=user["country"],
+                current_level=user["current_level"],
+            )
+
+            refresh_token = self.jwt_service.create_refresh_token()
+            refresh_record = RefreshToken(
+                id=uuid4(),
+                user_id=user_obj.id,
+                token_hash=self.jwt_service.hash_token(refresh_token),
+                expires_at=self.jwt_service.get_token_expiry("refresh"),
+                created_at=datetime.now(UTC),
+                last_used_at=datetime.now(UTC),
+            )
+            self.db.add(refresh_record)
+
+            await self.db.commit()
+
+            logger.info("Login OTP verification successful", email=user["email"])
+
+            return {
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "token_type": "bearer",
+                "expires_in": self.jwt_service.access_token_expire_minutes * 60,
+                "user": user,
+            }
+
+        except AuthenticationError:
+            await self.db.rollback()
+            raise
+        except Exception as e:
+            await self.db.rollback()
+            logger.error("Login OTP verification failed", otp_id=otp_id, error=str(e))
+            raise AuthenticationError(f"Login verification failed: {e}")
