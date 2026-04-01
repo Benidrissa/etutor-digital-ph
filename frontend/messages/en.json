@@ -269,7 +269,8 @@
     "level": "Level",
     "cached": "Cached",
     "totalQuestions": "Total Questions",
-    "quizCompleteScreenReader": "Quiz completed with {score}% score. {correct} out of {total} questions correct. Time taken: {time}. {passed, select, true {Quiz passed.} other {Quiz not passed.}}"
+    "quizCompleteScreenReader": "Quiz completed with {score}% score. {correct} out of {total} questions correct. Time taken: {time}. {passed, select, true {Quiz passed.} other {Quiz not passed.}}",
+    "offlineBanner": "You are offline — answers validated locally, results queued for sync"
   },
   "ChatTutor": {
     "title": "AI Tutor",
@@ -563,6 +564,9 @@
     "level": "Level {level}",
     "readingTime": "5-10 min read",
     "cached": "Cached",
+    "offlineBadge": "Offline",
+    "offlineUnavailableTitle": "Content not available offline",
+    "offlineUnavailable": "This content has not been downloaded. Connect to the internet to access it.",
     "unitTitle": "Unit {unit}",
     "introduction": "Introduction",
     "keyConcepts": "Key Concepts",
@@ -580,6 +584,9 @@
     "level": "Level {level}",
     "estimatedTime": "40 min",
     "cached": "Cached",
+    "offlineBadge": "Offline",
+    "offlineUnavailableTitle": "Content not available offline",
+    "offlineUnavailable": "This case study has not been downloaded. Connect to the internet to access it.",
     "unitTitle": "Unit {unit}",
     "badge": "Case Study",
     "aofContext": "AOF Context",
@@ -587,6 +594,7 @@
     "guidedQuestions": "Guided Questions",
     "question": "Question {number}",
     "annotatedCorrection": "Annotated Correction",
+    "showCorrection": "Show correction",
     "sourceCitations": "Source Citations",
     "markComplete": "Mark as Complete",
     "completed": "Completed"

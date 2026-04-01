@@ -4,7 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { WifiOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { queueOfflineAction, isOnline } from '@/lib/offline/content-loader';
 
 interface FlashcardData {
   id: string;
@@ -32,16 +35,18 @@ interface FlashcardDeckProps {
   }) => void;
   isLoading?: boolean;
   language: 'fr' | 'en';
+  servedFromCache?: boolean;
 }
 
 type Rating = 'again' | 'hard' | 'good' | 'easy';
 
-export function FlashcardDeck({ 
-  cards, 
-  onReview, 
-  onSessionComplete, 
-  isLoading = false, 
-  language = 'fr' 
+export function FlashcardDeck({
+  cards,
+  onReview,
+  onSessionComplete,
+  isLoading = false,
+  language = 'fr',
+  servedFromCache = false,
 }: FlashcardDeckProps) {
   const t = useTranslations('Flashcards');
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -52,7 +57,8 @@ export function FlashcardDeck({
   const [isDragging, setIsDragging] = useState(false);
   const [cardTransform, setCardTransform] = useState({ x: 0, rotation: 0 });
   const [pendingRating, setPendingRating] = useState<Rating | null>(null);
-  
+  const [offline] = useState(!isOnline());
+
   const cardRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -70,17 +76,28 @@ export function FlashcardDeck({
     setIsFlipped(!isFlipped);
   };
 
-  const handleRating = (rating: Rating) => {
+  const handleRating = async (rating: Rating) => {
     if (!currentCard) return;
 
-    // Record the review
+    if (!isOnline()) {
+      await queueOfflineAction({
+        type: 'flashcard_review',
+        payload: {
+          card_id: currentCard.id,
+          review_id: currentCard.review_id,
+          rating,
+          reviewed_at: new Date().toISOString(),
+        },
+        created_at: new Date().toISOString(),
+      });
+    }
+
     onReview(currentCard.id, currentCard.review_id, rating);
-    
+
     const newRatings = [...reviewedRatings, rating];
     setReviewedRatings(newRatings);
 
     if (isLastCard) {
-      // Complete the session
       const sessionDuration = Math.floor((Date.now() - sessionStartTime) / 1000);
       onSessionComplete({
         cardsReviewed: cards.length,
@@ -88,7 +105,6 @@ export function FlashcardDeck({
         ratings: newRatings,
       });
     } else {
-      // Advance to next card
       setCurrentIndex(prev => prev + 1);
     }
   };
@@ -102,21 +118,18 @@ export function FlashcardDeck({
 
   const handleTouchMove = (e: React.TouchEvent) => {
     if (!touchStart || !isDragging) return;
-    
+
     const touch = e.touches[0];
     const deltaX = touch.clientX - touchStart.x;
     const deltaY = Math.abs(touch.clientY - touchStart.y);
-    
-    // Only track horizontal swipes (ignore vertical scrolling)
+
     if (deltaY > 50) return;
-    
-    // Calculate rotation based on horizontal movement
+
     const maxDelta = 150;
     const rotation = Math.max(-15, Math.min(15, (deltaX / maxDelta) * 15));
-    
+
     setCardTransform({ x: deltaX, rotation });
 
-    // Visual feedback for rating zones
     if (Math.abs(deltaX) > 50) {
       if (deltaX < -100) setPendingRating('again');
       else if (deltaX < -50) setPendingRating('hard');
@@ -129,21 +142,19 @@ export function FlashcardDeck({
 
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (!touchStart || !isDragging) return;
-    
+
     const touch = e.changedTouches[0];
     const deltaX = touch.clientX - touchStart.x;
-    
+
     setIsDragging(false);
     setTouchStart(null);
 
-    // Determine if swipe was strong enough to trigger rating
     if (Math.abs(deltaX) > 80 && isFlipped) {
       if (deltaX < -100) handleRating('again');
       else if (deltaX < -40) handleRating('hard');
       else if (deltaX > 100) handleRating('easy');
       else if (deltaX > 40) handleRating('good');
     } else {
-      // Snap back to center
       setCardTransform({ x: 0, rotation: 0 });
       setPendingRating(null);
     }
@@ -157,15 +168,15 @@ export function FlashcardDeck({
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!touchStart || !isDragging) return;
-    
+
     const deltaX = e.clientX - touchStart.x;
     const deltaY = Math.abs(e.clientY - touchStart.y);
-    
+
     if (deltaY > 50) return;
-    
+
     const maxDelta = 150;
     const rotation = Math.max(-15, Math.min(15, (deltaX / maxDelta) * 15));
-    
+
     setCardTransform({ x: deltaX, rotation });
 
     if (Math.abs(deltaX) > 50) {
@@ -180,9 +191,9 @@ export function FlashcardDeck({
 
   const handleMouseUp = (e: React.MouseEvent) => {
     if (!touchStart || !isDragging) return;
-    
+
     const deltaX = e.clientX - touchStart.x;
-    
+
     setIsDragging(false);
     setTouchStart(null);
 
@@ -224,6 +235,16 @@ export function FlashcardDeck({
 
   return (
     <div className="max-w-md mx-auto px-4" ref={containerRef}>
+      {/* Offline banner */}
+      {(offline || servedFromCache) && (
+        <div className="mb-4">
+          <Badge variant="secondary" className="flex items-center gap-1 w-full justify-center py-2 bg-amber-50 text-amber-700 border border-amber-200">
+            <WifiOff className="w-3 h-3" />
+            {t('offline')}
+          </Badge>
+        </div>
+      )}
+
       {/* Progress indicator */}
       <div className="mb-6">
         <div className="flex justify-between items-center mb-2">
@@ -232,7 +253,7 @@ export function FlashcardDeck({
           </span>
         </div>
         <div className="w-full bg-gray-200 rounded-full h-2">
-          <div 
+          <div
             className="bg-blue-600 h-2 rounded-full transition-all duration-300"
             style={{ width: `${((currentIndex + 1) / cards.length) * 100}%` }}
           />
@@ -271,7 +292,7 @@ export function FlashcardDeck({
 
       {/* Flashcard */}
       <div className="relative mb-6">
-        <Card 
+        <Card
           ref={cardRef}
           className={cn(
             "w-full h-96 cursor-pointer transition-all duration-300",
@@ -360,7 +381,7 @@ export function FlashcardDeck({
                 <div className="text-xs opacity-75">{t('ratingDescription.again')}</div>
               </div>
             </Button>
-            
+
             <Button
               variant="outline"
               className="min-h-11 bg-orange-50 border-orange-200 hover:bg-orange-100 text-orange-700"
@@ -371,7 +392,7 @@ export function FlashcardDeck({
                 <div className="text-xs opacity-75">{t('ratingDescription.hard')}</div>
               </div>
             </Button>
-            
+
             <Button
               variant="outline"
               className="min-h-11 bg-green-50 border-green-200 hover:bg-green-100 text-green-700"
@@ -382,7 +403,7 @@ export function FlashcardDeck({
                 <div className="text-xs opacity-75">{t('ratingDescription.good')}</div>
               </div>
             </Button>
-            
+
             <Button
               variant="outline"
               className="min-h-11 bg-blue-50 border-blue-200 hover:bg-blue-100 text-blue-700"
@@ -400,7 +421,7 @@ export function FlashcardDeck({
       {/* Card flip prompt (shown only when card is not flipped) */}
       {!isFlipped && (
         <div className="text-center">
-          <Button 
+          <Button
             variant="default"
             size="lg"
             onClick={handleCardFlip}

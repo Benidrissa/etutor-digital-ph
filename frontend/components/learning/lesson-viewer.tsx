@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { CheckCircle, Clock } from 'lucide-react';
+import { CheckCircle, Clock, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,12 @@ import remarkGfm from 'remark-gfm';
 import { LessonSkeleton } from './lesson-skeleton';
 import { SourceCitations } from './source-citations';
 import { apiFetch } from '@/lib/api';
+import {
+  getContentFromDB,
+  saveContentToDB,
+  queueOfflineAction,
+  isOnline,
+} from '@/lib/offline/content-loader';
 
 interface LessonContent {
   introduction: string;
@@ -53,69 +59,88 @@ export function LessonViewer({
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCompleted, setIsCompleted] = useState(false);
-  
+  const [servedFromCache, setServedFromCache] = useState(false);
+  const [notAvailableOffline, setNotAvailableOffline] = useState(false);
+  const lessonStartTime = useRef<number>(0);
+
   const t = useTranslations('LessonViewer');
 
   useEffect(() => {
     let eventSource: EventSource | null = null;
-    
-    const startStreaming = async () => {
+    lessonStartTime.current = typeof Date !== 'undefined' ? Date.now() : 0;
+
+    const loadLesson = async () => {
       try {
         setIsStreaming(true);
         setError(null);
-        
-        // First check if cached content exists
+        setNotAvailableOffline(false);
+
+        // 1. Check IndexedDB first
+        const cached = await getContentFromDB<LessonData>(
+          moduleId, unitId, language, level, countryContext, 'lesson'
+        );
+        if (cached) {
+          setLessonData(cached);
+          setServedFromCache(true);
+          setIsStreaming(false);
+          return;
+        }
+
+        // 2. If offline and not in IndexedDB — show unavailable message
+        if (!isOnline()) {
+          setNotAvailableOffline(true);
+          setIsStreaming(false);
+          return;
+        }
+
+        // 3. Try API cache
         try {
           const cachedData = await apiFetch<LessonData>(
             `/api/v1/content/lessons/${moduleId}/${unitId}?language=${language}&level=${level}&country=${countryContext}`
           );
-          
+
           if (cachedData.cached) {
             setLessonData(cachedData);
+            setServedFromCache(false);
             setIsStreaming(false);
+            await saveContentToDB(moduleId, unitId, language, level, countryContext, 'lesson', cachedData);
             return;
           }
-        } catch (cacheErr) {
-          // If cache check fails, continue to streaming
-          console.log('Cache check failed, falling back to streaming:', cacheErr);
+        } catch {
+          // Cache check failed — continue to streaming
         }
 
-        // If no cached content, start streaming
-        const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+        // 4. Stream generation
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
         const streamUrl = `${API_BASE}/api/v1/content/lessons/${moduleId}/${unitId}/stream?language=${language}&level=${level}&country=${countryContext}`;
         eventSource = new EventSource(streamUrl);
-        
-        eventSource.onmessage = (event) => {
+
+        eventSource.onmessage = async (event) => {
           try {
             const data = JSON.parse(event.data);
-            
-            if (data.event === 'chunk') {
-              // For now, we'll just handle chunks in the complete event
-            } else if (data.event === 'complete') {
+            if (data.event === 'complete') {
               setLessonData(data.data);
               setIsStreaming(false);
               eventSource?.close();
+              await saveContentToDB(moduleId, unitId, language, level, countryContext, 'lesson', data.data);
             }
           } catch (e) {
             console.error('Error parsing SSE data:', e);
           }
         };
-        
-        eventSource.onerror = (event) => {
-          console.error('SSE error:', event);
+
+        eventSource.onerror = () => {
           setError(t('streamError'));
           setIsStreaming(false);
           eventSource?.close();
         };
-        
-      } catch (err) {
-        console.error('Error starting lesson stream:', err);
+      } catch {
         setError(t('loadError'));
         setIsStreaming(false);
       }
     };
 
-    startStreaming();
+    loadLesson();
 
     return () => {
       eventSource?.close();
@@ -123,19 +148,49 @@ export function LessonViewer({
   }, [moduleId, unitId, language, level, countryContext, t]);
 
   const handleMarkComplete = async () => {
+    const timeSpentSeconds = Math.floor((Date.now() - lessonStartTime.current) / 1000);
+
+    if (!isOnline()) {
+      await queueOfflineAction({
+        type: 'lesson_progress',
+        payload: {
+          module_id: moduleId,
+          unit_id: unitId,
+          time_spent_seconds: timeSpentSeconds,
+          completed: true,
+        },
+        created_at: new Date().toISOString(),
+      });
+      setIsCompleted(true);
+      onComplete?.();
+      return;
+    }
+
     try {
       await apiFetch(`/api/v1/progress/complete-lesson`, {
         method: 'POST',
         body: JSON.stringify({
           module_id: moduleId,
-          unit_id: unitId
+          unit_id: unitId,
+          time_spent_seconds: timeSpentSeconds,
         })
       });
-      
       setIsCompleted(true);
       onComplete?.();
-    } catch (err) {
-      console.error('Error marking lesson complete:', err);
+    } catch {
+      // Queue for later sync on network failure
+      await queueOfflineAction({
+        type: 'lesson_progress',
+        payload: {
+          module_id: moduleId,
+          unit_id: unitId,
+          time_spent_seconds: timeSpentSeconds,
+          completed: true,
+        },
+        created_at: new Date().toISOString(),
+      });
+      setIsCompleted(true);
+      onComplete?.();
     }
   };
 
@@ -158,6 +213,19 @@ export function LessonViewer({
     ),
   };
 
+  if (notAvailableOffline) {
+    return (
+      <div className="container mx-auto max-w-4xl px-4 py-6">
+        <Card className="border-amber-200">
+          <CardContent className="p-6 text-center">
+            <WifiOff className="w-10 h-10 text-amber-500 mx-auto mb-3" />
+            <div className="text-amber-700 font-medium mb-2">{t('offlineUnavailableTitle')}</div>
+            <p className="text-gray-600">{t('offlineUnavailable')}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -186,7 +254,7 @@ export function LessonViewer({
     <div className="container mx-auto max-w-4xl px-4 py-6">
       {/* Header */}
       <div className="mb-8">
-        <div className="flex items-center gap-3 mb-3">
+        <div className="flex items-center gap-3 mb-3 flex-wrap">
           <Badge variant="outline">{t('level', { level })}</Badge>
           <div className="flex items-center text-gray-600">
             <Clock className="w-4 h-4 mr-1" />
@@ -194,6 +262,12 @@ export function LessonViewer({
           </div>
           {lessonData.cached && (
             <Badge variant="secondary">{t('cached')}</Badge>
+          )}
+          {servedFromCache && (
+            <Badge variant="secondary" className="flex items-center gap-1 bg-amber-50 text-amber-700 border-amber-200">
+              <WifiOff className="w-3 h-3" />
+              {t('offlineBadge')}
+            </Badge>
           )}
         </div>
         <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3">

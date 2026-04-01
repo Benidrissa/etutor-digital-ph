@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
-import { CheckCircle, Clock, FileText } from 'lucide-react';
+import { CheckCircle, Clock, FileText, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +10,12 @@ import ReactMarkdown from 'react-markdown';
 import { LessonSkeleton } from './lesson-skeleton';
 import { SourceCitations } from './source-citations';
 import { apiFetch } from '@/lib/api';
+import {
+  getContentFromDB,
+  saveContentToDB,
+  queueOfflineAction,
+  isOnline,
+} from '@/lib/offline/content-loader';
 
 interface CaseStudyContent {
   aof_context: string;
@@ -53,17 +59,39 @@ export function CaseStudyViewer({
   const [error, setError] = useState<string | null>(null);
   const [isCompleted, setIsCompleted] = useState(false);
   const [correctionVisible, setCorrectionVisible] = useState(false);
+  const [servedFromCache, setServedFromCache] = useState(false);
+  const [notAvailableOffline, setNotAvailableOffline] = useState(false);
 
   const t = useTranslations('CaseStudyViewer');
 
   useEffect(() => {
     let eventSource: EventSource | null = null;
 
-    const startStreaming = async () => {
+    const loadCaseStudy = async () => {
       try {
         setIsStreaming(true);
         setError(null);
+        setNotAvailableOffline(false);
 
+        // 1. Check IndexedDB first
+        const cached = await getContentFromDB<CaseStudyData>(
+          moduleId, unitId, language, level, countryContext, 'case'
+        );
+        if (cached) {
+          setCaseStudyData(cached);
+          setServedFromCache(true);
+          setIsStreaming(false);
+          return;
+        }
+
+        // 2. If offline and not in IndexedDB — show unavailable message
+        if (!isOnline()) {
+          setNotAvailableOffline(true);
+          setIsStreaming(false);
+          return;
+        }
+
+        // 3. Try API cache
         try {
           const cachedData = await apiFetch<CaseStudyData>(
             `/api/v1/content/lessons/${moduleId}/${unitId}?language=${language}&level=${level}&country=${countryContext}&content_type=case`
@@ -71,23 +99,28 @@ export function CaseStudyViewer({
 
           if (cachedData.cached) {
             setCaseStudyData(cachedData);
+            setServedFromCache(false);
             setIsStreaming(false);
+            await saveContentToDB(moduleId, unitId, language, level, countryContext, 'case', cachedData);
             return;
           }
         } catch {
+          // Cache check failed — continue to streaming
         }
 
+        // 4. Stream generation
         const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
         const streamUrl = `${API_BASE}/api/v1/content/lessons/${moduleId}/${unitId}/stream?language=${language}&level=${level}&country=${countryContext}&content_type=case`;
         eventSource = new EventSource(streamUrl);
 
-        eventSource.onmessage = (event) => {
+        eventSource.onmessage = async (event) => {
           try {
             const data = JSON.parse(event.data);
             if (data.event === 'complete') {
               setCaseStudyData(data.data);
               setIsStreaming(false);
               eventSource?.close();
+              await saveContentToDB(moduleId, unitId, language, level, countryContext, 'case', data.data);
             }
           } catch (e) {
             console.error('Error parsing SSE data:', e);
@@ -105,7 +138,7 @@ export function CaseStudyViewer({
       }
     };
 
-    startStreaming();
+    loadCaseStudy();
 
     return () => {
       eventSource?.close();
@@ -113,6 +146,21 @@ export function CaseStudyViewer({
   }, [moduleId, unitId, language, level, countryContext, t]);
 
   const handleMarkComplete = async () => {
+    if (!isOnline()) {
+      await queueOfflineAction({
+        type: 'lesson_progress',
+        payload: {
+          module_id: moduleId,
+          unit_id: unitId,
+          completed: true,
+        },
+        created_at: new Date().toISOString(),
+      });
+      setIsCompleted(true);
+      onComplete?.();
+      return;
+    }
+
     try {
       await apiFetch(`/api/v1/progress/complete-lesson`, {
         method: 'POST',
@@ -123,13 +171,37 @@ export function CaseStudyViewer({
       });
       setIsCompleted(true);
       onComplete?.();
-    } catch (err) {
-      console.error('Error marking case study complete:', err);
+    } catch {
+      await queueOfflineAction({
+        type: 'lesson_progress',
+        payload: {
+          module_id: moduleId,
+          unit_id: unitId,
+          completed: true,
+        },
+        created_at: new Date().toISOString(),
+      });
+      setIsCompleted(true);
+      onComplete?.();
     }
   };
 
   const mdClass =
     'prose prose-gray max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-900 prose-table:text-sm';
+
+  if (notAvailableOffline) {
+    return (
+      <div className="container mx-auto max-w-4xl px-4 py-6">
+        <Card className="border-amber-200">
+          <CardContent className="p-6 text-center">
+            <WifiOff className="w-10 h-10 text-amber-500 mx-auto mb-3" />
+            <div className="text-amber-700 font-medium mb-2">{t('offlineUnavailableTitle')}</div>
+            <p className="text-gray-600">{t('offlineUnavailable')}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -158,7 +230,7 @@ export function CaseStudyViewer({
     <div className="container mx-auto max-w-4xl px-4 py-6">
       {/* Header */}
       <div className="mb-8">
-        <div className="flex items-center gap-3 mb-3">
+        <div className="flex items-center gap-3 mb-3 flex-wrap">
           <Badge variant="outline" className="flex items-center gap-1">
             <FileText className="w-3 h-3" />
             {t('badge')}
@@ -169,6 +241,12 @@ export function CaseStudyViewer({
             {t('estimatedTime')}
           </div>
           {caseStudyData.cached && <Badge variant="secondary">{t('cached')}</Badge>}
+          {servedFromCache && (
+            <Badge variant="secondary" className="flex items-center gap-1 bg-amber-50 text-amber-700 border-amber-200">
+              <WifiOff className="w-3 h-3" />
+              {t('offlineBadge')}
+            </Badge>
+          )}
         </div>
         <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3">
           {t('unitTitle', { unit: unitId })}
@@ -235,7 +313,7 @@ export function CaseStudyViewer({
                 onClick={() => setCorrectionVisible(true)}
                 className="min-h-11 border-green-300 text-green-700 hover:bg-green-50"
               >
-                {language === 'fr' ? 'Voir la correction' : 'Show correction'}
+                {t('showCorrection')}
               </Button>
             )}
           </div>

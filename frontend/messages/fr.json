@@ -269,7 +269,8 @@
     "level": "Niveau",
     "cached": "En Cache",
     "totalQuestions": "Total Questions",
-    "quizCompleteScreenReader": "Quiz terminé avec {score}% de score. {correct} sur {total} questions correctes. Temps pris : {time}. {passed, select, true {Quiz réussi.} other {Quiz non réussi.}}"
+    "quizCompleteScreenReader": "Quiz terminé avec {score}% de score. {correct} sur {total} questions correctes. Temps pris : {time}. {passed, select, true {Quiz réussi.} other {Quiz non réussi.}}",
+    "offlineBanner": "Vous êtes hors-ligne — réponses validées localement et résultats en attente de synchronisation"
   },
   "ChatTutor": {
     "title": "Tuteur IA",
@@ -563,6 +564,9 @@
     "level": "Niveau {level}",
     "readingTime": "5-10 min de lecture",
     "cached": "En cache",
+    "offlineBadge": "Hors-ligne",
+    "offlineUnavailableTitle": "Contenu non disponible hors-ligne",
+    "offlineUnavailable": "Ce contenu n'a pas été téléchargé. Connectez-vous à Internet pour y accéder.",
     "unitTitle": "Unité {unit}",
     "introduction": "Introduction",
     "keyConcepts": "Concepts Clés",
@@ -580,6 +584,9 @@
     "level": "Niveau {level}",
     "estimatedTime": "40 min",
     "cached": "En cache",
+    "offlineBadge": "Hors-ligne",
+    "offlineUnavailableTitle": "Contenu non disponible hors-ligne",
+    "offlineUnavailable": "Cette étude de cas n'a pas été téléchargée. Connectez-vous à Internet pour y accéder.",
     "unitTitle": "Unité {unit}",
     "badge": "Étude de cas",
     "aofContext": "Contexte AOF",
@@ -587,6 +594,7 @@
     "guidedQuestions": "Questions guidées",
     "question": "Question {number}",
     "annotatedCorrection": "Correction annotée",
+    "showCorrection": "Voir la correction",
     "sourceCitations": "Sources citées",
     "markComplete": "Marquer comme Terminé",
     "completed": "Terminé"
