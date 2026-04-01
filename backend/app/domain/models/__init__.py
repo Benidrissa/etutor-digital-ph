@@ -4,6 +4,7 @@ from app.domain.models.content import GeneratedContent
 from app.domain.models.conversation import TutorConversation
 from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.flashcard import FlashcardReview
+from app.domain.models.generated_image import GeneratedImage, ImageStatus
 from app.domain.models.module import Module
 from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import QuizAttempt
@@ -13,6 +14,8 @@ __all__ = [
     "Base",
     "DocumentChunk",
     "GeneratedContent",
+    "GeneratedImage",
+    "ImageStatus",
     "TutorConversation",
     "FlashcardReview",
     "MagicLink",
