@@ -297,5 +297,17 @@ export function FlashcardsContainer() {
     );
   }
 
-  return null;
+  // No cards due — show empty state
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="text-center py-12">
+        <div className="text-6xl mb-4">🎉</div>
+        <h1 className="text-3xl font-bold mb-2">{t('noCardsToday')}</h1>
+        <p className="text-muted-foreground mb-6">{t('wellDone')}</p>
+        <Button onClick={() => refetch()}>
+          {t('tryAgain')}
+        </Button>
+      </div>
+    </div>
+  );
 }
