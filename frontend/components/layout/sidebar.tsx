@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { useTranslations, useLocale } from "next-intl";
+import { useRouter } from "@/i18n/routing";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Home,
   BookOpen,
@@ -14,10 +16,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Menu,
+  LogOut,
 } from "lucide-react";
 import { LocaleSwitcher } from "@/components/shared/locale-switcher";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { authClient } from "@/lib/auth";
 
 export function Sidebar() {
   const t = useTranslations("Navigation");
@@ -25,6 +29,14 @@ export function Sidebar() {
   const pathname = usePathname();
   const locale = useLocale();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const router = useRouter();
+  const queryClient = useQueryClient();
+
+  const handleLogout = async () => {
+    await authClient.logout();
+    queryClient.clear();
+    router.push("/login");
+  };
 
   const navItems = [
     {
@@ -130,7 +142,7 @@ export function Sidebar() {
         })}
       </nav>
       
-      <div className="border-t p-2">
+      <div className="border-t p-2 space-y-1">
         {!isCollapsed ? (
           <div className="p-2">
             <LocaleSwitcher />
@@ -144,6 +156,30 @@ export function Sidebar() {
               aria-label={t("languageSettings")}
             >
               <Menu className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+        {!isCollapsed ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleLogout}
+            className="w-full justify-start gap-3 min-h-11 text-destructive hover:text-destructive hover:bg-destructive/10"
+            aria-label={t("logoutDescription")}
+          >
+            <LogOut className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>{t("logout")}</span>
+          </Button>
+        ) : (
+          <div className="flex justify-center">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleLogout}
+              className="min-h-11 min-w-11 p-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+              aria-label={t("logoutDescription")}
+            >
+              <LogOut className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
         )}

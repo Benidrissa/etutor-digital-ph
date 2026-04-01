@@ -29,6 +29,8 @@
     "expandSidebar": "Expand sidebar",
     "collapseSidebar": "Collapse sidebar",
     "languageSettings": "Language settings",
+    "logout": "Log out",
+    "logoutDescription": "Sign out of your account",
     "breadcrumbNavigation": "Breadcrumb navigation",
     "navigateTo": "Navigate to",
     "lessons": "Lessons",
@@ -616,6 +618,9 @@
   },
   "Profile": {
     "title": "Profile",
+    "logout": "Log out",
+    "logoutDescription": "Sign out of your account",
+    "loggingOut": "Logging out...",
     "description": "Manage your account and learning preferences",
     "name": "Name",
     "email": "Email",

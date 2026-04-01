@@ -29,6 +29,8 @@
     "expandSidebar": "Développer la barre latérale",
     "collapseSidebar": "Réduire la barre latérale",
     "languageSettings": "Paramètres de langue",
+    "logout": "Déconnexion",
+    "logoutDescription": "Se déconnecter de votre compte",
     "breadcrumbNavigation": "Navigation de fil d'Ariane",
     "navigateTo": "Naviguer vers",
     "lessons": "Leçons",
@@ -616,6 +618,9 @@
   },
   "Profile": {
     "title": "Profil",
+    "logout": "Déconnexion",
+    "logoutDescription": "Se déconnecter de votre compte",
+    "loggingOut": "Déconnexion en cours...",
     "description": "Gérez votre compte et vos préférences d'apprentissage",
     "name": "Nom",
     "email": "Email",
