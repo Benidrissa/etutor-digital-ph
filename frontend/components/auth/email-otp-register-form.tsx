@@ -122,7 +122,7 @@ export function EmailOTPRegisterForm() {
       );
       
       // Registration complete - redirect to onboarding
-      router.push(`/${locale}/onboarding`);
+      router.push('/onboarding');
     } catch (error) {
       console.error('OTP verification error:', error);
       
@@ -334,7 +334,7 @@ export function EmailOTPRegisterForm() {
             <div className="text-center text-sm">
               <span className="text-muted-foreground">{t('alreadyHaveAccount')} </span>
               <Link 
-                href={`/${locale}/login`}
+                href="/login"
                 className="font-medium text-primary hover:underline"
               >
                 {t('signIn')}
@@ -345,7 +345,7 @@ export function EmailOTPRegisterForm() {
             <div className="text-center text-sm border-t pt-4">
               <span className="text-muted-foreground">{t('preferAuthenticatorApp')} </span>
               <Link 
-                href={`/${locale}/register`}
+                href="/register"
                 className="font-medium text-primary hover:underline"
               >
                 {t('useAuthenticatorApp')}

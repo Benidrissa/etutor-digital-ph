@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { useRouter } from 'next/navigation';
+import { useRouter } from '@/i18n/routing';
 import { FlashcardDeck } from '@/components/learning/flashcard-deck';
 import { FlashcardSessionSummary } from '@/components/learning/flashcard-session-summary';
 import { Button } from '@/components/ui/button';
@@ -62,10 +62,10 @@ export function FlashcardsContainer() {
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!isAuthenticated) {
-      router.push(`/${locale}/login`);
+      router.push('/login');
       return;
     }
-  }, [isAuthenticated, router, locale]);
+  }, [isAuthenticated, router]);
 
   // Fetch due flashcards
   const { data: dueCards, isLoading, error, refetch } = useQuery({

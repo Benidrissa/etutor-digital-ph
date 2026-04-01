@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
+import { useRouter } from '@/i18n/routing';
 import { useTranslations } from 'next-intl';
 
 import { Button } from '@/components/ui/button';
@@ -14,13 +15,7 @@ import {
 } from '@/components/ui/card';
 import { authClient, AuthError, RegisterResponse } from '@/lib/auth';
 
-interface MagicLinkPageProps {
-  params: {
-    locale: string;
-  };
-}
-
-export default function MagicLinkPage({ params }: MagicLinkPageProps) {
+export default function MagicLinkPage() {
   const t = useTranslations('Auth');
   const tCommon = useTranslations('Common');
   const router = useRouter();
@@ -93,7 +88,7 @@ export default function MagicLinkPage({ params }: MagicLinkPageProps) {
             
             <div className="space-y-2">
               <Button
-                onClick={() => router.push(`/${params.locale}/login`)}
+                onClick={() => router.push('/login')}
                 className="w-full"
               >
                 {t('backToLogin')}
@@ -101,7 +96,7 @@ export default function MagicLinkPage({ params }: MagicLinkPageProps) {
               
               <Button
                 variant="outline"
-                onClick={() => router.push(`/${params.locale}/register`)}
+                onClick={() => router.push('/register')}
                 className="w-full"
               >
                 {t('createNewAccount')}
@@ -164,7 +159,7 @@ export default function MagicLinkPage({ params }: MagicLinkPageProps) {
 
             <div className="text-center">
               <Button
-                onClick={() => router.push(`/${params.locale}/login`)}
+                onClick={() => router.push('/login')}
                 className="w-full"
               >
                 {t('continueToLogin')}

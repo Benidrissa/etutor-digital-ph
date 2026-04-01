@@ -1,16 +1,15 @@
 'use client';
 
-import { useTranslations, useLocale } from 'next-intl';
-import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
+import { useRouter } from '@/i18n/routing';
 import { ModuleMap } from '@/components/learning/module-map';
 
 export default function ModulesPage() {
   const t = useTranslations('ModuleMap');
   const router = useRouter();
-  const locale = useLocale();
 
   const handleModuleClick = (moduleId: string) => {
-    router.push(`/${locale}/modules/${moduleId}`);
+    router.push(`/modules/${moduleId}`);
   };
 
   return (
