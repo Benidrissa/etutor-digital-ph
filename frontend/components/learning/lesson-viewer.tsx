@@ -37,7 +37,7 @@ interface LessonViewerProps {
   language: 'fr' | 'en';
   level: number;
   countryContext: string;
-  onComplete: () => void;
+  onComplete?: () => void;
 }
 
 export function LessonViewer({
