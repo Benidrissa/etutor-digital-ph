@@ -85,11 +85,22 @@ export function ModuleProgressOverlay({
       .finally(() => setLoading(false));
   }, [moduleId]);
 
-  // Use API data if available, otherwise fall back to static data
+  const staticUnitsFallback: UnitProgressDetail[] = (staticUnits ?? []).map((u, i) => ({
+    id: u.id,
+    unit_number: u.id,
+    title_fr: u.title.fr,
+    title_en: u.title.en,
+    description_fr: u.description?.fr,
+    description_en: u.description?.en,
+    estimated_minutes: u.estimatedMinutes,
+    order_index: i,
+    status: u.status === 'in-progress' ? 'in_progress' : u.status,
+  }));
+
   const completionPct = data ? data.completion_pct : staticCompletionPercentage;
-  const units = data?.units ?? [];
+  const units = data ? data.units : staticUnitsFallback;
   const completedCount = units.filter(u => u.status === 'completed').length;
-  const totalCount = units.length || (staticUnits?.length ?? 0);
+  const totalCount = units.length;
   const nextUnit = units.find(u => u.status === 'in_progress' || u.status === 'pending');
 
   if (loading) {
@@ -99,10 +110,6 @@ export function ModuleProgressOverlay({
         <div className="h-48 bg-stone-100 rounded-lg" />
       </div>
     );
-  }
-
-  if (!data) {
-    return null;
   }
 
   return (
@@ -183,7 +190,7 @@ export function ModuleProgressOverlay({
             <div className="mt-3 pt-3 border-t border-stone-200">
               <div className="flex justify-between text-xs text-stone-600">
                 <span>{completedCount} {t('units').toLowerCase()}</span>
-                <span>{data.estimated_hours}h total</span>
+                {data && <span>{data.estimated_hours}h total</span>}
               </div>
             </div>
           </div>
