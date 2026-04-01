@@ -9,7 +9,7 @@ on:
     types: [labeled]
 
 concurrency:
-  group: claude-${{ github.event.issue.number || github.event.pull_request.number || github.run_id }}
+  group: claude-code
   cancel-in-progress: false
 
 jobs:
