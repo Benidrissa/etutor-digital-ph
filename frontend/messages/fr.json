@@ -526,6 +526,42 @@
     "attemptedAt": "Terminé",
     "attemptId": "ID de Tentative"
   },
+  "LessonViewer": {
+    "error": "Une erreur est survenue",
+    "streamError": "Erreur lors de la diffusion en continu",
+    "loadError": "Erreur lors du chargement de la leçon",
+    "level": "Niveau {level}",
+    "readingTime": "5-10 min de lecture",
+    "cached": "En cache",
+    "unitTitle": "Unité {unit}",
+    "introduction": "Introduction",
+    "keyConcepts": "Concepts Clés",
+    "conceptTitle": "Concept {number}",
+    "westAfricanExample": "Exemple Ouest-Africain",
+    "synthesis": "Synthèse",
+    "keyPoints": "Points Clés",
+    "markComplete": "Marquer comme Terminé",
+    "completed": "Terminé"
+  },
+  "LessonPage": {
+    "modules": "Modules",
+    "backToModule": "Retour au Module",
+    "metadata": {
+      "notFound": "Leçon non trouvée",
+      "title": "{unit} - {module}"
+    }
+  },
+  "BilingualTooltip": {
+    "french": "Français",
+    "english": "Anglais"
+  },
+  "SourceCitations": {
+    "title": "Sources Citées",
+    "sourceDetails": "Détails de la source",
+    "clickToView": "Cliquer pour voir :",
+    "availableInLibrary": "Disponible dans la bibliothèque de référence",
+    "footnote": "{count, plural, one {# source référencée} other {# sources référencées}}"
+  },
   "Profile": {
     "title": "Profil",
     "description": "Gérez votre compte et vos préférences d'apprentissage",

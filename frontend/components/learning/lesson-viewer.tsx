@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { LessonSkeleton } from './lesson-skeleton';
 import { BilingualTooltip } from './bilingual-tooltip';
 import { SourceCitations } from './source-citations';
+import { apiFetch } from '@/lib/api';
 
 interface LessonContent {
   introduction: string;
@@ -63,19 +64,24 @@ export function LessonViewer({
         setError(null);
         
         // First check if cached content exists
-        const cachedResponse = await fetch(`/api/v1/lessons/${moduleId}/${unitId}?language=${language}&level=${level}&country=${countryContext}`);
-        
-        if (cachedResponse.ok) {
-          const cachedData = await cachedResponse.json();
+        try {
+          const cachedData = await apiFetch<LessonData>(
+            `/api/v1/content/lessons/${moduleId}/${unitId}?language=${language}&level=${level}&country=${countryContext}`
+          );
+          
           if (cachedData.cached) {
             setLessonData(cachedData);
             setIsStreaming(false);
             return;
           }
+        } catch (cacheErr) {
+          // If cache check fails, continue to streaming
+          console.log('Cache check failed, falling back to streaming:', cacheErr);
         }
 
         // If no cached content, start streaming
-        const streamUrl = `/api/v1/lessons/${moduleId}/${unitId}/stream?language=${language}&level=${level}&country=${countryContext}`;
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+        const streamUrl = `${API_BASE}/api/v1/content/lessons/${moduleId}/${unitId}/stream?language=${language}&level=${level}&country=${countryContext}`;
         eventSource = new EventSource(streamUrl);
         
         eventSource.onmessage = (event) => {
@@ -117,19 +123,16 @@ export function LessonViewer({
 
   const handleMarkComplete = async () => {
     try {
-      const response = await fetch(`/api/v1/progress/complete-lesson`, {
+      await apiFetch(`/api/v1/progress/complete-lesson`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           module_id: moduleId,
           unit_id: unitId
         })
       });
       
-      if (response.ok) {
-        setIsCompleted(true);
-        onComplete();
-      }
+      setIsCompleted(true);
+      onComplete();
     } catch (err) {
       console.error('Error marking lesson complete:', err);
     }
