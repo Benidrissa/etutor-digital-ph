@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
 from app.api.deps_local_auth import get_current_user
+from app.api.v1.content import _resolve_module_id
 from app.api.v1.schemas.progress import (
     ErrorResponse,
     LessonAccessRequest,
@@ -90,19 +91,20 @@ async def track_lesson_access(
     },
 )
 async def get_module_progress(
-    module_id: UUID,
+    module_id: str,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ModuleProgressResponse:
     """Get current user's progress for a specific module."""
     try:
+        resolved_id = await _resolve_module_id(module_id, db)
         user_id = UUID(str(current_user.id))
         service = ProgressService(db)
-        progress = await service.get_module_progress(user_id, module_id)
+        progress = await service.get_module_progress(user_id, resolved_id)
 
         if progress is None:
             return ModuleProgressResponse(
-                module_id=module_id,
+                module_id=resolved_id,
                 user_id=user_id,
                 status="locked",
                 completion_pct=0.0,
@@ -111,7 +113,7 @@ async def get_module_progress(
                 last_accessed=None,
             )
 
-        return _make_module_progress_response(user_id, module_id, progress)
+        return _make_module_progress_response(user_id, resolved_id, progress)
 
     except Exception as e:
         logger.error("Failed to get module progress", error=str(e), exc_info=True)
@@ -157,7 +159,7 @@ async def get_all_module_progress(
     },
 )
 async def get_module_detail_with_progress(
-    module_id: UUID,
+    module_id: str,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ModuleDetailWithProgressResponse:
@@ -168,9 +170,10 @@ async def get_module_detail_with_progress(
     hardcoded static data.
     """
     try:
+        resolved_id = await _resolve_module_id(module_id, db)
         user_id = UUID(str(current_user.id))
         service = ProgressService(db)
-        data = await service.get_module_with_progress(user_id, module_id)
+        data = await service.get_module_with_progress(user_id, resolved_id)
 
         units = [UnitProgressDetail(**u) for u in data.pop("units", [])]
         return ModuleDetailWithProgressResponse(**data, units=units)
