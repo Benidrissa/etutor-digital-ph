@@ -225,9 +225,10 @@ class SemanticRetriever:
         Returns:
             List of SearchResult objects filtered by user context
         """
-        filters = {
-            "language": user_language,
-            "level": {"$lte": user_level},  # Only show content at or below user level
+        # Don't filter by language — source books are all English,
+        # Claude generates content in the user's target language
+        filters: dict[str, Any] = {
+            "level": {"$lte": user_level},
         }
 
         # Filter by module's source books if provided
