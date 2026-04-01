@@ -85,12 +85,7 @@ export function ModuleProgressOverlay({
       .finally(() => setLoading(false));
   }, [moduleId]);
 
-  // Use API data if available, otherwise fall back to static data
-  const completionPct = data ? data.completion_pct : staticCompletionPercentage;
   const units = data?.units ?? [];
-  const completedCount = units.filter(u => u.status === 'completed').length;
-  const totalCount = units.length || (staticUnits?.length ?? 0);
-  const nextUnit = units.find(u => u.status === 'in_progress' || u.status === 'pending');
 
   if (loading) {
     return (
@@ -101,7 +96,25 @@ export function ModuleProgressOverlay({
     );
   }
 
-  if (!data) {
+  const staticUnitsAsApi: UnitProgressDetail[] = (staticUnits ?? []).map((u, idx) => ({
+    id: u.id,
+    unit_number: u.id,
+    title_fr: u.title.fr,
+    title_en: u.title.en,
+    description_fr: u.description?.fr,
+    description_en: u.description?.en,
+    estimated_minutes: u.estimatedMinutes ?? 45,
+    order_index: idx,
+    status: u.status === 'completed' ? 'completed' : u.status === 'in-progress' ? 'in_progress' : 'pending',
+  }));
+
+  const displayUnits = data ? units : staticUnitsAsApi;
+  const displayCompletionPct = data ? completionPct : staticCompletionPercentage;
+  const displayCompletedCount = displayUnits.filter(u => u.status === 'completed').length;
+  const displayTotalCount = displayUnits.length;
+  const displayNextUnit = displayUnits.find(u => u.status === 'in_progress' || u.status === 'pending');
+
+  if (!data && displayUnits.length === 0) {
     return null;
   }
 
@@ -113,27 +126,27 @@ export function ModuleProgressOverlay({
           <CardTitle className="flex items-center justify-between">
             <span>{t('progress')}</span>
             <span className="text-lg font-bold text-teal-600">
-              {t('progressPercent', { percent: Math.round(completionPct) })}
+              {t('progressPercent', { percent: Math.round(displayCompletionPct) })}
             </span>
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Progress value={completionPct} className="mb-4 h-2" />
+          <Progress value={displayCompletionPct} className="mb-4 h-2" />
           <p className="text-sm text-stone-600">
-            {t('unitsCompleted', { completed: completedCount, total: totalCount })}
+            {t('unitsCompleted', { completed: displayCompletedCount, total: displayTotalCount })}
           </p>
         </CardContent>
       </Card>
 
       {/* Units List */}
-      {units.length > 0 && (
+      {displayUnits.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>{t('units')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {units.map((unit) => {
+              {displayUnits.map((unit) => {
                 const mappedStatus = mapStatus(unit.status);
                 const title = locale === 'fr' ? unit.title_fr : unit.title_en;
                 const description = locale === 'fr' ? unit.description_fr : unit.description_en;
@@ -177,25 +190,27 @@ export function ModuleProgressOverlay({
         <CardContent className="p-4">
           <div className="text-center">
             <div className="text-2xl font-bold text-teal-600 mb-1">
-              {Math.round(completionPct)}%
+              {Math.round(displayCompletionPct)}%
             </div>
             <p className="text-sm text-stone-600">{t('progress')}</p>
-            <div className="mt-3 pt-3 border-t border-stone-200">
-              <div className="flex justify-between text-xs text-stone-600">
-                <span>{completedCount} {t('units').toLowerCase()}</span>
-                <span>{data.estimated_hours}h total</span>
+            {data && (
+              <div className="mt-3 pt-3 border-t border-stone-200">
+                <div className="flex justify-between text-xs text-stone-600">
+                  <span>{displayCompletedCount} {t('units').toLowerCase()}</span>
+                  <span>{data.estimated_hours}h total</span>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </CardContent>
       </Card>
 
       {/* Continue/Start Button */}
-      {nextUnit && (
-        <Link href={getUnitHref(moduleId, nextUnit)} className="block">
+      {displayNextUnit && (
+        <Link href={getUnitHref(moduleId, displayNextUnit)} className="block">
           <Button className="w-full min-h-11" size="lg">
             <Play className="w-4 h-4 mr-2" />
-            {nextUnit.status === 'in_progress' ? t('continueReading') : t('startReading')}
+            {displayNextUnit.status === 'in_progress' ? t('continueReading') : t('startReading')}
           </Button>
         </Link>
       )}
