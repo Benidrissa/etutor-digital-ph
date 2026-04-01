@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
-import { API_BASE } from '@/lib/api';
+import { authClient } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -51,17 +51,7 @@ export function PlacementTestInterface({ onComplete, locale }: PlacementTestInte
   useEffect(() => {
     const loadQuestions = async () => {
       try {
-        const response = await fetch(`${API_BASE}/api/v1/placement-test/questions`, {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`,
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to load questions');
-        }
-
-        const data = await response.json();
+        const data = await authClient.authenticatedFetch<PlacementTestData>('/api/v1/placement-test/questions');
         setTestData(data);
         setTimeLeft(data.time_limit_minutes * 60);
       } catch (error) {
@@ -121,23 +111,13 @@ export function PlacementTestInterface({ onComplete, locale }: PlacementTestInte
     try {
       const timeTaken = Math.floor((Date.now() - startTime) / 1000);
       
-      const response = await fetch(`${API_BASE}/api/v1/placement-test/submit`, {
+      const result = await authClient.authenticatedFetch('/api/v1/placement-test/submit', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
         body: JSON.stringify({
           answers,
           time_taken_sec: timeTaken,
         }),
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to submit placement test');
-      }
-
-      const result = await response.json();
       onComplete(result);
     } catch (error) {
       console.error('Failed to submit placement test:', error);
