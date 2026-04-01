@@ -318,7 +318,8 @@
     "selectConversation": "Select a conversation",
     "selectConversationDescription": "Choose a conversation from the sidebar or start a new one",
     "messageCount": "{count} {count, plural, one {message} other {messages}}",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "newConversationTitle": "New Conversation"
   },
   "Flashcards": {
     "title": "Flashcards",
@@ -589,6 +590,9 @@
     "sourceCitations": "Source Citations",
     "markComplete": "Mark as Complete",
     "completed": "Completed"
+  },
+  "QuizPage": {
+    "backToModule": "Back to {module}"
   },
   "LessonPage": {
     "modules": "Modules",

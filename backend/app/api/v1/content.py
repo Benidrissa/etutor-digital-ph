@@ -15,6 +15,7 @@ from app.ai.claude_service import ClaudeService
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.api.deps import get_db
+from app.api.deps_local_auth import get_optional_user
 from app.api.v1.schemas.content import (
     ErrorResponse,
     FlashcardGenerationRequest,
@@ -28,6 +29,7 @@ from app.api.v1.schemas.content import (
 from app.domain.models.module import Module
 from app.domain.services.flashcard_service import FlashcardGenerationService
 from app.domain.services.lesson_service import LessonGenerationService
+from app.domain.services.progress_service import ProgressService
 from app.domain.services.quiz_service import QuizService
 from app.infrastructure.config.settings import get_settings
 
@@ -314,6 +316,7 @@ async def get_or_generate_lesson_by_module_and_unit(
     country: str = "SN",
     lesson_service: LessonGenerationService = Depends(get_lesson_service),
     session: AsyncSession = Depends(get_db),
+    current_user=Depends(get_optional_user),
 ) -> LessonResponse:
     """
     Get or generate lesson content by module and unit ID.
@@ -321,6 +324,9 @@ async def get_or_generate_lesson_by_module_and_unit(
     This endpoint provides the main interface for the frontend to request lessons.
     It accepts both module codes (e.g., "M01") and UUIDs, resolving codes to UUIDs
     automatically via database lookup.
+
+    When authenticated, accessing this endpoint marks the module as in_progress
+    in user_module_progress (FR-02.2).
 
     **Parameters:**
     - **module_id**: Module identifier (code like "M01" or UUID string)
@@ -355,6 +361,23 @@ async def get_or_generate_lesson_by_module_and_unit(
             level=level,
             session=session,
         )
+
+        # Track lesson access for authenticated users
+        if current_user is not None:
+            try:
+                from uuid import UUID as _UUID
+
+                progress_service = ProgressService(session)
+                await progress_service.track_lesson_access(
+                    user_id=_UUID(str(current_user.id)),
+                    module_id=resolved_module_id,
+                    lesson_id=lesson_response.id,
+                )
+            except Exception as track_err:
+                logger.warning(
+                    "Failed to track lesson access (non-fatal)",
+                    error=str(track_err),
+                )
 
         logger.info(
             "Lesson request completed",

@@ -34,11 +34,12 @@ interface ChatPanelProps {
   isOpen: boolean;
   onClose: () => void;
   moduleId?: string;
+  conversationId?: string | null;
   className?: string;
   embedded?: boolean;
 }
 
-export function ChatPanel({ isOpen, onClose, moduleId, className, embedded = false }: ChatPanelProps) {
+export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className, embedded = false }: ChatPanelProps) {
   const t = useTranslations('ChatTutor');
   const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -51,19 +52,18 @@ export function ChatPanel({ isOpen, onClose, moduleId, className, embedded = fal
   const maxDailyUsage = 50;
   const isLimitReached = currentUsage >= maxDailyUsage;
 
-  // Initialize with welcome message
+  // Reset messages when conversation changes (including new conversation)
   useEffect(() => {
-    if (messages.length === 0) {
-      setMessages([
-        {
-          id: 'welcome',
-          content: t('welcomeMessage'),
-          isUser: false,
-          timestamp: new Date(),
-        }
-      ]);
-    }
-  }, [t, messages.length]);
+    setMessages([
+      {
+        id: 'welcome',
+        content: t('welcomeMessage'),
+        isUser: false,
+        timestamp: new Date(),
+      }
+    ]);
+    setCurrentUsage(0);
+  }, [conversationId, t]);
 
   // Scroll to bottom when new messages are added
   useEffect(() => {

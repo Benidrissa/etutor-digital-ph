@@ -1,5 +1,6 @@
 """Flashcard review API endpoints."""
 
+import re
 import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -9,8 +10,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.claude_service import ClaudeService
+from app.ai.rag.embeddings import EmbeddingService
+from app.ai.rag.retriever import SemanticRetriever
 from app.api.deps import get_db
 from app.api.deps_local_auth import get_current_user
+from app.api.v1.schemas.content import FlashcardSetResponse
 from app.api.v1.schemas.flashcards import (
     FlashcardDueResponse,
     FlashcardReviewRequest,
@@ -21,10 +26,46 @@ from app.api.v1.schemas.flashcards import (
 )
 from app.domain.models.content import GeneratedContent
 from app.domain.models.flashcard import FlashcardReview
+from app.domain.models.module import Module
 from app.domain.models.user import User
+from app.domain.services.flashcard_service import FlashcardGenerationService
+from app.infrastructure.config.settings import get_settings
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/flashcards", tags=["flashcards"])
+
+
+def _get_flashcard_generation_service() -> FlashcardGenerationService:
+    """Dependency to get flashcard generation service."""
+    settings = get_settings()
+    embedding_service = EmbeddingService(
+        api_key=settings.openai_api_key, model=settings.embedding_model
+    )
+    retriever = SemanticRetriever(embedding_service)
+    claude_service = ClaudeService()
+    return FlashcardGenerationService(claude_service, retriever)
+
+
+async def _resolve_module_id(module_id: str, session: AsyncSession) -> uuid.UUID:
+    """Resolve module identifier (M01 code or UUID) to UUID."""
+    try:
+        return uuid.UUID(module_id)
+    except ValueError:
+        pass
+
+    match = re.match(r"^M(\d{2})$", module_id.upper())
+    if match:
+        module_number = int(match.group(1))
+        query = select(Module).where(Module.module_number == module_number)
+        result = await session.execute(query)
+        module = result.scalar_one_or_none()
+        if module:
+            return module.id
+        raise ValueError(f"Module with code {module_id} not found")
+
+    raise ValueError(
+        f"Invalid module identifier: {module_id}. Expected UUID or module code (M01, M02, etc.)"
+    )
 
 
 @router.get(
@@ -546,5 +587,102 @@ async def get_upcoming_reviews(
             detail={
                 "error": "upcoming_reviews_fetch_failed",
                 "message": "Unable to fetch upcoming reviews",
+            },
+        )
+
+
+@router.get(
+    "/modules/{module_id}",
+    response_model=FlashcardSetResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {"description": "Invalid module identifier"},
+        401: {"description": "Unauthorized"},
+        404: {"description": "Module not found"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def get_module_flashcards(
+    module_id: str,
+    language: str = "fr",
+    country: str = "SN",
+    level: int = 1,
+    current_user: User = Depends(get_current_user),
+    flashcard_service: FlashcardGenerationService = Depends(_get_flashcard_generation_service),
+    session: AsyncSession = Depends(get_db),
+) -> FlashcardSetResponse:
+    """
+    Get or auto-generate bilingual flashcards for a module.
+
+    Flashcards are automatically generated via RAG pipeline on first access.
+    Subsequent calls return cached results instantly.
+
+    **Parameters:**
+    - **module_id**: Module identifier (code like "M01" or UUID string)
+    - **language**: Content language ("fr" or "en"), defaults to "fr"
+    - **country**: Country context for examples (ISO 2-letter code), defaults to "SN"
+    - **level**: User's competency level (1-4), defaults to 1
+
+    **Generation:**
+    - Retrieves top-12 relevant chunks from RAG vector store
+    - Uses module's learning objectives and key concepts
+    - Generates 15-30 bilingual flashcards (FR/EN)
+    - Stores result in `generated_content` table (content_type='flashcard')
+    - Cached results returned instantly on subsequent calls
+
+    **Each flashcard includes:**
+    - Term and bilingual definitions (FR/EN)
+    - West African contextual example
+    - LaTeX formula if applicable
+    - Source citations from reference materials
+    """
+    try:
+        logger.info(
+            "Module flashcards request",
+            module_id=module_id,
+            language=language,
+            country=country,
+            level=level,
+            user_id=str(current_user.id),
+        )
+
+        resolved_module_id = await _resolve_module_id(module_id, session)
+
+        flashcard_response = await flashcard_service.get_or_generate_flashcard_set(
+            module_id=resolved_module_id,
+            language=language,
+            country=country,
+            level=level,
+            session=session,
+        )
+
+        logger.info(
+            "Module flashcards returned",
+            module_id=module_id,
+            flashcard_count=len(flashcard_response.flashcards),
+            cached=flashcard_response.cached,
+        )
+
+        return flashcard_response
+
+    except ValueError as e:
+        logger.warning("Invalid module flashcards request", error=str(e))
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "module_not_found", "message": str(e)},
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "invalid_request", "message": str(e)},
+        )
+
+    except Exception as e:
+        logger.error("Failed to get module flashcards", error=str(e), exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "flashcard_generation_failed",
+                "message": "Unable to get or generate flashcards for this module",
             },
         )

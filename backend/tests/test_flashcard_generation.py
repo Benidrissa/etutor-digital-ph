@@ -12,6 +12,7 @@ from app.ai.claude_service import ClaudeService
 from app.ai.rag.retriever import SemanticRetriever
 from app.api.v1.schemas.content import FlashcardContent, FlashcardGenerationRequest
 from app.domain.models.content import GeneratedContent
+from app.domain.models.module import Module
 from app.domain.services.flashcard_service import FlashcardGenerationService
 
 
@@ -95,34 +96,40 @@ class TestFlashcardGenerationService:
         sample_search_results,
     ):
         """Test generating new flashcard set when none exists in cache."""
-        # Arrange
         module_id = uuid.uuid4()
         language = "fr"
         country = "SN"
         level = 2
 
-        # Mock session without existing content
-        session = AsyncMock(spec=AsyncSession)
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        session.execute = AsyncMock(return_value=mock_result)
+        mock_module = Module(
+            id=module_id,
+            module_number=1,
+            level=1,
+            title_fr="Introduction à la Santé Publique",
+            title_en="Introduction to Public Health",
+        )
 
-        # Mock session.refresh to set generated_at timestamp
+        session = AsyncMock(spec=AsyncSession)
+
+        cache_miss_result = MagicMock()
+        cache_miss_result.scalar_one_or_none.return_value = None
+
+        module_result = MagicMock()
+        module_result.scalar_one_or_none.return_value = mock_module
+
+        session.execute = AsyncMock(side_effect=[cache_miss_result, module_result])
+
         def mock_refresh(obj):
             if hasattr(obj, "generated_at") and obj.generated_at is None:
                 obj.generated_at = datetime.now(UTC)
 
         session.refresh = AsyncMock(side_effect=mock_refresh)
 
-        # Mock RAG retrieval
         mock_semantic_retriever.search.return_value = sample_search_results
-
-        # Mock Claude API response
         mock_claude_service.generate_structured_content.return_value = json.dumps(
             sample_flashcard_data
         )
 
-        # Act
         result = await flashcard_service.get_or_generate_flashcard_set(
             module_id=module_id,
             language=language,
@@ -131,7 +138,6 @@ class TestFlashcardGenerationService:
             session=session,
         )
 
-        # Assert
         assert result is not None
         assert result.module_id == module_id
         assert result.language == language
@@ -141,13 +147,11 @@ class TestFlashcardGenerationService:
         assert not result.cached
         assert len(result.flashcards) == 2
 
-        # Verify flashcard content
         assert result.flashcards[0].term == "Surveillance épidémiologique"
         assert "Sénégal" in result.flashcards[0].example_aof
         assert result.flashcards[1].formula is not None
         assert "Incidence Rate" in result.flashcards[1].formula
 
-        # Verify service calls
         mock_semantic_retriever.search.assert_called_once()
         mock_claude_service.generate_structured_content.assert_called_once()
         session.add.assert_called_once()
@@ -212,21 +216,28 @@ class TestFlashcardGenerationService:
         mock_semantic_retriever,
     ):
         """Test error handling when no relevant content is found."""
-        # Arrange
         module_id = uuid.uuid4()
         language = "fr"
         country = "SN"
         level = 2
 
-        session = AsyncMock(spec=AsyncSession)
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        session.execute = AsyncMock(return_value=mock_result)
+        mock_module = Module(
+            id=module_id,
+            module_number=1,
+            level=1,
+            title_fr="Introduction à la Santé Publique",
+            title_en="Introduction to Public Health",
+        )
 
-        # Mock empty search results
+        session = AsyncMock(spec=AsyncSession)
+        cache_miss_result = MagicMock()
+        cache_miss_result.scalar_one_or_none.return_value = None
+        module_result = MagicMock()
+        module_result.scalar_one_or_none.return_value = mock_module
+        session.execute = AsyncMock(side_effect=[cache_miss_result, module_result])
+
         mock_semantic_retriever.search.return_value = []
 
-        # Act & Assert
         with pytest.raises(ValueError, match="No relevant content found"):
             await flashcard_service.get_or_generate_flashcard_set(
                 module_id=module_id,
@@ -245,18 +256,26 @@ class TestFlashcardGenerationService:
         sample_search_results,
     ):
         """Test error handling when Claude API fails."""
-        # Arrange
         module_id = uuid.uuid4()
         language = "fr"
         country = "SN"
         level = 2
 
-        session = AsyncMock(spec=AsyncSession)
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        session.execute = AsyncMock(return_value=mock_result)
+        mock_module = Module(
+            id=module_id,
+            module_number=1,
+            level=1,
+            title_fr="Introduction à la Santé Publique",
+            title_en="Introduction to Public Health",
+        )
 
-        # Mock session.refresh to set generated_at timestamp
+        session = AsyncMock(spec=AsyncSession)
+        cache_miss_result = MagicMock()
+        cache_miss_result.scalar_one_or_none.return_value = None
+        module_result = MagicMock()
+        module_result.scalar_one_or_none.return_value = mock_module
+        session.execute = AsyncMock(side_effect=[cache_miss_result, module_result])
+
         def mock_refresh(obj):
             if hasattr(obj, "generated_at") and obj.generated_at is None:
                 obj.generated_at = datetime.now(UTC)
@@ -266,7 +285,6 @@ class TestFlashcardGenerationService:
         mock_semantic_retriever.search.return_value = sample_search_results
         mock_claude_service.generate_structured_content.side_effect = Exception("API Error")
 
-        # Act & Assert
         with pytest.raises(ValueError, match="Content generation failed"):
             await flashcard_service.get_or_generate_flashcard_set(
                 module_id=module_id,
@@ -285,18 +303,26 @@ class TestFlashcardGenerationService:
         sample_search_results,
     ):
         """Test error handling when Claude returns invalid JSON."""
-        # Arrange
         module_id = uuid.uuid4()
         language = "fr"
         country = "SN"
         level = 2
 
-        session = AsyncMock(spec=AsyncSession)
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        session.execute = AsyncMock(return_value=mock_result)
+        mock_module = Module(
+            id=module_id,
+            module_number=1,
+            level=1,
+            title_fr="Introduction à la Santé Publique",
+            title_en="Introduction to Public Health",
+        )
 
-        # Mock session.refresh to set generated_at timestamp
+        session = AsyncMock(spec=AsyncSession)
+        cache_miss_result = MagicMock()
+        cache_miss_result.scalar_one_or_none.return_value = None
+        module_result = MagicMock()
+        module_result.scalar_one_or_none.return_value = mock_module
+        session.execute = AsyncMock(side_effect=[cache_miss_result, module_result])
+
         def mock_refresh(obj):
             if hasattr(obj, "generated_at") and obj.generated_at is None:
                 obj.generated_at = datetime.now(UTC)
@@ -306,7 +332,6 @@ class TestFlashcardGenerationService:
         mock_semantic_retriever.search.return_value = sample_search_results
         mock_claude_service.generate_structured_content.return_value = "Invalid JSON"
 
-        # Act & Assert
         with pytest.raises(ValueError, match="Invalid JSON response"):
             await flashcard_service.get_or_generate_flashcard_set(
                 module_id=module_id,
@@ -315,6 +340,80 @@ class TestFlashcardGenerationService:
                 level=level,
                 session=session,
             )
+
+    @pytest.mark.asyncio
+    async def test_generate_flashcard_set_module_not_found(
+        self,
+        flashcard_service,
+        mock_semantic_retriever,
+    ):
+        """Test error handling when module does not exist in database."""
+        module_id = uuid.uuid4()
+
+        session = AsyncMock(spec=AsyncSession)
+        cache_miss_result = MagicMock()
+        cache_miss_result.scalar_one_or_none.return_value = None
+        module_not_found_result = MagicMock()
+        module_not_found_result.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(side_effect=[cache_miss_result, module_not_found_result])
+
+        with pytest.raises(ValueError, match="not found"):
+            await flashcard_service.get_or_generate_flashcard_set(
+                module_id=module_id,
+                language="fr",
+                country="SN",
+                level=1,
+                session=session,
+            )
+
+    @pytest.mark.asyncio
+    async def test_generate_flashcard_set_uses_module_title_in_rag_query(
+        self,
+        flashcard_service,
+        mock_claude_service,
+        mock_semantic_retriever,
+        sample_flashcard_data,
+        sample_search_results,
+    ):
+        """Test that RAG query uses the real module title."""
+        module_id = uuid.uuid4()
+        language = "fr"
+
+        mock_module = Module(
+            id=module_id,
+            module_number=1,
+            level=1,
+            title_fr="Fondements de la Santé Publique",
+            title_en="Foundations of Public Health",
+        )
+
+        session = AsyncMock(spec=AsyncSession)
+        cache_miss_result = MagicMock()
+        cache_miss_result.scalar_one_or_none.return_value = None
+        module_result = MagicMock()
+        module_result.scalar_one_or_none.return_value = mock_module
+        session.execute = AsyncMock(side_effect=[cache_miss_result, module_result])
+
+        def mock_refresh(obj):
+            if hasattr(obj, "generated_at") and obj.generated_at is None:
+                obj.generated_at = datetime.now(UTC)
+
+        session.refresh = AsyncMock(side_effect=mock_refresh)
+        mock_semantic_retriever.search.return_value = sample_search_results
+        mock_claude_service.generate_structured_content.return_value = json.dumps(
+            sample_flashcard_data
+        )
+
+        await flashcard_service.get_or_generate_flashcard_set(
+            module_id=module_id,
+            language=language,
+            country="SN",
+            level=1,
+            session=session,
+        )
+
+        call_args = mock_semantic_retriever.search.call_args
+        assert "Fondements de la Santé Publique" in call_args[1]["query"]
 
     def test_extract_sources_from_flashcards(
         self,
