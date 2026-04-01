@@ -455,7 +455,7 @@
     "assessmentDomains": "Domaines d'évaluation",
     "domains": {
       "foundations": "Fondements de Santé Publique",
-      "epidemiology": "Épidémiologie", 
+      "epidemiology": "Épidémiologie",
       "biostatistics": "Biostatistiques",
       "healthSystems": "Systèmes de Santé"
     },
@@ -466,7 +466,7 @@
     "timeRemaining": "Temps restant : {time}",
     "selectAnswer": "Sélectionnez une réponse pour continuer",
     "previous": "Précédent",
-    "next": "Suivant", 
+    "next": "Suivant",
     "submit": "Soumettre l'Évaluation",
     "submitting": "Évaluation de vos réponses...",
     "results": {
@@ -474,7 +474,7 @@
       "assignedLevel": "Votre niveau assigné : Niveau {level}",
       "levelDescriptions": {
         "1": "Débutant - Construire les connaissances de base",
-        "2": "Intermédiaire - Développer les compétences clés", 
+        "2": "Intermédiaire - Développer les compétences clés",
         "3": "Avancé - Renforcer les compétences spécialisées",
         "4": "Expert - Maîtriser les concepts avancés"
       },
@@ -667,5 +667,10 @@
       "student": "Étudiant/e",
       "other": "Autre"
     }
+  },
+  "Offline": {
+    "offline": "Vous êtes hors ligne",
+    "reconnected": "Connexion rétablie",
+    "syncing": "Synchronisation en cours..."
   }
 }
