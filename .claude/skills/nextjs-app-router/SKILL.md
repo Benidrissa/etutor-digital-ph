@@ -212,3 +212,53 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 - All dates: locale-aware formatting (`Intl.DateTimeFormat`)
 - Performance: <150KB JS gzipped, TTI <3s on 3G
 - Dark mode: support for battery saving on OLED screens
+
+## CRITICAL — Next.js 15 async params
+
+In Next.js 15, `params` and `searchParams` are **Promises**. You MUST `await` them.
+
+**WRONG (Next.js 14 pattern — will produce `undefined`):**
+```tsx
+export default function Page({ params }: { params: { locale: string } }) {
+  // params.locale is UNDEFINED at runtime
+}
+```
+
+**CORRECT (Next.js 15 pattern):**
+```tsx
+export default async function Page({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
+  // locale is now correctly "fr" or "en"
+}
+```
+
+Same for `searchParams`:
+```tsx
+export default async function Page({ searchParams }: { searchParams: Promise<{ unit?: string }> }) {
+  const { unit } = await searchParams;
+}
+```
+
+This applies to ALL `page.tsx`, `layout.tsx`, and `generateMetadata` functions.
+
+## CRITICAL — i18n routing (no double locale)
+
+NEVER manually prepend locale to paths. Use the i18n-aware router from `@/i18n/routing`:
+
+**WRONG (causes /fr/fr/dashboard):**
+```tsx
+router.push(`/${locale}/dashboard`);
+```
+
+**CORRECT:**
+```tsx
+import { useRouter } from '@/i18n/routing';
+const router = useRouter();
+router.push('/dashboard'); // automatically prepends /fr or /en
+```
+
+For server-side redirects:
+```tsx
+import { redirect } from '@/i18n/routing';
+redirect({ href: '/dashboard', locale });
+```
