@@ -83,7 +83,7 @@ async def chat_with_tutor(
             )
             error_chunk = {
                 "type": "error",
-                "data": {"message": "An error occurred. Please try again."},
+                "data": {"code": "tutor_error", "message": "An error occurred. Please try again."},
             }
             yield f"data: {json.dumps(error_chunk)}\n\n"
 

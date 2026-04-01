@@ -71,6 +71,7 @@ class TutorService:
             yield {
                 "type": "error",
                 "data": {
+                    "code": "limit_reached",
                     "message": "Daily message limit reached. Try again tomorrow.",
                     "limit_reached": True,
                 },
@@ -209,7 +210,10 @@ class TutorService:
 
         except Exception as e:
             logger.error("Error in tutor chat", error=str(e), user_id=str(user_id))
-            yield {"type": "error", "data": {"message": "An error occurred. Please try again."}}
+            yield {
+                "type": "error",
+                "data": {"code": "tutor_error", "message": "An error occurred. Please try again."},
+            }
 
     async def get_conversation(
         self, user_id: str | uuid.UUID, conversation_id: uuid.UUID, session: AsyncSession
