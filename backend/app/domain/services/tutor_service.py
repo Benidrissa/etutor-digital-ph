@@ -2,7 +2,7 @@
 
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 import structlog
@@ -137,7 +137,7 @@ class TutorService:
             user_msg = {
                 "role": "user",
                 "content": message,
-                "timestamp": datetime.now(UTC).isoformat(),
+                "timestamp": datetime.utcnow().isoformat(),
             }
             conversation_history.append(user_msg)
 
@@ -176,7 +176,7 @@ class TutorService:
                 "role": "assistant",
                 "content": full_response,
                 "sources": sources_cited,
-                "timestamp": datetime.now(UTC).isoformat(),
+                "timestamp": datetime.utcnow().isoformat(),
                 "activity_suggestions": activity_suggestions,
             }
 
@@ -375,7 +375,7 @@ class TutorService:
             user_id=user_id,
             module_id=module_id,
             messages=[],
-            created_at=datetime.now(UTC),
+            created_at=datetime.utcnow(),
         )
         session.add(conversation)
         await session.flush()  # Get the ID
