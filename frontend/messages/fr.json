@@ -463,6 +463,7 @@
     "skipWarning": "Si vous sautez cette évaluation, vous commencerez au Niveau 1 (Débutant).",
     "question": "Question {current} sur {total}",
     "timeRemaining": "Temps restant : {time}",
+    "answered": "{count}/{total} répondues",
     "selectAnswer": "Sélectionnez une réponse pour continuer",
     "previous": "Précédent",
     "next": "Suivant", 

@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -22,6 +22,7 @@ router = APIRouter(prefix="/placement-test", tags=["Placement Test"])
 
 @router.get("/questions", response_model=PlacementTestResponse)
 async def get_placement_test_questions(
+    language: str = Query(default=None, pattern="^(fr|en)$", description="Language for questions (fr/en)"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> PlacementTestResponse:
@@ -35,7 +36,8 @@ async def get_placement_test_questions(
         500: Failed to generate questions
     """
     try:
-        questions = _get_placement_questions(current_user.preferred_language)
+        resolved_language = language if language else current_user.preferred_language
+        questions = _get_placement_questions(resolved_language)
 
         logger.info("Placement test questions retrieved", user_id=str(current_user.id))
         return PlacementTestResponse(

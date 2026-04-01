@@ -463,6 +463,7 @@
     "skipWarning": "If you skip this assessment, you will start at Level 1 (Beginner).",
     "question": "Question {current} of {total}",
     "timeRemaining": "Time remaining: {time}",
+    "answered": "{count}/{total} answered",
     "selectAnswer": "Select an answer to continue",
     "previous": "Previous",
     "next": "Next", 
