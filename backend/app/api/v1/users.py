@@ -31,49 +31,36 @@ async def get_current_user_profile(
         Current user's profile information
     """
     try:
-        # current_user is an AuthenticatedUser from JWT claims
-        # We need to fetch the full user profile from the database
         user_repo = UserRepository(db)
 
-        # Handle string UUID from JWT if necessary
-        user_id = current_user.id
-        if isinstance(user_id, str):
-            from uuid import UUID
+        from uuid import UUID
 
-            user_id = UUID(user_id)
+        user_id = UUID(current_user.id) if isinstance(current_user.id, str) else current_user.id
 
-        # Fetch complete user profile from database
-        full_user = await user_repo.get_by_id(user_id)
+        user = await user_repo.get_by_id(user_id)
 
-        if not full_user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="User profile not found"
-            )
-
-        logger.info("Retrieved user profile", user_id=str(user_id))
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
         return UserProfileResponse(
-            id=str(full_user.id),
-            email=full_user.email,
-            name=full_user.name,
-            preferred_language=full_user.preferred_language,
-            country=full_user.country,
-            professional_role=full_user.professional_role,
-            current_level=full_user.current_level,
-            streak_days=full_user.streak_days,
-            avatar_url=full_user.avatar_url,
-            last_active=full_user.last_active.isoformat(),
-            created_at=full_user.created_at.isoformat(),
+            id=str(user.id),
+            email=user.email,
+            name=user.name,
+            preferred_language=user.preferred_language,
+            country=user.country,
+            professional_role=user.professional_role,
+            current_level=user.current_level,
+            streak_days=user.streak_days,
+            avatar_url=user.avatar_url,
+            last_active=user.last_active.isoformat(),
+            created_at=user.created_at.isoformat(),
         )
-
     except HTTPException:
-        # Re-raise HTTP exceptions as-is
         raise
     except Exception as e:
-        logger.error("Failed to retrieve user profile", user_id=str(current_user.id), error=str(e))
+        logger.error("Failed to get user profile", user_id=str(current_user.id), error=str(e))
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve user profile",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get user profile"
         )
 
 
