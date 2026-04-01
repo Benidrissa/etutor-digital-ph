@@ -572,6 +572,24 @@
     "markComplete": "Mark as Complete",
     "completed": "Completed"
   },
+  "CaseStudyViewer": {
+    "error": "An error occurred",
+    "streamError": "Streaming error occurred",
+    "loadError": "Error loading case study",
+    "level": "Level {level}",
+    "estimatedTime": "40 min",
+    "cached": "Cached",
+    "unitTitle": "Unit {unit}",
+    "badge": "Case Study",
+    "aofContext": "AOF Context",
+    "realData": "Real Data",
+    "guidedQuestions": "Guided Questions",
+    "question": "Question {number}",
+    "annotatedCorrection": "Annotated Correction",
+    "sourceCitations": "Source Citations",
+    "markComplete": "Mark as Complete",
+    "completed": "Completed"
+  },
   "LessonPage": {
     "modules": "Modules",
     "backToModule": "Back to Module",

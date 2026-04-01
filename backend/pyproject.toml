@@ -56,6 +56,7 @@ ignore = ["B008", "B904", "E712"]
 "tests/**" = ["E501"]
 "app/domain/services/**" = ["E501"]
 "app/api/**" = ["E501"]
+"app/ai/prompts/**" = ["E501"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

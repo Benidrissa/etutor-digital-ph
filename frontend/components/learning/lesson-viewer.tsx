@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { LessonSkeleton } from './lesson-skeleton';
 import { SourceCitations } from './source-citations';
 import { apiFetch } from '@/lib/api';
@@ -140,6 +141,23 @@ export function LessonViewer({
 
   const mdClass = "prose prose-gray max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-900 prose-table:text-sm";
 
+  const mdComponents = {
+    table: ({ children, ...props }: React.HTMLAttributes<HTMLTableElement>) => (
+      <div className="overflow-x-auto my-4">
+        <table className="min-w-full border-collapse text-sm" {...props}>{children}</table>
+      </div>
+    ),
+    th: ({ children, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) => (
+      <th className="border border-gray-300 bg-gray-50 px-3 py-2 text-left font-semibold text-gray-900" {...props}>{children}</th>
+    ),
+    td: ({ children, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) => (
+      <td className="border border-gray-300 px-3 py-2 text-gray-700" {...props}>{children}</td>
+    ),
+    tr: ({ children, ...props }: React.HTMLAttributes<HTMLTableRowElement>) => (
+      <tr className="even:bg-gray-50" {...props}>{children}</tr>
+    ),
+  };
+
 
   if (error) {
     return (
@@ -189,7 +207,7 @@ export function LessonViewer({
           {/* Introduction */}
           <div className="mb-8">
             <div className={mdClass}>
-              <ReactMarkdown>{content.introduction}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{content.introduction}</ReactMarkdown>
             </div>
           </div>
 
@@ -198,7 +216,7 @@ export function LessonViewer({
             <div className="space-y-6">
               {content.concepts.map((concept, index) => (
                 <div key={index} className={mdClass}>
-                  <ReactMarkdown>{concept}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{concept}</ReactMarkdown>
                 </div>
               ))}
             </div>
@@ -207,14 +225,14 @@ export function LessonViewer({
           {/* West African Example */}
           <div className="mb-8 bg-teal-50 border-l-4 border-teal-400 p-6 rounded-r-lg">
             <div className="prose prose-teal max-w-none">
-              <ReactMarkdown>{content.aof_example}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{content.aof_example}</ReactMarkdown>
             </div>
           </div>
 
           {/* Synthesis */}
           <div className="mb-8">
             <div className={mdClass}>
-              <ReactMarkdown>{content.synthesis}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{content.synthesis}</ReactMarkdown>
             </div>
           </div>
 
