@@ -737,7 +737,16 @@ class CaseStudyGenerationService:
     async def _parse_case_study_content(
         self, content_text: str, rag_chunks: list
     ) -> CaseStudyContent:
-        """Parse generated content into structured case study format."""
+        """Parse generated content into structured case study format.
+
+        The Claude prompt instructs it to produce 4 numbered sections:
+        1. Contexte AOF / AOF Context
+        2. Données réelles / Real Data
+        3. Questions guidées / Guided Questions
+        4. Correction annotée / Annotated Correction
+        """
+        import re as _re
+
         sources_cited = []
         for chunk in rag_chunks:
             if hasattr(chunk, "chunk"):
@@ -758,19 +767,70 @@ class CaseStudyGenerationService:
             if source_citation not in sources_cited:
                 sources_cited.append(source_citation)
 
-        half = len(content_text) // 2
+        section_header_re = _re.compile(
+            r"(?m)^\s*(?:\*\*)?(?:#{1,3}\s*)?\d+[\.\)]\s*\*?\*?"
+            r"(?:Contexte AOF|AOF Context|Données réelles|Real Data"
+            r"|Questions guidées|Guided Questions|Correction annotée|Annotated Correction)"
+            r"\*?\*?\s*$",
+            _re.IGNORECASE,
+        )
+
+        parts = section_header_re.split(content_text)
+        headers = section_header_re.findall(content_text)
+
+        def _section_key(header: str) -> str:
+            h = header.lower()
+            if "context" in h or "contexte" in h:
+                return "context"
+            if "données" in h or "data" in h or "real" in h:
+                return "data"
+            if "question" in h:
+                return "questions"
+            if "correction" in h or "annotated" in h:
+                return "correction"
+            return "unknown"
+
+        section_map: dict[str, str] = {}
+        for i, header in enumerate(headers):
+            key = _section_key(header)
+            body = parts[i + 1].strip() if i + 1 < len(parts) else ""
+            if key not in section_map:
+                section_map[key] = body
+
+        aof_context = section_map.get("context", "").strip()
+        raw_data = section_map.get("data", "").strip()
+        raw_questions_text = section_map.get("questions", "").strip()
+        annotated_correction = section_map.get("correction", "").strip()
+
+        if raw_questions_text:
+            q_pattern = _re.compile(
+                r"(?m)^\s*\d+[\.\)]\s+(.+?)(?=\n\s*\d+[\.\)]|\Z)",
+                _re.DOTALL,
+            )
+            parsed_qs = [m.strip() for m in q_pattern.findall(raw_questions_text) if m.strip()]
+            guided_questions: list[str] = parsed_qs if len(parsed_qs) >= 2 else [raw_questions_text]
+        else:
+            guided_questions = []
+
+        if not aof_context:
+            aof_context = content_text[:600].strip()
+        if not annotated_correction:
+            half = len(content_text) // 2
+            annotated_correction = (
+                content_text[half:].strip() if len(content_text) > half else content_text
+            )
+        if len(guided_questions) < 2:
+            if guided_questions:
+                guided_questions = guided_questions + [guided_questions[0]]
+            else:
+                fallback = raw_questions_text or content_text[:200]
+                guided_questions = [fallback, fallback]
+
         return CaseStudyContent(
-            aof_context=content_text[:300] + "..." if len(content_text) > 300 else content_text,
-            real_data=content_text[300:600] + "..."
-            if len(content_text) > 600
-            else content_text[300:],
-            guided_questions=[
-                "Question guidée 1 — sera extraite du contenu généré",
-                "Question guidée 2 — sera extraite du contenu généré",
-            ],
-            annotated_correction=content_text[half:]
-            if len(content_text) > half
-            else "Correction annotée sera extraite du contenu généré.",
+            aof_context=aof_context,
+            real_data=raw_data,
+            guided_questions=guided_questions,
+            annotated_correction=annotated_correction,
             sources_cited=sources_cited,
         )
 

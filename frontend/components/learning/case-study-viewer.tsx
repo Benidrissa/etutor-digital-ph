@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { LessonSkeleton } from './lesson-skeleton';
 import { SourceCitations } from './source-citations';
 import { apiFetch } from '@/lib/api';
@@ -66,7 +67,7 @@ export function CaseStudyViewer({
 
         try {
           const cachedData = await apiFetch<CaseStudyData>(
-            `/api/v1/content/lessons/${moduleId}/${unitId}?language=${language}&level=${level}&country=${countryContext}&content_type=case`
+            `/api/v1/content/cases/${moduleId}/${unitId}?language=${language}&level=${level}&country=${countryContext}`
           );
 
           if (cachedData.cached) {
@@ -78,21 +79,30 @@ export function CaseStudyViewer({
         }
 
         const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-        const streamUrl = `${API_BASE}/api/v1/content/lessons/${moduleId}/${unitId}/stream?language=${language}&level=${level}&country=${countryContext}&content_type=case`;
+        const streamUrl = `${API_BASE}/api/v1/content/cases/${moduleId}/${unitId}/stream?language=${language}&level=${level}&country=${countryContext}`;
         eventSource = new EventSource(streamUrl);
 
-        eventSource.onmessage = (event) => {
+        eventSource.addEventListener('complete', (event) => {
           try {
             const data = JSON.parse(event.data);
-            if (data.event === 'complete') {
-              setCaseStudyData(data.data);
-              setIsStreaming(false);
-              eventSource?.close();
-            }
+            setCaseStudyData(data);
+            setIsStreaming(false);
+            eventSource?.close();
           } catch (e) {
-            console.error('Error parsing SSE data:', e);
+            console.error('Error parsing SSE complete event:', e);
           }
-        };
+        });
+
+        eventSource.addEventListener('error', (event) => {
+          try {
+            const data = JSON.parse((event as MessageEvent).data);
+            setError(data.message || t('streamError'));
+          } catch {
+            setError(t('streamError'));
+          }
+          setIsStreaming(false);
+          eventSource?.close();
+        });
 
         eventSource.onerror = () => {
           setError(t('streamError'));
@@ -182,7 +192,7 @@ export function CaseStudyViewer({
         </CardHeader>
         <CardContent>
           <div className={mdClass}>
-            <ReactMarkdown>{content.aof_context}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content.aof_context}</ReactMarkdown>
           </div>
         </CardContent>
       </Card>
@@ -194,7 +204,7 @@ export function CaseStudyViewer({
         </CardHeader>
         <CardContent>
           <div className={`${mdClass} bg-amber-50 rounded-lg p-4`}>
-            <ReactMarkdown>{content.real_data}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content.real_data}</ReactMarkdown>
           </div>
         </CardContent>
       </Card>
@@ -215,7 +225,7 @@ export function CaseStudyViewer({
                   {index + 1}
                 </span>
                 <div className={mdClass}>
-                  <ReactMarkdown>{question}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{question}</ReactMarkdown>
                 </div>
               </li>
             ))}
@@ -235,7 +245,7 @@ export function CaseStudyViewer({
                 onClick={() => setCorrectionVisible(true)}
                 className="min-h-11 border-green-300 text-green-700 hover:bg-green-50"
               >
-                {language === 'fr' ? 'Voir la correction' : 'Show correction'}
+                {t('showCorrection')}
               </Button>
             )}
           </div>
@@ -243,7 +253,7 @@ export function CaseStudyViewer({
         {correctionVisible && (
           <CardContent>
             <div className={`${mdClass} bg-green-50 rounded-lg p-4`}>
-              <ReactMarkdown>{content.annotated_correction}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{content.annotated_correction}</ReactMarkdown>
             </div>
           </CardContent>
         )}
