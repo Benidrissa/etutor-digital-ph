@@ -1,6 +1,8 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 
 export interface ChatSource {
@@ -42,9 +44,22 @@ export function ChatMessage({ message }: ChatMessageProps) {
       >
         {/* Message content */}
         <div className="text-sm leading-relaxed">
-          {message.content}
-          {message.isStreaming && (
-            <span className="inline-block w-2 h-4 ml-1 bg-current animate-pulse" />
+          {message.isUser ? (
+            <>
+              {message.content}
+              {message.isStreaming && (
+                <span className="inline-block w-2 h-4 ml-1 bg-current animate-pulse" />
+              )}
+            </>
+          ) : (
+            <div className="prose prose-sm max-w-none prose-p:my-1 prose-headings:mt-3 prose-headings:mb-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-blockquote:my-2 prose-pre:my-2 prose-table:text-xs [&_table]:w-full [&_table]:border-collapse [&_th]:border [&_th]:border-current/20 [&_th]:px-2 [&_th]:py-1 [&_td]:border [&_td]:border-current/20 [&_td]:px-2 [&_td]:py-1 overflow-x-auto">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {message.content}
+              </ReactMarkdown>
+              {message.isStreaming && (
+                <span className="inline-block w-2 h-4 ml-1 bg-current animate-pulse" />
+              )}
+            </div>
           )}
         </div>
 
