@@ -36,7 +36,7 @@ class SemanticRetriever:
         self,
         query: str,
         top_k: int = 8,
-        min_similarity: float = 0.7,
+        min_similarity: float = 0.3,
         filters: dict[str, Any] | None = None,
         session: AsyncSession | None = None,
     ) -> list[SearchResult]:

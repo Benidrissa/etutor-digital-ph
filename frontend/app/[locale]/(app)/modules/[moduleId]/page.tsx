@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { getLocale } from 'next-intl/server';
-import Link from 'next/link';
+import { Link } from '@/i18n/routing';
 import { ChevronLeft, Clock, CheckCircle, Circle, Lock, Play, BookOpen, MessageSquare, FileText } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
