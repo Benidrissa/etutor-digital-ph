@@ -8,6 +8,7 @@ class PlacementTestQuestion(BaseModel):
 
     id: str = Field(..., description="Question identifier")
     domain: str = Field(..., description="Question domain/category")
+    level: int = Field(..., ge=1, le=4, description="Curriculum level this question assesses (1-4)")
     question: str = Field(..., description="Question text")
     options: list[dict[str, str]] = Field(..., description="Answer options")
     # Note: correct_answer is NOT included in the response for security
