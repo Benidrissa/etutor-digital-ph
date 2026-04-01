@@ -258,7 +258,7 @@ export function TOTPRegisterForm() {
             <div className="text-center text-sm">
               <span className="text-muted-foreground">{t('alreadyHaveAccount')} </span>
               <Link 
-                href={`/${locale}/login`}
+                href="/login"
                 className="font-medium text-primary hover:underline"
               >
                 {t('signIn')}
