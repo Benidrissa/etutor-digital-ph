@@ -15,6 +15,8 @@ from app.ai.rag.retriever import SemanticRetriever
 from app.api.deps import get_db
 from app.api.v1.schemas.quiz import (
     ErrorResponse,
+    LessonValidationQuizRequest,
+    LessonValidationQuizResponse,
     QuizAttemptRequest,
     QuizAttemptResponse,
     QuizAttemptResult,
@@ -817,5 +819,87 @@ async def submit_summative_assessment_attempt(
             detail={
                 "error": "submission_failed",
                 "message": "Failed to submit summative assessment attempt",
+            },
+        )
+
+
+@router.post(
+    "/lesson-validation/generate",
+    response_model=LessonValidationQuizResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid request"},
+        404: {"model": ErrorResponse, "description": "Lesson content not found"},
+        500: {"model": ErrorResponse, "description": "Generation failed"},
+    },
+    summary="Generate lesson validation quiz",
+    description=(
+        "Generates a scenario-based validation quiz from an existing lesson's content "
+        "using RAG retrieval + Claude API. "
+        "The quiz is **always regenerated** on each call (never cached) to prevent answer memorization. "
+        "Returns a realistic West African public health scenario with 5-10 QCM/true-false questions, "
+        "each with an explanation and source citation."
+    ),
+)
+async def generate_lesson_validation_quiz(
+    request: LessonValidationQuizRequest,
+    quiz_service: QuizService = Depends(get_quiz_service),
+    session: AsyncSession = Depends(get_db),
+) -> LessonValidationQuizResponse:
+    """
+    Generate a scenario-based lesson validation quiz (SRS US-024, US-040, FR-03.3).
+
+    Each call produces a fresh quiz — questions are regenerated to prevent memorization.
+    The scenario is contextualized for the user's ECOWAS country.
+    """
+    try:
+        logger.info(
+            "Lesson validation quiz generation requested",
+            lesson_id=str(request.lesson_id),
+            module_id=str(request.module_id),
+            unit_id=request.unit_id,
+            language=request.language,
+            country=request.country,
+            level=request.level,
+        )
+
+        response = await quiz_service.generate_lesson_validation_quiz(
+            lesson_id=request.lesson_id,
+            module_id=request.module_id,
+            unit_id=request.unit_id,
+            language=request.language,
+            country=request.country,
+            level=request.level,
+            session=session,
+        )
+
+        logger.info(
+            "Lesson validation quiz generated",
+            quiz_id=str(response.id),
+            num_questions=len(response.content.questions),
+            country=response.country_context,
+        )
+
+        return response
+
+    except ValueError as e:
+        logger.warning("Lesson validation quiz request invalid", error=str(e))
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "lesson_not_found", "message": str(e)},
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "invalid_request", "message": str(e)},
+        )
+
+    except Exception as e:
+        logger.error("Lesson validation quiz generation failed", error=str(e), exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "generation_failed",
+                "message": "Lesson validation quiz generation failed due to internal error",
             },
         )

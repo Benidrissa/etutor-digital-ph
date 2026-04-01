@@ -211,3 +211,59 @@ class ErrorResponse(BaseModel):
 
     error: str = Field(description="Error code")
     message: str = Field(description="Human-readable error message")
+
+
+class LessonValidationQuestion(BaseModel):
+    """Single question in a lesson validation quiz (QCM or true/false)."""
+
+    id: str = Field(description="Question identifier")
+    question_type: str = Field(description="Question type: 'mcq' or 'true_false'")
+    question: str = Field(description="Question text")
+    options: list[str] = Field(description="2 options for true/false, 4 for MCQ")
+    correct_answer: int = Field(description="Index of correct option (0-based)", ge=0, le=3)
+    explanation: str = Field(description="Explanation for correct answer with source citation")
+    sources_cited: list[str] = Field(
+        description="Source citations from reference materials", default_factory=list
+    )
+    difficulty: str = Field(description="Question difficulty", default="medium")
+
+
+class LessonValidationContent(BaseModel):
+    """Content structure for lesson validation quiz."""
+
+    scenario_title: str = Field(description="Title of the AOF public health scenario")
+    scenario_context: str = Field(
+        description="Realistic West African public health scenario description"
+    )
+    questions: list[LessonValidationQuestion] = Field(
+        description="5-10 scenario-based questions", min_length=5, max_length=10
+    )
+    time_limit_minutes: int = Field(description="Suggested time limit in minutes", default=15)
+    passing_score: float = Field(
+        description="Minimum passing score (0-100)", ge=0, le=100, default=70.0
+    )
+
+
+class LessonValidationQuizRequest(BaseModel):
+    """Request to generate a lesson validation quiz."""
+
+    lesson_id: UUID = Field(description="ID of the generated lesson content")
+    module_id: UUID = Field(description="Module ID containing the lesson")
+    unit_id: str = Field(description="Unit identifier within the module")
+    language: str = Field(description="Content language (fr/en)", pattern="^(fr|en)$")
+    country: str = Field(description="User's ECOWAS country code for contextualization")
+    level: int = Field(description="User's learning level (1-4)", ge=1, le=4)
+
+
+class LessonValidationQuizResponse(BaseModel):
+    """Response containing the generated lesson validation quiz."""
+
+    id: UUID = Field(description="Generated quiz ID (new UUID per request, never cached)")
+    lesson_id: UUID = Field(description="Source lesson content ID")
+    module_id: UUID = Field(description="Module ID")
+    unit_id: str = Field(description="Unit identifier")
+    language: str = Field(description="Content language")
+    level: int = Field(description="Learning level (1-4)")
+    country_context: str = Field(description="Country used for scenario contextualization")
+    content: LessonValidationContent = Field(description="Scenario and questions")
+    generated_at: str = Field(description="ISO timestamp when quiz was generated")

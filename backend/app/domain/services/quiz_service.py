@@ -2,6 +2,7 @@
 
 import json
 import uuid
+from datetime import UTC, datetime
 from uuid import UUID
 
 import structlog
@@ -10,7 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.claude_service import ClaudeService
 from app.ai.rag.retriever import SemanticRetriever
-from app.api.v1.schemas.quiz import QuizContent, QuizResponse
+from app.api.v1.schemas.quiz import (
+    LessonValidationContent,
+    LessonValidationQuizResponse,
+    QuizContent,
+    QuizResponse,
+)
 from app.domain.models.content import GeneratedContent
 
 logger = structlog.get_logger()
@@ -391,3 +397,258 @@ Generate the quiz now, ensuring all questions are relevant to public health prac
         for question in quiz_content.questions:
             sources.update(question.sources_cited)
         return list(sources)
+
+    async def generate_lesson_validation_quiz(
+        self,
+        lesson_id: UUID,
+        module_id: UUID,
+        unit_id: str,
+        language: str,
+        country: str,
+        level: int,
+        session: AsyncSession,
+    ) -> LessonValidationQuizResponse:
+        """
+        Generate a scenario-based validation quiz from a lesson's content.
+
+        Always regenerates on each call (never cached) to prevent memorization.
+
+        Args:
+            lesson_id: ID of the generated lesson content to validate
+            module_id: Module ID for additional RAG context
+            unit_id: Unit identifier within the module
+            language: Content language (fr/en)
+            country: User's ECOWAS country code for scenario contextualization
+            level: Learning level (1-4)
+            session: Database session
+
+        Returns:
+            LessonValidationQuizResponse with scenario and 5-10 questions
+
+        Raises:
+            ValueError: If lesson not found or generation fails
+        """
+        logger.info(
+            "Generating lesson validation quiz",
+            lesson_id=str(lesson_id),
+            module_id=str(module_id),
+            unit_id=unit_id,
+            language=language,
+            country=country,
+            level=level,
+        )
+
+        result = await session.execute(
+            select(GeneratedContent).where(
+                GeneratedContent.id == lesson_id,
+                GeneratedContent.content_type == "lesson",
+            )
+        )
+        lesson_content = result.scalar_one_or_none()
+
+        if not lesson_content:
+            raise ValueError(f"Lesson {lesson_id} not found in generated_content")
+
+        lesson_text = self._extract_lesson_text(lesson_content.content)
+
+        search_query = f"public health scenario {unit_id} {country} validation assessment"
+        rag_chunks = await self.semantic_retriever.search(
+            query=search_query,
+            top_k=6,
+            filters={"level": {"$lte": level}},
+            session=session,
+        )
+
+        rag_context = "\n\n".join(
+            f"Source: {r.chunk.source}, ch. {r.chunk.chapter}, p. {r.chunk.page}\n{r.chunk.content}"
+            for r in rag_chunks
+        )
+
+        prompt = self._build_lesson_validation_prompt(
+            lesson_text=lesson_text,
+            rag_context=rag_context,
+            unit_id=unit_id,
+            language=language,
+            country=country,
+            level=level,
+        )
+
+        raw_response = await self.claude_service.generate_structured_content(
+            system_prompt=self._lesson_validation_system_prompt(language),
+            user_message=prompt,
+            content_type="lesson_validation_quiz",
+        )
+
+        content = self._parse_lesson_validation_response(raw_response, language)
+
+        return LessonValidationQuizResponse(
+            id=uuid.uuid4(),
+            lesson_id=lesson_id,
+            module_id=module_id,
+            unit_id=unit_id,
+            language=language,
+            level=level,
+            country_context=country,
+            content=content,
+            generated_at=datetime.now(UTC).isoformat(),
+        )
+
+    def _extract_lesson_text(self, lesson_content_dict: dict) -> str:
+        """Extract readable text from lesson content JSONB."""
+        parts: list[str] = []
+        for key in ("introduction", "concepts", "aof_example", "synthesis", "key_points"):
+            value = lesson_content_dict.get(key)
+            if isinstance(value, str) and value:
+                parts.append(value)
+            elif isinstance(value, list):
+                parts.extend(str(v) for v in value if v)
+        if not parts:
+            parts.append(str(lesson_content_dict))
+        return "\n\n".join(parts)
+
+    def _lesson_validation_system_prompt(self, language: str) -> str:
+        if language == "fr":
+            return (
+                "Tu es un expert en santé publique en Afrique de l'Ouest (AOF). "
+                "Tu crées des quiz de validation pédagogiques basés sur des scénarios réalistes "
+                "pour des professionnels de santé. "
+                "Réponds UNIQUEMENT avec un objet JSON valide, sans texte avant ni après."
+            )
+        return (
+            "You are a public health expert in West Africa (AOF). "
+            "You create pedagogical validation quizzes based on realistic scenarios "
+            "for health professionals. "
+            "Respond ONLY with a valid JSON object, no text before or after."
+        )
+
+    def _build_lesson_validation_prompt(
+        self,
+        lesson_text: str,
+        rag_context: str,
+        unit_id: str,
+        language: str,
+        country: str,
+        level: int,
+        num_questions: int = 7,
+    ) -> str:
+        lang_instr = "in French" if language == "fr" else "in English"
+        level_desc = {
+            1: "beginner",
+            2: "intermediate",
+            3: "advanced",
+            4: "expert",
+        }.get(level, "intermediate")
+        country_name = {
+            "SN": "Senegal",
+            "GH": "Ghana",
+            "NG": "Nigeria",
+            "CI": "Côte d'Ivoire",
+            "ML": "Mali",
+            "BF": "Burkina Faso",
+            "GN": "Guinea",
+            "BJ": "Benin",
+            "TG": "Togo",
+            "NE": "Niger",
+        }.get(country.upper(), country)
+
+        return f"""Generate a lesson validation quiz {lang_instr} for a public health professional in {country_name}.
+
+LESSON CONTENT (source of key points):
+{lesson_text[:3000]}
+
+ADDITIONAL RAG CONTEXT (reference materials for source citations):
+{rag_context[:2000]}
+
+REQUIREMENTS:
+- Unit: {unit_id}
+- Level: {level_desc}
+- Country context: {country_name}
+- Number of questions: {num_questions} (between 5 and 10)
+- Mix: at least 70% MCQ (4 options), rest true/false (2 options)
+- Scenario: a realistic AOF public health situation (epidemic management, DHIS2 data, health policy)
+- Every question must relate to the scenario and the lesson content
+- Every explanation must cite a specific source from the RAG context
+
+RESPONSE FORMAT (JSON only):
+{{
+  "scenario_title": "Short scenario title",
+  "scenario_context": "2-3 paragraph realistic AOF public health scenario in {country_name}",
+  "questions": [
+    {{
+      "id": "q1",
+      "question_type": "mcq",
+      "question": "Question text referencing the scenario?",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correct_answer": 0,
+      "explanation": "Explanation citing source (e.g. Donaldson Ch.3, p.45)",
+      "sources_cited": ["Donaldson Ch.3, p.45"],
+      "difficulty": "medium"
+    }},
+    {{
+      "id": "q2",
+      "question_type": "true_false",
+      "question": "True/false statement about scenario?",
+      "options": ["True", "False"],
+      "correct_answer": 1,
+      "explanation": "Explanation with source citation",
+      "sources_cited": ["Triola Ch.2, p.18"],
+      "difficulty": "easy"
+    }}
+  ],
+  "time_limit_minutes": 15,
+  "passing_score": 70.0
+}}"""
+
+    def _parse_lesson_validation_response(
+        self, raw_response: dict | str, language: str
+    ) -> LessonValidationContent:
+        """Parse and validate Claude's lesson validation quiz response."""
+        try:
+            if isinstance(raw_response, str):
+                text = raw_response.strip()
+                if "```json" in text:
+                    start = text.find("```json") + 7
+                    end = text.find("```", start)
+                    text = text[start:end].strip()
+                elif "```" in text:
+                    start = text.find("```") + 3
+                    end = text.rfind("```")
+                    text = text[start:end].strip()
+                data = json.loads(text)
+            else:
+                data = raw_response
+
+            questions_raw = data.get("questions", [])
+            if not isinstance(questions_raw, list) or len(questions_raw) < 5:
+                raise ValueError(
+                    f"Expected 5-10 questions, got {len(questions_raw) if isinstance(questions_raw, list) else 0}"
+                )
+            if len(questions_raw) > 10:
+                questions_raw = questions_raw[:10]
+
+            for i, q in enumerate(questions_raw):
+                for field in (
+                    "id",
+                    "question_type",
+                    "question",
+                    "options",
+                    "correct_answer",
+                    "explanation",
+                ):
+                    if field not in q:
+                        raise ValueError(f"Question {i + 1}: missing field '{field}'")
+                if q["question_type"] == "true_false" and len(q["options"]) != 2:
+                    q["options"] = ["True", "False"]
+                elif q["question_type"] == "mcq" and len(q["options"]) != 4:
+                    raise ValueError(f"Question {i + 1}: MCQ must have 4 options")
+                q.setdefault("sources_cited", [])
+                q.setdefault("difficulty", "medium")
+
+            data.setdefault("time_limit_minutes", 15)
+            data.setdefault("passing_score", 70.0)
+
+            return LessonValidationContent(**data)
+
+        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            logger.error("Failed to parse lesson validation quiz response", error=str(exc))
+            raise ValueError(f"Invalid lesson validation quiz format: {exc}") from exc
