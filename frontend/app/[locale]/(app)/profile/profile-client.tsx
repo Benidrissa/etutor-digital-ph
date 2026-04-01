@@ -25,7 +25,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const fetchUserProfile = async () => {
   const response = await fetch(`${API_BASE}/api/v1/users/me`, {
     headers: {
-      Authorization: `Bearer ${localStorage.getItem("token")}`,
+      Authorization: `Bearer ${localStorage.getItem("access_token")}`,
     },
   });
   if (!response.ok) throw new Error("Failed to fetch profile");
@@ -37,7 +37,7 @@ const updateProfile = async (data: Record<string, unknown>) => {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${localStorage.getItem("token")}`,
+      Authorization: `Bearer ${localStorage.getItem("access_token")}`,
     },
     body: JSON.stringify(data),
   });
@@ -49,10 +49,10 @@ const uploadAvatar = async (file: File) => {
   const formData = new FormData();
   formData.append("file", file);
   
-  const response = await fetch("/api/v1/users/me/avatar", {
+  const response = await fetch(`${API_BASE}/api/v1/users/me/avatar`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${localStorage.getItem("token")}`,
+      Authorization: `Bearer ${localStorage.getItem("access_token")}`,
     },
     body: formData,
   });

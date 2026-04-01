@@ -85,33 +85,47 @@ export function ChatPanel({ isOpen, onClose, moduleId, className }: ChatPanelPro
     setIsTyping(true);
 
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Mock AI response with sources
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const token = localStorage.getItem("access_token");
+      const response = await fetch(`${API_BASE}/api/v1/tutor/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          message: messageContent,
+          conversation_id: null,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const data = await response.json();
       const aiResponse: ChatMessage = {
         id: (Date.now() + 1).toString(),
-        content: `Thank you for your question about "${messageContent}". This is a mock response from the AI tutor. In a real implementation, this would connect to the Claude API to generate contextual responses based on the course materials and user's current module progress.`,
+        content: data.response || data.message || data.content || "...",
         isUser: false,
         timestamp: new Date(),
-        sources: [
-          {
-            title: t('publicHealthFundamentals'),
-            chapter: 3,
-            page: 45
-          },
-          {
-            title: t('epidemiologyBasics'),
-            chapter: 1,
-            page: 12
-          }
-        ]
+        sources: data.sources_cited?.map((s: string, i: number) => ({
+          title: s,
+          chapter: i + 1,
+          page: 0,
+        })) || [],
       };
 
       setMessages(prev => [...prev, aiResponse]);
     } catch (error) {
       console.error('Failed to send message:', error);
-      // TODO: Show error message
+      const errorMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        content: t('error') || "An error occurred. Please try again.",
+        isUser: false,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMsg]);
     } finally {
       setIsLoading(false);
       setIsTyping(false);
