@@ -47,7 +47,7 @@ jobs:
           REDIS_URL: redis://localhost:6379/0
           APP_ENV: test
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: npm
