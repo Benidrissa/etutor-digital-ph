@@ -29,6 +29,7 @@ from app.domain.models.content import GeneratedContent
 from app.domain.models.module import Module
 from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import QuizAttempt, SummativeAssessmentAttempt
+from app.domain.services.progress_service import ProgressService
 from app.domain.services.quiz_service import QuizService
 from app.infrastructure.config.settings import get_settings
 
@@ -373,6 +374,25 @@ async def submit_quiz_attempt(
         session.add(attempt)
         await session.commit()
         await session.refresh(attempt)
+
+        # Update module progress when quiz is passed (≥80%) — FR-02.2
+        if passed:
+            try:
+                unit_id = quiz_data.get("unit_id", "")
+                if unit_id:
+                    progress_service = ProgressService(session)
+                    await progress_service.update_progress_after_quiz(
+                        user_id=user_id,
+                        module_id=quiz_content.module_id,
+                        unit_id=unit_id,
+                        score=score,
+                        passed=passed,
+                    )
+            except Exception as progress_err:
+                logger.warning(
+                    "Failed to update progress after quiz (non-fatal)",
+                    error=str(progress_err),
+                )
 
         response = QuizAttemptResponse(
             attempt_id=attempt.id,
