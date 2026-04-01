@@ -229,10 +229,12 @@ export default async function ModuleOverviewPage({ params }: ModuleOverviewPageP
 
           {/* Secondary Actions */}
           <div className="space-y-2">
-            <Button variant="outline" className="w-full min-h-11">
-              <BookOpen className="w-4 h-4 mr-2" />
-              {t('viewFlashcards')}
-            </Button>
+            <Link href={{ pathname: '/flashcards', query: { module: moduleId } }} className="block">
+              <Button variant="outline" className="w-full min-h-11">
+                <BookOpen className="w-4 h-4 mr-2" />
+                {t('viewFlashcards')}
+              </Button>
+            </Link>
           </div>
 
           {/* Progress Summary */}

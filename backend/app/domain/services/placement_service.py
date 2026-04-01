@@ -1,18 +1,83 @@
 """Placement test service for SantePublique AOF.
 
-Handles placement test scoring and level assignment for new users.
-Determines appropriate starting level (1-4) based on knowledge assessment.
+Handles placement test scoring, level assignment, and module unlocking for new users.
+Determines appropriate starting level (1-4) based on knowledge assessment spanning all levels.
 """
 
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
+from ..models.module import Module
+from ..models.progress import UserModuleProgress
 from ..repositories.protocols import UserRepositoryProtocol
 
 logger = get_logger(__name__)
+
+LEVEL_THRESHOLDS = {
+    1: {"min": 0.0, "max": 40.0},
+    2: {"min": 40.0, "max": 60.0},
+    3: {"min": 60.0, "max": 80.0},
+    4: {"min": 80.0, "max": 101.0},
+}
+
+MODULES_BY_LEVEL: dict[int, list[int]] = {
+    1: [1, 2, 3],
+    2: [4, 5, 6, 7],
+    3: [8, 9, 10, 11, 12],
+    4: [13, 14, 15],
+}
+
+QUESTION_LEVELS: dict[str, int] = {
+    "1": 1,
+    "2": 1,
+    "3": 1,
+    "4": 1,
+    "5": 1,
+    "6": 2,
+    "7": 2,
+    "8": 2,
+    "9": 2,
+    "10": 2,
+    "11": 3,
+    "12": 3,
+    "13": 3,
+    "14": 3,
+    "15": 3,
+    "16": 4,
+    "17": 4,
+    "18": 4,
+    "19": 4,
+    "20": 4,
+}
+
+ANSWER_KEY: dict[str, str] = {
+    "1": "c",
+    "2": "a",
+    "3": "b",
+    "4": "d",
+    "5": "a",
+    "6": "b",
+    "7": "c",
+    "8": "a",
+    "9": "d",
+    "10": "b",
+    "11": "a",
+    "12": "c",
+    "13": "b",
+    "14": "a",
+    "15": "d",
+    "16": "b",
+    "17": "c",
+    "18": "a",
+    "19": "b",
+    "20": "d",
+}
 
 
 class PlacementTestResult(BaseModel):
@@ -20,6 +85,7 @@ class PlacementTestResult(BaseModel):
 
     assigned_level: int
     score_percentage: float
+    level_scores: dict[str, float]
     competency_areas: list[str]
     recommendations: list[str]
 
@@ -30,92 +96,40 @@ class PlacementService:
     def __init__(self, user_repo: UserRepositoryProtocol):
         self.user_repo = user_repo
 
-        # Placement test questions and scoring rubric
-        self._init_placement_test_config()
-
-    def _init_placement_test_config(self):
-        """Initialize placement test configuration."""
-
-        # Question categories and weights
-        self.categories = {
-            "basic_public_health": {"weight": 0.3, "questions": list(range(1, 6))},
-            "epidemiology": {"weight": 0.25, "questions": list(range(6, 11))},
-            "biostatistics": {"weight": 0.25, "questions": list(range(11, 16))},
-            "data_analysis": {"weight": 0.2, "questions": list(range(16, 21))},
-        }
-
-        # Level thresholds (percentage scores)
-        self.level_thresholds = {
-            1: {"min": 0.0, "max": 40.0},  # Beginner: 0-40%
-            2: {"min": 40.0, "max": 60.0},  # Intermediate: 40-60%
-            3: {"min": 60.0, "max": 80.0},  # Advanced: 60-80%
-            4: {"min": 80.0, "max": 100.0},  # Expert: 80-100%
-        }
-
-        # Correct answers for scoring (question_id -> correct_option)
-        self.answer_key = {
-            # Basic Public Health (1-5)
-            "1": "c",
-            "2": "a",
-            "3": "b",
-            "4": "d",
-            "5": "a",
-            # Epidemiology (6-10)
-            "6": "b",
-            "7": "c",
-            "8": "a",
-            "9": "d",
-            "10": "b",
-            # Biostatistics (11-15)
-            "11": "a",
-            "12": "c",
-            "13": "b",
-            "14": "a",
-            "15": "d",
-            # Data Analysis (16-20)
-            "16": "b",
-            "17": "c",
-            "18": "a",
-            "19": "b",
-            "20": "d",
-        }
-
     async def get_placement_result(self, user_id: UUID) -> PlacementTestResult | None:
         """Get existing placement test result for user.
-
-        Args:
-            user_id: User UUID
 
         Returns:
             Placement test result if already completed, None otherwise
         """
         user = await self.user_repo.get_by_id(user_id)
-        if not user:
+        if not user or user.current_level == 1:
             return None
 
-        # Check if user has already been assigned a level through placement test
-        # (current_level > 1 indicates placement test completion)
-        if user.current_level > 1:
-            # Return cached result (simplified - in production would store full results)
-            return PlacementTestResult(
-                assigned_level=user.current_level,
-                score_percentage=float(user.current_level * 20),  # Estimate
-                competency_areas=["Cached result"],
-                recommendations=["Continue learning at your assigned level"],
-            )
-
-        return None
+        return PlacementTestResult(
+            assigned_level=user.current_level,
+            score_percentage=float(user.current_level * 20),
+            level_scores={},
+            competency_areas=["Cached result"],
+            recommendations=["Continue learning at your assigned level"],
+        )
 
     async def score_placement_test(
-        self, user_id: UUID, answers: dict[str, Any], time_taken: int, user_context: dict[str, Any]
+        self,
+        user_id: UUID,
+        answers: dict[str, Any],
+        time_taken: int,
+        user_context: dict[str, Any],
+        db: AsyncSession,
     ) -> PlacementTestResult:
-        """Score placement test and assign level.
+        """Score placement test, assign level, and unlock modules.
 
         Args:
             user_id: User UUID
             answers: Question ID -> selected answer mapping
             time_taken: Test completion time in seconds
             user_context: User background info (role, country, etc.)
+            db: Database session for module unlocking
 
         Returns:
             Placement test result with assigned level
@@ -130,52 +144,41 @@ class PlacementService:
         if not answers:
             raise ValueError("No answers provided")
 
-        # Score by category
-        category_scores = {}
-        total_correct = 0
-        total_questions = 0
+        level_correct: dict[int, int] = {1: 0, 2: 0, 3: 0, 4: 0}
+        level_total: dict[int, int] = {1: 0, 2: 0, 3: 0, 4: 0}
 
-        for category, config in self.categories.items():
-            correct_in_category = 0
-            questions_in_category = 0
+        for q_id, selected in answers.items():
+            q_level = QUESTION_LEVELS.get(q_id)
+            if q_level is None or q_id not in ANSWER_KEY:
+                continue
+            level_total[q_level] += 1
+            if selected == ANSWER_KEY[q_id]:
+                level_correct[q_level] += 1
 
-            for q_id in config["questions"]:
-                q_str = str(q_id)
-                if q_str in answers and q_str in self.answer_key:
-                    questions_in_category += 1
-                    if answers[q_str] == self.answer_key[q_str]:
-                        correct_in_category += 1
+        level_scores: dict[str, float] = {}
+        for lvl in range(1, 5):
+            total = level_total[lvl]
+            level_scores[f"level_{lvl}"] = (level_correct[lvl] / total * 100) if total > 0 else 0.0
 
-            if questions_in_category > 0:
-                category_scores[category] = (correct_in_category / questions_in_category) * 100
-            else:
-                category_scores[category] = 0.0
+        total_answered = sum(level_total.values())
+        total_correct = sum(level_correct.values())
+        overall_score = (total_correct / total_answered * 100) if total_answered > 0 else 0.0
 
-            total_correct += correct_in_category
-            total_questions += questions_in_category
-
-        # Calculate overall score
-        overall_score = (total_correct / total_questions) * 100 if total_questions > 0 else 0.0
-
-        # Adjust score based on context
         adjusted_score = self._adjust_score_for_context(overall_score, user_context, time_taken)
-
-        # Determine level
         assigned_level = self._determine_level(adjusted_score)
 
-        # Generate competency areas and recommendations
-        competency_areas = self._identify_competencies(category_scores)
-        recommendations = self._generate_recommendations(
-            assigned_level, category_scores, user_context
-        )
+        competency_areas = self._identify_competencies(level_scores)
+        recommendations = self._generate_recommendations(assigned_level, level_scores, user_context)
 
-        # Update user's level
         user.current_level = assigned_level
         await self.user_repo.update(user)
+
+        await self._unlock_modules_after_placement(user_id, assigned_level, db)
 
         result = PlacementTestResult(
             assigned_level=assigned_level,
             score_percentage=adjusted_score,
+            level_scores=level_scores,
             competency_areas=competency_areas,
             recommendations=recommendations,
         )
@@ -183,13 +186,78 @@ class PlacementService:
         logger.info(
             "Completed placement test scoring",
             user_id=str(user_id),
-            raw_score=overall_score,
+            overall_score=overall_score,
             adjusted_score=adjusted_score,
             assigned_level=assigned_level,
-            category_scores=category_scores,
+            level_scores=level_scores,
         )
 
         return result
+
+    async def _unlock_modules_after_placement(
+        self, user_id: UUID, assigned_level: int, db: AsyncSession
+    ) -> None:
+        """Unlock modules based on placement result.
+
+        - Modules below assessed level → status = "completed", completion_pct = 100
+        - First module of assessed level → status = "in_progress"
+        - Remaining modules of assessed level and above → status = "locked"
+
+        Args:
+            user_id: User UUID
+            assigned_level: Level assigned by placement test (1-4)
+            db: Database session
+        """
+        modules_result = await db.execute(select(Module).order_by(Module.module_number))
+        all_modules = list(modules_result.scalars().all())
+
+        first_module_at_level: UUID | None = None
+        for module in all_modules:
+            if module.level == assigned_level:
+                first_module_at_level = module.id
+                break
+
+        for module in all_modules:
+            if module.level < assigned_level:
+                status = "completed"
+                completion_pct = 100.0
+            elif module.id == first_module_at_level:
+                status = "in_progress"
+                completion_pct = 0.0
+            else:
+                status = "locked"
+                completion_pct = 0.0
+
+            existing_result = await db.execute(
+                select(UserModuleProgress).where(
+                    UserModuleProgress.user_id == user_id,
+                    UserModuleProgress.module_id == module.id,
+                )
+            )
+            existing = existing_result.scalar_one_or_none()
+
+            if existing is not None:
+                existing.status = status
+                existing.completion_pct = completion_pct
+                existing.last_accessed = datetime.utcnow()
+            else:
+                progress = UserModuleProgress(
+                    user_id=user_id,
+                    module_id=module.id,
+                    status=status,
+                    completion_pct=completion_pct,
+                    time_spent_minutes=0,
+                    last_accessed=datetime.utcnow(),
+                )
+                db.add(progress)
+
+        await db.commit()
+
+        logger.info(
+            "Modules unlocked after placement",
+            user_id=str(user_id),
+            assigned_level=assigned_level,
+        )
 
     def _adjust_score_for_context(
         self, raw_score: float, context: dict[str, Any], time_taken: int
@@ -206,26 +274,23 @@ class PlacementService:
         """
         adjusted = raw_score
 
-        # Professional role adjustments
         role = context.get("professional_role", "").lower()
         if "doctor" in role or "physician" in role:
-            adjusted += 5  # Medical professionals get bonus
+            adjusted += 5
         elif "researcher" in role or "epidemiologist" in role:
-            adjusted += 8  # Research professionals get higher bonus
+            adjusted += 8
         elif "nurse" in role:
-            adjusted += 3  # Nurses get small bonus
+            adjusted += 3
         elif "student" in role:
-            adjusted -= 3  # Students get small penalty
+            adjusted -= 3
 
-        # Time-based adjustments
-        if time_taken < 600:  # Less than 10 minutes (too fast)
+        if time_taken < 600:
             adjusted -= 10
-        elif time_taken > 2400:  # More than 40 minutes (too slow)
+        elif time_taken > 2400:
             adjusted -= 5
-        elif 900 <= time_taken <= 1800:  # 15-30 minutes (optimal)
+        elif 900 <= time_taken <= 1800:
             adjusted += 2
 
-        # Keep within bounds
         return max(0.0, min(100.0, adjusted))
 
     def _determine_level(self, score: float) -> int:
@@ -237,81 +302,69 @@ class PlacementService:
         Returns:
             Level 1-4
         """
-        for level, threshold in self.level_thresholds.items():
+        for level, threshold in LEVEL_THRESHOLDS.items():
             if threshold["min"] <= score < threshold["max"]:
                 return level
-
-        # Default to level 1 if no match
         return 1
 
-    def _identify_competencies(self, category_scores: dict[str, float]) -> list[str]:
-        """Identify strong competency areas based on category scores.
+    def _identify_competencies(self, level_scores: dict[str, float]) -> list[str]:
+        """Identify strong competency areas based on per-level scores.
 
         Args:
-            category_scores: Score by category (0-100)
+            level_scores: Score by level key e.g. {"level_1": 80.0, ...}
 
         Returns:
             List of strong competency areas
         """
-        competencies = []
-
-        for category, score in category_scores.items():
-            if score >= 70:
-                if category == "basic_public_health":
-                    competencies.append("Public Health Fundamentals")
-                elif category == "epidemiology":
-                    competencies.append("Epidemiological Methods")
-                elif category == "biostatistics":
-                    competencies.append("Biostatistics & Data Analysis")
-                elif category == "data_analysis":
-                    competencies.append("Data Interpretation")
-
-        if not competencies:
-            competencies = ["Foundation Building"]
-
-        return competencies
+        label_map = {
+            "level_1": "Public Health Foundations",
+            "level_2": "Epidemiology & Surveillance",
+            "level_3": "Advanced Statistics & Programming",
+            "level_4": "Health Policy & Research",
+        }
+        competencies = [label_map[k] for k, v in level_scores.items() if v >= 70 and k in label_map]
+        return competencies if competencies else ["Foundation Building"]
 
     def _generate_recommendations(
-        self, level: int, category_scores: dict[str, float], context: dict[str, Any]
+        self, level: int, level_scores: dict[str, float], context: dict[str, Any]
     ) -> list[str]:
         """Generate personalized learning recommendations.
 
         Args:
             level: Assigned level (1-4)
-            category_scores: Scores by category
+            level_scores: Scores by level
             context: User context
 
         Returns:
             List of learning recommendations
         """
-        recommendations = []
+        recommendations: list[str] = []
 
-        # Level-based recommendations
         if level == 1:
             recommendations.append("Start with Module 1: Public Health Foundations")
             recommendations.append("Focus on building core concepts before advancing")
         elif level == 2:
             recommendations.append("Begin with Module 4: Epidemiological Methods")
-            recommendations.append("Review statistics fundamentals as needed")
+            recommendations.append("Modules 1-3 have been validated — you may review them anytime")
         elif level == 3:
             recommendations.append("Start with Module 8: Advanced Epidemiology")
-            recommendations.append("Consider specializing in your area of interest")
+            recommendations.append("Modules 1-7 have been validated — you may review them anytime")
         else:
             recommendations.append("Begin with Module 13: Health Policy & Systems")
-            recommendations.append("Focus on leadership and research skills")
+            recommendations.append("Modules 1-12 have been validated — you may review them anytime")
 
-        # Category-based recommendations
-        weak_areas = [cat for cat, score in category_scores.items() if score < 50]
-        if "biostatistics" in weak_areas:
-            recommendations.append("Strengthen biostatistics skills with practice exercises")
-        if "epidemiology" in weak_areas:
-            recommendations.append("Review epidemiological study designs and measures")
+        weak_levels = [k for k, v in level_scores.items() if v < 50]
+        if "level_2" in weak_levels:
+            recommendations.append("Strengthen epidemiological study design knowledge")
+        if "level_3" in weak_levels:
+            recommendations.append("Reinforce biostatistics and data analysis skills")
 
-        # Context-based recommendations
         country = context.get("country", "").lower()
-        if country in ["senegal", "mali", "burkina"]:
+        if country in ["senegal", "mali", "burkina faso", "guinea"]:
             recommendations.append("Focus on Sahel-specific health challenges")
-        elif country in ["ghana", "nigeria"]:
+        elif country in ["ghana", "nigeria", "benin", "togo"]:
             recommendations.append("Emphasize coastal disease patterns and urban health")
+        elif country in ["cote d'ivoire", "liberia", "sierra leone"]:
+            recommendations.append("Focus on tropical disease burden in your region")
 
-        return recommendations[:5]  # Limit to top 5 recommendations
+        return recommendations[:5]
