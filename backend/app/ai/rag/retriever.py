@@ -86,7 +86,7 @@ class SemanticRetriever:
         SELECT
             id, content, source, chapter, page, level, language,
             token_count, chunk_index, created_at,
-            1 - (embedding <=> '{embedding_literal}'::vector) as similarity
+            1 - (embedding::vector <=> '{embedding_literal}'::vector) as similarity
         FROM document_chunks
         WHERE embedding IS NOT NULL
         """
@@ -135,7 +135,7 @@ class SemanticRetriever:
 
         # Add similarity threshold and ordering
         query_str += f"""
-        HAVING 1 - (embedding <=> '{embedding_literal}'::vector) >= :min_similarity
+        HAVING 1 - (embedding::vector <=> '{embedding_literal}'::vector) >= :min_similarity
         ORDER BY similarity DESC
         LIMIT :limit
         """
