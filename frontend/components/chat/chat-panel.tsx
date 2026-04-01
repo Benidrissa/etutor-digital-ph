@@ -129,22 +129,23 @@ export function ChatPanel({ isOpen, onClose, moduleId, className }: ChatPanelPro
             if (!line.startsWith("data: ")) continue;
             try {
               const chunk = JSON.parse(line.slice(6));
-              if (chunk.type === "text" && chunk.data?.text) {
+              if (chunk.type === "content" && chunk.data?.text) {
                 fullContent += chunk.data.text;
                 setMessages(prev => prev.map(m =>
                   m.id === aiMessageId ? { ...m, content: fullContent } : m
                 ));
-              } else if (chunk.type === "sources" && chunk.data?.sources) {
+              } else if (chunk.type === "sources_cited" && chunk.data?.sources) {
                 setMessages(prev => prev.map(m =>
                   m.id === aiMessageId ? {
                     ...m,
-                    sources: chunk.data.sources.map((s: string, i: number) => ({
-                      title: s, chapter: i + 1, page: 0,
+                    sources: chunk.data.sources.map((s: { source: string; chapter?: number; page?: number }, i: number) => ({
+                      title: s.source ?? String(i + 1), chapter: s.chapter ?? i + 1, page: s.page ?? 0,
                     })),
                   } : m
                 ));
               } else if (chunk.type === "error") {
-                fullContent = chunk.data?.message || t('error');
+                const errorCode = chunk.data?.code;
+                fullContent = errorCode === "limit_reached" ? t('errorLimitReached') : t('error');
                 setMessages(prev => prev.map(m =>
                   m.id === aiMessageId ? { ...m, content: fullContent } : m
                 ));
@@ -159,7 +160,7 @@ export function ChatPanel({ isOpen, onClose, moduleId, className }: ChatPanelPro
       console.error('Failed to send message:', error);
       setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
-        content: t('error') || "An error occurred. Please try again.",
+        content: t('error'),
         isUser: false,
         timestamp: new Date(),
       }]);
