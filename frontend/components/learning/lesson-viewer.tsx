@@ -132,7 +132,7 @@ export function LessonViewer({
       });
       
       setIsCompleted(true);
-      onComplete();
+      onComplete?.();
     } catch (err) {
       console.error('Error marking lesson complete:', err);
     }
