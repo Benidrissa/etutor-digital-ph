@@ -220,3 +220,40 @@ export async function submitSummativeAssessmentAttempt(
     body: JSON.stringify(request),
   });
 }
+
+// Lesson Validation Quiz API Functions
+export async function generateLessonValidationQuiz(params: {
+  module_id: string;
+  unit_id: string;
+  language: string;
+  country: string;
+  level: number;
+  num_questions?: number;
+}): Promise<Quiz> {
+  return apiFetch<Quiz>("/api/v1/quiz/lesson-validation/generate", {
+    method: "POST",
+    body: JSON.stringify({
+      module_id: params.module_id,
+      unit_id: params.unit_id,
+      language: params.language,
+      country: params.country,
+      level: params.level,
+      num_questions: params.num_questions || 5,
+    }),
+  });
+}
+
+export async function completeLessonAfterQuiz(params: {
+  module_id: string;
+  unit_id: string;
+  quiz_attempt_id: string;
+}): Promise<void> {
+  return apiFetch<void>("/api/v1/progress/complete-lesson", {
+    method: "POST",
+    body: JSON.stringify({
+      module_id: params.module_id,
+      unit_id: params.unit_id,
+      quiz_attempt_id: params.quiz_attempt_id,
+    }),
+  });
+}
