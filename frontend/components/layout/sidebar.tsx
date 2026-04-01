@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useTranslations, useLocale } from "next-intl";
 import {
   Home,
@@ -14,17 +14,32 @@ import {
   ChevronLeft,
   ChevronRight,
   Menu,
+  LogOut,
 } from "lucide-react";
 import { LocaleSwitcher } from "@/components/shared/locale-switcher";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { authClient } from "@/lib/auth";
 
 export function Sidebar() {
   const t = useTranslations("Navigation");
+  const tProfile = useTranslations("Profile");
   const tCommon = useTranslations("Common");
   const pathname = usePathname();
   const locale = useLocale();
+  const router = useRouter();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await authClient.logout();
+      router.push(`/${locale}/login`);
+    } catch {
+      setIsLoggingOut(false);
+    }
+  };
 
   const navItems = [
     {
@@ -130,13 +145,28 @@ export function Sidebar() {
         })}
       </nav>
       
-      <div className="border-t p-2">
+      <div className="border-t p-2 space-y-1">
         {!isCollapsed ? (
-          <div className="p-2">
-            <LocaleSwitcher />
-          </div>
+          <>
+            <div className="p-2">
+              <LocaleSwitcher />
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start gap-3 px-3 min-h-11 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              aria-label={tProfile("logoutDescription")}
+            >
+              <LogOut className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span className="truncate">
+                {isLoggingOut ? tProfile("loggingOut") : tProfile("logout")}
+              </span>
+            </Button>
+          </>
         ) : (
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center gap-1">
             <Button
               variant="ghost"
               size="sm"
@@ -144,6 +174,16 @@ export function Sidebar() {
               aria-label={t("languageSettings")}
             >
               <Menu className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="min-h-11 min-w-11 p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              aria-label={tProfile("logoutDescription")}
+            >
+              <LogOut className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
         )}

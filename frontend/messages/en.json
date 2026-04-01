@@ -33,7 +33,9 @@
     "navigateTo": "Navigate to",
     "lessons": "Lessons",
     "quiz": "Quiz",
-    "caseStudy": "Case Study"
+    "caseStudy": "Case Study",
+    "logout": "Log out",
+    "logoutDescription": "Sign out of your account"
   },
   "Auth": {
     "login": "Sign in",
@@ -615,6 +617,13 @@
     "edit": "Edit",
     "cancel": "Cancel",
     "save": "Save Changes",
+    "logout": "Log out",
+    "logoutDescription": "Sign out of your account",
+    "logoutConfirmTitle": "Confirm log out",
+    "logoutConfirmMessage": "Are you sure you want to log out?",
+    "logoutConfirm": "Log out",
+    "logoutCancel": "Cancel",
+    "loggingOut": "Logging out...",
     "languages": {
       "french": "Fran\u00e7ais",
       "english": "English"

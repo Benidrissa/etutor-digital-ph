@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
+import { useRouter } from "next/navigation";
+import { useLocale } from "next-intl";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { authClient } from "@/lib/auth";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -18,7 +21,7 @@ import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { Upload, User as UserIcon, AlertTriangle, CheckCircle } from "lucide-react";
+import { Upload, User as UserIcon, AlertTriangle, CheckCircle, LogOut } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -103,10 +106,24 @@ const PROFESSIONAL_ROLES = [
 
 export function ProfileClient() {
   const t = useTranslations("Profile");
+  const router = useRouter();
+  const locale = useLocale();
   const [isEditing, setIsEditing] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [showRecontextAlert, setShowRecontextAlert] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const queryClient = useQueryClient();
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await authClient.logout();
+      queryClient.clear();
+      router.push(`/${locale}/login`);
+    } catch {
+      setIsLoggingOut(false);
+    }
+  };
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ["profile"],
@@ -438,6 +455,26 @@ export function ProfileClient() {
               <p className="text-xs text-muted-foreground">{t("levelReadonly")}</p>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Logout */}
+      <Card className="border-destructive/50">
+        <CardContent className="pt-6">
+          <Button
+            variant="destructive"
+            className="w-full min-h-11 gap-2"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            aria-label={t("logoutDescription")}
+          >
+            {isLoggingOut ? (
+              <LoadingSpinner className="h-4 w-4" />
+            ) : (
+              <LogOut className="h-4 w-4" aria-hidden="true" />
+            )}
+            {isLoggingOut ? t("loggingOut") : t("logout")}
+          </Button>
         </CardContent>
       </Card>
     </div>
