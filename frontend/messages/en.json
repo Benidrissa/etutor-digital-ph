@@ -145,7 +145,9 @@
     "signInDescription": "Track your learning stats, streak, and upcoming reviews.",
     "signIn": "Sign In",
     "errorOccurred": "An error occurred",
-    "unableToLoadStats": "Unable to load dashboard statistics"
+    "unableToLoadStats": "Unable to load dashboard statistics",
+    "noQuizzesTakenYet": "No quizzes taken yet",
+    "justGettingStarted": "Just getting started"
   },
   "ModuleCard": {
     "locked": "Locked",
@@ -192,7 +194,8 @@
     "unitNumber": "Unit {number}",
     "readingTime": "{minutes} min read",
     "practiceQuiz": "Practice Quiz",
-    "caseStudy": "Case Study"
+    "caseStudy": "Case Study",
+    "unitsCompleted": "{completed} / {total} units completed"
   },
   "Quiz": {
     "title": "Quiz",
