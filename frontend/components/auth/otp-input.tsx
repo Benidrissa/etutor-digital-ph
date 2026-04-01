@@ -33,21 +33,14 @@ export const OTPInput = forwardRef<OTPInputRef, OTPInputProps>(
     error = false
   }, ref) => {
     const t = useTranslations('Auth');
-    const [digits, setDigits] = useState<string[]>(Array(length).fill(''));
+    // Derive digits from value prop directly (controlled component pattern)
+    const digits = value.padEnd(length, '').slice(0, length).split('');
     const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
     // Initialize refs array
     useEffect(() => {
       inputRefs.current = inputRefs.current.slice(0, length);
     }, [length]);
-
-    // Sync digits with external value
-    useEffect(() => {
-      if (value !== digits.join('')) {
-        const newDigits = value.padEnd(length, '').slice(0, length).split('');
-        setDigits(newDigits);
-      }
-    }, [value, length, digits]);
 
     // Auto-focus first input on mount
     useEffect(() => {
@@ -64,8 +57,6 @@ export const OTPInput = forwardRef<OTPInputRef, OTPInputProps>(
         inputRefs.current[targetIndex]?.focus();
       },
       clear: () => {
-        const newDigits = Array(length).fill('');
-        setDigits(newDigits);
         onChange?.('');
         inputRefs.current[0]?.focus();
       }
@@ -77,7 +68,6 @@ export const OTPInput = forwardRef<OTPInputRef, OTPInputProps>(
       
       const newDigits = [...digits];
       newDigits[index] = newValue;
-      setDigits(newDigits);
 
       const fullValue = newDigits.join('');
       onChange?.(fullValue);
@@ -108,7 +98,6 @@ export const OTPInput = forwardRef<OTPInputRef, OTPInputProps>(
           inputRefs.current[index - 1]?.focus();
         }
         
-        setDigits(newDigits);
         onChange?.(newDigits.join(''));
       } else if (event.key === 'ArrowLeft' && index > 0) {
         event.preventDefault();
@@ -125,8 +114,8 @@ export const OTPInput = forwardRef<OTPInputRef, OTPInputProps>(
       const pasteData = event.clipboardData.getData('text/plain').replace(/\D/g, '');
       const newDigits = pasteData.padEnd(length, '').slice(0, length).split('');
       
-      setDigits(newDigits);
-      onChange?.(newDigits.join(''));
+      const fullValue = newDigits.join('');
+      onChange?.(fullValue);
       
       // Focus the next empty input or the last input
       const nextEmptyIndex = newDigits.findIndex(digit => digit === '');
@@ -134,7 +123,6 @@ export const OTPInput = forwardRef<OTPInputRef, OTPInputProps>(
       inputRefs.current[targetIndex]?.focus();
 
       // Call onComplete if all digits are filled
-      const fullValue = newDigits.join('');
       if (fullValue.length === length && onComplete) {
         onComplete(fullValue);
       }

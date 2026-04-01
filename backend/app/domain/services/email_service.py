@@ -174,7 +174,9 @@ class EmailService:
             logger.error("Failed to send welcome email", email=email, error=str(e))
             return False
 
-    async def send_otp_email(self, email: str, otp_code: str, purpose: str, language: str = "fr") -> bool:
+    async def send_otp_email(
+        self, email: str, otp_code: str, purpose: str, language: str = "fr"
+    ) -> bool:
         """Send an OTP verification code via email.
 
         Args:

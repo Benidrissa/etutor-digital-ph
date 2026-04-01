@@ -566,7 +566,9 @@ class LocalAuthService:
                 email, user.id, preferred_language, ip_address
             )
 
-            logger.info("User registration with email OTP initiated", user_id=str(user.id), email=email)
+            logger.info(
+                "User registration with email OTP initiated", user_id=str(user.id), email=email
+            )
 
             return {
                 "user_id": str(user.id),
@@ -662,9 +664,7 @@ class LocalAuthService:
             logger.error("Email OTP registration verification failed", otp_id=otp_id, error=str(e))
             raise AuthenticationError(f"Verification failed: {e}")
 
-    async def send_login_otp(
-        self, email: str, ip_address: str | None = None
-    ) -> dict[str, Any]:
+    async def send_login_otp(self, email: str, ip_address: str | None = None) -> dict[str, Any]:
         """Send OTP for login verification.
 
         Args:

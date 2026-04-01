@@ -318,7 +318,9 @@ class EmailOTPService:
         except OTPError:
             raise
         except Exception as e:
-            logger.error("Rate limit check failed", email=email, ip_address=ip_address, error=str(e))
+            logger.error(
+                "Rate limit check failed", email=email, ip_address=ip_address, error=str(e)
+            )
             # Don't block on rate limit check errors
 
     async def _cleanup_expired_otps(self, email: str) -> None:

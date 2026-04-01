@@ -435,9 +435,7 @@ async def logout(
 
 @router.post("/register-email-otp", response_model=RegisterEmailOTPResponse)
 async def register_email_otp(
-    request: RegisterEmailOTPRequest, 
-    request_obj: Request, 
-    db=Depends(get_db_session)
+    request: RegisterEmailOTPRequest, request_obj: Request, db=Depends(get_db_session)
 ) -> RegisterEmailOTPResponse:
     """Register a new user with email OTP verification.
 
@@ -454,8 +452,8 @@ async def register_email_otp(
         500: Registration failed
     """
     try:
-        ip_address = getattr(request_obj.client, 'host', None) if request_obj.client else None
-        
+        ip_address = getattr(request_obj.client, "host", None) if request_obj.client else None
+
         auth_service = LocalAuthService(db)
         result = await auth_service.register_user_with_email_otp(
             email=request.email,
@@ -481,10 +479,10 @@ async def register_email_otp(
 
 @router.post("/verify-email-otp", response_model=TokenResponse)
 async def verify_email_otp(
-    request: VerifyEmailOTPRequest, 
-    response: Response, 
+    request: VerifyEmailOTPRequest,
+    response: Response,
     request_obj: Request,
-    db=Depends(get_db_session)
+    db=Depends(get_db_session),
 ) -> TokenResponse:
     """Verify email OTP code and complete registration.
 
@@ -499,13 +497,11 @@ async def verify_email_otp(
         500: Verification failed
     """
     try:
-        ip_address = getattr(request_obj.client, 'host', None) if request_obj.client else None
-        
+        ip_address = getattr(request_obj.client, "host", None) if request_obj.client else None
+
         auth_service = LocalAuthService(db)
         result = await auth_service.verify_email_otp_registration(
-            otp_id=request.otp_id, 
-            otp_code=request.otp_code,
-            ip_address=ip_address
+            otp_id=request.otp_id, otp_code=request.otp_code, ip_address=ip_address
         )
 
         # Set refresh token as httpOnly cookie
@@ -533,9 +529,7 @@ async def verify_email_otp(
 
 @router.post("/send-login-otp", response_model=SendLoginOTPResponse)
 async def send_login_otp(
-    request: SendLoginOTPRequest, 
-    request_obj: Request,
-    db=Depends(get_db_session)
+    request: SendLoginOTPRequest, request_obj: Request, db=Depends(get_db_session)
 ) -> SendLoginOTPResponse:
     """Send OTP for email-based login.
 
@@ -550,8 +544,8 @@ async def send_login_otp(
         500: Failed to send OTP
     """
     try:
-        ip_address = getattr(request_obj.client, 'host', None) if request_obj.client else None
-        
+        ip_address = getattr(request_obj.client, "host", None) if request_obj.client else None
+
         auth_service = LocalAuthService(db)
         result = await auth_service.send_login_otp(email=request.email, ip_address=ip_address)
 
@@ -570,10 +564,10 @@ async def send_login_otp(
 
 @router.post("/verify-login-otp", response_model=TokenResponse)
 async def verify_login_otp(
-    request: VerifyLoginOTPRequest, 
-    response: Response, 
+    request: VerifyLoginOTPRequest,
+    response: Response,
     request_obj: Request,
-    db=Depends(get_db_session)
+    db=Depends(get_db_session),
 ) -> TokenResponse:
     """Verify login OTP code and authenticate user.
 
@@ -588,13 +582,11 @@ async def verify_login_otp(
         500: Login failed
     """
     try:
-        ip_address = getattr(request_obj.client, 'host', None) if request_obj.client else None
-        
+        ip_address = getattr(request_obj.client, "host", None) if request_obj.client else None
+
         auth_service = LocalAuthService(db)
         result = await auth_service.verify_login_otp(
-            otp_id=request.otp_id, 
-            otp_code=request.otp_code,
-            ip_address=ip_address
+            otp_id=request.otp_id, otp_code=request.otp_code, ip_address=ip_address
         )
 
         # Set refresh token as httpOnly cookie
