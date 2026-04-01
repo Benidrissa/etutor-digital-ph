@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
+import { API_BASE } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -50,7 +51,7 @@ export function PlacementTestInterface({ onComplete, locale }: PlacementTestInte
   useEffect(() => {
     const loadQuestions = async () => {
       try {
-        const response = await fetch('/api/v1/placement-test/questions', {
+        const response = await fetch(`${API_BASE}/api/v1/placement-test/questions`, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem('token')}`,
           },
@@ -120,7 +121,7 @@ export function PlacementTestInterface({ onComplete, locale }: PlacementTestInte
     try {
       const timeTaken = Math.floor((Date.now() - startTime) / 1000);
       
-      const response = await fetch('/api/v1/placement-test/submit', {
+      const response = await fetch(`${API_BASE}/api/v1/placement-test/submit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -148,7 +149,7 @@ export function PlacementTestInterface({ onComplete, locale }: PlacementTestInte
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Loading Assessment...</CardTitle>
+          <CardTitle>{t('title')}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center py-8">
@@ -163,10 +164,10 @@ export function PlacementTestInterface({ onComplete, locale }: PlacementTestInte
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Error</CardTitle>
+          <CardTitle>{t('title')}</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-destructive">Failed to load assessment questions.</p>
+          <p className="text-destructive">{t('error.failedToLoad')}</p>
         </CardContent>
       </Card>
     );
