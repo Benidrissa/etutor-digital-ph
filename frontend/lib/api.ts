@@ -23,7 +23,17 @@ export async function apiFetch<T>(
     ...options,
     headers,
   });
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  if (!res.ok) {
+    let message = `API error: ${res.status}`;
+    try {
+      const body = await res.json();
+      if (body?.detail?.message) message = body.detail.message;
+      else if (typeof body?.detail === 'string') message = body.detail;
+    } catch {
+      // ignore parse errors — keep the status-code message
+    }
+    throw new Error(message);
+  }
   return res.json();
 }
 

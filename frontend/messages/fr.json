@@ -590,6 +590,9 @@
     "markComplete": "Marquer comme Terminé",
     "completed": "Terminé"
   },
+  "QuizPage": {
+    "backToModule": "Retour à {module}"
+  },
   "LessonPage": {
     "modules": "Modules",
     "backToModule": "Retour au Module",
