@@ -8,7 +8,6 @@ from app.domain.services.jwt_auth_service import JWTAuthService
 from app.infrastructure.config.settings import settings
 from app.main import app
 
-
 # ---------------------------------------------------------------------------
 # Simple client (no DB) — for health checks and endpoints that don't hit DB
 # ---------------------------------------------------------------------------
@@ -42,9 +41,7 @@ async def test_engine():
 @pytest.fixture
 async def db_session(test_engine):
     """Per-test database session that rolls back after each test."""
-    session_factory = async_sessionmaker(
-        test_engine, class_=AsyncSession, expire_on_commit=False
-    )
+    session_factory = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
     async with session_factory() as session:
         yield session
         await session.rollback()
@@ -54,9 +51,7 @@ async def db_session(test_engine):
 def auth_headers():
     """JWT auth headers using the actual JWTAuthService."""
     jwt_service = JWTAuthService()
-    token = jwt_service.create_access_token(
-        user_id="test-user-uuid", email="test@example.com"
-    )
+    token = jwt_service.create_access_token(user_id="test-user-uuid", email="test@example.com")
     return {"Authorization": f"Bearer {token}"}
 
 
