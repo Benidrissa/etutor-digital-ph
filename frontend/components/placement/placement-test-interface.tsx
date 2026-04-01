@@ -51,7 +51,7 @@ export function PlacementTestInterface({ onComplete, locale }: PlacementTestInte
   useEffect(() => {
     const loadQuestions = async () => {
       try {
-        const data = await authClient.authenticatedFetch<PlacementTestData>('/api/v1/placement-test/questions');
+        const data = await authClient.authenticatedFetch<PlacementTestData>(`/api/v1/placement-test/questions?language=${locale}`);
         setTestData(data);
         setTimeLeft(data.time_limit_minutes * 60);
       } catch (error) {
@@ -62,7 +62,7 @@ export function PlacementTestInterface({ onComplete, locale }: PlacementTestInte
     };
 
     loadQuestions();
-  }, []);
+  }, [locale]);
 
   // Timer countdown
   useEffect(() => {
