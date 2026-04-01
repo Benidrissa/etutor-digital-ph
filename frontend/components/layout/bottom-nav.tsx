@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import {
   Home,
   BookOpen,
@@ -15,37 +15,38 @@ import { cn } from "@/lib/utils";
 export function BottomNav() {
   const t = useTranslations("Navigation");
   const pathname = usePathname();
+  const locale = useLocale();
 
   const navItems = [
-    { 
-      href: "/dashboard", 
-      label: t("dashboard"), 
+    {
+      href: `/${locale}/dashboard`,
+      label: t("dashboard"),
       icon: Home,
-      description: t("dashboardDescription") 
+      description: t("dashboardDescription")
     },
-    { 
-      href: "/modules", 
-      label: t("modules"), 
+    {
+      href: `/${locale}/modules`,
+      label: t("modules"),
       icon: BookOpen,
-      description: t("modulesDescription") 
+      description: t("modulesDescription")
     },
-    { 
-      href: "/flashcards", 
-      label: t("flashcards"), 
+    {
+      href: `/${locale}/flashcards`,
+      label: t("flashcards"),
       icon: CreditCard,
-      description: t("flashcardsDescription") 
+      description: t("flashcardsDescription")
     },
-    { 
-      href: "/tutor", 
-      label: t("tutor"), 
+    {
+      href: `/${locale}/tutor`,
+      label: t("tutor"),
       icon: Bot,
-      description: t("tutorDescription") 
+      description: t("tutorDescription")
     },
-    { 
-      href: "/settings", 
-      label: t("settings"), 
+    {
+      href: `/${locale}/settings`,
+      label: t("settings"),
       icon: Settings,
-      description: t("settingsDescription") 
+      description: t("settingsDescription")
     },
   ];
 
