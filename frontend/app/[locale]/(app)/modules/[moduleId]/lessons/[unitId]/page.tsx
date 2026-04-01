@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import { getLocale } from 'next-intl/server';
 import { notFound } from 'next/navigation';
-import Link from 'next/link';
+import { Link } from '@/i18n/routing';
 import { ChevronLeft } from 'lucide-react';
 
 import { getModuleById } from '@/lib/modules';

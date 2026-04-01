@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useLocale, useTranslations } from 'next-intl';
 import { z } from 'zod';
-import Link from 'next/link';
+import { Link } from '@/i18n/routing';
 import { useRouter } from 'next/navigation';
 
 import { Button } from '@/components/ui/button';
@@ -279,7 +279,7 @@ export function TOTPLoginForm() {
           <div className="text-center text-sm">
             <span className="text-muted-foreground">{t('noAccount')} </span>
             <Link 
-              href={`/${locale}/register`}
+              href="/register"
               className="font-medium text-primary hover:underline"
             >
               {t('signUp')}
