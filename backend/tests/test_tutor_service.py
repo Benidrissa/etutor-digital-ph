@@ -325,3 +325,105 @@ async def test_send_message_never_yields_text_type(tutor_service, sample_user, s
     assert len(text_type_chunks) == 0, (
         "Bug #213 regression: type='text' chunks were yielded but frontend expects type='content'"
     )
+
+
+async def test_list_conversations_returns_id_and_preview(
+    tutor_service, sample_user, sample_conversation
+):
+    """list_conversations summaries must include id, preview, and message_count."""
+    sample_conversation.messages = [
+        {
+            "role": "user",
+            "content": "What is epidemiology?",
+            "timestamp": "2026-01-01T10:00:00",
+        },
+        {
+            "role": "assistant",
+            "content": "Epidemiology is the study of disease distribution.",
+            "timestamp": "2026-01-01T10:00:05",
+        },
+    ]
+
+    mock_session = AsyncMock(spec=AsyncSession)
+
+    async def mock_execute(query):
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = [sample_conversation]
+        result.scalar.return_value = 1
+        result.scalar_one_or_none.return_value = None
+        return result
+
+    mock_session.execute = mock_execute
+
+    result = await tutor_service.list_conversations(
+        user_id=sample_user.id,
+        session=mock_session,
+    )
+
+    assert "conversations" in result
+    assert "total" in result
+    assert len(result["conversations"]) == 1
+    summary = result["conversations"][0]
+    assert "id" in summary
+    assert "preview" in summary
+    assert "message_count" in summary
+    assert summary["message_count"] == 2
+    assert "What is epidemiology?" in summary["preview"]
+
+
+async def test_get_conversation_returns_none_for_wrong_user(
+    tutor_service, sample_conversation
+):
+    """get_conversation must return None when user does not own the conversation."""
+    other_user_id = uuid.uuid4()
+    mock_session = AsyncMock(spec=AsyncSession)
+
+    async def mock_execute(query):
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = None
+        return result
+
+    mock_session.execute = mock_execute
+
+    result = await tutor_service.get_conversation(
+        user_id=other_user_id,
+        conversation_id=sample_conversation.id,
+        session=mock_session,
+    )
+
+    assert result is None
+
+
+async def test_get_conversation_returns_messages(
+    tutor_service, sample_user, sample_conversation
+):
+    """get_conversation must return id, module_id, messages, and created_at."""
+    sample_conversation.messages = [
+        {
+            "role": "user",
+            "content": "Hello",
+            "timestamp": "2026-01-01T10:00:00",
+        }
+    ]
+
+    mock_session = AsyncMock(spec=AsyncSession)
+
+    async def mock_execute(query):
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = sample_conversation
+        return result
+
+    mock_session.execute = mock_execute
+
+    result = await tutor_service.get_conversation(
+        user_id=sample_user.id,
+        conversation_id=sample_conversation.id,
+        session=mock_session,
+    )
+
+    assert result is not None
+    assert result["id"] == sample_conversation.id
+    assert "messages" in result
+    assert len(result["messages"]) == 1
+    assert result["messages"][0]["content"] == "Hello"
+    assert "created_at" in result

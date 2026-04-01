@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
 import { X, MoreVertical, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -29,42 +29,107 @@ import { ChatSkeleton } from './chat-skeleton';
 import { cn } from '@/lib/utils';
 import { authClient, AuthError } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
+import {
+  fetchConversation,
+  getCachedConversation,
+  cacheConversation,
+  updateCachedConversationList,
+  type TutorMessage,
+} from '@/lib/tutor-api';
 
 interface ChatPanelProps {
   isOpen: boolean;
   onClose: () => void;
   moduleId?: string;
   conversationId?: string | null;
+  onConversationCreated?: (summary: { id: string; preview: string; message_count: number; last_message_at: string; module_id: string | null }) => void;
   className?: string;
+  embedded?: boolean;
 }
 
-export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className }: ChatPanelProps) {
+function tutorMsgToChatMsg(msg: TutorMessage, idx: number): ChatMessage {
+  return {
+    id: `server-${idx}`,
+    content: msg.content,
+    isUser: msg.role === 'user',
+    timestamp: new Date(msg.timestamp),
+    sources: msg.sources?.map((s, i) => ({
+      title: s.source ?? String(i + 1),
+      chapter: s.chapter ?? i + 1,
+      page: s.page ?? 0,
+    })),
+  };
+}
+
+export function ChatPanel({ isOpen, onClose, moduleId, conversationId, onConversationCreated, className, embedded = false }: ChatPanelProps) {
   const t = useTranslations('ChatTutor');
   const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [showClearDialog, setShowClearDialog] = useState(false);
   const [currentUsage, setCurrentUsage] = useState(0);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(conversationId ?? null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const maxDailyUsage = 50;
   const isLimitReached = currentUsage >= maxDailyUsage;
 
-  // Reset messages when conversation changes (including new conversation)
+  const isNewConversation = !conversationId || conversationId.startsWith('new-');
+
+  const loadConversationHistory = useCallback(async (convId: string) => {
+    setIsHistoryLoading(true);
+    const cached = getCachedConversation(convId);
+    if (cached && cached.messages.length > 0) {
+      const loaded: ChatMessage[] = cached.messages.map(tutorMsgToChatMsg);
+      setMessages(loaded);
+      setCurrentUsage(cached.messages.filter(m => m.role === 'user').length);
+      setIsHistoryLoading(false);
+    }
+    try {
+      const data = await fetchConversation(convId);
+      if (data.messages.length > 0) {
+        const loaded: ChatMessage[] = data.messages.map(tutorMsgToChatMsg);
+        setMessages(loaded);
+        setCurrentUsage(data.messages.filter(m => m.role === 'user').length);
+      } else {
+        setMessages([{
+          id: 'welcome',
+          content: t('welcomeMessage'),
+          isUser: false,
+          timestamp: new Date(),
+        }]);
+      }
+    } catch {
+      if (!cached) {
+        setMessages([{
+          id: 'welcome',
+          content: t('welcomeMessage'),
+          isUser: false,
+          timestamp: new Date(),
+        }]);
+      }
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  }, [t]);
+
   useEffect(() => {
-    setMessages([
-      {
+    setActiveConversationId(conversationId ?? null);
+    if (conversationId && !isNewConversation) {
+      loadConversationHistory(conversationId);
+    } else {
+      setMessages([{
         id: 'welcome',
         content: t('welcomeMessage'),
         isUser: false,
         timestamp: new Date(),
-      }
-    ]);
-    setCurrentUsage(0);
-  }, [conversationId, t]);
+      }]);
+      setCurrentUsage(0);
+    }
+  }, [conversationId, isNewConversation, loadConversationHistory, t]);
 
-  // Scroll to bottom when new messages are added
   useEffect(() => {
     if (scrollAreaRef.current) {
       const scrollArea = scrollAreaRef.current;
@@ -87,6 +152,8 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
     setIsLoading(true);
     setIsTyping(true);
 
+    const sendConversationId = isNewConversation ? null : activeConversationId;
+
     try {
       const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
       let token: string;
@@ -107,7 +174,8 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
         },
         body: JSON.stringify({
           message: messageContent,
-          conversation_id: null,
+          conversation_id: sendConversationId,
+          module_id: moduleId ?? null,
         }),
       });
 
@@ -119,13 +187,12 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
         throw new Error(`API error: ${response.status}`);
       }
 
-      // Read SSE stream
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let fullContent = "";
       const aiMessageId = (Date.now() + 1).toString();
+      let serverConversationId: string | null = null;
 
-      // Add placeholder message
       setMessages(prev => [...prev, {
         id: aiMessageId,
         content: "",
@@ -145,7 +212,10 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
             if (!line.startsWith("data: ")) continue;
             try {
               const chunk = JSON.parse(line.slice(6));
-              if (chunk.type === "content" && chunk.data?.text) {
+              if (chunk.type === "conversation_id" && chunk.data?.conversation_id) {
+                serverConversationId = chunk.data.conversation_id;
+                setActiveConversationId(serverConversationId);
+              } else if (chunk.type === "content" && chunk.data?.text) {
                 fullContent += chunk.data.text;
                 setMessages(prev => prev.map(m =>
                   m.id === aiMessageId ? { ...m, content: fullContent } : m
@@ -159,6 +229,45 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
                     })),
                   } : m
                 ));
+              } else if (chunk.type === "finished" && chunk.data?.conversation_id) {
+                const finishedConvId = chunk.data.conversation_id as string;
+                setActiveConversationId(finishedConvId);
+                serverConversationId = finishedConvId;
+
+                setMessages(prev => {
+                  const convMessages = prev.filter(m => m.id !== 'welcome');
+                  const apiMessages: TutorMessage[] = convMessages.map(m => ({
+                    role: m.isUser ? 'user' : 'assistant',
+                    content: m.content,
+                    sources: (m.sources ?? []).map(s => ({ source: s.title, chapter: s.chapter, page: s.page })),
+                    timestamp: m.timestamp.toISOString(),
+                    activity_suggestions: [],
+                  }));
+                  cacheConversation({
+                    id: finishedConvId,
+                    module_id: moduleId ?? null,
+                    messages: apiMessages,
+                    created_at: new Date().toISOString(),
+                  });
+                  const lastUserMsg = convMessages.filter(m => m.isUser).at(-1);
+                  updateCachedConversationList({
+                    id: finishedConvId,
+                    module_id: moduleId ?? null,
+                    message_count: convMessages.length,
+                    last_message_at: new Date().toISOString(),
+                    preview: lastUserMsg ? lastUserMsg.content.slice(0, 50) + '...' : '',
+                  });
+                  if (onConversationCreated && isNewConversation) {
+                    onConversationCreated({
+                      id: finishedConvId,
+                      preview: lastUserMsg ? lastUserMsg.content.slice(0, 50) + '...' : '',
+                      message_count: convMessages.length,
+                      last_message_at: new Date().toISOString(),
+                      module_id: moduleId ?? null,
+                    });
+                  }
+                  return prev;
+                });
               } else if (chunk.type === "error") {
                 const errorCode = chunk.data?.code;
                 fullContent = errorCode === "limit_reached" ? t('errorLimitReached') : t('error');
@@ -210,13 +319,14 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
     <>
       <div 
         className={cn(
-          // Mobile: Full screen overlay
-          'fixed inset-0 z-50 bg-background',
-          // Desktop: Side panel
-          'md:relative md:inset-auto md:w-96 md:border-l',
-          // Animation
-          'transition-transform duration-300 ease-in-out',
-          isOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0',
+          embedded
+            ? 'flex flex-col h-full w-full bg-background'
+            : cn(
+                'fixed inset-0 z-50 flex flex-col bg-background',
+                'md:relative md:inset-auto md:w-96 md:border-l',
+                'transition-transform duration-300 ease-in-out',
+                isOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'
+              ),
           className
         )}
       >
@@ -261,7 +371,7 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
             ref={scrollAreaRef}
             className="flex-1 overflow-y-auto px-4 py-2"
           >
-            {isLoading && messages.length <= 1 ? (
+            {isHistoryLoading ? (
               <ChatSkeleton />
             ) : (
               <>
@@ -273,7 +383,7 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
             )}
 
             {/* Empty state */}
-            {messages.length === 0 && !isLoading && (
+            {messages.length === 0 && !isLoading && !isHistoryLoading && (
               <div className="flex flex-col items-center justify-center h-full text-center p-6">
                 <div className="text-muted-foreground mb-2">
                   {t('emptyState')}
