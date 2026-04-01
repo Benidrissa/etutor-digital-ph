@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from '@/i18n/routing';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -24,8 +24,6 @@ const TOTAL_STEPS = 4;
 export function OnboardingFlow() {
   const t = useTranslations('Onboarding');
   const router = useRouter();
-  const pathname = usePathname();
-  const locale = pathname.split('/')[1]; // Extract locale from path
   const [currentStep, setCurrentStep] = useState(1);
   const [data, setData] = useState<OnboardingData>({
     language: 'fr',
@@ -77,7 +75,7 @@ export function OnboardingFlow() {
       });
       
       // Redirect to diagnostic assessment
-      router.push(`/${locale}/placement-test`);
+      router.push('/placement-test');
     } catch (err) {
       console.error('Onboarding completion failed:', err);
     }

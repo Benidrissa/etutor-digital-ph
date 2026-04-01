@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useLocale, useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 import { z } from 'zod';
 import { Link, useRouter } from '@/i18n/routing';
 
@@ -37,7 +37,6 @@ export function TOTPLoginForm() {
   const t = useTranslations('Auth');
   const tCommon = useTranslations('Common');
   const router = useRouter();
-  const locale = useLocale();
   
   const [isLoading, setIsLoading] = useState(false);
   const [showMagicLink, setShowMagicLink] = useState(false);
@@ -79,7 +78,7 @@ export function TOTPLoginForm() {
       });
       
       // Login successful - redirect to dashboard
-      router.push(`/${locale}/dashboard`);
+      router.push('/dashboard');
     } catch (error) {
       console.error('Login error:', error);
       
