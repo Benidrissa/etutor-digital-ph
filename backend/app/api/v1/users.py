@@ -22,26 +22,59 @@ router = APIRouter(prefix="/users", tags=["Users"])
 
 @router.get("/me", response_model=UserProfileResponse)
 async def get_current_user_profile(
-    current_user: User = Depends(get_current_user),
+    current_user=Depends(get_current_user),
+    db=Depends(get_db_session),
 ) -> UserProfileResponse:
     """Get current user profile.
 
     Returns:
         Current user's profile information
     """
-    return UserProfileResponse(
-        id=str(current_user.id),
-        email=current_user.email,
-        name=current_user.name,
-        preferred_language=current_user.preferred_language,
-        country=current_user.country,
-        professional_role=current_user.professional_role,
-        current_level=current_user.current_level,
-        streak_days=current_user.streak_days,
-        avatar_url=current_user.avatar_url,
-        last_active=current_user.last_active.isoformat(),
-        created_at=current_user.created_at.isoformat(),
-    )
+    try:
+        # current_user is an AuthenticatedUser from JWT claims
+        # We need to fetch the full user profile from the database
+        user_repo = UserRepository(db)
+
+        # Handle string UUID from JWT if necessary
+        user_id = current_user.id
+        if isinstance(user_id, str):
+            from uuid import UUID
+
+            user_id = UUID(user_id)
+
+        # Fetch complete user profile from database
+        full_user = await user_repo.get_by_id(user_id)
+
+        if not full_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="User profile not found"
+            )
+
+        logger.info("Retrieved user profile", user_id=str(user_id))
+
+        return UserProfileResponse(
+            id=str(full_user.id),
+            email=full_user.email,
+            name=full_user.name,
+            preferred_language=full_user.preferred_language,
+            country=full_user.country,
+            professional_role=full_user.professional_role,
+            current_level=full_user.current_level,
+            streak_days=full_user.streak_days,
+            avatar_url=full_user.avatar_url,
+            last_active=full_user.last_active.isoformat(),
+            created_at=full_user.created_at.isoformat(),
+        )
+
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        logger.error("Failed to retrieve user profile", user_id=str(current_user.id), error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve user profile",
+        )
 
 
 @router.patch("/me", response_model=ProfileUpdateResponse)
