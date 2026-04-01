@@ -47,7 +47,7 @@ interface SessionStats {
   dailyTargetMet: boolean;
 }
 
-type SessionState = 'loading' | 'ready' | 'reviewing' | 'summary';
+type SessionState = 'loading' | 'ready' | 'reviewing' | 'summary' | 'empty';
 
 export function FlashcardsContainer() {
   const t = useTranslations('Flashcards');
@@ -152,11 +152,16 @@ export function FlashcardsContainer() {
   });
 
   const cardsCount = dueCards?.cards?.length ?? 0;
+  const totalDue = dueCards?.total_due ?? 0;
   useEffect(() => {
     if (!isLoading) {
-      setSessionState(cardsCount > 0 ? 'ready' : 'summary');
+      if (dueCards && totalDue === 0 && cardsCount === 0) {
+        setSessionState('empty');
+      } else {
+        setSessionState(cardsCount > 0 ? 'ready' : 'summary');
+      }
     }
-  }, [isLoading, cardsCount]);
+  }, [isLoading, cardsCount, totalDue, dueCards]);
 
   const handleStartSession = () => {
     setSessionState('reviewing');
@@ -222,6 +227,27 @@ export function FlashcardsContainer() {
           </div>
           <p className="text-muted-foreground">{t('loading')}</p>
         </div>
+      </div>
+    );
+  }
+
+  if (sessionState === 'empty') {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Card className="max-w-md w-full mx-4">
+          <CardContent className="text-center space-y-4 py-12">
+            <div className="text-6xl">📚</div>
+            <h1 className="text-2xl font-bold">{t('noFlashcardsYet')}</h1>
+            <p className="text-muted-foreground">{t('noFlashcardsDescription')}</p>
+            <Button
+              onClick={() => router.push('/modules')}
+              className="w-full min-h-11"
+              size="lg"
+            >
+              {t('goToModules')}
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -297,17 +323,5 @@ export function FlashcardsContainer() {
     );
   }
 
-  // No cards due — show empty state
-  return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="text-center py-12">
-        <div className="text-6xl mb-4">🎉</div>
-        <h1 className="text-3xl font-bold mb-2">{t('noCardsToday')}</h1>
-        <p className="text-muted-foreground mb-6">{t('wellDone')}</p>
-        <Button onClick={() => refetch()}>
-          {t('tryAgain')}
-        </Button>
-      </div>
-    </div>
-  );
+  return null;
 }

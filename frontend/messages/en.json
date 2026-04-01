@@ -375,7 +375,10 @@
     "target": "Target",
     "startReviewSession": "Start Review Session",
     "reviewDescription": "Review flashcards with spaced repetition for effective learning",
-    "redirectingToLogin": "Redirecting to login..."
+    "redirectingToLogin": "Redirecting to login...",
+    "noFlashcardsYet": "No flashcards yet",
+    "noFlashcardsDescription": "Complete modules to generate flashcards.",
+    "goToModules": "Go to Modules"
   },
   "Onboarding": {
     "welcome": "Welcome to SantePublique AOF",
