@@ -40,7 +40,7 @@ class ClaudeService:
         """
         try:
             async with self.client.messages.stream(
-                model="claude-3-5-sonnet-20241022",
+                model="claude-sonnet-4-6-20250514",
                 max_tokens=4096,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
@@ -71,7 +71,7 @@ class ClaudeService:
         """
         try:
             response = await self.client.messages.create(
-                model="claude-3-5-sonnet-20241022",
+                model="claude-sonnet-4-6-20250514",
                 max_tokens=4096,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
@@ -102,7 +102,7 @@ class ClaudeService:
         """
         try:
             response = await self.client.messages.create(
-                model="claude-3-5-sonnet-20241022",
+                model="claude-sonnet-4-6-20250514",
                 max_tokens=4096,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
