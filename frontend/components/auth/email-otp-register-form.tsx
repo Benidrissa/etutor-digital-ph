@@ -156,7 +156,8 @@ export function EmailOTPRegisterForm() {
   };
 
   const handleOTPComplete = (value: string) => {
-    handleOTPSubmit({ otp_code: value });
+    setOTPValue('otp_code', value);
+    handleOTPSubmit(onOTPSubmit)();
   };
 
   const retryRegistration = () => {
