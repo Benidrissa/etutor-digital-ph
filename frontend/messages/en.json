@@ -486,6 +486,22 @@
       "continueToLearning": "Continue to Dashboard",
       "retakeAvailable": "You can retake this assessment in 3 months"
     },
+    "previousResult": {
+      "title": "Your Last Assessment",
+      "takenOn": "Taken on {date}",
+      "score": "Score: {score}%",
+      "assignedLevel": "Level {level}",
+      "domainBreakdown": "Performance by Domain",
+      "domains": {
+        "level_1": "Foundations",
+        "level_2": "Epidemiology",
+        "level_3": "Advanced Stats",
+        "level_4": "Policy & Research"
+      },
+      "canRetakeOn": "Retake available from {date}",
+      "retakeNow": "Retake Assessment",
+      "startDashboard": "Go to Dashboard"
+    },
     "error": {
       "failedToLoad": "Failed to load assessment. Please try again.",
       "failedToSubmit": "Failed to submit assessment. Please check your connection and try again.",
@@ -642,6 +658,10 @@
     "placementTest": "Placement Assessment",
     "placementTestDescription": "Retake the diagnostic assessment to reassess your level",
     "retakePlacementTest": "Retake Assessment",
+    "placementLastTaken": "Last taken: {date}",
+    "placementScore": "Score: {score}%",
+    "placementLevel": "Assigned level: {level}",
+    "placementNoResult": "No assessment taken yet",
     "edit": "Edit",
     "cancel": "Cancel",
     "save": "Save Changes",

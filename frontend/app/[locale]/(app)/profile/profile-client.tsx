@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -11,6 +11,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +23,24 @@ import { Link } from "@/i18n/routing";
 import { Upload, User as UserIcon, AlertTriangle, CheckCircle, ClipboardList } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+interface PlacementAttempt {
+  id: string;
+  assigned_level: number;
+  adjusted_score: number;
+  domain_scores: Record<string, number>;
+  attempted_at: string;
+  can_retake_after: string | null;
+}
+
+const DOMAIN_KEYS = ["level_1", "level_2", "level_3", "level_4"] as const;
+
+const DOMAIN_LABELS: Record<string, { en: string; fr: string }> = {
+  level_1: { en: "Foundations", fr: "Fondements" },
+  level_2: { en: "Epidemiology", fr: "Épidémiologie" },
+  level_3: { en: "Advanced Stats", fr: "Stats Avancées" },
+  level_4: { en: "Policy & Research", fr: "Politique & Recherche" },
+};
 
 const fetchUserProfile = async () => {
   const response = await fetch(`${API_BASE}/api/v1/users/me`, {
@@ -58,6 +77,16 @@ const uploadAvatar = async (file: File) => {
     body: formData,
   });
   if (!response.ok) throw new Error("Failed to upload avatar");
+  return response.json();
+};
+
+const fetchPlacementResult = async (): Promise<PlacementAttempt | null> => {
+  const response = await fetch(`${API_BASE}/api/v1/placement-test/results`, {
+    headers: {
+      Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+    },
+  });
+  if (!response.ok) return null;
   return response.json();
 };
 
@@ -104,6 +133,7 @@ const PROFESSIONAL_ROLES = [
 
 export function ProfileClient() {
   const t = useTranslations("Profile");
+  const locale = useLocale();
   const [isEditing, setIsEditing] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [showRecontextAlert, setShowRecontextAlert] = useState(false);
@@ -113,6 +143,12 @@ export function ProfileClient() {
     queryKey: ["profile"],
     queryFn: fetchUserProfile,
     staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+
+  const { data: placementResult } = useQuery({
+    queryKey: ["placementResult"],
+    queryFn: fetchPlacementResult,
+    staleTime: 10 * 60 * 1000,
   });
 
   const form = useForm<ProfileFormData>({
@@ -451,7 +487,43 @@ export function ProfileClient() {
           </CardTitle>
           <CardDescription>{t("placementTestDescription")}</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {placementResult ? (
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="secondary">
+                  {t("placementLevel", { level: placementResult.assigned_level })}
+                </Badge>
+                <Badge variant="outline">
+                  {t("placementScore", { score: Math.round(placementResult.adjusted_score) })}
+                </Badge>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {t("placementLastTaken", {
+                  date: new Date(placementResult.attempted_at).toLocaleDateString(),
+                })}
+              </p>
+              {Object.keys(placementResult.domain_scores).length > 0 && (
+                <div className="space-y-2">
+                  {DOMAIN_KEYS.map((key) => {
+                    const score = placementResult.domain_scores[key];
+                    if (score === undefined) return null;
+                    return (
+                      <div key={key} className="space-y-1">
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>{DOMAIN_LABELS[key]?.[locale === "fr" ? "fr" : "en"] ?? key}</span>
+                          <span>{Math.round(score)}%</span>
+                        </div>
+                        <Progress value={score} className="h-1.5" />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">{t("placementNoResult")}</p>
+          )}
           <Link href="/placement-test" className={buttonVariants({ variant: "default" })}>
             {t("retakePlacementTest")}
           </Link>

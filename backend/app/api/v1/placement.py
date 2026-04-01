@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -14,7 +15,11 @@ from ...domain.models.quiz import PlacementTestAttempt
 from ...domain.models.user import User
 from ...domain.repositories.implementations.user_repository import UserRepository
 from ...domain.services.placement_service import PlacementService
-from .schemas.placement import PlacementTestResponse, PlacementTestSubmission
+from .schemas.placement import (
+    PlacementTestAttemptResponse,
+    PlacementTestResponse,
+    PlacementTestSubmission,
+)
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/placement-test", tags=["Placement Test"])
@@ -228,6 +233,63 @@ async def skip_placement_test(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to skip placement test",
+        )
+
+
+@router.get("/results", response_model=PlacementTestAttemptResponse | None)
+async def get_placement_test_results(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> PlacementTestAttemptResponse | None:
+    """Get the latest placement test attempt for the current user.
+
+    Args:
+        current_user: Current authenticated user
+        db: Database session
+
+    Returns:
+        Latest placement test attempt, or null if no attempt exists
+
+    Raises:
+        500: Failed to fetch results
+    """
+    try:
+        result = await db.execute(
+            select(PlacementTestAttempt)
+            .where(PlacementTestAttempt.user_id == current_user.id)
+            .order_by(desc(PlacementTestAttempt.attempted_at))
+            .limit(1)
+        )
+        attempt = result.scalar_one_or_none()
+
+        if attempt is None:
+            return None
+
+        logger.info(
+            "Placement test results fetched",
+            user_id=str(current_user.id),
+            attempt_id=str(attempt.id),
+        )
+
+        return PlacementTestAttemptResponse(
+            id=str(attempt.id),
+            assigned_level=attempt.assigned_level,
+            raw_score=attempt.raw_score,
+            adjusted_score=attempt.adjusted_score,
+            domain_scores=attempt.domain_scores or {},
+            competency_areas=attempt.competency_areas or [],
+            recommendations=attempt.recommendations or [],
+            attempted_at=attempt.attempted_at,
+            can_retake_after=attempt.can_retake_after,
+        )
+
+    except Exception as e:
+        logger.error(
+            "Failed to fetch placement test results", error=str(e), user_id=str(current_user.id)
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch placement test results",
         )
 
 

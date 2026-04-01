@@ -486,6 +486,22 @@
       "continueToLearning": "Continuer vers le Tableau de Bord",
       "retakeAvailable": "Vous pouvez repasser cette évaluation dans 3 mois"
     },
+    "previousResult": {
+      "title": "Votre Dernière Évaluation",
+      "takenOn": "Passée le {date}",
+      "score": "Score : {score}%",
+      "assignedLevel": "Niveau {level}",
+      "domainBreakdown": "Performance par Domaine",
+      "domains": {
+        "level_1": "Fondements",
+        "level_2": "Épidémiologie",
+        "level_3": "Stats Avancées",
+        "level_4": "Politique & Recherche"
+      },
+      "canRetakeOn": "Retentative disponible à partir du {date}",
+      "retakeNow": "Repasser l'Évaluation",
+      "startDashboard": "Aller au Tableau de Bord"
+    },
     "error": {
       "failedToLoad": "Échec du chargement de l'évaluation. Veuillez réessayer.",
       "failedToSubmit": "Échec de la soumission de l'évaluation. Veuillez vérifier votre connexion et réessayer.",
@@ -642,6 +658,10 @@
     "placementTest": "Évaluation Diagnostique",
     "placementTestDescription": "Repasser l'évaluation diagnostique pour réévaluer votre niveau",
     "retakePlacementTest": "Repasser l'Évaluation",
+    "placementLastTaken": "Passée le : {date}",
+    "placementScore": "Score : {score}%",
+    "placementLevel": "Niveau assigné : {level}",
+    "placementNoResult": "Aucune évaluation passée",
     "edit": "Modifier",
     "cancel": "Annuler",
     "save": "Sauvegarder",

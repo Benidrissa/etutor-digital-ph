@@ -10,19 +10,92 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Clock, Target, BookOpen, AlertCircle } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { Clock, Target, BookOpen, AlertCircle, CheckCircle } from 'lucide-react';
+import type { PreviousAttempt } from './placement-test-container';
 
 interface PlacementTestIntroProps {
   onStartTest: () => void;
   onSkipTest: () => void;
   locale: string;
+  previousAttempt: PreviousAttempt | null;
+  loadingPrevious: boolean;
 }
 
-export function PlacementTestIntro({ onStartTest, onSkipTest }: PlacementTestIntroProps) {
+const DOMAIN_ORDER = ['level_1', 'level_2', 'level_3', 'level_4'] as const;
+
+export function PlacementTestIntro({
+  onStartTest,
+  onSkipTest,
+  previousAttempt,
+  loadingPrevious,
+}: PlacementTestIntroProps) {
   const t = useTranslations('PlacementTest');
+
+  const canRetake =
+    !previousAttempt?.can_retake_after ||
+    new Date(previousAttempt.can_retake_after) <= new Date();
 
   return (
     <div className="space-y-6">
+      {/* Previous result card */}
+      {!loadingPrevious && previousAttempt && (
+        <Card className="border-green-200 bg-green-50">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-green-900">
+              <CheckCircle className="h-5 w-5 text-green-600" />
+              {t('previousResult.title')}
+            </CardTitle>
+            <CardDescription className="text-green-700">
+              {t('previousResult.takenOn', {
+                date: new Date(previousAttempt.attempted_at).toLocaleDateString(),
+              })}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap gap-3">
+              <Badge className="bg-green-700 text-white">
+                {t('previousResult.assignedLevel', { level: previousAttempt.assigned_level })}
+              </Badge>
+              <Badge variant="outline" className="border-green-600 text-green-800">
+                {t('previousResult.score', {
+                  score: Math.round(previousAttempt.adjusted_score),
+                })}
+              </Badge>
+            </div>
+
+            {Object.keys(previousAttempt.domain_scores).length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-green-900">
+                  {t('previousResult.domainBreakdown')}
+                </p>
+                {DOMAIN_ORDER.map((key) => {
+                  const score = previousAttempt.domain_scores[key];
+                  if (score === undefined) return null;
+                  return (
+                    <div key={key} className="space-y-1">
+                      <div className="flex justify-between text-xs text-green-800">
+                        <span>{t(`previousResult.domains.${key}`)}</span>
+                        <span>{Math.round(score)}%</span>
+                      </div>
+                      <Progress value={score} className="h-2" />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {!canRetake && previousAttempt.can_retake_after && (
+              <p className="text-xs text-amber-700">
+                {t('previousResult.canRetakeOn', {
+                  date: new Date(previousAttempt.can_retake_after).toLocaleDateString(),
+                })}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader className="text-center">
           <CardTitle className="text-3xl font-bold">{t('title')}</CardTitle>
@@ -96,17 +169,22 @@ export function PlacementTestIntro({ onStartTest, onSkipTest }: PlacementTestInt
               onClick={onStartTest}
               className="flex-1 min-h-12 text-lg font-semibold"
               size="lg"
+              disabled={!canRetake}
             >
-              {t('startTest')}
+              {previousAttempt
+                ? t('previousResult.retakeNow')
+                : t('startTest')}
             </Button>
-            <Button
-              onClick={onSkipTest}
-              variant="outline"
-              className="flex-1 min-h-12"
-              size="lg"
-            >
-              {t('skipTest')}
-            </Button>
+            {!previousAttempt && (
+              <Button
+                onClick={onSkipTest}
+                variant="outline"
+                className="flex-1 min-h-12"
+                size="lg"
+              >
+                {t('skipTest')}
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>

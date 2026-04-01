@@ -1,7 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useState, useEffect } from 'react';
 import { PlacementTestIntro } from './placement-test-intro';
 import { PlacementTestInterface } from './placement-test-interface';
 import { PlacementTestResults } from './placement-test-results';
@@ -22,10 +21,49 @@ interface PlacementTestResult {
   skipped?: boolean;
 }
 
+export interface PreviousAttempt {
+  id: string;
+  assigned_level: number;
+  raw_score: number;
+  adjusted_score: number;
+  domain_scores: Record<string, number>;
+  competency_areas: string[];
+  recommendations: string[];
+  attempted_at: string;
+  can_retake_after: string | null;
+}
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 export function PlacementTestContainer({ locale }: PlacementTestContainerProps) {
-  const t = useTranslations('PlacementTest');
   const [state, setState] = useState<PlacementTestState>('intro');
   const [result, setResult] = useState<PlacementTestResult | null>(null);
+  const [previousAttempt, setPreviousAttempt] = useState<PreviousAttempt | null>(null);
+  const [loadingPrevious, setLoadingPrevious] = useState(true);
+
+  useEffect(() => {
+    const fetchPreviousResult = async () => {
+      try {
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+          setLoadingPrevious(false);
+          return;
+        }
+        const response = await fetch(`${API_BASE}/api/v1/placement-test/results`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setPreviousAttempt(data);
+        }
+      } catch {
+        // silently ignore — no previous result
+      } finally {
+        setLoadingPrevious(false);
+      }
+    };
+    fetchPreviousResult();
+  }, []);
 
   const handleStartTest = () => {
     setState('assessment');
@@ -33,11 +71,11 @@ export function PlacementTestContainer({ locale }: PlacementTestContainerProps) 
 
   const handleSkipTest = async () => {
     try {
-      const response = await fetch('/api/v1/placement-test/skip', {
+      const response = await fetch(`${API_BASE}/api/v1/placement-test/skip`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          Authorization: `Bearer ${localStorage.getItem('access_token')}`,
         },
       });
 
@@ -65,6 +103,8 @@ export function PlacementTestContainer({ locale }: PlacementTestContainerProps) 
           onStartTest={handleStartTest}
           onSkipTest={handleSkipTest}
           locale={locale}
+          previousAttempt={previousAttempt}
+          loadingPrevious={loadingPrevious}
         />
       );
 
