@@ -51,7 +51,7 @@ export function PlacementTestInterface({ onComplete, locale }: PlacementTestInte
   useEffect(() => {
     const loadQuestions = async () => {
       try {
-        const data = await authClient.authenticatedFetch<PlacementTestData>('/api/v1/placement-test/questions');
+        const data = await authClient.authenticatedFetch<PlacementTestData>(`/api/v1/placement-test/questions?language=${locale}`);
         setTestData(data);
         setTimeLeft(data.time_limit_minutes * 60);
       } catch (error) {
@@ -195,7 +195,7 @@ export function PlacementTestInterface({ onComplete, locale }: PlacementTestInte
               {currentQuestion.domain.replace('_', ' ').toUpperCase()}
             </Badge>
             <span className="text-sm text-muted-foreground">
-              {answeredCount}/{testData.total_questions} answered
+              {t('answered', { count: answeredCount, total: testData.total_questions })}
             </span>
           </div>
         </CardHeader>
