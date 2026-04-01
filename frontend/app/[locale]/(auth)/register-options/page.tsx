@@ -1,5 +1,5 @@
 import { getTranslations } from 'next-intl/server';
-import { Button } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -8,6 +8,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Link } from '@/i18n/routing';
+import { cn } from '@/lib/utils';
 
 interface Props {
   params: {
@@ -41,11 +42,12 @@ export default async function RegisterOptionsPage({ params }: Props) {
                   <p className="text-sm text-muted-foreground">{t('emailVerificationDesc')}</p>
                 </div>
               </div>
-              <Button asChild className="w-full min-h-11">
-                <Link href={`/${params.locale}/register-email-otp`}>
-                  {t('continueWithEmail')}
-                </Link>
-              </Button>
+              <Link 
+                href={`/${params.locale}/register-email-otp`}
+                className={cn(buttonVariants({ variant: "default" }), "w-full min-h-11")}
+              >
+                {t('continueWithEmail')}
+              </Link>
               <div className="text-xs text-muted-foreground">
                 {t('emailVerificationBenefits')}
               </div>
@@ -65,11 +67,12 @@ export default async function RegisterOptionsPage({ params }: Props) {
                     <p className="text-sm text-muted-foreground">{t('authenticatorAppDesc')}</p>
                   </div>
                 </div>
-                <Button asChild variant="outline" className="w-full min-h-11">
-                  <Link href={`/${params.locale}/register-totp`}>
-                    {t('continueWithAuthenticator')}
-                  </Link>
-                </Button>
+                <Link 
+                  href={`/${params.locale}/register-totp`}
+                  className={cn(buttonVariants({ variant: "outline" }), "w-full min-h-11")}
+                >
+                  {t('continueWithAuthenticator')}
+                </Link>
                 <div className="text-xs text-muted-foreground">
                   {t('authenticatorAppBenefits')}
                 </div>
