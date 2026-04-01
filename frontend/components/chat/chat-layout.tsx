@@ -12,9 +12,12 @@ function ChatUIComponents() {
     ? pathname.split('/modules/')[1]?.split('/')[0]
     : undefined;
 
+  // Hide floating button when already on the tutor page
+  const isOnTutorPage = pathname.endsWith('/tutor');
+
   return (
     <>
-      <FloatingChatButton onClick={openChat} />
+      {!isOnTutorPage && <FloatingChatButton onClick={openChat} />}
       <ChatPanel 
         isOpen={isOpen} 
         onClose={closeChat}
