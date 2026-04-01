@@ -148,7 +148,7 @@ export function PlacementTestInterface({ onComplete, locale }: PlacementTestInte
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Loading Assessment...</CardTitle>
+          <CardTitle>{t('loading', { ns: 'Common' })}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center py-8">
@@ -163,10 +163,10 @@ export function PlacementTestInterface({ onComplete, locale }: PlacementTestInte
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Error</CardTitle>
+          <CardTitle>{t('error', { ns: 'Common' })}</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-destructive">Failed to load assessment questions.</p>
+          <p className="text-destructive">{t('error.failedToLoad')}</p>
         </CardContent>
       </Card>
     );
