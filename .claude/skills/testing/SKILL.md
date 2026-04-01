@@ -69,11 +69,10 @@ class TestLessonGenerationService:
 import pytest
 from httpx import AsyncClient, ASGITransport
 
-@pytest.fixture
-async def client(app, db_session):
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
+## NOTE: Fixtures are defined in conftest.py (see above). Two client fixtures:
+## - `client` — simple client, no DB. Use for health/smoke tests.
+## - `authenticated_client` — client with DB session override. Use for integration tests.
+## Also: `db_session`, `auth_headers`, `test_engine`
 
 class TestModuleRoutes:
     async def test_list_modules_returns_200(self, client, auth_headers):
@@ -119,30 +118,83 @@ class TestQuizRoutes:
 
 ### conftest.py pattern
 
+These fixtures exist in `backend/tests/conftest.py` and match the actual codebase imports.
+Note: `asyncio_mode = "auto"` in pyproject.toml handles the event loop — do NOT create a manual `event_loop` fixture.
+
 ```python
 import pytest
-import asyncio
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from app.domain.models.base import Base
+from app.domain.services.jwt_auth_service import JWTAuthService
+from app.infrastructure.config.settings import settings
+from app.infrastructure.persistence.database import get_db_session
+from app.main import app
+
 
 @pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
+async def test_engine():
+    """Create test database engine and tables."""
+    engine = create_async_engine(settings.database_url, echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield engine
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await engine.dispose()
+
 
 @pytest.fixture
-async def db_session(engine):
-    async with AsyncSession(engine) as session:
+async def db_session(test_engine):
+    """Per-test database session that rolls back after each test."""
+    session_factory = async_sessionmaker(
+        test_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    async with session_factory() as session:
         yield session
         await session.rollback()
 
+
 @pytest.fixture
 def auth_headers():
-    token = create_test_jwt(user_id="test-user", language="fr", country="senegal")
+    """JWT auth headers using the actual JWTAuthService."""
+    jwt_service = JWTAuthService()
+    token = jwt_service.create_access_token(
+        user_id="test-user-uuid", email="test@example.com"
+    )
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+async def client():
+    """Simple test client (no DB). Use for health/smoke tests."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+
+@pytest.fixture
+async def authenticated_client(db_session):
+    """Test client with DB override. Use for integration tests."""
+    async def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_db_session] = override_get_db
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+    app.dependency_overrides.clear()
 ```
 
 ## Frontend testing
+
+**Prerequisites:** These dev dependencies must be installed in `frontend/`:
+`vitest`, `@vitejs/plugin-react`, `@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom`, `jsdom`
+
+Config: `frontend/vitest.config.ts` and `frontend/vitest.setup.ts` must exist.
+Scripts in `package.json`: `"test": "vitest"`, `"test:run": "vitest --run"`
 
 ### Component tests (Vitest + React Testing Library)
 

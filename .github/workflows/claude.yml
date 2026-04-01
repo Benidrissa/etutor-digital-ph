@@ -42,7 +42,7 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.PAT_TOKEN }}
-          model: "claude-sonnet-4-20250514"
+          model: "claude-sonnet-4-6"
           trigger_phrase: "@claude"
           timeout_minutes: 360
           allowed_tools: |
@@ -90,15 +90,29 @@ jobs:
 
             STEP 3 — Lint and test:
                cd backend && uv run ruff check --fix . && uv run ruff format . && uv run pytest
+               cd ../frontend && npm run lint && npm test -- --run
 
             STEP 4 — Commit:
-               git add -A && git commit -m "feat(scope): description (#N)"
+               git add -A -- ':!.playwright-mcp/' ':!.claude/settings.local.json'
+               git commit -m "feat(scope): description (#N)"
 
             STEP 5 — Push:
                git push -u origin feature/issue-N-short-desc
 
-            STEP 6 — Create PR (MANDATORY — do NOT skip this step):
-               gh pr create --base dev --title "feat(scope): short description" --body "Closes #N"
+            STEP 6 — Create PR with DETAILED body (MANDATORY — do NOT skip this step):
+               gh pr create --base dev --title "feat(scope): short description" \
+                 --body "## Summary
+               <describe what changed and why>
+
+               ## Changes
+               <bullet list of files changed>
+
+               ## Test plan
+               - [ ] Backend tests pass
+               - [ ] Frontend lint/tests pass
+               - [ ] Manually verified on mobile viewport
+
+               Closes #N"
 
             STEP 7 — Verify PR was created:
                gh pr list --head feature/issue-N-short-desc

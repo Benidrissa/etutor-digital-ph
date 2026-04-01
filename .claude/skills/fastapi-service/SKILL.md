@@ -9,7 +9,7 @@ user-invocable: true
 Build the production-grade FastAPI backend for SantePublique AOF — an adaptive, bilingual (FR/EN), mobile-first learning platform for public health professionals in West Africa. This backend sits in the second layer of a 4-layer architecture:
 
 ```
-Frontend (Next.js 15 PWA) → [THIS] Backend (FastAPI + PostgreSQL) → AI/RAG (Claude + ChromaDB) → External Data (DHIS2, DHS, WHO, PubMed)
+Frontend (Next.js 15 PWA) → [THIS] Backend (FastAPI + PostgreSQL) → AI/RAG (Claude + pgvector) → External Data (DHIS2, DHS, WHO, PubMed)
 ```
 
 ## Before writing any backend code
@@ -30,7 +30,7 @@ Frontend (Next.js 15 PWA) → [THIS] Backend (FastAPI + PostgreSQL) → AI/RAG (
 - Pydantic V2 for all schemas
 - Local Auth (TOTP MFA) (JWT validation) — email, Google OAuth, LinkedIn OAuth
 - Anthropic Claude 3.5 Sonnet API (server-side only) for content generation
-- ChromaDB / pgvector for RAG vector store
+- pgvector (PostgreSQL extension) for RAG vector store — NO ChromaDB
 - Claude Agent SDK (Anthropic) for RAG orchestration and agentic workflows
 - OpenAI text-embedding-3-small (1536 dimensions) for embeddings
 - PyMuPDF for PDF text extraction
@@ -94,7 +94,7 @@ backend/
 │   │
 │   ├── ai/                         # LAYER 3: AI/RAG engine
 │   │   ├── rag/
-│   │   │   ├── indexer.py          # PDF → 512-token chunks → embeddings → ChromaDB
+│   │   │   ├── indexer.py          # PDF → 512-token chunks → embeddings → pgvector
 │   │   │   ├── retriever.py        # Top-K (k=8) similarity search with metadata filters
 │   │   │   └── generator.py        # Claude API calls with system prompts
 │   │   ├── prompts/                # System prompts per content type
@@ -148,7 +148,7 @@ backend/
 ├── alembic.ini
 ├── Dockerfile
 ├── pyproject.toml
-└── docker-compose.yml              # PostgreSQL + Redis + ChromaDB for dev
+└── docker-compose.yml              # PostgreSQL (pgvector) + Redis for dev
 ```
 
 ## Data model (match SRS Section 9 exactly)
@@ -304,24 +304,30 @@ POST   /api/v1/sandbox/validate                # Validate code exercise output
 # 1. Extract text from 3 reference PDFs using PyMuPDF
 # 2. Chunk into 512-token segments with overlap (64 tokens)
 # 3. Attach metadata: {source: "donaldson", chapter: 3, page: 45, level: 2}
-# 4. Store chunks + metadata in ChromaDB collection "santepublique_sources"
+# 4. Store chunks + embeddings in pgvector (document_chunks table with ARRAY(Float) column)
 ```
 
 ### Phase 2 — Embeddings
 - Model: `text-embedding-3-small` (OpenAI), 1536 dimensions
-- Store in ChromaDB with metadata filters (source, chapter, level, country)
+- Store in pgvector with SQL WHERE filters (source, chapter, level, country)
 - Also index: WHO AFRO bulletins, PubMed abstracts, DHIS2 data summaries
 
 ### Phase 3 — Dynamic generation (on user request)
 ```python
-# ai/rag/retriever.py — Top-K retrieval
-async def search(query: str, k: int = 8, filters: dict = None) -> list[Chunk]:
-    results = await chromadb.query(
-        query_embeddings=await embed(query),
-        n_results=k,
-        where=filters,  # {"level": {"$lte": user_level}, "source": {"$in": module.books_sources}}
-    )
-    return results
+# ai/rag/retriever.py — Top-K retrieval using pgvector cosine distance
+# Uses raw SQL to avoid asyncpg vector binding issues
+async def search(query: str, top_k: int = 8, filters: dict = None) -> list[SearchResult]:
+    query_embedding = await embedding_service.generate_embedding(query)
+    embedding_literal = "[" + ",".join(str(x) for x in query_embedding) + "]"
+    # pgvector cosine distance: 1 - (embedding::vector <=> query::vector)
+    query_str = f"""
+    SELECT *, 1 - (embedding::vector <=> '{embedding_literal}'::vector) as similarity
+    FROM document_chunks
+    WHERE embedding IS NOT NULL AND {where_clauses}
+    ORDER BY similarity DESC LIMIT :limit
+    """
+    result = await session.execute(text(query_str).bindparams(**params))
+    return [SearchResult(chunk=row, similarity_score=row.similarity) for row in result]
 
 # ai/rag/generator.py — Claude API content generation
 async def generate_lesson(chunks, language, country, level, bloom_level) -> GeneratedContent:
@@ -329,7 +335,7 @@ async def generate_lesson(chunks, language, country, level, bloom_level) -> Gene
         language=language, country=country, level=level, bloom_level=bloom_level
     )
     response = await anthropic.messages.create(
-        model="claude-3-5-sonnet-20241022",
+        model="claude-sonnet-4-6",
         system=system_prompt,
         messages=[{"role": "user", "content": format_chunks(chunks)}],
         stream=True,
