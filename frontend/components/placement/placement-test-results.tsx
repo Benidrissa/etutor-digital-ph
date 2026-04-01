@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useRouter } from 'next/navigation';
+import { useRouter } from '@/i18n/routing';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -42,7 +42,7 @@ export function PlacementTestResults({ result, locale, isSkipped = false }: Plac
   const router = useRouter();
 
   const handleContinue = () => {
-    router.push(`/${locale}/dashboard`);
+    router.push('/dashboard');
   };
 
   const getLevelColor = (level: number) => {
