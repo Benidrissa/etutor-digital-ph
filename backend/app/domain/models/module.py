@@ -12,6 +12,7 @@ from app.domain.models.base import Base
 if TYPE_CHECKING:
     from app.domain.models.content import GeneratedContent
     from app.domain.models.conversation import TutorConversation
+    from app.domain.models.module_unit import ModuleUnit
     from app.domain.models.progress import UserModuleProgress
     from app.domain.models.quiz import SummativeAssessmentAttempt
 
@@ -39,3 +40,4 @@ class Module(Base):
     summative_attempts: Mapped[list[SummativeAssessmentAttempt]] = relationship(
         back_populates="module"
     )
+    units: Mapped[list[ModuleUnit]] = relationship(back_populates="module")

@@ -14,6 +14,7 @@ from app.ai.rag.retriever import SemanticRetriever
 from app.api.v1.schemas.content import LessonContent, LessonResponse, StreamingEvent
 from app.domain.models.content import GeneratedContent
 from app.domain.models.module import Module
+from app.domain.models.module_unit import ModuleUnit
 
 logger = structlog.get_logger()
 
@@ -143,7 +144,7 @@ class LessonGenerationService:
             # Perform RAG retrieval
             yield StreamingEvent(event="chunk", data="Recherche des documents pertinents...")
 
-            query = await self._build_lesson_query(module, unit_id, language)
+            query = await self._build_lesson_query(module, unit_id, language, session)
             rag_chunks = await self.semantic_retriever.search_for_module(
                 query=query,
                 user_level=level,
@@ -255,7 +256,7 @@ class LessonGenerationService:
     ) -> LessonResponse:
         """Generate new lesson content using RAG + Claude."""
         # Build search query
-        query = await self._build_lesson_query(module, unit_id, language)
+        query = await self._build_lesson_query(module, unit_id, language, session)
 
         # Perform RAG retrieval
         rag_chunks = await self.semantic_retriever.search_for_module(
@@ -306,19 +307,50 @@ class LessonGenerationService:
             cached=False,
         )
 
-    async def _build_lesson_query(self, module: Module, unit_id: str, language: str) -> str:
-        """Build search query for RAG retrieval."""
-        # Use module title and description as base query
+    @staticmethod
+    def _unit_id_to_unit_number(unit_id: str) -> str | None:
+        """Convert unit_id like 'M01-U02' to unit_number like '1.2'."""
+        try:
+            parts = unit_id.upper().split("-")
+            if len(parts) != 2:
+                return None
+            module_part = parts[0]
+            unit_part = parts[1]
+            if not module_part.startswith("M") or not unit_part.startswith("U"):
+                return None
+            module_num = int(module_part[1:])
+            unit_num = int(unit_part[1:])
+            return f"{module_num}.{unit_num}"
+        except (ValueError, IndexError):
+            return None
+
+    async def _build_lesson_query(
+        self, module: Module, unit_id: str, language: str, session: AsyncSession
+    ) -> str:
+        """Build topic-specific search query for RAG retrieval using module_units metadata."""
         title = module.title_fr if language == "fr" else module.title_en
         description = module.description_fr if language == "fr" else module.description_en
 
-        # Combine title, unit_id and description for comprehensive search
-        query_parts = [title]
-        if unit_id:
-            query_parts.append(f"unit {unit_id}")
-        if description:
-            query_parts.append(description[:200])  # Limit description length
+        unit_number = self._unit_id_to_unit_number(unit_id)
+        if unit_number:
+            unit_result = await session.execute(
+                select(ModuleUnit).where(
+                    ModuleUnit.module_id == module.id,
+                    ModuleUnit.unit_number == unit_number,
+                )
+            )
+            unit = unit_result.scalar_one_or_none()
+            if unit:
+                unit_title = unit.title_fr if language == "fr" else unit.title_en
+                unit_description = unit.description_fr if language == "fr" else unit.description_en
+                query_parts = [unit_title]
+                if unit_description:
+                    query_parts.append(unit_description)
+                return " ".join(query_parts)
 
+        query_parts = [title]
+        if description:
+            query_parts.append(description[:200])
         return " ".join(query_parts)
 
     async def _parse_lesson_content(self, content_text: str, rag_chunks: list) -> LessonContent:
