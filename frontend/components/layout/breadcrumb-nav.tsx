@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { ChevronRight, Home } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -15,18 +15,19 @@ interface BreadcrumbItem {
 export function BreadcrumbNav() {
   const pathname = usePathname();
   const t = useTranslations("Navigation");
+  const locale = useLocale();
 
   // Generate breadcrumb items based on current path
   const generateBreadcrumbs = (): BreadcrumbItem[] => {
     const segments = pathname.split('/').filter(Boolean);
-    
+
     // Remove locale from segments (first segment in our app structure)
     const pathSegments = segments.slice(1);
-    
+
     const breadcrumbs: BreadcrumbItem[] = [
       {
         label: t("dashboard"),
-        href: "/dashboard",
+        href: `/${locale}/dashboard`,
         current: pathSegments.length === 0 || pathSegments[0] === 'dashboard'
       }
     ];
@@ -35,12 +36,12 @@ export function BreadcrumbNav() {
     for (let i = 0; i < pathSegments.length; i++) {
       const segment = pathSegments[i];
       const isLast = i === pathSegments.length - 1;
-      
+
       // Skip if it's already the dashboard
       if (segment === 'dashboard') continue;
-      
+
       let label = segment;
-      const href = `/${pathSegments.slice(0, i + 1).join('/')}`;
+      const href = `/${locale}/${pathSegments.slice(0, i + 1).join('/')}`;
 
       // Map segments to readable labels
       switch (segment) {
