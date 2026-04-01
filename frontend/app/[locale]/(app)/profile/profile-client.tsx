@@ -20,10 +20,10 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Upload, User as UserIcon, AlertTriangle, CheckCircle } from "lucide-react";
 
-// Mock API functions - replace with actual API calls
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 const fetchUserProfile = async () => {
-  // In real implementation, call GET /api/v1/users/me
-  const response = await fetch("/api/v1/users/me", {
+  const response = await fetch(`${API_BASE}/api/v1/users/me`, {
     headers: {
       Authorization: `Bearer ${localStorage.getItem("token")}`,
     },
@@ -33,8 +33,7 @@ const fetchUserProfile = async () => {
 };
 
 const updateProfile = async (data: Record<string, unknown>) => {
-  // In real implementation, call PATCH /api/v1/users/me
-  const response = await fetch("/api/v1/users/me", {
+  const response = await fetch(`${API_BASE}/api/v1/users/me`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
