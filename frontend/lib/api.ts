@@ -220,3 +220,20 @@ export async function submitSummativeAssessmentAttempt(
     body: JSON.stringify(request),
   });
 }
+
+// Lesson Image API Types
+export type LessonImageStatus = 'pending' | 'generating' | 'ready' | 'failed';
+
+export interface LessonImageResponse {
+  lesson_id: string;
+  status: LessonImageStatus;
+  image_url?: string;
+  alt_text?: string;
+  width?: number;
+  height?: number;
+}
+
+// Lesson Image API Functions
+export async function getLessonImageStatus(lessonId: string): Promise<LessonImageResponse> {
+  return apiFetch<LessonImageResponse>(`/api/v1/images/lesson/${lessonId}`);
+}

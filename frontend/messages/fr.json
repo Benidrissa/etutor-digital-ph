@@ -566,7 +566,10 @@
     "synthesis": "Synthèse",
     "keyPoints": "Points Clés",
     "markComplete": "Marquer comme Terminé",
-    "completed": "Terminé"
+    "completed": "Terminé",
+    "imagePending": "Illustration en cours de génération...",
+    "imageViewFullscreen": "Voir en plein écran",
+    "imageCloseFullscreen": "Fermer le plein écran"
   },
   "LessonPage": {
     "modules": "Modules",

@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import ReactMarkdown from 'react-markdown';
 import { LessonSkeleton } from './lesson-skeleton';
+import { LessonImage } from './lesson-image';
 import { SourceCitations } from './source-citations';
 import { apiFetch } from '@/lib/api';
 
@@ -191,6 +192,11 @@ export function LessonViewer({
             <div className={mdClass}>
               <ReactMarkdown>{content.introduction}</ReactMarkdown>
             </div>
+          </div>
+
+          {/* Lesson Illustration */}
+          <div className="mb-8">
+            <LessonImage lessonId={lessonData.id} />
           </div>
 
           {/* Key Concepts */}
