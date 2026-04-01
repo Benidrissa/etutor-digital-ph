@@ -8,6 +8,7 @@ from app.api.v1.local_auth import router as local_auth_router
 from app.api.v1.placement import router as placement_router
 from app.api.v1.quiz import router as quiz_router
 from app.api.v1.tutor import router as tutor_router
+from app.api.v1.units import router as units_router
 from app.api.v1.users import router as users_router
 
 api_v1_router = APIRouter()
@@ -20,3 +21,4 @@ api_v1_router.include_router(content_router)
 api_v1_router.include_router(quiz_router)
 api_v1_router.include_router(flashcards_router)
 api_v1_router.include_router(tutor_router)
+api_v1_router.include_router(units_router)

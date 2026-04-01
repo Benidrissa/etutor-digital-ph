@@ -74,108 +74,39 @@ export const CURRICULUM_MODULES: Module[] = [
         'Appliquer la pensée systémique aux défis de santé publique'
       ]
     },
-    units: [
-      {
-        id: 'M01-U01',
-        number: 1,
-        title: {
-          en: 'What is Public Health?',
-          fr: 'Qu\'est-ce que la santé publique ?'
-        },
-        description: {
-          en: 'Core concepts and definitions of public health practice',
-          fr: 'Concepts et définitions essentiels de la pratique de santé publique'
-        },
-        status: 'completed',
-        estimatedMinutes: 45,
-        type: 'lesson'
-      },
-      {
-        id: 'M01-U02',
-        number: 2,
-        title: {
-          en: 'History of Public Health',
-          fr: 'Histoire de la santé publique'
-        },
-        description: {
-          en: 'Evolution of public health from antiquity to modern West Africa',
-          fr: 'Évolution de la santé publique de l\'antiquité à l\'Afrique de l\'Ouest moderne'
-        },
-        status: 'completed',
-        estimatedMinutes: 50,
-        type: 'lesson'
-      },
-      {
-        id: 'M01-U03',
-        number: 3,
-        title: {
-          en: 'Health Systems in West Africa',
-          fr: 'Systèmes de santé en Afrique de l\'Ouest'
-        },
-        description: {
-          en: 'Structure and organization of health systems across ECOWAS countries',
-          fr: 'Structure et organisation des systèmes de santé dans les pays CEDEAO'
-        },
-        status: 'in-progress',
-        estimatedMinutes: 60,
-        type: 'lesson'
-      },
-      {
-        id: 'M01-U04',
-        number: 4,
-        title: {
-          en: 'Practice Quiz: Foundations',
-          fr: 'Quiz pratique : Fondements'
-        },
-        description: {
-          en: 'Test your understanding of public health fundamentals',
-          fr: 'Testez votre compréhension des fondements de la santé publique'
-        },
-        status: 'pending',
-        estimatedMinutes: 25,
-        type: 'quiz'
-      },
-      {
-        id: 'M01-U05',
-        number: 5,
-        title: {
-          en: 'Case Study: Health Challenge Analysis',
-          fr: 'Étude de cas : Analyse de défi sanitaire'
-        },
-        description: {
-          en: 'Apply systems thinking to a real West African health challenge',
-          fr: 'Appliquer la pensée systémique à un véritable défi sanitaire ouest-africain'
-        },
-        status: 'pending',
-        estimatedMinutes: 40,
-        type: 'case-study'
-      }
-    ]
   },
   {
-    id: 'M02', 
+    id: 'M02',
     number: 2,
     title: {
       en: 'Health Data Fundamentals',
       fr: 'Fondamentaux des données de santé'
     },
+    description: {
+      en: 'Understand, collect and read health data — foundations of statistical reasoning',
+      fr: 'Comprendre, collecter et lire les données de santé — les bases du raisonnement statistique'
+    },
     level: 1,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 20,
+    estimatedHours: 22,
     prerequisites: ['M01']
   },
   {
     id: 'M03',
     number: 3,
     title: {
-      en: 'West African Health Systems',
-      fr: 'Systèmes de santé ouest-africains'
+      en: 'Health Systems in West Africa',
+      fr: 'Systèmes de santé en Afrique de l\'Ouest'
+    },
+    description: {
+      en: 'Architecture, financing and performance of health systems in ECOWAS countries',
+      fr: 'Architecture, financement et performance des systèmes de santé des pays CEDEAO'
     },
     level: 1,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 20,
+    estimatedHours: 18,
     prerequisites: ['M01']
   },
   // Level 2 (Intermediate, 90h)
@@ -183,8 +114,12 @@ export const CURRICULUM_MODULES: Module[] = [
     id: 'M04',
     number: 4,
     title: {
-      en: 'Epidemiology Principles',
-      fr: 'Principes d\'épidémiologie'
+      en: 'Applied Epidemiology',
+      fr: 'Épidémiologie Appliquée'
+    },
+    description: {
+      en: 'Measuring disease in populations — methods and indicators for public health in West Africa',
+      fr: 'Mesurer la maladie dans les populations — méthodes et indicateurs pour la santé publique en AOF'
     },
     level: 2,
     status: 'locked',
@@ -196,34 +131,46 @@ export const CURRICULUM_MODULES: Module[] = [
     id: 'M05',
     number: 5,
     title: {
-      en: 'Disease Surveillance',
-      fr: 'Surveillance des maladies'
+      en: 'Biostatistics for Public Health',
+      fr: 'Biostatistiques pour la Santé Publique'
+    },
+    description: {
+      en: 'Probabilities, distributions, estimation and hypothesis testing applied to health',
+      fr: 'Probabilités, distributions, estimation et tests d\'hypothèse appliqués à la santé'
     },
     level: 2,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 20,
-    prerequisites: ['M04']
+    estimatedHours: 28,
+    prerequisites: ['M02']
   },
   {
     id: 'M06',
     number: 6,
     title: {
-      en: 'DHIS2 and Health Information Systems',
-      fr: 'DHIS2 et systèmes d\'information sanitaire'
+      en: 'Diseases & Health Determinants in West Africa',
+      fr: 'Maladies et Déterminants en AOF'
+    },
+    description: {
+      en: 'Epidemiological profile, priority diseases and social determinants of health in West Africa',
+      fr: 'Profil épidémiologique, maladies prioritaires et déterminants sociaux de la santé en AOF'
     },
     level: 2,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 25,
+    estimatedHours: 22,
     prerequisites: ['M02', 'M03']
   },
   {
     id: 'M07',
     number: 7,
     title: {
-      en: 'Biostatistics Fundamentals',
-      fr: 'Fondamentaux de biostatistique'
+      en: 'Public Health Tools & Practice',
+      fr: 'Outils et Pratiques de Santé Publique'
+    },
+    description: {
+      en: 'Leadership, community assessment, performance, health data management',
+      fr: 'Leadership, évaluation communautaire, performance, gestion des données de santé'
     },
     level: 2,
     status: 'locked',
@@ -236,105 +183,137 @@ export const CURRICULUM_MODULES: Module[] = [
     id: 'M08',
     number: 8,
     title: {
-      en: 'Advanced Statistics',
-      fr: 'Statistiques avancées'
+      en: 'Digital Epidemiological Surveillance',
+      fr: 'Surveillance Épidémiologique Numérique'
+    },
+    description: {
+      en: 'Surveillance systems, early warning and real-time data for response in West Africa',
+      fr: 'Systèmes de surveillance, alerte précoce et données en temps réel pour la riposte en AOF'
     },
     level: 3,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 25,
-    prerequisites: ['M07']
+    estimatedHours: 22,
+    prerequisites: ['M04', 'M05']
   },
   {
     id: 'M09',
     number: 9,
     title: {
-      en: 'Advanced Epidemiology',
-      fr: 'Épidémiologie avancée'
+      en: 'Advanced Statistics & Data Analysis',
+      fr: 'Statistiques Avancées et Analyse de Données'
+    },
+    description: {
+      en: 'Regression, ANOVA, non-parametric tests, survival analysis for health research',
+      fr: 'Régression, ANOVA, tests non-paramétriques, analyse de survie — pour la recherche en santé'
     },
     level: 3,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 25,
-    prerequisites: ['M04', 'M05', 'M07']
+    estimatedHours: 28,
+    prerequisites: ['M05']
   },
   {
     id: 'M10',
     number: 10,
     title: {
-      en: 'Health Program Development',
-      fr: 'Développement de programmes de santé'
+      en: 'Digital Health & Health Information Systems',
+      fr: 'Santé Numérique et HMIS'
+    },
+    description: {
+      en: 'Digital technologies for health in West Africa: DHIS2, mHealth, AI, interoperability',
+      fr: 'Technologies numériques pour la santé en AOF : DHIS2, mHealth, IA, interopérabilité'
     },
     level: 3,
     status: 'locked',
     completionPercentage: 0,
     estimatedHours: 20,
-    prerequisites: ['M05', 'M06']
+    prerequisites: ['M06', 'M07']
   },
   {
     id: 'M11',
     number: 11,
     title: {
-      en: 'Data Visualization',
-      fr: 'Visualisation de données'
+      en: 'Environmental Health & One Health',
+      fr: 'Santé Environnementale et One Health'
+    },
+    description: {
+      en: 'Climate change, water, sanitation, animal-human-environment interface in West Africa',
+      fr: 'Changement climatique, eau, assainissement, interface animal-humain-environnement en AOF'
     },
     level: 3,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 15,
-    prerequisites: ['M06', 'M07']
+    estimatedHours: 16,
+    prerequisites: ['M04']
   },
   {
     id: 'M12',
     number: 12,
     title: {
-      en: 'Health Economics',
-      fr: 'Économie de la santé'
+      en: 'Maternal, Child & Community Health',
+      fr: 'Santé Maternelle, Infantile et Communautaire'
+    },
+    description: {
+      en: 'Reducing maternal and child mortality — MNCH and community health in West Africa',
+      fr: 'Réduire la mortalité maternelle et infantile — SMNI et santé communautaire en AOF'
     },
     level: 3,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 15,
-    prerequisites: ['M10']
+    estimatedHours: 20,
+    prerequisites: ['M04', 'M06']
   },
   // Level 4 (Expert, 70h)
   {
     id: 'M13',
     number: 13,
     title: {
-      en: 'Health Policy and Governance',
-      fr: 'Politique de santé et gouvernance'
+      en: 'Leadership, Policy & Governance',
+      fr: 'Leadership, Politique et Gouvernance'
+    },
+    description: {
+      en: 'Develop and influence public health policies in West Africa',
+      fr: 'Élaborer et influencer des politiques de santé publique en Afrique de l\'Ouest'
     },
     level: 4,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 25,
+    estimatedHours: 22,
     prerequisites: ['M10', 'M12']
   },
   {
     id: 'M14',
     number: 14,
     title: {
-      en: 'Health Systems Strengthening',
-      fr: 'Renforcement des systèmes de santé'
+      en: 'Advanced Research & Evaluation',
+      fr: 'Recherche et Évaluation Avancées'
+    },
+    description: {
+      en: 'Design, conduct and evaluate public health research and health programs',
+      fr: 'Concevoir, conduire et évaluer la recherche en santé publique et les programmes de santé'
     },
     level: 4,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 25,
-    prerequisites: ['M13']
+    estimatedHours: 24,
+    prerequisites: ['M09', 'M13']
   },
   {
     id: 'M15',
     number: 15,
     title: {
-      en: 'Research Capstone Project',
-      fr: 'Projet de recherche final'
+      en: 'Integrative Capstone Project',
+      fr: 'Projet Intégratif Capstone'
+    },
+    description: {
+      en: 'Synthesis of all competencies — digital public health project for a real AOF district',
+      fr: 'Synthèse de toutes les compétences — projet de santé publique numérique pour un district AOF réel'
     },
     level: 4,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 20,
+    estimatedHours: 24,
     prerequisites: ['M08', 'M09', 'M11', 'M14']
   }
 ];
@@ -342,7 +321,7 @@ export const CURRICULUM_MODULES: Module[] = [
 export const LEVEL_INFO = {
   1: {
     title: { en: 'Level 1: Beginner', fr: 'Niveau 1 : Débutant' },
-    description: { 
+    description: {
       en: 'Foundations, health data intro, West African health systems',
       fr: 'Fondements, introduction aux données de santé, systèmes de santé ouest-africains'
     },
@@ -351,7 +330,7 @@ export const LEVEL_INFO = {
   },
   2: {
     title: { en: 'Level 2: Intermediate', fr: 'Niveau 2 : Intermédiaire' },
-    description: { 
+    description: {
       en: 'Epidemiology, surveillance, DHIS2, biostatistics',
       fr: 'Épidémiologie, surveillance, DHIS2, biostatistiques'
     },
@@ -360,7 +339,7 @@ export const LEVEL_INFO = {
   },
   3: {
     title: { en: 'Level 3: Advanced', fr: 'Niveau 3 : Avancé' },
-    description: { 
+    description: {
       en: 'Advanced stats/epi, health programming, data viz',
       fr: 'Stats/épi avancées, programmation sanitaire, visualisation'
     },
@@ -369,7 +348,7 @@ export const LEVEL_INFO = {
   },
   4: {
     title: { en: 'Level 4: Expert', fr: 'Niveau 4 : Expert' },
-    description: { 
+    description: {
       en: 'Policy, health systems strengthening, research capstone',
       fr: 'Politique, renforcement systèmes de santé, recherche finale'
     },
@@ -378,29 +357,20 @@ export const LEVEL_INFO = {
   }
 } as const;
 
-/**
- * Get modules filtered by level
- */
 export function getModulesByLevel(level: 1 | 2 | 3 | 4): Module[] {
   return CURRICULUM_MODULES.filter(module => module.level === level);
 }
 
-/**
- * Check if a module is unlocked based on prerequisite completion
- */
 export function isModuleUnlocked(module: Module, allModules: Module[] = CURRICULUM_MODULES): boolean {
   if (module.prerequisites.length === 0) return true;
-  
-  const prerequisiteModules = allModules.filter(m => 
+
+  const prerequisiteModules = allModules.filter(m =>
     module.prerequisites.includes(m.id)
   );
-  
+
   return prerequisiteModules.every(prereq => prereq.status === 'completed');
 }
 
-/**
- * Get progress statistics for a level
- */
 export function getLevelProgress(level: 1 | 2 | 3 | 4): {
   completedModules: number;
   totalModules: number;
@@ -410,7 +380,7 @@ export function getLevelProgress(level: 1 | 2 | 3 | 4): {
   const completedModules = levelModules.filter(m => m.status === 'completed').length;
   const totalModules = levelModules.length;
   const averageCompletion = levelModules.reduce((sum, m) => sum + m.completionPercentage, 0) / totalModules;
-  
+
   return {
     completedModules,
     totalModules,
@@ -418,16 +388,10 @@ export function getLevelProgress(level: 1 | 2 | 3 | 4): {
   };
 }
 
-/**
- * Get a module by its ID
- */
 export function getModuleById(moduleId: string): Module | undefined {
   return CURRICULUM_MODULES.find(module => module.id === moduleId);
 }
 
-/**
- * Get prerequisite modules for a given module
- */
 export function getPrerequisiteModules(module: Module): Module[] {
   return CURRICULUM_MODULES.filter(m => module.prerequisites.includes(m.id));
 }

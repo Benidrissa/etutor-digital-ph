@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -33,6 +33,8 @@ class ModuleUnit(Base):
     description_en: Mapped[str | None] = mapped_column(Text, nullable=True)
     estimated_minutes: Mapped[int] = mapped_column(Integer, server_default="45")
     order_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_type: Mapped[str] = mapped_column(String(20), server_default="lesson")
+    books_sources: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=func.now())
 
     module: Mapped[Module] = relationship(back_populates="units")

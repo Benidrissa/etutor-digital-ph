@@ -8,19 +8,53 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { getModuleById, getPrerequisiteModules, isModuleUnlocked, Unit } from '@/lib/modules';
+import { getModuleById, getPrerequisiteModules, isModuleUnlocked } from '@/lib/modules';
+import { API_BASE } from '@/lib/api';
 
 interface ModuleOverviewPageProps {
   params: Promise<{ moduleId: string }>;
+}
+
+interface ApiUnit {
+  id: string;
+  module_id: string;
+  unit_number: string;
+  title_fr: string;
+  title_en: string;
+  description_fr: string | null;
+  description_en: string | null;
+  estimated_minutes: number;
+  order_index: number;
+  unit_type: 'lesson' | 'quiz' | 'case-study';
+  books_sources: Record<string, string[]> | null;
+}
+
+interface ApiUnitsResponse {
+  module_id: string;
+  units: ApiUnit[];
+  total: number;
+}
+
+async function getModuleUnits(moduleId: string): Promise<ApiUnit[]> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/modules/${moduleId}/units`, {
+      next: { revalidate: 3600 },
+    });
+    if (!res.ok) return [];
+    const data: ApiUnitsResponse = await res.json();
+    return data.units ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export default async function ModuleOverviewPage({ params }: ModuleOverviewPageProps) {
   const { moduleId } = await params;
   const locale = await getLocale();
   const t = await getTranslations('ModuleOverview');
-  
+
   const moduleData = getModuleById(moduleId);
-  
+
   if (!moduleData) {
     notFound();
   }
@@ -29,7 +63,23 @@ export default async function ModuleOverviewPage({ params }: ModuleOverviewPageP
   const isUnlocked = isModuleUnlocked(moduleData);
   const language = locale as 'en' | 'fr';
 
-  const getStatusIcon = (status: Unit['status']) => {
+  const apiUnits = await getModuleUnits(moduleId);
+
+  const units = apiUnits.length > 0
+    ? apiUnits.map((u) => ({
+        id: u.unit_number,
+        number: u.order_index,
+        title: { fr: u.title_fr, en: u.title_en },
+        description: (u.description_fr || u.description_en)
+          ? { fr: u.description_fr ?? '', en: u.description_en ?? '' }
+          : undefined,
+        status: 'pending' as const,
+        estimatedMinutes: u.estimated_minutes,
+        type: u.unit_type,
+      }))
+    : (moduleData.units ?? []);
+
+  const getStatusIcon = (status: 'pending' | 'in-progress' | 'completed') => {
     switch (status) {
       case 'completed':
         return <CheckCircle className="w-5 h-5 text-green-600" />;
@@ -40,7 +90,7 @@ export default async function ModuleOverviewPage({ params }: ModuleOverviewPageP
     }
   };
 
-  const getTypeIcon = (type: Unit['type']) => {
+  const getTypeIcon = (type: 'lesson' | 'quiz' | 'case-study') => {
     switch (type) {
       case 'lesson':
         return <BookOpen className="w-4 h-4" />;
@@ -51,14 +101,13 @@ export default async function ModuleOverviewPage({ params }: ModuleOverviewPageP
     }
   };
 
-  const completedUnits = moduleData.units?.filter(unit => unit.status === 'completed').length || 0;
-  const totalUnits = moduleData.units?.length || 0;
-  const nextUnit = moduleData.units?.find(unit => unit.status === 'in-progress' || unit.status === 'pending');
+  const completedUnits = units.filter((unit) => unit.status === 'completed').length;
+  const totalUnits = units.length;
+  const nextUnit = units.find((unit) => unit.status === 'in-progress' || unit.status === 'pending');
 
   if (!isUnlocked) {
     return (
       <div className="container mx-auto max-w-4xl px-4 py-6">
-        {/* Breadcrumb */}
         <div className="mb-6">
           <Link href="/modules" className="inline-flex items-center text-stone-600 hover:text-stone-900 transition-colors">
             <ChevronLeft className="w-4 h-4 mr-1" />
@@ -66,15 +115,13 @@ export default async function ModuleOverviewPage({ params }: ModuleOverviewPageP
           </Link>
         </div>
 
-        {/* Locked Module */}
         <div className="text-center py-12">
           <div className="mx-auto w-20 h-20 bg-stone-100 rounded-full flex items-center justify-center mb-6">
             <Lock className="w-10 h-10 text-stone-400" />
           </div>
           <h1 className="text-2xl font-bold text-stone-900 mb-2">{t('locked')}</h1>
           <p className="text-stone-600 mb-8">{t('lockedDescription')}</p>
-          
-          {/* Prerequisites */}
+
           <Card className="max-w-md mx-auto">
             <CardHeader>
               <CardTitle className="text-lg">{t('prerequisites')}</CardTitle>
@@ -100,7 +147,6 @@ export default async function ModuleOverviewPage({ params }: ModuleOverviewPageP
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6">
-      {/* Breadcrumb */}
       <div className="mb-6">
         <Link href="/modules" className="inline-flex items-center text-stone-600 hover:text-stone-900 transition-colors">
           <ChevronLeft className="w-4 h-4 mr-1" />
@@ -108,7 +154,6 @@ export default async function ModuleOverviewPage({ params }: ModuleOverviewPageP
         </Link>
       </div>
 
-      {/* Module Header */}
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-3">
           <Badge variant="outline">{t('level', { level: moduleData.level })}</Badge>
@@ -127,7 +172,6 @@ export default async function ModuleOverviewPage({ params }: ModuleOverviewPageP
         )}
       </div>
 
-      {/* Progress Card */}
       <Card className="mb-8">
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
@@ -146,9 +190,7 @@ export default async function ModuleOverviewPage({ params }: ModuleOverviewPageP
       </Card>
 
       <div className="grid md:grid-cols-3 gap-8">
-        {/* Main Content */}
         <div className="md:col-span-2 space-y-8">
-          {/* Learning Objectives */}
           {moduleData.learningObjectives && (
             <Card>
               <CardHeader>
@@ -167,15 +209,14 @@ export default async function ModuleOverviewPage({ params }: ModuleOverviewPageP
             </Card>
           )}
 
-          {/* Units */}
-          {moduleData.units && (
+          {units.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle>{t('units')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {moduleData.units.map((unit) => (
+                  {units.map((unit) => (
                     <Link
                       key={unit.id}
                       href={unit.type === 'quiz' ? `/modules/${moduleId}/quiz?unit=${unit.id}` : `/modules/${moduleId}/lessons/${unit.id}`}
@@ -210,9 +251,7 @@ export default async function ModuleOverviewPage({ params }: ModuleOverviewPageP
           )}
         </div>
 
-        {/* Sidebar Actions */}
         <div className="space-y-4">
-          {/* Continue Learning */}
           {nextUnit ? (
             <Link href={nextUnit.type === 'quiz' ? `/modules/${moduleId}/quiz?unit=${nextUnit.id}` : `/modules/${moduleId}/lessons/${nextUnit.id}`} className="block">
               <Button className="w-full min-h-11" size="lg">
@@ -227,7 +266,6 @@ export default async function ModuleOverviewPage({ params }: ModuleOverviewPageP
             </Button>
           )}
 
-          {/* Secondary Actions */}
           <div className="space-y-2">
             <Button variant="outline" className="w-full min-h-11">
               <BookOpen className="w-4 h-4 mr-2" />
@@ -235,7 +273,6 @@ export default async function ModuleOverviewPage({ params }: ModuleOverviewPageP
             </Button>
           </div>
 
-          {/* Progress Summary */}
           <Card>
             <CardContent className="p-4">
               <div className="text-center">
