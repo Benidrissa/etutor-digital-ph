@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useState, useEffect } from 'react';
+import { authClient } from '@/lib/auth';
 import { PlacementTestIntro } from './placement-test-intro';
 import { PlacementTestInterface } from './placement-test-interface';
 import { PlacementTestResults } from './placement-test-results';
@@ -22,10 +22,39 @@ interface PlacementTestResult {
   skipped?: boolean;
 }
 
+export interface PreviousAttempt {
+  id: string;
+  assigned_level: number;
+  score_percentage: number;
+  domain_scores: Record<string, number>;
+  competency_areas: string[];
+  recommendations: string[];
+  can_retake_after: string | null;
+  attempted_at: string;
+}
+
 export function PlacementTestContainer({ locale }: PlacementTestContainerProps) {
-  const t = useTranslations('PlacementTest');
   const [state, setState] = useState<PlacementTestState>('intro');
   const [result, setResult] = useState<PlacementTestResult | null>(null);
+  const [previousAttempt, setPreviousAttempt] = useState<PreviousAttempt | null>(null);
+  const [loadingPrevious, setLoadingPrevious] = useState(true);
+
+  useEffect(() => {
+    const fetchPreviousResult = async () => {
+      try {
+        const data = await authClient.authenticatedFetch<PreviousAttempt | null>(
+          '/api/v1/placement-test/results'
+        );
+        setPreviousAttempt(data);
+      } catch {
+        // No previous result or not authenticated — stay null
+      } finally {
+        setLoadingPrevious(false);
+      }
+    };
+
+    fetchPreviousResult();
+  }, []);
 
   const handleStartTest = () => {
     setState('assessment');
@@ -33,19 +62,10 @@ export function PlacementTestContainer({ locale }: PlacementTestContainerProps) 
 
   const handleSkipTest = async () => {
     try {
-      const response = await fetch('/api/v1/placement-test/skip', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to skip placement test');
-      }
-
-      const skipResult = await response.json();
+      const skipResult = await authClient.authenticatedFetch<PlacementTestResult>(
+        '/api/v1/placement-test/skip',
+        { method: 'POST' }
+      );
       setResult(skipResult);
       setState('skipped');
     } catch (error) {
@@ -65,6 +85,8 @@ export function PlacementTestContainer({ locale }: PlacementTestContainerProps) 
           onStartTest={handleStartTest}
           onSkipTest={handleSkipTest}
           locale={locale}
+          previousAttempt={previousAttempt}
+          loadingPrevious={loadingPrevious}
         />
       );
 

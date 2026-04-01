@@ -14,14 +14,26 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Link } from "@/i18n/routing";
-import { Upload, User as UserIcon, AlertTriangle, CheckCircle, ClipboardList } from "lucide-react";
+import { Upload, User as UserIcon, AlertTriangle, CheckCircle, ClipboardList, Calendar, BarChart2 } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+interface PlacementTestAttempt {
+  id: string;
+  assigned_level: number;
+  score_percentage: number;
+  domain_scores: Record<string, number>;
+  competency_areas: string[];
+  recommendations: string[];
+  can_retake_after: string | null;
+  attempted_at: string;
+}
 
 const fetchUserProfile = async () => {
   const response = await fetch(`${API_BASE}/api/v1/users/me`, {
@@ -30,6 +42,16 @@ const fetchUserProfile = async () => {
     },
   });
   if (!response.ok) throw new Error("Failed to fetch profile");
+  return response.json();
+};
+
+const fetchPlacementResult = async (): Promise<PlacementTestAttempt | null> => {
+  const response = await fetch(`${API_BASE}/api/v1/placement-test/results`, {
+    headers: {
+      Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+    },
+  });
+  if (!response.ok) throw new Error("Failed to fetch placement results");
   return response.json();
 };
 
@@ -112,7 +134,14 @@ export function ProfileClient() {
   const { data: profile, isLoading } = useQuery({
     queryKey: ["profile"],
     queryFn: fetchUserProfile,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: placementResult, isLoading: isLoadingPlacement } = useQuery({
+    queryKey: ["placement-result"],
+    queryFn: fetchPlacementResult,
+    staleTime: 10 * 60 * 1000,
+    retry: false,
   });
 
   const form = useForm<ProfileFormData>({
@@ -442,7 +471,7 @@ export function ProfileClient() {
         </CardContent>
       </Card>
 
-      {/* Placement Test Retake */}
+      {/* Placement Test Results */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -451,8 +480,66 @@ export function ProfileClient() {
           </CardTitle>
           <CardDescription>{t("placementTestDescription")}</CardDescription>
         </CardHeader>
-        <CardContent>
-          <Link href="/placement-test" className={buttonVariants({ variant: "default" })}>
+        <CardContent className="space-y-4">
+          {isLoadingPlacement ? (
+            <LoadingSpinner className="h-5 w-5" />
+          ) : placementResult ? (
+            <>
+              <div className="flex flex-wrap gap-3">
+                <Badge variant="default">
+                  {t("placementTestLevel", { level: placementResult.assigned_level })}
+                </Badge>
+                <Badge variant="secondary">
+                  {t("placementTestScore", { score: Math.round(placementResult.score_percentage) })}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Calendar className="h-4 w-4" />
+                {t("placementTestLastResult", {
+                  date: new Date(placementResult.attempted_at).toLocaleDateString(),
+                })}
+              </div>
+              {Object.keys(placementResult.domain_scores).length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium flex items-center gap-1">
+                    <BarChart2 className="h-4 w-4" />
+                    {t("placementTest")}
+                  </p>
+                  {["basic_public_health", "epidemiology", "biostatistics", "data_analysis"].map(
+                    (domain) => {
+                      const score = placementResult.domain_scores[domain] ?? 0;
+                      const domainLabels: Record<string, string> = {
+                        basic_public_health: "Public Health",
+                        epidemiology: "Epidemiology",
+                        biostatistics: "Biostatistics",
+                        data_analysis: "Health Systems",
+                      };
+                      return (
+                        <div key={domain} className="space-y-1">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">{domainLabels[domain]}</span>
+                            <span>{Math.round(score)}%</span>
+                          </div>
+                          <Progress value={score} className="h-1.5" />
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
+              )}
+              {placementResult.can_retake_after &&
+                new Date(placementResult.can_retake_after) > new Date() && (
+                  <p className="text-xs text-muted-foreground">
+                    {t("placementTestRetakeAvailable", {
+                      date: new Date(placementResult.can_retake_after).toLocaleDateString(),
+                    })}
+                  </p>
+                )}
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">{t("noPlacementTestResult")}</p>
+          )}
+          <Link href="/placement-test" className={buttonVariants({ variant: "outline" })}>
             {t("retakePlacementTest")}
           </Link>
         </CardContent>

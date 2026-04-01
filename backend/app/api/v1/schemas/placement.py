@@ -49,3 +49,16 @@ class PlacementTestResult(BaseModel):
     )
     can_retake_after: str = Field(..., description="When user can retake (ISO datetime)")
     skipped: bool = Field(default=False, description="Whether the test was skipped")
+
+
+class PlacementTestAttemptResponse(BaseModel):
+    """Persisted placement test attempt from the database."""
+
+    id: str = Field(..., description="Attempt UUID")
+    assigned_level: int = Field(..., ge=1, le=4, description="Assigned level (1-4)")
+    score_percentage: float = Field(..., ge=0.0, le=100.0, description="Overall score percentage")
+    domain_scores: dict[str, float] = Field(..., description="Per-domain score breakdown (0-100)")
+    competency_areas: list[str] = Field(..., description="Identified strong competency areas")
+    recommendations: list[str] = Field(..., description="Learning path recommendations")
+    can_retake_after: str | None = Field(None, description="When user can retake (ISO datetime)")
+    attempted_at: str = Field(..., description="When the test was completed (ISO datetime)")

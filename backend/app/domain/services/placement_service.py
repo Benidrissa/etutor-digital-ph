@@ -80,6 +80,28 @@ class PlacementService:
             "20": "d",
         }
 
+    def compute_domain_scores(self, answers: dict[str, Any]) -> dict[str, float]:
+        """Compute per-domain scores from raw answers.
+
+        Args:
+            answers: Question ID -> selected answer mapping
+
+        Returns:
+            Domain name -> percentage score (0-100)
+        """
+        domain_scores: dict[str, float] = {}
+        for category, config in self.categories.items():
+            correct = 0
+            total = 0
+            for q_id in config["questions"]:
+                q_str = str(q_id)
+                if q_str in answers and q_str in self.answer_key:
+                    total += 1
+                    if answers[q_str] == self.answer_key[q_str]:
+                        correct += 1
+            domain_scores[category] = (correct / total * 100) if total > 0 else 0.0
+        return domain_scores
+
     async def get_placement_result(self, user_id: UUID) -> PlacementTestResult | None:
         """Get existing placement test result for user.
 
