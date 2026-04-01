@@ -1,11 +1,14 @@
 """Content generation API endpoints."""
 
+import re
+import uuid
 from collections.abc import AsyncGenerator
 from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.claude_service import ClaudeService
@@ -22,6 +25,7 @@ from app.api.v1.schemas.content import (
     QuizResponse,
     StreamingEvent,
 )
+from app.domain.models.module import Module
 from app.domain.services.flashcard_service import FlashcardGenerationService
 from app.domain.services.lesson_service import LessonGenerationService
 from app.domain.services.quiz_service import QuizService
@@ -29,6 +33,50 @@ from app.infrastructure.config.settings import get_settings
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/content", tags=["content"])
+
+
+async def _resolve_module_id(module_id: str, session: AsyncSession) -> UUID:
+    """
+    Resolve module identifier to UUID.
+
+    Accepts both module codes (e.g., "M01") and UUID strings.
+    For module codes, looks up the module by module_number.
+    For UUIDs, validates and returns the UUID.
+
+    Args:
+        module_id: Module code (M01, M02, etc.) or UUID string
+        session: Database session
+
+    Returns:
+        UUID of the module
+
+    Raises:
+        ValueError: If module not found or invalid UUID
+    """
+    # Try to parse as UUID first
+    try:
+        return uuid.UUID(module_id)
+    except ValueError:
+        pass
+
+    # Try to parse as module code (M01, M02, etc.)
+    module_code_pattern = re.match(r"^M(\d{2})$", module_id.upper())
+    if module_code_pattern:
+        module_number = int(module_code_pattern.group(1))
+
+        query = select(Module).where(Module.module_number == module_number)
+        result = await session.execute(query)
+        module = result.scalar_one_or_none()
+
+        if module:
+            return module.id
+        else:
+            raise ValueError(f"Module with code {module_id} not found")
+
+    # If neither UUID nor valid module code
+    raise ValueError(
+        f"Invalid module identifier: {module_id}. Expected UUID or module code (M01, M02, etc.)"
+    )
 
 
 def get_claude_service() -> ClaudeService:
@@ -271,10 +319,11 @@ async def get_or_generate_lesson_by_module_and_unit(
     Get or generate lesson content by module and unit ID.
 
     This endpoint provides the main interface for the frontend to request lessons.
-    It checks for cached content first, then generates new content if needed.
+    It accepts both module codes (e.g., "M01") and UUIDs, resolving codes to UUIDs
+    automatically via database lookup.
 
     **Parameters:**
-    - **module_id**: Module identifier (e.g., "M01")
+    - **module_id**: Module identifier (code like "M01" or UUID string)
     - **unit_id**: Unit identifier (e.g., "M01-U03")
     - **language**: Content language ("fr" or "en")
     - **level**: User's level (1-4)
@@ -295,10 +344,11 @@ async def get_or_generate_lesson_by_module_and_unit(
             country=country,
         )
 
-        # Convert module_id to UUID if it follows the expected format
-        # For now, we'll use the string directly since the service expects it
+        # Resolve module_id to UUID if it's a module code
+        resolved_module_id = await _resolve_module_id(module_id, session)
+
         lesson_response = await lesson_service.get_or_generate_lesson(
-            module_id=module_id,
+            module_id=resolved_module_id,
             unit_id=unit_id,
             language=language,
             country=country,
@@ -360,7 +410,7 @@ async def stream_lesson_by_module_and_unit(
     Stream lesson generation by module and unit ID in real-time using Server-Sent Events (SSE).
 
     **Parameters:**
-    - **module_id**: Module identifier (e.g., "M01")
+    - **module_id**: Module identifier (code like "M01" or UUID string)
     - **unit_id**: Unit identifier (e.g., "M01-U03")
     - **language**: Content language ("fr" or "en")
     - **level**: User's level (1-4)
@@ -384,8 +434,11 @@ async def stream_lesson_by_module_and_unit(
                 country=country,
             )
 
+            # Resolve module_id to UUID if it's a module code
+            resolved_module_id = await _resolve_module_id(module_id, session)
+
             async for event in lesson_service.stream_lesson_generation(
-                module_id=module_id,
+                module_id=resolved_module_id,
                 unit_id=unit_id,
                 language=language,
                 country=country,
