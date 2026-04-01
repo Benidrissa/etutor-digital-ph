@@ -80,17 +80,19 @@ class SemanticRetriever:
     ) -> list[SearchResult]:
         """Perform the actual search using pgvector."""
         # Build the base query with cosine similarity
-        query_str = """
+        # Convert embedding to PostgreSQL vector literal to avoid asyncpg binding issues
+        embedding_literal = "[" + ",".join(str(x) for x in query_embedding) + "]"
+        query_str = f"""
         SELECT
             id, content, source, chapter, page, level, language,
             token_count, chunk_index, created_at,
-            1 - (embedding <=> :query_embedding::vector) as similarity
+            1 - (embedding <=> '{embedding_literal}'::vector) as similarity
         FROM document_chunks
         WHERE embedding IS NOT NULL
         """
 
         # Add filters
-        params = {"query_embedding": query_embedding}
+        params: dict[str, Any] = {}
 
         if filters:
             conditions = []
@@ -132,8 +134,8 @@ class SemanticRetriever:
                 query_str += " AND " + " AND ".join(conditions)
 
         # Add similarity threshold and ordering
-        query_str += """
-        HAVING 1 - (embedding <=> :query_embedding::vector) >= :min_similarity
+        query_str += f"""
+        HAVING 1 - (embedding <=> '{embedding_literal}'::vector) >= :min_similarity
         ORDER BY similarity DESC
         LIMIT :limit
         """
@@ -141,13 +143,8 @@ class SemanticRetriever:
         params["min_similarity"] = min_similarity
         params["limit"] = top_k
 
-        # Execute query with proper parameter binding
+        # Execute query
         try:
-            # Convert embedding list to string format for PostgreSQL vector type
-            embedding_str = "[" + ",".join(map(str, query_embedding)) + "]"
-            params["query_embedding"] = embedding_str
-
-            # Use bindparams to properly bind all named parameters
             query_obj = text(query_str).bindparams(**params)
             result = await session.execute(query_obj)
             rows = result.fetchall()
