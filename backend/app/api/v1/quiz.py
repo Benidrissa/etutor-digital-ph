@@ -1,5 +1,6 @@
 """Quiz API endpoints for generating and taking quizzes."""
 
+import re
 import uuid
 from datetime import UTC
 from uuid import UUID
@@ -33,6 +34,24 @@ from app.infrastructure.config.settings import get_settings
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/quiz", tags=["quiz"])
+
+
+async def _resolve_module_uuid(module_id_str: str, session: AsyncSession) -> UUID:
+    """Resolve a module code like 'M01' or a UUID string to a module UUID."""
+    module_code_match = re.match(r"^[Mm](\d+)$", module_id_str.strip())
+    if module_code_match:
+        module_number = int(module_code_match.group(1))
+        result = await session.execute(
+            select(Module).where(Module.module_number == module_number)
+        )
+        module = result.scalar_one_or_none()
+        if module is None:
+            raise ValueError(f"Module not found: {module_id_str}")
+        return module.id
+    try:
+        return UUID(module_id_str)
+    except ValueError:
+        raise ValueError(f"Invalid module_id format: {module_id_str}")
 
 
 def get_claude_service() -> ClaudeService:
@@ -93,9 +112,12 @@ async def generate_quiz(
     **Rate Limiting**: Quiz generation is subject to API limits.
     """
     try:
+        module_uuid = await _resolve_module_uuid(request.module_id, session)
+
         logger.info(
             "Quiz generation requested",
-            module_id=str(request.module_id),
+            module_id=request.module_id,
+            module_uuid=str(module_uuid),
             unit_id=request.unit_id,
             language=request.language,
             country=request.country,
@@ -104,7 +126,7 @@ async def generate_quiz(
         )
 
         quiz_response = await quiz_service.get_or_generate_quiz(
-            module_id=request.module_id,
+            module_id=module_uuid,
             unit_id=request.unit_id,
             language=request.language,
             country=request.country,
@@ -408,9 +430,12 @@ async def generate_summative_assessment(
     - Can gate progression to next module
     """
     try:
+        module_uuid = await _resolve_module_uuid(request.module_id, session)
+
         logger.info(
             "Summative assessment generation requested",
-            module_id=str(request.module_id),
+            module_id=request.module_id,
+            module_uuid=str(module_uuid),
             language=request.language,
             country=request.country,
             level=request.level,
@@ -418,7 +443,7 @@ async def generate_summative_assessment(
 
         # Generate summative assessment with specific parameters
         quiz_response = await quiz_service.get_or_generate_quiz(
-            module_id=request.module_id,
+            module_id=module_uuid,
             unit_id="summative",  # Special unit ID for summative assessments
             language=request.language,
             country=request.country,

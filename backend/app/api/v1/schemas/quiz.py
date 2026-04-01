@@ -88,7 +88,7 @@ class QuizResponse(BaseModel):
 class QuizGenerationRequest(BaseModel):
     """Request to generate or retrieve a quiz."""
 
-    module_id: UUID = Field(description="Module ID to generate quiz for")
+    module_id: str = Field(description="Module code (e.g. 'M01') or UUID string")
     unit_id: str = Field(description="Unit identifier within module")
     language: str = Field(description="Content language", pattern="^(fr|en)$")
     country: str = Field(description="User's country for contextualization")
@@ -101,7 +101,7 @@ class QuizGenerationRequest(BaseModel):
 class SummativeAssessmentRequest(BaseModel):
     """Request to generate or retrieve a summative assessment."""
 
-    module_id: UUID = Field(description="Module ID to generate assessment for")
+    module_id: str = Field(description="Module code (e.g. 'M01') or UUID string")
     language: str = Field(description="Content language", pattern="^(fr|en)$")
     country: str = Field(description="User's country for contextualization")
     level: int = Field(description="User's learning level (1-4)", ge=1, le=4)
