@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { Clock, CheckCircle, XCircle, RotateCcw, ArrowRight, Trophy, Target } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, RotateCcw, ArrowRight, Trophy, Target, BookCheck } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,6 +22,7 @@ export function QuizResults({ quiz, result, onRetry, onContinue }: QuizResultsPr
   const passingScore = quiz.content.passing_score;
   const scorePercent = result.score;
   const isPassed = result.passed;
+  const lessonValidated = result.lesson_validated ?? result.score >= 80;
   
   // Format time spent
   const formatTime = (seconds: number): string => {
@@ -56,6 +57,33 @@ export function QuizResults({ quiz, result, onRetry, onContinue }: QuizResultsPr
           {isPassed ? t('congratulations') : t('needsImprovement')}
         </p>
       </div>
+      
+      {/* Lesson Validation Banner — FR-03.3 */}
+      {lessonValidated ? (
+        <Card className="bg-teal-50 border-teal-300">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <BookCheck className="w-6 h-6 text-teal-600 flex-shrink-0" />
+              <div>
+                <p className="font-semibold text-teal-900">{t('lessonCompleted')}</p>
+                <p className="text-sm text-teal-700">{t('lessonCompletedDesc')}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="bg-amber-50 border-amber-300">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <Target className="w-6 h-6 text-amber-600 flex-shrink-0" />
+              <div>
+                <p className="font-semibold text-amber-900">{t('lessonNotValidated')}</p>
+                <p className="text-sm text-amber-700">{t('lessonNotValidatedDesc', { score: 80 })}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       
       {/* Score Summary Card */}
       <Card className={`${isPassed ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
@@ -212,24 +240,28 @@ export function QuizResults({ quiz, result, onRetry, onContinue }: QuizResultsPr
         </CardContent>
       </Card>
       
-      {/* Action Buttons */}
+      {/* Action Buttons — per SRS: no skip; retry regenerates quiz */}
       <div className="flex flex-col sm:flex-row gap-4 justify-center">
-        <Button
-          variant="outline"
-          onClick={onRetry}
-          className="min-h-11"
-        >
-          <RotateCcw className="w-4 h-4 mr-2" />
-          {t('retryQuiz')}
-        </Button>
+        {!lessonValidated && (
+          <Button
+            variant="outline"
+            onClick={onRetry}
+            className="min-h-11"
+          >
+            <RotateCcw className="w-4 h-4 mr-2" />
+            {t('retryQuiz')}
+          </Button>
+        )}
         
-        <Button
-          onClick={onContinue}
-          className="min-h-11"
-        >
-          {t('continueToNextUnit')}
-          <ArrowRight className="w-4 h-4 ml-2" />
-        </Button>
+        {lessonValidated && (
+          <Button
+            onClick={onContinue}
+            className="min-h-11"
+          >
+            {t('continueToNextUnit')}
+            <ArrowRight className="w-4 h-4 ml-2" />
+          </Button>
+        )}
       </div>
       
       {/* Summary Stats for Screen Readers */}
