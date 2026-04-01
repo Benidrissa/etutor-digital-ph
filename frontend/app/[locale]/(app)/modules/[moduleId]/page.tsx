@@ -2,13 +2,13 @@ import { getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { getLocale } from 'next-intl/server';
 import { Link } from '@/i18n/routing';
-import { ChevronLeft, Clock, CheckCircle, Circle, Lock, Play, BookOpen, MessageSquare, FileText } from 'lucide-react';
+import { ChevronLeft, Clock, CheckCircle, Lock, BookOpen } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { getModuleById, getPrerequisiteModules, isModuleUnlocked, Unit } from '@/lib/modules';
+import { getModuleById, getPrerequisiteModules, isModuleUnlocked } from '@/lib/modules';
+import { ModuleProgressOverlay } from '@/components/learning/module-progress-overlay';
 
 interface ModuleOverviewPageProps {
   params: Promise<{ moduleId: string }>;
@@ -28,32 +28,6 @@ export default async function ModuleOverviewPage({ params }: ModuleOverviewPageP
   const prerequisites = getPrerequisiteModules(moduleData);
   const isUnlocked = isModuleUnlocked(moduleData);
   const language = locale as 'en' | 'fr';
-
-  const getStatusIcon = (status: Unit['status']) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle className="w-5 h-5 text-green-600" />;
-      case 'in-progress':
-        return <Circle className="w-5 h-5 text-blue-600 fill-blue-100" />;
-      case 'pending':
-        return <Circle className="w-5 h-5 text-stone-400" />;
-    }
-  };
-
-  const getTypeIcon = (type: Unit['type']) => {
-    switch (type) {
-      case 'lesson':
-        return <BookOpen className="w-4 h-4" />;
-      case 'quiz':
-        return <MessageSquare className="w-4 h-4" />;
-      case 'case-study':
-        return <FileText className="w-4 h-4" />;
-    }
-  };
-
-  const completedUnits = moduleData.units?.filter(unit => unit.status === 'completed').length || 0;
-  const totalUnits = moduleData.units?.length || 0;
-  const nextUnit = moduleData.units?.find(unit => unit.status === 'in-progress' || unit.status === 'pending');
 
   if (!isUnlocked) {
     return (
@@ -127,24 +101,6 @@ export default async function ModuleOverviewPage({ params }: ModuleOverviewPageP
         )}
       </div>
 
-      {/* Progress Card */}
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>{t('progress')}</span>
-            <span className="text-lg font-bold text-teal-600">
-              {t('progressPercent', { percent: moduleData.completionPercentage })}
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Progress value={moduleData.completionPercentage} className="mb-4 h-2" />
-          <p className="text-sm text-stone-600">
-            {t('unitsCompleted', { completed: completedUnits, total: totalUnits })}
-          </p>
-        </CardContent>
-      </Card>
-
       <div className="grid md:grid-cols-3 gap-8">
         {/* Main Content */}
         <div className="md:col-span-2 space-y-8">
@@ -167,67 +123,16 @@ export default async function ModuleOverviewPage({ params }: ModuleOverviewPageP
             </Card>
           )}
 
-          {/* Units */}
-          {moduleData.units && (
-            <Card>
-              <CardHeader>
-                <CardTitle>{t('units')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {moduleData.units.map((unit) => (
-                    <Link
-                      key={unit.id}
-                      href={unit.type === 'quiz' ? `/modules/${moduleId}/quiz?unit=${unit.id}` : `/modules/${moduleId}/lessons/${unit.id}`}
-                      className="block"
-                    >
-                      <div className="flex items-center gap-4 p-4 border border-stone-200 rounded-lg hover:border-stone-300 hover:bg-stone-50 transition-colors cursor-pointer">
-                        <div className="flex items-center gap-3 flex-1">
-                          {getStatusIcon(unit.status)}
-                          <div className="flex items-center gap-2 text-stone-600">
-                            {getTypeIcon(unit.type)}
-                            <span className="text-sm font-medium">
-                              {t('unitNumber', { number: unit.number })}
-                            </span>
-                          </div>
-                          <div className="flex-1">
-                            <h4 className="font-medium text-stone-900">{unit.title[language]}</h4>
-                            {unit.description && (
-                              <p className="text-sm text-stone-600 mt-1">{unit.description[language]}</p>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 text-sm text-stone-500">
-                            <Clock className="w-4 h-4" />
-                            {t('readingTime', { minutes: unit.estimatedMinutes })}
-                          </div>
-                        </div>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          {/* Progress and Units — fetches real data from API, falls back gracefully */}
+          <ModuleProgressOverlay
+            moduleId={moduleId}
+            staticCompletionPercentage={moduleData.completionPercentage}
+            staticUnits={moduleData.units}
+          />
         </div>
 
         {/* Sidebar Actions */}
         <div className="space-y-4">
-          {/* Continue Learning */}
-          {nextUnit ? (
-            <Link href={nextUnit.type === 'quiz' ? `/modules/${moduleId}/quiz?unit=${nextUnit.id}` : `/modules/${moduleId}/lessons/${nextUnit.id}`} className="block">
-              <Button className="w-full min-h-11" size="lg">
-                <Play className="w-4 h-4 mr-2" />
-                {nextUnit.status === 'in-progress' ? t('continueReading') : t('startReading')}
-              </Button>
-            </Link>
-          ) : (
-            <Button className="w-full min-h-11" size="lg">
-              <CheckCircle className="w-4 h-4 mr-2" />
-              {t('takeFinalQuiz')}
-            </Button>
-          )}
-
-          {/* Secondary Actions */}
           <div className="space-y-2">
             <Link href={{ pathname: '/flashcards', query: { module: moduleId } }} className="block">
               <Button variant="outline" className="w-full min-h-11">
@@ -236,24 +141,6 @@ export default async function ModuleOverviewPage({ params }: ModuleOverviewPageP
               </Button>
             </Link>
           </div>
-
-          {/* Progress Summary */}
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-teal-600 mb-1">
-                  {moduleData.completionPercentage}%
-                </div>
-                <p className="text-sm text-stone-600">{t('progress')}</p>
-                <div className="mt-3 pt-3 border-t border-stone-200">
-                  <div className="flex justify-between text-xs text-stone-600">
-                    <span>{completedUnits} {t('units').toLowerCase()}</span>
-                    <span>{moduleData.estimatedHours}h total</span>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </div>
       </div>
     </div>

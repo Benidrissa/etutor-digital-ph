@@ -1,5 +1,85 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+// Progress API Types
+export interface ModuleProgressResponse {
+  module_id: string;
+  user_id: string;
+  status: "locked" | "in_progress" | "completed";
+  completion_pct: number;
+  quiz_score_avg: number | null;
+  time_spent_minutes: number;
+  last_accessed: string | null;
+}
+
+export interface UnitProgressDetail {
+  id: string;
+  unit_number: string;
+  title_fr: string;
+  title_en: string;
+  description_fr?: string;
+  description_en?: string;
+  estimated_minutes: number;
+  order_index: number;
+  status: "pending" | "in_progress" | "completed";
+}
+
+export interface ModuleDetailWithProgressResponse {
+  id: string;
+  module_number: number;
+  level: number;
+  title_fr: string;
+  title_en: string;
+  description_fr?: string;
+  description_en?: string;
+  estimated_hours: number;
+  prereq_modules: string[];
+  status: "locked" | "in_progress" | "completed";
+  completion_pct: number;
+  quiz_score_avg: number | null;
+  time_spent_minutes: number;
+  last_accessed: string | null;
+  units: UnitProgressDetail[];
+}
+
+export interface LessonAccessRequest {
+  module_id: string;
+  lesson_id: string;
+  time_spent_seconds?: number;
+  completion_percentage?: number;
+}
+
+// Progress API Functions
+export async function getModuleProgress(moduleId: string): Promise<ModuleProgressResponse> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<ModuleProgressResponse>(
+    `/api/v1/progress/modules/${moduleId}`
+  );
+}
+
+export async function getAllModuleProgress(): Promise<ModuleProgressResponse[]> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<ModuleProgressResponse[]>("/api/v1/progress/modules");
+}
+
+export async function getModuleDetailWithProgress(
+  moduleId: string
+): Promise<ModuleDetailWithProgressResponse> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<ModuleDetailWithProgressResponse>(
+    `/api/v1/progress/modules/${moduleId}/detail`
+  );
+}
+
+export async function trackLessonAccess(
+  request: LessonAccessRequest
+): Promise<ModuleProgressResponse> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<ModuleProgressResponse>("/api/v1/progress/lesson-access", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
 export async function apiFetch<T>(
   path: string,
   options?: RequestInit
@@ -23,7 +103,17 @@ export async function apiFetch<T>(
     ...options,
     headers,
   });
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  if (!res.ok) {
+    let message = `API error: ${res.status}`;
+    try {
+      const body = await res.json();
+      if (body?.detail?.message) message = body.detail.message;
+      else if (typeof body?.detail === 'string') message = body.detail;
+    } catch {
+      // ignore parse errors — keep the status-code message
+    }
+    throw new Error(message);
+  }
   return res.json();
 }
 

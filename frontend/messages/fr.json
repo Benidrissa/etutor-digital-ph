@@ -318,7 +318,8 @@
     "selectConversation": "Sélectionner une conversation",
     "selectConversationDescription": "Choisissez une conversation dans la barre latérale ou commencez-en une nouvelle",
     "messageCount": "{count} {count, plural, one {message} other {messages}}",
-    "cancel": "Annuler"
+    "cancel": "Annuler",
+    "newConversationTitle": "Nouvelle Conversation"
   },
   "Flashcards": {
     "title": "Flashcards",
@@ -589,6 +590,9 @@
     "sourceCitations": "Sources citées",
     "markComplete": "Marquer comme Terminé",
     "completed": "Terminé"
+  },
+  "QuizPage": {
+    "backToModule": "Retour à {module}"
   },
   "LessonPage": {
     "modules": "Modules",
