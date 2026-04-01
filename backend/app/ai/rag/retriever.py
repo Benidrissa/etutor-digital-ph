@@ -82,60 +82,56 @@ class SemanticRetriever:
         # Build the base query with cosine similarity
         # Convert embedding to PostgreSQL vector literal to avoid asyncpg binding issues
         embedding_literal = "[" + ",".join(str(x) for x in query_embedding) + "]"
-        query_str = f"""
-        SELECT
-            id, content, source, chapter, page, level, language,
-            token_count, chunk_index, created_at,
-            1 - (embedding::vector <=> '{embedding_literal}'::vector) as similarity
-        FROM document_chunks
-        WHERE embedding IS NOT NULL
-        """
+        vec_expr = f"embedding::vector <=> '{embedding_literal}'::vector"
 
-        # Add filters
+        where_clauses = ["embedding IS NOT NULL"]
         params: dict[str, Any] = {}
 
         if filters:
-            conditions = []
-
             if "source" in filters:
                 if isinstance(filters["source"], list):
-                    conditions.append("source = ANY(:source_list)")
+                    where_clauses.append("source = ANY(:source_list)")
                     params["source_list"] = filters["source"]
                 else:
-                    conditions.append("source = :source")
+                    where_clauses.append("source = :source")
                     params["source"] = filters["source"]
 
             if "level" in filters:
                 if isinstance(filters["level"], dict):
-                    # Handle range queries like {"$lte": 2}
                     if "$lte" in filters["level"]:
-                        conditions.append("(level IS NULL OR level <= :max_level)")
+                        where_clauses.append("(level IS NULL OR level <= :max_level)")
                         params["max_level"] = filters["level"]["$lte"]
                     if "$gte" in filters["level"]:
-                        conditions.append("(level IS NULL OR level >= :min_level)")
+                        where_clauses.append("(level IS NULL OR level >= :min_level)")
                         params["min_level"] = filters["level"]["$gte"]
                 else:
-                    conditions.append("level = :level")
+                    where_clauses.append("level = :level")
                     params["level"] = filters["level"]
 
             if "language" in filters:
-                conditions.append("language = :language")
+                where_clauses.append("language = :language")
                 params["language"] = filters["language"]
 
             if "chapter" in filters:
                 if isinstance(filters["chapter"], list):
-                    conditions.append("chapter = ANY(:chapter_list)")
+                    where_clauses.append("chapter = ANY(:chapter_list)")
                     params["chapter_list"] = filters["chapter"]
                 else:
-                    conditions.append("chapter = :chapter")
+                    where_clauses.append("chapter = :chapter")
                     params["chapter"] = filters["chapter"]
 
-            if conditions:
-                query_str += " AND " + " AND ".join(conditions)
+        where_sql = " AND ".join(where_clauses)
 
-        # Add similarity threshold and ordering
-        query_str += f"""
-        HAVING 1 - (embedding::vector <=> '{embedding_literal}'::vector) >= :min_similarity
+        query_str = f"""
+        SELECT * FROM (
+            SELECT
+                id, content, source, chapter, page, level, language,
+                token_count, chunk_index, created_at,
+                1 - ({vec_expr}) as similarity
+            FROM document_chunks
+            WHERE {where_sql}
+        ) sub
+        WHERE similarity >= :min_similarity
         ORDER BY similarity DESC
         LIMIT :limit
         """
