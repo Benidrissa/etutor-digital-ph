@@ -269,6 +269,93 @@ async def test_send_message_daily_limit_error_has_code(tutor_service, sample_use
     assert error_chunks[0]["data"]["limit_reached"] is True
 
 
+async def test_list_conversations_returns_summaries(tutor_service, sample_user, sample_conversation):
+    """Verify list_conversations returns conversation summaries with required fields."""
+    mock_session = AsyncMock(spec=AsyncSession)
+
+    with patch.object(
+        mock_session,
+        "execute",
+        new_callable=AsyncMock,
+    ) as mock_execute:
+        scalars_result = MagicMock()
+        scalars_result.scalars.return_value.all.return_value = [sample_conversation]
+        count_result = MagicMock()
+        count_result.scalar.return_value = 1
+        mock_execute.side_effect = [scalars_result, count_result]
+
+        result = await tutor_service.list_conversations(
+            user_id=sample_user.id,
+            session=mock_session,
+        )
+
+    assert "conversations" in result
+    assert "total" in result
+    assert result["total"] == 1
+    assert len(result["conversations"]) == 1
+    summary = result["conversations"][0]
+    assert "id" in summary
+    assert "message_count" in summary
+    assert "last_message_at" in summary
+    assert "preview" in summary
+
+
+async def test_get_conversation_returns_none_for_wrong_user(tutor_service, sample_user):
+    """Verify get_conversation returns None when conversation belongs to a different user."""
+    mock_session = AsyncMock(spec=AsyncSession)
+    other_conv_id = uuid.uuid4()
+
+    with patch.object(
+        mock_session,
+        "execute",
+        new_callable=AsyncMock,
+    ) as mock_execute:
+        result_mock = MagicMock()
+        result_mock.scalar_one_or_none.return_value = None
+        mock_execute.return_value = result_mock
+
+        result = await tutor_service.get_conversation(
+            user_id=sample_user.id,
+            conversation_id=other_conv_id,
+            session=mock_session,
+        )
+
+    assert result is None
+
+
+async def test_get_conversation_returns_messages(tutor_service, sample_user, sample_conversation):
+    """Verify get_conversation returns full conversation with messages."""
+    sample_conversation.messages = [
+        {"role": "user", "content": "Bonjour", "timestamp": datetime.now(UTC).isoformat()},
+        {
+            "role": "assistant",
+            "content": "Bonjour! Comment puis-je vous aider?",
+            "sources": [],
+            "timestamp": datetime.now(UTC).isoformat(),
+        },
+    ]
+    mock_session = AsyncMock(spec=AsyncSession)
+
+    with patch.object(
+        mock_session,
+        "execute",
+        new_callable=AsyncMock,
+    ) as mock_execute:
+        result_mock = MagicMock()
+        result_mock.scalar_one_or_none.return_value = sample_conversation
+        mock_execute.return_value = result_mock
+
+        result = await tutor_service.get_conversation(
+            user_id=sample_user.id,
+            conversation_id=sample_conversation.id,
+            session=mock_session,
+        )
+
+    assert result is not None
+    assert result["id"] == sample_conversation.id
+    assert len(result["messages"]) == 2
+
+
 async def test_send_message_never_yields_text_type(tutor_service, sample_user, sample_conversation):
     """Regression test: ensure type='text' is never yielded (was the bug in #213)."""
     mock_session = AsyncMock(spec=AsyncSession)
