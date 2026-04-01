@@ -375,7 +375,10 @@
     "target": "Objectif",
     "startReviewSession": "Commencer la Session de Révision",
     "reviewDescription": "Révisez les flashcards avec répétition espacée pour un apprentissage efficace",
-    "redirectingToLogin": "Redirection vers la connexion..."
+    "redirectingToLogin": "Redirection vers la connexion...",
+    "noFlashcardsYet": "Aucune flashcard pour l'instant",
+    "noFlashcardsDescription": "Terminez des modules pour générer des flashcards.",
+    "goToModules": "Aller aux modules"
   },
   "Onboarding": {
     "welcome": "Bienvenue sur SantePublique AOF",
