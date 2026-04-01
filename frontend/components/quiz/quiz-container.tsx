@@ -112,7 +112,8 @@ export function QuizContainer({
   
   const handleRetry = () => {
     setResult(null);
-    setState('in-progress');
+    setQuiz(null);
+    void loadQuiz();
   };
   
   const handleContinue = () => {

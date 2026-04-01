@@ -340,8 +340,9 @@ async def submit_quiz_attempt(
 
         # Calculate final score
         score = round((correct_count / len(questions)) * 100, 1)
-        passing_score = quiz_data.get("passing_score", 70.0)
+        passing_score = quiz_data.get("passing_score", 80.0)
         passed = score >= passing_score
+        lesson_validated = score >= 80.0
 
         # Store attempt in database
         attempt = QuizAttempt(
@@ -375,8 +376,8 @@ async def submit_quiz_attempt(
         await session.commit()
         await session.refresh(attempt)
 
-        # Update module progress when quiz is passed (≥80%) — FR-02.2
-        if passed:
+        # Update module progress when lesson is validated (≥80%) — FR-02.2, FR-03.3
+        if lesson_validated:
             try:
                 unit_id = quiz_data.get("unit_id", "")
                 if unit_id:
@@ -386,7 +387,7 @@ async def submit_quiz_attempt(
                         module_id=quiz_content.module_id,
                         unit_id=unit_id,
                         score=score,
-                        passed=passed,
+                        passed=True,
                     )
             except Exception as progress_err:
                 logger.warning(
@@ -402,6 +403,7 @@ async def submit_quiz_attempt(
             correct_answers=correct_count,
             total_time_seconds=request.total_time_seconds,
             passed=passed,
+            lesson_validated=lesson_validated,
             results=results,
             attempted_at=attempt.attempted_at.isoformat(),
         )

@@ -151,6 +151,10 @@ class QuizAttemptResponse(BaseModel):
     correct_answers: int = Field(description="Number of correct answers")
     total_time_seconds: int = Field(description="Total time taken")
     passed: bool = Field(description="Whether user passed based on passing score")
+    lesson_validated: bool = Field(
+        description="Whether lesson is validated (score ≥80%) — marks lesson complete in user_module_progress",
+        default=False,
+    )
     results: list[QuizAttemptResult] = Field(description="Per-question results")
     attempted_at: str = Field(description="ISO timestamp when attempt was submitted")
 

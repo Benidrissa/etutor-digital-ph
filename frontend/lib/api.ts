@@ -225,6 +225,7 @@ export interface QuizAttemptResponse {
   correct_answers: number;
   total_time_seconds: number;
   passed: boolean;
+  lesson_validated: boolean;
   results: QuizAttemptResult[];
   attempted_at: string;
 }

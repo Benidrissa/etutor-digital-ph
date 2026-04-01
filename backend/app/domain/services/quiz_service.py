@@ -53,24 +53,13 @@ class QuizService:
             Exception: If quiz generation fails
         """
         try:
-            # Check cache first
+            # Cache lookup: match module, unit, language, and level
             query = select(GeneratedContent).where(
                 GeneratedContent.module_id == module_id,
                 GeneratedContent.content_type == "quiz",
                 GeneratedContent.language == language,
                 GeneratedContent.level == level,
                 GeneratedContent.content["unit_id"].astext == unit_id,
-                GeneratedContent.content["questions"]
-                .as_("json")
-                .op("@>")('[{"questions": [{}] for _ in range(num_questions)}]'),
-            )
-
-            # Simplified cache lookup - look for any quiz for this module/unit/language/level
-            query = select(GeneratedContent).where(
-                GeneratedContent.module_id == module_id,
-                GeneratedContent.content_type == "quiz",
-                GeneratedContent.language == language,
-                GeneratedContent.level == level,
             )
 
             result = await session.execute(query)
@@ -280,7 +269,7 @@ RESPONSE FORMAT (JSON):
     }}
   ],
   "time_limit_minutes": {max(10, num_questions * 1.5)},
-  "passing_score": 70.0
+  "passing_score": 80.0
 }}
 
 Generate the quiz now, ensuring all questions are relevant to public health practice in West Africa."""
@@ -324,8 +313,17 @@ Generate the quiz now, ensuring all questions are relevant to public health prac
                     raise ValueError(f"Missing required field: {field}")
 
             questions = quiz_data["questions"]
-            if not isinstance(questions, list) or len(questions) != expected_questions:
-                raise ValueError(f"Expected {expected_questions} questions, got {len(questions)}")
+            if not isinstance(questions, list) or len(questions) == 0:
+                raise ValueError("Quiz must have at least one question")
+            if (
+                len(questions) < max(1, expected_questions - 2)
+                or len(questions) > expected_questions + 2
+            ):
+                logger.warning(
+                    "Question count mismatch",
+                    expected=expected_questions,
+                    got=len(questions),
+                )
 
             # Validate each question
             for i, question in enumerate(questions):
@@ -333,7 +331,9 @@ Generate the quiz now, ensuring all questions are relevant to public health prac
 
             # Set defaults for optional fields
             quiz_data.setdefault("time_limit_minutes", max(10, len(questions) * 2))
-            quiz_data.setdefault("passing_score", 70.0)
+            quiz_data.setdefault("passing_score", 80.0)
+            if quiz_data.get("passing_score", 80.0) < 80.0:
+                quiz_data["passing_score"] = 80.0
 
             # Add unit_id to content
             quiz_data["unit_id"] = unit_id
