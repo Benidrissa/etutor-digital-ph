@@ -79,7 +79,7 @@ export function DashboardStats() {
       <StatsCard
         title={t('averageScore')}
         value={`${Math.round(stats.average_quiz_score)}%`}
-        subtitle={stats.average_quiz_score === 0 ? 'No quizzes taken yet' : undefined}
+        subtitle={stats.average_quiz_score === 0 ? t('noQuizzesTakenYet') : undefined}
       />
 
       {/* Weekly Study Time */}
@@ -107,7 +107,7 @@ export function DashboardStats() {
       <StatsCard
         title={t('overallProgress')}
         value={`${Math.round(stats.completion_percentage)}%`}
-        subtitle={stats.completion_percentage === 0 ? 'Just getting started' : undefined}
+        subtitle={stats.completion_percentage === 0 ? t('justGettingStarted') : undefined}
       />
     </div>
   );
