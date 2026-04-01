@@ -467,6 +467,7 @@
     "selectAnswer": "Select an answer to continue",
     "previous": "Previous",
     "next": "Next", 
+    "answered": "{count}/{total} answered",
     "submit": "Submit Assessment",
     "submitting": "Evaluating your responses...",
     "results": {
