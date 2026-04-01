@@ -2,6 +2,7 @@
 
 import json
 import uuid
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -102,7 +103,16 @@ class TestFlashcardGenerationService:
 
         # Mock session without existing content
         session = AsyncMock(spec=AsyncSession)
-        session.execute.return_value.scalar_one_or_none.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=mock_result)
+
+        # Mock session.refresh to set generated_at timestamp
+        def mock_refresh(obj):
+            if hasattr(obj, "generated_at") and obj.generated_at is None:
+                obj.generated_at = datetime.now(UTC)
+
+        session.refresh = AsyncMock(side_effect=mock_refresh)
 
         # Mock RAG retrieval
         mock_semantic_retriever.search.return_value = sample_search_results
@@ -139,7 +149,7 @@ class TestFlashcardGenerationService:
 
         # Verify service calls
         mock_semantic_retriever.search.assert_called_once()
-        mock_claude_service.generate_content.assert_called_once()
+        mock_claude_service.generate_structured_content.assert_called_once()
         session.add.assert_called_once()
         session.commit.assert_called_once()
 
@@ -169,10 +179,13 @@ class TestFlashcardGenerationService:
             sources_cited=["Donaldson Ch.4, p.67", "Triola Ch.3, p.89"],
             country_context=country,
             validated=False,
+            generated_at=datetime.now(UTC),
         )
 
         session = AsyncMock(spec=AsyncSession)
-        session.execute.return_value.scalar_one_or_none.return_value = existing_content
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = existing_content
+        session.execute = AsyncMock(return_value=mock_result)
 
         # Act
         result = await flashcard_service.get_or_generate_flashcard_set(
@@ -190,7 +203,7 @@ class TestFlashcardGenerationService:
 
         # Verify no generation calls were made
         mock_semantic_retriever.search.assert_not_called()
-        mock_claude_service.generate_content.assert_not_called()
+        mock_claude_service.generate_structured_content.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_generate_flashcard_set_no_search_results(
@@ -206,7 +219,9 @@ class TestFlashcardGenerationService:
         level = 2
 
         session = AsyncMock(spec=AsyncSession)
-        session.execute.return_value.scalar_one_or_none.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=mock_result)
 
         # Mock empty search results
         mock_semantic_retriever.search.return_value = []
@@ -237,10 +252,19 @@ class TestFlashcardGenerationService:
         level = 2
 
         session = AsyncMock(spec=AsyncSession)
-        session.execute.return_value.scalar_one_or_none.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=mock_result)
+
+        # Mock session.refresh to set generated_at timestamp
+        def mock_refresh(obj):
+            if hasattr(obj, "generated_at") and obj.generated_at is None:
+                obj.generated_at = datetime.now(UTC)
+
+        session.refresh = AsyncMock(side_effect=mock_refresh)
 
         mock_semantic_retriever.search.return_value = sample_search_results
-        mock_claude_service.generate_content.side_effect = Exception("API Error")
+        mock_claude_service.generate_structured_content.side_effect = Exception("API Error")
 
         # Act & Assert
         with pytest.raises(ValueError, match="Content generation failed"):
@@ -268,10 +292,19 @@ class TestFlashcardGenerationService:
         level = 2
 
         session = AsyncMock(spec=AsyncSession)
-        session.execute.return_value.scalar_one_or_none.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=mock_result)
+
+        # Mock session.refresh to set generated_at timestamp
+        def mock_refresh(obj):
+            if hasattr(obj, "generated_at") and obj.generated_at is None:
+                obj.generated_at = datetime.now(UTC)
+
+        session.refresh = AsyncMock(side_effect=mock_refresh)
 
         mock_semantic_retriever.search.return_value = sample_search_results
-        mock_claude_service.generate_content.return_value = "Invalid JSON"
+        mock_claude_service.generate_structured_content.return_value = "Invalid JSON"
 
         # Act & Assert
         with pytest.raises(ValueError, match="Invalid JSON response"):
@@ -315,6 +348,7 @@ class TestFlashcardGenerationService:
             sources_cited=["Donaldson Ch.4, p.67"],
             country_context="SN",
             validated=False,
+            generated_at=datetime.now(UTC),
         )
 
         # Act
