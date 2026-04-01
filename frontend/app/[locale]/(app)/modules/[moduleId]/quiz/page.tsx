@@ -1,6 +1,6 @@
 import { notFound, redirect } from 'next/navigation';
 import { getLocale } from 'next-intl/server';
-import Link from 'next/link';
+import { Link } from '@/i18n/routing';
 import { ChevronLeft } from 'lucide-react';
 import { QuizContainer } from '@/components/quiz/quiz-container';
 import { getModuleById } from '@/lib/modules';
