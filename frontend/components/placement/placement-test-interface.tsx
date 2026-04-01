@@ -13,6 +13,7 @@ import {
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Clock, ChevronLeft, ChevronRight } from 'lucide-react';
+import { API_BASE } from '@/lib/api';
 
 interface PlacementQuestion {
   id: string;
@@ -38,6 +39,7 @@ interface PlacementTestInterfaceProps {
 
 export function PlacementTestInterface({ onComplete, locale }: PlacementTestInterfaceProps) {
   const t = useTranslations('PlacementTest');
+  const tCommon = useTranslations('Common');
   const [testData, setTestData] = useState<PlacementTestData | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<{ [key: string]: string }>({});
@@ -50,7 +52,7 @@ export function PlacementTestInterface({ onComplete, locale }: PlacementTestInte
   useEffect(() => {
     const loadQuestions = async () => {
       try {
-        const response = await fetch('/api/v1/placement-test/questions', {
+        const response = await fetch(`${API_BASE}/api/v1/placement-test/questions`, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem('token')}`,
           },
@@ -120,7 +122,7 @@ export function PlacementTestInterface({ onComplete, locale }: PlacementTestInte
     try {
       const timeTaken = Math.floor((Date.now() - startTime) / 1000);
       
-      const response = await fetch('/api/v1/placement-test/submit', {
+      const response = await fetch(`${API_BASE}/api/v1/placement-test/submit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -148,7 +150,7 @@ export function PlacementTestInterface({ onComplete, locale }: PlacementTestInte
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Loading Assessment...</CardTitle>
+          <CardTitle>{tCommon('loading')}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center py-8">
@@ -163,10 +165,10 @@ export function PlacementTestInterface({ onComplete, locale }: PlacementTestInte
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Error</CardTitle>
+          <CardTitle>{tCommon('error')}</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-destructive">Failed to load assessment questions.</p>
+          <p className="text-destructive">{t('error.failedToLoad')}</p>
         </CardContent>
       </Card>
     );
