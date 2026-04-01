@@ -33,12 +33,10 @@ async def get_current_user_profile(
     try:
         user_repo = UserRepository(db)
 
-        # Convert user ID to UUID if it's a string
         from uuid import UUID
 
         user_id = UUID(current_user.id) if isinstance(current_user.id, str) else current_user.id
 
-        # Fetch complete user profile from database
         user = await user_repo.get_by_id(user_id)
 
         if not user:
