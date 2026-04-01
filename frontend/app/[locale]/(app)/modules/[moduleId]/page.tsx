@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { getModuleById, getPrerequisiteModules, isModuleUnlocked } from '@/lib/modules';
 import { ModuleProgressOverlay } from '@/components/learning/module-progress-overlay';
+import { OfflineDownloadButton } from '@/components/modules/offline-download-button';
 
 interface ModuleOverviewPageProps {
   params: Promise<{ moduleId: string }>;
@@ -134,6 +135,11 @@ export default async function ModuleOverviewPage({ params }: ModuleOverviewPageP
         {/* Sidebar Actions */}
         <div className="space-y-4">
           <div className="space-y-2">
+            <OfflineDownloadButton
+              moduleId={moduleId}
+              moduleTitleFr={moduleData.title.fr}
+              moduleTitleEn={moduleData.title.en}
+            />
             <Link href={{ pathname: '/flashcards', query: { module: moduleId } }} className="block">
               <Button variant="outline" className="w-full min-h-11">
                 <BookOpen className="w-4 h-4 mr-2" />
