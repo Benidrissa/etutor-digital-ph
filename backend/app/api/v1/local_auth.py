@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, EmailStr, Field
 from structlog import get_logger
 
@@ -100,6 +100,57 @@ class LogoutRequest(BaseModel):
     """Logout request."""
 
     refresh_token: str
+
+
+class RegisterEmailOTPRequest(BaseModel):
+    """Email OTP registration request."""
+
+    email: EmailStr
+    name: str = Field(..., min_length=2, max_length=100)
+    preferred_language: str = Field(default="fr", pattern="^(fr|en)$")
+    country: str | None = Field(None, description="ECOWAS country code")
+    professional_role: str | None = Field(None, max_length=50)
+
+
+class RegisterEmailOTPResponse(BaseModel):
+    """Email OTP registration response."""
+
+    user_id: str
+    email: str
+    name: str
+    verification_method: str = "email_otp"
+    otp_id: str
+    expires_at: str
+    expires_in_seconds: int
+
+
+class VerifyEmailOTPRequest(BaseModel):
+    """Email OTP verification request."""
+
+    otp_id: str
+    otp_code: str = Field(..., min_length=6, max_length=6, pattern="^[0-9]{6}$")
+
+
+class SendLoginOTPRequest(BaseModel):
+    """Send login OTP request."""
+
+    email: EmailStr
+
+
+class SendLoginOTPResponse(BaseModel):
+    """Send login OTP response."""
+
+    otp_id: str
+    expires_at: str
+    expires_in_seconds: int
+    message: str
+
+
+class VerifyLoginOTPRequest(BaseModel):
+    """Verify login OTP request."""
+
+    otp_id: str
+    otp_code: str = Field(..., min_length=6, max_length=6, pattern="^[0-9]{6}$")
 
 
 # =============================================================================
@@ -375,6 +426,190 @@ async def logout(
         # Don't raise error for logout, just clear cookie
         response.delete_cookie(key="refresh_token", httponly=True, secure=True, samesite="strict")
         return {"message": "Logged out"}
+
+
+# =============================================================================
+# EMAIL OTP ENDPOINTS
+# =============================================================================
+
+
+@router.post("/register-email-otp", response_model=RegisterEmailOTPResponse)
+async def register_email_otp(
+    request: RegisterEmailOTPRequest, request_obj: Request, db=Depends(get_db_session)
+) -> RegisterEmailOTPResponse:
+    """Register a new user with email OTP verification.
+
+    Flow:
+    1. User provides email + profile info
+    2. System sends 6-digit OTP to email
+    3. User calls /verify-email-otp to complete setup
+
+    Returns:
+        Registration response with OTP details
+
+    Raises:
+        400: User already exists, rate limit exceeded, or invalid data
+        500: Registration failed
+    """
+    try:
+        ip_address = getattr(request_obj.client, "host", None) if request_obj.client else None
+
+        auth_service = LocalAuthService(db)
+        result = await auth_service.register_user_with_email_otp(
+            email=request.email,
+            name=request.name,
+            preferred_language=request.preferred_language,
+            country=request.country,
+            professional_role=request.professional_role,
+            ip_address=ip_address,
+        )
+
+        logger.info("User email OTP registration initiated", email=request.email)
+        return RegisterEmailOTPResponse(**result)
+
+    except AuthenticationError as e:
+        logger.warning("Email OTP registration failed", email=request.email, error=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error("Email OTP registration error", email=request.email, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Registration failed"
+        )
+
+
+@router.post("/verify-email-otp", response_model=TokenResponse)
+async def verify_email_otp(
+    request: VerifyEmailOTPRequest,
+    response: Response,
+    request_obj: Request,
+    db=Depends(get_db_session),
+) -> TokenResponse:
+    """Verify email OTP code and complete registration.
+
+    Args:
+        request: OTP ID and 6-digit OTP code
+
+    Returns:
+        Access token and refresh token
+
+    Raises:
+        400: Invalid OTP code, expired, or max attempts exceeded
+        500: Verification failed
+    """
+    try:
+        ip_address = getattr(request_obj.client, "host", None) if request_obj.client else None
+
+        auth_service = LocalAuthService(db)
+        result = await auth_service.verify_email_otp_registration(
+            otp_id=request.otp_id, otp_code=request.otp_code, ip_address=ip_address
+        )
+
+        # Set refresh token as httpOnly cookie
+        response.set_cookie(
+            key="refresh_token",
+            value=result["refresh_token"],
+            httponly=True,
+            secure=True,
+            samesite="strict",
+            max_age=30 * 24 * 60 * 60,  # 30 days
+        )
+
+        logger.info("Email OTP verification successful", otp_id=request.otp_id)
+        return TokenResponse(**result)
+
+    except AuthenticationError as e:
+        logger.warning("Email OTP verification failed", otp_id=request.otp_id, error=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error("Email OTP verification error", otp_id=request.otp_id, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Verification failed"
+        )
+
+
+@router.post("/send-login-otp", response_model=SendLoginOTPResponse)
+async def send_login_otp(
+    request: SendLoginOTPRequest, request_obj: Request, db=Depends(get_db_session)
+) -> SendLoginOTPResponse:
+    """Send OTP for email-based login.
+
+    Args:
+        request: User email
+
+    Returns:
+        OTP details
+
+    Raises:
+        400: Invalid credentials or rate limit exceeded
+        500: Failed to send OTP
+    """
+    try:
+        ip_address = getattr(request_obj.client, "host", None) if request_obj.client else None
+
+        auth_service = LocalAuthService(db)
+        result = await auth_service.send_login_otp(email=request.email, ip_address=ip_address)
+
+        logger.info("Login OTP sent", email=request.email)
+        return SendLoginOTPResponse(**result)
+
+    except AuthenticationError as e:
+        logger.warning("Send login OTP failed", email=request.email, error=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error("Send login OTP error", email=request.email, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to send login code"
+        )
+
+
+@router.post("/verify-login-otp", response_model=TokenResponse)
+async def verify_login_otp(
+    request: VerifyLoginOTPRequest,
+    response: Response,
+    request_obj: Request,
+    db=Depends(get_db_session),
+) -> TokenResponse:
+    """Verify login OTP code and authenticate user.
+
+    Args:
+        request: OTP ID and 6-digit OTP code
+
+    Returns:
+        Access token and refresh token
+
+    Raises:
+        401: Invalid OTP code or authentication failed
+        500: Login failed
+    """
+    try:
+        ip_address = getattr(request_obj.client, "host", None) if request_obj.client else None
+
+        auth_service = LocalAuthService(db)
+        result = await auth_service.verify_login_otp(
+            otp_id=request.otp_id, otp_code=request.otp_code, ip_address=ip_address
+        )
+
+        # Set refresh token as httpOnly cookie
+        response.set_cookie(
+            key="refresh_token",
+            value=result["refresh_token"],
+            httponly=True,
+            secure=True,
+            samesite="strict",
+            max_age=30 * 24 * 60 * 60,  # 30 days
+        )
+
+        logger.info("Login OTP verification successful", otp_id=request.otp_id)
+        return TokenResponse(**result)
+
+    except AuthenticationError as e:
+        logger.warning("Login OTP verification failed", otp_id=request.otp_id, error=str(e))
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+    except Exception as e:
+        logger.error("Login OTP verification error", otp_id=request.otp_id, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Login verification failed"
+        )
 
 
 # =============================================================================

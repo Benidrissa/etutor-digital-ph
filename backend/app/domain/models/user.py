@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.domain.models.base import Base
 
 if TYPE_CHECKING:
-    from app.domain.models.auth import MagicLink, RefreshToken, TOTPSecret
+    from app.domain.models.auth import EmailOTP, MagicLink, RefreshToken, TOTPSecret
     from app.domain.models.conversation import TutorConversation
     from app.domain.models.flashcard import FlashcardReview
     from app.domain.models.lesson_reading import LessonReading
@@ -39,6 +39,7 @@ class User(Base):
     totp_secret: Mapped[TOTPSecret | None] = relationship(back_populates="user")
     refresh_tokens: Mapped[list[RefreshToken]] = relationship(back_populates="user")
     magic_links: Mapped[list[MagicLink]] = relationship(back_populates="user")
+    email_otps: Mapped[list[EmailOTP]] = relationship(back_populates="user")
 
     # Learning relationships
     module_progress: Mapped[list[UserModuleProgress]] = relationship(back_populates="user")
