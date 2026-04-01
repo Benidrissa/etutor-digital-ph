@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "@/i18n/routing";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { useTranslations, useLocale } from "next-intl";
@@ -28,37 +28,37 @@ export function Sidebar() {
 
   const navItems = [
     {
-      href: `/${locale}/dashboard`,
+      href: "/dashboard",
       label: t("dashboard"),
       icon: Home,
       description: t("dashboardDescription")
     },
     {
-      href: `/${locale}/modules`,
+      href: "/modules",
       label: t("modules"),
       icon: BookOpen,
       description: t("modulesDescription")
     },
     {
-      href: `/${locale}/flashcards`,
+      href: "/flashcards",
       label: t("flashcards"),
       icon: CreditCard,
       description: t("flashcardsDescription")
     },
     {
-      href: `/${locale}/tutor`,
+      href: "/tutor",
       label: t("tutor"),
       icon: Bot,
       description: t("tutorDescription")
     },
     {
-      href: `/${locale}/profile`,
+      href: "/profile",
       label: t("profile"),
       icon: User,
       description: t("profileDescription")
     },
     {
-      href: `/${locale}/settings`,
+      href: "/settings",
       label: t("settings"),
       icon: Settings,
       description: t("settingsDescription")
