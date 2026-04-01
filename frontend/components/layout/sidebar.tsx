@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import {
   Home,
   BookOpen,
@@ -23,44 +23,45 @@ export function Sidebar() {
   const t = useTranslations("Navigation");
   const tCommon = useTranslations("Common");
   const pathname = usePathname();
+  const locale = useLocale();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const navItems = [
-    { 
-      href: "/dashboard", 
-      label: t("dashboard"), 
+    {
+      href: `/${locale}/dashboard`,
+      label: t("dashboard"),
       icon: Home,
-      description: t("dashboardDescription") 
+      description: t("dashboardDescription")
     },
-    { 
-      href: "/modules", 
-      label: t("modules"), 
+    {
+      href: `/${locale}/modules`,
+      label: t("modules"),
       icon: BookOpen,
-      description: t("modulesDescription") 
+      description: t("modulesDescription")
     },
-    { 
-      href: "/flashcards", 
-      label: t("flashcards"), 
+    {
+      href: `/${locale}/flashcards`,
+      label: t("flashcards"),
       icon: CreditCard,
-      description: t("flashcardsDescription") 
+      description: t("flashcardsDescription")
     },
-    { 
-      href: "/tutor", 
-      label: t("tutor"), 
+    {
+      href: `/${locale}/tutor`,
+      label: t("tutor"),
       icon: Bot,
-      description: t("tutorDescription") 
+      description: t("tutorDescription")
     },
-    { 
-      href: "/profile", 
-      label: t("profile"), 
+    {
+      href: `/${locale}/profile`,
+      label: t("profile"),
       icon: User,
-      description: t("profileDescription") 
+      description: t("profileDescription")
     },
-    { 
-      href: "/settings", 
-      label: t("settings"), 
+    {
+      href: `/${locale}/settings`,
+      label: t("settings"),
       icon: Settings,
-      description: t("settingsDescription") 
+      description: t("settingsDescription")
     },
   ];
 

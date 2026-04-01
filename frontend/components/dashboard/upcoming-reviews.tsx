@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,7 +12,8 @@ import { cn } from '@/lib/utils';
 export function UpcomingReviews() {
   const t = useTranslations('Dashboard');
   const router = useRouter();
-  
+  const locale = useLocale();
+
   const { data: upcomingReviews, isLoading, error } = useQuery({
     queryKey: ['upcoming-reviews'],
     queryFn: getUpcomingReviews,
@@ -21,7 +22,7 @@ export function UpcomingReviews() {
   });
 
   const handleStartReview = () => {
-    router.push('/flashcards');
+    router.push(`/${locale}/flashcards`);
   };
 
   const formatDate = (dateString: string) => {
