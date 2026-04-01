@@ -178,7 +178,7 @@ export default async function ModuleOverviewPage({ params }: ModuleOverviewPageP
                   {moduleData.units.map((unit) => (
                     <Link
                       key={unit.id}
-                      href={unit.type === 'lesson' ? `/modules/${moduleId}/lessons/${unit.id}` : `/modules/${moduleId}/${unit.type}/${unit.id}`}
+                      href={unit.type === 'quiz' ? `/modules/${moduleId}/quiz?unit=${unit.id}` : `/modules/${moduleId}/lessons/${unit.id}`}
                       className="block"
                     >
                       <div className="flex items-center gap-4 p-4 border border-stone-200 rounded-lg hover:border-stone-300 hover:bg-stone-50 transition-colors cursor-pointer">
@@ -214,7 +214,7 @@ export default async function ModuleOverviewPage({ params }: ModuleOverviewPageP
         <div className="space-y-4">
           {/* Continue Learning */}
           {nextUnit ? (
-            <Link href={`/modules/${moduleId}/lessons/${nextUnit.id}`} className="block">
+            <Link href={nextUnit.type === 'quiz' ? `/modules/${moduleId}/quiz?unit=${nextUnit.id}` : `/modules/${moduleId}/lessons/${nextUnit.id}`} className="block">
               <Button className="w-full min-h-11" size="lg">
                 <Play className="w-4 h-4 mr-2" />
                 {nextUnit.status === 'in-progress' ? t('continueReading') : t('startReading')}
