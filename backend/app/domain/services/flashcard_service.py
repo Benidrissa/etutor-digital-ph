@@ -2,7 +2,6 @@
 
 import json
 import uuid
-from typing import TYPE_CHECKING
 
 import structlog
 from sqlalchemy import select
@@ -13,9 +12,7 @@ from app.ai.prompts.flashcard import format_rag_context_for_flashcards, get_flas
 from app.ai.rag.retriever import SemanticRetriever
 from app.api.v1.schemas.content import FlashcardContent, FlashcardSetResponse
 from app.domain.models.content import GeneratedContent
-
-if TYPE_CHECKING:
-    pass
+from app.domain.models.module import Module
 
 logger = structlog.get_logger()
 
@@ -144,14 +141,21 @@ class FlashcardGenerationService:
         Raises:
             ValueError: If module not found or generation fails
         """
-        # Get module information (simplified - in real implementation would fetch from modules table)
-        module_title = f"Module {module_id}"  # Placeholder - should fetch real module title
+        module_query = select(Module).where(Module.id == module_id)
+        module_result = await session.execute(module_query)
+        module = module_result.scalar_one_or_none()
 
-        # Build search query for RAG retrieval
+        if module is None:
+            raise ValueError(f"Module {module_id} not found")
+
+        module_title = module.title_fr if language == "fr" else module.title_en
+
         if language == "fr":
-            query = f"concepts clés module santé publique niveau {level}"
+            query = f"concepts clés vocabulaire définitions {module_title} santé publique niveau {level}"
         else:
-            query = f"key concepts public health module level {level}"
+            query = (
+                f"key concepts vocabulary definitions {module_title} public health level {level}"
+            )
 
         logger.info("Retrieving relevant content chunks", query=query)
 
