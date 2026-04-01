@@ -140,7 +140,7 @@ export default async function ModuleOverviewPage({ params }: ModuleOverviewPageP
         <CardContent>
           <Progress value={moduleData.completionPercentage} className="mb-4 h-2" />
           <p className="text-sm text-stone-600">
-            {completedUnits} / {totalUnits} units completed
+            {t('unitsCompleted', { completed: completedUnits, total: totalUnits })}
           </p>
         </CardContent>
       </Card>
