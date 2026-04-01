@@ -103,29 +103,66 @@ export function ChatPanel({ isOpen, onClose, moduleId, className }: ChatPanelPro
         throw new Error(`API error: ${response.status}`);
       }
 
-      const data = await response.json();
-      const aiResponse: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        content: data.response || data.message || data.content || "...",
+      // Read SSE stream
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let fullContent = "";
+      const aiMessageId = (Date.now() + 1).toString();
+
+      // Add placeholder message
+      setMessages(prev => [...prev, {
+        id: aiMessageId,
+        content: "",
         isUser: false,
         timestamp: new Date(),
-        sources: data.sources_cited?.map((s: string, i: number) => ({
-          title: s,
-          chapter: i + 1,
-          page: 0,
-        })) || [],
-      };
+      }]);
 
-      setMessages(prev => [...prev, aiResponse]);
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const text = decoder.decode(value, { stream: true });
+          const lines = text.split("\n");
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const chunk = JSON.parse(line.slice(6));
+              if (chunk.type === "text" && chunk.data?.text) {
+                fullContent += chunk.data.text;
+                setMessages(prev => prev.map(m =>
+                  m.id === aiMessageId ? { ...m, content: fullContent } : m
+                ));
+              } else if (chunk.type === "sources" && chunk.data?.sources) {
+                setMessages(prev => prev.map(m =>
+                  m.id === aiMessageId ? {
+                    ...m,
+                    sources: chunk.data.sources.map((s: string, i: number) => ({
+                      title: s, chapter: i + 1, page: 0,
+                    })),
+                  } : m
+                ));
+              } else if (chunk.type === "error") {
+                fullContent = chunk.data?.message || t('error');
+                setMessages(prev => prev.map(m =>
+                  m.id === aiMessageId ? { ...m, content: fullContent } : m
+                ));
+              }
+            } catch {
+              // Skip unparseable lines
+            }
+          }
+        }
+      }
     } catch (error) {
       console.error('Failed to send message:', error);
-      const errorMsg: ChatMessage = {
+      setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
         content: t('error') || "An error occurred. Please try again.",
         isUser: false,
         timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, errorMsg]);
+      }]);
     } finally {
       setIsLoading(false);
       setIsTyping(false);

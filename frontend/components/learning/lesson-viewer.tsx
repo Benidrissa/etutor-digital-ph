@@ -6,8 +6,8 @@ import { CheckCircle, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import ReactMarkdown from 'react-markdown';
 import { LessonSkeleton } from './lesson-skeleton';
-import { BilingualTooltip } from './bilingual-tooltip';
 import { SourceCitations } from './source-citations';
 import { apiFetch } from '@/lib/api';
 
@@ -138,35 +138,7 @@ export function LessonViewer({
     }
   };
 
-  const renderBilingualText = (text: string) => {
-    // Simple regex to detect potential bilingual terms (words followed by parentheses with translations)
-    const bilingualRegex = /(\w+(?:\s+\w+)*)\s*\(([^)]+)\)/g;
-    
-    return text.split(bilingualRegex).map((part, index) => {
-      if (index % 3 === 0) {
-        return part; // Regular text
-      } else if (index % 3 === 1) {
-        // This is the main term
-        const translation = text.split(bilingualRegex)[index + 1];
-        if (translation) {
-          const [termFr, termEn] = language === 'fr' ? [part, translation] : [translation, part];
-          return (
-            <BilingualTooltip
-              key={index}
-              term={part}
-              termFr={termFr}
-              termEn={termEn}
-            >
-              {part}
-            </BilingualTooltip>
-          );
-        }
-        return part;
-      } else {
-        return null; // Skip the translation part as it's handled by the tooltip
-      }
-    });
-  };
+  const mdClass = "prose prose-gray max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-900 prose-table:text-sm";
 
 
   if (error) {
@@ -216,28 +188,17 @@ export function LessonViewer({
         <CardContent className="p-6 md:p-8">
           {/* Introduction */}
           <div className="mb-8">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">
-              {t('introduction')}
-            </h2>
-            <p className="text-base md:text-lg leading-relaxed text-gray-700">
-              {renderBilingualText(content.introduction)}
-            </p>
+            <div className={mdClass}>
+              <ReactMarkdown>{content.introduction}</ReactMarkdown>
+            </div>
           </div>
 
           {/* Key Concepts */}
           <div className="mb-8">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">
-              {t('keyConcepts')}
-            </h2>
             <div className="space-y-6">
               {content.concepts.map((concept, index) => (
-                <div key={index}>
-                  <h3 className="text-lg font-medium text-gray-800 mb-3">
-                    {t('conceptTitle', { number: index + 1 })}
-                  </h3>
-                  <p className="text-base leading-relaxed text-gray-700">
-                    {renderBilingualText(concept)}
-                  </p>
+                <div key={index} className={mdClass}>
+                  <ReactMarkdown>{concept}</ReactMarkdown>
                 </div>
               ))}
             </div>
@@ -245,22 +206,16 @@ export function LessonViewer({
 
           {/* West African Example */}
           <div className="mb-8 bg-teal-50 border-l-4 border-teal-400 p-6 rounded-r-lg">
-            <h3 className="text-lg font-semibold text-teal-800 mb-3">
-              {t('westAfricanExample')}
-            </h3>
-            <p className="text-base leading-relaxed text-teal-700">
-              {renderBilingualText(content.aof_example)}
-            </p>
+            <div className="prose prose-teal max-w-none">
+              <ReactMarkdown>{content.aof_example}</ReactMarkdown>
+            </div>
           </div>
 
           {/* Synthesis */}
           <div className="mb-8">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">
-              {t('synthesis')}
-            </h2>
-            <p className="text-base md:text-lg leading-relaxed text-gray-700">
-              {renderBilingualText(content.synthesis)}
-            </p>
+            <div className={mdClass}>
+              <ReactMarkdown>{content.synthesis}</ReactMarkdown>
+            </div>
           </div>
 
           {/* Key Points */}
@@ -273,7 +228,7 @@ export function LessonViewer({
                 <li key={index} className="flex items-start gap-3">
                   <div className="w-2 h-2 bg-teal-500 rounded-full mt-3 flex-shrink-0" />
                   <span className="text-base leading-relaxed text-gray-700">
-                    {renderBilingualText(point)}
+                    {point}
                   </span>
                 </li>
               ))}
