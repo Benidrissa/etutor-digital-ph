@@ -110,7 +110,7 @@ export function TOTPRegisterForm() {
       );
       
       // Registration complete - redirect to onboarding
-      router.push(`/${locale}/onboarding`);
+      router.push('/onboarding');
     } catch (error) {
       console.error('TOTP verification error:', error);
       

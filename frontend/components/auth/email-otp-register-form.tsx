@@ -122,7 +122,7 @@ export function EmailOTPRegisterForm() {
       );
       
       // Registration complete - redirect to onboarding
-      router.push(`/${locale}/onboarding`);
+      router.push('/onboarding');
     } catch (error) {
       console.error('OTP verification error:', error);
       
