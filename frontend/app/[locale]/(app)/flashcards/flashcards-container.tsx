@@ -51,6 +51,7 @@ type SessionState = 'loading' | 'ready' | 'reviewing' | 'summary';
 
 export function FlashcardsContainer() {
   const t = useTranslations('Flashcards');
+  const tNav = useTranslations('Navigation');
   const locale = useLocale();
   const router = useRouter();
   const [sessionState, setSessionState] = useState<SessionState>('loading');
@@ -228,18 +229,46 @@ export function FlashcardsContainer() {
 
   if (sessionState === 'ready') {
     if (!dueCards || dueCards.cards.length === 0) {
-      return (
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center py-12">
-            <div className="text-6xl mb-4">🎉</div>
-            <h1 className="text-3xl font-bold mb-2">{t('noCardsToday')}</h1>
-            <p className="text-muted-foreground mb-6">{t('wellDone')}</p>
-            <Button onClick={() => refetch()}>
-              {t('tryAgain')}
-            </Button>
+      // Check if user has never had any flashcards (total_due is 0 for completely new users)
+      // vs user has flashcards but none are due today (total_due > 0 but cards array is empty)
+      const hasFlashcards = dueCards?.total_due && dueCards.total_due > 0;
+      
+      if (!hasFlashcards) {
+        // Empty state: no flashcards generated yet
+        return (
+          <div className="min-h-screen flex items-center justify-center px-4">
+            <Card className="max-w-md w-full">
+              <CardContent className="text-center py-12">
+                <div className="text-6xl mb-6">📚</div>
+                <h1 className="text-2xl font-bold mb-3">{t('title')}</h1>
+                <p className="text-muted-foreground mb-6">{t('keepLearning')}</p>
+                <Button 
+                  onClick={() => router.push(`/${locale}/modules`)}
+                  className="w-full min-h-11"
+                >
+                  {tNav('modules')}
+                </Button>
+              </CardContent>
+            </Card>
           </div>
-        </div>
-      );
+        );
+      } else {
+        // Celebration state: has flashcards but none due today
+        return (
+          <div className="min-h-screen flex items-center justify-center px-4">
+            <Card className="max-w-md w-full">
+              <CardContent className="text-center py-12">
+                <div className="text-6xl mb-4">🎉</div>
+                <h1 className="text-3xl font-bold mb-2">{t('noCardsToday')}</h1>
+                <p className="text-muted-foreground mb-6">{t('wellDone')}</p>
+                <Button onClick={() => refetch()}>
+                  {t('tryAgain')}
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      }
     }
 
     return (
