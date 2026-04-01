@@ -62,3 +62,24 @@ class MagicLink(Base):
     ip_address: Mapped[str | None] = mapped_column(String(45))
 
     user: Mapped[User] = relationship(back_populates="magic_links")
+
+
+class EmailOTP(Base):
+    """Email OTP for registration/login verification."""
+
+    __tablename__ = "email_otps"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id"), index=True, nullable=True
+    )  # Nullable for registration flow
+    email: Mapped[str] = mapped_column(String(255), index=True)  # Store email for registration flow
+    code: Mapped[str] = mapped_column(String(6))  # 6-digit OTP code
+    purpose: Mapped[str] = mapped_column(String(20))  # "registration" or "login"
+    attempts: Mapped[int] = mapped_column(default=0)  # Track verification attempts
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ip_address: Mapped[str | None] = mapped_column(String(45))
+
+    user: Mapped[User] = relationship(back_populates="email_otps")

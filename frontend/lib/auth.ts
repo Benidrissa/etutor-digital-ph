@@ -51,6 +51,31 @@ export interface RefreshTokenResponse {
   expires_in: number;
 }
 
+export interface RegisterEmailOTPRequest {
+  email: string;
+  name: string;
+  preferred_language: string;
+  country?: string;
+  professional_role?: string;
+}
+
+export interface RegisterEmailOTPResponse {
+  user_id: string;
+  email: string;
+  name: string;
+  verification_method: string;
+  otp_id: string;
+  expires_at: string;
+  expires_in_seconds: number;
+}
+
+export interface SendLoginOTPResponse {
+  otp_id: string;
+  expires_at: string;
+  expires_in_seconds: number;
+  message: string;
+}
+
 export class AuthError extends Error {
   constructor(message: string, public status?: number) {
     super(message);
@@ -348,6 +373,58 @@ class AuthClient {
       }
       throw error;
     }
+  }
+
+  /**
+   * Register a new user and send email OTP for verification
+   */
+  async registerEmailOTP(request: RegisterEmailOTPRequest): Promise<RegisterEmailOTPResponse> {
+    return this.apiCall<RegisterEmailOTPResponse>('/register-email-otp', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  /**
+   * Verify email OTP code and complete registration
+   */
+  async verifyEmailOTP(otpId: string, otpCode: string): Promise<AuthResponse> {
+    const response = await this.apiCall<AuthResponse>('/verify-email-otp', {
+      method: 'POST',
+      body: JSON.stringify({
+        otp_id: otpId,
+        otp_code: otpCode,
+      }),
+    });
+
+    this.setTokens(response);
+    return response;
+  }
+
+  /**
+   * Send OTP for email-based login
+   */
+  async sendLoginOTP(email: string): Promise<SendLoginOTPResponse> {
+    return this.apiCall<SendLoginOTPResponse>('/send-login-otp', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  /**
+   * Verify login OTP code and authenticate user
+   */
+  async verifyLoginOTP(otpId: string, otpCode: string): Promise<AuthResponse> {
+    const response = await this.apiCall<AuthResponse>('/verify-login-otp', {
+      method: 'POST',
+      body: JSON.stringify({
+        otp_id: otpId,
+        otp_code: otpCode,
+      }),
+    });
+
+    this.setTokens(response);
+    return response;
   }
 }
 
