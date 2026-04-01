@@ -269,7 +269,11 @@
     "level": "Niveau",
     "cached": "En Cache",
     "totalQuestions": "Total Questions",
-    "quizCompleteScreenReader": "Quiz terminé avec {score}% de score. {correct} sur {total} questions correctes. Temps pris : {time}. {passed, select, true {Quiz réussi.} other {Quiz non réussi.}}"
+    "quizCompleteScreenReader": "Quiz terminé avec {score}% de score. {correct} sur {total} questions correctes. Temps pris : {time}. {passed, select, true {Quiz réussi.} other {Quiz non réussi.}}",
+    "lessonCompleted": "Leçon validée !",
+    "lessonCompletedDesc": "Vous avez obtenu un score ≥ 80%. Cette leçon est maintenant marquée comme terminée dans votre progression.",
+    "lessonNotValidated": "Leçon non validée",
+    "lessonNotValidatedDesc": "Vous devez obtenir au moins {score}% pour valider cette leçon. Réessayez !"
   },
   "ChatTutor": {
     "title": "Tuteur IA",

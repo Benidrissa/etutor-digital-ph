@@ -269,7 +269,11 @@
     "level": "Level",
     "cached": "Cached",
     "totalQuestions": "Total Questions",
-    "quizCompleteScreenReader": "Quiz completed with {score}% score. {correct} out of {total} questions correct. Time taken: {time}. {passed, select, true {Quiz passed.} other {Quiz not passed.}}"
+    "quizCompleteScreenReader": "Quiz completed with {score}% score. {correct} out of {total} questions correct. Time taken: {time}. {passed, select, true {Quiz passed.} other {Quiz not passed.}}",
+    "lessonCompleted": "Lesson validated!",
+    "lessonCompletedDesc": "You scored ≥80%. This lesson is now marked as complete in your progress.",
+    "lessonNotValidated": "Lesson not validated",
+    "lessonNotValidatedDesc": "You need at least {score}% to validate this lesson. Try again!"
   },
   "ChatTutor": {
     "title": "AI Tutor",
