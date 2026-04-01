@@ -27,6 +27,8 @@ import { TypingIndicator } from './typing-indicator';
 import { UsageCounter } from './usage-counter';
 import { ChatSkeleton } from './chat-skeleton';
 import { cn } from '@/lib/utils';
+import { authClient, AuthError } from '@/lib/auth';
+import { useRouter } from 'next/navigation';
 
 interface ChatPanelProps {
   isOpen: boolean;
@@ -37,6 +39,7 @@ interface ChatPanelProps {
 
 export function ChatPanel({ isOpen, onClose, moduleId, className }: ChatPanelProps) {
   const t = useTranslations('ChatTutor');
+  const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
@@ -86,12 +89,21 @@ export function ChatPanel({ isOpen, onClose, moduleId, className }: ChatPanelPro
 
     try {
       const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      const token = localStorage.getItem("access_token");
+      let token: string;
+      try {
+        token = await authClient.getValidToken();
+      } catch (err) {
+        if (err instanceof AuthError && err.status === 401) {
+          router.push('/login');
+          return;
+        }
+        throw err;
+      }
       const response = await fetch(`${API_BASE}/api/v1/tutor/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           message: messageContent,
@@ -100,6 +112,10 @@ export function ChatPanel({ isOpen, onClose, moduleId, className }: ChatPanelPro
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          router.push('/login');
+          return;
+        }
         throw new Error(`API error: ${response.status}`);
       }
 
