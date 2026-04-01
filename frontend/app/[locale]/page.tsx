@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
 
-export default function LocaleRoot({
+export default async function LocaleRoot({
   params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }) {
-  redirect(`/${params.locale}/dashboard`);
+  const { locale } = await params;
+  redirect(`/${locale}/dashboard`);
 }
