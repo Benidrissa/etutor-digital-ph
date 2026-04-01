@@ -22,26 +22,46 @@ router = APIRouter(prefix="/users", tags=["Users"])
 
 @router.get("/me", response_model=UserProfileResponse)
 async def get_current_user_profile(
-    current_user: User = Depends(get_current_user),
+    current_user=Depends(get_current_user),
+    db=Depends(get_db_session),
 ) -> UserProfileResponse:
     """Get current user profile.
 
     Returns:
         Current user's profile information
     """
-    return UserProfileResponse(
-        id=str(current_user.id),
-        email=current_user.email,
-        name=current_user.name,
-        preferred_language=current_user.preferred_language,
-        country=current_user.country,
-        professional_role=current_user.professional_role,
-        current_level=current_user.current_level,
-        streak_days=current_user.streak_days,
-        avatar_url=current_user.avatar_url,
-        last_active=current_user.last_active.isoformat(),
-        created_at=current_user.created_at.isoformat(),
-    )
+    try:
+        user_repo = UserRepository(db)
+
+        from uuid import UUID
+
+        user_id = UUID(current_user.id) if isinstance(current_user.id, str) else current_user.id
+
+        user = await user_repo.get_by_id(user_id)
+
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+        return UserProfileResponse(
+            id=str(user.id),
+            email=user.email,
+            name=user.name,
+            preferred_language=user.preferred_language,
+            country=user.country,
+            professional_role=user.professional_role,
+            current_level=user.current_level,
+            streak_days=user.streak_days,
+            avatar_url=user.avatar_url,
+            last_active=user.last_active.isoformat(),
+            created_at=user.created_at.isoformat(),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get user profile", user_id=str(current_user.id), error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get user profile"
+        )
 
 
 @router.patch("/me", response_model=ProfileUpdateResponse)
