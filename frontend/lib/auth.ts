@@ -314,6 +314,42 @@ class AuthClient {
   }
 
   /**
+   * Get a valid (non-expired) access token, refreshing if needed.
+   * Throws AuthError if no refresh token is available or refresh fails.
+   */
+  async getValidToken(): Promise<string> {
+    if (this.accessToken && !this.isTokenExpired(this.accessToken)) {
+      return this.accessToken;
+    }
+
+    if (!this.refreshToken) {
+      this.clearTokens();
+      throw new AuthError('Session expired. Please log in again.', 401);
+    }
+
+    await this.refreshAccessToken();
+
+    if (!this.accessToken) {
+      this.clearTokens();
+      throw new AuthError('Session expired. Please log in again.', 401);
+    }
+
+    return this.accessToken;
+  }
+
+  private isTokenExpired(token: string): boolean {
+    try {
+      const payload = token.split('.')[1];
+      if (!payload) return true;
+      const decoded = JSON.parse(atob(payload));
+      if (!decoded.exp) return false;
+      return decoded.exp * 1000 < Date.now() + 30_000;
+    } catch {
+      return true;
+    }
+  }
+
+  /**
    * Make an authenticated API call to any endpoint
    */
   async authenticatedFetch<T>(
