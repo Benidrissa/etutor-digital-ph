@@ -1,6 +1,6 @@
 """Local authentication service with TOTP MFA."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -73,8 +73,8 @@ class LocalAuthService:
                 professional_role=professional_role,
                 current_level=1,  # Will be set after placement test
                 streak_days=0,
-                last_active=datetime.now(UTC),
-                created_at=datetime.now(UTC),
+                last_active=datetime.utcnow(),
+                created_at=datetime.utcnow(),
             )
             self.db.add(user)
 
@@ -89,7 +89,7 @@ class LocalAuthService:
                 secret=totp_secret,
                 backup_codes=self.totp_service.hash_backup_codes(backup_codes),
                 is_verified=False,
-                created_at=datetime.now(UTC),
+                created_at=datetime.utcnow(),
             )
             self.db.add(totp_record)
 
@@ -151,7 +151,7 @@ class LocalAuthService:
 
             # Mark as verified
             totp_record.is_verified = True
-            totp_record.verified_at = datetime.now(UTC)
+            totp_record.verified_at = datetime.utcnow()
 
             # Create tokens
             access_token = self.jwt_service.create_access_token(
@@ -168,7 +168,7 @@ class LocalAuthService:
                 user_id=user.id,
                 token_hash=self.jwt_service.hash_token(refresh_token),
                 expires_at=self.jwt_service.get_token_expiry("refresh"),
-                created_at=datetime.now(UTC),
+                created_at=datetime.utcnow(),
             )
             self.db.add(refresh_record)
 
@@ -246,7 +246,7 @@ class LocalAuthService:
                 raise AuthenticationError("Invalid authentication code")
 
             # Update user activity
-            user.last_active = datetime.now(UTC)
+            user.last_active = datetime.utcnow()
 
             # Create tokens
             access_token = self.jwt_service.create_access_token(
@@ -263,8 +263,8 @@ class LocalAuthService:
                 user_id=user.id,
                 token_hash=self.jwt_service.hash_token(refresh_token),
                 expires_at=self.jwt_service.get_token_expiry("refresh"),
-                created_at=datetime.now(UTC),
-                last_used_at=datetime.now(UTC),
+                created_at=datetime.utcnow(),
+                last_used_at=datetime.utcnow(),
             )
             self.db.add(refresh_record)
 
@@ -322,15 +322,15 @@ class LocalAuthService:
                 id=uuid4(),
                 user_id=user.id,
                 token_hash=self.jwt_service.hash_token(magic_token),
-                expires_at=datetime.now(UTC) + timedelta(hours=1),
-                created_at=datetime.now(UTC),
+                expires_at=datetime.utcnow() + timedelta(hours=1),
+                created_at=datetime.utcnow(),
             )
             self.db.add(magic_link)
 
             # Clean up old magic links for this user
             await self.db.execute(
                 select(MagicLink).where(
-                    and_(MagicLink.user_id == user.id, MagicLink.expires_at < datetime.now(UTC))
+                    and_(MagicLink.user_id == user.id, MagicLink.expires_at < datetime.utcnow())
                 )
             )
 
@@ -368,7 +368,7 @@ class LocalAuthService:
                 select(MagicLink).where(
                     and_(
                         MagicLink.token_hash == token_hash,
-                        MagicLink.expires_at > datetime.now(UTC),
+                        MagicLink.expires_at > datetime.utcnow(),
                         MagicLink.used_at.is_(None),
                     )
                 )
@@ -383,7 +383,7 @@ class LocalAuthService:
                 raise AuthenticationError("User not found")
 
             # Mark magic link as used
-            magic_link.used_at = datetime.now(UTC)
+            magic_link.used_at = datetime.utcnow()
 
             # Remove existing TOTP setup
             await self.db.execute(select(TOTPSecret).where(TOTPSecret.user_id == user.id))
@@ -398,7 +398,7 @@ class LocalAuthService:
                 secret=totp_secret,
                 backup_codes=self.totp_service.hash_backup_codes(backup_codes),
                 is_verified=False,
-                created_at=datetime.now(UTC),
+                created_at=datetime.utcnow(),
             )
             self.db.add(totp_record)
 
@@ -446,7 +446,7 @@ class LocalAuthService:
                 select(RefreshToken).where(
                     and_(
                         RefreshToken.token_hash == token_hash,
-                        RefreshToken.expires_at > datetime.now(UTC),
+                        RefreshToken.expires_at > datetime.utcnow(),
                     )
                 )
             )
@@ -460,8 +460,8 @@ class LocalAuthService:
                 raise AuthenticationError("User not found")
 
             # Update refresh token usage
-            refresh_record.last_used_at = datetime.now(UTC)
-            user.last_active = datetime.now(UTC)
+            refresh_record.last_used_at = datetime.utcnow()
+            user.last_active = datetime.utcnow()
 
             # Create new access token
             access_token = self.jwt_service.create_access_token(
@@ -555,8 +555,8 @@ class LocalAuthService:
                 professional_role=professional_role,
                 current_level=1,  # Will be set after placement test
                 streak_days=0,
-                last_active=datetime.now(UTC),
-                created_at=datetime.now(UTC),
+                last_active=datetime.utcnow(),
+                created_at=datetime.utcnow(),
             )
             self.db.add(user)
             await self.db.commit()
@@ -635,7 +635,7 @@ class LocalAuthService:
                 user_id=user_obj.id,
                 token_hash=self.jwt_service.hash_token(refresh_token),
                 expires_at=self.jwt_service.get_token_expiry("refresh"),
-                created_at=datetime.now(UTC),
+                created_at=datetime.utcnow(),
             )
             self.db.add(refresh_record)
 
@@ -737,7 +737,7 @@ class LocalAuthService:
                 raise AuthenticationError("User not found")
 
             # Update user activity
-            user_obj.last_active = datetime.now(UTC)
+            user_obj.last_active = datetime.utcnow()
 
             # Create tokens
             access_token = self.jwt_service.create_access_token(
@@ -754,8 +754,8 @@ class LocalAuthService:
                 user_id=user_obj.id,
                 token_hash=self.jwt_service.hash_token(refresh_token),
                 expires_at=self.jwt_service.get_token_expiry("refresh"),
-                created_at=datetime.now(UTC),
-                last_used_at=datetime.now(UTC),
+                created_at=datetime.utcnow(),
+                last_used_at=datetime.utcnow(),
             )
             self.db.add(refresh_record)
 

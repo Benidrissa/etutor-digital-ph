@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from uuid import UUID
 
 import structlog
@@ -48,7 +48,7 @@ class ProgressService:
         Marks the module as in_progress if not already completed.
         Creates a lesson_reading record for streak and time tracking.
         """
-        now = datetime.now(UTC)
+        now = datetime.utcnow()
 
         # Upsert lesson reading record
         reading = LessonReading(
@@ -99,7 +99,7 @@ class ProgressService:
         Per FR-02.2: lesson completion requires passing the validation quiz (≥80%).
         Recalculates module completion_pct based on completed units.
         """
-        now = datetime.now(UTC)
+        now = datetime.utcnow()
 
         progress = await self._get_or_create_progress(user_id, module_id, now)
         progress.last_accessed = now

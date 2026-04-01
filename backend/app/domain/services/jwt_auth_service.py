@@ -2,7 +2,7 @@
 
 import hashlib
 import secrets
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 import jwt
@@ -33,7 +33,7 @@ class JWTAuthService:
         Returns:
             JWT access token
         """
-        now = datetime.now(UTC)
+        now = datetime.utcnow()
         expire = now + timedelta(minutes=self.access_token_expire_minutes)
 
         payload = {
@@ -113,7 +113,7 @@ class JWTAuthService:
         Returns:
             Expiration datetime
         """
-        now = datetime.now(UTC)
+        now = datetime.utcnow()
         if token_type == "access":
             return now + timedelta(minutes=self.access_token_expire_minutes)
         else:  # refresh
@@ -137,7 +137,7 @@ class JWTAuthService:
         Returns:
             JWT token for password reset
         """
-        now = datetime.now(UTC)
+        now = datetime.utcnow()
         expire = now + timedelta(hours=1)  # Magic links expire in 1 hour
 
         payload = {
