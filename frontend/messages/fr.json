@@ -569,6 +569,24 @@
     "markComplete": "Marquer comme Terminé",
     "completed": "Terminé"
   },
+  "CaseStudyViewer": {
+    "error": "Une erreur est survenue",
+    "streamError": "Erreur lors de la diffusion en continu",
+    "loadError": "Erreur lors du chargement de l'étude de cas",
+    "level": "Niveau {level}",
+    "estimatedTime": "40 min",
+    "cached": "En cache",
+    "unitTitle": "Unité {unit}",
+    "badge": "Étude de cas",
+    "aofContext": "Contexte AOF",
+    "realData": "Données réelles",
+    "guidedQuestions": "Questions guidées",
+    "question": "Question {number}",
+    "annotatedCorrection": "Correction annotée",
+    "sourceCitations": "Sources citées",
+    "markComplete": "Marquer comme Terminé",
+    "completed": "Terminé"
+  },
   "LessonPage": {
     "modules": "Modules",
     "backToModule": "Retour au Module",

@@ -6,6 +6,7 @@ import { ChevronLeft } from 'lucide-react';
 
 import { getModuleById } from '@/lib/modules';
 import { LessonViewer } from '@/components/learning/lesson-viewer';
+import { CaseStudyViewer } from '@/components/learning/case-study-viewer';
 
 interface LessonPageProps {
   params: Promise<{ moduleId: string; unitId: string }>;
@@ -62,14 +63,24 @@ export default async function LessonPage({ params }: LessonPageProps) {
         </Link>
       </div>
 
-      {/* Lesson Content */}
-      <LessonViewer
-        moduleId={moduleId}
-        unitId={unitId}
-        language={language}
-        level={moduleData.level}
-        countryContext="SN"
-      />
+      {/* Lesson or Case Study Content */}
+      {unit.type === 'case-study' ? (
+        <CaseStudyViewer
+          moduleId={moduleId}
+          unitId={unitId}
+          language={language}
+          level={moduleData.level}
+          countryContext="SN"
+        />
+      ) : (
+        <LessonViewer
+          moduleId={moduleId}
+          unitId={unitId}
+          language={language}
+          level={moduleData.level}
+          countryContext="SN"
+        />
+      )}
     </div>
   );
 }

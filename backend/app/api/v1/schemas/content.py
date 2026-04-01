@@ -298,6 +298,61 @@ class QuizResponse(BaseModel):
     }
 
 
+class CaseStudyContent(BaseModel):
+    """Structured case study content — AOF context → Data → Guided questions → Annotated correction."""
+
+    aof_context: str = Field(..., description="AOF geographic, economic and health context")
+    real_data: str = Field(..., description="Epidemiological and operational data (tables/lists)")
+    guided_questions: list[str] = Field(
+        ..., min_length=2, description="Progressive guided questions (4-6)"
+    )
+    annotated_correction: str = Field(
+        ..., description="Detailed answers with justifications and lessons learned"
+    )
+    sources_cited: list[str] = Field(..., description="Source citations")
+
+
+class CaseStudyResponse(BaseModel):
+    """Response schema for generated case study."""
+
+    id: UUID = Field(default_factory=uuid.uuid4, description="Generated content ID")
+    module_id: UUID = Field(..., description="Module ID")
+    unit_id: str = Field(..., description="Unit identifier")
+    content_type: Literal["case"] = Field(default="case", description="Content type")
+    language: Literal["fr", "en"] = Field(..., description="Content language")
+    level: int = Field(..., description="Target competency level")
+    country_context: str = Field(..., description="Country context")
+    content: CaseStudyContent = Field(..., description="Structured case study content")
+    generated_at: str = Field(..., description="Generation timestamp (ISO format)")
+    cached: bool = Field(default=False, description="Whether content was retrieved from cache")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "id": "550e8400-e29b-41d4-a716-446655440003",
+                "module_id": "550e8400-e29b-41d4-a716-446655440000",
+                "unit_id": "M01-U05",
+                "content_type": "case",
+                "language": "fr",
+                "level": 1,
+                "country_context": "GN",
+                "content": {
+                    "aof_context": "En décembre 2013, le premier cas humain d'Ebola est détecté...",
+                    "real_data": "| Date | Cas confirmés | Décès |\n|------|--------------|-------|\n| Déc 2013 | 49 | 29 |",
+                    "guided_questions": [
+                        "1. Quels sont les principaux facteurs qui ont facilité la propagation initiale ?",
+                        "2. Analysez les données. Que révèlent-elles sur la dynamique de transmission ?",
+                    ],
+                    "annotated_correction": "**Réponse Q1 :** Les facteurs facilitant la propagation incluent...",
+                    "sources_cited": ["Donaldson Ch.4, p.67", "Scutchfield Ch.8, p.145"],
+                },
+                "generated_at": "2026-03-30T22:45:00Z",
+                "cached": False,
+            }
+        }
+    }
+
+
 class ErrorResponse(BaseModel):
     """Error response schema."""
 
