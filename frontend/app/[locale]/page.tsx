@@ -1,5 +1,6 @@
 import { redirect } from '@/i18n/routing';
 
-export default function RootPage({ params }: { params: { locale: string } }) {
-  redirect({ href: '/dashboard', locale: params.locale });
+export default async function RootPage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
+  redirect({ href: '/dashboard', locale });
 }
