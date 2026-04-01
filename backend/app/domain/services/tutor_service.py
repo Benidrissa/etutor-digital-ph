@@ -146,7 +146,7 @@ class TutorService:
             activity_suggestions = []
 
             async with self.anthropic.messages.stream(
-                model="claude-sonnet-4-6",
+                model="claude-sonnet-4-20250514",
                 system=system_prompt,
                 messages=[
                     {"role": msg["role"], "content": msg["content"]} for msg in conversation_history
