@@ -1,16 +1,21 @@
 """Flashcard review API endpoints."""
 
+import re
 import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.claude_service import ClaudeService
+from app.ai.rag.embeddings import EmbeddingService
+from app.ai.rag.retriever import SemanticRetriever
 from app.api.deps import get_db
 from app.api.deps_local_auth import get_current_user
+from app.api.v1.schemas.content import FlashcardSetResponse
 from app.api.v1.schemas.flashcards import (
     FlashcardDueResponse,
     FlashcardReviewRequest,
@@ -21,10 +26,119 @@ from app.api.v1.schemas.flashcards import (
 )
 from app.domain.models.content import GeneratedContent
 from app.domain.models.flashcard import FlashcardReview
+from app.domain.models.module import Module
 from app.domain.models.user import User
+from app.domain.services.flashcard_service import FlashcardGenerationService
+from app.infrastructure.config.settings import get_settings
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/flashcards", tags=["flashcards"])
+
+
+def get_flashcard_generation_service() -> FlashcardGenerationService:
+    """Dependency to build FlashcardGenerationService with real dependencies."""
+    app_settings = get_settings()
+    claude_service = ClaudeService()
+    embedding_service = EmbeddingService(
+        api_key=app_settings.openai_api_key,
+        model=app_settings.embedding_model,
+    )
+    semantic_retriever = SemanticRetriever(embedding_service=embedding_service)
+    return FlashcardGenerationService(
+        claude_service=claude_service,
+        semantic_retriever=semantic_retriever,
+    )
+
+
+async def _resolve_module_id(module_id_str: str, session: AsyncSession) -> uuid.UUID:
+    """Resolve module code (M01) or UUID string to UUID."""
+    try:
+        return uuid.UUID(module_id_str)
+    except ValueError:
+        pass
+
+    module_code_pattern = re.match(r"^M(\d{2})$", module_id_str.upper())
+    if module_code_pattern:
+        module_number = int(module_code_pattern.group(1))
+        result = await session.execute(select(Module).where(Module.module_number == module_number))
+        module = result.scalar_one_or_none()
+        if module:
+            return module.id
+        raise ValueError(f"Module with code {module_id_str} not found")
+
+    raise ValueError(
+        f"Invalid module identifier: {module_id_str}. Expected UUID or module code (M01, M02, etc.)"
+    )
+
+
+@router.get(
+    "/modules/{module_id}",
+    response_model=FlashcardSetResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Unauthorized"},
+        404: {"description": "Module not found"},
+        500: {"description": "Generation failed"},
+    },
+)
+async def get_module_flashcards(
+    module_id: str,
+    language: str = Query(default="fr", pattern="^(fr|en)$"),
+    country: str = Query(default="SN"),
+    level: int = Query(default=1, ge=1, le=4),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+    flashcard_service: FlashcardGenerationService = Depends(get_flashcard_generation_service),
+) -> FlashcardSetResponse:
+    """
+    Get or auto-generate flashcards for a module.
+
+    On first access, generates 15-30 bilingual flashcards via RAG pipeline using
+    the module's learning objectives and reference book chapters. Subsequent
+    requests return the cached set.
+
+    Each flashcard contains:
+    - **term**: Key concept in the primary language
+    - **definition_fr / definition_en**: Bilingual definitions (50-100 words each)
+    - **example_aof**: Concrete West African example
+    - **formula**: LaTeX formula (optional, for statistics/epidemiology)
+    - **sources_cited**: Reference book citations
+
+    Accepts module code (e.g. `M01`) or full UUID.
+    """
+    try:
+        resolved_id = await _resolve_module_id(module_id, session)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "module_not_found", "message": str(e)},
+        )
+
+    try:
+        result = await flashcard_service.get_or_generate_flashcard_set(
+            module_id=resolved_id,
+            language=language,
+            country=country,
+            level=level,
+            session=session,
+        )
+        return result
+    except ValueError as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "module_not_found", "message": str(e)},
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "generation_failed", "message": str(e)},
+        )
+    except Exception as e:
+        logger.error("Flashcard generation failed", error=str(e), exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "generation_failed", "message": "Unable to generate flashcards"},
+        )
 
 
 @router.get(

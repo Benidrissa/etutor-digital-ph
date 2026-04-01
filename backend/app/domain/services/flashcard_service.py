@@ -13,6 +13,7 @@ from app.ai.prompts.flashcard import format_rag_context_for_flashcards, get_flas
 from app.ai.rag.retriever import SemanticRetriever
 from app.api.v1.schemas.content import FlashcardContent, FlashcardSetResponse
 from app.domain.models.content import GeneratedContent
+from app.domain.models.module import Module
 
 if TYPE_CHECKING:
     pass
@@ -121,6 +122,29 @@ class FlashcardGenerationService:
         result = await session.execute(query)
         return result.scalar_one_or_none()
 
+    async def _get_module(
+        self,
+        module_id: uuid.UUID,
+        session: AsyncSession,
+    ) -> Module:
+        """Fetch module from database.
+
+        Args:
+            module_id: Module UUID
+            session: Database session
+
+        Returns:
+            Module instance
+
+        Raises:
+            ValueError: If module not found
+        """
+        result = await session.execute(select(Module).where(Module.id == module_id))
+        module = result.scalar_one_or_none()
+        if module is None:
+            raise ValueError(f"Module {module_id} not found")
+        return module
+
     async def _generate_flashcard_set(
         self,
         module_id: uuid.UUID,
@@ -144,14 +168,25 @@ class FlashcardGenerationService:
         Raises:
             ValueError: If module not found or generation fails
         """
-        # Get module information (simplified - in real implementation would fetch from modules table)
-        module_title = f"Module {module_id}"  # Placeholder - should fetch real module title
+        module = await self._get_module(module_id, session)
 
-        # Build search query for RAG retrieval
+        module_title = module.title_fr if language == "fr" else module.title_en
+
+        books_sources: dict = module.books_sources or {}
+        source_names = list(books_sources.keys()) if books_sources else []
+
         if language == "fr":
-            query = f"concepts clés module santé publique niveau {level}"
+            sources_hint = f" ({', '.join(source_names)})" if source_names else ""
+            query = (
+                f"concepts clés vocabulaire définitions {module_title} "
+                f"santé publique niveau {level}{sources_hint}"
+            )
         else:
-            query = f"key concepts public health module level {level}"
+            sources_hint = f" ({', '.join(source_names)})" if source_names else ""
+            query = (
+                f"key concepts vocabulary definitions {module_title} "
+                f"public health level {level}{sources_hint}"
+            )
 
         logger.info("Retrieving relevant content chunks", query=query)
 
