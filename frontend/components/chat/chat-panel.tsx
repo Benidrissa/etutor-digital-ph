@@ -29,6 +29,13 @@ import { ChatSkeleton } from './chat-skeleton';
 import { cn } from '@/lib/utils';
 import { authClient, AuthError } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
+import {
+  fetchConversation,
+  getCachedConversation,
+  cacheConversationMessages,
+  updateCachedConversationList,
+  type TutorMessage as ApiTutorMessage,
+} from '@/lib/tutor-api';
 
 interface ChatPanelProps {
   isOpen: boolean;
@@ -37,35 +44,94 @@ interface ChatPanelProps {
   conversationId?: string | null;
   className?: string;
   embedded?: boolean;
+  onConversationUpdate?: (id: string, preview: string, messageCount: number) => void;
 }
 
-export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className, embedded = false }: ChatPanelProps) {
+function apiMessageToChatMessage(msg: ApiTutorMessage, index: number): ChatMessage {
+  return {
+    id: `hist-${index}`,
+    content: msg.content,
+    isUser: msg.role === 'user',
+    timestamp: new Date(msg.timestamp),
+    sources: msg.sources?.map((s, i) => ({
+      title: s.source ?? String(i + 1),
+      chapter: s.chapter ?? i + 1,
+      page: s.page ?? 0,
+    })),
+  };
+}
+
+export function ChatPanel({
+  isOpen,
+  onClose,
+  moduleId,
+  conversationId,
+  className,
+  embedded = false,
+  onConversationUpdate,
+}: ChatPanelProps) {
   const t = useTranslations('ChatTutor');
   const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [showClearDialog, setShowClearDialog] = useState(false);
   const [currentUsage, setCurrentUsage] = useState(0);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(
+    conversationId ?? null
+  );
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const maxDailyUsage = 50;
   const isLimitReached = currentUsage >= maxDailyUsage;
 
-  // Reset messages when conversation changes (including new conversation)
   useEffect(() => {
-    setMessages([
-      {
-        id: 'welcome',
-        content: t('welcomeMessage'),
-        isUser: false,
-        timestamp: new Date(),
-      }
-    ]);
-    setCurrentUsage(0);
-  }, [conversationId, t]);
+    setActiveConversationId(conversationId ?? null);
+  }, [conversationId]);
 
-  // Scroll to bottom when new messages are added
+  useEffect(() => {
+    const welcome: ChatMessage = {
+      id: 'welcome',
+      content: t('welcomeMessage'),
+      isUser: false,
+      timestamp: new Date(),
+    };
+
+    if (!activeConversationId) {
+      setMessages([welcome]);
+      setCurrentUsage(0);
+      return;
+    }
+
+    setIsLoadingHistory(true);
+
+    const cached = getCachedConversation(activeConversationId);
+    if (cached && cached.messages.length > 0) {
+      const historyMessages = cached.messages.map(apiMessageToChatMessage);
+      setMessages([welcome, ...historyMessages]);
+      setCurrentUsage(cached.messages.filter(m => m.role === 'user').length);
+    } else {
+      setMessages([welcome]);
+      setCurrentUsage(0);
+    }
+
+    fetchConversation(activeConversationId)
+      .then(conv => {
+        if (conv.messages.length > 0) {
+          const historyMessages = conv.messages.map(apiMessageToChatMessage);
+          setMessages([welcome, ...historyMessages]);
+          setCurrentUsage(conv.messages.filter(m => m.role === 'user').length);
+        }
+      })
+      .catch(() => {
+        // network error — keep cached version
+      })
+      .finally(() => {
+        setIsLoadingHistory(false);
+      });
+  }, [activeConversationId, t]);
+
   useEffect(() => {
     if (scrollAreaRef.current) {
       const scrollArea = scrollAreaRef.current;
@@ -89,7 +155,7 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
     setIsTyping(true);
 
     try {
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
       let token: string;
       try {
         token = await authClient.getValidToken();
@@ -101,14 +167,15 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
         throw err;
       }
       const response = await fetch(`${API_BASE}/api/v1/tutor/chat`, {
-        method: "POST",
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           message: messageContent,
-          conversation_id: null,
+          conversation_id: activeConversationId ?? null,
+          module_id: moduleId ?? null,
         }),
       });
 
@@ -120,19 +187,22 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
         throw new Error(`API error: ${response.status}`);
       }
 
-      // Read SSE stream
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
-      let fullContent = "";
+      let fullContent = '';
       const aiMessageId = (Date.now() + 1).toString();
 
-      // Add placeholder message
-      setMessages(prev => [...prev, {
-        id: aiMessageId,
-        content: "",
-        isUser: false,
-        timestamp: new Date(),
-      }]);
+      setMessages(prev => [
+        ...prev,
+        {
+          id: aiMessageId,
+          content: '',
+          isUser: false,
+          timestamp: new Date(),
+        },
+      ]);
+
+      let streamedConversationId: string | null = activeConversationId;
 
       if (reader) {
         while (true) {
@@ -140,32 +210,73 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
           if (done) break;
 
           const text = decoder.decode(value, { stream: true });
-          const lines = text.split("\n");
+          const lines = text.split('\n');
 
           for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
+            if (!line.startsWith('data: ')) continue;
             try {
               const chunk = JSON.parse(line.slice(6));
-              if (chunk.type === "content" && chunk.data?.text) {
+              if (chunk.type === 'conversation_id' && chunk.data?.conversation_id) {
+                streamedConversationId = chunk.data.conversation_id;
+                setActiveConversationId(streamedConversationId);
+              } else if (chunk.type === 'content' && chunk.data?.text) {
                 fullContent += chunk.data.text;
-                setMessages(prev => prev.map(m =>
-                  m.id === aiMessageId ? { ...m, content: fullContent } : m
-                ));
-              } else if (chunk.type === "sources_cited" && chunk.data?.sources) {
-                setMessages(prev => prev.map(m =>
-                  m.id === aiMessageId ? {
-                    ...m,
-                    sources: chunk.data.sources.map((s: { source: string; chapter?: number; page?: number }, i: number) => ({
-                      title: s.source ?? String(i + 1), chapter: s.chapter ?? i + 1, page: s.page ?? 0,
-                    })),
-                  } : m
-                ));
-              } else if (chunk.type === "error") {
+                setMessages(prev =>
+                  prev.map(m => (m.id === aiMessageId ? { ...m, content: fullContent } : m))
+                );
+              } else if (chunk.type === 'sources_cited' && chunk.data?.sources) {
+                setMessages(prev =>
+                  prev.map(m =>
+                    m.id === aiMessageId
+                      ? {
+                          ...m,
+                          sources: chunk.data.sources.map(
+                            (s: { source: string; chapter?: number; page?: number }, i: number) => ({
+                              title: s.source ?? String(i + 1),
+                              chapter: s.chapter ?? i + 1,
+                              page: s.page ?? 0,
+                            })
+                          ),
+                        }
+                      : m
+                  )
+                );
+              } else if (chunk.type === 'error') {
                 const errorCode = chunk.data?.code;
-                fullContent = errorCode === "limit_reached" ? t('errorLimitReached') : t('error');
-                setMessages(prev => prev.map(m =>
-                  m.id === aiMessageId ? { ...m, content: fullContent } : m
-                ));
+                fullContent =
+                  errorCode === 'limit_reached' ? t('errorLimitReached') : t('error');
+                setMessages(prev =>
+                  prev.map(m => (m.id === aiMessageId ? { ...m, content: fullContent } : m))
+                );
+              } else if (chunk.type === 'finished' && streamedConversationId) {
+                setMessages(prev => {
+                  const allMessages = prev.filter(m => m.id !== 'welcome');
+                  const apiMessages: ApiTutorMessage[] = allMessages.map(m => ({
+                    role: m.isUser ? 'user' : 'assistant',
+                    content: m.content,
+                    sources: m.sources?.map(s => ({ source: s.title, chapter: s.chapter, page: s.page })) ?? [],
+                    timestamp: m.timestamp.toISOString(),
+                    activity_suggestions: [],
+                  }));
+                  cacheConversationMessages(streamedConversationId!, apiMessages);
+                  const userCount = allMessages.filter(m => m.isUser).length;
+                  updateCachedConversationList({
+                    id: streamedConversationId!,
+                    module_id: moduleId ?? null,
+                    message_count: allMessages.length,
+                    last_message_at: new Date().toISOString(),
+                    preview: allMessages.find(m => m.isUser)?.content.slice(0, 50) ?? '',
+                  });
+                  if (onConversationUpdate) {
+                    const firstUserMsg = allMessages.find(m => m.isUser);
+                    onConversationUpdate(
+                      streamedConversationId!,
+                      firstUserMsg?.content.slice(0, 50) ?? '',
+                      userCount * 2
+                    );
+                  }
+                  return prev;
+                });
               }
             } catch {
               // Skip unparseable lines
@@ -175,12 +286,15 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
       }
     } catch (error) {
       console.error('Failed to send message:', error);
-      setMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        content: t('error'),
-        isUser: false,
-        timestamp: new Date(),
-      }]);
+      setMessages(prev => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          content: t('error'),
+          isUser: false,
+          timestamp: new Date(),
+        },
+      ]);
     } finally {
       setIsLoading(false);
       setIsTyping(false);
@@ -200,7 +314,7 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
         content: t('welcomeMessage'),
         isUser: false,
         timestamp: new Date(),
-      }
+      },
     ]);
     setShowClearDialog(false);
   };
@@ -209,16 +323,13 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
 
   return (
     <>
-      <div 
+      <div
         className={cn(
           embedded
             ? 'flex flex-col h-full w-full bg-background'
             : cn(
-                // Mobile: Full screen overlay
                 'fixed inset-0 z-50 flex flex-col bg-background',
-                // Desktop: Side panel
                 'md:relative md:inset-auto md:w-96 md:border-l',
-                // Animation
                 'transition-transform duration-300 ease-in-out',
                 isOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'
               ),
@@ -254,55 +365,39 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
         </div>
 
         {/* Usage Counter */}
-        <UsageCounter 
-          currentUsage={currentUsage} 
+        <UsageCounter
+          currentUsage={currentUsage}
           maxUsage={maxDailyUsage}
           className="p-4 pb-2"
         />
 
         {/* Messages */}
         <div className="flex-1 flex flex-col min-h-0">
-          <div
-            ref={scrollAreaRef}
-            className="flex-1 overflow-y-auto px-4 py-2"
-          >
-            {isLoading && messages.length <= 1 ? (
+          <div ref={scrollAreaRef} className="flex-1 overflow-y-auto px-4 py-2">
+            {isLoadingHistory ? (
               <ChatSkeleton />
             ) : (
               <>
-                {messages.map((message) => (
+                {messages.map(message => (
                   <ChatMessageComponent key={message.id} message={message} />
                 ))}
                 {isTyping && <TypingIndicator />}
               </>
             )}
 
-            {/* Empty state */}
-            {messages.length === 0 && !isLoading && (
+            {messages.length === 0 && !isLoading && !isLoadingHistory && (
               <div className="flex flex-col items-center justify-center h-full text-center p-6">
-                <div className="text-muted-foreground mb-2">
-                  {t('emptyState')}
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  {t('emptyStateDescription')}
-                </div>
+                <div className="text-muted-foreground mb-2">{t('emptyState')}</div>
+                <div className="text-sm text-muted-foreground">{t('emptyStateDescription')}</div>
               </div>
             )}
           </div>
 
-          {/* Suggestions */}
           {!isLimitReached && (
-            <ChatSuggestions
-              onSuggestionClick={handleSuggestionClick}
-              disabled={isLoading}
-            />
+            <ChatSuggestions onSuggestionClick={handleSuggestionClick} disabled={isLoading} />
           )}
 
-          {/* Input */}
-          <ChatInput
-            onSendMessage={handleSendMessage}
-            disabled={isLimitReached || isLoading}
-          />
+          <ChatInput onSendMessage={handleSendMessage} disabled={isLimitReached || isLoading} />
         </div>
       </div>
 
@@ -311,15 +406,11 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('confirmClearHistory')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('confirmClearHistoryDescription')}
-            </AlertDialogDescription>
+            <AlertDialogDescription>{t('confirmClearHistoryDescription')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleClearHistory}>
-              {t('clearHistory')}
-            </AlertDialogAction>
+            <AlertDialogAction onClick={handleClearHistory}>{t('clearHistory')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

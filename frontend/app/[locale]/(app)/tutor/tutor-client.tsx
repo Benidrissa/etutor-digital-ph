@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { Plus, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,11 @@ import { Card } from '@/components/ui/card';
 import { ChatPanel } from '@/components/chat';
 import { ChatProvider } from '@/components/chat';
 import { cn } from '@/lib/utils';
+import {
+  fetchConversations,
+  getCachedConversationList,
+  type ConversationSummary,
+} from '@/lib/tutor-api';
 
 interface Conversation {
   id: string;
@@ -17,35 +22,52 @@ interface Conversation {
   messageCount: number;
 }
 
-const INITIAL_CONVERSATIONS: Conversation[] = [
-  {
-    id: '1',
-    title: 'Public Health Basics',
-    lastMessage: 'What are the main determinants of health?',
-    timestamp: new Date(2026, 2, 31, 14, 45),
-    messageCount: 5,
-  },
-  {
-    id: '2',
-    title: 'Epidemiology Questions',
-    lastMessage: 'Explain the difference between incidence and prevalence',
-    timestamp: new Date(2026, 2, 31, 13, 15),
-    messageCount: 12,
-  },
-  {
-    id: '3',
-    title: 'DHIS2 Data Analysis',
-    lastMessage: 'How do I create indicators in DHIS2?',
-    timestamp: new Date(2026, 2, 30, 15, 15),
-    messageCount: 8,
-  },
-];
+function summaryToConversation(s: ConversationSummary): Conversation {
+  return {
+    id: s.id,
+    title: s.preview
+      ? s.preview.slice(0, 40) + (s.preview.length > 40 ? '…' : '')
+      : 'Conversation',
+    lastMessage: s.preview,
+    timestamp: new Date(s.last_message_at),
+    messageCount: s.message_count,
+  };
+}
 
 export function TutorPageClient() {
   const t = useTranslations('ChatTutor');
 
-  const [conversations, setConversations] = useState<Conversation[]>(INITIAL_CONVERSATIONS);
-  const [selectedConversation, setSelectedConversation] = useState<string | null>('1');
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
+  const [isLoadingList, setIsLoadingList] = useState(true);
+
+  useEffect(() => {
+    const cached = getCachedConversationList();
+    if (cached && cached.conversations.length > 0) {
+      const mapped = cached.conversations.map(summaryToConversation);
+      setConversations(mapped);
+      if (!selectedConversation && mapped.length > 0) {
+        setSelectedConversation(mapped[0].id);
+      }
+      setIsLoadingList(false);
+    }
+
+    fetchConversations()
+      .then(result => {
+        const mapped = result.conversations.map(summaryToConversation);
+        setConversations(mapped);
+        if (!selectedConversation && mapped.length > 0) {
+          setSelectedConversation(mapped[0].id);
+        }
+      })
+      .catch(() => {
+        // network error — keep cached version shown
+      })
+      .finally(() => {
+        setIsLoadingList(false);
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const formatRelativeTime = (date: Date) => {
     const now = new Date();
@@ -61,16 +83,25 @@ export function TutorPageClient() {
   };
 
   const handleNewConversation = () => {
-    const newId = Date.now().toString();
-    const newConversation: Conversation = {
-      id: newId,
-      title: t('newConversationTitle'),
-      lastMessage: '',
-      timestamp: new Date(),
-      messageCount: 0,
-    };
-    setConversations(prev => [newConversation, ...prev]);
-    setSelectedConversation(newId);
+    setSelectedConversation(null);
+  };
+
+  const handleConversationUpdate = (id: string, preview: string, messageCount: number) => {
+    setConversations(prev => {
+      const exists = prev.some(c => c.id === id);
+      const updated: Conversation = {
+        id,
+        title: preview ? preview.slice(0, 40) + (preview.length > 40 ? '…' : '') : t('newConversationTitle'),
+        lastMessage: preview,
+        timestamp: new Date(),
+        messageCount,
+      };
+      if (exists) {
+        return prev.map(c => (c.id === id ? updated : c));
+      }
+      return [updated, ...prev];
+    });
+    setSelectedConversation(id);
   };
 
   const selectedConvData = conversations.find(c => c.id === selectedConversation);
@@ -94,7 +125,17 @@ export function TutorPageClient() {
 
           {/* Conversations List */}
           <div className="flex-1 overflow-y-auto min-h-0">
-            {conversations.length === 0 ? (
+            {isLoadingList ? (
+              <div className="p-2 space-y-2">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="p-3 rounded-lg border animate-pulse">
+                    <div className="h-4 w-3/4 bg-muted rounded mb-2" />
+                    <div className="h-3 w-full bg-muted rounded mb-1" />
+                    <div className="h-3 w-1/3 bg-muted rounded" />
+                  </div>
+                ))}
+              </div>
+            ) : conversations.length === 0 ? (
               <div className="flex flex-col items-center justify-center p-6 text-center">
                 <MessageSquare className="h-12 w-12 text-muted-foreground mb-4" />
                 <h3 className="font-medium mb-2">{t('noConversations')}</h3>
@@ -108,7 +149,7 @@ export function TutorPageClient() {
               </div>
             ) : (
               <div className="p-2 space-y-2">
-                {conversations.map((conversation) => (
+                {conversations.map(conversation => (
                   <Card
                     key={conversation.id}
                     className={cn(
@@ -119,7 +160,7 @@ export function TutorPageClient() {
                     role="button"
                     aria-pressed={selectedConversation === conversation.id}
                     tabIndex={0}
-                    onKeyDown={(e) => {
+                    onKeyDown={e => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
                         setSelectedConversation(conversation.id);
@@ -127,9 +168,7 @@ export function TutorPageClient() {
                     }}
                   >
                     <div className="flex justify-between items-start mb-2">
-                      <h3 className="font-medium text-sm truncate pr-2">
-                        {conversation.title}
-                      </h3>
+                      <h3 className="font-medium text-sm truncate pr-2">{conversation.title}</h3>
                       <span className="text-xs text-muted-foreground shrink-0">
                         {formatRelativeTime(conversation.timestamp)}
                       </span>
@@ -153,30 +192,16 @@ export function TutorPageClient() {
 
         {/* Main Chat Area */}
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          {selectedConversation ? (
-            <ChatPanel
-              isOpen={true}
-              onClose={() => {}}
-              embedded={true}
-              conversationId={selectedConversation}
-            />
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-center p-6">
-              <MessageSquare className="h-16 w-16 text-muted-foreground mb-4" />
-              <h2 className="text-xl font-semibold mb-2">{t('selectConversation')}</h2>
-              <p className="text-muted-foreground mb-6 max-w-sm">
-                {t('selectConversationDescription')}
-              </p>
-              <Button onClick={handleNewConversation}>
-                <Plus className="h-4 w-4 mr-2" />
-                {t('newConversation')}
-              </Button>
-            </div>
-          )}
+          <ChatPanel
+            isOpen={true}
+            onClose={() => {}}
+            embedded={true}
+            conversationId={selectedConversation}
+            onConversationUpdate={handleConversationUpdate}
+          />
         </div>
       </div>
 
-      {/* Mobile: show conversation info if needed */}
       {selectedConvData && (
         <div className="sr-only" aria-live="polite">
           {selectedConvData.title}
