@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator
 from datetime import datetime
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.claude_service import ClaudeService
@@ -14,6 +14,7 @@ from app.ai.rag.retriever import SemanticRetriever
 from app.api.v1.schemas.content import LessonContent, LessonResponse, StreamingEvent
 from app.domain.models.content import GeneratedContent
 from app.domain.models.module import Module
+from app.domain.models.module_unit import ModuleUnit
 
 logger = structlog.get_logger()
 
@@ -143,7 +144,7 @@ class LessonGenerationService:
             # Perform RAG retrieval
             yield StreamingEvent(event="chunk", data="Recherche des documents pertinents...")
 
-            query = await self._build_lesson_query(module, unit_id, language)
+            query = await self._build_lesson_query(module, unit_id, language, session)
             rag_chunks = await self.semantic_retriever.search_for_module(
                 query=query,
                 user_level=level,
@@ -255,7 +256,7 @@ class LessonGenerationService:
     ) -> LessonResponse:
         """Generate new lesson content using RAG + Claude."""
         # Build search query
-        query = await self._build_lesson_query(module, unit_id, language)
+        query = await self._build_lesson_query(module, unit_id, language, session)
 
         # Perform RAG retrieval
         rag_chunks = await self.semantic_retriever.search_for_module(
@@ -306,20 +307,52 @@ class LessonGenerationService:
             cached=False,
         )
 
-    async def _build_lesson_query(self, module: Module, unit_id: str, language: str) -> str:
-        """Build search query for RAG retrieval."""
-        # Use module title and description as base query
-        title = module.title_fr if language == "fr" else module.title_en
-        description = module.description_fr if language == "fr" else module.description_en
+    async def _build_lesson_query(
+        self, module: Module, unit_id: str, language: str, session: AsyncSession
+    ) -> str:
+        """Build search query for RAG retrieval using unit-specific metadata."""
+        unit_number = self._unit_id_to_unit_number(unit_id, module.module_number)
+        unit: ModuleUnit | None = None
 
-        # Combine title, unit_id and description for comprehensive search
-        query_parts = [title]
-        if unit_id:
-            query_parts.append(f"unit {unit_id}")
-        if description:
-            query_parts.append(description[:200])  # Limit description length
+        if unit_number:
+            unit_result = await session.execute(
+                select(ModuleUnit).where(
+                    and_(
+                        ModuleUnit.module_id == module.id,
+                        ModuleUnit.unit_number == unit_number,
+                    )
+                )
+            )
+            unit = unit_result.scalar_one_or_none()
+
+        if unit:
+            unit_title = unit.title_fr if language == "fr" else unit.title_en
+            unit_description = unit.description_fr if language == "fr" else unit.description_en
+            query_parts = [unit_title]
+            if unit_description:
+                query_parts.append(unit_description[:200])
+        else:
+            title = module.title_fr if language == "fr" else module.title_en
+            description = module.description_fr if language == "fr" else module.description_en
+            query_parts = [title]
+            if unit_id:
+                query_parts.append(f"unit {unit_id}")
+            if description:
+                query_parts.append(description[:200])
 
         return " ".join(query_parts)
+
+    @staticmethod
+    def _unit_id_to_unit_number(unit_id: str, module_number: int) -> str | None:
+        """Convert unit_id like 'M01-U02' to unit_number like '1.2'."""
+        try:
+            parts = unit_id.upper().split("-U")
+            if len(parts) != 2:
+                return None
+            unit_ordinal = int(parts[1])
+            return f"{module_number}.{unit_ordinal}"
+        except (ValueError, IndexError):
+            return None
 
     async def _parse_lesson_content(self, content_text: str, rag_chunks: list) -> LessonContent:
         """Parse generated content into structured lesson format."""
