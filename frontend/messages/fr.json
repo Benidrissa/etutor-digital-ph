@@ -467,6 +467,7 @@
     "selectAnswer": "Sélectionnez une réponse pour continuer",
     "previous": "Précédent",
     "next": "Suivant", 
+    "answered": "{count}/{total} répondues",
     "submit": "Soumettre l'Évaluation",
     "submitting": "Évaluation de vos réponses...",
     "results": {
