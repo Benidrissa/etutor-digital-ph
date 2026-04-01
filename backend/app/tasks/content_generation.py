@@ -1,5 +1,8 @@
 """Celery tasks for AI content generation."""
 
+import asyncio
+import uuid
+
 import structlog
 from celery import Task
 
@@ -187,6 +190,102 @@ def generate_flashcards(self, module_id: str, language: str = "fr", count: int =
         logger.error(
             "Flashcard generation failed",
             module_id=module_id,
+            exception=str(exc),
+            task_id=self.request.id,
+        )
+        raise
+
+
+@celery_app.task(
+    bind=True,
+    base=CallbackTask,
+    autoretry_for=(Exception,),
+    retry_kwargs={"max_retries": 2, "countdown": 30},
+    rate_limit="3/m",
+    time_limit=60,
+    soft_time_limit=55,
+)
+def generate_lesson_image(
+    self,
+    lesson_id: str,
+    module_id: str,
+    unit_id: str,
+    lesson_content: str,
+) -> dict:
+    """Async Celery task to generate a DALL-E 3 illustration for a lesson (US-025, FR-03.2).
+
+    Pipeline:
+    1. Claude API extracts key concept + generates DALL-E prompt + semantic tags
+    2. Check generated_images for semantic tag overlap >= 85%
+    3. If match found: reuse image (increment reuse_count), skip DALL-E
+    4. If no match: call DALL-E 3, save as WebP (max 512px), store metadata
+    5. Generate FR/EN alt-text for accessibility
+
+    Status transitions: pending -> generating -> ready | failed
+    Lesson content is served independently (non-blocking).
+
+    Args:
+        lesson_id: UUID of the lesson (GeneratedContent.id)
+        module_id: UUID of the module
+        unit_id: Unit identifier within the module
+        lesson_content: Full lesson text for concept extraction
+
+    Returns:
+        dict with image_id, status, reused flag
+    """
+    logger.info(
+        "Starting lesson image generation",
+        lesson_id=lesson_id,
+        module_id=module_id,
+        unit_id=unit_id,
+        task_id=self.request.id,
+    )
+
+    async def _run() -> dict:
+        from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+        from app.domain.services.image_service import ImageGenerationService
+        from app.infrastructure.config.settings import settings
+
+        engine = create_async_engine(settings.database_url, echo=False)
+        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+        try:
+            async with session_factory() as session:
+                service = ImageGenerationService()
+                image = await service.process_lesson_image(
+                    lesson_id=uuid.UUID(lesson_id),
+                    module_id=uuid.UUID(module_id),
+                    unit_id=unit_id,
+                    lesson_content=lesson_content,
+                    session=session,
+                )
+                reused = bool(image.extra_metadata and image.extra_metadata.get("reused_from"))
+                return {
+                    "image_id": str(image.id),
+                    "status": image.status,
+                    "reused": reused,
+                    "lesson_id": lesson_id,
+                    "module_id": module_id,
+                    "unit_id": unit_id,
+                }
+        finally:
+            await engine.dispose()
+
+    try:
+        result = asyncio.run(_run())
+        logger.info(
+            "Lesson image generation completed",
+            lesson_id=lesson_id,
+            result=result,
+            task_id=self.request.id,
+        )
+        return result
+
+    except Exception as exc:
+        logger.error(
+            "Lesson image generation failed",
+            lesson_id=lesson_id,
             exception=str(exc),
             task_id=self.request.id,
         )

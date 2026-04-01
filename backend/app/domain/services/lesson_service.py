@@ -92,7 +92,44 @@ class LessonGenerationService:
         # Cache the generated content
         await self._cache_lesson_content(lesson_response, session)
 
+        # Dispatch background image generation (non-blocking, lesson served independently)
+        self._dispatch_image_generation(lesson_response)
+
         return lesson_response
+
+    def _dispatch_image_generation(self, lesson_response: "LessonResponse") -> None:
+        """Dispatch the generate_lesson_image Celery task (fire-and-forget)."""
+        try:
+            from app.tasks.content_generation import generate_lesson_image
+
+            lesson_text = ""
+            if lesson_response.content:
+                parts = []
+                if lesson_response.content.introduction:
+                    parts.append(lesson_response.content.introduction)
+                if lesson_response.content.concepts:
+                    parts.extend(lesson_response.content.concepts)
+                if lesson_response.content.synthesis:
+                    parts.append(lesson_response.content.synthesis)
+                lesson_text = " ".join(parts)
+
+            generate_lesson_image.delay(
+                lesson_id=str(lesson_response.id),
+                module_id=str(lesson_response.module_id),
+                unit_id=lesson_response.unit_id,
+                lesson_content=lesson_text,
+            )
+            logger.info(
+                "Dispatched image generation task",
+                lesson_id=str(lesson_response.id),
+                module_id=str(lesson_response.module_id),
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to dispatch image generation task",
+                lesson_id=str(lesson_response.id),
+                error=str(exc),
+            )
 
     async def stream_lesson_generation(
         self,
