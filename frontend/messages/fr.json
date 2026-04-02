@@ -285,9 +285,9 @@
     "send": "Envoyer",
     "typing": "Le tuteur écrit...",
     "offline": "Tuteur hors ligne",
-    "messageLimit": "{count}/50 messages aujourd'hui",
+    "messageLimit": "{count}/{max} messages aujourd'hui",
     "messageLimitWarning": "Limite de messages quotidiens atteinte",
-    "messageLimitWarningDescription": "Vous avez utilisé 40 sur 50 messages aujourd'hui",
+    "messageLimitWarningDescription": "Vous approchez de votre limite de messages quotidiens.",
     "messageLimitReached": "Limite de messages quotidiens atteinte",
     "messageLimitReachedDescription": "Revenez demain pour plus de conversations avec le tuteur IA",
     "suggestions": {
@@ -326,7 +326,11 @@
     "selectConversationDescription": "Choisissez une conversation dans la barre latérale ou commencez-en une nouvelle",
     "messageCount": "{count} {count, plural, one {message} other {messages}}",
     "cancel": "Annuler",
-    "newConversationTitle": "Nouvelle Conversation"
+    "newConversationTitle": "Nouvelle Conversation",
+    "conversations": "Conversations",
+    "openConversations": "Ouvrir les conversations",
+    "closeDrawer": "Fermer",
+    "toggleSuggestions": "Actions rapides"
   },
   "Flashcards": {
     "title": "Flashcards",
