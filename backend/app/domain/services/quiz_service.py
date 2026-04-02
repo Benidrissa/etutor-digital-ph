@@ -108,7 +108,7 @@ class QuizService:
                 content_type="quiz",
                 language=language,
                 level=level,
-                content=quiz_content.model_dump(),
+                content={**quiz_content.model_dump(), "unit_id": unit_id},
                 sources_cited=self._extract_sources_from_quiz(quiz_content),
                 country_context=country,
                 validated=False,
