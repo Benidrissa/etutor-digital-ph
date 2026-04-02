@@ -6,6 +6,7 @@ from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.flashcard import FlashcardReview
 from app.domain.models.generated_image import GeneratedImage
 from app.domain.models.learner_memory import LearnerMemory
+from app.domain.models.lesson_reading import LessonReading
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.progress import UserModuleProgress
@@ -18,6 +19,7 @@ __all__ = [
     "GeneratedContent",
     "GeneratedImage",
     "LearnerMemory",
+    "LessonReading",
     "TutorConversation",
     "FlashcardReview",
     "MagicLink",
