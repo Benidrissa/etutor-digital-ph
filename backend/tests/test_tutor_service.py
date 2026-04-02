@@ -12,7 +12,7 @@ from app.ai.rag.retriever import SemanticRetriever
 from app.domain.models.conversation import TutorConversation
 from app.domain.models.user import User
 from app.domain.services.learner_memory_service import LearnerMemoryService
-from app.domain.services.tutor_service import TutorService
+from app.domain.services.tutor_service import SessionContext, TutorService
 
 
 @pytest.fixture
@@ -53,12 +53,16 @@ def tutor_service(
     mock_learner_memory_service,
 ):
     """TutorService with mocked dependencies."""
-    return TutorService(
+    svc = TutorService(
         anthropic_client=mock_anthropic_client,
         semantic_retriever=mock_semantic_retriever,
         embedding_service=mock_embedding_service,
         learner_memory_service=mock_learner_memory_service,
     )
+    svc.session_manager.build_session_context = AsyncMock(
+        return_value=SessionContext(learner_memory="", is_new_conversation=True)
+    )
+    return svc
 
 
 @pytest.fixture
