@@ -120,12 +120,30 @@ class ClaudeService:
 
             # Try to parse JSON from the response
             try:
+                # Strip markdown code fences if present
+                clean_text = content_text.strip()
+                if clean_text.startswith("```"):
+                    # Remove opening ```json or ```
+                    first_newline = clean_text.find("\n")
+                    if first_newline > 0:
+                        clean_text = clean_text[first_newline + 1 :]
+                    # Remove closing ```
+                    if clean_text.rstrip().endswith("```"):
+                        clean_text = clean_text.rstrip()[:-3]
+
                 # Look for JSON within the response text
-                json_start = content_text.find("{")
-                json_end = content_text.rfind("}") + 1
+                json_start = clean_text.find("{")
+                json_end = clean_text.rfind("}") + 1
 
                 if json_start >= 0 and json_end > json_start:
-                    json_text = content_text[json_start:json_end]
+                    json_text = clean_text[json_start:json_end]
+
+                    # Fix common Claude JSON mistakes
+                    import re
+
+                    # Remove trailing commas before } or ]
+                    json_text = re.sub(r",\s*([}\]])", r"\1", json_text)
+
                     parsed_content = json.loads(json_text)
 
                     logger.info(
