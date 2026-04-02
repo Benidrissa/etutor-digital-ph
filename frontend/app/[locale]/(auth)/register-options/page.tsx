@@ -10,16 +10,10 @@ import {
 import { Link } from '@/i18n/routing';
 import { cn } from '@/lib/utils';
 
-interface Props {
-  params: {
-    locale: string;
-  };
-}
-
-export default async function RegisterOptionsPage({ params }: Props) {
+export default async function RegisterOptionsPage() {
   const t = await getTranslations('Auth');
   const tCommon = await getTranslations('Common');
-  
+
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
       <Card className="w-full max-w-md">
@@ -42,8 +36,8 @@ export default async function RegisterOptionsPage({ params }: Props) {
                   <p className="text-sm text-muted-foreground">{t('emailVerificationDesc')}</p>
                 </div>
               </div>
-              <Link 
-                href={`/${params.locale}/register-email-otp`}
+              <Link
+                href="/register-email-otp"
                 className={cn(buttonVariants({ variant: "default" }), "w-full min-h-11")}
               >
                 {t('continueWithEmail')}
@@ -67,8 +61,8 @@ export default async function RegisterOptionsPage({ params }: Props) {
                     <p className="text-sm text-muted-foreground">{t('authenticatorAppDesc')}</p>
                   </div>
                 </div>
-                <Link 
-                  href={`/${params.locale}/register-totp`}
+                <Link
+                  href="/register-totp"
                   className={cn(buttonVariants({ variant: "outline" }), "w-full min-h-11")}
                 >
                   {t('continueWithAuthenticator')}
@@ -82,8 +76,8 @@ export default async function RegisterOptionsPage({ params }: Props) {
             {/* Login Link */}
             <div className="text-center text-sm border-t pt-4">
               <span className="text-muted-foreground">{t('alreadyHaveAccount')} </span>
-              <Link 
-                href={`/${params.locale}/login`}
+              <Link
+                href="/login"
                 className="font-medium text-primary hover:underline"
               >
                 {t('signIn')}
