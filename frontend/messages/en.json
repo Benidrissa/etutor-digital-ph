@@ -188,7 +188,9 @@
     "overallProgress": "Overall Progress",
     "modulesCompleted": "modules completed",
     "totalHours": "{count} total hours",
-    "estimatedCompletion": "Estimated 6-12 months to complete"
+    "estimatedCompletion": "Estimated 6-12 months to complete",
+    "loading": "Loading modules...",
+    "error": "Could not load module progress. Please try again."
   },
   "ModuleOverview": {
     "backToModules": "Back to Modules",

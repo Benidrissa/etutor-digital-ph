@@ -4,6 +4,7 @@ export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:800
 export interface ModuleProgressResponse {
   module_id: string;
   user_id: string;
+  module_number: number | null;
   status: "locked" | "in_progress" | "completed";
   completion_pct: number;
   quiz_score_avg: number | null;
