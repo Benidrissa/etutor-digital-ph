@@ -23,7 +23,7 @@ class QuizContent(BaseModel):
     """Quiz content structure matching GeneratedContent.content schema."""
 
     title: str = Field(description="Quiz title")
-    description: str = Field(description="Quiz description/instructions")
+    description: str = Field(description="Quiz description/instructions", default="")
     questions: list[QuizQuestion] = Field(
         description="List of quiz questions", min_length=1, max_length=20
     )
