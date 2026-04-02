@@ -675,5 +675,29 @@
       "student": "Student",
       "other": "Other"
     }
+  },
+  "AdminRateLimits": {
+    "title": "Tutor Rate Limits",
+    "subtitle": "Configure global and per-user daily message limits for the AI tutor",
+    "globalLimitTitle": "Global Daily Limit",
+    "globalLimitDescription": "Default daily tutor message limit applied to all users without an override",
+    "currentLimit": "Current: {limit} messages/day",
+    "newLimit": "New limit",
+    "newLimitPlaceholder": "e.g. 200",
+    "save": "Save",
+    "globalLimitUpdated": "Global limit updated to {limit} messages/day",
+    "userOverridesTitle": "User Overrides & Usage",
+    "userOverridesDescription": "View today's usage and set custom limits per user",
+    "addOverride": "Set override for a user",
+    "userIdPlaceholder": "User ID (UUID)",
+    "limitPlaceholder": "Limit",
+    "setOverride": "Set",
+    "removeOverride": "Remove override",
+    "resetUsage": "Reset daily counter",
+    "hasOverride": "Override: {limit}/day",
+    "usageToday": "{used} / {limit} messages today",
+    "noActiveUsers": "No users have used the tutor today",
+    "activeUsers": "Active users today",
+    "accessDenied": "Access denied — admin privileges required"
   }
 }

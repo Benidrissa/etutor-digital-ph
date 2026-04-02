@@ -7,9 +7,14 @@ import structlog
 from fastapi import HTTPException, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.domain.services.rate_limit_config_service import (
+    RateLimitConfigService,
+)
 from app.infrastructure.cache.redis import redis_client
 
 logger = structlog.get_logger(__name__)
+
+_rate_limit_config_service = RateLimitConfigService()
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -17,7 +22,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     Implements:
     - 100 requests per minute per IP (global limit)
-    - 50 tutor messages per day per user (endpoint-specific)
+    - Configurable tutor messages per day per user (stored in Redis, default 200)
     """
 
     def __init__(self, app, global_rate_limit: int = 100):
@@ -128,35 +133,37 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         method = request.method
 
-        # Tutor endpoint: 50 messages per day per user
+        # Tutor endpoint: configurable messages per day per user
         if path.startswith("/api/v1/tutor") and method == "POST":
             await self._check_tutor_rate_limit(request, client_ip)
 
     async def _check_tutor_rate_limit(self, request: Request, client_ip: str) -> None:
-        """Check tutor message rate limit (50/day/user)."""
-        # TODO: Extract user_id from JWT token when auth is implemented
-        # For now, use IP address as identifier
-        user_identifier = client_ip
+        """Check tutor message rate limit (configurable/day/user from Redis)."""
+        user_identifier = _extract_user_id_from_request(request) or client_ip
 
         cache_key = f"rate_limit:tutor:{user_identifier}"
         current_time = int(time.time())
         day_start = current_time - (current_time % 86400)  # Start of current day
 
         try:
+            # Fetch effective limit (per-user override or global config)
+            daily_limit = await _rate_limit_config_service.get_effective_limit(user_identifier)
+
             # Count tutor messages today
             message_count = await redis_client.zcount(cache_key, day_start, current_time)
 
-            if message_count >= 50:
+            if message_count >= daily_limit:
                 logger.warning(
                     "Tutor rate limit exceeded",
                     user_identifier=user_identifier,
                     message_count=message_count,
+                    limit=daily_limit,
                 )
                 raise HTTPException(
                     status_code=429,
                     detail={
                         "error": "Daily tutor message limit exceeded",
-                        "limit": 50,
+                        "limit": daily_limit,
                         "window_hours": 24,
                         "retry_after": 86400 - (current_time % 86400),
                     },
@@ -177,7 +184,28 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             # Continue on Redis error
 
 
-async def get_rate_limit_status(client_ip: str, user_id: str = None) -> dict:
+def _extract_user_id_from_request(request: Request) -> str | None:
+    """Attempt to extract user_id from JWT Authorization header without full verification."""
+    import base64
+    import json
+
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+    token = auth_header[7:]
+    parts = token.split(".")
+    if len(parts) != 3:
+        return None
+    try:
+        padding = 4 - len(parts[1]) % 4
+        payload_bytes = base64.urlsafe_b64decode(parts[1] + "=" * padding)
+        payload = json.loads(payload_bytes)
+        return payload.get("sub")
+    except Exception:
+        return None
+
+
+async def get_rate_limit_status(client_ip: str, user_id: str | None = None) -> dict:
     """Get current rate limit status for debugging/monitoring.
 
     Args:
@@ -188,7 +216,7 @@ async def get_rate_limit_status(client_ip: str, user_id: str = None) -> dict:
         dict: Rate limit status information
     """
     current_time = int(time.time())
-    status = {}
+    status: dict = {}
 
     try:
         # Global rate limit status
@@ -208,12 +236,13 @@ async def get_rate_limit_status(client_ip: str, user_id: str = None) -> dict:
             tutor_key = f"rate_limit:tutor:{user_id}"
             day_start = current_time - (current_time % 86400)
             tutor_count = await redis_client.zcount(tutor_key, day_start, current_time)
+            daily_limit = await _rate_limit_config_service.get_effective_limit(user_id)
 
             status["tutor"] = {
                 "messages_today": tutor_count,
-                "limit": 50,
+                "limit": daily_limit,
                 "window_hours": 24,
-                "remaining": max(0, 50 - tutor_count),
+                "remaining": max(0, daily_limit - tutor_count),
             }
 
         return status

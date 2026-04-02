@@ -675,5 +675,29 @@
       "student": "Étudiant/e",
       "other": "Autre"
     }
+  },
+  "AdminRateLimits": {
+    "title": "Limites du tuteur IA",
+    "subtitle": "Configurez les limites quotidiennes de messages pour le tuteur IA",
+    "globalLimitTitle": "Limite quotidienne globale",
+    "globalLimitDescription": "Limite de messages quotidiens par défaut appliquée à tous les utilisateurs sans dérogation",
+    "currentLimit": "Actuel : {limit} messages/jour",
+    "newLimit": "Nouvelle limite",
+    "newLimitPlaceholder": "ex. 200",
+    "save": "Enregistrer",
+    "globalLimitUpdated": "Limite globale mise à jour à {limit} messages/jour",
+    "userOverridesTitle": "Dérogations et utilisation par utilisateur",
+    "userOverridesDescription": "Consultez l'utilisation du jour et définissez des limites personnalisées par utilisateur",
+    "addOverride": "Définir une dérogation pour un utilisateur",
+    "userIdPlaceholder": "ID utilisateur (UUID)",
+    "limitPlaceholder": "Limite",
+    "setOverride": "Définir",
+    "removeOverride": "Supprimer la dérogation",
+    "resetUsage": "Réinitialiser le compteur quotidien",
+    "hasOverride": "Dérogation : {limit}/jour",
+    "usageToday": "{used} / {limit} messages aujourd'hui",
+    "noActiveUsers": "Aucun utilisateur n'a utilisé le tuteur aujourd'hui",
+    "activeUsers": "Utilisateurs actifs aujourd'hui",
+    "accessDenied": "Accès refusé — droits administrateur requis"
   }
 }
