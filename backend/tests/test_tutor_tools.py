@@ -16,6 +16,7 @@ from app.domain.models.user import User
 from app.domain.services.learner_memory_service import LearnerMemoryService
 from app.domain.services.tutor_service import (
     MAX_TOOL_CALLS,
+    SessionContext,
     TutorService,
     _deduplicate_sources,
     _split_into_chunks,
@@ -101,12 +102,16 @@ def tutor_service(mock_retriever, mock_anthropic, mock_learner_memory_service):
     from app.ai.rag.embeddings import EmbeddingService
 
     embedding_service = AsyncMock(spec=EmbeddingService)
-    return TutorService(
+    svc = TutorService(
         anthropic_client=mock_anthropic,
         semantic_retriever=mock_retriever,
         embedding_service=embedding_service,
         learner_memory_service=mock_learner_memory_service,
     )
+    svc.session_manager.build_session_context = AsyncMock(
+        return_value=SessionContext(learner_memory="", is_new_conversation=True)
+    )
+    return svc
 
 
 # ---------------------------------------------------------------------------
