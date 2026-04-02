@@ -19,6 +19,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Link } from "@/i18n/routing";
+import { PlacementResultsHistory } from "@/components/placement/placement-results-history";
 import { Upload, User as UserIcon, AlertTriangle, CheckCircle, ClipboardList } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -457,6 +458,9 @@ export function ProfileClient() {
           </Link>
         </CardContent>
       </Card>
+
+      {/* Placement Results History */}
+      <PlacementResultsHistory compact />
     </div>
   );
 }
