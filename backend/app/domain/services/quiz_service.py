@@ -173,15 +173,19 @@ class QuizService:
         try:
             # Retrieve relevant content chunks using RAG
             search_query = f"module {module_id} unit {unit_id} public health epidemiology concepts"
-            retrieved_chunks = await self.semantic_retriever.retrieve_chunks(
+            search_results = await self.semantic_retriever.search_for_module(
                 query=search_query,
-                top_k=8,  # Get more chunks for quiz questions
-                module_filter=str(module_id) if module_id else None,
+                user_level=level,
+                user_language=language,
+                top_k=8,
             )
 
             # Build context from retrieved chunks
             context_text = "\n\n".join(
-                [f"Source: {chunk.source_reference}\n{chunk.content}" for chunk in retrieved_chunks]
+                [
+                    f"Source: {result.chunk.source}\n{result.chunk.content}"
+                    for result in search_results
+                ]
             )
 
             # Generate quiz using Claude API with structured prompt
