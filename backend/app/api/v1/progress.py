@@ -134,13 +134,30 @@ async def get_all_module_progress(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[ModuleProgressResponse]:
-    """Get current user's progress for all modules."""
+    """
+    Get current user's progress for all modules.
+
+    Returns ALL modules (including locked ones), ordered by module_number.
+    Locked modules with no progress record have status 'locked' and 0% completion.
+    """
     try:
         user_id = UUID(str(current_user.id))
         service = ProgressService(db)
-        all_progress = await service.get_all_module_progress(user_id)
+        all_modules = await service.get_all_modules_with_progress(user_id)
 
-        return [_make_module_progress_response(user_id, p.module_id, p) for p in all_progress]
+        return [
+            ModuleProgressResponse(
+                module_id=m["module_id"],
+                user_id=m["user_id"],
+                module_number=m["module_number"],
+                status=m["status"],
+                completion_pct=m["completion_pct"],
+                quiz_score_avg=m["quiz_score_avg"],
+                time_spent_minutes=m["time_spent_minutes"],
+                last_accessed=m["last_accessed"],
+            )
+            for m in all_modules
+        ]
 
     except Exception as e:
         logger.error("Failed to get all module progress", error=str(e), exc_info=True)
