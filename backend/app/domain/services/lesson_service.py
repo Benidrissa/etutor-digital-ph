@@ -104,6 +104,9 @@ class LessonGenerationService:
         # Cache the generated content
         await self._cache_lesson_content(lesson_response, session)
 
+        # Dispatch image generation task fire-and-forget (non-blocking)
+        self._dispatch_image_task(lesson_response)
+
         return lesson_response
 
     async def stream_lesson_generation(
@@ -209,6 +212,9 @@ class LessonGenerationService:
 
             # Cache the result
             await self._cache_lesson_content(lesson_response, session)
+
+            # Dispatch image generation task fire-and-forget
+            self._dispatch_image_task(lesson_response)
 
             yield StreamingEvent(event="complete", data=lesson_response.model_dump())
 
@@ -427,6 +433,28 @@ class LessonGenerationService:
             module_id=str(cached_content.module_id),
             unit_id=lesson_response.unit_id,
         )
+
+    @staticmethod
+    def _dispatch_image_task(lesson_response: "LessonResponse") -> None:
+        """Dispatch the generate_lesson_image Celery task fire-and-forget."""
+        try:
+            from app.tasks.content_generation import generate_lesson_image
+
+            lesson_text = " ".join(lesson_response.content.concepts or [])
+
+            generate_lesson_image.delay(
+                lesson_id=str(lesson_response.id) if lesson_response.id else None,
+                module_id=str(lesson_response.module_id),
+                unit_id=lesson_response.unit_id,
+                lesson_content=lesson_text[:4000],
+            )
+            logger.info(
+                "Image generation task dispatched",
+                lesson_id=str(lesson_response.id) if lesson_response.id else None,
+                module_id=str(lesson_response.module_id),
+            )
+        except Exception as exc:
+            logger.warning("Failed to dispatch image task", error=str(exc))
 
 
 class CaseStudyGenerationService:

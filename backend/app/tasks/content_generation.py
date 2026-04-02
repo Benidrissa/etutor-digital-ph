@@ -1,5 +1,8 @@
 """Celery tasks for AI content generation."""
 
+import asyncio
+import uuid
+
 import structlog
 from celery import Task
 
@@ -133,6 +136,96 @@ def generate_quiz_questions(
         logger.error(
             "Quiz question generation failed",
             module_id=module_id,
+            exception=str(exc),
+            task_id=self.request.id,
+        )
+        raise
+
+
+@celery_app.task(
+    bind=True,
+    base=CallbackTask,
+    autoretry_for=(Exception,),
+    retry_kwargs={"max_retries": 2, "countdown": 30},
+    rate_limit="3/m",
+    soft_time_limit=15,
+    time_limit=20,
+)
+def generate_lesson_image(
+    self,
+    lesson_id: str | None,
+    module_id: str | None,
+    unit_id: str | None,
+    lesson_content: str,
+) -> dict:
+    """Generate a DALL-E 3 illustration for a lesson (fire-and-forget, non-blocking).
+
+    Pipeline:
+        1. Claude extracts key concept + semantic tags
+        2. Search generated_images for ≥85% Jaccard tag overlap → reuse if found
+        3. Otherwise call DALL-E 3, save WebP URL, store bilingual alt-text
+
+    Args:
+        lesson_id: UUID string of the GeneratedContent lesson (or None)
+        module_id: UUID string of the module (or None)
+        unit_id: Unit identifier (or None)
+        lesson_content: Full text of the generated lesson
+
+    Returns:
+        dict with image_id and status
+    """
+    logger.info(
+        "Starting lesson image generation",
+        lesson_id=lesson_id,
+        module_id=module_id,
+        unit_id=unit_id,
+        task_id=self.request.id,
+    )
+
+    try:
+        import anthropic
+        from openai import AsyncOpenAI
+
+        from app.domain.services.image_service import ImageGenerationService
+        from app.infrastructure.config.settings import settings
+        from app.infrastructure.persistence.database import AsyncSessionLocal
+
+        anthropic_client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
+
+        service = ImageGenerationService(
+            anthropic_client=anthropic_client,
+            openai_client=openai_client,
+            settings=settings,
+        )
+
+        lesson_uuid = uuid.UUID(lesson_id) if lesson_id else None
+        module_uuid = uuid.UUID(module_id) if module_id else None
+
+        async def _run():
+            async with AsyncSessionLocal() as session:
+                return await service.run(
+                    session=session,
+                    lesson_id=lesson_uuid,
+                    module_id=module_uuid,
+                    unit_id=unit_id,
+                    lesson_content=lesson_content,
+                )
+
+        image_id = asyncio.get_event_loop().run_until_complete(_run())
+
+        logger.info(
+            "Lesson image generation completed",
+            image_id=str(image_id),
+            lesson_id=lesson_id,
+            task_id=self.request.id,
+        )
+        return {"image_id": str(image_id), "status": "done"}
+
+    except Exception as exc:
+        logger.error(
+            "Lesson image generation failed",
+            lesson_id=lesson_id,
             exception=str(exc),
             task_id=self.request.id,
         )
