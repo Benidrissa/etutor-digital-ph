@@ -1,5 +1,6 @@
 """Service for AI tutor functionality with agentic tool_use and Socratic pedagogical approach."""
 
+import asyncio
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime
@@ -9,9 +10,14 @@ import structlog
 from anthropic import AsyncAnthropic
 from anthropic.types import MessageParam, ToolResultBlockParam, ToolUseBlock
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.ai.prompts.tutor import TutorContext, get_activity_suggestions, get_socratic_system_prompt
+from app.ai.prompts.tutor import (
+    TutorContext,
+    get_activity_suggestions,
+    get_compaction_prompt,
+    get_socratic_system_prompt,
+)
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.domain.models.conversation import TutorConversation
@@ -23,6 +29,9 @@ from app.infrastructure.config.settings import get_settings
 logger = structlog.get_logger()
 
 MAX_TOOL_CALLS = 3
+COMPACT_TRIGGER = 20
+COMPACT_KEEP_RECENT = 5
+COMPACT_SUMMARIZE_UP_TO = 15
 
 
 class TutorService:
@@ -92,6 +101,13 @@ class TutorService:
             conversation = await self._get_or_create_conversation(
                 user_id, module_id, conversation_id, session
             )
+
+            if not conversation_id and not conversation.compacted_context:
+                prior_compact = await self._get_previous_compact(user_id, conversation.id, session)
+                if prior_compact:
+                    conversation.compacted_context = prior_compact
+                    session.add(conversation)
+                    await session.flush()
 
             yield {
                 "type": "conversation_id",
@@ -268,8 +284,17 @@ class TutorService:
 
             updated_messages = conversation.messages + [user_msg_stored, assistant_msg_stored]
             conversation.messages = updated_messages
+            conversation.message_count = len(updated_messages)
             session.add(conversation)
             await session.commit()
+
+            if conversation.message_count > COMPACT_TRIGGER:
+                asyncio.ensure_future(
+                    self._compact_conversation_async(
+                        conversation_id=conversation.id,
+                        user_language=user.preferred_language,
+                    )
+                )
 
             yield {
                 "type": "sources_retrieved",
@@ -496,15 +521,32 @@ class TutorService:
     async def _prepare_conversation_history(
         self, conversation: TutorConversation
     ) -> list[dict[str, str]]:
-        """Prepare conversation history for Claude API."""
-        messages = (
-            conversation.messages[-10:]
-            if len(conversation.messages) > 10
-            else conversation.messages
-        )
+        """Prepare conversation history for Claude API.
 
-        claude_messages = []
-        for msg in messages:
+        If compacted_context exists, prepend it as a system note then include the
+        most recent COMPACT_KEEP_RECENT messages verbatim.  Otherwise fall back to
+        the last 10 messages (pre-compaction behaviour).
+        """
+        recent_messages = conversation.messages[-COMPACT_KEEP_RECENT:]
+
+        claude_messages: list[dict[str, str]] = []
+
+        if conversation.compacted_context:
+            claude_messages.append({"role": "user", "content": conversation.compacted_context})
+            claude_messages.append(
+                {
+                    "role": "assistant",
+                    "content": "Compris. Je vais tenir compte de ce contexte pour la suite.",
+                }
+            )
+        else:
+            recent_messages = (
+                conversation.messages[-10:]
+                if len(conversation.messages) > 10
+                else conversation.messages
+            )
+
+        for msg in recent_messages:
             if msg.get("role") and msg.get("content"):
                 claude_messages.append(
                     {
@@ -514,6 +556,96 @@ class TutorService:
                 )
 
         return claude_messages
+
+    async def _compact_conversation_async(
+        self,
+        conversation_id: uuid.UUID,
+        user_language: str,
+    ) -> None:
+        """Summarize old messages into compacted_context in its own DB session.
+
+        Runs asynchronously (fire-and-forget) so it never blocks the response stream.
+        Summarizes messages[0:COMPACT_SUMMARIZE_UP_TO], keeps messages[COMPACT_SUMMARIZE_UP_TO:]
+        verbatim in the messages list.
+        """
+        try:
+            engine = create_async_engine(self.settings.database_url, echo=False)
+            session_factory = async_sessionmaker(
+                engine, class_=AsyncSession, expire_on_commit=False
+            )
+            async with session_factory() as session:
+                result = await session.execute(
+                    select(TutorConversation).where(TutorConversation.id == conversation_id)
+                )
+                conversation = result.scalar_one_or_none()
+                if not conversation:
+                    return
+
+                messages_to_compact = conversation.messages[:COMPACT_SUMMARIZE_UP_TO]
+                messages_to_keep = conversation.messages[COMPACT_SUMMARIZE_UP_TO:]
+
+                if not messages_to_compact:
+                    return
+
+                prompt = get_compaction_prompt(
+                    messages=messages_to_compact,
+                    existing_compact=conversation.compacted_context,
+                    language=user_language,
+                )
+
+                compact_response = await self.anthropic.messages.create(
+                    model="claude-sonnet-4-6",
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=600,
+                    temperature=0.3,
+                )
+
+                compact_text_parts = [
+                    block.text
+                    for block in compact_response.content
+                    if hasattr(block, "text") and block.text
+                ]
+                new_compact = "".join(compact_text_parts).strip()
+
+                conversation.compacted_context = new_compact
+                conversation.compacted_at = datetime.utcnow()
+                conversation.messages = messages_to_keep
+                conversation.message_count = len(messages_to_keep)
+                session.add(conversation)
+                await session.commit()
+
+                logger.info(
+                    "Conversation compacted",
+                    conversation_id=str(conversation_id),
+                    messages_summarized=len(messages_to_compact),
+                    messages_kept=len(messages_to_keep),
+                    compact_length=len(new_compact),
+                )
+        except Exception:
+            logger.exception("Failed to compact conversation", conversation_id=str(conversation_id))
+        finally:
+            import contextlib
+
+            async with contextlib.AsyncExitStack():
+                with contextlib.suppress(Exception):
+                    await engine.dispose()
+
+    async def _get_previous_compact(
+        self, user_id: uuid.UUID, current_conversation_id: uuid.UUID, session: AsyncSession
+    ) -> str | None:
+        """Return the compacted_context from the most recent prior conversation (cross-session)."""
+        result = await session.execute(
+            select(TutorConversation)
+            .where(
+                TutorConversation.user_id == user_id,
+                TutorConversation.id != current_conversation_id,
+                TutorConversation.compacted_context.isnot(None),
+            )
+            .order_by(TutorConversation.created_at.desc())
+            .limit(1)
+        )
+        prev = result.scalar_one_or_none()
+        return prev.compacted_context if prev else None
 
     def _extract_activity_suggestions(
         self, response: str, context_type: str | None, user_level: int

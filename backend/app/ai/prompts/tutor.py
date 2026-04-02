@@ -261,6 +261,64 @@ def _format_sources_context(rag_chunks: list[dict[str, Any]]) -> str:
 Ces sources doivent être citées dans tes réponses."""
 
 
+def get_compaction_prompt(messages: list[dict], existing_compact: str | None, language: str) -> str:
+    """
+    Build the prompt used to summarize old conversation messages into a compact context.
+
+    Args:
+        messages: List of message dicts (role + content) to summarize
+        existing_compact: Previous compacted context to merge, if any
+        language: "fr" or "en"
+
+    Returns:
+        Prompt string for Claude summarization call
+    """
+    if language == "fr":
+        prior_section = (
+            f"\n\n### CONTEXTE COMPACT PRÉCÉDENT\n{existing_compact}" if existing_compact else ""
+        )
+        messages_text = "\n".join(
+            f"[{m.get('role', 'unknown').upper()}]: {m.get('content', '')}" for m in messages
+        )
+        return f"""Tu es un assistant spécialisé dans la synthèse de conversations pédagogiques.
+
+Résume les échanges suivants en un contexte compact de 500 tokens maximum.
+Le résumé doit préserver:
+- Les sujets abordés et les concepts expliqués
+- Les difficultés identifiées chez l'apprenant
+- Les préférences pédagogiques détectées
+- Les questions non résolues
+- Les décisions pédagogiques importantes et les explications clés
+- Le niveau de progression de l'apprenant dans les thèmes traités{prior_section}
+
+### MESSAGES À RÉSUMER
+{messages_text}
+
+### RÉSUMÉ COMPACT (500 tokens max)"""
+    else:
+        prior_section = (
+            f"\n\n### PREVIOUS COMPACT CONTEXT\n{existing_compact}" if existing_compact else ""
+        )
+        messages_text = "\n".join(
+            f"[{m.get('role', 'unknown').upper()}]: {m.get('content', '')}" for m in messages
+        )
+        return f"""You are an assistant specializing in summarizing pedagogical conversations.
+
+Summarize the following exchanges into a compact context of 500 tokens maximum.
+The summary must preserve:
+- Topics covered and concepts explained
+- Difficulties identified in the learner
+- Detected pedagogical preferences
+- Unresolved questions
+- Key pedagogical decisions and explanations given
+- The learner's progression level in the topics discussed{prior_section}
+
+### MESSAGES TO SUMMARIZE
+{messages_text}
+
+### COMPACT SUMMARY (500 tokens max)"""
+
+
 def get_activity_suggestions(
     context_type: str | None, user_level: int, topic: str
 ) -> list[dict[str, str]]:
