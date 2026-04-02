@@ -1,5 +1,6 @@
 """Service for AI tutor functionality with Socratic pedagogical approach."""
 
+import asyncio
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime
@@ -8,9 +9,14 @@ from typing import Any
 import structlog
 from anthropic import AsyncAnthropic
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.ai.prompts.tutor import TutorContext, get_activity_suggestions, get_socratic_system_prompt
+from app.ai.prompts.tutor import (
+    TutorContext,
+    get_activity_suggestions,
+    get_compaction_prompt,
+    get_socratic_system_prompt,
+)
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.domain.models.conversation import TutorConversation
@@ -19,6 +25,10 @@ from app.domain.models.user import User
 from app.infrastructure.config.settings import get_settings
 
 logger = structlog.get_logger()
+
+COMPACT_THRESHOLD = 20
+MESSAGES_TO_COMPACT = 15
+COMPACT_MAX_TOKENS = 600
 
 
 class TutorService:
@@ -183,8 +193,15 @@ class TutorService:
             # Update conversation
             updated_messages = conversation.messages + [user_msg, assistant_msg]
             conversation.messages = updated_messages
+            conversation.message_count = len(updated_messages)
             session.add(conversation)
             await session.commit()
+
+            # Trigger async compaction if threshold exceeded
+            if conversation.message_count > COMPACT_THRESHOLD:
+                conv_id = conversation.id
+                user_language = user.preferred_language
+                asyncio.ensure_future(self._compact_conversation_async(conv_id, user_language))
 
             # Send final metadata
             yield {
@@ -369,12 +386,29 @@ class TutorService:
             if conversation:
                 return conversation
 
-        # Create new conversation
+        # Create new conversation — inherit compact context from latest previous conversation
+        previous_compact: str | None = None
+        prev_query = (
+            select(TutorConversation)
+            .where(
+                TutorConversation.user_id == user_id,
+                TutorConversation.compacted_context.isnot(None),
+            )
+            .order_by(TutorConversation.created_at.desc())
+            .limit(1)
+        )
+        prev_result = await session.execute(prev_query)
+        prev_conv = prev_result.scalar_one_or_none()
+        if prev_conv:
+            previous_compact = prev_conv.compacted_context
+
         conversation = TutorConversation(
             id=uuid.uuid4(),
             user_id=user_id,
             module_id=module_id,
             messages=[],
+            compacted_context=previous_compact,
+            message_count=0,
             created_at=datetime.utcnow(),
         )
         session.add(conversation)
@@ -417,16 +451,27 @@ class TutorService:
         self, conversation: TutorConversation
     ) -> list[dict[str, str]]:
         """Prepare conversation history for Claude API."""
-        # Limit to last 10 messages to stay within context limits
-        messages = (
-            conversation.messages[-10:]
-            if len(conversation.messages) > 10
-            else conversation.messages
+        recent_messages = (
+            conversation.messages[-5:] if len(conversation.messages) > 5 else conversation.messages
         )
 
-        # Convert to Claude format (role and content only)
-        claude_messages = []
-        for msg in messages:
+        claude_messages: list[dict[str, str]] = []
+
+        if conversation.compacted_context:
+            claude_messages.append(
+                {
+                    "role": "user",
+                    "content": f"[Context from earlier in this conversation: {conversation.compacted_context}]",
+                }
+            )
+            claude_messages.append(
+                {
+                    "role": "assistant",
+                    "content": "Understood. I'll keep this prior context in mind.",
+                }
+            )
+
+        for msg in recent_messages:
             if msg.get("role") and msg.get("content"):
                 claude_messages.append(
                     {
@@ -436,6 +481,64 @@ class TutorService:
                 )
 
         return claude_messages
+
+    async def _compact_conversation_async(self, conversation_id: uuid.UUID, language: str) -> None:
+        """Compact old messages asynchronously in a new DB session."""
+        settings = get_settings()
+        engine = create_async_engine(settings.database_url, echo=False)
+        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+        try:
+            async with session_factory() as session:
+                result = await session.execute(
+                    select(TutorConversation).where(TutorConversation.id == conversation_id)
+                )
+                conversation = result.scalar_one_or_none()
+                if not conversation:
+                    return
+
+                messages = conversation.messages
+                if len(messages) <= COMPACT_THRESHOLD:
+                    return
+
+                messages_to_compact = messages[:MESSAGES_TO_COMPACT]
+                messages_to_keep = messages[MESSAGES_TO_COMPACT:]
+
+                prompt = get_compaction_prompt(
+                    language=language,
+                    messages=messages_to_compact,
+                    existing_compact=conversation.compacted_context,
+                )
+
+                response = await self.anthropic.messages.create(
+                    model="claude-sonnet-4-6",
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=COMPACT_MAX_TOKENS,
+                )
+
+                new_compact = response.content[0].text if response.content else ""
+
+                conversation.compacted_context = new_compact
+                conversation.compacted_at = datetime.utcnow()
+                conversation.messages = messages_to_keep
+                conversation.message_count = len(messages_to_keep)
+                session.add(conversation)
+                await session.commit()
+
+                logger.info(
+                    "Conversation compacted",
+                    conversation_id=str(conversation_id),
+                    messages_compacted=len(messages_to_compact),
+                    messages_kept=len(messages_to_keep),
+                )
+        except Exception as e:
+            logger.error(
+                "Failed to compact conversation",
+                conversation_id=str(conversation_id),
+                error=str(e),
+            )
+        finally:
+            await engine.dispose()
 
     def _extract_sources_from_response(
         self, response: str, available_chunks: list[dict[str, Any]]

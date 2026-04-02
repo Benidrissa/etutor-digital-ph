@@ -221,6 +221,64 @@ def _format_sources_context(rag_chunks: list[dict[str, Any]]) -> str:
 Ces sources doivent être citées dans tes réponses."""
 
 
+def get_compaction_prompt(language: str, messages: list[dict], existing_compact: str | None) -> str:
+    """
+    Generate a prompt to summarize old conversation messages into a compact context.
+
+    Args:
+        language: "fr" or "en"
+        messages: List of message dicts with role/content to summarize
+        existing_compact: Previous compacted context to re-compact with new messages
+
+    Returns:
+        Prompt string for Claude API
+    """
+    formatted_messages = "\n".join(
+        f"[{msg.get('role', 'unknown').upper()}]: {msg.get('content', '')}" for msg in messages
+    )
+
+    if language == "fr":
+        existing_section = (
+            f"\n\n## CONTEXTE PRÉCÉDEMMENT COMPACTÉ\n{existing_compact}" if existing_compact else ""
+        )
+        return f"""Tu es chargé de résumer une conversation pédagogique en santé publique en Afrique de l'Ouest.
+Produis un résumé CONCIS (≤500 tokens) qui préserve les informations essentielles pour la continuité pédagogique.{existing_section}
+
+## MESSAGES À RÉSUMER
+{formatted_messages}
+
+## INSTRUCTIONS
+Résume en préservant:
+1. Les sujets abordés et concepts discutés
+2. Les difficultés identifiées chez l'apprenant
+3. Les préférences et style d'apprentissage détectés
+4. Les questions non résolues
+5. Les décisions pédagogiques clés et explications données
+
+Format: Un paragraphe dense et factuel. Pas de mise en forme. Maximum 500 tokens.
+Commence directement le résumé sans introduction."""
+    else:
+        existing_section = (
+            f"\n\n## PREVIOUSLY COMPACTED CONTEXT\n{existing_compact}" if existing_compact else ""
+        )
+        return f"""You are tasked with summarizing a public health educational conversation in West Africa.
+Produce a CONCISE summary (≤500 tokens) that preserves essential information for pedagogical continuity.{existing_section}
+
+## MESSAGES TO SUMMARIZE
+{formatted_messages}
+
+## INSTRUCTIONS
+Summarize preserving:
+1. Topics covered and concepts discussed
+2. Difficulties identified in the learner
+3. Learning preferences and style detected
+4. Unresolved questions
+5. Key pedagogical decisions and explanations given
+
+Format: A dense, factual paragraph. No formatting. Maximum 500 tokens.
+Start the summary directly without introduction."""
+
+
 def get_activity_suggestions(
     context_type: str | None, user_level: int, topic: str
 ) -> list[dict[str, str]]:

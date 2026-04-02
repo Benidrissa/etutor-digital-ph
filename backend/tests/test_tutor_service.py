@@ -7,11 +7,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.prompts.tutor import get_compaction_prompt
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.domain.models.conversation import TutorConversation
 from app.domain.models.user import User
-from app.domain.services.tutor_service import TutorService
+from app.domain.services.tutor_service import COMPACT_THRESHOLD, TutorService
 
 
 @pytest.fixture
@@ -325,3 +326,237 @@ async def test_send_message_never_yields_text_type(tutor_service, sample_user, s
     assert len(text_type_chunks) == 0, (
         "Bug #213 regression: type='text' chunks were yielded but frontend expects type='content'"
     )
+
+
+def _make_conversation_with_messages(
+    user_id: uuid.UUID, count: int, compact: str | None = None
+) -> TutorConversation:
+    messages = [
+        {"role": "user" if i % 2 == 0 else "assistant", "content": f"Message {i}"}
+        for i in range(count)
+    ]
+    return TutorConversation(
+        id=uuid.uuid4(),
+        user_id=user_id,
+        module_id=None,
+        messages=messages,
+        compacted_context=compact,
+        message_count=count,
+        created_at=datetime.now(UTC),
+    )
+
+
+async def test_prepare_conversation_history_uses_compacted_context(tutor_service, sample_user):
+    """When compacted_context exists, it appears as first user/assistant pair."""
+    compact = "Previously discussed: epidemiology basics, user had trouble with incidence rate."
+    conv = _make_conversation_with_messages(sample_user.id, 3, compact=compact)
+
+    history = await tutor_service._prepare_conversation_history(conv)
+
+    assert len(history) >= 2
+    assert history[0]["role"] == "user"
+    assert compact in history[0]["content"]
+    assert history[1]["role"] == "assistant"
+
+
+async def test_prepare_conversation_history_no_compact(tutor_service, sample_user):
+    """Without compacted_context, history contains only recent messages."""
+    conv = _make_conversation_with_messages(sample_user.id, 4, compact=None)
+
+    history = await tutor_service._prepare_conversation_history(conv)
+
+    for msg in history:
+        assert "[Context from earlier" not in msg["content"]
+    assert len(history) == 4
+
+
+async def test_prepare_conversation_history_limits_to_5_recent(tutor_service, sample_user):
+    """History is limited to 5 recent messages (plus compact if present)."""
+    conv = _make_conversation_with_messages(sample_user.id, 10)
+
+    history = await tutor_service._prepare_conversation_history(conv)
+
+    assert len(history) == 5
+
+
+async def test_compact_threshold_is_20():
+    """Compact threshold constant must be 20."""
+    assert COMPACT_THRESHOLD == 20
+
+
+async def test_message_count_updated_on_send(tutor_service, sample_user, sample_conversation):
+    """message_count is updated after each message exchange."""
+    mock_session = AsyncMock(spec=AsyncSession)
+    mock_session.get = AsyncMock(return_value=sample_user)
+
+    async def mock_stream_iter():
+        return
+        yield
+
+    mock_stream = MagicMock()
+    mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+    mock_stream.__aexit__ = AsyncMock(return_value=None)
+    mock_stream.__aiter__ = lambda self: mock_stream_iter()
+
+    tutor_service.anthropic.messages.stream = MagicMock(return_value=mock_stream)
+
+    with (
+        patch.object(tutor_service, "_check_daily_limit", new_callable=AsyncMock, return_value=0),
+        patch.object(
+            tutor_service,
+            "_get_or_create_conversation",
+            new_callable=AsyncMock,
+            return_value=sample_conversation,
+        ),
+        patch.object(
+            tutor_service, "_retrieve_relevant_context", new_callable=AsyncMock, return_value=[]
+        ),
+    ):
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.flush = AsyncMock()
+
+        with patch.object(tutor_service, "_compact_conversation_async", new_callable=AsyncMock):
+            await collect_chunks(
+                tutor_service.send_message(
+                    user_id=sample_user.id,
+                    message="Hello",
+                    session=mock_session,
+                )
+            )
+
+    assert sample_conversation.message_count == 2
+
+
+async def test_compaction_not_triggered_below_threshold(tutor_service, sample_user):
+    """Compaction is not triggered when message_count <= 20."""
+    conv = _make_conversation_with_messages(sample_user.id, 18)
+    mock_session = AsyncMock(spec=AsyncSession)
+    mock_session.get = AsyncMock(return_value=sample_user)
+
+    async def mock_stream_iter():
+        return
+        yield
+
+    mock_stream = MagicMock()
+    mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+    mock_stream.__aexit__ = AsyncMock(return_value=None)
+    mock_stream.__aiter__ = lambda self: mock_stream_iter()
+
+    tutor_service.anthropic.messages.stream = MagicMock(return_value=mock_stream)
+
+    with (
+        patch.object(tutor_service, "_check_daily_limit", new_callable=AsyncMock, return_value=0),
+        patch.object(
+            tutor_service, "_get_or_create_conversation", new_callable=AsyncMock, return_value=conv
+        ),
+        patch.object(
+            tutor_service, "_retrieve_relevant_context", new_callable=AsyncMock, return_value=[]
+        ),
+        patch.object(
+            tutor_service, "_compact_conversation_async", new_callable=AsyncMock
+        ) as mock_compact,
+    ):
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.flush = AsyncMock()
+
+        await collect_chunks(
+            tutor_service.send_message(
+                user_id=sample_user.id,
+                message="Hello",
+                session=mock_session,
+            )
+        )
+
+    mock_compact.assert_not_called()
+
+
+async def test_compaction_triggered_above_threshold(tutor_service, sample_user):
+    """Compaction is triggered when message_count exceeds 20."""
+    conv = _make_conversation_with_messages(sample_user.id, 21)
+    mock_session = AsyncMock(spec=AsyncSession)
+    mock_session.get = AsyncMock(return_value=sample_user)
+
+    async def mock_stream_iter():
+        return
+        yield
+
+    mock_stream = MagicMock()
+    mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+    mock_stream.__aexit__ = AsyncMock(return_value=None)
+    mock_stream.__aiter__ = lambda self: mock_stream_iter()
+
+    tutor_service.anthropic.messages.stream = MagicMock(return_value=mock_stream)
+
+    with (
+        patch.object(tutor_service, "_check_daily_limit", new_callable=AsyncMock, return_value=0),
+        patch.object(
+            tutor_service, "_get_or_create_conversation", new_callable=AsyncMock, return_value=conv
+        ),
+        patch.object(
+            tutor_service, "_retrieve_relevant_context", new_callable=AsyncMock, return_value=[]
+        ),
+        patch("asyncio.ensure_future") as mock_future,
+    ):
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.flush = AsyncMock()
+
+        await collect_chunks(
+            tutor_service.send_message(
+                user_id=sample_user.id,
+                message="Hello",
+                session=mock_session,
+            )
+        )
+
+    mock_future.assert_called_once()
+
+
+def test_get_compaction_prompt_fr_includes_topics():
+    """FR compaction prompt includes key summarization topics."""
+    messages = [
+        {"role": "user", "content": "Qu'est-ce que la surveillance?"},
+        {"role": "assistant", "content": "Bonne question!"},
+    ]
+    prompt = get_compaction_prompt("fr", messages, None)
+
+    assert "sujets abordés" in prompt.lower() or "sujets" in prompt
+    assert "difficultés" in prompt
+    assert "surveillance" in prompt
+
+
+def test_get_compaction_prompt_en_includes_topics():
+    """EN compaction prompt includes key summarization topics."""
+    messages = [
+        {"role": "user", "content": "What is epidemiology?"},
+        {"role": "assistant", "content": "Great question!"},
+    ]
+    prompt = get_compaction_prompt("en", messages, None)
+
+    assert "Topics" in prompt or "topics" in prompt
+    assert "epidemiology" in prompt
+
+
+def test_get_compaction_prompt_includes_existing_compact():
+    """When existing compact is provided, it's included in the prompt."""
+    messages = [{"role": "user", "content": "Tell me more"}]
+    existing = "User previously discussed malaria prevention basics."
+
+    prompt_fr = get_compaction_prompt("fr", messages, existing)
+    prompt_en = get_compaction_prompt("en", messages, existing)
+
+    assert existing in prompt_fr
+    assert existing in prompt_en
+
+
+def test_get_compaction_prompt_no_existing_compact():
+    """Without existing compact, the prompt doesn't contain previous context section."""
+    messages = [{"role": "user", "content": "Hello"}]
+
+    prompt_fr = get_compaction_prompt("fr", messages, None)
+    prompt_en = get_compaction_prompt("en", messages, None)
+
+    assert "PRÉCÉDEMMENT COMPACTÉ" not in prompt_fr
+    assert "PREVIOUSLY COMPACTED" not in prompt_en
