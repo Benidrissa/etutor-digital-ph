@@ -311,10 +311,13 @@ Generate the quiz now, ensuring all questions are relevant to public health prac
             quiz_data = json.loads(response_text)
 
             # Validate structure
-            required_fields = ["title", "description", "questions"]
+            required_fields = ["title", "questions"]
             for field in required_fields:
                 if field not in quiz_data:
                     raise ValueError(f"Missing required field: {field}")
+
+            # Ensure description has a default value
+            quiz_data.setdefault("description", "")
 
             questions = quiz_data["questions"]
             if not isinstance(questions, list) or len(questions) == 0:
