@@ -133,7 +133,7 @@ class ImageGenerationService:
         )
 
         message = await client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-sonnet-4-6",
             max_tokens=300,
             messages=[
                 {
@@ -194,7 +194,7 @@ class ImageGenerationService:
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
         message = await client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-sonnet-4-6",
             max_tokens=100,
             messages=[
                 {

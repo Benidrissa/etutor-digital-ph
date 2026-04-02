@@ -95,7 +95,7 @@ def refresh_dhis2_data(self) -> dict:
     base=ETLTask,
     autoretry_for=(Exception,),
     retry_kwargs={"max_retries": 3, "countdown": 300},
-    rate_limit="1/d",  # 1 task per day
+    rate_limit="1/h",  # 1 task per hour
 )
 def refresh_who_data(self) -> dict:
     """Refresh WHO AFRO open data and health bulletins.
@@ -188,7 +188,7 @@ def cleanup_expired_cache(self) -> dict:
     base=ETLTask,
     autoretry_for=(Exception,),
     retry_kwargs={"max_retries": 2, "countdown": 600},  # 10 minute retry
-    rate_limit="1/d",  # 1 task per day
+    rate_limit="1/h",  # 1 task per hour
 )
 def refresh_pubmed_articles(self) -> dict:
     """Refresh recent PubMed articles related to African public health.
