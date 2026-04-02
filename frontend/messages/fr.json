@@ -340,6 +340,7 @@
   "Flashcards": {
     "title": "Flashcards",
     "loading": "Chargement des flashcards...",
+    "generating": "Génération de vos flashcards...",
     "noCardsToday": "Aucune carte due aujourd'hui !",
     "wellDone": "Bien joué ! Revenez demain pour plus de révisions.",
     "cardCount": "Carte {current} sur {total}",
@@ -394,7 +395,7 @@
     "reviewDescription": "Révisez les flashcards avec répétition espacée pour un apprentissage efficace",
     "redirectingToLogin": "Redirection vers la connexion...",
     "noFlashcardsYet": "Aucune flashcard pour l'instant",
-    "noFlashcardsDescription": "Terminez des modules pour générer des flashcards.",
+    "noFlashcardsDescription": "Terminez des modules pour générer des flashcards, ou réessayez.",
     "goToModules": "Aller aux modules"
   },
   "Onboarding": {

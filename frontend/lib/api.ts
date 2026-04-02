@@ -182,6 +182,27 @@ export async function getUpcomingReviews(): Promise<UpcomingReviewsResponse> {
   return authClient.authenticatedFetch<UpcomingReviewsResponse>("/api/v1/flashcards/upcoming");
 }
 
+export interface FlashcardSetResponse {
+  module_id: string;
+  language: string;
+  level: number;
+  cards: unknown[];
+  total_cards: number;
+  cached: boolean;
+}
+
+export async function generateModuleFlashcards(params: {
+  moduleId: string;
+  language: string;
+  level?: number;
+}): Promise<FlashcardSetResponse> {
+  const { authClient } = await import('./auth');
+  const level = params.level ?? 1;
+  return authClient.authenticatedFetch<FlashcardSetResponse>(
+    `/api/v1/flashcards/modules/${params.moduleId}?language=${params.language}&level=${level}`
+  );
+}
+
 // Quiz API Types
 export interface QuizQuestion {
   id: string;
