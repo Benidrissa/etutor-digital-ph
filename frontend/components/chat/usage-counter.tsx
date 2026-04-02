@@ -29,7 +29,7 @@ export function UsageCounter({ currentUsage, maxUsage, className }: UsageCounter
       {/* Counter Badge */}
       <div className="flex justify-center">
         <Badge variant={getVariant()} className="px-3 py-1">
-          {t('messageLimit', { count: currentUsage })}
+          {t('messageLimit', { count: currentUsage, max: maxUsage })}
         </Badge>
       </div>
 
