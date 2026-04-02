@@ -153,6 +153,42 @@ class ProgressService:
         )
         return progress
 
+    async def check_quiz_passed_for_unit(
+        self,
+        user_id: UUID,
+        module_id: UUID,
+        unit_id: str,
+    ) -> bool:
+        """
+        Return True if the user has at least one quiz attempt with score ≥ 80
+        for the given module + unit combination.
+
+        Per FR-02.2: lesson completion requires passing the validation quiz (≥80%).
+        """
+        from app.domain.models.content import GeneratedContent
+        from app.domain.models.quiz import QuizAttempt
+
+        content_result = await self.db.execute(
+            select(GeneratedContent.id).where(
+                GeneratedContent.module_id == module_id,
+                GeneratedContent.content_type == "quiz",
+                GeneratedContent.content["unit_id"].astext == unit_id,
+            )
+        )
+        quiz_ids = [row[0] for row in content_result.all()]
+
+        if not quiz_ids:
+            return False
+
+        attempt_result = await self.db.execute(
+            select(func.max(QuizAttempt.score)).where(
+                QuizAttempt.user_id == user_id,
+                QuizAttempt.quiz_id.in_(quiz_ids),
+            )
+        )
+        max_score = attempt_result.scalar()
+        return max_score is not None and max_score >= _UNLOCK_THRESHOLD_SCORE
+
     async def get_module_progress(
         self, user_id: UUID, module_id: UUID
     ) -> UserModuleProgress | None:

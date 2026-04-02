@@ -212,7 +212,7 @@
     "lockedDescription": "Complete the prerequisites to unlock this module",
     "unitStatus": {
       "pending": "Not started",
-      "in-progress": "In progress", 
+      "in-progress": "In progress",
       "completed": "Completed"
     },
     "unitNumber": "Unit {number}",
@@ -472,7 +472,7 @@
     "assessmentDomains": "Assessment Domains",
     "domains": {
       "foundations": "Public Health Foundations",
-      "epidemiology": "Epidemiology", 
+      "epidemiology": "Epidemiology",
       "biostatistics": "Biostatistics",
       "healthSystems": "Health Systems"
     },
@@ -483,7 +483,7 @@
     "timeRemaining": "Time remaining: {time}",
     "selectAnswer": "Select an answer to continue",
     "previous": "Previous",
-    "next": "Next", 
+    "next": "Next",
     "answered": "{count}/{total} answered",
     "submit": "Submit Assessment",
     "submitting": "Evaluating your responses...",
@@ -492,7 +492,7 @@
       "assignedLevel": "Your assigned level: Level {level}",
       "levelDescriptions": {
         "1": "Beginner - Build foundational knowledge",
-        "2": "Intermediate - Develop core competencies", 
+        "2": "Intermediate - Develop core competencies",
         "3": "Advanced - Strengthen specialized skills",
         "4": "Expert - Master advanced concepts"
       },
@@ -590,7 +590,9 @@
     "keyPoints": "Key Points",
     "markComplete": "Mark as Complete",
     "completed": "Completed",
-    "refreshContent": "Refresh content"
+    "refreshContent": "Refresh content",
+    "validateWithQuiz": "Validate with Quiz",
+    "checkingStatus": "Checking..."
   },
   "LessonImage": {
     "imagePending": "Generating illustration...",
@@ -704,7 +706,7 @@
     "cancel": "Cancel",
     "save": "Save Changes",
     "languages": {
-      "french": "Fran\u00e7ais",
+      "french": "Français",
       "english": "English"
     },
     "levels": {

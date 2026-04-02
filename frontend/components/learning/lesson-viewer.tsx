@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
-import { CheckCircle, Clock, RefreshCw } from 'lucide-react';
+import { CheckCircle, Clock, RefreshCw, PlayCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -13,8 +13,10 @@ import rehypeKatex from 'rehype-katex';
 import { LessonSkeleton } from './lesson-skeleton';
 import { LessonImage } from './lesson-image';
 import { SourceCitations } from './source-citations';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, checkUnitQuizPassed } from '@/lib/api';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
+import { useRouter } from 'next/navigation';
+import { useLocale } from 'next-intl';
 
 interface LessonContent {
   introduction: string;
@@ -51,19 +53,36 @@ export function LessonViewer({
   language,
   level,
   countryContext,
-  onComplete
 }: LessonViewerProps) {
   const [lessonData, setLessonData] = useState<LessonData | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isCompleted, setIsCompleted] = useState(false);
+  const [isQuizPassed, setIsQuizPassed] = useState(false);
+  const [isCheckingQuiz, setIsCheckingQuiz] = useState(false);
   const [forceRegenerate, setForceRegenerate] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const currentUser = useCurrentUser();
   const country = countryContext || currentUser?.country || 'SN';
-  
+  const router = useRouter();
+  const locale = useLocale();
+
   const t = useTranslations('LessonViewer');
+
+  useEffect(() => {
+    const checkQuizStatus = async () => {
+      setIsCheckingQuiz(true);
+      try {
+        const status = await checkUnitQuizPassed(moduleId, unitId);
+        setIsQuizPassed(status.passed);
+      } catch {
+        // If check fails, default to not passed (show quiz button)
+      } finally {
+        setIsCheckingQuiz(false);
+      }
+    };
+    checkQuizStatus();
+  }, [moduleId, unitId]);
 
   useEffect(() => {
     let eventSource: EventSource | null = null;
@@ -145,21 +164,8 @@ export function LessonViewer({
     setForceRegenerate(true);
   };
 
-  const handleMarkComplete = async () => {
-    try {
-      await apiFetch(`/api/v1/progress/complete-lesson`, {
-        method: 'POST',
-        body: JSON.stringify({
-          module_id: moduleId,
-          unit_id: unitId
-        })
-      });
-      
-      setIsCompleted(true);
-      onComplete?.();
-    } catch (err) {
-      console.error('Error marking lesson complete:', err);
-    }
+  const handleValidateWithQuiz = () => {
+    router.push(`/${locale}/modules/${moduleId}/quiz?unit=${unitId}`);
   };
 
   const mdClass = "prose prose-gray max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-900 prose-table:text-sm";
@@ -297,23 +303,32 @@ export function LessonViewer({
       {/* Source Citations */}
       <SourceCitations sources={content.sources_cited} />
 
-      {/* Mark as Complete Button */}
+      {/* Quiz Validation */}
       <div className="mt-8 text-center">
-        <Button
-          onClick={handleMarkComplete}
-          disabled={isCompleted || isStreaming}
-          className="min-h-11 px-8"
-          size="lg"
-        >
-          {isCompleted ? (
-            <>
-              <CheckCircle className="w-4 h-4 mr-2" />
-              {t('completed')}
-            </>
-          ) : (
-            t('markComplete')
-          )}
-        </Button>
+        {isCheckingQuiz ? (
+          <div className="inline-flex items-center gap-2 text-gray-500 text-sm">
+            <RefreshCw className="w-4 h-4 animate-spin" />
+            {t('checkingStatus')}
+          </div>
+        ) : isQuizPassed ? (
+          <div
+            role="status"
+            className="inline-flex items-center gap-2 bg-green-50 border border-green-200 text-green-700 font-medium px-6 py-3 rounded-lg"
+          >
+            <CheckCircle className="w-5 h-5" />
+            {t('completed')}
+          </div>
+        ) : (
+          <Button
+            onClick={handleValidateWithQuiz}
+            disabled={isStreaming}
+            className="min-h-11 px-8 bg-teal-600 hover:bg-teal-700"
+            size="lg"
+          >
+            <PlayCircle className="w-4 h-4 mr-2" />
+            {t('validateWithQuiz')}
+          </Button>
+        )}
       </div>
     </div>
   );
