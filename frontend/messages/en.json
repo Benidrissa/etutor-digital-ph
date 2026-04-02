@@ -326,7 +326,22 @@
     "selectConversationDescription": "Choose a conversation from the sidebar or start a new one",
     "messageCount": "{count} {count, plural, one {message} other {messages}}",
     "cancel": "Cancel",
-    "newConversationTitle": "New Conversation"
+    "newConversationTitle": "New Conversation",
+    "fileUpload": {
+      "attach": "Attach a file",
+      "attachAriaLabel": "Attach a file",
+      "remove": "Remove file",
+      "uploading": "Uploading...",
+      "uploadProgress": "{percent}%",
+      "tooLarge": "File too large (max 10 MB)",
+      "unsupportedType": "Unsupported file type",
+      "uploadFailed": "File upload failed",
+      "dailyLimitReached": "Daily upload limit reached (10 files/day)",
+      "dragDrop": "Drag and drop a file here",
+      "fileCard": "{name} ({size})",
+      "captureCamera": "Take a photo",
+      "acceptedTypes": "Images, PDF, CSV, XLSX, TXT, DOCX (max 10 MB)"
+    }
   },
   "Flashcards": {
     "title": "Flashcards",

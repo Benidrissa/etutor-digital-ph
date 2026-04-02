@@ -326,7 +326,22 @@
     "selectConversationDescription": "Choisissez une conversation dans la barre latérale ou commencez-en une nouvelle",
     "messageCount": "{count} {count, plural, one {message} other {messages}}",
     "cancel": "Annuler",
-    "newConversationTitle": "Nouvelle Conversation"
+    "newConversationTitle": "Nouvelle Conversation",
+    "fileUpload": {
+      "attach": "Joindre un fichier",
+      "attachAriaLabel": "Joindre un fichier",
+      "remove": "Supprimer le fichier",
+      "uploading": "Envoi en cours...",
+      "uploadProgress": "{percent}%",
+      "tooLarge": "Fichier trop volumineux (max 10 Mo)",
+      "unsupportedType": "Type de fichier non pris en charge",
+      "uploadFailed": "Échec de l'envoi du fichier",
+      "dailyLimitReached": "Limite de téléchargement quotidienne atteinte (10 fichiers/jour)",
+      "dragDrop": "Glissez-déposez un fichier ici",
+      "fileCard": "{name} ({size})",
+      "captureCamera": "Prendre une photo",
+      "acceptedTypes": "Images, PDF, CSV, XLSX, TXT, DOCX (max 10 Mo)"
+    }
   },
   "Flashcards": {
     "title": "Flashcards",

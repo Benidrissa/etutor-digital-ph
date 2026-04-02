@@ -140,7 +140,7 @@ export function ChatPanel({
     }
   }, [messages, isTyping]);
 
-  const handleSendMessage = async (messageContent: string) => {
+  const handleSendMessage = async (messageContent: string, attachedFiles: import('./chat-input').AttachedFileInfo[] = []) => {
     if (isLimitReached || isLoading) return;
 
     const userMessage: ChatMessage = {
@@ -148,6 +148,7 @@ export function ChatPanel({
       content: messageContent,
       isUser: true,
       timestamp: new Date(),
+      attachedFiles: attachedFiles.length > 0 ? attachedFiles : undefined,
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -177,6 +178,7 @@ export function ChatPanel({
           message: messageContent,
           conversation_id: activeConversationId ?? null,
           module_id: moduleId ?? null,
+          file_ids: attachedFiles.map((f) => f.fileId),
         }),
       });
 
@@ -285,7 +287,7 @@ export function ChatPanel({
 
   const handleSuggestionClick = (suggestion: string) => {
     if (!isLimitReached && !isLoading) {
-      handleSendMessage(suggestion);
+      handleSendMessage(suggestion, []);
     }
   };
 

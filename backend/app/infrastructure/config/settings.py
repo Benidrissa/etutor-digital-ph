@@ -43,9 +43,28 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
     api_v1_prefix: str = "/api/v1"
 
+    # File upload settings
+    upload_temp_dir: str = "/tmp/santepublique_uploads"
+    upload_max_size_bytes: int = 10 * 1024 * 1024  # 10MB
+    upload_ttl_hours: int = 24
+    upload_daily_limit: int = 10
+    upload_allowed_types: str = (
+        "image/png,image/jpeg,image/jpg,image/webp,image/gif,"
+        "application/pdf,text/csv,"
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,"
+        "text/plain,"
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    upload_max_pdf_tokens: int = 5000
+    upload_max_csv_rows: int = 20
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def upload_allowed_types_list(self) -> list[str]:
+        return [t.strip() for t in self.upload_allowed_types.split(",") if t.strip()]
 
 
 settings = Settings()

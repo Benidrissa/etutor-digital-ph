@@ -210,6 +210,7 @@ class TutorService:
         context_type: str | None = None,
         context_id: uuid.UUID | None = None,
         conversation_id: uuid.UUID | None = None,
+        file_content_blocks: list[dict[str, Any]] | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """
         Send a message to the AI tutor and stream the response using agentic tool_use.
@@ -225,6 +226,7 @@ class TutorService:
             context_type: Optional context type ("module", "lesson", "quiz")
             context_id: Optional context-specific ID
             conversation_id: Optional existing conversation ID
+            file_content_blocks: Optional list of Claude API content blocks (images/text) from uploads
 
         Yields:
             Stream chunks with tutor response data
@@ -296,8 +298,14 @@ class TutorService:
                 "role": "user",
                 "content": message,
                 "timestamp": datetime.utcnow().isoformat(),
+                "has_files": bool(file_content_blocks),
             }
-            conversation_history.append({"role": "user", "content": message})
+
+            if file_content_blocks:
+                user_content: list[Any] = [*file_content_blocks, {"type": "text", "text": message}]
+                conversation_history.append({"role": "user", "content": user_content})
+            else:
+                conversation_history.append({"role": "user", "content": message})
 
             tool_executor = TutorToolExecutor(
                 retriever=self.retriever,
