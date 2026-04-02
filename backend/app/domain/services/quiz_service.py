@@ -173,15 +173,19 @@ class QuizService:
         try:
             # Retrieve relevant content chunks using RAG
             search_query = f"module {module_id} unit {unit_id} public health epidemiology concepts"
-            retrieved_chunks = await self.semantic_retriever.retrieve_chunks(
+            search_results = await self.semantic_retriever.search_for_module(
                 query=search_query,
-                top_k=8,  # Get more chunks for quiz questions
-                module_filter=str(module_id) if module_id else None,
+                user_level=level,
+                user_language=language,
+                top_k=8,
             )
 
             # Build context from retrieved chunks
             context_text = "\n\n".join(
-                [f"Source: {chunk.source_reference}\n{chunk.content}" for chunk in retrieved_chunks]
+                [
+                    f"Source: {result.chunk.source}\n{result.chunk.content}"
+                    for result in search_results
+                ]
             )
 
             # Generate quiz using Claude API with structured prompt
@@ -307,10 +311,13 @@ Generate the quiz now, ensuring all questions are relevant to public health prac
             quiz_data = json.loads(response_text)
 
             # Validate structure
-            required_fields = ["title", "description", "questions"]
+            required_fields = ["title", "questions"]
             for field in required_fields:
                 if field not in quiz_data:
                     raise ValueError(f"Missing required field: {field}")
+
+            # Ensure description has a default value
+            quiz_data.setdefault("description", "")
 
             questions = quiz_data["questions"]
             if not isinstance(questions, list) or len(questions) == 0:

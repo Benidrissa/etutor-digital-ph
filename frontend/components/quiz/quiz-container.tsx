@@ -39,10 +39,10 @@ export function QuizContainer({
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [result, setResult] = useState<QuizAttemptResponse | null>(null);
   const [error, setError] = useState<string>('');
+  const [retryCount, setRetryCount] = useState(0);
   
-  // Load or generate quiz on mount
   useEffect(() => {
-    const loadQuiz = async () => {
+    const fetchQuiz = async () => {
       try {
         setState('loading');
         setError('');
@@ -53,7 +53,7 @@ export function QuizContainer({
           language,
           country,
           level,
-          num_questions: 10, // Default to 10 questions
+          num_questions: 10,
         });
         
         setQuiz(quizData);
@@ -67,33 +67,9 @@ export function QuizContainer({
       }
     };
     
-    void loadQuiz();
-  }, [moduleId, unitId, language, country, level, onError, t]);
-  
-  const loadQuiz = async () => {
-    try {
-      setState('loading');
-      setError('');
-      
-      const quizData = await generateQuiz({
-        module_id: moduleId,
-        unit_id: unitId,
-        language,
-        country,
-        level,
-        num_questions: 10, // Default to 10 questions
-      });
-      
-      setQuiz(quizData);
-      setState('ready');
-    } catch (err) {
-      console.error('Failed to load quiz:', err);
-      const errorMessage = err instanceof Error ? err.message : t('failedToLoad');
-      setError(errorMessage);
-      setState('error');
-      onError?.(errorMessage);
-    }
-  };
+    fetchQuiz();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moduleId, unitId, language, country, level, retryCount]);
   
   const handleStartQuiz = () => {
     setState('in-progress');
@@ -113,7 +89,7 @@ export function QuizContainer({
   const handleRetry = () => {
     setResult(null);
     setQuiz(null);
-    void loadQuiz();
+    setRetryCount(prev => prev + 1);
   };
   
   const handleContinue = () => {
@@ -152,7 +128,7 @@ export function QuizContainer({
             <p className="text-red-700 text-center max-w-md mb-6">
               {error || t('networkError')}
             </p>
-            <Button onClick={loadQuiz} variant="outline">
+            <Button onClick={handleRetry} variant="outline">
               {t('tryAgain')}
             </Button>
           </CardContent>

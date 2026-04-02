@@ -17,6 +17,9 @@ from app.domain.models.progress import UserModuleProgress
 
 logger = structlog.get_logger()
 
+_UNLOCK_THRESHOLD_PCT = 80.0
+_UNLOCK_THRESHOLD_SCORE = 80.0
+
 
 class ProgressService:
     def __init__(self, db: AsyncSession) -> None:
@@ -98,6 +101,8 @@ class ProgressService:
 
         Per FR-02.2: lesson completion requires passing the validation quiz (≥80%).
         Recalculates module completion_pct based on completed units.
+        When completion_pct >= 80 AND quiz_score_avg >= 80, marks module completed
+        and unlocks the next module (N+1).
         """
         now = datetime.utcnow()
 
@@ -127,6 +132,14 @@ class ProgressService:
 
         await self.db.commit()
         await self.db.refresh(progress)
+
+        # After commit, check whether N+1 unlock conditions are met
+        if (
+            progress.completion_pct >= _UNLOCK_THRESHOLD_PCT
+            and progress.quiz_score_avg is not None
+            and progress.quiz_score_avg >= _UNLOCK_THRESHOLD_SCORE
+        ):
+            await self._unlock_next_module(user_id, module_id)
 
         logger.info(
             "Progress updated after quiz",
@@ -158,6 +171,44 @@ class ProgressService:
             select(UserModuleProgress).where(UserModuleProgress.user_id == user_id)
         )
         return list(result.scalars().all())
+
+    async def get_all_modules_with_progress(self, user_id: UUID) -> list[dict]:
+        """
+        Return ALL modules with their real lock/unlock status for the user.
+
+        Modules without a progress record default to 'locked'.
+        Returns data ordered by module_number.
+        """
+        modules_result = await self.db.execute(select(Module).order_by(Module.module_number))
+        modules = list(modules_result.scalars().all())
+
+        progress_result = await self.db.execute(
+            select(UserModuleProgress).where(UserModuleProgress.user_id == user_id)
+        )
+        progress_map: dict[uuid.UUID, UserModuleProgress] = {
+            p.module_id: p for p in progress_result.scalars().all()
+        }
+
+        result = []
+        for module in modules:
+            progress = progress_map.get(module.id)
+            result.append(
+                {
+                    "module_id": module.id,
+                    "module_number": module.module_number,
+                    "user_id": user_id,
+                    "status": progress.status if progress else "locked",
+                    "completion_pct": progress.completion_pct if progress else 0.0,
+                    "quiz_score_avg": progress.quiz_score_avg if progress else None,
+                    "time_spent_minutes": progress.time_spent_minutes if progress else 0,
+                    "last_accessed": (
+                        progress.last_accessed.isoformat()
+                        if progress and progress.last_accessed
+                        else None
+                    ),
+                }
+            )
+        return result
 
     async def get_module_with_progress(self, user_id: UUID, module_id: UUID) -> dict:
         """
@@ -230,6 +281,63 @@ class ProgressService:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    async def _unlock_next_module(self, user_id: UUID, completed_module_id: UUID) -> None:
+        """
+        Unlock the module with module_number = N+1 when module N meets threshold.
+
+        Per FR-02.2: creates an in_progress progress record for the next module
+        if it doesn't already have one (i.e. is still locked).
+        """
+        module_result = await self.db.execute(
+            select(Module).where(Module.id == completed_module_id)
+        )
+        module = module_result.scalar_one_or_none()
+        if not module:
+            return
+
+        next_result = await self.db.execute(
+            select(Module).where(Module.module_number == module.module_number + 1)
+        )
+        next_module = next_result.scalar_one_or_none()
+        if not next_module:
+            return
+
+        existing = await self.db.execute(
+            select(UserModuleProgress).where(
+                UserModuleProgress.user_id == user_id,
+                UserModuleProgress.module_id == next_module.id,
+            )
+        )
+        next_progress = existing.scalar_one_or_none()
+
+        if next_progress is None:
+            now = datetime.utcnow()
+            next_progress = UserModuleProgress(
+                user_id=user_id,
+                module_id=next_module.id,
+                status="in_progress",
+                completion_pct=0.0,
+                quiz_score_avg=None,
+                time_spent_minutes=0,
+                last_accessed=now,
+            )
+            self.db.add(next_progress)
+            await self.db.commit()
+            logger.info(
+                "Next module unlocked",
+                user_id=str(user_id),
+                unlocked_module_number=next_module.module_number,
+                unlocked_module_id=str(next_module.id),
+            )
+        elif next_progress.status == "locked":
+            next_progress.status = "in_progress"
+            await self.db.commit()
+            logger.info(
+                "Next module status updated to in_progress",
+                user_id=str(user_id),
+                module_number=next_module.module_number,
+            )
 
     async def _get_or_create_progress(
         self, user_id: UUID, module_id: UUID, now: datetime

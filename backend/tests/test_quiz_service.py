@@ -41,9 +41,12 @@ def mock_claude_service():
 def mock_retriever():
     retriever = AsyncMock()
     chunk = MagicMock()
-    chunk.source_reference = "Donaldson Ch.1"
+    chunk.source = "Donaldson Ch.1"
     chunk.content = "Public health content chunk."
-    retriever.retrieve_chunks = AsyncMock(return_value=[chunk])
+    search_result = MagicMock()
+    search_result.chunk = chunk
+    search_result.similarity_score = 0.9
+    retriever.search_for_module = AsyncMock(return_value=[search_result])
     return retriever
 
 
@@ -229,7 +232,7 @@ class TestGenerateQuizContent:
             level=1,
             num_questions=10,
         )
-        mock_retriever.retrieve_chunks.assert_called_once()
+        mock_retriever.search_for_module.assert_called_once()
         mock_claude_service.generate_content.assert_called_once()
         assert len(result.questions) == 10
 

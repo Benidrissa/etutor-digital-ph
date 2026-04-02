@@ -15,6 +15,7 @@ __all__ = [
     "Base",
     "DocumentChunk",
     "GeneratedContent",
+    "LearnerMemory",
     "TutorConversation",
     "FlashcardReview",
     "LearnerMemory",

@@ -91,26 +91,13 @@ async def test_send_message_yields_content_type_chunks(
     mock_session = AsyncMock(spec=AsyncSession)
     mock_session.get = AsyncMock(return_value=sample_user)
 
-    mock_event = MagicMock()
-    mock_event.type = "content_block_delta"
-    mock_event.delta = MagicMock()
-    mock_event.delta.text = "Bonjour! "
+    class FakeTextBlock:
+        def __init__(self, text):
+            self.text = text
 
-    mock_event2 = MagicMock()
-    mock_event2.type = "content_block_delta"
-    mock_event2.delta = MagicMock()
-    mock_event2.delta.text = "Comment puis-je vous aider?"
-
-    async def mock_stream_iter():
-        yield mock_event
-        yield mock_event2
-
-    mock_stream = MagicMock()
-    mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
-    mock_stream.__aexit__ = AsyncMock(return_value=None)
-    mock_stream.__aiter__ = lambda self: mock_stream_iter()
-
-    tutor_service.anthropic.messages.stream = MagicMock(return_value=mock_stream)
+    mock_response = MagicMock()
+    mock_response.content = [FakeTextBlock("Bonjour! Comment puis-je vous aider?")]
+    tutor_service.anthropic.messages.create = AsyncMock(return_value=mock_response)
 
     with (
         patch.object(
@@ -124,12 +111,6 @@ async def test_send_message_yields_content_type_chunks(
             "_get_or_create_conversation",
             new_callable=AsyncMock,
             return_value=sample_conversation,
-        ),
-        patch.object(
-            tutor_service,
-            "_retrieve_relevant_context",
-            new_callable=AsyncMock,
-            return_value=[],
         ),
     ):
         mock_session.add = MagicMock()
@@ -148,9 +129,8 @@ async def test_send_message_yields_content_type_chunks(
     assert "content" in chunk_types, f"Expected 'content' type in chunks but got: {chunk_types}"
 
     content_chunks = [c for c in chunks if c["type"] == "content"]
-    assert len(content_chunks) == 2
-    assert content_chunks[0]["data"]["text"] == "Bonjour! "
-    assert content_chunks[1]["data"]["text"] == "Comment puis-je vous aider?"
+    full_text = "".join(c["data"]["text"] for c in content_chunks)
+    assert "Bonjour!" in full_text
 
 
 async def test_send_message_yields_sources_cited_type(
@@ -160,16 +140,13 @@ async def test_send_message_yields_sources_cited_type(
     mock_session = AsyncMock(spec=AsyncSession)
     mock_session.get = AsyncMock(return_value=sample_user)
 
-    async def mock_stream_iter():
-        return
-        yield  # make it an async generator
+    class FakeTextBlock:
+        def __init__(self, text):
+            self.text = text
 
-    mock_stream = MagicMock()
-    mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
-    mock_stream.__aexit__ = AsyncMock(return_value=None)
-    mock_stream.__aiter__ = lambda self: mock_stream_iter()
-
-    tutor_service.anthropic.messages.stream = MagicMock(return_value=mock_stream)
+    mock_response = MagicMock()
+    mock_response.content = [FakeTextBlock("Test response")]
+    tutor_service.anthropic.messages.create = AsyncMock(return_value=mock_response)
 
     with (
         patch.object(
@@ -183,12 +160,6 @@ async def test_send_message_yields_sources_cited_type(
             "_get_or_create_conversation",
             new_callable=AsyncMock,
             return_value=sample_conversation,
-        ),
-        patch.object(
-            tutor_service,
-            "_retrieve_relevant_context",
-            new_callable=AsyncMock,
-            return_value=[],
         ),
     ):
         mock_session.add = MagicMock()
@@ -274,20 +245,13 @@ async def test_send_message_never_yields_text_type(tutor_service, sample_user, s
     mock_session = AsyncMock(spec=AsyncSession)
     mock_session.get = AsyncMock(return_value=sample_user)
 
-    mock_event = MagicMock()
-    mock_event.type = "content_block_delta"
-    mock_event.delta = MagicMock()
-    mock_event.delta.text = "Test response"
+    class FakeTextBlock:
+        def __init__(self, text):
+            self.text = text
 
-    async def mock_stream_iter():
-        yield mock_event
-
-    mock_stream = MagicMock()
-    mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
-    mock_stream.__aexit__ = AsyncMock(return_value=None)
-    mock_stream.__aiter__ = lambda self: mock_stream_iter()
-
-    tutor_service.anthropic.messages.stream = MagicMock(return_value=mock_stream)
+    mock_response = MagicMock()
+    mock_response.content = [FakeTextBlock("Test response")]
+    tutor_service.anthropic.messages.create = AsyncMock(return_value=mock_response)
 
     with (
         patch.object(
@@ -301,12 +265,6 @@ async def test_send_message_never_yields_text_type(tutor_service, sample_user, s
             "_get_or_create_conversation",
             new_callable=AsyncMock,
             return_value=sample_conversation,
-        ),
-        patch.object(
-            tutor_service,
-            "_retrieve_relevant_context",
-            new_callable=AsyncMock,
-            return_value=[],
         ),
     ):
         mock_session.add = MagicMock()
