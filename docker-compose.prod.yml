@@ -95,7 +95,7 @@ services:
   celery-worker:
     image: etutor-backend:latest
     container_name: etutor-celery-worker
-    command: celery -A app.tasks.celery_app worker --loglevel=info
+    command: uv run celery -A app.tasks.celery_app worker --loglevel=info
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/santepublique_aof
       REDIS_URL: redis://redis:6379/0
