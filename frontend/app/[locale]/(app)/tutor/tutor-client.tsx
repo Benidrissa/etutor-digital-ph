@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
 import { Plus, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -8,46 +8,47 @@ import { Card } from '@/components/ui/card';
 import { ChatPanel } from '@/components/chat';
 import { ChatProvider } from '@/components/chat';
 import { cn } from '@/lib/utils';
-
-interface Conversation {
-  id: string;
-  title: string;
-  lastMessage: string;
-  timestamp: Date;
-  messageCount: number;
-}
-
-const INITIAL_CONVERSATIONS: Conversation[] = [
-  {
-    id: '1',
-    title: 'Public Health Basics',
-    lastMessage: 'What are the main determinants of health?',
-    timestamp: new Date(2026, 2, 31, 14, 45),
-    messageCount: 5,
-  },
-  {
-    id: '2',
-    title: 'Epidemiology Questions',
-    lastMessage: 'Explain the difference between incidence and prevalence',
-    timestamp: new Date(2026, 2, 31, 13, 15),
-    messageCount: 12,
-  },
-  {
-    id: '3',
-    title: 'DHIS2 Data Analysis',
-    lastMessage: 'How do I create indicators in DHIS2?',
-    timestamp: new Date(2026, 2, 30, 15, 15),
-    messageCount: 8,
-  },
-];
+import {
+  fetchConversations,
+  getOfflineConversations,
+  invalidateConversationsCache,
+  type ConversationSummary,
+} from '@/lib/tutor-api';
 
 export function TutorPageClient() {
   const t = useTranslations('ChatTutor');
 
-  const [conversations, setConversations] = useState<Conversation[]>(INITIAL_CONVERSATIONS);
-  const [selectedConversation, setSelectedConversation] = useState<string | null>('1');
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
+  const [isLoadingConversations, setIsLoadingConversations] = useState(true);
 
-  const formatRelativeTime = (date: Date) => {
+  const loadConversations = useCallback(async () => {
+    try {
+      const data = await fetchConversations({ limit: 20 });
+      setConversations(data.conversations);
+      if (data.conversations.length > 0 && !selectedConversation) {
+        setSelectedConversation(data.conversations[0].id);
+      }
+    } catch {
+      const offline = getOfflineConversations();
+      if (offline) {
+        setConversations(offline.conversations);
+        if (offline.conversations.length > 0 && !selectedConversation) {
+          setSelectedConversation(offline.conversations[0].id);
+        }
+      }
+    } finally {
+      setIsLoadingConversations(false);
+    }
+  }, [selectedConversation]);
+
+  useEffect(() => {
+    loadConversations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const formatRelativeTime = (dateStr: string) => {
+    const date = new Date(dateStr);
     const now = new Date();
     const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
 
@@ -61,19 +62,21 @@ export function TutorPageClient() {
   };
 
   const handleNewConversation = () => {
-    const newId = Date.now().toString();
-    const newConversation: Conversation = {
-      id: newId,
-      title: t('newConversationTitle'),
-      lastMessage: '',
-      timestamp: new Date(),
-      messageCount: 0,
-    };
-    setConversations(prev => [newConversation, ...prev]);
-    setSelectedConversation(newId);
+    setSelectedConversation(null);
   };
 
-  const selectedConvData = conversations.find(c => c.id === selectedConversation);
+  const handleConversationCreated = useCallback(
+    (newConversationId: string) => {
+      setSelectedConversation(newConversationId);
+      invalidateConversationsCache();
+      fetchConversations({ limit: 20 })
+        .then((data) => setConversations(data.conversations))
+        .catch(() => {});
+    },
+    []
+  );
+
+  const selectedConvData = conversations.find((c) => c.id === selectedConversation);
 
   return (
     <ChatProvider>
@@ -94,7 +97,17 @@ export function TutorPageClient() {
 
           {/* Conversations List */}
           <div className="flex-1 overflow-y-auto min-h-0">
-            {conversations.length === 0 ? (
+            {isLoadingConversations ? (
+              <div className="p-2 space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="p-3 rounded-lg border animate-pulse">
+                    <div className="h-4 bg-muted rounded w-3/4 mb-2" />
+                    <div className="h-3 bg-muted rounded w-full mb-1" />
+                    <div className="h-3 bg-muted rounded w-1/3" />
+                  </div>
+                ))}
+              </div>
+            ) : conversations.length === 0 ? (
               <div className="flex flex-col items-center justify-center p-6 text-center">
                 <MessageSquare className="h-12 w-12 text-muted-foreground mb-4" />
                 <h3 className="font-medium mb-2">{t('noConversations')}</h3>
@@ -128,20 +141,22 @@ export function TutorPageClient() {
                   >
                     <div className="flex justify-between items-start mb-2">
                       <h3 className="font-medium text-sm truncate pr-2">
-                        {conversation.title}
+                        {conversation.preview
+                          ? conversation.preview.slice(0, 40)
+                          : t('newConversationTitle')}
                       </h3>
                       <span className="text-xs text-muted-foreground shrink-0">
-                        {formatRelativeTime(conversation.timestamp)}
+                        {formatRelativeTime(conversation.last_message_at)}
                       </span>
                     </div>
-                    {conversation.lastMessage && (
+                    {conversation.preview && (
                       <p className="text-xs text-muted-foreground truncate mb-1">
-                        {conversation.lastMessage}
+                        {conversation.preview}
                       </p>
                     )}
                     <div className="flex justify-between items-center">
                       <span className="text-xs text-muted-foreground">
-                        {t('messageCount', { count: conversation.messageCount })}
+                        {t('messageCount', { count: conversation.message_count })}
                       </span>
                     </div>
                   </Card>
@@ -153,12 +168,13 @@ export function TutorPageClient() {
 
         {/* Main Chat Area */}
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          {selectedConversation ? (
+          {selectedConversation !== undefined ? (
             <ChatPanel
               isOpen={true}
               onClose={() => {}}
               embedded={true}
               conversationId={selectedConversation}
+              onConversationCreated={handleConversationCreated}
             />
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-center p-6">
@@ -176,10 +192,9 @@ export function TutorPageClient() {
         </div>
       </div>
 
-      {/* Mobile: show conversation info if needed */}
       {selectedConvData && (
         <div className="sr-only" aria-live="polite">
-          {selectedConvData.title}
+          {selectedConvData.preview || t('newConversationTitle')}
         </div>
       )}
     </ChatProvider>

@@ -29,6 +29,12 @@ import { ChatSkeleton } from './chat-skeleton';
 import { cn } from '@/lib/utils';
 import { authClient, AuthError } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
+import {
+  fetchConversation,
+  getOfflineConversation,
+  invalidateConversationCache,
+  invalidateConversationsCache,
+} from '@/lib/tutor-api';
 
 interface ChatPanelProps {
   isOpen: boolean;
@@ -37,35 +43,96 @@ interface ChatPanelProps {
   conversationId?: string | null;
   className?: string;
   embedded?: boolean;
+  onConversationCreated?: (conversationId: string) => void;
 }
 
-export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className, embedded = false }: ChatPanelProps) {
+export function ChatPanel({
+  isOpen,
+  onClose,
+  moduleId,
+  conversationId,
+  className,
+  embedded = false,
+  onConversationCreated,
+}: ChatPanelProps) {
   const t = useTranslations('ChatTutor');
   const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [showClearDialog, setShowClearDialog] = useState(false);
   const [currentUsage, setCurrentUsage] = useState(0);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(
+    conversationId ?? null
+  );
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const maxDailyUsage = 50;
   const isLimitReached = currentUsage >= maxDailyUsage;
 
-  // Reset messages when conversation changes (including new conversation)
-  useEffect(() => {
-    setMessages([
-      {
-        id: 'welcome',
-        content: t('welcomeMessage'),
-        isUser: false,
-        timestamp: new Date(),
-      }
-    ]);
-    setCurrentUsage(0);
-  }, [conversationId, t]);
+  const welcomeMessage: ChatMessage = {
+    id: 'welcome',
+    content: t('welcomeMessage'),
+    isUser: false,
+    timestamp: new Date(),
+  };
 
-  // Scroll to bottom when new messages are added
+  useEffect(() => {
+    setActiveConversationId(conversationId ?? null);
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!activeConversationId) {
+      setMessages([welcomeMessage]);
+      setCurrentUsage(0);
+      return;
+    }
+
+    setIsHistoryLoading(true);
+    fetchConversation(activeConversationId)
+      .then((conv) => {
+        const loaded: ChatMessage[] = conv.messages.map((m, i) => ({
+          id: `history-${i}`,
+          content: m.content,
+          isUser: m.role === 'user',
+          timestamp: new Date(m.timestamp),
+          sources: m.sources?.map((s, j) => ({
+            title: s.source ?? String(j + 1),
+            chapter: s.chapter ?? j + 1,
+            page: s.page ?? 0,
+          })),
+        }));
+        const userCount = conv.messages.filter((m) => m.role === 'user').length;
+        setCurrentUsage(userCount);
+        setMessages(loaded.length > 0 ? loaded : [welcomeMessage]);
+      })
+      .catch(() => {
+        const offline = getOfflineConversation(activeConversationId);
+        if (offline) {
+          const loaded: ChatMessage[] = offline.messages.map((m, i) => ({
+            id: `offline-${i}`,
+            content: m.content,
+            isUser: m.role === 'user',
+            timestamp: new Date(m.timestamp),
+            sources: m.sources?.map((s, j) => ({
+              title: s.source ?? String(j + 1),
+              chapter: s.chapter ?? j + 1,
+              page: s.page ?? 0,
+            })),
+          }));
+          const userCount = offline.messages.filter((m) => m.role === 'user').length;
+          setCurrentUsage(userCount);
+          setMessages(loaded.length > 0 ? loaded : [welcomeMessage]);
+        } else {
+          setMessages([welcomeMessage]);
+          setCurrentUsage(0);
+        }
+      })
+      .finally(() => setIsHistoryLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConversationId]);
+
   useEffect(() => {
     if (scrollAreaRef.current) {
       const scrollArea = scrollAreaRef.current;
@@ -83,13 +150,13 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
       timestamp: new Date(),
     };
 
-    setMessages(prev => [...prev, userMessage]);
-    setCurrentUsage(prev => prev + 1);
+    setMessages((prev) => [...prev, userMessage]);
+    setCurrentUsage((prev) => prev + 1);
     setIsLoading(true);
     setIsTyping(true);
 
     try {
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
       let token: string;
       try {
         token = await authClient.getValidToken();
@@ -101,14 +168,15 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
         throw err;
       }
       const response = await fetch(`${API_BASE}/api/v1/tutor/chat`, {
-        method: "POST",
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           message: messageContent,
-          conversation_id: null,
+          conversation_id: activeConversationId ?? null,
+          module_id: moduleId ?? null,
         }),
       });
 
@@ -120,19 +188,20 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
         throw new Error(`API error: ${response.status}`);
       }
 
-      // Read SSE stream
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
-      let fullContent = "";
+      let fullContent = '';
       const aiMessageId = (Date.now() + 1).toString();
 
-      // Add placeholder message
-      setMessages(prev => [...prev, {
-        id: aiMessageId,
-        content: "",
-        isUser: false,
-        timestamp: new Date(),
-      }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: aiMessageId,
+          content: '',
+          isUser: false,
+          timestamp: new Date(),
+        },
+      ]);
 
       if (reader) {
         while (true) {
@@ -140,32 +209,56 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
           if (done) break;
 
           const text = decoder.decode(value, { stream: true });
-          const lines = text.split("\n");
+          const lines = text.split('\n');
 
           for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
+            if (!line.startsWith('data: ')) continue;
             try {
               const chunk = JSON.parse(line.slice(6));
-              if (chunk.type === "content" && chunk.data?.text) {
+              if (chunk.type === 'conversation_id' && chunk.data?.conversation_id) {
+                const newConvId = chunk.data.conversation_id as string;
+                if (!activeConversationId) {
+                  setActiveConversationId(newConvId);
+                  onConversationCreated?.(newConvId);
+                }
+              } else if (chunk.type === 'content' && chunk.data?.text) {
                 fullContent += chunk.data.text;
-                setMessages(prev => prev.map(m =>
-                  m.id === aiMessageId ? { ...m, content: fullContent } : m
-                ));
-              } else if (chunk.type === "sources_cited" && chunk.data?.sources) {
-                setMessages(prev => prev.map(m =>
-                  m.id === aiMessageId ? {
-                    ...m,
-                    sources: chunk.data.sources.map((s: { source: string; chapter?: number; page?: number }, i: number) => ({
-                      title: s.source ?? String(i + 1), chapter: s.chapter ?? i + 1, page: s.page ?? 0,
-                    })),
-                  } : m
-                ));
-              } else if (chunk.type === "error") {
+                setMessages((prev) =>
+                  prev.map((m) => (m.id === aiMessageId ? { ...m, content: fullContent } : m))
+                );
+              } else if (chunk.type === 'sources_cited' && chunk.data?.sources) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === aiMessageId
+                      ? {
+                          ...m,
+                          sources: chunk.data.sources.map(
+                            (
+                              s: { source: string; chapter?: number; page?: number },
+                              i: number
+                            ) => ({
+                              title: s.source ?? String(i + 1),
+                              chapter: s.chapter ?? i + 1,
+                              page: s.page ?? 0,
+                            })
+                          ),
+                        }
+                      : m
+                  )
+                );
+              } else if (chunk.type === 'finished' && chunk.data?.conversation_id) {
+                const finishedConvId = chunk.data.conversation_id as string;
+                invalidateConversationCache(finishedConvId);
+                invalidateConversationsCache();
+              } else if (chunk.type === 'error') {
                 const errorCode = chunk.data?.code;
-                fullContent = errorCode === "limit_reached" ? t('errorLimitReached') : t('error');
-                setMessages(prev => prev.map(m =>
-                  m.id === aiMessageId ? { ...m, content: fullContent } : m
-                ));
+                fullContent =
+                  errorCode === 'limit_reached' ? t('errorLimitReached') : t('error');
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === aiMessageId ? { ...m, content: fullContent } : m
+                  )
+                );
               }
             } catch {
               // Skip unparseable lines
@@ -175,12 +268,15 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
       }
     } catch (error) {
       console.error('Failed to send message:', error);
-      setMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        content: t('error'),
-        isUser: false,
-        timestamp: new Date(),
-      }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          content: t('error'),
+          isUser: false,
+          timestamp: new Date(),
+        },
+      ]);
     } finally {
       setIsLoading(false);
       setIsTyping(false);
@@ -194,14 +290,7 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
   };
 
   const handleClearHistory = () => {
-    setMessages([
-      {
-        id: 'welcome',
-        content: t('welcomeMessage'),
-        isUser: false,
-        timestamp: new Date(),
-      }
-    ]);
+    setMessages([welcomeMessage]);
     setShowClearDialog(false);
   };
 
@@ -209,16 +298,13 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
 
   return (
     <>
-      <div 
+      <div
         className={cn(
           embedded
             ? 'flex flex-col h-full w-full bg-background'
             : cn(
-                // Mobile: Full screen overlay
                 'fixed inset-0 z-50 flex flex-col bg-background',
-                // Desktop: Side panel
                 'md:relative md:inset-auto md:w-96 md:border-l',
-                // Animation
                 'transition-transform duration-300 ease-in-out',
                 isOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'
               ),
@@ -254,19 +340,16 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
         </div>
 
         {/* Usage Counter */}
-        <UsageCounter 
-          currentUsage={currentUsage} 
+        <UsageCounter
+          currentUsage={currentUsage}
           maxUsage={maxDailyUsage}
           className="p-4 pb-2"
         />
 
         {/* Messages */}
         <div className="flex-1 flex flex-col min-h-0">
-          <div
-            ref={scrollAreaRef}
-            className="flex-1 overflow-y-auto px-4 py-2"
-          >
-            {isLoading && messages.length <= 1 ? (
+          <div ref={scrollAreaRef} className="flex-1 overflow-y-auto px-4 py-2">
+            {isHistoryLoading ? (
               <ChatSkeleton />
             ) : (
               <>
@@ -277,28 +360,18 @@ export function ChatPanel({ isOpen, onClose, moduleId, conversationId, className
               </>
             )}
 
-            {/* Empty state */}
-            {messages.length === 0 && !isLoading && (
+            {messages.length === 0 && !isLoading && !isHistoryLoading && (
               <div className="flex flex-col items-center justify-center h-full text-center p-6">
-                <div className="text-muted-foreground mb-2">
-                  {t('emptyState')}
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  {t('emptyStateDescription')}
-                </div>
+                <div className="text-muted-foreground mb-2">{t('emptyState')}</div>
+                <div className="text-sm text-muted-foreground">{t('emptyStateDescription')}</div>
               </div>
             )}
           </div>
 
-          {/* Suggestions */}
           {!isLimitReached && (
-            <ChatSuggestions
-              onSuggestionClick={handleSuggestionClick}
-              disabled={isLoading}
-            />
+            <ChatSuggestions onSuggestionClick={handleSuggestionClick} disabled={isLoading} />
           )}
 
-          {/* Input */}
           <ChatInput
             onSendMessage={handleSendMessage}
             disabled={isLimitReached || isLoading}
