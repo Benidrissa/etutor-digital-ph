@@ -8,6 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { LessonSkeleton } from './lesson-skeleton';
 import { SourceCitations } from './source-citations';
 import { apiFetch } from '@/lib/api';
@@ -218,7 +220,7 @@ export function CaseStudyViewer({
         </CardHeader>
         <CardContent>
           <div className={mdClass}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{content.aof_context}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{content.aof_context}</ReactMarkdown>
           </div>
         </CardContent>
       </Card>
@@ -230,7 +232,7 @@ export function CaseStudyViewer({
         </CardHeader>
         <CardContent>
           <div className={`${mdClass} bg-amber-50 rounded-lg p-4`}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{content.real_data}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{content.real_data}</ReactMarkdown>
           </div>
         </CardContent>
       </Card>
@@ -251,7 +253,7 @@ export function CaseStudyViewer({
                   {index + 1}
                 </span>
                 <div className={mdClass}>
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{question}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{question}</ReactMarkdown>
                 </div>
               </li>
             ))}
@@ -279,7 +281,7 @@ export function CaseStudyViewer({
         {correctionVisible && (
           <CardContent>
             <div className={`${mdClass} bg-green-50 rounded-lg p-4`}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{content.annotated_correction}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{content.annotated_correction}</ReactMarkdown>
             </div>
           </CardContent>
         )}
