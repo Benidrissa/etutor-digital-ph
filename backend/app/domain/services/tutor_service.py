@@ -210,6 +210,7 @@ class TutorService:
         context_type: str | None = None,
         context_id: uuid.UUID | None = None,
         conversation_id: uuid.UUID | None = None,
+        tutor_mode: str = "socratic",
     ) -> AsyncGenerator[dict[str, Any], None]:
         """
         Send a message to the AI tutor and stream the response using agentic tool_use.
@@ -282,6 +283,7 @@ class TutorService:
                 user_country=user.country or "SN",
                 module_id=str(module_id) if module_id else None,
                 context_type=context_type,
+                tutor_mode=tutor_mode,
                 context_id=str(context_id) if context_id else None,
                 learner_memory=session_ctx.learner_memory,
                 previous_session_context=session_ctx.previous_compact,

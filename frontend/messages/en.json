@@ -331,7 +331,11 @@
     "conversations": "Conversations",
     "openConversations": "Open conversations",
     "closeDrawer": "Close",
-    "toggleSuggestions": "Quick actions"
+    "toggleSuggestions": "Quick actions",
+    "modeSocratic": "Socratic Mode",
+    "modeExplanatory": "Explanatory Mode",
+    "modeSocraticTooltip": "Guided questions",
+    "modeExplanatoryTooltip": "Direct answers"
   },
   "Flashcards": {
     "title": "Flashcards",
@@ -633,6 +637,39 @@
     "clickToView": "Click to view:",
     "availableInLibrary": "Available in reference library",
     "footnote": "{count, plural, one {# source cited} other {# sources cited}}"
+  },
+  "PlacementResultsHistory": {
+    "title": "My Assessment Results",
+    "subtitle": "History of your diagnostic assessments",
+    "viewResults": "View my results",
+    "noResults": "No results yet",
+    "noResultsDescription": "You have not taken the diagnostic assessment yet.",
+    "attempt": "Attempt {number}",
+    "attemptDate": "Date",
+    "score": "Score",
+    "assignedLevel": "Assigned Level",
+    "domainBreakdown": "Results by Domain",
+    "level": "Level {level}",
+    "canRetakeNow": "You can retake the assessment now",
+    "canRetakeAfter": "Next attempt available on {date}",
+    "retakeTest": "Retake assessment",
+    "progression": "Progression",
+    "scoreImprovement": "+{points} points since last attempt",
+    "scoreSame": "Score unchanged",
+    "scoreDecrease": "{points} points since last attempt",
+    "levelUpgraded": "Level improved",
+    "levelSame": "Level unchanged",
+    "domains": {
+      "level_1_foundations": "PH Foundations",
+      "level_2_epidemiology": "Epidemiology",
+      "level_3_advanced": "Biostatistics",
+      "level_4_expert": "Health Systems"
+    },
+    "loading": "Loading results...",
+    "error": "Error loading results",
+    "tryAgain": "Try again",
+    "diagnosticAssessment": "Diagnostic Assessment",
+    "viewHistory": "View history"
   },
   "Profile": {
     "title": "Profile",

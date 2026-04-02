@@ -1,7 +1,7 @@
 """Pydantic schemas for tutor API endpoints."""
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -29,6 +29,10 @@ class TutorChatRequest(BaseModel):
     )
     context_id: UUID | None = Field(None, description="Context-specific ID")
     conversation_id: UUID | None = Field(None, description="Existing conversation ID")
+    tutor_mode: Literal["socratic", "explanatory"] = Field(
+        default="socratic",
+        description="Tutor mode: socratic (guided questions) or explanatory (direct answers)",
+    )
 
 
 class TutorChatResponse(BaseModel):

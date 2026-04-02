@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { X, MoreVertical, Trash2, Menu } from 'lucide-react';
+import { X, MoreVertical, Trash2, Menu, HelpCircle, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -70,6 +70,7 @@ export function ChatPanel({
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
     conversationId ?? null
   );
+  const [tutorMode, setTutorMode] = useState<'socratic' | 'explanatory'>('socratic');
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const isLimitReached = currentUsage >= maxDailyUsage;
@@ -183,6 +184,7 @@ export function ChatPanel({
           message: messageContent,
           conversation_id: activeConversationId ?? null,
           module_id: moduleId ?? null,
+          tutor_mode: tutorMode,
         }),
       });
 
@@ -338,6 +340,19 @@ export function ChatPanel({
             <h2 className="text-base font-semibold">{t('title')}</h2>
           </div>
           <div className="flex items-center gap-1">
+            <Button
+              variant={tutorMode === 'socratic' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setTutorMode(tutorMode === 'socratic' ? 'explanatory' : 'socratic')}
+              className="h-9 gap-1.5 text-xs"
+              title={tutorMode === 'socratic' ? t('modeSocraticTooltip') : t('modeExplanatoryTooltip')}
+            >
+              {tutorMode === 'socratic' ? (
+                <><HelpCircle className="h-3.5 w-3.5" />{t('modeSocratic')}</>
+              ) : (
+                <><BookOpen className="h-3.5 w-3.5" />{t('modeExplanatory')}</>
+              )}
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger>
                 <Button variant="ghost" size="icon" className="h-11 w-11">

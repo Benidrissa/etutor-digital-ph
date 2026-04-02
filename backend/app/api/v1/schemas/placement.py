@@ -1,5 +1,7 @@
 """Placement test API schemas."""
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -50,3 +52,28 @@ class PlacementTestResult(BaseModel):
     )
     can_retake_after: str = Field(..., description="When user can retake (ISO datetime)")
     skipped: bool = Field(default=False, description="Whether the test was skipped")
+
+
+class PlacementAttemptSummary(BaseModel):
+    """Summary of a single placement test attempt."""
+
+    id: str = Field(..., description="Attempt UUID")
+    attempt_number: int = Field(..., description="Attempt number (1-based)")
+    attempted_at: datetime = Field(..., description="When the attempt was made")
+    score_percentage: float = Field(..., ge=0.0, le=100.0, description="Overall score percentage")
+    assigned_level: int = Field(..., ge=1, le=4, description="Level assigned by this attempt")
+    domain_scores: dict[str, float] = Field(
+        ..., description="Per-domain scores: domain_key -> percentage"
+    )
+    can_retake_after: datetime | None = Field(None, description="When user can retake")
+
+
+class PlacementResultsHistory(BaseModel):
+    """All past placement test attempts for a user."""
+
+    attempts: list[PlacementAttemptSummary] = Field(
+        ..., description="Past attempts ordered newest first"
+    )
+    total_attempts: int = Field(..., description="Total number of attempts")
+    can_retake_now: bool = Field(..., description="Whether user can retake right now")
+    next_retake_at: datetime | None = Field(None, description="When user can next retake")

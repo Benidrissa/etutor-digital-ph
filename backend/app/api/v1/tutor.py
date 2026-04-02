@@ -73,6 +73,7 @@ async def chat_with_tutor(
                 context_type=request.context_type,
                 context_id=request.context_id,
                 conversation_id=request.conversation_id,
+                tutor_mode=request.tutor_mode,
             ):
                 # Format as SSE
                 yield f"data: {json.dumps(chunk)}\n\n"

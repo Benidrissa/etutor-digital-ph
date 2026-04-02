@@ -34,7 +34,7 @@ interface ChatLayoutProps {
 export function ChatLayout({ children }: ChatLayoutProps) {
   return (
     <ChatProvider>
-      <div className="relative">
+      <div className="relative h-dvh overflow-hidden">
         {children}
         <ChatUIComponents />
       </div>
