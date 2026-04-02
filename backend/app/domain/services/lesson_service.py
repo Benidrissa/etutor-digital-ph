@@ -428,6 +428,34 @@ class LessonGenerationService:
             unit_id=lesson_response.unit_id,
         )
 
+        self._dispatch_image_task(cached_content, lesson_response)
+
+    def _dispatch_image_task(self, cached_content, lesson_response) -> None:
+        """Fire-and-forget: dispatch Celery task to generate lesson illustration."""
+        try:
+            from app.tasks.content_generation import generate_lesson_image
+
+            lesson_text = " ".join(lesson_response.content.concepts or [])
+            if not lesson_text:
+                lesson_text = lesson_response.content.introduction or ""
+
+            generate_lesson_image.delay(
+                lesson_id=str(cached_content.id),
+                module_id=str(cached_content.module_id),
+                unit_id=lesson_response.unit_id,
+                lesson_content=lesson_text[:3000],
+            )
+            logger.info(
+                "Dispatched image generation task",
+                lesson_id=str(cached_content.id),
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to dispatch image generation task (non-fatal)",
+                lesson_id=str(cached_content.id),
+                error=str(exc),
+            )
+
 
 class CaseStudyGenerationService:
     """Service for orchestrating case study content generation."""
