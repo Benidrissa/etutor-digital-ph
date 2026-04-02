@@ -1,67 +1,84 @@
-"""Tests for image status endpoints (issue #224, US-025)."""
+"""Tests for image status endpoints (issue #457, US-025)."""
 
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
 
-LESSON_ID = str(uuid.uuid4())
-IMAGE_READY_ID = str(uuid.uuid4())
-IMAGE_PENDING_ID = str(uuid.uuid4())
-IMAGE_GENERATING_ID = str(uuid.uuid4())
-IMAGE_FAILED_ID = str(uuid.uuid4())
-UNKNOWN_LESSON_ID = str(uuid.uuid4())
-UNKNOWN_IMAGE_ID = str(uuid.uuid4())
+LESSON_ID = uuid.uuid4()
+IMAGE_READY_ID = uuid.uuid4()
+IMAGE_PENDING_ID = uuid.uuid4()
+IMAGE_GENERATING_ID = uuid.uuid4()
+IMAGE_FAILED_ID = uuid.uuid4()
+UNKNOWN_LESSON_ID = uuid.uuid4()
+UNKNOWN_IMAGE_ID = uuid.uuid4()
 
-_SEED_IMAGES = {
-    IMAGE_READY_ID: {
-        "image_id": IMAGE_READY_ID,
-        "lesson_id": LESSON_ID,
-        "status": "ready",
-        "image_url": "https://cdn.example.com/images/ready.webp",
-        "alt_text": "Illustration de la leçon",
-        "format": "webp",
-        "width": 800,
-    },
-    IMAGE_PENDING_ID: {
-        "image_id": IMAGE_PENDING_ID,
-        "lesson_id": LESSON_ID,
-        "status": "pending",
-        "image_url": None,
-        "alt_text": "Illustration de la leçon",
-        "format": "webp",
-        "width": 800,
-    },
-    IMAGE_GENERATING_ID: {
-        "image_id": IMAGE_GENERATING_ID,
-        "lesson_id": LESSON_ID,
-        "status": "generating",
-        "image_url": None,
-        "alt_text": "Lesson illustration",
-        "format": "webp",
-        "width": 800,
-    },
-    IMAGE_FAILED_ID: {
-        "image_id": IMAGE_FAILED_ID,
-        "lesson_id": LESSON_ID,
-        "status": "failed",
-        "image_url": None,
-        "alt_text": "Illustration de la leçon",
-        "format": "webp",
-        "width": 800,
-    },
+
+def _make_image(
+    image_id, lesson_id, img_status, image_url=None, alt_text_fr=None, alt_text_en=None
+):
+    img = MagicMock()
+    img.id = image_id
+    img.lesson_id = lesson_id
+    img.status = img_status
+    img.image_url = image_url
+    img.alt_text_fr = alt_text_fr
+    img.alt_text_en = alt_text_en
+    img.format = "webp"
+    img.width = 800
+    return img
+
+
+_READY_IMAGE = _make_image(
+    IMAGE_READY_ID,
+    LESSON_ID,
+    "ready",
+    image_url="https://cdn.example.com/images/ready.webp",
+    alt_text_fr="Illustration de la leçon",
+    alt_text_en="Lesson illustration",
+)
+_PENDING_IMAGE = _make_image(
+    IMAGE_PENDING_ID,
+    LESSON_ID,
+    "pending",
+    alt_text_fr="Illustration de la leçon",
+)
+_GENERATING_IMAGE = _make_image(
+    IMAGE_GENERATING_ID,
+    LESSON_ID,
+    "generating",
+    alt_text_en="Lesson illustration",
+)
+_FAILED_IMAGE = _make_image(
+    IMAGE_FAILED_ID,
+    LESSON_ID,
+    "failed",
+    alt_text_fr="Illustration de la leçon",
+)
+
+_ALL_LESSON_IMAGES = [_READY_IMAGE, _PENDING_IMAGE, _GENERATING_IMAGE, _FAILED_IMAGE]
+
+_IMAGE_BY_ID = {
+    IMAGE_READY_ID: _READY_IMAGE,
+    IMAGE_PENDING_ID: _PENDING_IMAGE,
+    IMAGE_GENERATING_ID: _GENERATING_IMAGE,
+    IMAGE_FAILED_ID: _FAILED_IMAGE,
 }
 
 
-@pytest.fixture(autouse=True)
-def seed_mock_images():
-    """Seed the in-memory image store for each test and clean up after."""
-    from app.api.v1 import images as images_module
+def _make_db_scalars(images):
+    scalars_mock = MagicMock()
+    scalars_mock.all.return_value = images
+    result_mock = MagicMock()
+    result_mock.scalars.return_value = scalars_mock
+    return result_mock
 
-    images_module._MOCK_IMAGES.update(_SEED_IMAGES)
-    yield
-    images_module._MOCK_IMAGES.clear()
+
+def _make_db_scalar_one_or_none(image):
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = image
+    return result_mock
 
 
 @pytest.fixture
@@ -88,92 +105,237 @@ def deny_rate_limit():
 
 class TestGetLessonImages:
     async def test_returns_200_with_images(self, client: AsyncClient, allow_rate_limit) -> None:
-        response = await client.get(f"/api/v1/images/lesson/{LESSON_ID}")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["lesson_id"] == LESSON_ID
-        assert data["total"] == 4
-        assert len(data["images"]) == 4
+        db_mock = AsyncMock()
+        db_mock.execute.return_value = _make_db_scalars(_ALL_LESSON_IMAGES)
+        with patch("app.api.v1.images.get_db_session", return_value=db_mock):
+            from app.api.deps import get_db_session
+            from app.main import app
+
+            async def override():
+                yield db_mock
+
+            app.dependency_overrides[get_db_session] = override
+            try:
+                response = await client.get(f"/api/v1/images/lesson/{LESSON_ID}")
+                assert response.status_code == 200
+                data = response.json()
+                assert data["lesson_id"] == str(LESSON_ID)
+                assert data["total"] == 4
+                assert len(data["images"]) == 4
+            finally:
+                app.dependency_overrides.pop(get_db_session, None)
 
     async def test_ready_image_includes_url(self, client: AsyncClient, allow_rate_limit) -> None:
-        response = await client.get(f"/api/v1/images/lesson/{LESSON_ID}")
-        assert response.status_code == 200
-        images = {img["image_id"]: img for img in response.json()["images"]}
-        ready = images[IMAGE_READY_ID]
-        assert ready["status"] == "ready"
-        assert ready["image_url"] == "https://cdn.example.com/images/ready.webp"
+        db_mock = AsyncMock()
+        db_mock.execute.return_value = _make_db_scalars(_ALL_LESSON_IMAGES)
+        from app.api.deps import get_db_session
+        from app.main import app
+
+        async def override():
+            yield db_mock
+
+        app.dependency_overrides[get_db_session] = override
+        try:
+            response = await client.get(f"/api/v1/images/lesson/{LESSON_ID}")
+            assert response.status_code == 200
+            images = {img["image_id"]: img for img in response.json()["images"]}
+            ready = images[str(IMAGE_READY_ID)]
+            assert ready["status"] == "ready"
+            assert ready["image_url"] == "https://cdn.example.com/images/ready.webp"
+        finally:
+            app.dependency_overrides.pop(get_db_session, None)
 
     async def test_pending_image_has_null_url(self, client: AsyncClient, allow_rate_limit) -> None:
-        response = await client.get(f"/api/v1/images/lesson/{LESSON_ID}")
-        images = {img["image_id"]: img for img in response.json()["images"]}
-        assert images[IMAGE_PENDING_ID]["image_url"] is None
-        assert images[IMAGE_PENDING_ID]["status"] == "pending"
+        db_mock = AsyncMock()
+        db_mock.execute.return_value = _make_db_scalars(_ALL_LESSON_IMAGES)
+        from app.api.deps import get_db_session
+        from app.main import app
+
+        async def override():
+            yield db_mock
+
+        app.dependency_overrides[get_db_session] = override
+        try:
+            response = await client.get(f"/api/v1/images/lesson/{LESSON_ID}")
+            images = {img["image_id"]: img for img in response.json()["images"]}
+            assert images[str(IMAGE_PENDING_ID)]["image_url"] is None
+            assert images[str(IMAGE_PENDING_ID)]["status"] == "pending"
+        finally:
+            app.dependency_overrides.pop(get_db_session, None)
 
     async def test_generating_image_has_null_url(
         self, client: AsyncClient, allow_rate_limit
     ) -> None:
-        response = await client.get(f"/api/v1/images/lesson/{LESSON_ID}")
-        images = {img["image_id"]: img for img in response.json()["images"]}
-        assert images[IMAGE_GENERATING_ID]["image_url"] is None
-        assert images[IMAGE_GENERATING_ID]["status"] == "generating"
+        db_mock = AsyncMock()
+        db_mock.execute.return_value = _make_db_scalars(_ALL_LESSON_IMAGES)
+        from app.api.deps import get_db_session
+        from app.main import app
+
+        async def override():
+            yield db_mock
+
+        app.dependency_overrides[get_db_session] = override
+        try:
+            response = await client.get(f"/api/v1/images/lesson/{LESSON_ID}")
+            images = {img["image_id"]: img for img in response.json()["images"]}
+            assert images[str(IMAGE_GENERATING_ID)]["image_url"] is None
+            assert images[str(IMAGE_GENERATING_ID)]["status"] == "generating"
+        finally:
+            app.dependency_overrides.pop(get_db_session, None)
 
     async def test_failed_image_has_null_url(self, client: AsyncClient, allow_rate_limit) -> None:
-        response = await client.get(f"/api/v1/images/lesson/{LESSON_ID}")
-        images = {img["image_id"]: img for img in response.json()["images"]}
-        assert images[IMAGE_FAILED_ID]["image_url"] is None
-        assert images[IMAGE_FAILED_ID]["status"] == "failed"
+        db_mock = AsyncMock()
+        db_mock.execute.return_value = _make_db_scalars(_ALL_LESSON_IMAGES)
+        from app.api.deps import get_db_session
+        from app.main import app
+
+        async def override():
+            yield db_mock
+
+        app.dependency_overrides[get_db_session] = override
+        try:
+            response = await client.get(f"/api/v1/images/lesson/{LESSON_ID}")
+            images = {img["image_id"]: img for img in response.json()["images"]}
+            assert images[str(IMAGE_FAILED_ID)]["image_url"] is None
+            assert images[str(IMAGE_FAILED_ID)]["status"] == "failed"
+        finally:
+            app.dependency_overrides.pop(get_db_session, None)
 
     async def test_returns_404_for_unknown_lesson(
         self, client: AsyncClient, allow_rate_limit
     ) -> None:
-        response = await client.get(f"/api/v1/images/lesson/{UNKNOWN_LESSON_ID}")
-        assert response.status_code == 404
-        assert "lesson_not_found" in response.json()["detail"]["error"]
+        db_mock = AsyncMock()
+        db_mock.execute.return_value = _make_db_scalars([])
+        from app.api.deps import get_db_session
+        from app.main import app
+
+        async def override():
+            yield db_mock
+
+        app.dependency_overrides[get_db_session] = override
+        try:
+            response = await client.get(f"/api/v1/images/lesson/{UNKNOWN_LESSON_ID}")
+            assert response.status_code == 404
+            assert "lesson_not_found" in response.json()["detail"]["error"]
+        finally:
+            app.dependency_overrides.pop(get_db_session, None)
 
     async def test_alt_text_in_french(self, client: AsyncClient, allow_rate_limit) -> None:
-        response = await client.get(f"/api/v1/images/lesson/{LESSON_ID}?lang=fr")
-        assert response.status_code == 200
-        images = response.json()["images"]
-        fr_image = next(img for img in images if img["image_id"] == IMAGE_READY_ID)
-        assert "leçon" in fr_image["alt_text"].lower() or fr_image["alt_text"] != ""
+        db_mock = AsyncMock()
+        db_mock.execute.return_value = _make_db_scalars(_ALL_LESSON_IMAGES)
+        from app.api.deps import get_db_session
+        from app.main import app
+
+        async def override():
+            yield db_mock
+
+        app.dependency_overrides[get_db_session] = override
+        try:
+            response = await client.get(f"/api/v1/images/lesson/{LESSON_ID}?lang=fr")
+            assert response.status_code == 200
+            images = response.json()["images"]
+            fr_image = next(img for img in images if img["image_id"] == str(IMAGE_READY_ID))
+            assert fr_image["alt_text"] != ""
+        finally:
+            app.dependency_overrides.pop(get_db_session, None)
 
     async def test_alt_text_in_english(self, client: AsyncClient, allow_rate_limit) -> None:
-        response = await client.get(f"/api/v1/images/lesson/{LESSON_ID}?lang=en")
-        assert response.status_code == 200
-        images = response.json()["images"]
-        en_image = next(img for img in images if img["image_id"] == IMAGE_GENERATING_ID)
-        assert en_image["alt_text"] == "Lesson illustration"
+        db_mock = AsyncMock()
+        db_mock.execute.return_value = _make_db_scalars(_ALL_LESSON_IMAGES)
+        from app.api.deps import get_db_session
+        from app.main import app
+
+        async def override():
+            yield db_mock
+
+        app.dependency_overrides[get_db_session] = override
+        try:
+            response = await client.get(f"/api/v1/images/lesson/{LESSON_ID}?lang=en")
+            assert response.status_code == 200
+            images = response.json()["images"]
+            en_image = next(img for img in images if img["image_id"] == str(IMAGE_GENERATING_ID))
+            assert en_image["alt_text"] == "Lesson illustration"
+        finally:
+            app.dependency_overrides.pop(get_db_session, None)
 
     async def test_response_includes_format_and_width(
         self, client: AsyncClient, allow_rate_limit
     ) -> None:
-        response = await client.get(f"/api/v1/images/lesson/{LESSON_ID}")
-        image = response.json()["images"][0]
-        assert image["format"] == "webp"
-        assert image["width"] == 800
+        db_mock = AsyncMock()
+        db_mock.execute.return_value = _make_db_scalars(_ALL_LESSON_IMAGES)
+        from app.api.deps import get_db_session
+        from app.main import app
+
+        async def override():
+            yield db_mock
+
+        app.dependency_overrides[get_db_session] = override
+        try:
+            response = await client.get(f"/api/v1/images/lesson/{LESSON_ID}")
+            image = response.json()["images"][0]
+            assert image["format"] == "webp"
+            assert image["width"] == 800
+        finally:
+            app.dependency_overrides.pop(get_db_session, None)
 
 
 class TestGetImageStatus:
     async def test_ready_image_returns_url(self, client: AsyncClient, allow_rate_limit) -> None:
-        response = await client.get(f"/api/v1/images/{IMAGE_READY_ID}/status")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "ready"
-        assert data["image_url"] == "https://cdn.example.com/images/ready.webp"
+        db_mock = AsyncMock()
+        db_mock.execute.return_value = _make_db_scalar_one_or_none(_READY_IMAGE)
+        from app.api.deps import get_db_session
+        from app.main import app
+
+        async def override():
+            yield db_mock
+
+        app.dependency_overrides[get_db_session] = override
+        try:
+            response = await client.get(f"/api/v1/images/{IMAGE_READY_ID}/status")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "ready"
+            assert data["image_url"] == "https://cdn.example.com/images/ready.webp"
+        finally:
+            app.dependency_overrides.pop(get_db_session, None)
 
     async def test_pending_image_returns_null_url(
         self, client: AsyncClient, allow_rate_limit
     ) -> None:
-        response = await client.get(f"/api/v1/images/{IMAGE_PENDING_ID}/status")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "pending"
-        assert data["image_url"] is None
+        db_mock = AsyncMock()
+        db_mock.execute.return_value = _make_db_scalar_one_or_none(_PENDING_IMAGE)
+        from app.api.deps import get_db_session
+        from app.main import app
+
+        async def override():
+            yield db_mock
+
+        app.dependency_overrides[get_db_session] = override
+        try:
+            response = await client.get(f"/api/v1/images/{IMAGE_PENDING_ID}/status")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "pending"
+            assert data["image_url"] is None
+        finally:
+            app.dependency_overrides.pop(get_db_session, None)
 
     async def test_unknown_image_returns_404(self, client: AsyncClient, allow_rate_limit) -> None:
-        response = await client.get(f"/api/v1/images/{UNKNOWN_IMAGE_ID}/status")
-        assert response.status_code == 404
-        assert "image_not_found" in response.json()["detail"]["error"]
+        db_mock = AsyncMock()
+        db_mock.execute.return_value = _make_db_scalar_one_or_none(None)
+        from app.api.deps import get_db_session
+        from app.main import app
+
+        async def override():
+            yield db_mock
+
+        app.dependency_overrides[get_db_session] = override
+        try:
+            response = await client.get(f"/api/v1/images/{UNKNOWN_IMAGE_ID}/status")
+            assert response.status_code == 404
+            assert "image_not_found" in response.json()["detail"]["error"]
+        finally:
+            app.dependency_overrides.pop(get_db_session, None)
 
     async def test_rate_limit_returns_429(self, client: AsyncClient, deny_rate_limit) -> None:
         response = await client.get(f"/api/v1/images/{IMAGE_READY_ID}/status")
@@ -183,6 +345,77 @@ class TestGetImageStatus:
         assert response.headers["retry-after"] == "2"
 
     async def test_image_id_in_response(self, client: AsyncClient, allow_rate_limit) -> None:
-        response = await client.get(f"/api/v1/images/{IMAGE_PENDING_ID}/status")
-        assert response.status_code == 200
-        assert response.json()["image_id"] == IMAGE_PENDING_ID
+        db_mock = AsyncMock()
+        db_mock.execute.return_value = _make_db_scalar_one_or_none(_PENDING_IMAGE)
+        from app.api.deps import get_db_session
+        from app.main import app
+
+        async def override():
+            yield db_mock
+
+        app.dependency_overrides[get_db_session] = override
+        try:
+            response = await client.get(f"/api/v1/images/{IMAGE_PENDING_ID}/status")
+            assert response.status_code == 200
+            assert response.json()["image_id"] == str(IMAGE_PENDING_ID)
+        finally:
+            app.dependency_overrides.pop(get_db_session, None)
+
+
+class TestGetImageData:
+    async def test_ready_image_redirects(self, client: AsyncClient) -> None:
+        db_mock = AsyncMock()
+        db_mock.execute.return_value = _make_db_scalar_one_or_none(_READY_IMAGE)
+        from app.api.deps import get_db_session
+        from app.main import app
+
+        async def override():
+            yield db_mock
+
+        app.dependency_overrides[get_db_session] = override
+        try:
+            response = await client.get(
+                f"/api/v1/images/{IMAGE_READY_ID}/data", follow_redirects=False
+            )
+            assert response.status_code == 302
+            assert response.headers["location"] == "https://cdn.example.com/images/ready.webp"
+        finally:
+            app.dependency_overrides.pop(get_db_session, None)
+
+    async def test_pending_image_returns_404(self, client: AsyncClient) -> None:
+        db_mock = AsyncMock()
+        db_mock.execute.return_value = _make_db_scalar_one_or_none(_PENDING_IMAGE)
+        from app.api.deps import get_db_session
+        from app.main import app
+
+        async def override():
+            yield db_mock
+
+        app.dependency_overrides[get_db_session] = override
+        try:
+            response = await client.get(
+                f"/api/v1/images/{IMAGE_PENDING_ID}/data", follow_redirects=False
+            )
+            assert response.status_code == 404
+            assert "image_not_ready" in response.json()["detail"]["error"]
+        finally:
+            app.dependency_overrides.pop(get_db_session, None)
+
+    async def test_unknown_image_returns_404(self, client: AsyncClient) -> None:
+        db_mock = AsyncMock()
+        db_mock.execute.return_value = _make_db_scalar_one_or_none(None)
+        from app.api.deps import get_db_session
+        from app.main import app
+
+        async def override():
+            yield db_mock
+
+        app.dependency_overrides[get_db_session] = override
+        try:
+            response = await client.get(
+                f"/api/v1/images/{UNKNOWN_IMAGE_ID}/data", follow_redirects=False
+            )
+            assert response.status_code == 404
+            assert "image_not_found" in response.json()["detail"]["error"]
+        finally:
+            app.dependency_overrides.pop(get_db_session, None)
