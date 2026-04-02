@@ -71,6 +71,33 @@ export async function getModuleDetailWithProgress(
   );
 }
 
+export interface PublicUnitDetail {
+  id: string;
+  unit_number: string;
+  title_fr: string;
+  title_en: string;
+  description_fr?: string;
+  description_en?: string;
+  estimated_minutes: number;
+  order_index: number;
+}
+
+export interface ModuleUnitsResponse {
+  module_id: string;
+  module_number: number;
+  level: number;
+  title_fr: string;
+  title_en: string;
+  description_fr?: string;
+  description_en?: string;
+  estimated_hours: number;
+  units: PublicUnitDetail[];
+}
+
+export async function getModuleUnits(moduleId: string): Promise<ModuleUnitsResponse> {
+  return apiFetch<ModuleUnitsResponse>(`/api/v1/content/modules/${moduleId}/units`);
+}
+
 export async function trackLessonAccess(
   request: LessonAccessRequest
 ): Promise<ModuleProgressResponse> {

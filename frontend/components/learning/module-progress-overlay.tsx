@@ -8,7 +8,7 @@ import { Link } from '@/i18n/routing';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { getModuleDetailWithProgress, type ModuleDetailWithProgressResponse, type UnitProgressDetail } from '@/lib/api';
+import { getModuleDetailWithProgress, getModuleUnits, type ModuleDetailWithProgressResponse, type UnitProgressDetail } from '@/lib/api';
 import type { Unit } from '@/lib/modules';
 
 interface ModuleProgressOverlayProps {
@@ -77,12 +77,54 @@ export function ModuleProgressOverlay({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getModuleDetailWithProgress(moduleId)
-      .then(setData)
-      .catch(() => {
-        // Silently fall back to static data on error (offline support)
-      })
-      .finally(() => setLoading(false));
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const result = await getModuleDetailWithProgress(moduleId);
+        if (!cancelled) setData(result);
+      } catch {
+        try {
+          const publicResult = await getModuleUnits(moduleId);
+          if (!cancelled) {
+            setData({
+              id: publicResult.module_id,
+              module_number: publicResult.module_number,
+              level: publicResult.level,
+              title_fr: publicResult.title_fr,
+              title_en: publicResult.title_en,
+              description_fr: publicResult.description_fr,
+              description_en: publicResult.description_en,
+              estimated_hours: publicResult.estimated_hours,
+              prereq_modules: [],
+              status: 'locked',
+              completion_pct: 0,
+              quiz_score_avg: null,
+              time_spent_minutes: 0,
+              last_accessed: null,
+              units: publicResult.units.map((u) => ({
+                id: u.id,
+                unit_number: u.unit_number,
+                title_fr: u.title_fr,
+                title_en: u.title_en,
+                description_fr: u.description_fr,
+                description_en: u.description_en,
+                estimated_minutes: u.estimated_minutes,
+                order_index: u.order_index,
+                status: 'pending',
+              })),
+            });
+          }
+        } catch {
+          // Both endpoints failed — fall back to hardcoded static units
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => { cancelled = true; };
   }, [moduleId]);
 
   const staticUnitsFallback: UnitProgressDetail[] = (staticUnits ?? []).map((u, i) => ({
