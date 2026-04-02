@@ -1,4 +1,4 @@
-"""Service for AI tutor functionality with Socratic pedagogical approach."""
+"""Service for AI tutor functionality with agentic tool_use and Socratic pedagogical approach."""
 
 import uuid
 from collections.abc import AsyncGenerator
@@ -7,6 +7,7 @@ from typing import Any
 
 import structlog
 from anthropic import AsyncAnthropic
+from anthropic.types import MessageParam, ToolResultBlockParam, ToolUseBlock
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,13 +17,16 @@ from app.ai.rag.retriever import SemanticRetriever
 from app.domain.models.conversation import TutorConversation
 from app.domain.models.module import Module
 from app.domain.models.user import User
+from app.domain.services.tutor_tools import TOOL_DEFINITIONS, TutorToolExecutor
 from app.infrastructure.config.settings import get_settings
 
 logger = structlog.get_logger()
 
+MAX_TOOL_CALLS = 3
+
 
 class TutorService:
-    """Service for managing AI tutor conversations with Socratic approach."""
+    """Service for managing AI tutor conversations with agentic tool_use and Socratic approach."""
 
     def __init__(
         self,
@@ -34,7 +38,7 @@ class TutorService:
         self.retriever = semantic_retriever
         self.embedding_service = embedding_service
         self.settings = get_settings()
-        self.daily_message_limit = 50  # Free tier limit
+        self.daily_message_limit = 50
 
     async def send_message(
         self,
@@ -47,7 +51,10 @@ class TutorService:
         conversation_id: uuid.UUID | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """
-        Send a message to the AI tutor and stream the response.
+        Send a message to the AI tutor and stream the response using agentic tool_use.
+
+        Claude autonomously decides when to call tools (RAG search, progress lookup, etc.)
+        The tool loop runs server-side; only text chunks are streamed to the client.
 
         Args:
             user_id: User ID
@@ -61,11 +68,9 @@ class TutorService:
         Yields:
             Stream chunks with tutor response data
         """
-        # Convert user_id to UUID if it's a string
         if isinstance(user_id, str):
             user_id = uuid.UUID(user_id)
 
-        # Check daily message limit
         messages_used = await self._check_daily_limit(user_id, session)
         if messages_used >= self.daily_message_limit:
             yield {
@@ -78,14 +83,12 @@ class TutorService:
             }
             return
 
-        # Get user context
         user = await session.get(User, user_id)
         if not user:
             yield {"type": "error", "data": {"message": "User not found"}}
             return
 
         try:
-            # Get or create conversation
             conversation = await self._get_or_create_conversation(
                 user_id, module_id, conversation_id, session
             )
@@ -95,101 +98,191 @@ class TutorService:
                 "data": {"conversation_id": str(conversation.id)},
             }
 
-            # Build context
             context = TutorContext(
                 user_level=user.current_level,
                 user_language=user.preferred_language,
-                user_country=user.country,
+                user_country=user.country or "SN",
                 module_id=str(module_id) if module_id else None,
                 context_type=context_type,
                 context_id=str(context_id) if context_id else None,
             )
 
-            # Perform RAG retrieval
-            rag_chunks = await self._retrieve_relevant_context(message, user, module_id, session)
+            system_prompt = get_socratic_system_prompt(context, [])
 
-            yield {
-                "type": "sources_retrieved",
-                "data": {
-                    "chunk_count": len(rag_chunks),
-                    "sources": [chunk.chunk.source for chunk in rag_chunks],
-                },
-            }
-
-            # Generate system prompt
-            chunks_dict = [
-                {
-                    "content": chunk.chunk.content,
-                    "source": chunk.chunk.source,
-                    "chapter": chunk.chunk.chapter,
-                    "page": chunk.chunk.page,
-                    "similarity": chunk.similarity_score,
-                }
-                for chunk in rag_chunks
-            ]
-
-            system_prompt = get_socratic_system_prompt(context, chunks_dict)
-
-            # Prepare conversation history
             conversation_history = await self._prepare_conversation_history(conversation)
 
-            # Add user message
-            user_msg = {
+            user_msg_stored = {
                 "role": "user",
                 "content": message,
                 "timestamp": datetime.utcnow().isoformat(),
             }
-            conversation_history.append(user_msg)
+            conversation_history.append({"role": "user", "content": message})
 
-            # Stream Claude response
+            tool_executor = TutorToolExecutor(
+                retriever=self.retriever,
+                anthropic_client=self.anthropic,
+                user_id=user_id,
+                user_level=user.current_level,
+                user_language=user.preferred_language,
+            )
+
+            tool_call_count = 0
             full_response = ""
-            sources_cited = []
-            activity_suggestions = []
+            all_tool_calls: list[dict[str, Any]] = []
+            sources_cited: list[dict[str, Any]] = []
+            api_messages: list[MessageParam] = list(conversation_history)
 
-            async with self.anthropic.messages.stream(
-                model="claude-sonnet-4-6",
-                system=system_prompt,
-                messages=[
-                    {"role": msg["role"], "content": msg["content"]} for msg in conversation_history
-                ],
-                max_tokens=1000,
-                temperature=0.7,
-            ) as stream:
-                async for event in stream:
-                    if event.type == "content_block_delta" and hasattr(event.delta, "text"):
-                        chunk_text = event.delta.text
-                        full_response += chunk_text
+            while tool_call_count <= MAX_TOOL_CALLS:
+                response = await self.anthropic.messages.create(
+                    model="claude-sonnet-4-6",
+                    system=system_prompt,
+                    messages=api_messages,
+                    tools=TOOL_DEFINITIONS,
+                    max_tokens=1500,
+                    temperature=0.7,
+                )
+
+                tool_use_blocks = [
+                    block for block in response.content if isinstance(block, ToolUseBlock)
+                ]
+
+                if not tool_use_blocks:
+                    text_parts = [
+                        block.text
+                        for block in response.content
+                        if hasattr(block, "text") and block.text
+                    ]
+                    full_response = "".join(text_parts)
+
+                    for chunk_text in _split_into_chunks(full_response):
                         yield {
                             "type": "content",
                             "data": {"text": chunk_text},
                             "conversation_id": str(conversation.id),
                         }
+                    break
 
-            # Extract sources and activity suggestions from response
-            sources_cited = self._extract_sources_from_response(full_response, chunks_dict)
+                if tool_call_count >= MAX_TOOL_CALLS:
+                    logger.warning(
+                        "Max tool calls reached, forcing final response",
+                        user_id=str(user_id),
+                        tool_call_count=tool_call_count,
+                    )
+                    text_parts = [
+                        block.text
+                        for block in response.content
+                        if hasattr(block, "text") and block.text
+                    ]
+                    full_response = "".join(text_parts)
+                    if full_response:
+                        for chunk_text in _split_into_chunks(full_response):
+                            yield {
+                                "type": "content",
+                                "data": {"text": chunk_text},
+                                "conversation_id": str(conversation.id),
+                            }
+                    break
+
+                assistant_content: list[Any] = list(response.content)
+                api_messages.append({"role": "assistant", "content": assistant_content})
+
+                tool_results: list[ToolResultBlockParam] = []
+                for tool_block in tool_use_blocks:
+                    tool_call_count += 1
+
+                    logger.info(
+                        "Tutor tool call",
+                        tool_name=tool_block.name,
+                        tool_id=tool_block.id,
+                        user_id=str(user_id),
+                        call_number=tool_call_count,
+                    )
+
+                    yield {
+                        "type": "tool_call",
+                        "data": {
+                            "tool_name": tool_block.name,
+                            "call_number": tool_call_count,
+                        },
+                        "conversation_id": str(conversation.id),
+                    }
+
+                    tool_result_str = await tool_executor.execute(
+                        tool_name=tool_block.name,
+                        tool_input=tool_block.input,
+                        session=session,
+                    )
+
+                    all_tool_calls.append(
+                        {
+                            "tool_name": tool_block.name,
+                            "tool_id": tool_block.id,
+                            "input": tool_block.input,
+                            "result_preview": tool_result_str[:200],
+                        }
+                    )
+
+                    if tool_block.name == "search_knowledge_base":
+                        import json
+
+                        try:
+                            rag_result = json.loads(tool_result_str)
+                            for chunk in rag_result.get("results", []):
+                                source_info: dict[str, Any] = {
+                                    "source": chunk.get("source", ""),
+                                    "content_preview": chunk.get("content", "")[:100] + "...",
+                                    "similarity_score": chunk.get("similarity", 0),
+                                }
+                                if chunk.get("chapter"):
+                                    source_info["chapter"] = chunk["chapter"]
+                                if chunk.get("page"):
+                                    source_info["page"] = chunk["page"]
+                                sources_cited.append(source_info)
+                        except Exception:
+                            pass
+
+                    tool_results.append(
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": tool_block.id,
+                            "content": tool_result_str,
+                        }
+                    )
+
+                api_messages.append({"role": "user", "content": tool_results})
+
+            unique_sources = _deduplicate_sources(sources_cited)
+
             activity_suggestions = self._extract_activity_suggestions(
                 full_response, context_type, user.current_level
             )
 
-            # Save messages to conversation
-            assistant_msg = {
+            assistant_msg_stored = {
                 "role": "assistant",
                 "content": full_response,
-                "sources": sources_cited,
+                "sources": unique_sources,
                 "timestamp": datetime.utcnow().isoformat(),
                 "activity_suggestions": activity_suggestions,
+                "tool_calls_count": tool_call_count,
             }
 
-            # Update conversation
-            updated_messages = conversation.messages + [user_msg, assistant_msg]
+            updated_messages = conversation.messages + [user_msg_stored, assistant_msg_stored]
             conversation.messages = updated_messages
             session.add(conversation)
             await session.commit()
 
-            # Send final metadata
+            yield {
+                "type": "sources_retrieved",
+                "data": {
+                    "chunk_count": len(unique_sources),
+                    "sources": [s.get("source", "") for s in unique_sources],
+                },
+                "conversation_id": str(conversation.id),
+            }
+
             yield {
                 "type": "sources_cited",
-                "data": {"sources": sources_cited},
+                "data": {"sources": unique_sources},
                 "conversation_id": str(conversation.id),
             }
 
@@ -204,6 +297,7 @@ class TutorService:
                 "data": {
                     "remaining_messages": self.daily_message_limit - messages_used - 1,
                     "conversation_id": str(conversation.id),
+                    "tool_calls_made": tool_call_count,
                 },
                 "finished": True,
             }
@@ -219,7 +313,6 @@ class TutorService:
         self, user_id: str | uuid.UUID, conversation_id: uuid.UUID, session: AsyncSession
     ) -> dict[str, Any] | None:
         """Get a specific conversation."""
-        # Convert user_id to UUID if it's a string
         if isinstance(user_id, str):
             user_id = uuid.UUID(user_id)
 
@@ -243,7 +336,6 @@ class TutorService:
         self, user_id: str | uuid.UUID, session: AsyncSession, limit: int = 20, offset: int = 0
     ) -> dict[str, Any]:
         """List user's tutor conversations."""
-        # Convert user_id to UUID if it's a string
         if isinstance(user_id, str):
             user_id = uuid.UUID(user_id)
 
@@ -257,7 +349,6 @@ class TutorService:
         result = await session.execute(query)
         conversations = result.scalars().all()
 
-        # Count total conversations
         count_query = select(func.count(TutorConversation.id)).where(
             TutorConversation.user_id == user_id
         )
@@ -299,23 +390,18 @@ class TutorService:
         self, user_id: str | uuid.UUID, session: AsyncSession
     ) -> dict[str, Any]:
         """Get tutor usage statistics for a user."""
-        # Convert user_id to UUID if it's a string
         if isinstance(user_id, str):
             user_id = uuid.UUID(user_id)
 
-        # Count daily messages
         daily_messages = await self._check_daily_limit(user_id, session)
 
-        # Count total conversations
         count_query = select(func.count(TutorConversation.id)).where(
             TutorConversation.user_id == user_id
         )
         count_result = await session.execute(count_query)
         total_conversations = count_result.scalar() or 0
 
-        # For now, return basic stats
-        # TODO: Implement topic extraction and frequency analysis
-        most_discussed_topics = []
+        most_discussed_topics: list[Any] = []
 
         return {
             "daily_messages_used": daily_messages,
@@ -326,7 +412,6 @@ class TutorService:
 
     async def _check_daily_limit(self, user_id: str | uuid.UUID, session: AsyncSession) -> int:
         """Check how many messages user has sent today."""
-        # Convert user_id to UUID if it's a string
         if isinstance(user_id, str):
             user_id = uuid.UUID(user_id)
 
@@ -341,7 +426,6 @@ class TutorService:
 
         message_count = 0
         for conv in conversations:
-            # Count user messages only
             user_messages = [msg for msg in conv.messages if msg.get("role") == "user"]
             message_count += len(user_messages)
 
@@ -355,7 +439,6 @@ class TutorService:
         session: AsyncSession,
     ) -> TutorConversation:
         """Get existing conversation or create a new one."""
-        # Convert user_id to UUID if it's a string
         if isinstance(user_id, str):
             user_id = uuid.UUID(user_id)
 
@@ -369,7 +452,6 @@ class TutorService:
             if conversation:
                 return conversation
 
-        # Create new conversation
         conversation = TutorConversation(
             id=uuid.uuid4(),
             user_id=user_id,
@@ -378,22 +460,20 @@ class TutorService:
             created_at=datetime.utcnow(),
         )
         session.add(conversation)
-        await session.flush()  # Get the ID
+        await session.flush()
 
         return conversation
 
     async def _retrieve_relevant_context(
         self, query: str, user: User, module_id: uuid.UUID | None, session: AsyncSession
     ) -> list[Any]:
-        """Retrieve relevant context using RAG."""
-        # Get module context if available
+        """Retrieve relevant context using RAG (kept for backward compatibility)."""
         books_sources = None
         if module_id:
             module = await session.get(Module, module_id)
             if module:
                 books_sources = module.books_sources
 
-        # Search for relevant chunks
         search_results = await self.retriever.search_for_module(
             query=query,
             user_level=user.current_level,
@@ -417,14 +497,12 @@ class TutorService:
         self, conversation: TutorConversation
     ) -> list[dict[str, str]]:
         """Prepare conversation history for Claude API."""
-        # Limit to last 10 messages to stay within context limits
         messages = (
             conversation.messages[-10:]
             if len(conversation.messages) > 10
             else conversation.messages
         )
 
-        # Convert to Claude format (role and content only)
         claude_messages = []
         for msg in messages:
             if msg.get("role") and msg.get("content"):
@@ -437,51 +515,10 @@ class TutorService:
 
         return claude_messages
 
-    def _extract_sources_from_response(
-        self, response: str, available_chunks: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
-        """Extract source citations from the tutor response."""
-        sources = []
-
-        # Look for citation patterns in the response
-        for chunk in available_chunks:
-            source_name = chunk.get("source", "")
-            chapter = chunk.get("chapter")
-            page = chunk.get("page")
-
-            # Simple matching - look for source name in response
-            if source_name.lower() in response.lower():
-                source_info = {
-                    "source": source_name,
-                    "content_preview": chunk.get("content", "")[:100] + "...",
-                    "similarity_score": chunk.get("similarity", 0),
-                }
-                if chapter:
-                    source_info["chapter"] = chapter
-                if page:
-                    source_info["page"] = page
-
-                sources.append(source_info)
-
-        # Remove duplicates based on source name
-        seen_sources = set()
-        unique_sources = []
-        for source in sources:
-            source_key = f"{source['source']}-{source.get('chapter', '')}-{source.get('page', '')}"
-            if source_key not in seen_sources:
-                seen_sources.add(source_key)
-                unique_sources.append(source)
-
-        return unique_sources[:5]  # Limit to 5 sources
-
     def _extract_activity_suggestions(
         self, response: str, context_type: str | None, user_level: int
     ) -> list[dict[str, str]]:
         """Extract activity suggestions from the response or generate them."""
-        # For now, generate basic suggestions
-        # TODO: Implement NLP to extract suggestions from response
-
-        # Look for key health topics
         health_topics = [
             "surveillance",
             "épidémiologie",
@@ -493,10 +530,32 @@ class TutorService:
             "hygiène",
         ]
 
-        topic = "santé publique"  # default
+        topic = "santé publique"
         for health_topic in health_topics:
             if health_topic in response.lower():
                 topic = health_topic
                 break
 
         return get_activity_suggestions(context_type, user_level, topic)
+
+
+def _split_into_chunks(text: str, chunk_size: int = 50) -> list[str]:
+    """Split text into smaller chunks for streaming simulation."""
+    if not text:
+        return []
+    chunks = []
+    for i in range(0, len(text), chunk_size):
+        chunks.append(text[i : i + chunk_size])
+    return chunks
+
+
+def _deduplicate_sources(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Remove duplicate sources by source+chapter+page."""
+    seen: set[str] = set()
+    unique: list[dict[str, Any]] = []
+    for source in sources:
+        key = f"{source.get('source', '')}-{source.get('chapter', '')}-{source.get('page', '')}"
+        if key not in seen:
+            seen.add(key)
+            unique.append(source)
+    return unique[:5]
