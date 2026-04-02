@@ -585,6 +585,11 @@
     "markComplete": "Mark as Complete",
     "completed": "Completed"
   },
+  "LessonImage": {
+    "imagePending": "Generating illustration...",
+    "imageViewFullscreen": "View fullscreen",
+    "imageCloseFullscreen": "Close fullscreen"
+  },
   "CaseStudyViewer": {
     "error": "An error occurred",
     "streamError": "Streaming error occurred",

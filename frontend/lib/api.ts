@@ -121,6 +121,22 @@ export async function apiFetch<T>(
 // Alias for backward compatibility and common usage
 export const fetchApi = apiFetch;
 
+// Lesson Image API Types
+export type LessonImageStatus = 'pending' | 'generating' | 'ready' | 'failed';
+
+export interface LessonImageResponse {
+  lesson_id: string;
+  status: LessonImageStatus;
+  url?: string;
+  alt_text?: string;
+  alt_text_fr?: string;
+  alt_text_en?: string;
+}
+
+export async function getLessonImageStatus(lessonId: string): Promise<LessonImageResponse> {
+  return apiFetch<LessonImageResponse>(`/api/v1/images/lesson/${lessonId}`);
+}
+
 export interface DashboardStats {
   streak_days: number;
   average_quiz_score: number;
