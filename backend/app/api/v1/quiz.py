@@ -13,6 +13,7 @@ from app.ai.claude_service import ClaudeService
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.api.deps import get_db
+from app.api.deps_local_auth import AuthenticatedUser, get_current_user
 from app.api.v1.schemas.quiz import (
     ErrorResponse,
     QuizAttemptRequest,
@@ -247,7 +248,7 @@ async def get_quiz(
 async def submit_quiz_attempt(
     request: QuizAttemptRequest,
     session: AsyncSession = Depends(get_db),
-    # user_id: UUID = Depends(get_current_user_id),  # TODO: Add auth dependency
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> QuizAttemptResponse:
     """
     Submit a completed quiz attempt and get immediate feedback.
@@ -266,8 +267,7 @@ async def submit_quiz_attempt(
     **Rate Limiting:** Users can retake quizzes unlimited times.
     """
     try:
-        # For now, use a dummy user_id until auth is implemented
-        user_id = uuid.uuid4()  # TODO: Replace with actual user from auth
+        user_id = UUID(current_user.id)
 
         logger.info(
             "Quiz attempt submitted",
@@ -527,7 +527,7 @@ async def generate_summative_assessment(
 async def can_attempt_summative_assessment(
     module_id: UUID,
     session: AsyncSession = Depends(get_db),
-    # user_id: UUID = Depends(get_current_user_id),  # TODO: Add auth dependency
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> SummativeAssessmentAttemptCheck:
     """
     Check if user can attempt summative assessment for a module.
@@ -538,8 +538,7 @@ async def can_attempt_summative_assessment(
     - User must wait 24h after failed attempt before retry
     """
     try:
-        # For now, use a dummy user_id until auth is implemented
-        user_id = uuid.uuid4()  # TODO: Replace with actual user from auth
+        user_id = UUID(current_user.id)
 
         # Check if module exists
         query = select(Module).where(Module.id == module_id)
@@ -632,7 +631,7 @@ async def can_attempt_summative_assessment(
 async def submit_summative_assessment_attempt(
     request: QuizAttemptRequest,
     session: AsyncSession = Depends(get_db),
-    # user_id: UUID = Depends(get_current_user_id),  # TODO: Add auth dependency
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> SummativeAssessmentResponse:
     """
     Submit a completed summative assessment attempt.
@@ -647,8 +646,7 @@ async def submit_summative_assessment_attempt(
     7. Store detailed results
     """
     try:
-        # For now, use a dummy user_id until auth is implemented
-        user_id = uuid.uuid4()  # TODO: Replace with actual user from auth
+        user_id = UUID(current_user.id)
 
         logger.info(
             "Summative assessment attempt submitted",
@@ -690,7 +688,7 @@ async def submit_summative_assessment_attempt(
 
         # Check if user can attempt
         can_attempt_response = await can_attempt_summative_assessment(
-            assessment_content.module_id, session
+            assessment_content.module_id, session, current_user
         )
 
         if not can_attempt_response.can_attempt:
