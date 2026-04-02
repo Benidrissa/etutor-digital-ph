@@ -599,6 +599,7 @@
     "guidedQuestions": "Questions guidées",
     "question": "Question {number}",
     "annotatedCorrection": "Correction annotée",
+    "showCorrection": "Voir la correction",
     "sourceCitations": "Sources citées",
     "markComplete": "Marquer comme Terminé",
     "completed": "Terminé"
