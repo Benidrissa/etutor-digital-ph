@@ -2,6 +2,7 @@ from app.domain.models.auth import MagicLink, RefreshToken, TOTPSecret
 from app.domain.models.base import Base
 from app.domain.models.content import GeneratedContent
 from app.domain.models.conversation import TutorConversation
+from app.domain.models.course import Course, UserCourseEnrollment
 from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.flashcard import FlashcardReview
 from app.domain.models.generated_image import GeneratedImage
@@ -15,6 +16,7 @@ from app.domain.models.user import User
 
 __all__ = [
     "Base",
+    "Course",
     "DocumentChunk",
     "GeneratedContent",
     "GeneratedImage",
@@ -27,6 +29,7 @@ __all__ = [
     "ModuleUnit",
     "RefreshToken",
     "TOTPSecret",
+    "UserCourseEnrollment",
     "UserModuleProgress",
     "QuizAttempt",
     "User",
