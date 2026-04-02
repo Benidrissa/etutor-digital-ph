@@ -4,6 +4,7 @@ from app.domain.models.content import GeneratedContent
 from app.domain.models.conversation import TutorConversation
 from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.flashcard import FlashcardReview
+from app.domain.models.generated_image import GeneratedImage
 from app.domain.models.learner_memory import LearnerMemory
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
@@ -15,6 +16,7 @@ __all__ = [
     "Base",
     "DocumentChunk",
     "GeneratedContent",
+    "GeneratedImage",
     "LearnerMemory",
     "TutorConversation",
     "FlashcardReview",
