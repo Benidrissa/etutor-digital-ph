@@ -8,6 +8,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { LessonSkeleton } from './lesson-skeleton';
 import { LessonImage } from './lesson-image';
 import { SourceCitations } from './source-citations';
@@ -208,7 +210,7 @@ export function LessonViewer({
           {/* Introduction */}
           <div className="mb-8">
             <div className={mdClass}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{content.introduction}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{content.introduction}</ReactMarkdown>
             </div>
           </div>
 
@@ -220,7 +222,7 @@ export function LessonViewer({
             <div className="space-y-6">
               {content.concepts.map((concept, index) => (
                 <div key={index} className={mdClass}>
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{concept}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{concept}</ReactMarkdown>
                 </div>
               ))}
             </div>
@@ -229,14 +231,14 @@ export function LessonViewer({
           {/* West African Example */}
           <div className="mb-8 bg-teal-50 border-l-4 border-teal-400 p-6 rounded-r-lg">
             <div className="prose prose-teal max-w-none">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{content.aof_example}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{content.aof_example}</ReactMarkdown>
             </div>
           </div>
 
           {/* Synthesis */}
           <div className="mb-8">
             <div className={mdClass}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{content.synthesis}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{content.synthesis}</ReactMarkdown>
             </div>
           </div>
 
