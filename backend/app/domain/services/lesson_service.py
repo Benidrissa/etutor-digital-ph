@@ -784,13 +784,23 @@ class CaseStudyGenerationService:
         if not sections:
             logger.warning("Case study section headers not found, using paragraph fallback")
             paragraphs = [p.strip() for p in content_text.split("\n\n") if p.strip()]
-            quarter = max(1, len(paragraphs) // 4)
-            sections = {
-                1: "\n\n".join(paragraphs[:quarter]),
-                2: "\n\n".join(paragraphs[quarter : 2 * quarter]),
-                3: "\n\n".join(paragraphs[2 * quarter : 3 * quarter]),
-                4: "\n\n".join(paragraphs[3 * quarter :]),
-            }
+            if len(paragraphs) >= 4:
+                quarter = max(1, len(paragraphs) // 4)
+                sections = {
+                    1: "\n\n".join(paragraphs[:quarter]),
+                    2: "\n\n".join(paragraphs[quarter : 2 * quarter]),
+                    3: "\n\n".join(paragraphs[2 * quarter : 3 * quarter]),
+                    4: "\n\n".join(paragraphs[3 * quarter :]),
+                }
+            else:
+                # Too few paragraphs — split by character position
+                chunk_size = max(1, len(content_text) // 4)
+                sections = {
+                    1: content_text[:chunk_size].strip(),
+                    2: content_text[chunk_size : 2 * chunk_size].strip(),
+                    3: content_text[2 * chunk_size : 3 * chunk_size].strip(),
+                    4: content_text[3 * chunk_size :].strip(),
+                }
 
         # Parse guided questions from section 3 (numbered or bulleted lines)
         questions_text = sections.get(3, "")
