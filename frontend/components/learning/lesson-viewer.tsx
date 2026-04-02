@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { LessonSkeleton } from './lesson-skeleton';
+import { LessonImage } from './lesson-image';
 import { SourceCitations } from './source-citations';
 import { apiFetch } from '@/lib/api';
 
@@ -210,6 +211,9 @@ export function LessonViewer({
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{content.introduction}</ReactMarkdown>
             </div>
           </div>
+
+          {/* Lesson Illustration */}
+          <LessonImage lessonId={lessonData.id} language={lessonData.language} />
 
           {/* Key Concepts */}
           <div className="mb-8">

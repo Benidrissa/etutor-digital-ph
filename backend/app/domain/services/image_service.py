@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import io
 import uuid
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.models.image import GeneratedImage
+from app.domain.models.generated_image import GeneratedImage
 from app.infrastructure.config.settings import settings
 
 if TYPE_CHECKING:
@@ -19,13 +19,12 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 _REUSE_THRESHOLD = 0.85
-_MAX_IMAGE_WIDTH = 512
 
 
-def _jaccard_similarity(tags_a: list[str], tags_b: list[str]) -> float:
+def _jaccard_similarity(tags_a: list, tags_b: list) -> float:
     """Compute Jaccard coefficient between two tag lists."""
-    set_a = {t.lower() for t in tags_a}
-    set_b = {t.lower() for t in tags_b}
+    set_a = {str(t).lower() for t in tags_a}
+    set_b = {str(t).lower() for t in tags_b}
     if not set_a and not set_b:
         return 1.0
     if not set_a or not set_b:
@@ -65,8 +64,11 @@ class ImageGenerationService:
             record.status = "generating"
             await session.flush()
 
-            dalle_prompt, semantic_tags = await self._extract_concept_and_tags(lesson_content)
-            record.dalle_prompt = dalle_prompt
+            dalle_prompt, semantic_tags, concept = await self._extract_concept_and_tags(
+                lesson_content
+            )
+            record.prompt = dalle_prompt
+            record.concept = concept
             record.semantic_tags = semantic_tags
             await session.flush()
 
@@ -74,7 +76,7 @@ class ImageGenerationService:
             if reusable:
                 reusable.reuse_count = (reusable.reuse_count or 0) + 1
                 reusable.lesson_id = lesson_id
-                record.status = "superseded"
+                record.status = "failed"
                 await session.commit()
                 logger.info(
                     "Reusing existing image",
@@ -83,15 +85,15 @@ class ImageGenerationService:
                 )
                 return reusable
 
-            image_bytes = await self._call_dalle(dalle_prompt)
-            webp_bytes = self._resize_to_webp(image_bytes)
+            image_url = await self._call_dalle(dalle_prompt)
 
             alt_fr, alt_en = await self._generate_alt_text(dalle_prompt)
 
-            record.image_data = webp_bytes
+            record.image_url = image_url
             record.alt_text_fr = alt_fr
             record.alt_text_en = alt_en
             record.status = "ready"
+            record.generated_at = datetime.now(tz=timezone.utc)
             await session.commit()
 
             logger.info(
@@ -112,8 +114,12 @@ class ImageGenerationService:
             await session.commit()
             return record
 
-    async def _extract_concept_and_tags(self, lesson_content: str) -> tuple[str, list[str]]:
+    async def _extract_concept_and_tags(
+        self, lesson_content: str
+    ) -> tuple[str, list, str]:
         """Use Claude to extract key concept and generate DALL-E prompt + semantic tags."""
+        import json
+
         import anthropic
 
         client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
@@ -122,9 +128,10 @@ class ImageGenerationService:
             "You are an educational illustration specialist for West African public health. "
             "Given lesson content, extract the key concept and produce:\n"
             "1. A DALL-E 3 prompt (max 200 chars) for a clear, culturally appropriate illustration\n"
-            "2. 5-10 semantic tags (lowercase English keywords)\n\n"
+            "2. 5-10 semantic tags (lowercase English keywords)\n"
+            "3. A short concept name (3-6 words)\n\n"
             "Respond ONLY in this exact JSON format:\n"
-            '{"prompt": "...", "tags": ["tag1", "tag2", ...]}'
+            '{"prompt": "...", "tags": ["tag1", "tag2", ...], "concept": "..."}'
         )
         snippet = lesson_content[:2000]
         message = client.messages.create(
@@ -133,15 +140,13 @@ class ImageGenerationService:
             messages=[{"role": "user", "content": f"Lesson content:\n{snippet}"}],
             system=system,
         )
-        import json
-
         raw = message.content[0].text.strip()
         data = json.loads(raw)
-        return data["prompt"], [t.lower() for t in data["tags"]]
+        return data["prompt"], [t.lower() for t in data["tags"]], data.get("concept", "")
 
     async def _find_reusable_image(
         self,
-        semantic_tags: list[str],
+        semantic_tags: list,
         exclude_id: uuid.UUID,
         session: AsyncSession,
     ) -> GeneratedImage | None:
@@ -162,41 +167,25 @@ class ImageGenerationService:
                 return candidate
         return None
 
-    async def _call_dalle(self, prompt: str) -> bytes:
-        """Call DALL-E 3 API and return raw image bytes."""
-        import httpx
+    async def _call_dalle(self, prompt: str) -> str:
+        """Call DALL-E 3 API and return image URL."""
         from openai import OpenAI
 
         client = OpenAI(api_key=settings.openai_api_key)
         response = client.images.generate(
             model="dall-e-3",
             prompt=prompt,
-            size="512x512",
+            size="1024x1024",
             quality="standard",
             n=1,
             response_format="url",
         )
-        image_url = response.data[0].url
-        async with httpx.AsyncClient() as http:
-            r = await http.get(image_url, timeout=30)
-            r.raise_for_status()
-            return r.content
-
-    def _resize_to_webp(self, image_bytes: bytes) -> bytes:
-        """Convert image bytes to WebP format at max 512px width."""
-        from PIL import Image
-
-        img = Image.open(io.BytesIO(image_bytes))
-        if img.width > _MAX_IMAGE_WIDTH:
-            ratio = _MAX_IMAGE_WIDTH / img.width
-            new_height = int(img.height * ratio)
-            img = img.resize((_MAX_IMAGE_WIDTH, new_height), Image.LANCZOS)
-        buf = io.BytesIO()
-        img.save(buf, format="WEBP", quality=85)
-        return buf.getvalue()
+        return response.data[0].url
 
     async def _generate_alt_text(self, dalle_prompt: str) -> tuple[str, str]:
         """Generate bilingual alt-text (FR and EN) for accessibility."""
+        import json
+
         import anthropic
 
         client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
@@ -217,8 +206,6 @@ class ImageGenerationService:
             ],
             system=system,
         )
-        import json
-
         raw = message.content[0].text.strip()
         data = json.loads(raw)
         return data["alt_fr"], data["alt_en"]

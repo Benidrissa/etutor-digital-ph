@@ -585,6 +585,11 @@
     "markComplete": "Marquer comme Terminé",
     "completed": "Terminé"
   },
+  "LessonImage": {
+    "imagePending": "Illustration en cours de génération...",
+    "imageViewFullscreen": "Voir en plein écran",
+    "imageCloseFullscreen": "Fermer le plein écran"
+  },
   "CaseStudyViewer": {
     "error": "Une erreur est survenue",
     "streamError": "Erreur lors de la diffusion en continu",
@@ -599,6 +604,7 @@
     "guidedQuestions": "Questions guidées",
     "question": "Question {number}",
     "annotatedCorrection": "Correction annotée",
+    "showCorrection": "Voir la correction",
     "sourceCitations": "Sources citées",
     "markComplete": "Marquer comme Terminé",
     "completed": "Terminé"
