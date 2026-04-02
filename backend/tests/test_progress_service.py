@@ -365,6 +365,125 @@ class TestGetModuleProgress:
         assert "in_progress" in statuses
 
 
+class TestCheckQuizPassedForUnit:
+    async def test_returns_false_when_no_quiz_content_found(
+        self, progress_service, mock_db, user_id, module_id
+    ):
+        mock_db.execute = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+
+        result = await progress_service.check_quiz_passed_for_unit(
+            user_id=user_id,
+            module_id=module_id,
+            unit_id="M01-U01",
+        )
+
+        assert result is False
+
+    async def test_returns_false_when_no_passing_attempt(
+        self, progress_service, mock_db, user_id, module_id
+    ):
+        quiz_id = uuid.uuid4()
+        call_count = 0
+
+        async def mock_execute(query):
+            nonlocal call_count
+            call_count += 1
+            mock_result = MagicMock()
+            if call_count == 1:
+                mock_result.all = MagicMock(return_value=[(quiz_id,)])
+            else:
+                mock_result.scalar = MagicMock(return_value=70.0)
+            return mock_result
+
+        mock_db.execute = mock_execute
+
+        result = await progress_service.check_quiz_passed_for_unit(
+            user_id=user_id,
+            module_id=module_id,
+            unit_id="M01-U01",
+        )
+
+        assert result is False
+
+    async def test_returns_true_when_passing_attempt_exists(
+        self, progress_service, mock_db, user_id, module_id
+    ):
+        quiz_id = uuid.uuid4()
+        call_count = 0
+
+        async def mock_execute(query):
+            nonlocal call_count
+            call_count += 1
+            mock_result = MagicMock()
+            if call_count == 1:
+                mock_result.all = MagicMock(return_value=[(quiz_id,)])
+            else:
+                mock_result.scalar = MagicMock(return_value=85.0)
+            return mock_result
+
+        mock_db.execute = mock_execute
+
+        result = await progress_service.check_quiz_passed_for_unit(
+            user_id=user_id,
+            module_id=module_id,
+            unit_id="M01-U01",
+        )
+
+        assert result is True
+
+    async def test_returns_true_exactly_at_80_threshold(
+        self, progress_service, mock_db, user_id, module_id
+    ):
+        quiz_id = uuid.uuid4()
+        call_count = 0
+
+        async def mock_execute(query):
+            nonlocal call_count
+            call_count += 1
+            mock_result = MagicMock()
+            if call_count == 1:
+                mock_result.all = MagicMock(return_value=[(quiz_id,)])
+            else:
+                mock_result.scalar = MagicMock(return_value=80.0)
+            return mock_result
+
+        mock_db.execute = mock_execute
+
+        result = await progress_service.check_quiz_passed_for_unit(
+            user_id=user_id,
+            module_id=module_id,
+            unit_id="M01-U01",
+        )
+
+        assert result is True
+
+    async def test_returns_false_when_no_attempt_at_all(
+        self, progress_service, mock_db, user_id, module_id
+    ):
+        quiz_id = uuid.uuid4()
+        call_count = 0
+
+        async def mock_execute(query):
+            nonlocal call_count
+            call_count += 1
+            mock_result = MagicMock()
+            if call_count == 1:
+                mock_result.all = MagicMock(return_value=[(quiz_id,)])
+            else:
+                mock_result.scalar = MagicMock(return_value=None)
+            return mock_result
+
+        mock_db.execute = mock_execute
+
+        result = await progress_service.check_quiz_passed_for_unit(
+            user_id=user_id,
+            module_id=module_id,
+            unit_id="M01-U01",
+        )
+
+        assert result is False
+
+
 class TestUnitNumberToUnitId:
     def test_converts_basic_format(self):
         assert ProgressService._unit_number_to_unit_id("1.1", 1) == "M01-U01"

@@ -11,6 +11,8 @@ from app.api.deps import get_db
 from app.api.deps_local_auth import get_current_user
 from app.api.v1.content import _resolve_module_id
 from app.api.v1.schemas.progress import (
+    CompleteLessonRequest,
+    CompleteLessonResponse,
     ErrorResponse,
     LessonAccessRequest,
     ModuleDetailWithProgressResponse,
@@ -18,7 +20,7 @@ from app.api.v1.schemas.progress import (
     UnitProgressDetail,
 )
 from app.domain.models.user import User
-from app.domain.services.progress_service import ProgressService
+from app.domain.services.progress_service import _UNLOCK_THRESHOLD_SCORE, ProgressService
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/progress", tags=["progress"])
@@ -202,4 +204,78 @@ async def get_module_detail_with_progress(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": "fetch_failed", "message": "Failed to retrieve module detail"},
+        )
+
+
+@router.post(
+    "/complete-lesson",
+    response_model=CompleteLessonResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        403: {"model": ErrorResponse, "description": "Quiz not passed"},
+        404: {"model": ErrorResponse, "description": "Module not found"},
+        500: {"model": ErrorResponse, "description": "Internal error"},
+    },
+)
+async def complete_lesson(
+    request: CompleteLessonRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> CompleteLessonResponse:
+    """
+    Mark a unit/lesson as completed.
+
+    Requires a passing quiz attempt (score ≥ 80%) for the given module + unit.
+    Returns 403 with error code 'quiz_required' if no passing attempt exists.
+    """
+    try:
+        user_id = UUID(str(current_user.id))
+        service = ProgressService(db)
+
+        quiz_passed = await service.check_quiz_passed_for_unit(
+            user_id=user_id,
+            module_id=request.module_id,
+            unit_id=request.unit_id,
+        )
+
+        if not quiz_passed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": "quiz_required",
+                    "message": "Pass the unit quiz with ≥80% to complete this lesson",
+                },
+            )
+
+        progress = await service.update_progress_after_quiz(
+            user_id=user_id,
+            module_id=request.module_id,
+            unit_id=request.unit_id,
+            score=_UNLOCK_THRESHOLD_SCORE,
+            passed=True,
+        )
+
+        logger.info(
+            "Lesson completed via complete-lesson endpoint",
+            user_id=str(user_id),
+            module_id=str(request.module_id),
+            unit_id=request.unit_id,
+            completion_pct=progress.completion_pct,
+        )
+
+        return CompleteLessonResponse(
+            completed=True,
+            module_progress=_make_module_progress_response(user_id, request.module_id, progress),
+        )
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except Exception as e:
+        logger.error("Failed to complete lesson", error=str(e), exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "completion_failed", "message": "Failed to complete lesson"},
         )
