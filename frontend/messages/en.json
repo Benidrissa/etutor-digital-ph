@@ -331,7 +331,11 @@
     "conversations": "Conversations",
     "openConversations": "Open conversations",
     "closeDrawer": "Close",
-    "toggleSuggestions": "Quick actions"
+    "toggleSuggestions": "Quick actions",
+    "modeSocratic": "Socratic Mode",
+    "modeExplanatory": "Explanatory Mode",
+    "modeSocraticTooltip": "Guided questions",
+    "modeExplanatoryTooltip": "Direct answers"
   },
   "Flashcards": {
     "title": "Flashcards",
