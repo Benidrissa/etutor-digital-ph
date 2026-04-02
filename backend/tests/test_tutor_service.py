@@ -11,6 +11,7 @@ from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.domain.models.conversation import TutorConversation
 from app.domain.models.user import User
+from app.domain.services.learner_memory_service import LearnerMemoryService
 from app.domain.services.tutor_service import TutorService
 
 
@@ -37,12 +38,26 @@ def mock_embedding_service():
 
 
 @pytest.fixture
-def tutor_service(mock_anthropic_client, mock_semantic_retriever, mock_embedding_service):
+def mock_learner_memory_service():
+    """Mock LearnerMemoryService."""
+    service = AsyncMock(spec=LearnerMemoryService)
+    service.format_for_prompt = AsyncMock(return_value="")
+    return service
+
+
+@pytest.fixture
+def tutor_service(
+    mock_anthropic_client,
+    mock_semantic_retriever,
+    mock_embedding_service,
+    mock_learner_memory_service,
+):
     """TutorService with mocked dependencies."""
     return TutorService(
         anthropic_client=mock_anthropic_client,
         semantic_retriever=mock_semantic_retriever,
         embedding_service=mock_embedding_service,
+        learner_memory_service=mock_learner_memory_service,
     )
 
 

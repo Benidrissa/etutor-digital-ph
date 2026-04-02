@@ -11,10 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.rag.retriever import SemanticRetriever
 from app.domain.models.content import GeneratedContent
-from app.domain.models.learner_memory import LearnerMemory
 from app.domain.models.module import Module
 from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import PlacementTestAttempt, QuizAttempt
+from app.domain.services.learner_memory_service import LearnerMemoryService
 
 logger = structlog.get_logger()
 
@@ -150,12 +150,14 @@ class TutorToolExecutor:
         user_id: uuid.UUID,
         user_level: int,
         user_language: str,
+        learner_memory_service: LearnerMemoryService | None = None,
     ):
         self.retriever = retriever
         self.anthropic = anthropic_client
         self.user_id = user_id
         self.user_level = user_level
         self.user_language = user_language
+        self.learner_memory_service = learner_memory_service or LearnerMemoryService()
 
     async def execute(
         self,
@@ -454,42 +456,28 @@ Respond ONLY with valid JSON in this exact format:
     async def _save_learner_preference(
         self, tool_input: dict[str, Any], session: AsyncSession
     ) -> str:
-        """Execute save_learner_preference tool."""
+        """Execute save_learner_preference tool using LearnerMemoryService."""
         preference_type = tool_input["preference_type"]
         value = tool_input["value"]
 
-        existing_query = select(LearnerMemory).where(
-            LearnerMemory.user_id == self.user_id,
-            LearnerMemory.preference_type == preference_type,
+        existing = await self.learner_memory_service._fetch(self.user_id, session)
+        was_existing = existing is not None
+
+        await self.learner_memory_service.update_preference(
+            self.user_id, preference_type, value, session
         )
-        existing_result = await session.execute(existing_query)
-        existing = existing_result.scalar_one_or_none()
-
-        if existing:
-            existing.value = value
-            session.add(existing)
-        else:
-            memory = LearnerMemory(
-                id=uuid.uuid4(),
-                user_id=self.user_id,
-                preference_type=preference_type,
-                value=value,
-            )
-            session.add(memory)
-
-        await session.flush()
 
         logger.info(
             "save_learner_preference tool completed",
             preference_type=preference_type,
             user_id=str(self.user_id),
-            updated=existing is not None,
+            updated=was_existing,
         )
         return json.dumps(
             {
                 "saved": True,
                 "preference_type": preference_type,
                 "value": value,
-                "updated": existing is not None,
+                "updated": was_existing,
             }
         )
