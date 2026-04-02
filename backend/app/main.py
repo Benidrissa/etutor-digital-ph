@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 import sentry_sdk
 import structlog
 from fastapi import FastAPI
@@ -5,7 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.middleware.rate_limit import RateLimitMiddleware
 from app.api.v1.router import api_v1_router
+from app.data.seeder import seed_module_units
 from app.infrastructure.config.settings import settings
+from app.infrastructure.persistence.database import async_session_factory
 
 
 def _scrub_pii(event, hint):
@@ -46,10 +50,23 @@ structlog.configure(
     cache_logger_on_first_use=True,
 )
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    log = structlog.get_logger(__name__)
+    try:
+        async with async_session_factory() as session:
+            await seed_module_units(session)
+    except Exception as exc:
+        log.warning("module_units seed skipped", error=str(exc))
+    yield
+
+
 app = FastAPI(
     title="SantePublique AOF API",
     description="Adaptive bilingual learning platform for public health in West Africa",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
