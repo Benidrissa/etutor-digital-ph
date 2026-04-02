@@ -13,14 +13,14 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SantePublique AOF",
+  title: "SantePublique",
   description:
     "Plateforme d'apprentissage adaptative en santé publique pour l'Afrique de l'Ouest",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "SantePublique AOF",
+    title: "SantePublique",
   },
   formatDetection: {
     telephone: false,
@@ -46,7 +46,7 @@ export default function RootLayout({
         <link rel="apple-touch-startup-image" href="/icon-512x512.svg" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="SantePublique AOF" />
+        <meta name="apple-mobile-web-app-title" content="SantePublique" />
       </head>
       <body className="min-h-dvh bg-background font-sans text-foreground antialiased">
         {children}

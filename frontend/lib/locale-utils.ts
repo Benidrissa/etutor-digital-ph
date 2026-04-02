@@ -1,5 +1,5 @@
 /**
- * Locale detection utilities for SantePublique AOF
+ * Locale detection utilities for SantePublique
  * Handles browser language detection and localStorage preferences
  */
 

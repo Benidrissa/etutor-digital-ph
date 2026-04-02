@@ -1,13 +1,13 @@
 {
   "Common": {
-    "appName": "SantePublique AOF",
+    "appName": "SantePublique",
     "loading": "Loading...",
     "offline": "You are offline — cached content available",
     "error": "An error occurred"
   },
   "PWA": {
     "installTitle": "Install App",
-    "installDescription": "Add SantePublique AOF to your home screen for quick access and an optimized experience.",
+    "installDescription": "Add SantePublique to your home screen for quick access and an optimized experience.",
     "install": "Install",
     "later": "Later"
   },
@@ -139,7 +139,7 @@
   },
   "Dashboard": {
     "title": "Dashboard",
-    "welcome": "Welcome to SantePublique AOF",
+    "welcome": "Welcome to SantePublique",
     "subtitle": "Your public health learning platform",
     "streak": "Day streak",
     "nextReview": "Next review",
@@ -393,7 +393,7 @@
     "goToModules": "Go to Modules"
   },
   "Onboarding": {
-    "welcome": "Welcome to SantePublique AOF",
+    "welcome": "Welcome to SantePublique",
     "subtitle": "Let's set up your personalized learning experience",
     "step": "Step {current} of {total}",
     "next": "Next",

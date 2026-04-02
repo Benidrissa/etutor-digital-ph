@@ -38,7 +38,7 @@ test.describe('PRODUCTION UAT: Full User Journey', () => {
     console.log(`📝 Starting registration for: ${UNIQUE_EMAIL}`);
 
     // Verify registration form is visible
-    await expect(page.getByText('SantePublique AOF')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('SantePublique')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('#name')).toBeVisible();
     await expect(page.locator('#email')).toBeVisible();
     await expect(page.locator('#language')).toBeVisible();
@@ -202,7 +202,7 @@ test.describe('PRODUCTION UAT: Full User Journey', () => {
     console.log(`\n🔐 Testing Login with TOTP - Email: ${UNIQUE_EMAIL}`);
 
     await page.goto(`${PROD_URL}/en/login`);
-    await expect(page.getByText('SantePublique AOF')).toBeVisible();
+    await expect(page.getByText('SantePublique')).toBeVisible();
     await expect(page.locator('#email')).toBeVisible();
     await expect(page.locator('#totp_code')).toBeVisible();
 
