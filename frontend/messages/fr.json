@@ -219,7 +219,8 @@
     "readingTime": "{minutes} min de lecture",
     "practiceQuiz": "Quiz d'entraînement",
     "caseStudy": "Étude de cas",
-    "unitsCompleted": "{completed} / {total} unités terminées"
+    "unitsCompleted": "{completed} / {total} unités terminées",
+    "review": "Réviser le module"
   },
   "Quiz": {
     "title": "Quiz",
