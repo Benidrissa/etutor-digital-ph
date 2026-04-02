@@ -14,6 +14,7 @@ class TutorContext:
     module_id: str | None = None
     context_type: str | None = None  # "module" | "lesson" | "quiz" | None
     context_id: str | None = None
+    learner_memory: str | None = None  # formatted memory summary for system prompt
 
 
 def get_socratic_system_prompt(context: TutorContext, rag_chunks: list[dict[str, Any]]) -> str:
@@ -43,6 +44,7 @@ def get_socratic_system_prompt(context: TutorContext, rag_chunks: list[dict[str,
     level_instruction = _get_level_instruction(context.user_level)
     country_context = _get_country_context(context.user_country)
     sources_context = _format_sources_context(rag_chunks)
+    memory_section = f"\n{context.learner_memory}" if context.learner_memory else ""
 
     prompt = f"""Tu es un tuteur IA spécialisé en santé publique pour l'Afrique de l'Ouest,
 adoptant une approche pédagogique socratique. Ta mission est de guider les apprenants
@@ -52,7 +54,7 @@ vers la compréhension plutôt que de donner des réponses directes.
 - Niveau: {level_instruction}
 - Langue: {language_instruction}
 - Pays: {country_context}
-- Module actuel: {context.module_id or "Non spécifié"}
+- Module actuel: {context.module_id or "Non spécifié"}{memory_section}
 
 ## LES 10 RÈGLES PÉDAGOGIQUES OBLIGATOIRES
 

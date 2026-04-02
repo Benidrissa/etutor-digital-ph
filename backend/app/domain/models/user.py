@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from app.domain.models.auth import EmailOTP, MagicLink, RefreshToken, TOTPSecret
     from app.domain.models.conversation import TutorConversation
     from app.domain.models.flashcard import FlashcardReview
+    from app.domain.models.learner_memory import LearnerMemory
     from app.domain.models.lesson_reading import LessonReading
     from app.domain.models.progress import UserModuleProgress
     from app.domain.models.quiz import PlacementTestAttempt, QuizAttempt, SummativeAssessmentAttempt
@@ -51,3 +52,6 @@ class User(Base):
     flashcard_reviews: Mapped[list[FlashcardReview]] = relationship(back_populates="user")
     lesson_readings: Mapped[list[LessonReading]] = relationship(back_populates="user")
     tutor_conversations: Mapped[list[TutorConversation]] = relationship(back_populates="user")
+    learner_memory: Mapped[LearnerMemory | None] = relationship(
+        back_populates="user", uselist=False
+    )
