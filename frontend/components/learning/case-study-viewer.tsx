@@ -82,18 +82,30 @@ export function CaseStudyViewer({
         const streamUrl = `${API_BASE}/api/v1/content/cases/${moduleId}/${unitId}/stream?language=${language}&level=${level}&country=${countryContext}`;
         eventSource = new EventSource(streamUrl);
 
-        eventSource.onmessage = (event) => {
+        eventSource.addEventListener('complete', (event) => {
           try {
             const data = JSON.parse(event.data);
-            if (data.event === 'complete') {
-              setCaseStudyData(data.data);
-              setIsStreaming(false);
-              eventSource?.close();
-            }
+            setCaseStudyData(data);
+            setIsStreaming(false);
+            eventSource?.close();
           } catch (e) {
-            console.error('Error parsing SSE data:', e);
+            console.error('Error parsing SSE complete event:', e);
+            setError(t('streamError'));
+            setIsStreaming(false);
+            eventSource?.close();
           }
-        };
+        });
+
+        eventSource.addEventListener('error', (event) => {
+          try {
+            const data = JSON.parse((event as MessageEvent).data);
+            console.error('SSE error event:', data);
+          } catch {
+          }
+          setError(t('streamError'));
+          setIsStreaming(false);
+          eventSource?.close();
+        });
 
         eventSource.onerror = () => {
           setError(t('streamError'));
@@ -259,7 +271,7 @@ export function CaseStudyViewer({
                 onClick={() => setCorrectionVisible(true)}
                 className="min-h-11 border-green-300 text-green-700 hover:bg-green-50"
               >
-                {language === 'fr' ? 'Voir la correction' : 'Show correction'}
+                {t('showCorrection')}
               </Button>
             )}
           </div>
