@@ -219,7 +219,8 @@
     "readingTime": "{minutes} min read",
     "practiceQuiz": "Practice Quiz",
     "caseStudy": "Case Study",
-    "unitsCompleted": "{completed} / {total} units completed"
+    "unitsCompleted": "{completed} / {total} units completed",
+    "review": "Review Module"
   },
   "Quiz": {
     "title": "Quiz",
