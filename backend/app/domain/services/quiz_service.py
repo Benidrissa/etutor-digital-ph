@@ -31,6 +31,7 @@ class QuizService:
         level: int,
         num_questions: int,
         session: AsyncSession,
+        force_regenerate: bool = False,
     ) -> QuizResponse:
         """
         Get existing quiz from cache or generate new one using RAG + Claude API.
@@ -52,17 +53,19 @@ class QuizService:
             Exception: If quiz generation fails
         """
         try:
-            # Cache lookup: match module, unit, language, and level
-            query = select(GeneratedContent).where(
-                GeneratedContent.module_id == module_id,
-                GeneratedContent.content_type == "quiz",
-                GeneratedContent.language == language,
-                GeneratedContent.level == level,
-                GeneratedContent.content["unit_id"].astext == unit_id,
-            )
+            cached_quiz = None
+            if not force_regenerate:
+                # Cache lookup: match module, unit, language, and level
+                query = select(GeneratedContent).where(
+                    GeneratedContent.module_id == module_id,
+                    GeneratedContent.content_type == "quiz",
+                    GeneratedContent.language == language,
+                    GeneratedContent.level == level,
+                    GeneratedContent.content["unit_id"].astext == unit_id,
+                )
 
-            result = await session.execute(query)
-            cached_quiz = result.scalar_one_or_none()
+                result = await session.execute(query)
+                cached_quiz = result.scalar_one_or_none()
 
             if cached_quiz:
                 logger.info(

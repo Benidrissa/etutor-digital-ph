@@ -276,7 +276,8 @@
     "lessonCompleted": "Leçon validée !",
     "lessonCompletedDesc": "Vous avez obtenu un score ≥ 80%. Cette leçon est maintenant marquée comme terminée dans votre progression.",
     "lessonNotValidated": "Leçon non validée",
-    "lessonNotValidatedDesc": "Vous devez obtenir au moins {score}% pour valider cette leçon. Réessayez !"
+    "lessonNotValidatedDesc": "Vous devez obtenir au moins {score}% pour valider cette leçon. Réessayez !",
+    "refreshContent": "Actualiser le contenu"
   },
   "ChatTutor": {
     "title": "Tuteur IA",
@@ -583,7 +584,8 @@
     "synthesis": "Synthèse",
     "keyPoints": "Points Clés",
     "markComplete": "Marquer comme Terminé",
-    "completed": "Terminé"
+    "completed": "Terminé",
+    "refreshContent": "Actualiser le contenu"
   },
   "LessonImage": {
     "imagePending": "Illustration en cours de génération...",
@@ -607,7 +609,8 @@
     "showCorrection": "Voir la correction",
     "sourceCitations": "Sources citées",
     "markComplete": "Marquer comme Terminé",
-    "completed": "Terminé"
+    "completed": "Terminé",
+    "refreshContent": "Actualiser le contenu"
   },
   "QuizPage": {
     "backToModule": "Retour à {module}"

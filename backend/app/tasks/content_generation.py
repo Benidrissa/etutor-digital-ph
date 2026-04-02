@@ -1,5 +1,7 @@
 """Celery tasks for AI content generation."""
 
+import uuid
+
 import structlog
 from celery import Task
 
@@ -191,3 +193,79 @@ def generate_flashcards(self, module_id: str, language: str = "fr", count: int =
             task_id=self.request.id,
         )
         raise
+
+
+@celery_app.task(
+    bind=True,
+    base=CallbackTask,
+    soft_time_limit=15,
+    time_limit=20,
+    rate_limit="5/m",
+)
+def generate_lesson_image(
+    self,
+    lesson_id: str,
+    module_id: str,
+    unit_id: str,
+    lesson_content: str,
+) -> dict:
+    """Generate an illustration for a lesson asynchronously (fire-and-forget).
+
+    Args:
+        lesson_id: UUID of the lesson (GeneratedContent.id)
+        module_id: UUID of the module
+        unit_id: Unit identifier within the module
+        lesson_content: Full lesson text used for concept extraction
+
+    Returns:
+        dict with image_id and status
+    """
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    from app.domain.services.image_service import ImageGenerationService
+    from app.infrastructure.config.settings import settings
+
+    logger.info(
+        "Starting lesson image generation",
+        lesson_id=lesson_id,
+        module_id=module_id,
+        unit_id=unit_id,
+        task_id=self.request.id,
+    )
+
+    async def _run() -> dict:
+        engine = create_async_engine(settings.database_url, echo=False)
+        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        try:
+            async with session_factory() as session:
+                service = ImageGenerationService()
+                image = await service.generate_for_lesson(
+                    lesson_id=uuid.UUID(lesson_id),
+                    module_id=uuid.UUID(module_id),
+                    unit_id=unit_id,
+                    lesson_content=lesson_content,
+                    session=session,
+                )
+                return {"image_id": str(image.id), "status": image.status}
+        finally:
+            await engine.dispose()
+
+    try:
+        result = asyncio.run(_run())
+        logger.info(
+            "Lesson image generation completed",
+            lesson_id=lesson_id,
+            result=result,
+            task_id=self.request.id,
+        )
+        return result
+    except Exception as exc:
+        logger.error(
+            "Lesson image generation failed",
+            lesson_id=lesson_id,
+            exception=str(exc),
+            task_id=self.request.id,
+        )
+        return {"image_id": None, "status": "failed", "error": str(exc)}

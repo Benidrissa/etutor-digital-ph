@@ -144,6 +144,7 @@ async def generate_quiz(
             level=request.level,
             num_questions=request.num_questions,
             session=session,
+            force_regenerate=request.force_regenerate,
         )
 
         logger.info(

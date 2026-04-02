@@ -323,6 +323,7 @@ async def get_or_generate_lesson_by_module_and_unit(
     language: str = "fr",
     level: int = 1,
     country: str = "SN",
+    force_regenerate: bool = False,
     lesson_service: LessonGenerationService = Depends(get_lesson_service),
     session: AsyncSession = Depends(get_db),
     current_user=Depends(get_optional_user),
@@ -369,6 +370,7 @@ async def get_or_generate_lesson_by_module_and_unit(
             country=country,
             level=level,
             session=session,
+            force_regenerate=force_regenerate,
         )
 
         # Track lesson access for authenticated users
@@ -855,6 +857,7 @@ async def get_or_generate_case_study(
     language: str = "fr",
     level: int = 1,
     country: str = "SN",
+    force_regenerate: bool = False,
     case_study_service: CaseStudyGenerationService = Depends(get_case_study_service),
     session: AsyncSession = Depends(get_db),
     current_user=Depends(get_optional_user),
@@ -888,6 +891,7 @@ async def get_or_generate_case_study(
             country=country,
             level=level,
             session=session,
+            force_regenerate=force_regenerate,
         )
 
         if current_user is not None:

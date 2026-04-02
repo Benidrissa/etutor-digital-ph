@@ -428,6 +428,35 @@ class LessonGenerationService:
             unit_id=lesson_response.unit_id,
         )
 
+        lesson_text = ""
+        content_dict = lesson_response.content.model_dump()
+        for key in ("introduction", "body", "summary", "content", "text"):
+            if key in content_dict and content_dict[key]:
+                lesson_text = str(content_dict[key])
+                break
+        if not lesson_text:
+            lesson_text = str(content_dict)[:2000]
+
+        try:
+            from app.tasks.content_generation import generate_lesson_image
+
+            generate_lesson_image.delay(
+                str(cached_content.id),
+                str(cached_content.module_id),
+                lesson_response.unit_id,
+                lesson_text[:2000],
+            )
+            logger.info(
+                "Dispatched image generation task",
+                lesson_id=str(cached_content.id),
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to dispatch image generation task",
+                lesson_id=str(cached_content.id),
+                error=str(exc),
+            )
+
 
 class CaseStudyGenerationService:
     """Service for orchestrating case study content generation."""
