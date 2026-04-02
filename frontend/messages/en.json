@@ -340,6 +340,7 @@
   "Flashcards": {
     "title": "Flashcards",
     "loading": "Loading flashcards...",
+    "generating": "Generating your flashcards...",
     "noCardsToday": "No cards due today!",
     "wellDone": "Well done! Come back tomorrow for more reviews.",
     "cardCount": "Card {current} of {total}",
@@ -394,7 +395,7 @@
     "reviewDescription": "Review flashcards with spaced repetition for effective learning",
     "redirectingToLogin": "Redirecting to login...",
     "noFlashcardsYet": "No flashcards yet",
-    "noFlashcardsDescription": "Complete modules to generate flashcards.",
+    "noFlashcardsDescription": "Complete modules to generate flashcards, or try again.",
     "goToModules": "Go to Modules"
   },
   "Onboarding": {
