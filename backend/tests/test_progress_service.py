@@ -419,3 +419,272 @@ class TestProgressServiceIntegration:
         )
 
         assert result.last_accessed is not None
+
+
+class TestUnlockNextModule:
+    async def test_unlock_threshold_triggers_next_module_unlock(
+        self, progress_service, mock_db, user_id, module_id
+    ):
+        from app.domain.models.module import Module
+
+        next_module_id = uuid.uuid4()
+        current_module = Module(
+            id=module_id,
+            module_number=1,
+            level=1,
+            title_fr="M01",
+            title_en="M01",
+            estimated_hours=20,
+        )
+        next_module = Module(
+            id=next_module_id,
+            module_number=2,
+            level=1,
+            title_fr="M02",
+            title_en="M02",
+            estimated_hours=20,
+        )
+        existing_progress = UserModuleProgress(
+            user_id=user_id,
+            module_id=module_id,
+            status="in_progress",
+            completion_pct=0.0,
+            quiz_score_avg=None,
+            time_spent_minutes=0,
+            last_accessed=None,
+        )
+        added_objects = []
+
+        def capture_add(obj):
+            added_objects.append(obj)
+
+        mock_db.add = MagicMock(side_effect=capture_add)
+
+        call_count = 0
+
+        async def mock_execute(query):
+            nonlocal call_count
+            call_count += 1
+            mock_result = MagicMock()
+            if call_count == 1:
+                # _get_or_create_progress
+                mock_result.scalar_one_or_none = MagicMock(return_value=existing_progress)
+            elif call_count == 2:
+                # _calculate_completion_pct: total units
+                mock_result.scalar = MagicMock(return_value=1)
+            elif call_count == 3:
+                # _get_completed_units: quiz contents
+                mock_result.all = MagicMock(return_value=[])
+            elif call_count == 4:
+                # _unlock_next_module: current module lookup
+                mock_result.scalar_one_or_none = MagicMock(return_value=current_module)
+            elif call_count == 5:
+                # _unlock_next_module: next module lookup
+                mock_result.scalar_one_or_none = MagicMock(return_value=next_module)
+            elif call_count == 6:
+                # _unlock_next_module: check existing progress for next module
+                mock_result.scalar_one_or_none = MagicMock(return_value=None)
+            else:
+                mock_result.scalar_one_or_none = MagicMock(return_value=None)
+                mock_result.scalar = MagicMock(return_value=None)
+                mock_result.all = MagicMock(return_value=[])
+            return mock_result
+
+        mock_db.execute = mock_execute
+
+        result = await progress_service.update_progress_after_quiz(
+            user_id=user_id,
+            module_id=module_id,
+            unit_id="M01-U01",
+            score=90.0,
+            passed=True,
+        )
+
+        assert result.quiz_score_avg == 90.0
+        assert result.completion_pct == 100.0
+        assert result.status == "completed"
+
+        unlocked = [
+            obj
+            for obj in added_objects
+            if isinstance(obj, UserModuleProgress) and obj.module_id == next_module_id
+        ]
+        assert len(unlocked) == 1
+        assert unlocked[0].status == "in_progress"
+
+    async def test_no_unlock_when_score_below_threshold(
+        self, progress_service, mock_db, user_id, module_id
+    ):
+        existing_progress = UserModuleProgress(
+            user_id=user_id,
+            module_id=module_id,
+            status="in_progress",
+            completion_pct=0.0,
+            quiz_score_avg=None,
+            time_spent_minutes=0,
+            last_accessed=None,
+        )
+
+        call_count = 0
+
+        async def mock_execute(query):
+            nonlocal call_count
+            call_count += 1
+            mock_result = MagicMock()
+            if call_count == 1:
+                mock_result.scalar_one_or_none = MagicMock(return_value=existing_progress)
+            else:
+                mock_result.scalar_one_or_none = MagicMock(return_value=None)
+                mock_result.scalar = MagicMock(return_value=None)
+            return mock_result
+
+        mock_db.execute = mock_execute
+
+        result = await progress_service.update_progress_after_quiz(
+            user_id=user_id,
+            module_id=module_id,
+            unit_id="M01-U01",
+            score=70.0,
+            passed=False,
+        )
+
+        assert result.quiz_score_avg == 70.0
+        # No unlock should happen — execute should only have been called twice
+        # (once for get_or_create_progress, no further calls for unlock)
+        assert call_count == 1
+
+    async def test_unlock_updates_existing_locked_next_module(
+        self, progress_service, mock_db, user_id, module_id
+    ):
+        from app.domain.models.module import Module
+
+        next_module_id = uuid.uuid4()
+        current_module = Module(
+            id=module_id,
+            module_number=3,
+            level=1,
+            title_fr="M03",
+            title_en="M03",
+            estimated_hours=20,
+        )
+        next_module = Module(
+            id=next_module_id,
+            module_number=4,
+            level=2,
+            title_fr="M04",
+            title_en="M04",
+            estimated_hours=25,
+        )
+        locked_next_progress = UserModuleProgress(
+            user_id=user_id,
+            module_id=next_module_id,
+            status="locked",
+            completion_pct=0.0,
+            quiz_score_avg=None,
+            time_spent_minutes=0,
+            last_accessed=None,
+        )
+        existing_progress = UserModuleProgress(
+            user_id=user_id,
+            module_id=module_id,
+            status="in_progress",
+            completion_pct=0.0,
+            quiz_score_avg=None,
+            time_spent_minutes=0,
+            last_accessed=None,
+        )
+        call_count = 0
+
+        async def mock_execute(query):
+            nonlocal call_count
+            call_count += 1
+            mock_result = MagicMock()
+            if call_count == 1:
+                mock_result.scalar_one_or_none = MagicMock(return_value=existing_progress)
+            elif call_count == 2:
+                mock_result.scalar = MagicMock(return_value=1)
+            elif call_count == 3:
+                mock_result.all = MagicMock(return_value=[])
+            elif call_count == 4:
+                mock_result.scalar_one_or_none = MagicMock(return_value=current_module)
+            elif call_count == 5:
+                mock_result.scalar_one_or_none = MagicMock(return_value=next_module)
+            elif call_count == 6:
+                mock_result.scalar_one_or_none = MagicMock(return_value=locked_next_progress)
+            else:
+                mock_result.scalar_one_or_none = MagicMock(return_value=None)
+            return mock_result
+
+        mock_db.execute = mock_execute
+
+        await progress_service.update_progress_after_quiz(
+            user_id=user_id,
+            module_id=module_id,
+            unit_id="M03-U01",
+            score=85.0,
+            passed=True,
+        )
+
+        assert locked_next_progress.status == "in_progress"
+
+    async def test_no_unlock_when_no_next_module(
+        self, progress_service, mock_db, user_id, module_id
+    ):
+        from app.domain.models.module import Module
+
+        last_module = Module(
+            id=module_id,
+            module_number=15,
+            level=4,
+            title_fr="M15",
+            title_en="M15",
+            estimated_hours=20,
+        )
+        existing_progress = UserModuleProgress(
+            user_id=user_id,
+            module_id=module_id,
+            status="in_progress",
+            completion_pct=0.0,
+            quiz_score_avg=None,
+            time_spent_minutes=0,
+            last_accessed=None,
+        )
+        call_count = 0
+
+        async def mock_execute(query):
+            nonlocal call_count
+            call_count += 1
+            mock_result = MagicMock()
+            if call_count == 1:
+                mock_result.scalar_one_or_none = MagicMock(return_value=existing_progress)
+            elif call_count == 2:
+                mock_result.scalar = MagicMock(return_value=1)
+            elif call_count == 3:
+                mock_result.all = MagicMock(return_value=[])
+            elif call_count == 4:
+                mock_result.scalar_one_or_none = MagicMock(return_value=last_module)
+            elif call_count == 5:
+                # No next module
+                mock_result.scalar_one_or_none = MagicMock(return_value=None)
+            else:
+                mock_result.scalar_one_or_none = MagicMock(return_value=None)
+            return mock_result
+
+        mock_db.execute = mock_execute
+        added_objects = []
+        mock_db.add = MagicMock(side_effect=lambda obj: added_objects.append(obj))
+
+        await progress_service.update_progress_after_quiz(
+            user_id=user_id,
+            module_id=module_id,
+            unit_id="M15-U01",
+            score=90.0,
+            passed=True,
+        )
+
+        new_progress_rows = [
+            obj
+            for obj in added_objects
+            if isinstance(obj, UserModuleProgress) and obj.module_id != module_id
+        ]
+        assert len(new_progress_rows) == 0

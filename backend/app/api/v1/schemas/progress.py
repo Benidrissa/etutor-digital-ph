@@ -26,6 +26,7 @@ class ModuleProgressResponse(BaseModel):
 
     module_id: UUID = Field(description="Module UUID")
     user_id: UUID = Field(description="User UUID")
+    module_number: int | None = Field(default=None, description="Module number (1-15)")
     status: str = Field(description="locked | in_progress | completed")
     completion_pct: float = Field(description="Completion percentage (0-100)")
     quiz_score_avg: float | None = Field(description="Average quiz score (0-100)")

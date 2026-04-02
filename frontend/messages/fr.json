@@ -188,7 +188,9 @@
     "overallProgress": "Progression globale",
     "modulesCompleted": "modules terminés",
     "totalHours": "{count} heures au total",
-    "estimatedCompletion": "Durée estimée : 6-12 mois"
+    "estimatedCompletion": "Durée estimée : 6-12 mois",
+    "loading": "Chargement des modules...",
+    "error": "Impossible de charger la progression. Veuillez réessayer."
   },
   "ModuleOverview": {
     "backToModules": "Retour aux modules",
