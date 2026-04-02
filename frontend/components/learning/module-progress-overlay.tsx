@@ -36,18 +36,18 @@ function getStatusIcon(status: 'pending' | 'in-progress' | 'completed') {
   }
 }
 
-function detectUnitType(unitNumber: string): 'lesson' | 'quiz' | 'case-study' {
-  if (unitNumber.toLowerCase().includes('quiz') || unitNumber.toLowerCase().includes('q')) {
-    return 'quiz';
-  }
-  if (unitNumber.toLowerCase().includes('case') || unitNumber.toLowerCase().includes('cs')) {
-    return 'case-study';
-  }
+function detectUnitType(unit: UnitProgressDetail): 'lesson' | 'quiz' | 'case-study' {
+  const title = (unit.title_fr || unit.title_en || '').toLowerCase();
+  if (title.includes('quiz')) return 'quiz';
+  if (title.includes('étude de cas') || title.includes('case study')) return 'case-study';
+  // Fallback: last unit in module of 5 is case-study, second-to-last is quiz
+  if (unit.order_index === 3) return 'quiz';
+  if (unit.order_index === 4) return 'case-study';
   return 'lesson';
 }
 
-function getTypeIcon(unitNumber: string) {
-  const type = detectUnitType(unitNumber);
+function getTypeIcon(unit: UnitProgressDetail) {
+  const type = detectUnitType(unit);
   switch (type) {
     case 'quiz':
       return <MessageSquare className="w-4 h-4" />;
@@ -59,7 +59,7 @@ function getTypeIcon(unitNumber: string) {
 }
 
 function getUnitHref(moduleId: string, unit: UnitProgressDetail): string {
-  const type = detectUnitType(unit.unit_number);
+  const type = detectUnitType(unit);
   if (type === 'quiz') {
     return `/modules/${moduleId}/quiz?unit=${unit.unit_number}`;
   }
@@ -154,7 +154,7 @@ export function ModuleProgressOverlay({
                       <div className="flex items-center gap-3 flex-1">
                         {getStatusIcon(mappedStatus)}
                         <div className="flex items-center gap-2 text-stone-600">
-                          {getTypeIcon(unit.unit_number)}
+                          {getTypeIcon(unit)}
                           <span className="text-sm font-medium">
                             {t('unitNumber', { number: unit.order_index + 1 })}
                           </span>
