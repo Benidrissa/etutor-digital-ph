@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import io
+import json
 import uuid
 from datetime import datetime
 
@@ -46,7 +46,6 @@ class ImageGenerationService:
         Returns the UUID of the GeneratedImage record (new or reused).
         """
         from app.domain.models.generated_image import GeneratedImage
-        from sqlalchemy import select
 
         concept, prompt, tags = await self._extract_concept_and_tags(lesson_content)
 
@@ -125,8 +124,6 @@ class ImageGenerationService:
                 }
             ],
         )
-        import json
-
         text = response.content[0].text.strip()
         if text.startswith("```"):
             text = text.split("```")[1]
@@ -194,8 +191,6 @@ class ImageGenerationService:
                 }
             ],
         )
-        import json
-
         text = response.content[0].text.strip()
         if text.startswith("```"):
             text = text.split("```")[1]
