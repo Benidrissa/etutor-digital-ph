@@ -65,7 +65,6 @@ export default async function LessonPage({ params }: LessonPageProps) {
           unitId={unitId}
           language={language}
           level={moduleLevel}
-          countryContext="SN"
         />
       ) : (
         <LessonViewer
@@ -73,7 +72,6 @@ export default async function LessonPage({ params }: LessonPageProps) {
           unitId={unitId}
           language={language}
           level={moduleLevel}
-          countryContext="SN"
         />
       )}
     </div>

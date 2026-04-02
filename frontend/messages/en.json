@@ -276,7 +276,8 @@
     "lessonCompleted": "Lesson validated!",
     "lessonCompletedDesc": "You scored ≥80%. This lesson is now marked as complete in your progress.",
     "lessonNotValidated": "Lesson not validated",
-    "lessonNotValidatedDesc": "You need at least {score}% to validate this lesson. Try again!"
+    "lessonNotValidatedDesc": "You need at least {score}% to validate this lesson. Try again!",
+    "refreshContent": "Refresh content"
   },
   "ChatTutor": {
     "title": "AI Tutor",
@@ -583,7 +584,8 @@
     "synthesis": "Synthesis",
     "keyPoints": "Key Points",
     "markComplete": "Mark as Complete",
-    "completed": "Completed"
+    "completed": "Completed",
+    "refreshContent": "Refresh content"
   },
   "LessonImage": {
     "imagePending": "Generating illustration...",
@@ -607,7 +609,8 @@
     "showCorrection": "Show correction",
     "sourceCitations": "Source Citations",
     "markComplete": "Mark as Complete",
-    "completed": "Completed"
+    "completed": "Completed",
+    "refreshContent": "Refresh content"
   },
   "QuizPage": {
     "backToModule": "Back to {module}"
