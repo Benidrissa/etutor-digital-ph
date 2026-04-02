@@ -1,5 +1,6 @@
 """Service for lesson and case study content generation and management."""
 
+import re
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime
@@ -737,7 +738,17 @@ class CaseStudyGenerationService:
     async def _parse_case_study_content(
         self, content_text: str, rag_chunks: list
     ) -> CaseStudyContent:
-        """Parse generated content into structured case study format."""
+        """Parse generated content into structured case study format.
+
+        Claude produces 4 numbered sections with bold headers like:
+          1. **Contexte AOF** / 1. **AOF Context**
+          2. **Données réelles** / 2. **Real Data**
+          3. **Questions guidées** / 3. **Guided Questions**
+          4. **Correction annotée** / 4. **Annotated Correction**
+
+        This method splits on those headers and maps each section.
+        """
+        # Extract source citations from RAG chunks
         sources_cited = []
         for chunk in rag_chunks:
             if hasattr(chunk, "chunk"):
@@ -758,19 +769,67 @@ class CaseStudyGenerationService:
             if source_citation not in sources_cited:
                 sources_cited.append(source_citation)
 
-        half = len(content_text) // 2
+        # Split on numbered section headers: "1. **...**", "## 1. **...**", etc.
+        section_pattern = r"(?:^|\n)(?:#{1,3}\s*)?(\d+)\.\s*\*\*[^*]+\*\*"
+        splits = list(re.finditer(section_pattern, content_text))
+
+        sections: dict[int, str] = {}
+        for i, match in enumerate(splits):
+            section_num = int(match.group(1))
+            start = match.end()
+            end = splits[i + 1].start() if i + 1 < len(splits) else len(content_text)
+            sections[section_num] = content_text[start:end].strip()
+
+        # Fallback: if regex found no sections, split by paragraphs proportionally
+        if not sections:
+            logger.warning("Case study section headers not found, using paragraph fallback")
+            paragraphs = [p.strip() for p in content_text.split("\n\n") if p.strip()]
+            if len(paragraphs) >= 4:
+                quarter = max(1, len(paragraphs) // 4)
+                sections = {
+                    1: "\n\n".join(paragraphs[:quarter]),
+                    2: "\n\n".join(paragraphs[quarter : 2 * quarter]),
+                    3: "\n\n".join(paragraphs[2 * quarter : 3 * quarter]),
+                    4: "\n\n".join(paragraphs[3 * quarter :]),
+                }
+            else:
+                # Too few paragraphs — split by character position
+                chunk_size = max(1, len(content_text) // 4)
+                sections = {
+                    1: content_text[:chunk_size].strip(),
+                    2: content_text[chunk_size : 2 * chunk_size].strip(),
+                    3: content_text[2 * chunk_size : 3 * chunk_size].strip(),
+                    4: content_text[3 * chunk_size :].strip(),
+                }
+
+        # Parse guided questions from section 3 (numbered or bulleted lines)
+        questions_text = sections.get(3, "")
+        question_lines = re.findall(
+            r"(?:^|\n)\s*(?:\d+[\.\)]\s*|-\s*|\*\s*)(.+?)(?=\n\s*(?:\d+[\.\)]|-|\*)|\Z)",
+            questions_text,
+            re.DOTALL,
+        )
+        guided_questions = [q.strip() for q in question_lines if q.strip()]
+
+        # If individual question extraction failed, use the whole section text
+        if not guided_questions and questions_text.strip():
+            guided_questions = [
+                line.strip()
+                for line in questions_text.strip().split("\n")
+                if line.strip() and not re.match(r"^#{1,3}\s", line)
+            ]
+
+        # Ensure minimum 2 questions (schema constraint: min_length=2)
+        if len(guided_questions) < 2:
+            guided_questions = [questions_text.strip() or sections.get(3, "")]
+            if len(guided_questions) < 2:
+                guided_questions.append("")
+
         return CaseStudyContent(
-            aof_context=content_text[:300] + "..." if len(content_text) > 300 else content_text,
-            real_data=content_text[300:600] + "..."
-            if len(content_text) > 600
-            else content_text[300:],
-            guided_questions=[
-                "Question guidée 1 — sera extraite du contenu généré",
-                "Question guidée 2 — sera extraite du contenu généré",
-            ],
-            annotated_correction=content_text[half:]
-            if len(content_text) > half
-            else "Correction annotée sera extraite du contenu généré.",
+            aof_context=sections.get(1, content_text[:500]),
+            real_data=sections.get(2, ""),
+            guided_questions=guided_questions,
+            annotated_correction=sections.get(4, ""),
             sources_cited=sources_cited,
         )
 
