@@ -53,6 +53,9 @@ class ConversationSummary(BaseModel):
     message_count: int = Field(..., description="Number of messages")
     last_message_at: datetime = Field(..., description="Timestamp of last message")
     preview: str = Field(..., description="First few words of conversation")
+    has_context: bool = Field(
+        False, description="Whether this conversation has prior compacted context"
+    )
 
 
 class TutorConversationListResponse(BaseModel):

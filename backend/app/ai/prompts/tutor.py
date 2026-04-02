@@ -15,6 +15,8 @@ class TutorContext:
     context_type: str | None = None  # "module" | "lesson" | "quiz" | None
     context_id: str | None = None
     learner_memory: str | None = None  # Pre-formatted memory text for system prompt
+    previous_session_context: str | None = None  # Compacted context from prior session
+    progress_snapshot: str | None = None  # Short learner progress summary
 
 
 def get_socratic_system_prompt(context: TutorContext, rag_chunks: list[dict[str, Any]]) -> str:
@@ -54,7 +56,7 @@ vers la compréhension plutôt que de donner des réponses directes.
 - Langue: {language_instruction}
 - Pays: {country_context}
 - Module actuel: {context.module_id or "Non spécifié"}
-{_format_memory_section(context.learner_memory)}
+{_format_progress_section(context.progress_snapshot)}{_format_memory_section(context.learner_memory)}{_format_previous_session_section(context.previous_session_context)}
 
 ## LES 10 RÈGLES PÉDAGOGIQUES OBLIGATOIRES
 
@@ -207,6 +209,20 @@ def _format_memory_section(learner_memory: str | None) -> str:
     if not learner_memory:
         return ""
     return f"\n## MÉMOIRE DE L'APPRENANT\n{learner_memory}"
+
+
+def _format_previous_session_section(previous_session_context: str | None) -> str:
+    """Format previous session context as a section for the system prompt."""
+    if not previous_session_context:
+        return ""
+    return f'\n## CONTEXTE DE LA SESSION PRÉCÉDENTE\n{previous_session_context}\n(Utilise ce contexte pour assurer la continuité. Tu peux référencer naturellement les discussions précédentes: "Comme nous avons vu lors de notre dernière session...")'
+
+
+def _format_progress_section(progress_snapshot: str | None) -> str:
+    """Format learner progress snapshot as a section for the system prompt."""
+    if not progress_snapshot:
+        return ""
+    return f"\n## PROGRESSION ACTUELLE\n{progress_snapshot}"
 
 
 def _get_language_instruction(language: str) -> str:

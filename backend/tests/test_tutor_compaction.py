@@ -13,6 +13,7 @@ from app.domain.services.tutor_service import (
     COMPACT_KEEP_RECENT,
     COMPACT_SUMMARIZE_UP_TO,
     COMPACT_TRIGGER,
+    SessionContext,
     TutorService,
 )
 
@@ -41,11 +42,15 @@ def mock_embedding_service():
 
 @pytest.fixture
 def tutor_service(mock_anthropic_client, mock_semantic_retriever, mock_embedding_service):
-    return TutorService(
+    svc = TutorService(
         anthropic_client=mock_anthropic_client,
         semantic_retriever=mock_semantic_retriever,
         embedding_service=mock_embedding_service,
     )
+    svc.session_manager.build_session_context = AsyncMock(
+        return_value=SessionContext(learner_memory="", is_new_conversation=True)
+    )
+    return svc
 
 
 @pytest.fixture
