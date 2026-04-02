@@ -3,6 +3,7 @@
 import structlog
 from celery import Celery
 
+import app.domain.models  # noqa: F401 — register all SQLAlchemy models with the mapper
 from app.infrastructure.config.settings import settings
 
 logger = structlog.get_logger(__name__)
