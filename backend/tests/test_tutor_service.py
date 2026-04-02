@@ -283,3 +283,93 @@ async def test_send_message_never_yields_text_type(tutor_service, sample_user, s
     assert len(text_type_chunks) == 0, (
         "Bug #213 regression: type='text' chunks were yielded but frontend expects type='content'"
     )
+
+
+async def test_list_conversations_returns_expected_fields(
+    tutor_service, sample_user, sample_conversation
+):
+    """list_conversations returns dicts with required fields for the sidebar."""
+    mock_session = AsyncMock(spec=AsyncSession)
+
+    from unittest.mock import MagicMock
+
+    mock_scalars = MagicMock()
+    mock_scalars.all.return_value = [sample_conversation]
+
+    mock_count_result = MagicMock()
+    mock_count_result.scalar.return_value = 1
+
+    execute_results = [MagicMock(), MagicMock()]
+    execute_results[0].scalars.return_value = mock_scalars
+    execute_results[1].scalar.return_value = 1
+
+    call_count = 0
+
+    async def fake_execute(_query):
+        nonlocal call_count
+        result = execute_results[call_count]
+        call_count += 1
+        return result
+
+    mock_session.execute = fake_execute
+
+    result = await tutor_service.list_conversations(
+        user_id=sample_user.id,
+        session=mock_session,
+    )
+
+    assert "conversations" in result
+    assert "total" in result
+    assert result["total"] == 1
+    assert len(result["conversations"]) == 1
+    conv = result["conversations"][0]
+    for field in ("id", "message_count", "last_message_at", "preview"):
+        assert field in conv, f"Missing field '{field}' in conversation summary"
+
+
+async def test_get_conversation_returns_none_for_wrong_user(
+    tutor_service, sample_user, sample_conversation
+):
+    """get_conversation returns None when conversation belongs to a different user."""
+    other_user_id = uuid.uuid4()
+    mock_session = AsyncMock(spec=AsyncSession)
+
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_session.execute = AsyncMock(return_value=mock_result)
+
+    result = await tutor_service.get_conversation(
+        user_id=other_user_id,
+        conversation_id=sample_conversation.id,
+        session=mock_session,
+    )
+
+    assert result is None
+
+
+async def test_get_conversation_returns_messages(
+    tutor_service, sample_user, sample_conversation
+):
+    """get_conversation returns full conversation with messages list."""
+    from datetime import UTC, datetime
+
+    sample_conversation.messages = [
+        {"role": "user", "content": "Hello", "timestamp": datetime.now(UTC).isoformat()},
+        {"role": "assistant", "content": "Hi!", "timestamp": datetime.now(UTC).isoformat()},
+    ]
+
+    mock_session = AsyncMock(spec=AsyncSession)
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = sample_conversation
+    mock_session.execute = AsyncMock(return_value=mock_result)
+
+    result = await tutor_service.get_conversation(
+        user_id=sample_user.id,
+        conversation_id=sample_conversation.id,
+        session=mock_session,
+    )
+
+    assert result is not None
+    assert result["id"] == sample_conversation.id
+    assert "messages" in result
+    assert len(result["messages"]) == 2
