@@ -133,7 +133,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             await self._check_tutor_rate_limit(request, client_ip)
 
     async def _check_tutor_rate_limit(self, request: Request, client_ip: str) -> None:
-        """Check tutor message rate limit (50/day/user)."""
+        """Check tutor message rate limit (200/day/user)."""
         # TODO: Extract user_id from JWT token when auth is implemented
         # For now, use IP address as identifier
         user_identifier = client_ip
@@ -146,7 +146,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             # Count tutor messages today
             message_count = await redis_client.zcount(cache_key, day_start, current_time)
 
-            if message_count >= 50:
+            if message_count >= 200:
                 logger.warning(
                     "Tutor rate limit exceeded",
                     user_identifier=user_identifier,
@@ -156,7 +156,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     status_code=429,
                     detail={
                         "error": "Daily tutor message limit exceeded",
-                        "limit": 50,
+                        "limit": 200,
                         "window_hours": 24,
                         "retry_after": 86400 - (current_time % 86400),
                     },
@@ -211,7 +211,7 @@ async def get_rate_limit_status(client_ip: str, user_id: str = None) -> dict:
 
             status["tutor"] = {
                 "messages_today": tutor_count,
-                "limit": 50,
+                "limit": 200,
                 "window_hours": 24,
                 "remaining": max(0, 50 - tutor_count),
             }
