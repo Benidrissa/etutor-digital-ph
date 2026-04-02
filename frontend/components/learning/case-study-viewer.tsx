@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { LessonSkeleton } from './lesson-skeleton';
 import { SourceCitations } from './source-citations';
 import { apiFetch } from '@/lib/api';
@@ -131,6 +132,29 @@ export function CaseStudyViewer({
   const mdClass =
     'prose prose-gray max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-900 prose-table:text-sm';
 
+  const mdComponents = {
+    table: ({ children, ...props }: React.HTMLAttributes<HTMLTableElement>) => (
+      <div className="overflow-x-auto my-4">
+        <table className="min-w-full border-collapse text-sm" {...props}>{children}</table>
+      </div>
+    ),
+    th: ({ children, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) => (
+      <th className="border border-gray-300 bg-gray-50 px-3 py-2 text-left font-semibold text-gray-900" {...props}>{children}</th>
+    ),
+    td: ({ children, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) => (
+      <td className="border border-gray-300 px-3 py-2 text-gray-700" {...props}>{children}</td>
+    ),
+    tr: ({ children, ...props }: React.HTMLAttributes<HTMLTableRowElement>) => (
+      <tr className="even:bg-gray-50" {...props}>{children}</tr>
+    ),
+    pre: ({ children, ...props }: React.HTMLAttributes<HTMLPreElement>) => (
+      <pre className="bg-gray-50 border border-gray-200 rounded-lg p-4 overflow-x-auto text-sm font-mono whitespace-pre leading-relaxed" {...props}>{children}</pre>
+    ),
+    code: ({ children, ...props }: React.HTMLAttributes<HTMLElement>) => (
+      <code className="bg-gray-100 rounded px-1.5 py-0.5 text-sm font-mono" {...props}>{children}</code>
+    ),
+  };
+
   if (error) {
     return (
       <div className="container mx-auto max-w-4xl px-4 py-6">
@@ -182,7 +206,7 @@ export function CaseStudyViewer({
         </CardHeader>
         <CardContent>
           <div className={mdClass}>
-            <ReactMarkdown>{content.aof_context}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{content.aof_context}</ReactMarkdown>
           </div>
         </CardContent>
       </Card>
@@ -194,7 +218,7 @@ export function CaseStudyViewer({
         </CardHeader>
         <CardContent>
           <div className={`${mdClass} bg-amber-50 rounded-lg p-4`}>
-            <ReactMarkdown>{content.real_data}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{content.real_data}</ReactMarkdown>
           </div>
         </CardContent>
       </Card>
@@ -215,7 +239,7 @@ export function CaseStudyViewer({
                   {index + 1}
                 </span>
                 <div className={mdClass}>
-                  <ReactMarkdown>{question}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{question}</ReactMarkdown>
                 </div>
               </li>
             ))}
@@ -243,7 +267,7 @@ export function CaseStudyViewer({
         {correctionVisible && (
           <CardContent>
             <div className={`${mdClass} bg-green-50 rounded-lg p-4`}>
-              <ReactMarkdown>{content.annotated_correction}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{content.annotated_correction}</ReactMarkdown>
             </div>
           </CardContent>
         )}
