@@ -1,5 +1,6 @@
 """Service for AI tutor functionality with Socratic pedagogical approach."""
 
+import asyncio
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime
@@ -10,7 +11,12 @@ from anthropic import AsyncAnthropic
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.prompts.tutor import TutorContext, get_activity_suggestions, get_socratic_system_prompt
+from app.ai.prompts.tutor import (
+    TutorContext,
+    get_activity_suggestions,
+    get_compaction_prompt,
+    get_socratic_system_prompt,
+)
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.domain.models.conversation import TutorConversation
@@ -19,6 +25,11 @@ from app.domain.models.user import User
 from app.infrastructure.config.settings import get_settings
 
 logger = structlog.get_logger()
+
+
+COMPACT_TRIGGER_COUNT = 20
+COMPACT_MESSAGES_TO_SUMMARIZE = 15
+COMPACT_MESSAGES_TO_KEEP = 5
 
 
 class TutorService:
@@ -183,8 +194,18 @@ class TutorService:
             # Update conversation
             updated_messages = conversation.messages + [user_msg, assistant_msg]
             conversation.messages = updated_messages
+            conversation.message_count = len(updated_messages)
             session.add(conversation)
             await session.commit()
+
+            # Trigger async compacting if threshold reached
+            if conversation.message_count > COMPACT_TRIGGER_COUNT:
+                asyncio.ensure_future(
+                    self._compact_conversation_async(
+                        conversation_id=conversation.id,
+                        user_language=user.preferred_language,
+                    )
+                )
 
             # Send final metadata
             yield {
@@ -417,16 +438,25 @@ class TutorService:
         self, conversation: TutorConversation
     ) -> list[dict[str, str]]:
         """Prepare conversation history for Claude API."""
-        # Limit to last 10 messages to stay within context limits
-        messages = (
-            conversation.messages[-10:]
-            if len(conversation.messages) > 10
-            else conversation.messages
-        )
+        recent_messages = conversation.messages[-COMPACT_MESSAGES_TO_KEEP:]
 
-        # Convert to Claude format (role and content only)
-        claude_messages = []
-        for msg in messages:
+        claude_messages: list[dict[str, str]] = []
+
+        if conversation.compacted_context:
+            claude_messages.append(
+                {
+                    "role": "user",
+                    "content": f"[Context from earlier in our conversation: {conversation.compacted_context}]",
+                }
+            )
+            claude_messages.append(
+                {
+                    "role": "assistant",
+                    "content": "Compris. Je prends en compte tout ce contexte antérieur pour continuer notre échange.",
+                }
+            )
+
+        for msg in recent_messages:
             if msg.get("role") and msg.get("content"):
                 claude_messages.append(
                     {
@@ -436,6 +466,82 @@ class TutorService:
                 )
 
         return claude_messages
+
+    async def _compact_conversation_async(
+        self,
+        conversation_id: uuid.UUID,
+        user_language: str,
+    ) -> None:
+        """Compact old conversation messages asynchronously in a new DB session."""
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+        engine = create_async_engine(self.settings.database_url, echo=False)
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+        try:
+            async with session_factory() as session:
+                await self._compact_conversation(conversation_id, user_language, session)
+                await session.commit()
+        except Exception as e:
+            logger.error(
+                "Auto-compaction failed",
+                conversation_id=str(conversation_id),
+                error=str(e),
+            )
+        finally:
+            await engine.dispose()
+
+    async def _compact_conversation(
+        self,
+        conversation_id: uuid.UUID,
+        user_language: str,
+        session: AsyncSession,
+    ) -> None:
+        """Summarize old messages and store compacted_context in the conversation."""
+        query = select(TutorConversation).where(TutorConversation.id == conversation_id)
+        result = await session.execute(query)
+        conversation = result.scalar_one_or_none()
+
+        if not conversation:
+            logger.warning(
+                "Conversation not found for compaction", conversation_id=str(conversation_id)
+            )
+            return
+
+        messages = conversation.messages
+        if len(messages) <= COMPACT_TRIGGER_COUNT:
+            return
+
+        messages_to_compact = messages[:COMPACT_MESSAGES_TO_SUMMARIZE]
+        messages_to_keep = messages[COMPACT_MESSAGES_TO_SUMMARIZE:]
+
+        prompt = get_compaction_prompt(
+            language=user_language,
+            messages=messages_to_compact,
+            existing_compact=conversation.compacted_context,
+        )
+
+        response = await self.anthropic.messages.create(
+            model="claude-sonnet-4-6",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=600,
+            temperature=0.3,
+        )
+
+        compacted_context = response.content[0].text.strip()
+
+        conversation.compacted_context = compacted_context
+        conversation.compacted_at = datetime.utcnow()
+        conversation.messages = messages_to_keep
+        conversation.message_count = len(messages_to_keep)
+        session.add(conversation)
+
+        logger.info(
+            "Conversation compacted",
+            conversation_id=str(conversation_id),
+            messages_summarized=len(messages_to_compact),
+            messages_kept=len(messages_to_keep),
+        )
 
     def _extract_sources_from_response(
         self, response: str, available_chunks: list[dict[str, Any]]

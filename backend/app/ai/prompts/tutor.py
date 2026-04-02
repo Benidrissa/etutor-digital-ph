@@ -221,6 +221,58 @@ def _format_sources_context(rag_chunks: list[dict[str, Any]]) -> str:
 Ces sources doivent être citées dans tes réponses."""
 
 
+def get_compaction_prompt(language: str, messages: list[dict], existing_compact: str | None) -> str:
+    """
+    Generate a prompt to summarize conversation history into a compact context.
+
+    Args:
+        language: User language ("fr" or "en")
+        messages: List of messages to summarize
+        existing_compact: Previous compacted context if any
+
+    Returns:
+        Prompt string for Claude to produce a ≤500-token summary
+    """
+    formatted_messages = "\n".join(
+        f"[{msg.get('role', 'unknown').upper()}]: {msg.get('content', '')}" for msg in messages
+    )
+
+    if language == "fr":
+        prior_section = f"\n\n## RÉSUMÉ PRÉCÉDENT\n{existing_compact}" if existing_compact else ""
+        return f"""Tu es chargé de résumer l'historique d'une conversation pédagogique entre un apprenant en santé publique et un tuteur IA.{prior_section}
+
+## MESSAGES À RÉSUMER
+{formatted_messages}
+
+## INSTRUCTIONS
+Produis un résumé compact (maximum 500 tokens) qui préserve:
+1. Les sujets abordés et les concepts clés discutés
+2. Les difficultés ou incompréhensions identifiées chez l'apprenant
+3. Les préférences pédagogiques détectées (style d'apprentissage, rythme)
+4. Les questions restées sans réponse ou en suspens
+5. Les décisions pédagogiques importantes et les explications données
+6. Le niveau de progression de l'apprenant dans les sujets traités
+
+Format: Texte continu, sans listes à puces, en français. Commence directement par le contenu du résumé sans préambule."""
+    else:
+        prior_section = f"\n\n## PREVIOUS SUMMARY\n{existing_compact}" if existing_compact else ""
+        return f"""You are tasked with summarizing the history of a pedagogical conversation between a public health learner and an AI tutor.{prior_section}
+
+## MESSAGES TO SUMMARIZE
+{formatted_messages}
+
+## INSTRUCTIONS
+Produce a compact summary (maximum 500 tokens) that preserves:
+1. Topics discussed and key concepts covered
+2. Difficulties or misunderstandings identified in the learner
+3. Detected pedagogical preferences (learning style, pace)
+4. Questions left unanswered or pending
+5. Important pedagogical decisions and explanations given
+6. The learner's progress level in the topics covered
+
+Format: Continuous prose, no bullet points, in English. Start directly with the summary content without preamble."""
+
+
 def get_activity_suggestions(
     context_type: str | None, user_level: int, topic: str
 ) -> list[dict[str, str]]:
