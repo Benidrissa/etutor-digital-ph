@@ -52,4 +52,6 @@ class User(Base):
     flashcard_reviews: Mapped[list[FlashcardReview]] = relationship(back_populates="user")
     lesson_readings: Mapped[list[LessonReading]] = relationship(back_populates="user")
     tutor_conversations: Mapped[list[TutorConversation]] = relationship(back_populates="user")
-    learner_memories: Mapped[list[LearnerMemory]] = relationship(back_populates="user")
+    learner_memory: Mapped[LearnerMemory | None] = relationship(
+        back_populates="user", uselist=False
+    )

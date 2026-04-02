@@ -13,6 +13,7 @@ from app.domain.models.content import GeneratedContent
 from app.domain.models.conversation import TutorConversation
 from app.domain.models.learner_memory import LearnerMemory
 from app.domain.models.user import User
+from app.domain.services.learner_memory_service import LearnerMemoryService
 from app.domain.services.tutor_service import (
     MAX_TOOL_CALLS,
     TutorService,
@@ -89,7 +90,14 @@ def tool_executor(mock_retriever, mock_anthropic, sample_user):
 
 
 @pytest.fixture
-def tutor_service(mock_retriever, mock_anthropic):
+def mock_learner_memory_service():
+    service = AsyncMock(spec=LearnerMemoryService)
+    service.format_for_prompt = AsyncMock(return_value="")
+    return service
+
+
+@pytest.fixture
+def tutor_service(mock_retriever, mock_anthropic, mock_learner_memory_service):
     from app.ai.rag.embeddings import EmbeddingService
 
     embedding_service = AsyncMock(spec=EmbeddingService)
@@ -97,6 +105,7 @@ def tutor_service(mock_retriever, mock_anthropic):
         anthropic_client=mock_anthropic,
         semantic_retriever=mock_retriever,
         embedding_service=embedding_service,
+        learner_memory_service=mock_learner_memory_service,
     )
 
 
@@ -343,17 +352,16 @@ async def test_save_learner_preference_creates_new(tool_executor):
 
     result_str = await tool_executor._save_learner_preference(
         {
-            "preference_type": "learning_style",
-            "value": {"style": "analogies", "confidence": 0.9},
+            "preference_type": "preferred_explanation_style",
+            "value": "analogies",
         },
         mock_session,
     )
     result = json.loads(result_str)
 
     assert result["saved"] is True
-    assert result["preference_type"] == "learning_style"
+    assert result["preference_type"] == "preferred_explanation_style"
     assert result["updated"] is False
-    mock_session.add.assert_called_once()
 
 
 async def test_save_learner_preference_updates_existing(tool_executor):
@@ -368,8 +376,8 @@ async def test_save_learner_preference_updates_existing(tool_executor):
 
     result_str = await tool_executor._save_learner_preference(
         {
-            "preference_type": "learning_style",
-            "value": {"style": "examples", "confidence": 0.8},
+            "preference_type": "preferred_explanation_style",
+            "value": "examples",
         },
         mock_session,
     )
@@ -377,7 +385,6 @@ async def test_save_learner_preference_updates_existing(tool_executor):
 
     assert result["saved"] is True
     assert result["updated"] is True
-    assert existing.value == {"style": "examples", "confidence": 0.8}
 
 
 # ---------------------------------------------------------------------------

@@ -14,6 +14,7 @@ class TutorContext:
     module_id: str | None = None
     context_type: str | None = None  # "module" | "lesson" | "quiz" | None
     context_id: str | None = None
+    learner_memory: str | None = None  # Pre-formatted memory text for system prompt
 
 
 def get_socratic_system_prompt(context: TutorContext, rag_chunks: list[dict[str, Any]]) -> str:
@@ -53,6 +54,7 @@ vers la compréhension plutôt que de donner des réponses directes.
 - Langue: {language_instruction}
 - Pays: {country_context}
 - Module actuel: {context.module_id or "Non spécifié"}
+{_format_memory_section(context.learner_memory)}
 
 ## LES 10 RÈGLES PÉDAGOGIQUES OBLIGATOIRES
 
@@ -198,6 +200,13 @@ une fois qu'on aura exploré cette idée ensemble ?"
 Réponds maintenant dans cette approche socratique stricte."""
 
     return prompt
+
+
+def _format_memory_section(learner_memory: str | None) -> str:
+    """Format learner memory as a section for the system prompt."""
+    if not learner_memory:
+        return ""
+    return f"\n## MÉMOIRE DE L'APPRENANT\n{learner_memory}"
 
 
 def _get_language_instruction(language: str) -> str:

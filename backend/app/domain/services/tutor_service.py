@@ -17,6 +17,7 @@ from app.ai.rag.retriever import SemanticRetriever
 from app.domain.models.conversation import TutorConversation
 from app.domain.models.module import Module
 from app.domain.models.user import User
+from app.domain.services.learner_memory_service import LearnerMemoryService
 from app.domain.services.tutor_tools import TOOL_DEFINITIONS, TutorToolExecutor
 from app.infrastructure.config.settings import get_settings
 
@@ -33,10 +34,12 @@ class TutorService:
         anthropic_client: AsyncAnthropic,
         semantic_retriever: SemanticRetriever,
         embedding_service: EmbeddingService,
+        learner_memory_service: LearnerMemoryService | None = None,
     ):
         self.anthropic = anthropic_client
         self.retriever = semantic_retriever
         self.embedding_service = embedding_service
+        self.learner_memory_service = learner_memory_service or LearnerMemoryService()
         self.settings = get_settings()
         self.daily_message_limit = 50
 
@@ -98,6 +101,10 @@ class TutorService:
                 "data": {"conversation_id": str(conversation.id)},
             }
 
+            learner_memory_text = await self.learner_memory_service.format_for_prompt(
+                user_id, session
+            )
+
             context = TutorContext(
                 user_level=user.current_level,
                 user_language=user.preferred_language,
@@ -105,6 +112,7 @@ class TutorService:
                 module_id=str(module_id) if module_id else None,
                 context_type=context_type,
                 context_id=str(context_id) if context_id else None,
+                learner_memory=learner_memory_text,
             )
 
             system_prompt = get_socratic_system_prompt(context, [])
