@@ -2,7 +2,10 @@
 
 import { useTranslations } from 'next-intl';
 import { Clock, CheckCircle, XCircle, RotateCcw, ArrowRight, Trophy, Target, BookCheck } from 'lucide-react';
-
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -185,9 +188,11 @@ export function QuizResults({ quiz, result, onRetry, onContinue }: QuizResultsPr
                           </div>
                         </div>
                         
-                        <h3 className="font-medium text-stone-900 leading-relaxed">
-                          {question.question}
-                        </h3>
+                        <div className="font-medium text-stone-900 leading-relaxed prose prose-sm max-w-none prose-p:my-0">
+                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                            {question.question}
+                          </ReactMarkdown>
+                        </div>
                       </div>
                     </div>
                     
@@ -217,7 +222,11 @@ export function QuizResults({ quiz, result, onRetry, onContinue }: QuizResultsPr
                     {/* Explanation */}
                     <div className="pt-3 border-t border-stone-200">
                       <div className="font-medium text-stone-700 mb-2">{t('explanation')}</div>
-                      <p className="text-stone-600 leading-relaxed">{questionResult.explanation}</p>
+                      <div className="text-stone-600 leading-relaxed prose prose-sm max-w-none prose-p:my-0 overflow-x-auto">
+                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                          {questionResult.explanation}
+                        </ReactMarkdown>
+                      </div>
                       
                       {/* Sources */}
                       {question.sources_cited.length > 0 && (
