@@ -285,9 +285,9 @@
     "send": "Send",
     "typing": "The tutor is typing...",
     "offline": "Tutor is offline",
-    "messageLimit": "{count}/50 messages today",
+    "messageLimit": "{count}/{max} messages today",
     "messageLimitWarning": "Daily message limit reached",
-    "messageLimitWarningDescription": "You've used 40 out of 50 messages today",
+    "messageLimitWarningDescription": "You are approaching your daily message limit.",
     "messageLimitReached": "Daily message limit reached",
     "messageLimitReachedDescription": "Come back tomorrow for more AI tutor conversations",
     "suggestions": {
@@ -326,7 +326,11 @@
     "selectConversationDescription": "Choose a conversation from the sidebar or start a new one",
     "messageCount": "{count} {count, plural, one {message} other {messages}}",
     "cancel": "Cancel",
-    "newConversationTitle": "New Conversation"
+    "newConversationTitle": "New Conversation",
+    "conversations": "Conversations",
+    "openConversations": "Open conversations",
+    "closeDrawer": "Close",
+    "toggleSuggestions": "Quick actions"
   },
   "Flashcards": {
     "title": "Flashcards",

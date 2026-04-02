@@ -146,3 +146,23 @@ export function getOfflineConversation(conversationId: string): ConversationDeta
     return null;
   }
 }
+
+export interface TutorStats {
+  daily_messages_used: number;
+  daily_messages_limit: number;
+  total_conversations: number;
+  most_discussed_topics: string[];
+}
+
+export async function fetchTutorStats(): Promise<TutorStats> {
+  const token = await authClient.getValidToken();
+  const response = await fetch(`${API_BASE}/api/v1/tutor/stats`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch tutor stats: ${response.status}`);
+  }
+
+  return response.json();
+}
