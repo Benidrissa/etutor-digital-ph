@@ -1,4 +1,3 @@
-import { notFound } from 'next/navigation';
 import { getTranslations, getLocale } from 'next-intl/server';
 import { Link } from '@/i18n/routing';
 import { ChevronLeft } from 'lucide-react';
@@ -17,18 +16,9 @@ export default async function QuizPage({ params, searchParams }: QuizPageProps) 
   const t = await getTranslations('QuizPage');
 
   const moduleData = getModuleById(moduleId);
-
-  if (!moduleData) {
-    notFound();
-  }
-
   const unitId = unit || 'unit-1';
   const language = locale as 'en' | 'fr';
-
-  const userData = {
-    country: 'senegal',
-    level: 2,
-  };
+  const moduleTitle = moduleData?.title[language] || moduleId;
 
   return (
     <div className="container mx-auto max-w-6xl px-4 py-6">
@@ -38,7 +28,7 @@ export default async function QuizPage({ params, searchParams }: QuizPageProps) 
           className="inline-flex items-center text-stone-600 hover:text-stone-900 transition-colors"
         >
           <ChevronLeft className="w-4 h-4 mr-1" />
-          {t('backToModule', { module: moduleData.title[language] })}
+          {t('backToModule', { module: moduleTitle })}
         </Link>
       </div>
 
@@ -46,8 +36,8 @@ export default async function QuizPage({ params, searchParams }: QuizPageProps) 
         moduleId={moduleId}
         unitId={unitId}
         language={language}
-        country={userData.country}
-        level={userData.level}
+        country="senegal"
+        level={moduleData?.level || 1}
       />
     </div>
   );
