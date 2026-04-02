@@ -1,6 +1,5 @@
 """Quiz generation service using Claude API and RAG."""
 
-import json
 import uuid
 from uuid import UUID
 
@@ -189,7 +188,7 @@ class QuizService:
             )
 
             # Generate quiz using Claude API with structured prompt
-            quiz_prompt = self._build_quiz_prompt(
+            system_prompt, user_message = self._build_quiz_prompt(
                 context=context_text,
                 unit_id=unit_id,
                 language=language,
@@ -198,10 +197,13 @@ class QuizService:
                 num_questions=num_questions,
             )
 
-            response = await self.claude_service.generate_content(quiz_prompt)
+            quiz_data = await self.claude_service.generate_structured_content(
+                system_prompt=system_prompt,
+                user_message=user_message,
+                content_type="quiz",
+            )
 
-            # Parse Claude's response into structured quiz content
-            quiz_data = self._parse_quiz_response(response, unit_id, num_questions)
+            quiz_data = self._validate_and_normalize_quiz(quiz_data, unit_id, num_questions)
 
             return QuizContent(**quiz_data)
 
@@ -217,8 +219,8 @@ class QuizService:
         country: str,
         level: int,
         num_questions: int,
-    ) -> str:
-        """Build the prompt for Claude API to generate quiz questions."""
+    ) -> tuple[str, str]:
+        """Build system and user prompts for Claude API to generate quiz questions."""
 
         lang_instruction = "in French" if language == "fr" else "in English"
         level_desc = {
@@ -228,7 +230,11 @@ class QuizService:
             4: "expert (research, policy implications)",
         }
 
-        return f"""You are creating a multiple-choice quiz for public health professionals in West Africa.
+        system_prompt = """You are an expert quiz creator for public health professionals in West Africa.
+You generate well-structured multiple-choice quizzes based on provided context material.
+You MUST respond with valid JSON only — no markdown, no explanations outside the JSON."""
+
+        user_message = f"""Create a multiple-choice quiz based on the following context.
 
 CONTEXT MATERIAL:
 {context}
@@ -252,7 +258,7 @@ INSTRUCTIONS:
 7. Progress from easier to harder questions
 8. Focus on practical applications for public health work
 
-RESPONSE FORMAT (JSON):
+RESPONSE FORMAT (JSON only):
 {{
   "title": "Quiz title",
   "description": "Brief description of quiz content",
@@ -278,45 +284,31 @@ RESPONSE FORMAT (JSON):
 
 Generate the quiz now, ensuring all questions are relevant to public health practice in West Africa."""
 
-    def _parse_quiz_response(self, response: str, unit_id: str, expected_questions: int) -> dict:
+        return system_prompt, user_message
+
+    def _validate_and_normalize_quiz(
+        self, quiz_data: dict, unit_id: str, expected_questions: int
+    ) -> dict:
         """
-        Parse Claude's response into structured quiz data.
+        Validate and normalize quiz data returned by Claude API.
 
         Args:
-            response: Raw response from Claude API
+            quiz_data: Parsed dict from generate_structured_content
             unit_id: Unit identifier to include in response
             expected_questions: Expected number of questions for validation
 
         Returns:
-            Dictionary with parsed quiz content
+            Normalized dictionary with quiz content
 
         Raises:
-            ValueError: If response cannot be parsed or is invalid
+            ValueError: If quiz_data is missing required fields or is invalid
         """
         try:
-            # Try to extract JSON from Claude's response
-            # Claude sometimes wraps JSON in markdown code blocks
-            response_text = response.strip()
-
-            if "```json" in response_text:
-                start = response_text.find("```json") + 7
-                end = response_text.find("```", start)
-                response_text = response_text[start:end].strip()
-            elif "```" in response_text:
-                start = response_text.find("```") + 3
-                end = response_text.rfind("```")
-                response_text = response_text[start:end].strip()
-
-            # Parse JSON
-            quiz_data = json.loads(response_text)
-
-            # Validate structure
             required_fields = ["title", "questions"]
             for field in required_fields:
                 if field not in quiz_data:
                     raise ValueError(f"Missing required field: {field}")
 
-            # Ensure description has a default value
             quiz_data.setdefault("description", "")
 
             questions = quiz_data["questions"]
@@ -332,24 +324,18 @@ Generate the quiz now, ensuring all questions are relevant to public health prac
                     got=len(questions),
                 )
 
-            # Validate each question
             for i, question in enumerate(questions):
                 self._validate_question(question, f"question {i + 1}")
 
-            # Set defaults for optional fields
             quiz_data.setdefault("time_limit_minutes", max(10, len(questions) * 2))
             quiz_data.setdefault("passing_score", 80.0)
             if quiz_data.get("passing_score", 80.0) < 80.0:
                 quiz_data["passing_score"] = 80.0
 
-            # Add unit_id to content
             quiz_data["unit_id"] = unit_id
 
             return quiz_data
 
-        except json.JSONDecodeError as e:
-            logger.error("Failed to parse quiz JSON", response_preview=response[:200], error=str(e))
-            raise ValueError(f"Invalid JSON response from Claude API: {e}")
         except Exception as e:
             logger.error("Quiz response validation failed", error=str(e))
             raise ValueError(f"Invalid quiz format: {e}")
