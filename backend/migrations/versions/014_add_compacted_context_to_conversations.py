@@ -1,7 +1,7 @@
 """Add compacted_context, compacted_at, message_count to tutor_conversations
 
-Revision ID: 013_add_compacted_context
-Revises: 0d1135672916
+Revision ID: 014_add_compacted_context
+Revises: 013_add_learner_memory_table
 Create Date: 2026-04-02
 """
 
@@ -10,8 +10,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "013_add_compacted_context"
-down_revision: str | None = "0d1135672916"
+revision: str = "014_add_compacted_context"
+down_revision: str | None = "013_add_learner_memory_table"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
