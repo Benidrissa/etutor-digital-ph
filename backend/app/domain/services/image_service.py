@@ -1,4 +1,4 @@
-"""Service for AI-generated lesson illustrations using DALL-E 3 with semantic reuse."""
+"""Service for AI-generated lesson illustrations using DALL-E 2 with semantic reuse."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def _jaccard_similarity(tags_a: list[str], tags_b: list[str]) -> float:
 
 
 class ImageGenerationService:
-    """Pipeline: concept extraction → semantic reuse → DALL-E 3 → WebP → bilingual alt-text."""
+    """Pipeline: concept extraction → semantic reuse → DALL-E 2 → WebP → bilingual alt-text."""
 
     async def generate_for_lesson(
         self,
@@ -165,17 +165,17 @@ class ImageGenerationService:
         return None
 
     async def _call_dalle(self, prompt: str) -> tuple[bytes, str]:
-        """Call OpenAI DALL-E 3 API and return (image_bytes, image_url)."""
+        """Call OpenAI DALL-E 2 API and return (image_bytes, image_url)."""
         import httpx
         from openai import AsyncOpenAI
 
         client = AsyncOpenAI(api_key=settings.openai_api_key)
 
         response = await client.images.generate(
-            model="dall-e-3",
+            model="dall-e-2",
             prompt=prompt,
             n=1,
-            size="1024x1024",
+            size="512x512",
             response_format="url",
         )
 
@@ -264,7 +264,7 @@ def _parse_alt_text(text: str, concept: str) -> tuple[str, str]:
 
 
 def _resize_to_webp(image_bytes: bytes, max_width: int = 512) -> tuple[bytes, int]:
-    """Convert image bytes to WebP format with max_width constraint."""
+    """Convert image bytes to WebP format, skipping resize if already at target width."""
     try:
         from PIL import Image
 

@@ -1,4 +1,4 @@
-"""Tests for DALL-E 3 async image generation pipeline (issue #223, US-025)."""
+"""Tests for DALL-E 2 async image generation pipeline (issue #223, US-025)."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from app.domain.services.image_service import (
     _jaccard_similarity,
     _parse_alt_text,
     _parse_concept_response,
+    _resize_to_webp,
 )
 
 
@@ -70,6 +71,49 @@ class TestParseAltText:
         fr, en = _parse_alt_text("", "malaria")
         assert "malaria" in fr.lower()
         assert "malaria" in en.lower()
+
+
+class TestResizeToWebp:
+    def test_skips_resize_when_already_at_target_width(self):
+        """When input is already 512px wide, no resize should occur — only WebP conversion."""
+        import io
+
+        try:
+            from PIL import Image
+        except ImportError:
+            pytest.skip("Pillow not installed")
+
+        img = Image.new("RGB", (512, 512), color=(100, 150, 200))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        png_bytes = buf.getvalue()
+
+        webp_bytes, width = _resize_to_webp(png_bytes, max_width=512)
+
+        assert width == 512
+        result_img = Image.open(io.BytesIO(webp_bytes))
+        assert result_img.format == "WEBP"
+        assert result_img.width == 512
+
+    def test_resizes_when_larger_than_target(self):
+        """When input is larger than max_width, it must be resized down."""
+        import io
+
+        try:
+            from PIL import Image
+        except ImportError:
+            pytest.skip("Pillow not installed")
+
+        img = Image.new("RGB", (1024, 1024), color=(100, 150, 200))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        png_bytes = buf.getvalue()
+
+        webp_bytes, width = _resize_to_webp(png_bytes, max_width=512)
+
+        assert width == 512
+        result_img = Image.open(io.BytesIO(webp_bytes))
+        assert result_img.width == 512
 
 
 def _make_db_image(tags: list[str], status: str = "ready") -> GeneratedImage:
@@ -153,7 +197,7 @@ class TestImageGenerationService:
     async def test_new_generation_calls_dalle(
         self, service, mock_session, mock_claude_response, mock_alt_text_response
     ):
-        """When no matching image, DALL-E 3 must be called and image saved."""
+        """When no matching image, DALL-E 2 must be called and image saved."""
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = []
         mock_session.execute = AsyncMock(return_value=mock_result)
@@ -194,6 +238,9 @@ class TestImageGenerationService:
                     )
 
             mock_openai.images.generate.assert_called_once()
+            call_kwargs = mock_openai.images.generate.call_args.kwargs
+            assert call_kwargs.get("model") == "dall-e-2"
+            assert call_kwargs.get("size") == "512x512"
 
         assert result.status == "ready"
 
