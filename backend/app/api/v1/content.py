@@ -17,6 +17,7 @@ from app.ai.rag.retriever import SemanticRetriever
 from app.api.deps import get_db
 from app.api.deps_local_auth import get_optional_user
 from app.api.v1.schemas.content import (
+    CaseStudyResponse,
     ErrorResponse,
     FlashcardGenerationRequest,
     FlashcardSetResponse,
@@ -28,7 +29,7 @@ from app.api.v1.schemas.content import (
 )
 from app.domain.models.module import Module
 from app.domain.services.flashcard_service import FlashcardGenerationService
-from app.domain.services.lesson_service import LessonGenerationService
+from app.domain.services.lesson_service import CaseStudyGenerationService, LessonGenerationService
 from app.domain.services.progress_service import ProgressService
 from app.domain.services.quiz_service import QuizService
 from app.infrastructure.config.settings import get_settings
@@ -109,6 +110,14 @@ def get_flashcard_service(
 ) -> FlashcardGenerationService:
     """Dependency to get flashcard generation service."""
     return FlashcardGenerationService(claude_service, semantic_retriever)
+
+
+def get_case_study_service(
+    claude_service: ClaudeService = Depends(get_claude_service),
+    semantic_retriever: SemanticRetriever = Depends(get_semantic_retriever),
+) -> CaseStudyGenerationService:
+    """Dependency to get case study generation service."""
+    return CaseStudyGenerationService(claude_service, semantic_retriever)
 
 
 def get_quiz_service(
@@ -825,3 +834,180 @@ async def get_quiz(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": "retrieval_failed", "message": "Failed to retrieve quiz"},
         )
+
+
+# ── Case Study Endpoints ────────────────────────────────────────────────────
+
+
+@router.get(
+    "/cases/{module_id}/{unit_id}",
+    response_model=CaseStudyResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid request"},
+        404: {"model": ErrorResponse, "description": "Module or unit not found"},
+        500: {"model": ErrorResponse, "description": "Generation failed"},
+    },
+)
+async def get_or_generate_case_study(
+    module_id: str,
+    unit_id: str,
+    language: str = "fr",
+    level: int = 1,
+    country: str = "SN",
+    case_study_service: CaseStudyGenerationService = Depends(get_case_study_service),
+    session: AsyncSession = Depends(get_db),
+    current_user=Depends(get_optional_user),
+) -> CaseStudyResponse:
+    """
+    Get or generate case study content by module and unit ID.
+
+    **Parameters:**
+    - **module_id**: Module identifier (code like "M01" or UUID string)
+    - **unit_id**: Unit identifier (e.g., "M01-U05")
+    - **language**: Content language ("fr" or "en")
+    - **level**: User's level (1-4)
+    - **country**: Country context for examples (ISO 2-letter code)
+    """
+    try:
+        logger.info(
+            "Case study request",
+            module_id=module_id,
+            unit_id=unit_id,
+            language=language,
+            level=level,
+            country=country,
+        )
+
+        resolved_module_id = await _resolve_module_id(module_id, session)
+
+        case_study_response = await case_study_service.get_or_generate_case_study(
+            module_id=resolved_module_id,
+            unit_id=unit_id,
+            language=language,
+            country=country,
+            level=level,
+            session=session,
+        )
+
+        if current_user is not None:
+            try:
+                from uuid import UUID as _UUID
+
+                progress_service = ProgressService(session)
+                await progress_service.track_lesson_access(
+                    user_id=_UUID(str(current_user.id)),
+                    module_id=resolved_module_id,
+                    lesson_id=case_study_response.id,
+                )
+            except Exception as track_err:
+                logger.warning(
+                    "Failed to track case study access (non-fatal)",
+                    error=str(track_err),
+                )
+
+        logger.info(
+            "Case study request completed",
+            case_study_id=str(case_study_response.id),
+            cached=case_study_response.cached,
+        )
+
+        return case_study_response
+
+    except ValueError as e:
+        logger.warning("Invalid case study request", error=str(e))
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "module_or_unit_not_found", "message": str(e)},
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": "invalid_request", "message": str(e)},
+            )
+
+    except Exception as e:
+        logger.error("Case study request failed", error=str(e), exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "generation_failed",
+                "message": "Une erreur interne s'est produite lors de la génération",
+            },
+        )
+
+
+@router.get(
+    "/cases/{module_id}/{unit_id}/stream",
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {"description": "Invalid request"},
+        404: {"description": "Module or unit not found"},
+        500: {"description": "Generation failed"},
+    },
+)
+async def stream_case_study_by_module_and_unit(
+    module_id: str,
+    unit_id: str,
+    language: str = "fr",
+    level: int = 1,
+    country: str = "SN",
+    case_study_service: CaseStudyGenerationService = Depends(get_case_study_service),
+    session: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """
+    Stream case study generation by module and unit ID using Server-Sent Events (SSE).
+
+    **Event Types:**
+    - `chunk`: Incremental content as it's generated
+    - `complete`: Final case study object when generation finishes
+    - `error`: Error information if generation fails
+    """
+
+    async def generate_events() -> AsyncGenerator[str, None]:
+        try:
+            logger.info(
+                "Starting case study streaming",
+                module_id=module_id,
+                unit_id=unit_id,
+                language=language,
+                level=level,
+                country=country,
+            )
+
+            resolved_module_id = await _resolve_module_id(module_id, session)
+
+            async for event in case_study_service.stream_case_study_generation(
+                module_id=resolved_module_id,
+                unit_id=unit_id,
+                language=language,
+                country=country,
+                level=level,
+                session=session,
+            ):
+                yield event.to_sse_format()
+
+            logger.info("Case study streaming completed")
+
+        except Exception as e:
+            logger.error("Case study streaming failed", error=str(e), exc_info=True)
+            error_event = StreamingEvent(
+                event="error",
+                data={
+                    "error": "streaming_failed",
+                    "message": "Erreur lors de la génération en streaming",
+                },
+            )
+            yield error_event.to_sse_format()
+
+    return StreamingResponse(
+        generate_events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Cache-Control",
+        },
+    )

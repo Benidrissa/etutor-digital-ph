@@ -66,7 +66,7 @@ export function CaseStudyViewer({
 
         try {
           const cachedData = await apiFetch<CaseStudyData>(
-            `/api/v1/content/lessons/${moduleId}/${unitId}?language=${language}&level=${level}&country=${countryContext}&content_type=case`
+            `/api/v1/content/cases/${moduleId}/${unitId}?language=${language}&level=${level}&country=${countryContext}`
           );
 
           if (cachedData.cached) {
@@ -78,7 +78,7 @@ export function CaseStudyViewer({
         }
 
         const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-        const streamUrl = `${API_BASE}/api/v1/content/lessons/${moduleId}/${unitId}/stream?language=${language}&level=${level}&country=${countryContext}&content_type=case`;
+        const streamUrl = `${API_BASE}/api/v1/content/cases/${moduleId}/${unitId}/stream?language=${language}&level=${level}&country=${countryContext}`;
         eventSource = new EventSource(streamUrl);
 
         eventSource.onmessage = (event) => {
