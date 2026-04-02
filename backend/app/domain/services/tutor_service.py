@@ -601,6 +601,62 @@ class TutorService:
             "most_discussed_topics": most_discussed_topics,
         }
 
+    async def delete_conversation(
+        self,
+        user_id: str | uuid.UUID,
+        conversation_id: uuid.UUID,
+        session: AsyncSession,
+    ) -> bool:
+        """Delete a single conversation. Returns True if deleted, False if not found."""
+        if isinstance(user_id, str):
+            user_id = uuid.UUID(user_id)
+
+        query = select(TutorConversation).where(
+            TutorConversation.id == conversation_id,
+            TutorConversation.user_id == user_id,
+        )
+        result = await session.execute(query)
+        conversation = result.scalar_one_or_none()
+
+        if not conversation:
+            return False
+
+        await session.delete(conversation)
+        await session.commit()
+
+        logger.info(
+            "Conversation deleted",
+            conversation_id=str(conversation_id),
+            user_id=str(user_id),
+        )
+        return True
+
+    async def delete_all_conversations(
+        self,
+        user_id: str | uuid.UUID,
+        session: AsyncSession,
+    ) -> int:
+        """Delete all conversations for a user. Returns count of deleted conversations."""
+        if isinstance(user_id, str):
+            user_id = uuid.UUID(user_id)
+
+        query = select(TutorConversation).where(TutorConversation.user_id == user_id)
+        result = await session.execute(query)
+        conversations = result.scalars().all()
+
+        count = len(conversations)
+        for conversation in conversations:
+            await session.delete(conversation)
+
+        await session.commit()
+
+        logger.info(
+            "All conversations deleted",
+            user_id=str(user_id),
+            count=count,
+        )
+        return count
+
     async def _check_daily_limit(self, user_id: str | uuid.UUID, session: AsyncSession) -> int:
         """Check how many messages user has sent today."""
         if isinstance(user_id, str):

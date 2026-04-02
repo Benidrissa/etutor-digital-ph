@@ -326,7 +326,17 @@
     "selectConversationDescription": "Choisissez une conversation dans la barre latérale ou commencez-en une nouvelle",
     "messageCount": "{count} {count, plural, one {message} other {messages}}",
     "cancel": "Annuler",
-    "newConversationTitle": "Nouvelle Conversation"
+    "newConversationTitle": "Nouvelle Conversation",
+    "deleteConversation": "Supprimer",
+    "deleteConversationConfirm": "Supprimer cette conversation ?",
+    "deleteConversationConfirmDescription": "Cette action est irréversible. La conversation sera définitivement supprimée.",
+    "clearAll": "Tout effacer",
+    "clearAllConfirm": "Supprimer toutes les conversations ?",
+    "clearAllConfirmDescription": "Cette action est irréversible. Toutes vos conversations seront définitivement supprimées.",
+    "deleteSuccess": "Conversation supprimée",
+    "clearAllSuccess": "Toutes les conversations supprimées",
+    "deleteError": "Erreur lors de la suppression",
+    "confirm": "Confirmer"
   },
   "Flashcards": {
     "title": "Flashcards",

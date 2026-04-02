@@ -136,6 +136,52 @@ export function getOfflineConversations(): { conversations: ConversationSummary[
   }
 }
 
+export async function deleteConversation(conversationId: string): Promise<void> {
+  const token = await authClient.getValidToken();
+  const response = await fetch(`${API_BASE}/api/v1/tutor/conversations/${conversationId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to delete conversation: ${response.status}`);
+  }
+
+  clearCache(`${CACHE_KEY_PREFIX_CONVERSATION}${conversationId}`);
+  clearCache(CACHE_KEY_CONVERSATIONS);
+}
+
+export async function deleteAllConversations(): Promise<{ deleted_count: number }> {
+  const token = await authClient.getValidToken();
+  const response = await fetch(`${API_BASE}/api/v1/tutor/conversations`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to delete all conversations: ${response.status}`);
+  }
+
+  clearCache(CACHE_KEY_CONVERSATIONS);
+
+  if (typeof window !== 'undefined') {
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(CACHE_KEY_PREFIX_CONVERSATION)) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((key) => localStorage.removeItem(key));
+    } catch {
+      // Ignore storage errors
+    }
+  }
+
+  return response.json();
+}
+
 export function getOfflineConversation(conversationId: string): ConversationDetail | null {
   try {
     const raw = localStorage.getItem(`${CACHE_KEY_PREFIX_CONVERSATION}${conversationId}`);

@@ -137,6 +137,39 @@ async def get_conversation(
     return TutorConversationResponse(**conversation)
 
 
+@router.delete("/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_conversation(
+    conversation_id: uuid.UUID,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    tutor_service: TutorService = Depends(get_tutor_service),
+) -> None:
+    """Delete a single tutor conversation."""
+    deleted = await tutor_service.delete_conversation(
+        user_id=current_user.id,
+        conversation_id=conversation_id,
+        session=session,
+    )
+
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+
+@router.delete("/conversations", status_code=status.HTTP_200_OK)
+async def delete_all_conversations(
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    tutor_service: TutorService = Depends(get_tutor_service),
+) -> dict[str, int]:
+    """Delete all tutor conversations for the authenticated user."""
+    count = await tutor_service.delete_all_conversations(
+        user_id=current_user.id,
+        session=session,
+    )
+
+    return {"deleted_count": count}
+
+
 @router.get("/stats", response_model=TutorStatsResponse)
 async def get_tutor_stats(
     current_user: AuthenticatedUser = Depends(get_current_user),
