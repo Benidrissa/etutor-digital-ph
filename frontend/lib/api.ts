@@ -310,6 +310,22 @@ export interface SummativeAssessmentResponse {
   attempted_at: string;
 }
 
+// Unit Quiz Validation
+export interface UnitQuizValidationStatus {
+  passed: boolean;
+  best_score: number | null;
+  attempt_count: number;
+}
+
+export async function checkUnitQuizPassed(
+  moduleId: string,
+  unitId: string
+): Promise<UnitQuizValidationStatus> {
+  return apiFetch<UnitQuizValidationStatus>(
+    `/api/v1/quiz/attempts/status?module_id=${encodeURIComponent(moduleId)}&unit_id=${encodeURIComponent(unitId)}`
+  );
+}
+
 // Summative Assessment API Functions
 export async function generateSummativeAssessment(params: {
   module_id: string;
