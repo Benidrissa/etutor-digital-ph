@@ -198,8 +198,8 @@ def generate_flashcards(self, module_id: str, language: str = "fr", count: int =
 @celery_app.task(
     bind=True,
     base=CallbackTask,
-    soft_time_limit=15,
-    time_limit=20,
+    soft_time_limit=120,
+    time_limit=150,
     rate_limit="5/m",
 )
 def generate_lesson_image(
