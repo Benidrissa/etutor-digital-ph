@@ -1,31 +1,70 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
-import { Send } from 'lucide-react';
+import { Send, Paperclip } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { uploadTutorFile } from '@/lib/tutor-api';
+import { FilePreview, type PendingFile } from '@/components/chat/file-preview';
+
+const ACCEPTED_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/webp',
+  'image/gif',
+  'application/pdf',
+  'text/csv',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/plain',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+].join(',');
+
+const MAX_SIZE_BYTES = 10 * 1024 * 1024;
+
+export interface AttachedFileInfo {
+  fileId: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+}
 
 interface ChatInputProps {
-  onSendMessage: (message: string) => void;
+  onSendMessage: (message: string, attachedFiles: AttachedFileInfo[]) => void;
   disabled?: boolean;
   placeholder?: string;
+}
+
+function generateLocalId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 export function ChatInput({ onSendMessage, disabled = false, placeholder }: ChatInputProps) {
   const t = useTranslations('ChatTutor');
   const [message, setMessage] = useState('');
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const actualPlaceholder = placeholder || t('placeholder');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedMessage = message.trim();
-    if (trimmedMessage && !disabled) {
-      onSendMessage(trimmedMessage);
+    const readyFiles = pendingFiles.filter((f) => f.fileId && !f.error);
+
+    if ((trimmedMessage || readyFiles.length > 0) && !disabled) {
+      const attachedFiles: AttachedFileInfo[] = readyFiles.map((f) => ({
+        fileId: f.fileId!,
+        name: f.file.name,
+        mimeType: f.file.type,
+        sizeBytes: f.file.size,
+      }));
+      onSendMessage(trimmedMessage || ' ', attachedFiles);
       setMessage('');
-      // Reset textarea height
+      setPendingFiles([]);
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
@@ -39,49 +78,192 @@ export function ChatInput({ onSendMessage, disabled = false, placeholder }: Chat
     }
   };
 
-  // Auto-resize textarea
   useEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) {
       textarea.style.height = 'auto';
-      const newHeight = Math.min(textarea.scrollHeight, 120); // Max 5 lines
+      const newHeight = Math.min(textarea.scrollHeight, 120);
       textarea.style.height = `${newHeight}px`;
     }
   }, [message]);
 
+  const processFile = useCallback(
+    async (file: File) => {
+      const localId = generateLocalId();
+      let previewUrl: string | undefined;
+
+      if (file.type.startsWith('image/')) {
+        previewUrl = URL.createObjectURL(file);
+      }
+
+      let errorMsg: string | undefined;
+      if (file.size > MAX_SIZE_BYTES) {
+        errorMsg = t('fileUpload.tooLarge');
+      } else if (!ACCEPTED_TYPES.includes(file.type)) {
+        errorMsg = t('fileUpload.unsupportedType');
+      }
+
+      const newFile: PendingFile = {
+        localId,
+        file,
+        previewUrl,
+        uploading: !errorMsg,
+        progress: 0,
+        error: errorMsg,
+      };
+
+      setPendingFiles((prev) => [...prev, newFile]);
+
+      if (errorMsg) return;
+
+      try {
+        const result = await uploadTutorFile(file, (percent) => {
+          setPendingFiles((prev) =>
+            prev.map((f) => (f.localId === localId ? { ...f, progress: percent } : f))
+          );
+        });
+
+        setPendingFiles((prev) =>
+          prev.map((f) =>
+            f.localId === localId ? { ...f, uploading: false, progress: 100, fileId: result.file_id } : f
+          )
+        );
+      } catch (err) {
+        const isDailyLimit = err instanceof Error && err.message === 'DAILY_LIMIT_REACHED';
+        setPendingFiles((prev) =>
+          prev.map((f) =>
+            f.localId === localId
+              ? {
+                  ...f,
+                  uploading: false,
+                  error: isDailyLimit ? t('fileUpload.dailyLimitReached') : t('fileUpload.uploadFailed'),
+                }
+              : f
+          )
+        );
+      }
+    },
+    [t]
+  );
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    Array.from(files).forEach(processFile);
+    e.target.value = '';
+  };
+
+  const handleRemoveFile = (localId: string) => {
+    setPendingFiles((prev) => {
+      const removed = prev.find((f) => f.localId === localId);
+      if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl);
+      return prev.filter((f) => f.localId !== localId);
+    });
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = e.dataTransfer.files;
+    if (!files) return;
+    Array.from(files).forEach(processFile);
+  };
+
+  const hasReadyFiles = pendingFiles.some((f) => f.fileId && !f.error);
+  const isUploading = pendingFiles.some((f) => f.uploading);
+  const canSend = (message.trim() || hasReadyFiles) && !disabled && !isUploading;
+
   return (
-    <form onSubmit={handleSubmit} className="flex items-end gap-2 p-4 border-t bg-background">
-      <div className="flex-1 relative">
-        <textarea
-          ref={textareaRef}
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={actualPlaceholder}
-          disabled={disabled}
-          rows={1}
-          className={cn(
-            'w-full resize-none rounded-md border border-input px-3 py-2',
-            'text-sm bg-background placeholder:text-muted-foreground',
-            'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
-            'min-h-[44px] max-h-[120px]', // Ensure minimum touch target
-            disabled && 'opacity-50 cursor-not-allowed'
-          )}
-          style={{
-            lineHeight: '1.4',
-            fontSize: '16px' // Prevent iOS zoom
-          }}
+    <div
+      className={cn(
+        'border-t bg-background transition-colors',
+        isDragging && 'bg-primary/5 border-primary'
+      )}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDragging && (
+        <div className="flex items-center justify-center py-3 text-sm text-primary font-medium">
+          {t('fileUpload.dragDrop')}
+        </div>
+      )}
+
+      {pendingFiles.length > 0 && (
+        <div className="flex flex-col gap-1.5 px-4 pt-3">
+          {pendingFiles.map((pf) => (
+            <FilePreview key={pf.localId} pendingFile={pf} onRemove={handleRemoveFile} />
+          ))}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="flex items-end gap-2 p-4">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={ACCEPTED_TYPES}
+          multiple
+          onChange={handleFileChange}
+          className="sr-only"
+          aria-hidden="true"
+          capture="environment"
         />
-      </div>
-      <Button
-        type="submit"
-        size="icon"
-        disabled={disabled || !message.trim()}
-        className="min-h-[44px] min-w-[44px] shrink-0"
-        aria-label={t('send')}
-      >
-        <Send className="h-4 w-4" />
-      </Button>
-    </form>
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="min-h-[44px] min-w-[44px] shrink-0"
+          aria-label={t('fileUpload.attachAriaLabel')}
+          disabled={disabled}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <Paperclip className="h-4 w-4" />
+        </Button>
+
+        <div className="flex-1 relative">
+          <textarea
+            ref={textareaRef}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={actualPlaceholder}
+            disabled={disabled}
+            rows={1}
+            className={cn(
+              'w-full resize-none rounded-md border border-input px-3 py-2',
+              'text-sm bg-background placeholder:text-muted-foreground',
+              'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+              'min-h-[44px] max-h-[120px]',
+              disabled && 'opacity-50 cursor-not-allowed'
+            )}
+            style={{
+              lineHeight: '1.4',
+              fontSize: '16px',
+            }}
+          />
+        </div>
+
+        <Button
+          type="submit"
+          size="icon"
+          disabled={!canSend}
+          className="min-h-[44px] min-w-[44px] shrink-0"
+          aria-label={t('send')}
+        >
+          <Send className="h-4 w-4" />
+        </Button>
+      </form>
+    </div>
   );
 }
