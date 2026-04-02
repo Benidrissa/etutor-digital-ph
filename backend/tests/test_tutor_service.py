@@ -1,4 +1,4 @@
-"""Tests for AI tutor service SSE streaming and error handling."""
+"""Tests for AI tutor service — updated for tool_use API (messages.create)."""
 
 import uuid
 from datetime import UTC, datetime
@@ -16,14 +16,11 @@ from app.domain.services.tutor_service import TutorService
 
 @pytest.fixture
 def mock_anthropic_client():
-    """Mock Anthropic async client."""
-    client = MagicMock()
-    return client
+    return MagicMock()
 
 
 @pytest.fixture
 def mock_semantic_retriever():
-    """Mock semantic retriever that returns empty results."""
     retriever = AsyncMock(spec=SemanticRetriever)
     retriever.search_for_module = AsyncMock(return_value=[])
     return retriever
@@ -31,14 +28,11 @@ def mock_semantic_retriever():
 
 @pytest.fixture
 def mock_embedding_service():
-    """Mock embedding service."""
-    service = AsyncMock(spec=EmbeddingService)
-    return service
+    return AsyncMock(spec=EmbeddingService)
 
 
 @pytest.fixture
 def tutor_service(mock_anthropic_client, mock_semantic_retriever, mock_embedding_service):
-    """TutorService with mocked dependencies."""
     return TutorService(
         anthropic_client=mock_anthropic_client,
         semantic_retriever=mock_semantic_retriever,
@@ -48,8 +42,7 @@ def tutor_service(mock_anthropic_client, mock_semantic_retriever, mock_embedding
 
 @pytest.fixture
 def sample_user():
-    """Sample user for testing."""
-    user = User(
+    return User(
         id=uuid.uuid4(),
         email="test@example.com",
         name="Test User",
@@ -61,12 +54,10 @@ def sample_user():
         last_active=datetime.now(UTC),
         created_at=datetime.now(UTC),
     )
-    return user
 
 
 @pytest.fixture
 def sample_conversation(sample_user):
-    """Sample conversation for testing."""
     return TutorConversation(
         id=uuid.uuid4(),
         user_id=sample_user.id,
@@ -77,7 +68,6 @@ def sample_conversation(sample_user):
 
 
 async def collect_chunks(generator) -> list[dict]:
-    """Collect all chunks from an async generator."""
     chunks = []
     async for chunk in generator:
         chunks.append(chunk)
@@ -85,32 +75,26 @@ async def collect_chunks(generator) -> list[dict]:
 
 
 async def test_send_message_yields_content_type_chunks(
-    tutor_service, sample_user, sample_conversation
+    tutor_service, sample_user, sample_conversation, mock_anthropic_client
 ):
     """Verify send_message yields chunks with type='content' for text tokens."""
     mock_session = AsyncMock(spec=AsyncSession)
     mock_session.get = AsyncMock(return_value=sample_user)
+    mock_session.add = MagicMock()
+    mock_session.commit = AsyncMock()
+    mock_session.flush = AsyncMock()
 
-    mock_event = MagicMock()
-    mock_event.type = "content_block_delta"
-    mock_event.delta = MagicMock()
-    mock_event.delta.text = "Bonjour! "
+    text_block1 = MagicMock()
+    text_block1.text = "Bonjour! "
+    del text_block1.id
 
-    mock_event2 = MagicMock()
-    mock_event2.type = "content_block_delta"
-    mock_event2.delta = MagicMock()
-    mock_event2.delta.text = "Comment puis-je vous aider?"
+    text_block2 = MagicMock()
+    text_block2.text = "Comment puis-je vous aider?"
+    del text_block2.id
 
-    async def mock_stream_iter():
-        yield mock_event
-        yield mock_event2
-
-    mock_stream = MagicMock()
-    mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
-    mock_stream.__aexit__ = AsyncMock(return_value=None)
-    mock_stream.__aiter__ = lambda self: mock_stream_iter()
-
-    tutor_service.anthropic.messages.stream = MagicMock(return_value=mock_stream)
+    mock_response = MagicMock()
+    mock_response.content = [text_block1, text_block2]
+    mock_anthropic_client.messages.create = AsyncMock(return_value=mock_response)
 
     with (
         patch.object(
@@ -125,17 +109,7 @@ async def test_send_message_yields_content_type_chunks(
             new_callable=AsyncMock,
             return_value=sample_conversation,
         ),
-        patch.object(
-            tutor_service,
-            "_retrieve_relevant_context",
-            new_callable=AsyncMock,
-            return_value=[],
-        ),
     ):
-        mock_session.add = MagicMock()
-        mock_session.commit = AsyncMock()
-        mock_session.flush = AsyncMock()
-
         chunks = await collect_chunks(
             tutor_service.send_message(
                 user_id=sample_user.id,
@@ -154,22 +128,18 @@ async def test_send_message_yields_content_type_chunks(
 
 
 async def test_send_message_yields_sources_cited_type(
-    tutor_service, sample_user, sample_conversation
+    tutor_service, sample_user, sample_conversation, mock_anthropic_client
 ):
     """Verify send_message yields chunks with type='sources_cited'."""
     mock_session = AsyncMock(spec=AsyncSession)
     mock_session.get = AsyncMock(return_value=sample_user)
+    mock_session.add = MagicMock()
+    mock_session.commit = AsyncMock()
+    mock_session.flush = AsyncMock()
 
-    async def mock_stream_iter():
-        return
-        yield  # make it an async generator
-
-    mock_stream = MagicMock()
-    mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
-    mock_stream.__aexit__ = AsyncMock(return_value=None)
-    mock_stream.__aiter__ = lambda self: mock_stream_iter()
-
-    tutor_service.anthropic.messages.stream = MagicMock(return_value=mock_stream)
+    mock_response = MagicMock()
+    mock_response.content = []
+    mock_anthropic_client.messages.create = AsyncMock(return_value=mock_response)
 
     with (
         patch.object(
@@ -184,17 +154,7 @@ async def test_send_message_yields_sources_cited_type(
             new_callable=AsyncMock,
             return_value=sample_conversation,
         ),
-        patch.object(
-            tutor_service,
-            "_retrieve_relevant_context",
-            new_callable=AsyncMock,
-            return_value=[],
-        ),
     ):
-        mock_session.add = MagicMock()
-        mock_session.commit = AsyncMock()
-        mock_session.flush = AsyncMock()
-
         chunks = await collect_chunks(
             tutor_service.send_message(
                 user_id=sample_user.id,
@@ -269,25 +229,23 @@ async def test_send_message_daily_limit_error_has_code(tutor_service, sample_use
     assert error_chunks[0]["data"]["limit_reached"] is True
 
 
-async def test_send_message_never_yields_text_type(tutor_service, sample_user, sample_conversation):
+async def test_send_message_never_yields_text_type(
+    tutor_service, sample_user, sample_conversation, mock_anthropic_client
+):
     """Regression test: ensure type='text' is never yielded (was the bug in #213)."""
     mock_session = AsyncMock(spec=AsyncSession)
     mock_session.get = AsyncMock(return_value=sample_user)
+    mock_session.add = MagicMock()
+    mock_session.commit = AsyncMock()
+    mock_session.flush = AsyncMock()
 
-    mock_event = MagicMock()
-    mock_event.type = "content_block_delta"
-    mock_event.delta = MagicMock()
-    mock_event.delta.text = "Test response"
+    text_block = MagicMock()
+    text_block.text = "Test response"
+    del text_block.id
 
-    async def mock_stream_iter():
-        yield mock_event
-
-    mock_stream = MagicMock()
-    mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
-    mock_stream.__aexit__ = AsyncMock(return_value=None)
-    mock_stream.__aiter__ = lambda self: mock_stream_iter()
-
-    tutor_service.anthropic.messages.stream = MagicMock(return_value=mock_stream)
+    mock_response = MagicMock()
+    mock_response.content = [text_block]
+    mock_anthropic_client.messages.create = AsyncMock(return_value=mock_response)
 
     with (
         patch.object(
@@ -302,17 +260,7 @@ async def test_send_message_never_yields_text_type(tutor_service, sample_user, s
             new_callable=AsyncMock,
             return_value=sample_conversation,
         ),
-        patch.object(
-            tutor_service,
-            "_retrieve_relevant_context",
-            new_callable=AsyncMock,
-            return_value=[],
-        ),
     ):
-        mock_session.add = MagicMock()
-        mock_session.commit = AsyncMock()
-        mock_session.flush = AsyncMock()
-
         chunks = await collect_chunks(
             tutor_service.send_message(
                 user_id=sample_user.id,
