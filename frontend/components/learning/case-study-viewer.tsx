@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
-import { CheckCircle, Clock, FileText } from 'lucide-react';
+import { CheckCircle, Clock, FileText, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +13,7 @@ import rehypeKatex from 'rehype-katex';
 import { LessonSkeleton } from './lesson-skeleton';
 import { SourceCitations } from './source-citations';
 import { apiFetch } from '@/lib/api';
+import { useCurrentUser } from '@/lib/hooks/use-current-user';
 
 interface CaseStudyContent {
   aof_context: string;
@@ -39,7 +40,7 @@ interface CaseStudyViewerProps {
   unitId: string;
   language: 'fr' | 'en';
   level: number;
-  countryContext: string;
+  countryContext?: string;
   onComplete?: () => void;
 }
 
@@ -56,6 +57,11 @@ export function CaseStudyViewer({
   const [error, setError] = useState<string | null>(null);
   const [isCompleted, setIsCompleted] = useState(false);
   const [correctionVisible, setCorrectionVisible] = useState(false);
+  const [forceRegenerate, setForceRegenerate] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const currentUser = useCurrentUser();
+  const country = countryContext || currentUser?.country || 'SN';
 
   const t = useTranslations('CaseStudyViewer');
 
@@ -67,21 +73,25 @@ export function CaseStudyViewer({
         setIsStreaming(true);
         setError(null);
 
-        try {
-          const cachedData = await apiFetch<CaseStudyData>(
-            `/api/v1/content/cases/${moduleId}/${unitId}?language=${language}&level=${level}&country=${countryContext}`
-          );
+        if (!forceRegenerate) {
+          try {
+            const cachedData = await apiFetch<CaseStudyData>(
+              `/api/v1/content/cases/${moduleId}/${unitId}?language=${language}&level=${level}&country=${country}`
+            );
 
-          if (cachedData.cached) {
-            setCaseStudyData(cachedData);
-            setIsStreaming(false);
-            return;
+            if (cachedData.cached) {
+              setCaseStudyData(cachedData);
+              setIsStreaming(false);
+              setIsRefreshing(false);
+              return;
+            }
+          } catch {
           }
-        } catch {
         }
 
         const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-        const streamUrl = `${API_BASE}/api/v1/content/cases/${moduleId}/${unitId}/stream?language=${language}&level=${level}&country=${countryContext}`;
+        const forceParam = forceRegenerate ? '&force_regenerate=true' : '';
+        const streamUrl = `${API_BASE}/api/v1/content/cases/${moduleId}/${unitId}/stream?language=${language}&level=${level}&country=${country}${forceParam}`;
         eventSource = new EventSource(streamUrl);
 
         eventSource.addEventListener('complete', (event) => {
@@ -89,11 +99,14 @@ export function CaseStudyViewer({
             const data = JSON.parse(event.data);
             setCaseStudyData(data);
             setIsStreaming(false);
+            setIsRefreshing(false);
+            setForceRegenerate(false);
             eventSource?.close();
           } catch (e) {
             console.error('Error parsing SSE complete event:', e);
             setError(t('streamError'));
             setIsStreaming(false);
+            setIsRefreshing(false);
             eventSource?.close();
           }
         });
@@ -106,17 +119,20 @@ export function CaseStudyViewer({
           }
           setError(t('streamError'));
           setIsStreaming(false);
+          setIsRefreshing(false);
           eventSource?.close();
         });
 
         eventSource.onerror = () => {
           setError(t('streamError'));
           setIsStreaming(false);
+          setIsRefreshing(false);
           eventSource?.close();
         };
       } catch {
         setError(t('loadError'));
         setIsStreaming(false);
+        setIsRefreshing(false);
       }
     };
 
@@ -125,7 +141,13 @@ export function CaseStudyViewer({
     return () => {
       eventSource?.close();
     };
-  }, [moduleId, unitId, language, level, countryContext, t]);
+  }, [moduleId, unitId, language, level, country, forceRegenerate, t]);
+
+  const handleRefresh = () => {
+    setCaseStudyData(null);
+    setIsRefreshing(true);
+    setForceRegenerate(true);
+  };
 
   const handleMarkComplete = async () => {
     try {
@@ -196,17 +218,30 @@ export function CaseStudyViewer({
     <div className="container mx-auto max-w-4xl px-4 py-6">
       {/* Header */}
       <div className="mb-8">
-        <div className="flex items-center gap-3 mb-3">
-          <Badge variant="outline" className="flex items-center gap-1">
-            <FileText className="w-3 h-3" />
-            {t('badge')}
-          </Badge>
-          <Badge variant="outline">{t('level', { level })}</Badge>
-          <div className="flex items-center text-gray-600">
-            <Clock className="w-4 h-4 mr-1" />
-            {t('estimatedTime')}
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <Badge variant="outline" className="flex items-center gap-1">
+              <FileText className="w-3 h-3" />
+              {t('badge')}
+            </Badge>
+            <Badge variant="outline">{t('level', { level })}</Badge>
+            <div className="flex items-center text-gray-600">
+              <Clock className="w-4 h-4 mr-1" />
+              {t('estimatedTime')}
+            </div>
+            {caseStudyData.cached && <Badge variant="secondary">{t('cached')}</Badge>}
           </div>
-          {caseStudyData.cached && <Badge variant="secondary">{t('cached')}</Badge>}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isRefreshing || isStreaming}
+            className="min-h-11 gap-1.5 text-gray-500 hover:text-gray-900"
+            title={t('refreshContent')}
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">{t('refreshContent')}</span>
+          </Button>
         </div>
         <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3">
           {t('unitTitle', { unit: unitId })}

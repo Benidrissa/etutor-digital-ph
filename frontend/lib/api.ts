@@ -255,6 +255,7 @@ export async function generateQuiz(params: {
   country: string;
   level: number;
   num_questions?: number;
+  force_regenerate?: boolean;
 }): Promise<Quiz> {
   return apiFetch<Quiz>("/api/v1/quiz/generate", {
     method: "POST",
@@ -265,6 +266,7 @@ export async function generateQuiz(params: {
       country: params.country,
       level: params.level,
       num_questions: params.num_questions || 10,
+      force_regenerate: params.force_regenerate || false,
     }),
   });
 }

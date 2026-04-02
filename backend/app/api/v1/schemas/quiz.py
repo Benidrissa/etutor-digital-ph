@@ -98,6 +98,9 @@ class QuizGenerationRequest(BaseModel):
     num_questions: int = Field(
         description="Number of questions to generate", ge=5, le=20, default=10
     )
+    force_regenerate: bool = Field(
+        description="Skip cache and force fresh content generation", default=False
+    )
 
 
 class SummativeAssessmentRequest(BaseModel):
