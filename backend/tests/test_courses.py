@@ -8,10 +8,36 @@ import uuid
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.domain.models.user import UserRole
+from app.domain.models.user import User, UserRole
 from app.domain.services.jwt_auth_service import JWTAuthService
 from app.main import app
+
+# ---------------------------------------------------------------------------
+# DB user helpers — insert real users so FK constraints are satisfied
+# ---------------------------------------------------------------------------
+
+
+async def _insert_user(
+    engine,
+    email: str,
+    role: UserRole = UserRole.user,
+) -> uuid.UUID:
+    """Insert a real User row and return its UUID. Committed immediately."""
+    user_id = uuid.uuid4()
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with session_factory() as session:
+        user = User(
+            id=user_id,
+            email=email,
+            name=email.split("@")[0],
+            role=role,
+        )
+        session.add(user)
+        await session.commit()
+    return user_id
+
 
 # ---------------------------------------------------------------------------
 # Auth header helpers
@@ -19,11 +45,16 @@ from app.main import app
 
 
 @pytest.fixture
-def admin_auth_headers():
-    """JWT auth headers for a user with admin role."""
+async def admin_auth_headers(test_engine):
+    """JWT auth headers for a real admin user inserted into the DB."""
+    admin_id = await _insert_user(
+        test_engine,
+        email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
+        role=UserRole.admin,
+    )
     jwt_service = JWTAuthService()
     token = jwt_service.create_access_token(
-        user_id=str(uuid.uuid4()),
+        user_id=str(admin_id),
         email="admin@example.com",
         role=UserRole.admin.value,
     )
@@ -31,11 +62,16 @@ def admin_auth_headers():
 
 
 @pytest.fixture
-def learner_auth_headers():
-    """JWT auth headers for a regular learner."""
+async def learner_auth_headers(test_engine):
+    """JWT auth headers for a real learner user inserted into the DB."""
+    learner_id = await _insert_user(
+        test_engine,
+        email=f"learner-{uuid.uuid4().hex[:8]}@example.com",
+        role=UserRole.user,
+    )
     jwt_service = JWTAuthService()
     token = jwt_service.create_access_token(
-        user_id=str(uuid.uuid4()),
+        user_id=str(learner_id),
         email="learner@example.com",
     )
     return {"Authorization": f"Bearer {token}"}
