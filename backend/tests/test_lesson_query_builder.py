@@ -1,6 +1,7 @@
-"""Tests for lesson query builder — verifies unit-specific RAG queries."""
+"""Tests for lesson query builder — verifies unit-specific RAG queries and cache lookup."""
 
 import uuid
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -8,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.claude_service import ClaudeService
 from app.ai.rag.retriever import SemanticRetriever
+from app.domain.models.content import GeneratedContent
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.services.lesson_service import LessonGenerationService
@@ -165,3 +167,125 @@ class TestBuildLessonQuery:
 
         assert "Fondements de la Santé Publique" in query
         session.execute.assert_not_called()
+
+
+@pytest.fixture
+def sample_module_id() -> uuid.UUID:
+    return uuid.uuid4()
+
+
+@pytest.fixture
+def make_cached_content(sample_module_id):
+    def _make(unit_id: str) -> GeneratedContent:
+        content = GeneratedContent(
+            id=uuid.uuid4(),
+            module_id=sample_module_id,
+            content_type="lesson",
+            language="fr",
+            level=1,
+            content={
+                "unit_id": unit_id,
+                "introduction": f"Intro for {unit_id}",
+                "concepts": ["Concept 1"],
+                "aof_example": "Example",
+                "synthesis": "Synthesis",
+                "key_points": ["Point 1"],
+                "sources_cited": ["Source 1"],
+            },
+            sources_cited=["Source 1"],
+            country_context="SN",
+            generated_at=datetime(2026, 1, 1, 0, 0, 0),
+            validated=False,
+        )
+        return content
+
+    return _make
+
+
+class TestGetCachedLesson:
+    @pytest.mark.asyncio
+    async def test_returns_cached_lesson_for_matching_unit(
+        self, lesson_service, sample_module_id, make_cached_content
+    ):
+        session = AsyncMock(spec=AsyncSession)
+        cached = make_cached_content("M01-U01")
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.first.return_value = cached
+        mock_result.scalars.return_value = mock_scalars
+        session.execute = AsyncMock(return_value=mock_result)
+
+        result = await lesson_service._get_cached_lesson(
+            sample_module_id, "M01-U01", "fr", "SN", 1, session
+        )
+
+        assert result is not None
+        assert result.unit_id == "M01-U01"
+        assert result.cached is True
+
+    @pytest.mark.asyncio
+    async def test_returns_none_on_cache_miss(self, lesson_service, sample_module_id):
+        session = AsyncMock(spec=AsyncSession)
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.first.return_value = None
+        mock_result.scalars.return_value = mock_scalars
+        session.execute = AsyncMock(return_value=mock_result)
+
+        result = await lesson_service._get_cached_lesson(
+            sample_module_id, "M01-U02", "fr", "SN", 1, session
+        )
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_different_units_return_their_own_cached_content(
+        self, lesson_service, sample_module_id, make_cached_content
+    ):
+        cached_u01 = make_cached_content("M01-U01")
+        cached_u02 = make_cached_content("M01-U02")
+
+        mock_result_u01 = MagicMock()
+        mock_scalars_u01 = MagicMock()
+        mock_scalars_u01.first.return_value = cached_u01
+        mock_result_u01.scalars.return_value = mock_scalars_u01
+
+        mock_result_u02 = MagicMock()
+        mock_scalars_u02 = MagicMock()
+        mock_scalars_u02.first.return_value = cached_u02
+        mock_result_u02.scalars.return_value = mock_scalars_u02
+
+        session = AsyncMock(spec=AsyncSession)
+        session.execute = AsyncMock(side_effect=[mock_result_u01, mock_result_u02])
+
+        result_u01 = await lesson_service._get_cached_lesson(
+            sample_module_id, "M01-U01", "fr", "SN", 1, session
+        )
+        result_u02 = await lesson_service._get_cached_lesson(
+            sample_module_id, "M01-U02", "fr", "SN", 1, session
+        )
+
+        assert result_u01 is not None
+        assert result_u02 is not None
+        assert result_u01.unit_id == "M01-U01"
+        assert result_u02.unit_id == "M01-U02"
+        assert result_u01.unit_id != result_u02.unit_id
+
+    @pytest.mark.asyncio
+    async def test_cached_lesson_has_correct_module_id(
+        self, lesson_service, sample_module_id, make_cached_content
+    ):
+        session = AsyncMock(spec=AsyncSession)
+        cached = make_cached_content("M01-U03")
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.first.return_value = cached
+        mock_result.scalars.return_value = mock_scalars
+        session.execute = AsyncMock(return_value=mock_result)
+
+        result = await lesson_service._get_cached_lesson(
+            sample_module_id, "M01-U03", "fr", "SN", 1, session
+        )
+
+        assert result is not None
+        assert result.module_id == sample_module_id

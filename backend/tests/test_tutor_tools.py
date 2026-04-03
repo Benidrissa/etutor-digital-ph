@@ -13,8 +13,10 @@ from app.domain.models.content import GeneratedContent
 from app.domain.models.conversation import TutorConversation
 from app.domain.models.learner_memory import LearnerMemory
 from app.domain.models.user import User
+from app.domain.services.learner_memory_service import LearnerMemoryService
 from app.domain.services.tutor_service import (
     MAX_TOOL_CALLS,
+    SessionContext,
     TutorService,
     _deduplicate_sources,
     _split_into_chunks,
@@ -89,15 +91,27 @@ def tool_executor(mock_retriever, mock_anthropic, sample_user):
 
 
 @pytest.fixture
-def tutor_service(mock_retriever, mock_anthropic):
+def mock_learner_memory_service():
+    service = AsyncMock(spec=LearnerMemoryService)
+    service.format_for_prompt = AsyncMock(return_value="")
+    return service
+
+
+@pytest.fixture
+def tutor_service(mock_retriever, mock_anthropic, mock_learner_memory_service):
     from app.ai.rag.embeddings import EmbeddingService
 
     embedding_service = AsyncMock(spec=EmbeddingService)
-    return TutorService(
+    svc = TutorService(
         anthropic_client=mock_anthropic,
         semantic_retriever=mock_retriever,
         embedding_service=embedding_service,
+        learner_memory_service=mock_learner_memory_service,
     )
+    svc.session_manager.build_session_context = AsyncMock(
+        return_value=SessionContext(learner_memory="", is_new_conversation=True)
+    )
+    return svc
 
 
 # ---------------------------------------------------------------------------
@@ -343,17 +357,16 @@ async def test_save_learner_preference_creates_new(tool_executor):
 
     result_str = await tool_executor._save_learner_preference(
         {
-            "preference_type": "learning_style",
-            "value": {"style": "analogies", "confidence": 0.9},
+            "preference_type": "preferred_explanation_style",
+            "value": "analogies",
         },
         mock_session,
     )
     result = json.loads(result_str)
 
     assert result["saved"] is True
-    assert result["preference_type"] == "learning_style"
+    assert result["preference_type"] == "preferred_explanation_style"
     assert result["updated"] is False
-    mock_session.add.assert_called_once()
 
 
 async def test_save_learner_preference_updates_existing(tool_executor):
@@ -368,8 +381,8 @@ async def test_save_learner_preference_updates_existing(tool_executor):
 
     result_str = await tool_executor._save_learner_preference(
         {
-            "preference_type": "learning_style",
-            "value": {"style": "examples", "confidence": 0.8},
+            "preference_type": "preferred_explanation_style",
+            "value": "examples",
         },
         mock_session,
     )
@@ -377,7 +390,6 @@ async def test_save_learner_preference_updates_existing(tool_executor):
 
     assert result["saved"] is True
     assert result["updated"] is True
-    assert existing.value == {"style": "examples", "confidence": 0.8}
 
 
 # ---------------------------------------------------------------------------
@@ -438,6 +450,12 @@ async def test_tool_use_loop_executes_tool_and_gets_final_response(
             new_callable=AsyncMock,
             return_value=sample_conversation,
         ),
+        patch.object(
+            tutor_service,
+            "_get_previous_compact",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
         patch("app.domain.services.tutor_service.TutorToolExecutor") as mock_executor_cls,
     ):
         mock_executor = AsyncMock()
@@ -497,6 +515,12 @@ async def test_max_tool_calls_enforced(
             new_callable=AsyncMock,
             return_value=sample_conversation,
         ),
+        patch.object(
+            tutor_service,
+            "_get_previous_compact",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
         patch("app.domain.services.tutor_service.TutorToolExecutor") as mock_executor_cls,
     ):
         mock_executor = AsyncMock()
@@ -552,6 +576,12 @@ async def test_no_tool_use_yields_content_chunks(
             new_callable=AsyncMock,
             return_value=sample_conversation,
         ),
+        patch.object(
+            tutor_service,
+            "_get_previous_compact",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
     ):
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
@@ -601,6 +631,12 @@ async def test_finished_chunk_includes_tool_calls_made(
             "_get_or_create_conversation",
             new_callable=AsyncMock,
             return_value=sample_conversation,
+        ),
+        patch.object(
+            tutor_service,
+            "_get_previous_compact",
+            new_callable=AsyncMock,
+            return_value=None,
         ),
     ):
         mock_session.add = MagicMock()

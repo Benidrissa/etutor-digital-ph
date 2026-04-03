@@ -8,7 +8,7 @@ import { Link } from '@/i18n/routing';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { getModuleDetailWithProgress, type ModuleDetailWithProgressResponse, type UnitProgressDetail } from '@/lib/api';
+import { getModuleDetailWithProgress, getModuleUnits, type ModuleDetailWithProgressResponse, type UnitProgressDetail } from '@/lib/api';
 import type { Unit } from '@/lib/modules';
 
 interface ModuleProgressOverlayProps {
@@ -36,18 +36,18 @@ function getStatusIcon(status: 'pending' | 'in-progress' | 'completed') {
   }
 }
 
-function detectUnitType(unitNumber: string): 'lesson' | 'quiz' | 'case-study' {
-  if (unitNumber.toLowerCase().includes('quiz') || unitNumber.toLowerCase().includes('q')) {
-    return 'quiz';
-  }
-  if (unitNumber.toLowerCase().includes('case') || unitNumber.toLowerCase().includes('cs')) {
-    return 'case-study';
-  }
+function detectUnitType(unit: UnitProgressDetail): 'lesson' | 'quiz' | 'case-study' {
+  const title = (unit.title_fr || unit.title_en || '').toLowerCase();
+  if (title.includes('quiz')) return 'quiz';
+  if (title.includes('étude de cas') || title.includes('case study')) return 'case-study';
+  // Fallback: last unit in module of 5 is case-study, second-to-last is quiz
+  if (unit.order_index === 3) return 'quiz';
+  if (unit.order_index === 4) return 'case-study';
   return 'lesson';
 }
 
-function getTypeIcon(unitNumber: string) {
-  const type = detectUnitType(unitNumber);
+function getTypeIcon(unit: UnitProgressDetail) {
+  const type = detectUnitType(unit);
   switch (type) {
     case 'quiz':
       return <MessageSquare className="w-4 h-4" />;
@@ -59,7 +59,7 @@ function getTypeIcon(unitNumber: string) {
 }
 
 function getUnitHref(moduleId: string, unit: UnitProgressDetail): string {
-  const type = detectUnitType(unit.unit_number);
+  const type = detectUnitType(unit);
   if (type === 'quiz') {
     return `/modules/${moduleId}/quiz?unit=${unit.unit_number}`;
   }
@@ -77,12 +77,54 @@ export function ModuleProgressOverlay({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getModuleDetailWithProgress(moduleId)
-      .then(setData)
-      .catch(() => {
-        // Silently fall back to static data on error (offline support)
-      })
-      .finally(() => setLoading(false));
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const result = await getModuleDetailWithProgress(moduleId);
+        if (!cancelled) setData(result);
+      } catch {
+        try {
+          const publicResult = await getModuleUnits(moduleId);
+          if (!cancelled) {
+            setData({
+              id: publicResult.module_id,
+              module_number: publicResult.module_number,
+              level: publicResult.level,
+              title_fr: publicResult.title_fr,
+              title_en: publicResult.title_en,
+              description_fr: publicResult.description_fr,
+              description_en: publicResult.description_en,
+              estimated_hours: publicResult.estimated_hours,
+              prereq_modules: [],
+              status: 'locked',
+              completion_pct: 0,
+              quiz_score_avg: null,
+              time_spent_minutes: 0,
+              last_accessed: null,
+              units: publicResult.units.map((u) => ({
+                id: u.id,
+                unit_number: u.unit_number,
+                title_fr: u.title_fr,
+                title_en: u.title_en,
+                description_fr: u.description_fr,
+                description_en: u.description_en,
+                estimated_minutes: u.estimated_minutes,
+                order_index: u.order_index,
+                status: 'pending',
+              })),
+            });
+          }
+        } catch {
+          // Both endpoints failed — fall back to hardcoded static units
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => { cancelled = true; };
   }, [moduleId]);
 
   const staticUnitsFallback: UnitProgressDetail[] = (staticUnits ?? []).map((u, i) => ({
@@ -154,7 +196,7 @@ export function ModuleProgressOverlay({
                       <div className="flex items-center gap-3 flex-1">
                         {getStatusIcon(mappedStatus)}
                         <div className="flex items-center gap-2 text-stone-600">
-                          {getTypeIcon(unit.unit_number)}
+                          {getTypeIcon(unit)}
                           <span className="text-sm font-medium">
                             {t('unitNumber', { number: unit.order_index + 1 })}
                           </span>

@@ -68,6 +68,20 @@ class ModuleDetailWithProgressResponse(BaseModel):
     units: list[UnitProgressDetail] = Field(default_factory=list)
 
 
+class CompleteLessonRequest(BaseModel):
+    """Request to mark a lesson/unit as completed (requires passing quiz)."""
+
+    module_id: UUID = Field(description="Module UUID")
+    unit_id: str = Field(description="Unit ID, e.g. 'M01-U02'")
+
+
+class CompleteLessonResponse(BaseModel):
+    """Response after attempting to complete a lesson."""
+
+    completed: bool = Field(description="Whether the lesson was marked as completed")
+    module_progress: ModuleProgressResponse
+
+
 class ErrorResponse(BaseModel):
     """Standard error response."""
 

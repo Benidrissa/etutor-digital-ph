@@ -55,9 +55,6 @@ export function LocaleSwitcher() {
       title={t("switchTo")}
       aria-label={t("switchTo")}
     >
-      <span className="text-base" role="img" aria-hidden="true">
-        {getFlagIcon(locale)}
-      </span>
       <span className="text-sm font-medium">
         {getLanguageAbbrev(locale)}
       </span>

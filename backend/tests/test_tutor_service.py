@@ -11,7 +11,8 @@ from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.domain.models.conversation import TutorConversation
 from app.domain.models.user import User
-from app.domain.services.tutor_service import TutorService
+from app.domain.services.learner_memory_service import LearnerMemoryService
+from app.domain.services.tutor_service import SessionContext, TutorService
 
 
 @pytest.fixture
@@ -37,13 +38,31 @@ def mock_embedding_service():
 
 
 @pytest.fixture
-def tutor_service(mock_anthropic_client, mock_semantic_retriever, mock_embedding_service):
+def mock_learner_memory_service():
+    """Mock LearnerMemoryService."""
+    service = AsyncMock(spec=LearnerMemoryService)
+    service.format_for_prompt = AsyncMock(return_value="")
+    return service
+
+
+@pytest.fixture
+def tutor_service(
+    mock_anthropic_client,
+    mock_semantic_retriever,
+    mock_embedding_service,
+    mock_learner_memory_service,
+):
     """TutorService with mocked dependencies."""
-    return TutorService(
+    svc = TutorService(
         anthropic_client=mock_anthropic_client,
         semantic_retriever=mock_semantic_retriever,
         embedding_service=mock_embedding_service,
+        learner_memory_service=mock_learner_memory_service,
     )
+    svc.session_manager.build_session_context = AsyncMock(
+        return_value=SessionContext(learner_memory="", is_new_conversation=True)
+    )
+    return svc
 
 
 @pytest.fixture
@@ -112,6 +131,12 @@ async def test_send_message_yields_content_type_chunks(
             new_callable=AsyncMock,
             return_value=sample_conversation,
         ),
+        patch.object(
+            tutor_service,
+            "_get_previous_compact",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
     ):
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
@@ -160,6 +185,12 @@ async def test_send_message_yields_sources_cited_type(
             "_get_or_create_conversation",
             new_callable=AsyncMock,
             return_value=sample_conversation,
+        ),
+        patch.object(
+            tutor_service,
+            "_get_previous_compact",
+            new_callable=AsyncMock,
+            return_value=None,
         ),
     ):
         mock_session.add = MagicMock()
@@ -266,6 +297,12 @@ async def test_send_message_never_yields_text_type(tutor_service, sample_user, s
             new_callable=AsyncMock,
             return_value=sample_conversation,
         ),
+        patch.object(
+            tutor_service,
+            "_get_previous_compact",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
     ):
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
@@ -283,3 +320,81 @@ async def test_send_message_never_yields_text_type(tutor_service, sample_user, s
     assert len(text_type_chunks) == 0, (
         "Bug #213 regression: type='text' chunks were yielded but frontend expects type='content'"
     )
+
+
+async def test_list_conversations_returns_required_fields(
+    tutor_service, sample_user, sample_conversation
+):
+    """list_conversations must return id, message_count, last_message_at, preview."""
+    mock_session = AsyncMock(spec=AsyncSession)
+
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [sample_conversation]
+    mock_count_result = MagicMock()
+    mock_count_result.scalar.return_value = 1
+    mock_session.execute = AsyncMock(side_effect=[mock_result, mock_count_result])
+
+    result = await tutor_service.list_conversations(
+        user_id=sample_user.id,
+        session=mock_session,
+    )
+
+    assert "conversations" in result
+    assert "total" in result
+    assert result["total"] == 1
+    conv = result["conversations"][0]
+    assert "id" in conv
+    assert "message_count" in conv
+    assert "last_message_at" in conv
+    assert "preview" in conv
+
+
+async def test_get_conversation_returns_none_for_wrong_user(tutor_service, sample_user):
+    """get_conversation must return None when the conversation belongs to another user."""
+    mock_session = AsyncMock(spec=AsyncSession)
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_session.execute = AsyncMock(return_value=mock_result)
+
+    other_user_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+
+    result = await tutor_service.get_conversation(
+        user_id=other_user_id,
+        conversation_id=conversation_id,
+        session=mock_session,
+    )
+
+    assert result is None
+
+
+async def test_get_conversation_returns_messages(tutor_service, sample_user, sample_conversation):
+    """get_conversation must return id, module_id, messages, and created_at."""
+    sample_conversation.messages = [
+        {
+            "role": "user",
+            "content": "Hello",
+            "timestamp": datetime.now(UTC).isoformat(),
+        },
+        {
+            "role": "assistant",
+            "content": "Bonjour!",
+            "timestamp": datetime.now(UTC).isoformat(),
+        },
+    ]
+
+    mock_session = AsyncMock(spec=AsyncSession)
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = sample_conversation
+    mock_session.execute = AsyncMock(return_value=mock_result)
+
+    result = await tutor_service.get_conversation(
+        user_id=sample_user.id,
+        conversation_id=sample_conversation.id,
+        session=mock_session,
+    )
+
+    assert result is not None
+    assert result["id"] == sample_conversation.id
+    assert result["messages"] == sample_conversation.messages
+    assert "created_at" in result

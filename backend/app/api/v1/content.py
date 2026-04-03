@@ -6,8 +6,9 @@ from collections.abc import AsyncGenerator
 from uuid import UUID
 
 import structlog
+from celery.result import AsyncResult
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,24 +18,62 @@ from app.ai.rag.retriever import SemanticRetriever
 from app.api.deps import get_db
 from app.api.deps_local_auth import get_optional_user
 from app.api.v1.schemas.content import (
+    CaseStudyResponse,
     ErrorResponse,
     FlashcardGenerationRequest,
     FlashcardSetResponse,
     LessonGenerationRequest,
     LessonResponse,
+    ModuleUnitsResponse,
+    PublicUnitDetail,
     QuizGenerationRequest,
     QuizResponse,
     StreamingEvent,
 )
+from app.domain.models.content import GeneratedContent
 from app.domain.models.module import Module
+from app.domain.models.module_unit import ModuleUnit
 from app.domain.services.flashcard_service import FlashcardGenerationService
-from app.domain.services.lesson_service import LessonGenerationService
+from app.domain.services.lesson_service import CaseStudyGenerationService, LessonGenerationService
 from app.domain.services.progress_service import ProgressService
 from app.domain.services.quiz_service import QuizService
 from app.infrastructure.config.settings import get_settings
+from app.tasks.content_generation import (
+    generate_case_study_task,
+    generate_lesson_task,
+)
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/content", tags=["content"])
+
+
+@router.get("/status/{task_id}", tags=["content"])
+async def get_generation_status(task_id: str) -> JSONResponse:
+    """Check the status of an async content generation task.
+
+    Returns:
+        JSON with status: pending | generating | complete | failed
+        On complete: content_id is included
+        On failed: error message is included
+    """
+    result = AsyncResult(task_id)
+    state = result.state
+
+    if state == "PENDING":
+        return JSONResponse({"status": "pending"})
+    elif state == "STARTED":
+        return JSONResponse({"status": "generating"})
+    elif state == "SUCCESS":
+        task_result = result.result or {}
+        if isinstance(task_result, dict) and task_result.get("status") == "failed":
+            return JSONResponse(
+                {"status": "failed", "error": task_result.get("error", "Unknown error")}
+            )
+        return JSONResponse({"status": "complete", "content_id": task_result.get("content_id")})
+    elif state == "FAILURE":
+        return JSONResponse({"status": "failed", "error": str(result.result)})
+
+    return JSONResponse({"status": state.lower()})
 
 
 async def _resolve_module_id(module_id: str, session: AsyncSession) -> UUID:
@@ -109,6 +148,14 @@ def get_flashcard_service(
 ) -> FlashcardGenerationService:
     """Dependency to get flashcard generation service."""
     return FlashcardGenerationService(claude_service, semantic_retriever)
+
+
+def get_case_study_service(
+    claude_service: ClaudeService = Depends(get_claude_service),
+    semantic_retriever: SemanticRetriever = Depends(get_semantic_retriever),
+) -> CaseStudyGenerationService:
+    """Dependency to get case study generation service."""
+    return CaseStudyGenerationService(claude_service, semantic_retriever)
 
 
 def get_quiz_service(
@@ -300,9 +347,10 @@ async def stream_lesson_generation(
 
 @router.get(
     "/lessons/{module_id}/{unit_id}",
-    response_model=LessonResponse,
     status_code=status.HTTP_200_OK,
     responses={
+        200: {"model": LessonResponse, "description": "Cached lesson returned"},
+        202: {"description": "Generation dispatched, poll /status/{task_id}"},
         400: {"model": ErrorResponse, "description": "Invalid request"},
         404: {"model": ErrorResponse, "description": "Module or unit not found"},
         500: {"model": ErrorResponse, "description": "Generation failed"},
@@ -314,19 +362,22 @@ async def get_or_generate_lesson_by_module_and_unit(
     language: str = "fr",
     level: int = 1,
     country: str = "SN",
+    force_regenerate: bool = False,
     lesson_service: LessonGenerationService = Depends(get_lesson_service),
     session: AsyncSession = Depends(get_db),
     current_user=Depends(get_optional_user),
-) -> LessonResponse:
+) -> JSONResponse:
     """
     Get or generate lesson content by module and unit ID.
 
-    This endpoint provides the main interface for the frontend to request lessons.
-    It accepts both module codes (e.g., "M01") and UUIDs, resolving codes to UUIDs
-    automatically via database lookup.
+    **Cache HIT (200):** Returns the cached lesson immediately.
 
-    When authenticated, accessing this endpoint marks the module as in_progress
-    in user_module_progress (FR-02.2).
+    **Cache MISS (202):** Dispatches a background Celery task and returns:
+    ```json
+    {"status": "generating", "task_id": "<uuid>", "message": "Content is being generated"}
+    ```
+    The client should poll `GET /api/v1/content/status/{task_id}` every 3 seconds.
+    When status is "complete", re-fetch this endpoint to get the cached content.
 
     **Parameters:**
     - **module_id**: Module identifier (code like "M01" or UUID string)
@@ -334,11 +385,7 @@ async def get_or_generate_lesson_by_module_and_unit(
     - **language**: Content language ("fr" or "en")
     - **level**: User's level (1-4)
     - **country**: Country context for examples (ISO 2-letter code)
-
-    **Returns:**
-    - Cached lesson if available
-    - Newly generated lesson if not cached
-    - Error if module/unit not found
+    - **force_regenerate**: Force new generation even if cached
     """
     try:
         logger.info(
@@ -350,42 +397,86 @@ async def get_or_generate_lesson_by_module_and_unit(
             country=country,
         )
 
-        # Resolve module_id to UUID if it's a module code
         resolved_module_id = await _resolve_module_id(module_id, session)
 
-        lesson_response = await lesson_service.get_or_generate_lesson(
-            module_id=resolved_module_id,
-            unit_id=unit_id,
-            language=language,
-            country=country,
-            level=level,
-            session=session,
+        if not force_regenerate:
+            cached_query = (
+                select(GeneratedContent)
+                .where(GeneratedContent.module_id == resolved_module_id)
+                .where(GeneratedContent.content_type == "lesson")
+                .where(GeneratedContent.language == language)
+                .where(GeneratedContent.level == level)
+                .where(GeneratedContent.country_context == country)
+                .where(GeneratedContent.content["unit_id"].astext == unit_id)
+                .order_by(GeneratedContent.generated_at.desc())
+            )
+            cache_result = await session.execute(cached_query)
+            cached = cache_result.scalars().first()
+
+            if cached:
+                from app.api.v1.schemas.content import LessonContent as _LessonContent
+
+                content_dict = {k: v for k, v in cached.content.items() if k != "unit_id"}
+                lesson_response = LessonResponse(
+                    id=cached.id,
+                    module_id=cached.module_id,
+                    unit_id=cached.content.get("unit_id", unit_id),
+                    language=cached.language,
+                    level=cached.level,
+                    country_context=cached.country_context or country,
+                    content=_LessonContent(**content_dict),
+                    generated_at=cached.generated_at.isoformat(),
+                    cached=True,
+                )
+
+                if current_user is not None:
+                    try:
+                        from uuid import UUID as _UUID
+
+                        progress_service = ProgressService(session)
+                        await progress_service.track_lesson_access(
+                            user_id=_UUID(str(current_user.id)),
+                            module_id=resolved_module_id,
+                            lesson_id=lesson_response.id,
+                        )
+                    except Exception as track_err:
+                        logger.warning(
+                            "Failed to track lesson access (non-fatal)",
+                            error=str(track_err),
+                        )
+
+                logger.info(
+                    "Lesson cache hit",
+                    lesson_id=str(lesson_response.id),
+                )
+                return JSONResponse(
+                    content=lesson_response.model_dump(mode="json"),
+                    status_code=status.HTTP_200_OK,
+                )
+
+        task = generate_lesson_task.delay(
+            str(resolved_module_id),
+            unit_id,
+            language,
+            country,
+            level,
         )
-
-        # Track lesson access for authenticated users
-        if current_user is not None:
-            try:
-                from uuid import UUID as _UUID
-
-                progress_service = ProgressService(session)
-                await progress_service.track_lesson_access(
-                    user_id=_UUID(str(current_user.id)),
-                    module_id=resolved_module_id,
-                    lesson_id=lesson_response.id,
-                )
-            except Exception as track_err:
-                logger.warning(
-                    "Failed to track lesson access (non-fatal)",
-                    error=str(track_err),
-                )
 
         logger.info(
-            "Lesson request completed",
-            lesson_id=str(lesson_response.id),
-            cached=lesson_response.cached,
+            "Lesson generation dispatched",
+            module_id=str(resolved_module_id),
+            unit_id=unit_id,
+            task_id=task.id,
         )
 
-        return lesson_response
+        return JSONResponse(
+            content={
+                "status": "generating",
+                "task_id": task.id,
+                "message": "Content is being generated",
+            },
+            status_code=status.HTTP_202_ACCEPTED,
+        )
 
     except ValueError as e:
         logger.warning("Invalid lesson request", error=str(e))
@@ -824,4 +915,333 @@ async def get_quiz(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": "retrieval_failed", "message": "Failed to retrieve quiz"},
+        )
+
+
+# ── Case Study Endpoints ────────────────────────────────────────────────────
+
+
+@router.get(
+    "/cases/{module_id}/{unit_id}",
+    status_code=status.HTTP_200_OK,
+    responses={
+        200: {"model": CaseStudyResponse, "description": "Cached case study returned"},
+        202: {"description": "Generation dispatched, poll /status/{task_id}"},
+        400: {"model": ErrorResponse, "description": "Invalid request"},
+        404: {"model": ErrorResponse, "description": "Module or unit not found"},
+        500: {"model": ErrorResponse, "description": "Generation failed"},
+    },
+)
+async def get_or_generate_case_study(
+    module_id: str,
+    unit_id: str,
+    language: str = "fr",
+    level: int = 1,
+    country: str = "SN",
+    force_regenerate: bool = False,
+    case_study_service: CaseStudyGenerationService = Depends(get_case_study_service),
+    session: AsyncSession = Depends(get_db),
+    current_user=Depends(get_optional_user),
+) -> JSONResponse:
+    """
+    Get or generate case study content by module and unit ID.
+
+    **Cache HIT (200):** Returns the cached case study immediately.
+
+    **Cache MISS (202):** Dispatches a background Celery task and returns:
+    ```json
+    {"status": "generating", "task_id": "<uuid>", "message": "Content is being generated"}
+    ```
+    Poll `GET /api/v1/content/status/{task_id}` every 3 seconds.
+
+    **Parameters:**
+    - **module_id**: Module identifier (code like "M01" or UUID string)
+    - **unit_id**: Unit identifier (e.g., "M01-U05")
+    - **language**: Content language ("fr" or "en")
+    - **level**: User's level (1-4)
+    - **country**: Country context for examples (ISO 2-letter code)
+    - **force_regenerate**: Force new generation even if cached
+    """
+    try:
+        logger.info(
+            "Case study request",
+            module_id=module_id,
+            unit_id=unit_id,
+            language=language,
+            level=level,
+            country=country,
+        )
+
+        resolved_module_id = await _resolve_module_id(module_id, session)
+
+        if not force_regenerate:
+            cached_query = (
+                select(GeneratedContent)
+                .where(GeneratedContent.module_id == resolved_module_id)
+                .where(GeneratedContent.content_type == "case")
+                .where(GeneratedContent.language == language)
+                .where(GeneratedContent.level == level)
+                .where(GeneratedContent.country_context == country)
+                .where(GeneratedContent.content["unit_id"].astext == unit_id)
+                .order_by(GeneratedContent.generated_at.desc())
+            )
+            cache_result = await session.execute(cached_query)
+            cached = cache_result.scalars().first()
+
+            if cached:
+                from app.api.v1.schemas.content import CaseStudyContent as _CaseStudyContent
+
+                content_dict = {k: v for k, v in cached.content.items() if k != "unit_id"}
+                case_study_response = CaseStudyResponse(
+                    id=cached.id,
+                    module_id=cached.module_id,
+                    unit_id=cached.content.get("unit_id", unit_id),
+                    language=cached.language,
+                    level=cached.level,
+                    country_context=cached.country_context or country,
+                    content=_CaseStudyContent(**content_dict),
+                    generated_at=cached.generated_at.isoformat(),
+                    cached=True,
+                )
+
+                if current_user is not None:
+                    try:
+                        from uuid import UUID as _UUID
+
+                        progress_service = ProgressService(session)
+                        await progress_service.track_lesson_access(
+                            user_id=_UUID(str(current_user.id)),
+                            module_id=resolved_module_id,
+                            lesson_id=case_study_response.id,
+                        )
+                    except Exception as track_err:
+                        logger.warning(
+                            "Failed to track case study access (non-fatal)",
+                            error=str(track_err),
+                        )
+
+                logger.info(
+                    "Case study cache hit",
+                    case_study_id=str(case_study_response.id),
+                )
+                return JSONResponse(
+                    content=case_study_response.model_dump(mode="json"),
+                    status_code=status.HTTP_200_OK,
+                )
+
+        task = generate_case_study_task.delay(
+            str(resolved_module_id),
+            unit_id,
+            language,
+            country,
+            level,
+        )
+
+        logger.info(
+            "Case study generation dispatched",
+            module_id=str(resolved_module_id),
+            unit_id=unit_id,
+            task_id=task.id,
+        )
+
+        return JSONResponse(
+            content={
+                "status": "generating",
+                "task_id": task.id,
+                "message": "Content is being generated",
+            },
+            status_code=status.HTTP_202_ACCEPTED,
+        )
+
+    except ValueError as e:
+        logger.warning("Invalid case study request", error=str(e))
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "module_or_unit_not_found", "message": str(e)},
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": "invalid_request", "message": str(e)},
+            )
+
+    except Exception as e:
+        logger.error("Case study request failed", error=str(e), exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "generation_failed",
+                "message": "Une erreur interne s'est produite lors de la génération",
+            },
+        )
+
+
+@router.get(
+    "/cases/{module_id}/{unit_id}/stream",
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {"description": "Invalid request"},
+        404: {"description": "Module or unit not found"},
+        500: {"description": "Generation failed"},
+    },
+)
+async def stream_case_study_by_module_and_unit(
+    module_id: str,
+    unit_id: str,
+    language: str = "fr",
+    level: int = 1,
+    country: str = "SN",
+    case_study_service: CaseStudyGenerationService = Depends(get_case_study_service),
+    session: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """
+    Stream case study generation by module and unit ID using Server-Sent Events (SSE).
+
+    **Event Types:**
+    - `chunk`: Incremental content as it's generated
+    - `complete`: Final case study object when generation finishes
+    - `error`: Error information if generation fails
+    """
+
+    async def generate_events() -> AsyncGenerator[str, None]:
+        try:
+            logger.info(
+                "Starting case study streaming",
+                module_id=module_id,
+                unit_id=unit_id,
+                language=language,
+                level=level,
+                country=country,
+            )
+
+            resolved_module_id = await _resolve_module_id(module_id, session)
+
+            async for event in case_study_service.stream_case_study_generation(
+                module_id=resolved_module_id,
+                unit_id=unit_id,
+                language=language,
+                country=country,
+                level=level,
+                session=session,
+            ):
+                yield event.to_sse_format()
+
+            logger.info("Case study streaming completed")
+
+        except Exception as e:
+            logger.error("Case study streaming failed", error=str(e), exc_info=True)
+            error_event = StreamingEvent(
+                event="error",
+                data={
+                    "error": "streaming_failed",
+                    "message": "Erreur lors de la génération en streaming",
+                },
+            )
+            yield error_event.to_sse_format()
+
+    return StreamingResponse(
+        generate_events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Cache-Control",
+        },
+    )
+
+
+@router.get(
+    "/modules/{module_id}/units",
+    response_model=ModuleUnitsResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        404: {"model": ErrorResponse, "description": "Module not found"},
+        500: {"model": ErrorResponse, "description": "Internal error"},
+    },
+)
+async def get_module_units(
+    module_id: str,
+    session: AsyncSession = Depends(get_db),
+) -> ModuleUnitsResponse:
+    """
+    Return module info and its units without progress data (no auth required).
+
+    Intended as a public fallback for unauthenticated users viewing module detail
+    pages.  Progress data stays behind authentication — this endpoint only returns
+    the curriculum structure so the page is never empty.
+
+    **Parameters:**
+    - **module_id**: Module identifier (code like "M01" or UUID string)
+    """
+    try:
+        resolved_module_id = await _resolve_module_id(module_id, session)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "module_not_found", "message": str(e)},
+        )
+
+    try:
+        module_query = select(Module).where(Module.id == resolved_module_id)
+        module_result = await session.execute(module_query)
+        module = module_result.scalar_one_or_none()
+
+        if not module:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "module_not_found",
+                    "message": f"Module {module_id} not found",
+                },
+            )
+
+        units_query = (
+            select(ModuleUnit)
+            .where(ModuleUnit.module_id == resolved_module_id)
+            .order_by(ModuleUnit.order_index)
+        )
+        units_result = await session.execute(units_query)
+        units = units_result.scalars().all()
+
+        public_units = [
+            PublicUnitDetail(
+                id=str(u.id),
+                unit_number=u.unit_number,
+                title_fr=u.title_fr,
+                title_en=u.title_en,
+                description_fr=u.description_fr,
+                description_en=u.description_en,
+                estimated_minutes=u.estimated_minutes,
+                order_index=u.order_index,
+            )
+            for u in units
+        ]
+
+        logger.info(
+            "Public module units requested",
+            module_id=str(resolved_module_id),
+            units_count=len(public_units),
+        )
+
+        return ModuleUnitsResponse(
+            module_id=str(module.id),
+            module_number=module.module_number,
+            level=module.level,
+            title_fr=module.title_fr,
+            title_en=module.title_en,
+            description_fr=module.description_fr,
+            description_en=module.description_en,
+            estimated_hours=module.estimated_hours,
+            units=public_units,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to fetch module units", module_id=module_id, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "internal_error", "message": "Failed to fetch module units"},
         )

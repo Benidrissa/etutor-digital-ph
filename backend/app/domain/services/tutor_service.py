@@ -1,7 +1,9 @@
 """Service for AI tutor functionality with agentic tool_use and Socratic pedagogical approach."""
 
+import asyncio
 import uuid
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -9,20 +11,176 @@ import structlog
 from anthropic import AsyncAnthropic
 from anthropic.types import MessageParam, ToolResultBlockParam, ToolUseBlock
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.ai.prompts.tutor import TutorContext, get_activity_suggestions, get_socratic_system_prompt
+from app.ai.prompts.tutor import (
+    TutorContext,
+    get_activity_suggestions,
+    get_compaction_prompt,
+    get_socratic_system_prompt,
+)
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.domain.models.conversation import TutorConversation
 from app.domain.models.module import Module
 from app.domain.models.user import User
+from app.domain.services.learner_memory_service import LearnerMemoryService
 from app.domain.services.tutor_tools import TOOL_DEFINITIONS, TutorToolExecutor
 from app.infrastructure.config.settings import get_settings
 
 logger = structlog.get_logger()
 
 MAX_TOOL_CALLS = 3
+COMPACT_TRIGGER = 20
+COMPACT_KEEP_RECENT = 5
+COMPACT_SUMMARIZE_UP_TO = 15
+
+SESSION_CONTEXT_TOKEN_BUDGET = 1500
+
+
+@dataclass
+class SessionContext:
+    """Composed session context for a tutor conversation."""
+
+    learner_memory: str = ""
+    previous_compact: str = ""
+    current_compact: str = ""
+    progress_snapshot: str = ""
+    is_new_conversation: bool = True
+
+    @property
+    def has_prior_context(self) -> bool:
+        """Return True if any prior context was loaded."""
+        return bool(self.learner_memory or self.previous_compact or self.current_compact)
+
+    def total_text(self) -> str:
+        """Return concatenated context text for token estimation."""
+        parts = [
+            self.learner_memory,
+            self.previous_compact,
+            self.current_compact,
+            self.progress_snapshot,
+        ]
+        return "\n".join(p for p in parts if p)
+
+    def estimated_tokens(self) -> int:
+        """Rough estimate: ~4 chars per token."""
+        return len(self.total_text()) // 4
+
+
+class SessionManager:
+    """Composes full session context for a tutor conversation.
+
+    Loads learner memory + compacted history + progress snapshot and enforces
+    the SESSION_CONTEXT_TOKEN_BUDGET so injected context stays ≤1500 tokens.
+    """
+
+    def __init__(self, learner_memory_service: LearnerMemoryService) -> None:
+        self.learner_memory_service = learner_memory_service
+
+    async def build_session_context(
+        self,
+        user: User,
+        conversation: TutorConversation,
+        is_new_conversation: bool,
+        session: AsyncSession,
+    ) -> SessionContext:
+        """Build full session context respecting the token budget.
+
+        For a new conversation: loads learner_memory + last conversation's compacted_context.
+        For a continuing conversation: loads learner_memory + current compacted_context.
+        Progress snapshot is derived from the User model (level, country).
+        """
+        ctx = SessionContext(is_new_conversation=is_new_conversation)
+
+        ctx.learner_memory = await self.learner_memory_service.format_for_prompt(user.id, session)
+
+        if is_new_conversation:
+            prior = await self._get_previous_compact(user.id, conversation.id, session)
+            if prior:
+                ctx.previous_compact = prior
+        else:
+            if conversation.compacted_context:
+                ctx.current_compact = conversation.compacted_context
+
+        ctx.progress_snapshot = _build_progress_snapshot(user)
+
+        ctx = _trim_to_budget(ctx)
+
+        logger.info(
+            "Session context built",
+            user_id=str(user.id),
+            conversation_id=str(conversation.id),
+            is_new=is_new_conversation,
+            estimated_tokens=ctx.estimated_tokens(),
+            has_prior_context=ctx.has_prior_context,
+        )
+
+        return ctx
+
+    async def _get_previous_compact(
+        self,
+        user_id: uuid.UUID,
+        current_conversation_id: uuid.UUID,
+        session: AsyncSession,
+    ) -> str | None:
+        """Return compacted_context from the most recent prior conversation."""
+        result = await session.execute(
+            select(TutorConversation)
+            .where(
+                TutorConversation.user_id == user_id,
+                TutorConversation.id != current_conversation_id,
+                TutorConversation.compacted_context.isnot(None),
+            )
+            .order_by(TutorConversation.created_at.desc())
+            .limit(1)
+        )
+        prev = result.scalar_one_or_none()
+        return prev.compacted_context if prev else None
+
+
+def _build_progress_snapshot(user: User) -> str:
+    """Build a short progress snapshot from the user model."""
+    level_labels = {
+        1: "Beginner (L1)",
+        2: "Intermediate (L2)",
+        3: "Advanced (L3)",
+        4: "Expert (L4)",
+    }
+    level_label = level_labels.get(user.current_level, f"Level {user.current_level}")
+    parts = [f"Level: {level_label}", f"Country: {user.country or 'SN'}"]
+    if hasattr(user, "streak_days") and user.streak_days:
+        parts.append(f"Streak: {user.streak_days} days")
+    return ", ".join(parts)
+
+
+def _trim_to_budget(ctx: SessionContext) -> SessionContext:
+    """Trim context fields to stay within SESSION_CONTEXT_TOKEN_BUDGET.
+
+    Priority order (least to most likely trimmed):
+    progress_snapshot > learner_memory > previous_compact/current_compact
+    """
+    if ctx.estimated_tokens() <= SESSION_CONTEXT_TOKEN_BUDGET:
+        return ctx
+
+    budget_chars = SESSION_CONTEXT_TOKEN_BUDGET * 4
+
+    if ctx.previous_compact:
+        available = budget_chars - len(ctx.learner_memory) - len(ctx.progress_snapshot)
+        if available < len(ctx.previous_compact):
+            ctx.previous_compact = ctx.previous_compact[: max(0, available)]
+
+    if ctx.current_compact:
+        available = budget_chars - len(ctx.learner_memory) - len(ctx.progress_snapshot)
+        if available < len(ctx.current_compact):
+            ctx.current_compact = ctx.current_compact[: max(0, available)]
+
+    if ctx.estimated_tokens() > SESSION_CONTEXT_TOKEN_BUDGET:
+        available = budget_chars - len(ctx.progress_snapshot)
+        if available < len(ctx.learner_memory):
+            ctx.learner_memory = ctx.learner_memory[: max(0, available)]
+
+    return ctx
 
 
 class TutorService:
@@ -33,10 +191,13 @@ class TutorService:
         anthropic_client: AsyncAnthropic,
         semantic_retriever: SemanticRetriever,
         embedding_service: EmbeddingService,
+        learner_memory_service: LearnerMemoryService | None = None,
     ):
         self.anthropic = anthropic_client
         self.retriever = semantic_retriever
         self.embedding_service = embedding_service
+        self.learner_memory_service = learner_memory_service or LearnerMemoryService()
+        self.session_manager = SessionManager(self.learner_memory_service)
         self.settings = get_settings()
         self.daily_message_limit = 50
 
@@ -49,6 +210,7 @@ class TutorService:
         context_type: str | None = None,
         context_id: uuid.UUID | None = None,
         conversation_id: uuid.UUID | None = None,
+        tutor_mode: str = "socratic",
     ) -> AsyncGenerator[dict[str, Any], None]:
         """
         Send a message to the AI tutor and stream the response using agentic tool_use.
@@ -89,9 +251,26 @@ class TutorService:
             return
 
         try:
+            is_new_conversation = conversation_id is None
             conversation = await self._get_or_create_conversation(
                 user_id, module_id, conversation_id, session
             )
+
+            session_ctx = await self.session_manager.build_session_context(
+                user=user,
+                conversation=conversation,
+                is_new_conversation=is_new_conversation,
+                session=session,
+            )
+
+            if (
+                is_new_conversation
+                and session_ctx.previous_compact
+                and not conversation.compacted_context
+            ):
+                conversation.compacted_context = session_ctx.previous_compact
+                session.add(conversation)
+                await session.flush()
 
             yield {
                 "type": "conversation_id",
@@ -104,7 +283,11 @@ class TutorService:
                 user_country=user.country or "SN",
                 module_id=str(module_id) if module_id else None,
                 context_type=context_type,
+                tutor_mode=tutor_mode,
                 context_id=str(context_id) if context_id else None,
+                learner_memory=session_ctx.learner_memory,
+                previous_session_context=session_ctx.previous_compact,
+                progress_snapshot=session_ctx.progress_snapshot,
             )
 
             system_prompt = get_socratic_system_prompt(context, [])
@@ -268,8 +451,17 @@ class TutorService:
 
             updated_messages = conversation.messages + [user_msg_stored, assistant_msg_stored]
             conversation.messages = updated_messages
+            conversation.message_count = len(updated_messages)
             session.add(conversation)
             await session.commit()
+
+            if conversation.message_count > COMPACT_TRIGGER:
+                asyncio.ensure_future(
+                    self._compact_conversation_async(
+                        conversation_id=conversation.id,
+                        user_language=user.preferred_language,
+                    )
+                )
 
             yield {
                 "type": "sources_retrieved",
@@ -381,6 +573,7 @@ class TutorService:
                     "message_count": len(conv.messages),
                     "last_message_at": last_message_at,
                     "preview": preview,
+                    "has_context": bool(conv.compacted_context),
                 }
             )
 
@@ -496,15 +689,32 @@ class TutorService:
     async def _prepare_conversation_history(
         self, conversation: TutorConversation
     ) -> list[dict[str, str]]:
-        """Prepare conversation history for Claude API."""
-        messages = (
-            conversation.messages[-10:]
-            if len(conversation.messages) > 10
-            else conversation.messages
-        )
+        """Prepare conversation history for Claude API.
 
-        claude_messages = []
-        for msg in messages:
+        If compacted_context exists, prepend it as a system note then include the
+        most recent COMPACT_KEEP_RECENT messages verbatim.  Otherwise fall back to
+        the last 10 messages (pre-compaction behaviour).
+        """
+        recent_messages = conversation.messages[-COMPACT_KEEP_RECENT:]
+
+        claude_messages: list[dict[str, str]] = []
+
+        if conversation.compacted_context:
+            claude_messages.append({"role": "user", "content": conversation.compacted_context})
+            claude_messages.append(
+                {
+                    "role": "assistant",
+                    "content": "Compris. Je vais tenir compte de ce contexte pour la suite.",
+                }
+            )
+        else:
+            recent_messages = (
+                conversation.messages[-10:]
+                if len(conversation.messages) > 10
+                else conversation.messages
+            )
+
+        for msg in recent_messages:
             if msg.get("role") and msg.get("content"):
                 claude_messages.append(
                     {
@@ -514,6 +724,96 @@ class TutorService:
                 )
 
         return claude_messages
+
+    async def _compact_conversation_async(
+        self,
+        conversation_id: uuid.UUID,
+        user_language: str,
+    ) -> None:
+        """Summarize old messages into compacted_context in its own DB session.
+
+        Runs asynchronously (fire-and-forget) so it never blocks the response stream.
+        Summarizes messages[0:COMPACT_SUMMARIZE_UP_TO], keeps messages[COMPACT_SUMMARIZE_UP_TO:]
+        verbatim in the messages list.
+        """
+        try:
+            engine = create_async_engine(self.settings.database_url, echo=False)
+            session_factory = async_sessionmaker(
+                engine, class_=AsyncSession, expire_on_commit=False
+            )
+            async with session_factory() as session:
+                result = await session.execute(
+                    select(TutorConversation).where(TutorConversation.id == conversation_id)
+                )
+                conversation = result.scalar_one_or_none()
+                if not conversation:
+                    return
+
+                messages_to_compact = conversation.messages[:COMPACT_SUMMARIZE_UP_TO]
+                messages_to_keep = conversation.messages[COMPACT_SUMMARIZE_UP_TO:]
+
+                if not messages_to_compact:
+                    return
+
+                prompt = get_compaction_prompt(
+                    messages=messages_to_compact,
+                    existing_compact=conversation.compacted_context,
+                    language=user_language,
+                )
+
+                compact_response = await self.anthropic.messages.create(
+                    model="claude-sonnet-4-6",
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=600,
+                    temperature=0.3,
+                )
+
+                compact_text_parts = [
+                    block.text
+                    for block in compact_response.content
+                    if hasattr(block, "text") and block.text
+                ]
+                new_compact = "".join(compact_text_parts).strip()
+
+                conversation.compacted_context = new_compact
+                conversation.compacted_at = datetime.utcnow()
+                conversation.messages = messages_to_keep
+                conversation.message_count = len(messages_to_keep)
+                session.add(conversation)
+                await session.commit()
+
+                logger.info(
+                    "Conversation compacted",
+                    conversation_id=str(conversation_id),
+                    messages_summarized=len(messages_to_compact),
+                    messages_kept=len(messages_to_keep),
+                    compact_length=len(new_compact),
+                )
+        except Exception:
+            logger.exception("Failed to compact conversation", conversation_id=str(conversation_id))
+        finally:
+            import contextlib
+
+            async with contextlib.AsyncExitStack():
+                with contextlib.suppress(Exception):
+                    await engine.dispose()
+
+    async def _get_previous_compact(
+        self, user_id: uuid.UUID, current_conversation_id: uuid.UUID, session: AsyncSession
+    ) -> str | None:
+        """Return the compacted_context from the most recent prior conversation (cross-session)."""
+        result = await session.execute(
+            select(TutorConversation)
+            .where(
+                TutorConversation.user_id == user_id,
+                TutorConversation.id != current_conversation_id,
+                TutorConversation.compacted_context.isnot(None),
+            )
+            .order_by(TutorConversation.created_at.desc())
+            .limit(1)
+        )
+        prev = result.scalar_one_or_none()
+        return prev.compacted_context if prev else None
 
     def _extract_activity_suggestions(
         self, response: str, context_type: str | None, user_level: int

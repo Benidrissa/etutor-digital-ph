@@ -18,17 +18,12 @@ export default async function LessonPage({ params }: LessonPageProps) {
   const t = await getTranslations('LessonPage');
 
   const moduleData = getModuleById(moduleId);
-
-  if (!moduleData) {
-    notFound();
-  }
-
   const language = locale as 'fr' | 'en';
-  const unit = moduleData.units?.find(u => u.id === unitId);
-
-  if (!unit) {
-    notFound();
-  }
+  const unit = moduleData?.units?.find(u => u.id === unitId);
+  const moduleTitle = moduleData?.title[language] || moduleId;
+  const unitTitle = unit?.title[language] || unitId;
+  const moduleLevel = moduleData?.level || 1;
+  const isCaseStudy = unit?.type === 'case-study' || unitId.toLowerCase().includes('u05');
 
   return (
     <div>
@@ -46,11 +41,11 @@ export default async function LessonPage({ params }: LessonPageProps) {
             href={`/modules/${moduleId}`}
             className="hover:text-gray-900 transition-colors"
           >
-            {moduleData.title[language]}
+            {moduleTitle}
           </Link>
           <span>/</span>
           <span className="text-gray-900">
-            {unit.title[language]}
+            {unitTitle}
           </span>
         </div>
 
@@ -64,21 +59,19 @@ export default async function LessonPage({ params }: LessonPageProps) {
       </div>
 
       {/* Lesson or Case Study Content */}
-      {unit.type === 'case-study' ? (
+      {isCaseStudy ? (
         <CaseStudyViewer
           moduleId={moduleId}
           unitId={unitId}
           language={language}
-          level={moduleData.level}
-          countryContext="SN"
+          level={moduleLevel}
         />
       ) : (
         <LessonViewer
           moduleId={moduleId}
           unitId={unitId}
           language={language}
-          level={moduleData.level}
-          countryContext="SN"
+          level={moduleLevel}
         />
       )}
     </div>
@@ -91,27 +84,14 @@ export async function generateMetadata({ params }: LessonPageProps) {
   const t = await getTranslations('LessonPage.metadata');
 
   const moduleData = getModuleById(moduleId);
-
-  if (!moduleData) {
-    return {
-      title: t('notFound'),
-    };
-  }
-
   const language = locale as 'fr' | 'en';
-  const unit = moduleData.units?.find(u => u.id === unitId);
-
-  if (!unit) {
-    return {
-      title: t('notFound'),
-    };
-  }
+  const unit = moduleData?.units?.find(u => u.id === unitId);
 
   return {
     title: t('title', {
-      unit: unit.title[language],
-      module: moduleData.title[language]
+      unit: unit?.title[language] || unitId,
+      module: moduleData?.title[language] || moduleId
     }),
-    description: unit.description?.[language] || moduleData.description?.[language],
+    description: unit?.description?.[language] || moduleData?.description?.[language] || '',
   };
 }

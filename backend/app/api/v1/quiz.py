@@ -6,6 +6,7 @@ from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +14,7 @@ from app.ai.claude_service import ClaudeService
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.api.deps import get_db
+from app.api.deps_local_auth import get_current_user
 from app.api.v1.schemas.quiz import (
     ErrorResponse,
     QuizAttemptRequest,
@@ -28,9 +30,11 @@ from app.domain.models.content import GeneratedContent
 from app.domain.models.module import Module
 from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import QuizAttempt, SummativeAssessmentAttempt
+from app.domain.models.user import User
 from app.domain.services.progress_service import ProgressService
 from app.domain.services.quiz_service import QuizService
 from app.infrastructure.config.settings import get_settings
+from app.tasks.content_generation import generate_quiz_task
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/quiz", tags=["quiz"])
@@ -88,9 +92,10 @@ def get_quiz_service(
 
 @router.post(
     "/generate",
-    response_model=QuizResponse,
     status_code=status.HTTP_200_OK,
     responses={
+        200: {"model": QuizResponse, "description": "Cached quiz returned"},
+        202: {"description": "Generation dispatched, poll /api/v1/content/status/{task_id}"},
         400: {"model": ErrorResponse, "description": "Invalid request"},
         404: {"model": ErrorResponse, "description": "Module not found"},
         500: {"model": ErrorResponse, "description": "Generation failed"},
@@ -100,17 +105,18 @@ async def generate_quiz(
     request: QuizGenerationRequest,
     quiz_service: QuizService = Depends(get_quiz_service),
     session: AsyncSession = Depends(get_db),
-) -> QuizResponse:
+) -> JSONResponse:
     """
     Generate or retrieve cached quiz content.
 
-    This endpoint generates multiple-choice quiz questions using RAG and Claude API:
+    **Cache HIT (200):** Returns the cached quiz immediately.
 
-    1. **Cache Check**: First checks if quiz already exists in cache
-    2. **RAG Retrieval**: Searches relevant chunks from vector store
-    3. **Question Generation**: Uses Claude API with quiz-specific prompts
-    4. **Validation**: Ensures questions have exactly 4 options with 1 correct answer
-    5. **Caching**: Stores generated quiz for future attempts
+    **Cache MISS (202):** Dispatches a background Celery task and returns:
+    ```json
+    {"status": "generating", "task_id": "<uuid>", "message": "Content is being generated"}
+    ```
+    Poll `GET /api/v1/content/status/{task_id}` every 3 seconds.
+    When status is "complete", re-POST to this endpoint to get the cached quiz.
 
     The generated quiz includes:
     - 5-15 multiple choice questions (default: 10)
@@ -118,8 +124,6 @@ async def generate_quiz(
     - Source citations from reference materials
     - Difficulty progression from easy to hard
     - Country-contextualized examples
-
-    **Rate Limiting**: Quiz generation is subject to API limits.
     """
     try:
         module_uuid = await _resolve_module_uuid(request.module_id, session)
@@ -134,24 +138,65 @@ async def generate_quiz(
             num_questions=request.num_questions,
         )
 
-        quiz_response = await quiz_service.get_or_generate_quiz(
-            module_id=module_uuid,
-            unit_id=request.unit_id,
-            language=request.language,
-            country=request.country,
-            level=request.level,
-            num_questions=request.num_questions,
-            session=session,
+        if not request.force_regenerate:
+            cached_query = (
+                select(GeneratedContent)
+                .where(GeneratedContent.module_id == module_uuid)
+                .where(GeneratedContent.content_type == "quiz")
+                .where(GeneratedContent.language == request.language)
+                .where(GeneratedContent.level == request.level)
+                .where(GeneratedContent.country_context == request.country)
+                .where(GeneratedContent.content["unit_id"].astext == request.unit_id)
+                .order_by(GeneratedContent.generated_at.desc())
+            )
+            cache_result = await session.execute(cached_query)
+            cached = cache_result.scalars().first()
+
+            if cached:
+                from app.api.v1.schemas.quiz import QuizContent as _QuizContent
+
+                content_dict = {k: v for k, v in cached.content.items() if k != "unit_id"}
+                quiz_response = QuizResponse(
+                    id=cached.id,
+                    module_id=cached.module_id,
+                    unit_id=cached.content.get("unit_id", request.unit_id),
+                    language=cached.language,
+                    level=cached.level,
+                    country_context=cached.country_context or request.country,
+                    content=_QuizContent(**content_dict),
+                    generated_at=cached.generated_at.isoformat(),
+                    cached=True,
+                )
+                logger.info("Quiz cache hit", quiz_id=str(quiz_response.id))
+                return JSONResponse(
+                    content=quiz_response.model_dump(mode="json"),
+                    status_code=status.HTTP_200_OK,
+                )
+
+        task = generate_quiz_task.delay(
+            str(module_uuid),
+            request.unit_id,
+            request.language,
+            request.country,
+            request.level,
+            request.num_questions,
         )
 
         logger.info(
-            "Quiz generation completed",
-            quiz_id=str(quiz_response.id),
-            cached=quiz_response.cached,
-            num_questions=len(quiz_response.content.questions),
+            "Quiz generation dispatched",
+            module_id=str(module_uuid),
+            unit_id=request.unit_id,
+            task_id=task.id,
         )
 
-        return quiz_response
+        return JSONResponse(
+            content={
+                "status": "generating",
+                "task_id": task.id,
+                "message": "Content is being generated",
+            },
+            status_code=status.HTTP_202_ACCEPTED,
+        )
 
     except ValueError as e:
         logger.warning("Invalid quiz generation request", error=str(e))
@@ -247,7 +292,7 @@ async def get_quiz(
 async def submit_quiz_attempt(
     request: QuizAttemptRequest,
     session: AsyncSession = Depends(get_db),
-    # user_id: UUID = Depends(get_current_user_id),  # TODO: Add auth dependency
+    current_user: User = Depends(get_current_user),
 ) -> QuizAttemptResponse:
     """
     Submit a completed quiz attempt and get immediate feedback.
@@ -266,8 +311,7 @@ async def submit_quiz_attempt(
     **Rate Limiting:** Users can retake quizzes unlimited times.
     """
     try:
-        # For now, use a dummy user_id until auth is implemented
-        user_id = uuid.uuid4()  # TODO: Replace with actual user from auth
+        user_id = uuid.UUID(str(current_user.id))
 
         logger.info(
             "Quiz attempt submitted",
@@ -527,7 +571,7 @@ async def generate_summative_assessment(
 async def can_attempt_summative_assessment(
     module_id: UUID,
     session: AsyncSession = Depends(get_db),
-    # user_id: UUID = Depends(get_current_user_id),  # TODO: Add auth dependency
+    current_user: User = Depends(get_current_user),
 ) -> SummativeAssessmentAttemptCheck:
     """
     Check if user can attempt summative assessment for a module.
@@ -539,7 +583,7 @@ async def can_attempt_summative_assessment(
     """
     try:
         # For now, use a dummy user_id until auth is implemented
-        user_id = uuid.uuid4()  # TODO: Replace with actual user from auth
+        user_id = uuid.UUID(str(current_user.id))
 
         # Check if module exists
         query = select(Module).where(Module.id == module_id)
@@ -632,7 +676,7 @@ async def can_attempt_summative_assessment(
 async def submit_summative_assessment_attempt(
     request: QuizAttemptRequest,
     session: AsyncSession = Depends(get_db),
-    # user_id: UUID = Depends(get_current_user_id),  # TODO: Add auth dependency
+    current_user: User = Depends(get_current_user),
 ) -> SummativeAssessmentResponse:
     """
     Submit a completed summative assessment attempt.
@@ -648,7 +692,7 @@ async def submit_summative_assessment_attempt(
     """
     try:
         # For now, use a dummy user_id until auth is implemented
-        user_id = uuid.uuid4()  # TODO: Replace with actual user from auth
+        user_id = uuid.UUID(str(current_user.id))
 
         logger.info(
             "Summative assessment attempt submitted",

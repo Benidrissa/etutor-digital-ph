@@ -21,7 +21,10 @@ class ClaudeService:
         if not self.settings.anthropic_api_key:
             raise ValueError("ANTHROPIC_API_KEY is required")
 
-        self.client = anthropic.AsyncAnthropic(api_key=self.settings.anthropic_api_key)
+        self.client = anthropic.AsyncAnthropic(
+            api_key=self.settings.anthropic_api_key,
+            timeout=600.0,
+        )
 
     async def generate_lesson_content_stream(
         self,
@@ -41,7 +44,7 @@ class ClaudeService:
         try:
             async with self.client.messages.stream(
                 model="claude-sonnet-4-6",
-                max_tokens=4096,
+                max_tokens=64000,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
                 temperature=0.7,
@@ -72,7 +75,7 @@ class ClaudeService:
         try:
             response = await self.client.messages.create(
                 model="claude-sonnet-4-6",
-                max_tokens=4096,
+                max_tokens=64000,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
                 temperature=0.7,
@@ -103,7 +106,7 @@ class ClaudeService:
         try:
             response = await self.client.messages.create(
                 model="claude-sonnet-4-6",
-                max_tokens=4096,
+                max_tokens=64000,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
                 temperature=0.7,
@@ -120,12 +123,30 @@ class ClaudeService:
 
             # Try to parse JSON from the response
             try:
+                # Strip markdown code fences if present
+                clean_text = content_text.strip()
+                if clean_text.startswith("```"):
+                    # Remove opening ```json or ```
+                    first_newline = clean_text.find("\n")
+                    if first_newline > 0:
+                        clean_text = clean_text[first_newline + 1 :]
+                    # Remove closing ```
+                    if clean_text.rstrip().endswith("```"):
+                        clean_text = clean_text.rstrip()[:-3]
+
                 # Look for JSON within the response text
-                json_start = content_text.find("{")
-                json_end = content_text.rfind("}") + 1
+                json_start = clean_text.find("{")
+                json_end = clean_text.rfind("}") + 1
 
                 if json_start >= 0 and json_end > json_start:
-                    json_text = content_text[json_start:json_end]
+                    json_text = clean_text[json_start:json_end]
+
+                    # Fix common Claude JSON mistakes
+                    import re
+
+                    # Remove trailing commas before } or ]
+                    json_text = re.sub(r",\s*([}\]])", r"\1", json_text)
+
                     parsed_content = json.loads(json_text)
 
                     logger.info(

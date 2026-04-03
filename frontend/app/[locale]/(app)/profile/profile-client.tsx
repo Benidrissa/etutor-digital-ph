@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
+import { useRouter } from "next/navigation";
+import { useLocale } from "next-intl";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -19,7 +21,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Link } from "@/i18n/routing";
-import { Upload, User as UserIcon, AlertTriangle, CheckCircle, ClipboardList } from "lucide-react";
+import { PlacementResultsHistory } from "@/components/placement/placement-results-history";
+import { Upload, User as UserIcon, AlertTriangle, CheckCircle, ClipboardList, LogOut } from "lucide-react";
+import { authClient } from "@/lib/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -107,7 +111,10 @@ export function ProfileClient() {
   const [isEditing, setIsEditing] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [showRecontextAlert, setShowRecontextAlert] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const locale = useLocale();
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ["profile"],
@@ -143,6 +150,17 @@ export function ProfileClient() {
       setAvatarFile(null);
     },
   });
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await authClient.logout();
+      queryClient.clear();
+      router.push(`/${locale}/login`);
+    } catch {
+      setIsLoggingOut(false);
+    }
+  };
 
   const onSubmit = (data: ProfileFormData) => {
     updateMutation.mutate(data);
@@ -455,6 +473,24 @@ export function ProfileClient() {
           <Link href="/placement-test" className={buttonVariants({ variant: "default" })}>
             {t("retakePlacementTest")}
           </Link>
+        </CardContent>
+      </Card>
+
+      {/* Placement Results History */}
+      <PlacementResultsHistory compact />
+
+      {/* Logout */}
+      <Card className="border-destructive/50">
+        <CardContent className="pt-6">
+          <Button
+            variant="destructive"
+            className="w-full"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            {isLoggingOut ? t("loggingOut") : t("logout")}
+          </Button>
         </CardContent>
       </Card>
     </div>

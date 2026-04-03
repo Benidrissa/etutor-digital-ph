@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: santepublique_aof
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
@@ -33,7 +33,7 @@ services:
     image: etutor-backend:latest
     container_name: etutor-backend
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/santepublique_aof
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/santepublique_aof
       REDIS_URL: redis://redis:6379/0
       APP_ENV: production
       CORS_ORIGINS: https://etutor.elearning.portfolio2.kimbetien.com
@@ -91,6 +91,31 @@ services:
       timeout: 5s
       start_period: 15s
       retries: 3
+
+  celery-worker:
+    image: etutor-backend:latest
+    container_name: etutor-celery-worker
+    command: uv run celery -A app.tasks.celery_app worker --loglevel=info
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/santepublique_aof
+      REDIS_URL: redis://redis:6379/0
+      APP_ENV: production
+      CORS_ORIGINS: https://etutor.elearning.portfolio2.kimbetien.com
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      SENTRY_DSN: ${SENTRY_DSN}
+    volumes:
+      - ./resources:/app/resources
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - etutor-data
+    restart: unless-stopped
 
 volumes:
   pgdata:

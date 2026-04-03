@@ -9,6 +9,7 @@ import { FlashcardSessionSummary } from '@/components/learning/flashcard-session
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { authClient, AuthError } from '@/lib/auth';
+import { generateModuleFlashcards, getAllModuleProgress } from '@/lib/api';
 
 interface FlashcardData {
   id: string;
@@ -47,7 +48,7 @@ interface SessionStats {
   dailyTargetMet: boolean;
 }
 
-type SessionState = 'loading' | 'ready' | 'reviewing' | 'summary' | 'empty';
+type SessionState = 'loading' | 'generating' | 'ready' | 'reviewing' | 'summary' | 'empty';
 
 export function FlashcardsContainer() {
   const t = useTranslations('Flashcards');
@@ -55,6 +56,7 @@ export function FlashcardsContainer() {
   const router = useRouter();
   const [sessionState, setSessionState] = useState<SessionState>('loading');
   const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
+  const [generationError, setGenerationError] = useState<string | null>(null);
   
   // Check authentication status
   const isAuthenticated = authClient.isAuthenticated();
@@ -153,14 +155,37 @@ export function FlashcardsContainer() {
 
   const cardsCount = dueCards?.cards?.length ?? 0;
   const totalDue = dueCards?.total_due ?? 0;
+
+  const triggerGeneration = async () => {
+    setSessionState('generating');
+    setGenerationError(null);
+    try {
+      const allProgress = await getAllModuleProgress();
+      const activeModules = allProgress
+        .filter((m) => m.status === 'in_progress' || m.status === 'completed')
+        .map((m) => m.module_id);
+      const modulesToGenerate = activeModules.length > 0 ? activeModules : ['M01'];
+      await Promise.allSettled(
+        modulesToGenerate.map((moduleId) =>
+          generateModuleFlashcards({ moduleId, language: locale, level: 1 })
+        )
+      );
+      await refetch();
+    } catch (err) {
+      setGenerationError(err instanceof Error ? err.message : String(err));
+      setSessionState('empty');
+    }
+  };
+
   useEffect(() => {
     if (!isLoading) {
       if (dueCards && totalDue === 0 && cardsCount === 0) {
-        setSessionState('empty');
+        triggerGeneration();
       } else {
         setSessionState(cardsCount > 0 ? 'ready' : 'summary');
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, cardsCount, totalDue, dueCards]);
 
   const handleStartSession = () => {
@@ -214,6 +239,22 @@ export function FlashcardsContainer() {
             </Button>
           </CardContent>
         </Card>
+      </div>
+    );
+  }
+
+  if (sessionState === 'generating') {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="animate-pulse">
+            <div className="w-80 h-96 bg-gray-200 rounded-xl mx-auto"></div>
+          </div>
+          <p className="text-muted-foreground">{t('generating')}</p>
+          {generationError && (
+            <p className="text-sm text-destructive">{generationError}</p>
+          )}
+        </div>
       </div>
     );
   }

@@ -11,14 +11,8 @@ export async function generateMetadata() {
 }
 
 export default async function TutorPage() {
-  const t = await getTranslations('ChatTutor');
-  
   return (
-    <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
-      <div className="border-b bg-background p-4 shrink-0">
-        <h1 className="text-2xl font-bold">{t('title')}</h1>
-        <p className="text-muted-foreground">{t('tutorPageDescription')}</p>
-      </div>
+    <div className="fixed inset-0 top-14 bottom-16 md:left-64 md:bottom-0 flex flex-col overflow-hidden bg-background z-10">
       <TutorPageClient />
     </div>
   );

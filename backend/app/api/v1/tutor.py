@@ -31,7 +31,7 @@ router = APIRouter(prefix="/tutor", tags=["tutor"])
 async def get_tutor_service() -> TutorService:
     """Get tutor service with dependencies."""
     settings = get_settings()
-    anthropic_client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    anthropic_client = AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=600.0)
     embedding_service = EmbeddingService(api_key=settings.openai_api_key)
     semantic_retriever = SemanticRetriever(embedding_service)
 
@@ -73,6 +73,7 @@ async def chat_with_tutor(
                 context_type=request.context_type,
                 context_id=request.context_id,
                 conversation_id=request.conversation_id,
+                tutor_mode=request.tutor_mode,
             ):
                 # Format as SSE
                 yield f"data: {json.dumps(chunk)}\n\n"

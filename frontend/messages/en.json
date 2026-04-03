@@ -1,13 +1,13 @@
 {
   "Common": {
-    "appName": "SantePublique AOF",
+    "appName": "SantePublique",
     "loading": "Loading...",
     "offline": "You are offline — cached content available",
     "error": "An error occurred"
   },
   "PWA": {
     "installTitle": "Install App",
-    "installDescription": "Add SantePublique AOF to your home screen for quick access and an optimized experience.",
+    "installDescription": "Add SantePublique to your home screen for quick access and an optimized experience.",
     "install": "Install",
     "later": "Later"
   },
@@ -33,7 +33,11 @@
     "navigateTo": "Navigate to",
     "lessons": "Lessons",
     "quiz": "Quiz",
-    "caseStudy": "Case Study"
+    "caseStudy": "Case Study",
+    "logout": "Log out",
+    "logoutDescription": "Sign out of your account",
+    "admin": "Administration",
+    "adminDescription": "Access the administration panel"
   },
   "Auth": {
     "login": "Sign in",
@@ -139,7 +143,7 @@
   },
   "Dashboard": {
     "title": "Dashboard",
-    "welcome": "Welcome to SantePublique AOF",
+    "welcome": "Welcome to SantePublique",
     "subtitle": "Your public health learning platform",
     "streak": "Day streak",
     "nextReview": "Next review",
@@ -212,14 +216,15 @@
     "lockedDescription": "Complete the prerequisites to unlock this module",
     "unitStatus": {
       "pending": "Not started",
-      "in-progress": "In progress", 
+      "in-progress": "In progress",
       "completed": "Completed"
     },
     "unitNumber": "Unit {number}",
     "readingTime": "{minutes} min read",
     "practiceQuiz": "Practice Quiz",
     "caseStudy": "Case Study",
-    "unitsCompleted": "{completed} / {total} units completed"
+    "unitsCompleted": "{completed} / {total} units completed",
+    "review": "Review Module"
   },
   "Quiz": {
     "title": "Quiz",
@@ -261,6 +266,10 @@
     "quizComplete": "Quiz Complete",
     "congratulations": "Congratulations! You have completed the quiz.",
     "needsImprovement": "Good effort! Review the explanations and try again when you're ready.",
+    "generatingContent": "Generating quiz questions...",
+    "generatingDescription": "This may take up to 3 minutes on first access.",
+    "generationTimeout": "Generation timed out. Please try again.",
+    "generationFailed": "Quiz generation failed. Please retry.",
     "error": "Quiz Error",
     "failedToLoad": "Failed to load quiz. Please try again.",
     "failedToSubmit": "Failed to submit quiz. Please try again.",
@@ -275,7 +284,8 @@
     "lessonCompleted": "Lesson validated!",
     "lessonCompletedDesc": "You scored ≥80%. This lesson is now marked as complete in your progress.",
     "lessonNotValidated": "Lesson not validated",
-    "lessonNotValidatedDesc": "You need at least {score}% to validate this lesson. Try again!"
+    "lessonNotValidatedDesc": "You need at least {score}% to validate this lesson. Try again!",
+    "refreshContent": "Refresh content"
   },
   "ChatTutor": {
     "title": "AI Tutor",
@@ -284,9 +294,9 @@
     "send": "Send",
     "typing": "The tutor is typing...",
     "offline": "Tutor is offline",
-    "messageLimit": "{count}/50 messages today",
+    "messageLimit": "{count}/{max} messages today",
     "messageLimitWarning": "Daily message limit reached",
-    "messageLimitWarningDescription": "You've used 40 out of 50 messages today",
+    "messageLimitWarningDescription": "You are approaching your daily message limit.",
     "messageLimitReached": "Daily message limit reached",
     "messageLimitReachedDescription": "Come back tomorrow for more AI tutor conversations",
     "suggestions": {
@@ -325,11 +335,20 @@
     "selectConversationDescription": "Choose a conversation from the sidebar or start a new one",
     "messageCount": "{count} {count, plural, one {message} other {messages}}",
     "cancel": "Cancel",
-    "newConversationTitle": "New Conversation"
+    "newConversationTitle": "New Conversation",
+    "conversations": "Conversations",
+    "openConversations": "Open conversations",
+    "closeDrawer": "Close",
+    "toggleSuggestions": "Quick actions",
+    "modeSocratic": "Socratic Mode",
+    "modeExplanatory": "Explanatory Mode",
+    "modeSocraticTooltip": "Guided questions",
+    "modeExplanatoryTooltip": "Direct answers"
   },
   "Flashcards": {
     "title": "Flashcards",
     "loading": "Loading flashcards...",
+    "generating": "Generating your flashcards...",
     "noCardsToday": "No cards due today!",
     "wellDone": "Well done! Come back tomorrow for more reviews.",
     "cardCount": "Card {current} of {total}",
@@ -384,11 +403,11 @@
     "reviewDescription": "Review flashcards with spaced repetition for effective learning",
     "redirectingToLogin": "Redirecting to login...",
     "noFlashcardsYet": "No flashcards yet",
-    "noFlashcardsDescription": "Complete modules to generate flashcards.",
+    "noFlashcardsDescription": "Complete modules to generate flashcards, or try again.",
     "goToModules": "Go to Modules"
   },
   "Onboarding": {
-    "welcome": "Welcome to SantePublique AOF",
+    "welcome": "Welcome to SantePublique",
     "subtitle": "Let's set up your personalized learning experience",
     "step": "Step {current} of {total}",
     "next": "Next",
@@ -461,7 +480,7 @@
     "assessmentDomains": "Assessment Domains",
     "domains": {
       "foundations": "Public Health Foundations",
-      "epidemiology": "Epidemiology", 
+      "epidemiology": "Epidemiology",
       "biostatistics": "Biostatistics",
       "healthSystems": "Health Systems"
     },
@@ -472,7 +491,7 @@
     "timeRemaining": "Time remaining: {time}",
     "selectAnswer": "Select an answer to continue",
     "previous": "Previous",
-    "next": "Next", 
+    "next": "Next",
     "answered": "{count}/{total} answered",
     "submit": "Submit Assessment",
     "submitting": "Evaluating your responses...",
@@ -481,7 +500,7 @@
       "assignedLevel": "Your assigned level: Level {level}",
       "levelDescriptions": {
         "1": "Beginner - Build foundational knowledge",
-        "2": "Intermediate - Develop core competencies", 
+        "2": "Intermediate - Develop core competencies",
         "3": "Advanced - Strengthen specialized skills",
         "4": "Expert - Master advanced concepts"
       },
@@ -567,6 +586,11 @@
     "error": "An error occurred",
     "streamError": "Streaming error occurred",
     "loadError": "Error loading lesson",
+    "generatingContent": "Generating content...",
+    "generatingDescription": "This may take up to 3 minutes on first access.",
+    "generationTimeout": "Generation timed out. Please try again.",
+    "generationFailed": "Content generation failed. Please retry.",
+    "retry": "Retry",
     "level": "Level {level}",
     "readingTime": "5-10 min read",
     "cached": "Cached",
@@ -578,12 +602,25 @@
     "synthesis": "Synthesis",
     "keyPoints": "Key Points",
     "markComplete": "Mark as Complete",
-    "completed": "Completed"
+    "completed": "Completed",
+    "refreshContent": "Refresh content",
+    "validateWithQuiz": "Validate with Quiz",
+    "checkingStatus": "Checking..."
+  },
+  "LessonImage": {
+    "imagePending": "Generating illustration...",
+    "imageViewFullscreen": "View fullscreen",
+    "imageCloseFullscreen": "Close fullscreen"
   },
   "CaseStudyViewer": {
     "error": "An error occurred",
     "streamError": "Streaming error occurred",
     "loadError": "Error loading case study",
+    "generatingContent": "Generating case study...",
+    "generatingDescription": "This may take up to 3 minutes on first access.",
+    "generationTimeout": "Generation timed out. Please try again.",
+    "generationFailed": "Content generation failed. Please retry.",
+    "retry": "Retry",
     "level": "Level {level}",
     "estimatedTime": "40 min",
     "cached": "Cached",
@@ -594,9 +631,11 @@
     "guidedQuestions": "Guided Questions",
     "question": "Question {number}",
     "annotatedCorrection": "Annotated Correction",
+    "showCorrection": "Show correction",
     "sourceCitations": "Source Citations",
     "markComplete": "Mark as Complete",
-    "completed": "Completed"
+    "completed": "Completed",
+    "refreshContent": "Refresh content"
   },
   "QuizPage": {
     "backToModule": "Back to {module}"
@@ -619,6 +658,39 @@
     "clickToView": "Click to view:",
     "availableInLibrary": "Available in reference library",
     "footnote": "{count, plural, one {# source cited} other {# sources cited}}"
+  },
+  "PlacementResultsHistory": {
+    "title": "My Assessment Results",
+    "subtitle": "History of your diagnostic assessments",
+    "viewResults": "View my results",
+    "noResults": "No results yet",
+    "noResultsDescription": "You have not taken the diagnostic assessment yet.",
+    "attempt": "Attempt {number}",
+    "attemptDate": "Date",
+    "score": "Score",
+    "assignedLevel": "Assigned Level",
+    "domainBreakdown": "Results by Domain",
+    "level": "Level {level}",
+    "canRetakeNow": "You can retake the assessment now",
+    "canRetakeAfter": "Next attempt available on {date}",
+    "retakeTest": "Retake assessment",
+    "progression": "Progression",
+    "scoreImprovement": "+{points} points since last attempt",
+    "scoreSame": "Score unchanged",
+    "scoreDecrease": "{points} points since last attempt",
+    "levelUpgraded": "Level improved",
+    "levelSame": "Level unchanged",
+    "domains": {
+      "level_1_foundations": "PH Foundations",
+      "level_2_epidemiology": "Epidemiology",
+      "level_3_advanced": "Biostatistics",
+      "level_4_expert": "Health Systems"
+    },
+    "loading": "Loading results...",
+    "error": "Error loading results",
+    "tryAgain": "Try again",
+    "diagnosticAssessment": "Diagnostic Assessment",
+    "viewHistory": "View history"
   },
   "Profile": {
     "title": "Profile",
@@ -651,8 +723,11 @@
     "edit": "Edit",
     "cancel": "Cancel",
     "save": "Save Changes",
+    "logout": "Log out",
+    "logoutDescription": "Sign out of your account",
+    "loggingOut": "Logging out...",
     "languages": {
-      "french": "Fran\u00e7ais",
+      "french": "Français",
       "english": "English"
     },
     "levels": {
@@ -673,6 +748,17 @@
       "health_program_manager": "Health Program Manager",
       "student": "Student",
       "other": "Other"
+    }
+  },
+  "Roles": {
+    "user": "User",
+    "expert": "Expert",
+    "admin": "Administrator"
+  },
+  "Admin": {
+    "users": {
+      "title": "User Management",
+      "subtitle": "Manage user accounts and roles"
     }
   },
   "AdminSyllabus": {
