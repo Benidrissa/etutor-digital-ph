@@ -1,7 +1,7 @@
 """Add brute-force protection columns to totp_secrets.
 
 Revision ID: 018_add_totp_brute_force_protection
-Revises: 017_fix_unique_lesson_per_unit_index
+Revises: 018_add_role_to_users
 Create Date: 2026-04-03
 """
 
@@ -11,12 +11,17 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "018_add_totp_brute_force_protection"
-down_revision: str | None = "017_fix_unique_lesson_per_unit_index"
+down_revision: str | None = "018_add_role_to_users"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    conn = op.get_bind()
+    columns = [c["name"] for c in sa.inspect(conn).get_columns("totp_secrets")]
+    if "failed_attempts" in columns:
+        return
+
     op.add_column(
         "totp_secrets",
         sa.Column("failed_attempts", sa.Integer(), nullable=False, server_default="0"),
