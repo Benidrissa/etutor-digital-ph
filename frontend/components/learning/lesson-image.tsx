@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
 import { X } from 'lucide-react';
+import Image from 'next/image';
 import { getLessonImageStatus } from '@/lib/api';
 import type { LessonImageStatus } from '@/lib/api';
 
@@ -91,11 +92,13 @@ export function LessonImage({ lessonId, language }: LessonImageProps) {
           aria-label={t('imageViewFullscreen')}
           onClick={() => setIsFullscreen(true)}
         >
-          <img
+          <Image
             src={imageUrl}
             alt={altText}
             width={512}
+            height={512}
             loading="lazy"
+            sizes="(max-width: 640px) 100vw, 512px"
             className={`w-full h-auto object-cover rounded-lg transition-opacity duration-300 ${
               isVisible ? 'opacity-100' : 'opacity-0'
             }`}
@@ -122,10 +125,12 @@ export function LessonImage({ lessonId, language }: LessonImageProps) {
           >
             <X className="w-5 h-5" aria-hidden="true" />
           </button>
-          <img
+          <Image
             src={imageUrl}
             alt={altText}
             width={512}
+            height={512}
+            sizes="(max-width: 640px) 100vw, 512px"
             className="max-w-full max-h-full object-contain rounded-lg"
             onClick={(e) => e.stopPropagation()}
           />
