@@ -117,15 +117,18 @@ class TestResizeToWebp:
 
 
 def _make_db_image(tags: list[str], status: str = "ready") -> GeneratedImage:
+    img_id = uuid.uuid4()
     img = GeneratedImage(
-        id=uuid.uuid4(),
+        id=img_id,
         status=status,
         semantic_tags=tags,
-        image_url="https://cdn.example.com/img.webp",
+        image_url=f"/api/v1/images/{img_id}/data",
+        image_data=b"fake-webp-data",
         alt_text_fr="Image FR",
         alt_text_en="Image EN",
         width=512,
         format="webp",
+        file_size_bytes=14,
         reuse_count=0,
     )
     return img
@@ -192,7 +195,8 @@ class TestImageGenerationService:
                 mock_openai_cls.assert_not_called()
 
         assert result.status == "ready"
-        assert result.image_url == existing.image_url
+        assert result.image_url == f"/api/v1/images/{result.id}/data"
+        assert result.image_data == existing.image_data
 
     async def test_new_generation_calls_dalle(
         self, service, mock_session, mock_claude_response, mock_alt_text_response
@@ -243,6 +247,8 @@ class TestImageGenerationService:
             assert call_kwargs.get("size") == "512x512"
 
         assert result.status == "ready"
+        assert result.image_url == f"/api/v1/images/{result.id}/data"
+        assert "oaidalleapiprodscus" not in (result.image_url or "")
 
     async def test_failure_handling_sets_failed_status(self, service, mock_session):
         """When DALL-E raises an exception, status must be 'failed' and lesson unaffected."""
