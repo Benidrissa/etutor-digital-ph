@@ -132,15 +132,15 @@ function SettingRow({ setting, saving, onSave, onReset, t }: {
   onReset: (key: string) => void;
   t: (key: string) => string;
 }) {
+  const formatValue = (v: unknown) => typeof v === "object" ? JSON.stringify(v, null, 2) : String(v);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(
-    typeof setting.value === "object" ? JSON.stringify(setting.value, null, 2) : String(setting.value)
-  );
-
-  useEffect(() => {
-    setDraft(typeof setting.value === "object" ? JSON.stringify(setting.value, null, 2) : String(setting.value));
+  const [draft, setDraft] = useState(formatValue(setting.value));
+  const [prevValue, setPrevValue] = useState(setting.value);
+  if (setting.value !== prevValue) {
+    setPrevValue(setting.value);
+    setDraft(formatValue(setting.value));
     setEditing(false);
-  }, [setting.value]);
+  }
 
   function handleSubmit() {
     let parsed: unknown;

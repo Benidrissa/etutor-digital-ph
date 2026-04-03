@@ -11,7 +11,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.claude_service import ClaudeService
-from app.domain.services.platform_settings_service import SettingsCache
 from app.ai.prompts.case_study import (
     format_rag_context_for_case_study,
     get_case_study_system_prompt,
@@ -28,6 +27,7 @@ from app.api.v1.schemas.content import (
 from app.domain.models.content import GeneratedContent
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
+from app.domain.services.platform_settings_service import SettingsCache
 
 logger = structlog.get_logger()
 

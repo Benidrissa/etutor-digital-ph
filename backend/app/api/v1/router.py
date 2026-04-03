@@ -1,8 +1,8 @@
 from fastapi import APIRouter
 
 from app.api.v1.admin import router as admin_router
-from app.api.v1.admin_settings import router as admin_settings_router
 from app.api.v1.admin_courses import router as admin_courses_router
+from app.api.v1.admin_settings import router as admin_settings_router
 from app.api.v1.content import router as content_router
 from app.api.v1.courses import router as courses_router
 from app.api.v1.dashboard import router as dashboard_router

@@ -25,8 +25,8 @@ from app.domain.models.conversation import TutorConversation
 from app.domain.models.module import Module
 from app.domain.models.user import User
 from app.domain.services.learner_memory_service import LearnerMemoryService
-from app.domain.services.tutor_tools import TOOL_DEFINITIONS, TutorToolExecutor
 from app.domain.services.platform_settings_service import SettingsCache
+from app.domain.services.tutor_tools import TOOL_DEFINITIONS, TutorToolExecutor
 from app.infrastructure.config.settings import get_settings
 
 logger = structlog.get_logger()

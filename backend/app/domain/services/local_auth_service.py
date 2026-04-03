@@ -11,9 +11,9 @@ from structlog import get_logger
 from app.domain.models.auth import MagicLink, RefreshToken, TOTPSecret
 from app.domain.models.user import User, UserRole
 from app.domain.services.email_otp_service import EmailOTPService
-from app.domain.services.platform_settings_service import SettingsCache
 from app.domain.services.email_service import EmailService
 from app.domain.services.jwt_auth_service import JWTAuthService
+from app.domain.services.platform_settings_service import SettingsCache
 from app.domain.services.totp_service import TOTPService
 from app.infrastructure.config.settings import settings
 

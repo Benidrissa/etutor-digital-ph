@@ -185,7 +185,11 @@ class SemanticRetriever:
         return search_results
 
     async def search_by_source(
-        self, query: str, sources: list[str], top_k: int | None = None, session: AsyncSession | None = None
+        self,
+        query: str,
+        sources: list[str],
+        top_k: int | None = None,
+        session: AsyncSession | None = None,
     ) -> dict[str, list[SearchResult]]:
         """
         Search within specific sources and return results grouped by source.
