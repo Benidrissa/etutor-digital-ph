@@ -65,6 +65,9 @@ async def update_user_role(
     db=Depends(get_db_session),
 ) -> UserProfileResponse:
     """Update a user's role. Admin only."""
+    if str(user_id) == str(current_user.id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot change your own role")
+
     try:
         user_repo = UserRepository(db)
         user = await user_repo.get_by_id(user_id)
