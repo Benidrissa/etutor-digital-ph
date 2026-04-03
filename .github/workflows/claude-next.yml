@@ -3,7 +3,7 @@ name: Claude — Queue Next Issue
 on:
   pull_request:
     types: [closed]
-    branches: [main]
+    branches: [main, dev]
 
 jobs:
   queue-next:

@@ -10,10 +10,20 @@ on:
 
 concurrency:
   group: claude-${{ github.event.issue.number || github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
+  # Gate: only 2 Claude runs at a time across all issues to avoid starving CI
+  gate:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: claude-global-gate
+      cancel-in-progress: false
+    steps:
+      - run: echo "Acquired global Claude slot"
+
   claude:
+    needs: gate
     if: |
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
@@ -88,9 +98,9 @@ jobs:
 
             STEP 2 — Implement (read skills first, then code)
 
-            STEP 3 — Lint and test:
+            STEP 3 — Sync lockfile, lint and test:
                cd backend && uv run ruff check --fix . && uv run ruff format . && uv run pytest
-               cd ../frontend && npm run lint && npm test -- --run
+               cd ../frontend && npm install && npm run lint && npm test -- --run
 
             STEP 4 — Commit:
                git add -A -- ':!.playwright-mcp/' ':!.claude/settings.local.json'
