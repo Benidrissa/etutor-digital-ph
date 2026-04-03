@@ -1,13 +1,13 @@
 {
   "Common": {
-    "appName": "SantePublique",
+    "appName": "SantePublique AOF",
     "loading": "Chargement...",
     "offline": "Vous êtes hors ligne — contenu en cache disponible",
     "error": "Une erreur est survenue"
   },
   "PWA": {
     "installTitle": "Installer l'application",
-    "installDescription": "Ajoutez SantePublique à votre écran d'accueil pour un accès rapide et une expérience optimisée.",
+    "installDescription": "Ajoutez SantePublique AOF à votre écran d'accueil pour un accès rapide et une expérience optimisée.",
     "install": "Installer",
     "later": "Plus tard"
   },
@@ -33,11 +33,7 @@
     "navigateTo": "Naviguer vers",
     "lessons": "Leçons",
     "quiz": "Quiz",
-    "caseStudy": "Étude de cas",
-    "logout": "Déconnexion",
-    "logoutDescription": "Se déconnecter de votre compte",
-    "admin": "Administration",
-    "adminDescription": "Accéder au panneau d'administration"
+    "caseStudy": "Étude de cas"
   },
   "Auth": {
     "login": "Se connecter",
@@ -143,7 +139,7 @@
   },
   "Dashboard": {
     "title": "Tableau de bord",
-    "welcome": "Bienvenue sur SantePublique",
+    "welcome": "Bienvenue sur SantePublique AOF",
     "subtitle": "Votre plateforme d'apprentissage en santé publique",
     "streak": "Jours consécutifs",
     "nextReview": "Prochaine révision",
@@ -266,10 +262,6 @@
     "quizComplete": "Quiz Terminé",
     "congratulations": "Félicitations ! Vous avez terminé le quiz.",
     "needsImprovement": "Bon effort ! Lisez les explications et réessayez quand vous serez prêt.",
-    "generatingContent": "Génération des questions...",
-    "generatingDescription": "Cela peut prendre jusqu'à 3 minutes lors du premier accès.",
-    "generationTimeout": "La génération a expiré. Veuillez réessayer.",
-    "generationFailed": "La génération du quiz a échoué. Veuillez réessayer.",
     "error": "Erreur du Quiz",
     "failedToLoad": "Échec du chargement du quiz. Veuillez réessayer.",
     "failedToSubmit": "Échec de la soumission du quiz. Veuillez réessayer.",
@@ -284,8 +276,7 @@
     "lessonCompleted": "Leçon validée !",
     "lessonCompletedDesc": "Vous avez obtenu un score ≥ 80%. Cette leçon est maintenant marquée comme terminée dans votre progression.",
     "lessonNotValidated": "Leçon non validée",
-    "lessonNotValidatedDesc": "Vous devez obtenir au moins {score}% pour valider cette leçon. Réessayez !",
-    "refreshContent": "Actualiser le contenu"
+    "lessonNotValidatedDesc": "Vous devez obtenir au moins {score}% pour valider cette leçon. Réessayez !"
   },
   "ChatTutor": {
     "title": "Tuteur IA",
@@ -294,9 +285,9 @@
     "send": "Envoyer",
     "typing": "Le tuteur écrit...",
     "offline": "Tuteur hors ligne",
-    "messageLimit": "{count}/{max} messages aujourd'hui",
+    "messageLimit": "{count}/50 messages aujourd'hui",
     "messageLimitWarning": "Limite de messages quotidiens atteinte",
-    "messageLimitWarningDescription": "Vous approchez de votre limite de messages quotidiens.",
+    "messageLimitWarningDescription": "Vous avez utilisé 40 sur 50 messages aujourd'hui",
     "messageLimitReached": "Limite de messages quotidiens atteinte",
     "messageLimitReachedDescription": "Revenez demain pour plus de conversations avec le tuteur IA",
     "suggestions": {
@@ -336,19 +327,25 @@
     "messageCount": "{count} {count, plural, one {message} other {messages}}",
     "cancel": "Annuler",
     "newConversationTitle": "Nouvelle Conversation",
-    "conversations": "Conversations",
-    "openConversations": "Ouvrir les conversations",
-    "closeDrawer": "Fermer",
-    "toggleSuggestions": "Actions rapides",
-    "modeSocratic": "Mode Socratique",
-    "modeExplanatory": "Mode Explicatif",
-    "modeSocraticTooltip": "Guidage par questions",
-    "modeExplanatoryTooltip": "Réponses directes"
+    "fileUpload": {
+      "attach": "Joindre un fichier",
+      "attachAriaLabel": "Joindre un fichier",
+      "remove": "Supprimer le fichier",
+      "uploading": "Envoi en cours...",
+      "uploadProgress": "{percent}%",
+      "tooLarge": "Fichier trop volumineux (max 10 Mo)",
+      "unsupportedType": "Type de fichier non pris en charge",
+      "uploadFailed": "Échec de l'envoi du fichier",
+      "dailyLimitReached": "Limite de téléchargement quotidienne atteinte (10 fichiers/jour)",
+      "dragDrop": "Glissez-déposez un fichier ici",
+      "fileCard": "{name} ({size})",
+      "captureCamera": "Prendre une photo",
+      "acceptedTypes": "Images, PDF, CSV, XLSX, TXT, DOCX (max 10 Mo)"
+    }
   },
   "Flashcards": {
     "title": "Flashcards",
     "loading": "Chargement des flashcards...",
-    "generating": "Génération de vos flashcards...",
     "noCardsToday": "Aucune carte due aujourd'hui !",
     "wellDone": "Bien joué ! Revenez demain pour plus de révisions.",
     "cardCount": "Carte {current} sur {total}",
@@ -403,11 +400,11 @@
     "reviewDescription": "Révisez les flashcards avec répétition espacée pour un apprentissage efficace",
     "redirectingToLogin": "Redirection vers la connexion...",
     "noFlashcardsYet": "Aucune flashcard pour l'instant",
-    "noFlashcardsDescription": "Terminez des modules pour générer des flashcards, ou réessayez.",
+    "noFlashcardsDescription": "Terminez des modules pour générer des flashcards.",
     "goToModules": "Aller aux modules"
   },
   "Onboarding": {
-    "welcome": "Bienvenue sur SantePublique",
+    "welcome": "Bienvenue sur SantePublique AOF",
     "subtitle": "Configurons votre expérience d'apprentissage personnalisée",
     "step": "Étape {current} de {total}",
     "next": "Suivant",
@@ -480,7 +477,7 @@
     "assessmentDomains": "Domaines d'évaluation",
     "domains": {
       "foundations": "Fondements de Santé Publique",
-      "epidemiology": "Épidémiologie",
+      "epidemiology": "Épidémiologie", 
       "biostatistics": "Biostatistiques",
       "healthSystems": "Systèmes de Santé"
     },
@@ -491,7 +488,7 @@
     "timeRemaining": "Temps restant : {time}",
     "selectAnswer": "Sélectionnez une réponse pour continuer",
     "previous": "Précédent",
-    "next": "Suivant",
+    "next": "Suivant", 
     "answered": "{count}/{total} répondues",
     "submit": "Soumettre l'Évaluation",
     "submitting": "Évaluation de vos réponses...",
@@ -500,7 +497,7 @@
       "assignedLevel": "Votre niveau assigné : Niveau {level}",
       "levelDescriptions": {
         "1": "Débutant - Construire les connaissances de base",
-        "2": "Intermédiaire - Développer les compétences clés",
+        "2": "Intermédiaire - Développer les compétences clés", 
         "3": "Avancé - Renforcer les compétences spécialisées",
         "4": "Expert - Maîtriser les concepts avancés"
       },
@@ -586,11 +583,6 @@
     "error": "Une erreur est survenue",
     "streamError": "Erreur lors de la diffusion en continu",
     "loadError": "Erreur lors du chargement de la leçon",
-    "generatingContent": "Génération du contenu...",
-    "generatingDescription": "Cela peut prendre jusqu'à 3 minutes lors du premier accès.",
-    "generationTimeout": "La génération a expiré. Veuillez réessayer.",
-    "generationFailed": "La génération du contenu a échoué. Veuillez réessayer.",
-    "retry": "Réessayer",
     "level": "Niveau {level}",
     "readingTime": "5-10 min de lecture",
     "cached": "En cache",
@@ -602,25 +594,12 @@
     "synthesis": "Synthèse",
     "keyPoints": "Points Clés",
     "markComplete": "Marquer comme Terminé",
-    "completed": "Terminé",
-    "refreshContent": "Actualiser le contenu",
-    "validateWithQuiz": "Valider avec le Quiz",
-    "checkingStatus": "Vérification..."
-  },
-  "LessonImage": {
-    "imagePending": "Illustration en cours de génération...",
-    "imageViewFullscreen": "Voir en plein écran",
-    "imageCloseFullscreen": "Fermer le plein écran"
+    "completed": "Terminé"
   },
   "CaseStudyViewer": {
     "error": "Une erreur est survenue",
     "streamError": "Erreur lors de la diffusion en continu",
     "loadError": "Erreur lors du chargement de l'étude de cas",
-    "generatingContent": "Génération de l'étude de cas...",
-    "generatingDescription": "Cela peut prendre jusqu'à 3 minutes lors du premier accès.",
-    "generationTimeout": "La génération a expiré. Veuillez réessayer.",
-    "generationFailed": "La génération du contenu a échoué. Veuillez réessayer.",
-    "retry": "Réessayer",
     "level": "Niveau {level}",
     "estimatedTime": "40 min",
     "cached": "En cache",
@@ -631,11 +610,9 @@
     "guidedQuestions": "Questions guidées",
     "question": "Question {number}",
     "annotatedCorrection": "Correction annotée",
-    "showCorrection": "Voir la correction",
     "sourceCitations": "Sources citées",
     "markComplete": "Marquer comme Terminé",
-    "completed": "Terminé",
-    "refreshContent": "Actualiser le contenu"
+    "completed": "Terminé"
   },
   "QuizPage": {
     "backToModule": "Retour à {module}"
@@ -658,39 +635,6 @@
     "clickToView": "Cliquer pour voir :",
     "availableInLibrary": "Disponible dans la bibliothèque de référence",
     "footnote": "{count, plural, one {# source référencée} other {# sources référencées}}"
-  },
-  "PlacementResultsHistory": {
-    "title": "Mes résultats d'évaluation",
-    "subtitle": "Historique de vos évaluations diagnostiques",
-    "viewResults": "Voir mes résultats",
-    "noResults": "Aucun résultat",
-    "noResultsDescription": "Vous n'avez pas encore passé l'évaluation diagnostique.",
-    "attempt": "Tentative {number}",
-    "attemptDate": "Date",
-    "score": "Score",
-    "assignedLevel": "Niveau assigné",
-    "domainBreakdown": "Résultats par domaine",
-    "level": "Niveau {level}",
-    "canRetakeNow": "Vous pouvez repasser l'évaluation maintenant",
-    "canRetakeAfter": "Prochaine tentative disponible le {date}",
-    "retakeTest": "Repasser l'évaluation",
-    "progression": "Progression",
-    "scoreImprovement": "+{points} points depuis la dernière tentative",
-    "scoreSame": "Score stable",
-    "scoreDecrease": "{points} points depuis la dernière tentative",
-    "levelUpgraded": "Niveau amélioré",
-    "levelSame": "Niveau stable",
-    "domains": {
-      "level_1_foundations": "Fondements SP",
-      "level_2_epidemiology": "Épidémiologie",
-      "level_3_advanced": "Biostatistiques",
-      "level_4_expert": "Systèmes de santé"
-    },
-    "loading": "Chargement des résultats...",
-    "error": "Erreur lors du chargement des résultats",
-    "tryAgain": "Réessayer",
-    "diagnosticAssessment": "Évaluation diagnostique",
-    "viewHistory": "Voir l'historique"
   },
   "Profile": {
     "title": "Profil",
@@ -723,9 +667,6 @@
     "edit": "Modifier",
     "cancel": "Annuler",
     "save": "Sauvegarder",
-    "logout": "Déconnexion",
-    "logoutDescription": "Se déconnecter de votre compte",
-    "loggingOut": "Déconnexion en cours...",
     "languages": {
       "french": "Français",
       "english": "English"
@@ -748,96 +689,6 @@
       "health_program_manager": "Gestionnaire de programmes de santé",
       "student": "Étudiant/e",
       "other": "Autre"
-    }
-  },
-  "Roles": {
-    "user": "Utilisateur",
-    "expert": "Expert",
-    "admin": "Administrateur"
-  },
-  "Admin": {
-    "users": {
-      "title": "Gestion des utilisateurs",
-      "subtitle": "Gérer les comptes et les rôles des utilisateurs",
-      "searchPlaceholder": "Rechercher par nom ou e-mail...",
-      "filterCountry": "Pays",
-      "filterLevel": "Niveau",
-      "filterRole": "Rôle",
-      "filterStatus": "Statut",
-      "allCountries": "Tous les pays",
-      "allLevels": "Tous les niveaux",
-      "allRoles": "Tous les rôles",
-      "allStatuses": "Tous les statuts",
-      "active": "Actif",
-      "inactive": "Inactif",
-      "exportCsv": "Exporter CSV",
-      "noUsersFound": "Aucun utilisateur trouvé",
-      "noUsersDescription": "Essayez d'ajuster votre recherche ou vos filtres.",
-      "userCount": "{count, plural, one {# utilisateur} other {# utilisateurs}}",
-      "level": "Niveau {level}",
-      "lastActive": "Dernière activité",
-      "memberSince": "Membre depuis",
-      "streakDays": "Série de {days} jours",
-      "viewDetails": "Voir les détails",
-      "deactivate": "Désactiver",
-      "reactivate": "Réactiver",
-      "promoteToExpert": "Promouvoir en Expert",
-      "promoteToAdmin": "Promouvoir en Admin",
-      "demoteToUser": "Rétrograder en Utilisateur",
-      "confirmDeactivate": "Désactiver l'utilisateur ?",
-      "confirmDeactivateDesc": "Cet utilisateur ne pourra plus se connecter.",
-      "confirmReactivate": "Réactiver l'utilisateur ?",
-      "confirmReactivateDesc": "Cet utilisateur pourra se connecter à nouveau.",
-      "confirmPromote": "Changer le rôle ?",
-      "confirmPromoteDesc": "Cela changera le rôle de l'utilisateur en {role}.",
-      "actionSuccess": "Action effectuée avec succès.",
-      "actionError": "L'action a échoué. Veuillez réessayer.",
-      "cancel": "Annuler",
-      "confirm": "Confirmer",
-      "loading": "Chargement des utilisateurs...",
-      "error": "Impossible de charger les utilisateurs."
-    },
-    "userDetail": {
-      "title": "Détails de l'utilisateur",
-      "backToList": "Retour aux utilisateurs",
-      "profile": "Profil",
-      "progress": "Progression d'apprentissage",
-      "quizHistory": "Historique des quiz",
-      "auditLog": "Journal d'audit",
-      "notFound": "Utilisateur introuvable.",
-      "loading": "Chargement des détails...",
-      "error": "Impossible de charger les détails.",
-      "noProgress": "Aucune progression de module.",
-      "noQuizHistory": "Aucune tentative de quiz.",
-      "score": "{score}%",
-      "passed": "Réussi",
-      "failed": "Échoué",
-      "attemptDate": "Date",
-      "module": "Module",
-      "unit": "Unité",
-      "quizScore": "Score",
-      "moduleProgress": "Progression",
-      "completionPct": "{pct}% complété"
-    },
-    "auditLog": {
-      "title": "Journal d'audit",
-      "subtitle": "Historique de toutes les actions d'administration",
-      "adminEmail": "Administrateur",
-      "targetUser": "Utilisateur",
-      "action": "Action",
-      "details": "Détails",
-      "date": "Date",
-      "noLogs": "Aucune entrée dans le journal d'audit.",
-      "loading": "Chargement du journal...",
-      "error": "Impossible de charger le journal d'audit.",
-      "actions": {
-        "deactivate_user": "Utilisateur désactivé",
-        "reactivate_user": "Utilisateur réactivé",
-        "promote_to_expert": "Promu Expert",
-        "promote_to_admin": "Promu Admin",
-        "demote_to_user": "Rétrogradé Utilisateur",
-        "update_role": "Rôle mis à jour"
-      }
     }
   }
 }

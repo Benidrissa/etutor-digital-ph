@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
+import { ChevronLeft, Clock, CheckCircle, Lock, BookOpen, RefreshCw } from 'lucide-react';
 import { Link } from '@/i18n/routing';
-import { ChevronLeft, Lock, BookOpen, CheckCircle, Clock } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,48 +16,39 @@ interface ModuleLockGateProps {
   moduleId: string;
   moduleData: Module;
   prerequisites: Module[];
-  language: 'en' | 'fr';
 }
 
-export function ModuleLockGate({ moduleId, moduleData, prerequisites, language }: ModuleLockGateProps) {
+export function ModuleLockGate({ moduleId, moduleData, prerequisites }: ModuleLockGateProps) {
   const t = useTranslations('ModuleOverview');
-  const tCard = useTranslations('ModuleCard');
-  const [status, setStatus] = useState<'locked' | 'in_progress' | 'completed' | 'loading'>('loading');
+  const locale = useLocale() as 'en' | 'fr';
+  const [backendStatus, setBackendStatus] = useState<'locked' | 'in_progress' | 'completed' | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let cancelled = false;
     getModuleProgress(moduleId)
-      .then((res) => {
-        if (!cancelled) setStatus(res.status);
+      .then((progress) => {
+        setBackendStatus(progress.status);
       })
       .catch(() => {
-        if (!cancelled) {
-          const fallback = moduleData.status === 'in-progress' ? 'in_progress' : moduleData.status as 'locked' | 'completed';
-          setStatus(fallback);
-        }
-      });
-    return () => { cancelled = true; };
-  }, [moduleId, moduleData.status]);
+        setBackendStatus(null);
+      })
+      .finally(() => setLoading(false));
+  }, [moduleId]);
 
-  if (status === 'loading') {
+  const isUnlocked = backendStatus === 'completed' || backendStatus === 'in_progress';
+  const isCompleted = backendStatus === 'completed';
+
+  if (loading) {
     return (
-      <div className="container mx-auto max-w-4xl px-4 py-6">
-        <div className="mb-6">
-          <Link href="/modules" className="inline-flex items-center text-stone-600 hover:text-stone-900 transition-colors">
-            <ChevronLeft className="w-4 h-4 mr-1" />
-            {t('backToModules')}
-          </Link>
-        </div>
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-stone-200 rounded w-1/3" />
-          <div className="h-4 bg-stone-200 rounded w-2/3" />
-          <div className="h-4 bg-stone-200 rounded w-1/2" />
-        </div>
+      <div className="space-y-4 animate-pulse">
+        <div className="h-8 bg-stone-100 rounded w-48" />
+        <div className="h-32 bg-stone-100 rounded-lg" />
+        <div className="h-64 bg-stone-100 rounded-lg" />
       </div>
     );
   }
 
-  if (status === 'locked') {
+  if (!isUnlocked) {
     return (
       <div className="container mx-auto max-w-4xl px-4 py-6">
         <div className="mb-6">
@@ -83,7 +74,7 @@ export function ModuleLockGate({ moduleId, moduleData, prerequisites, language }
               <div className="space-y-2">
                 {prerequisites.map((prereq) => (
                   <div key={prereq.id} className="flex items-center justify-between p-3 bg-stone-50 rounded-lg">
-                    <span className="text-sm font-medium">{prereq.title[language]}</span>
+                    <span className="text-sm font-medium">{prereq.title[locale]}</span>
                     <Badge variant={prereq.status === 'completed' ? 'default' : 'secondary'}>
                       {prereq.status === 'completed' ? '✓' : '○'}
                     </Badge>
@@ -113,19 +104,18 @@ export function ModuleLockGate({ moduleId, moduleData, prerequisites, language }
             <Clock className="w-4 h-4 mr-1" />
             {t('hours', { count: moduleData.estimatedHours })}
           </div>
-          {status === 'completed' && (
-            <div className="flex items-center text-teal-600">
-              <CheckCircle className="w-4 h-4 mr-1" />
-              <span className="text-sm font-medium">{tCard('completed')}</span>
-            </div>
+          {isCompleted && (
+            <Badge className="bg-green-100 text-green-800 border-green-200">
+              ✓ {t('unitStatus.completed')}
+            </Badge>
           )}
         </div>
         <h1 className="text-3xl font-bold text-stone-900 mb-3">
-          {moduleData.title[language]}
+          {moduleData.title[locale]}
         </h1>
         {moduleData.description && (
           <p className="text-lg text-stone-600 leading-relaxed">
-            {moduleData.description[language]}
+            {moduleData.description[locale]}
           </p>
         )}
       </div>
@@ -139,7 +129,7 @@ export function ModuleLockGate({ moduleId, moduleData, prerequisites, language }
               </CardHeader>
               <CardContent>
                 <ul className="space-y-3">
-                  {moduleData.learningObjectives[language].map((objective, index) => (
+                  {moduleData.learningObjectives[locale].map((objective, index) => (
                     <li key={index} className="flex items-start gap-3">
                       <CheckCircle className="w-5 h-5 text-teal-600 mt-0.5 flex-shrink-0" />
                       <span className="text-stone-700">{objective}</span>
@@ -159,11 +149,11 @@ export function ModuleLockGate({ moduleId, moduleData, prerequisites, language }
 
         <div className="space-y-4">
           <div className="space-y-2">
-            {status === 'completed' && (
-              <Link href={`/modules/${moduleId}/quiz`} className="block">
-                <Button className="w-full min-h-11 bg-teal-600 hover:bg-teal-700">
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  {tCard('review')}
+            {isCompleted && (
+              <Link href={`/modules/${moduleId}/lessons`} className="block">
+                <Button className="w-full min-h-11 bg-green-600 hover:bg-green-700">
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  {t('review')}
                 </Button>
               </Link>
             )}

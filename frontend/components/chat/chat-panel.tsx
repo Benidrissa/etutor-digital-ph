@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { X, MoreVertical, Trash2, Menu, HelpCircle, BookOpen } from 'lucide-react';
+import { X, MoreVertical, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -31,7 +31,6 @@ import { authClient, AuthError } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import {
   fetchConversation,
-  fetchTutorStats,
   getOfflineConversation,
   invalidateConversationCache,
   invalidateConversationsCache,
@@ -45,7 +44,6 @@ interface ChatPanelProps {
   className?: string;
   embedded?: boolean;
   onConversationCreated?: (conversationId: string) => void;
-  onOpenConversations?: () => void;
 }
 
 export function ChatPanel({
@@ -56,7 +54,6 @@ export function ChatPanel({
   className,
   embedded = false,
   onConversationCreated,
-  onOpenConversations,
 }: ChatPanelProps) {
   const t = useTranslations('ChatTutor');
   const router = useRouter();
@@ -66,13 +63,12 @@ export function ChatPanel({
   const [isTyping, setIsTyping] = useState(false);
   const [showClearDialog, setShowClearDialog] = useState(false);
   const [currentUsage, setCurrentUsage] = useState(0);
-  const [maxDailyUsage, setMaxDailyUsage] = useState(200);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
     conversationId ?? null
   );
-  const [tutorMode, setTutorMode] = useState<'socratic' | 'explanatory'>('socratic');
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
+  const maxDailyUsage = 50;
   const isLimitReached = currentUsage >= maxDailyUsage;
 
   const welcomeMessage: ChatMessage = {
@@ -83,21 +79,13 @@ export function ChatPanel({
   };
 
   useEffect(() => {
-    fetchTutorStats()
-      .then((stats) => {
-        setMaxDailyUsage(stats.daily_messages_limit);
-        setCurrentUsage(stats.daily_messages_used);
-      })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
     setActiveConversationId(conversationId ?? null);
   }, [conversationId]);
 
   useEffect(() => {
     if (!activeConversationId) {
       setMessages([welcomeMessage]);
+      setCurrentUsage(0);
       return;
     }
 
@@ -115,6 +103,8 @@ export function ChatPanel({
             page: s.page ?? 0,
           })),
         }));
+        const userCount = conv.messages.filter((m) => m.role === 'user').length;
+        setCurrentUsage(userCount);
         setMessages(loaded.length > 0 ? loaded : [welcomeMessage]);
       })
       .catch(() => {
@@ -131,9 +121,12 @@ export function ChatPanel({
               page: s.page ?? 0,
             })),
           }));
+          const userCount = offline.messages.filter((m) => m.role === 'user').length;
+          setCurrentUsage(userCount);
           setMessages(loaded.length > 0 ? loaded : [welcomeMessage]);
         } else {
           setMessages([welcomeMessage]);
+          setCurrentUsage(0);
         }
       })
       .finally(() => setIsHistoryLoading(false));
@@ -147,7 +140,7 @@ export function ChatPanel({
     }
   }, [messages, isTyping]);
 
-  const handleSendMessage = async (messageContent: string) => {
+  const handleSendMessage = async (messageContent: string, attachedFiles: import('./chat-input').AttachedFileInfo[] = []) => {
     if (isLimitReached || isLoading) return;
 
     const userMessage: ChatMessage = {
@@ -155,6 +148,7 @@ export function ChatPanel({
       content: messageContent,
       isUser: true,
       timestamp: new Date(),
+      attachedFiles: attachedFiles.length > 0 ? attachedFiles : undefined,
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -184,7 +178,7 @@ export function ChatPanel({
           message: messageContent,
           conversation_id: activeConversationId ?? null,
           module_id: moduleId ?? null,
-          tutor_mode: tutorMode,
+          file_ids: attachedFiles.map((f) => f.fileId),
         }),
       });
 
@@ -258,10 +252,6 @@ export function ChatPanel({
                 const finishedConvId = chunk.data.conversation_id as string;
                 invalidateConversationCache(finishedConvId);
                 invalidateConversationsCache();
-                if (typeof chunk.data?.remaining_messages === 'number') {
-                  const remaining = chunk.data.remaining_messages as number;
-                  setCurrentUsage(maxDailyUsage - remaining);
-                }
               } else if (chunk.type === 'error') {
                 const errorCode = chunk.data?.code;
                 fullContent =
@@ -297,7 +287,7 @@ export function ChatPanel({
 
   const handleSuggestionClick = (suggestion: string) => {
     if (!isLimitReached && !isLoading) {
-      handleSendMessage(suggestion);
+      handleSendMessage(suggestion, []);
     }
   };
 
@@ -324,38 +314,12 @@ export function ChatPanel({
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-3 border-b bg-background shrink-0">
+        <div className="flex items-center justify-between p-4 border-b bg-background">
+          <h2 className="text-lg font-semibold">{t('title')}</h2>
           <div className="flex items-center gap-2">
-            {onOpenConversations && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={onOpenConversations}
-                className="h-11 w-11 md:hidden"
-                aria-label={t('openConversations')}
-              >
-                <Menu className="h-5 w-5" />
-              </Button>
-            )}
-            <h2 className="text-base font-semibold">{t('title')}</h2>
-          </div>
-          <div className="flex items-center gap-1">
-            <Button
-              variant={tutorMode === 'socratic' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setTutorMode(tutorMode === 'socratic' ? 'explanatory' : 'socratic')}
-              className="h-9 gap-1.5 text-xs"
-              title={tutorMode === 'socratic' ? t('modeSocraticTooltip') : t('modeExplanatoryTooltip')}
-            >
-              {tutorMode === 'socratic' ? (
-                <><HelpCircle className="h-3.5 w-3.5" />{t('modeSocratic')}</>
-              ) : (
-                <><BookOpen className="h-3.5 w-3.5" />{t('modeExplanatory')}</>
-              )}
-            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger>
-                <Button variant="ghost" size="icon" className="h-11 w-11">
+                <Button variant="ghost" size="icon" className="h-9 w-9">
                   <MoreVertical className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -370,7 +334,7 @@ export function ChatPanel({
               variant="ghost"
               size="icon"
               onClick={onClose}
-              className="h-11 w-11 md:hidden"
+              className="h-9 w-9 md:hidden"
             >
               <X className="h-4 w-4" />
             </Button>
@@ -381,12 +345,12 @@ export function ChatPanel({
         <UsageCounter
           currentUsage={currentUsage}
           maxUsage={maxDailyUsage}
-          className="px-3 py-1"
+          className="p-4 pb-2"
         />
 
         {/* Messages */}
         <div className="flex-1 flex flex-col min-h-0">
-          <div ref={scrollAreaRef} className="flex-1 overflow-y-auto px-3 py-2">
+          <div ref={scrollAreaRef} className="flex-1 overflow-y-auto px-4 py-2">
             {isHistoryLoading ? (
               <ChatSkeleton />
             ) : (

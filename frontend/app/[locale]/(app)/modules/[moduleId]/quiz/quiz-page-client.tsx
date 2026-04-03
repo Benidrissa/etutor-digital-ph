@@ -7,6 +7,7 @@ interface QuizPageClientProps {
   moduleId: string;
   unitId: string;
   language: string;
+  country: string;
   level: number;
 }
 
@@ -14,6 +15,7 @@ export function QuizPageClient({
   moduleId,
   unitId,
   language,
+  country,
   level,
 }: QuizPageClientProps) {
   const router = useRouter();
@@ -27,6 +29,7 @@ export function QuizPageClient({
       moduleId={moduleId}
       unitId={unitId}
       language={language}
+      country={country}
       level={level}
       onComplete={handleQuizComplete}
     />

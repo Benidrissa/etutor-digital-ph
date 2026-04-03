@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Planned Tech Stack
 
-- **Frontend:** Next.js 15 + React 19, Tailwind CSS + shadcn/ui, Zustand, TanStack Query, next-intl (i18n), Serwist/Workbox (Service Worker + offline), IndexedDB via idb/Dexie.js (3 modules offline complets)
+- **Frontend:** Next.js 15 + React 19, Tailwind CSS + shadcn/ui, Zustand, TanStack Query, next-intl (i18n), next-pwa + Workbox (offline/PWA)
 - **Backend:** FastAPI (Python 3.12), PostgreSQL 16, Redis 7, Celery
 - **Auth:** Local FastAPI auth — passwordless TOTP MFA (Microsoft/Google Authenticator) + email magic link recovery. JWTs issued by backend (pyotp + python-jose).
 - **AI/RAG:** Anthropic Claude 3.5 Sonnet, Anthropic Python SDK, pgvector (PostgreSQL), OpenAI text-embedding-3-small
@@ -33,7 +33,7 @@ Key architectural decisions:
 
 ## Key Design Constraints
 
-- **Offline-first:** Must work on 2G/3G, TTI <3s on 3G, JS bundle <150KB gzipped. 3 full modules downloadable for offline use (IndexedDB). Content downloaded on-demand only (save mobile data). Partial downloads are functional. Progression syncs when back online.
+- **Offline-first:** Must work on 2G/3G, TTI <3s on 3G, JS bundle <150KB gzipped
 - **Bilingual:** All UI and generated content in FR/EN with instant switching via next-intl
 - **Country-contextualized:** Lessons adapt to user's ECOWAS country using real health data
 - **Mobile-first:** Responsive from 320px, 44×44px touch targets, WCAG 2.1 AA
@@ -67,4 +67,3 @@ Must align with: GDPR, Senegal Loi 2008-12, Ghana Data Protection Act 2012, Nige
 - **Phase 1 (6 weeks):** MVP — Auth, Dashboard, M01-M03, basic quiz/flashcards
 - **Phase 2 (8 weeks):** DHIS2 integration, case studies, Python sandbox, AI tutor
 - **Phase 3-6:** Spaced repetition, remaining modules, certifications, native apps
-

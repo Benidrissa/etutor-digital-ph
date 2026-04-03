@@ -18,10 +18,6 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    conn = op.get_bind()
-    if conn.dialect.has_table(conn, "learner_memory"):
-        return
-
     op.create_table(
         "learner_memory",
         sa.Column("id", sa.UUID(), nullable=False),

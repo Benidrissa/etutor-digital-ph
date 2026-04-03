@@ -3,14 +3,20 @@
 import { useTranslations } from 'next-intl';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
 import { cn } from '@/lib/utils';
+import { AttachedFileCard } from '@/components/chat/file-preview';
 
 export interface ChatSource {
   title: string;
   chapter?: number;
   page?: number;
+}
+
+export interface AttachedFileInfo {
+  fileId: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
 }
 
 export interface ChatMessage {
@@ -20,6 +26,7 @@ export interface ChatMessage {
   timestamp: Date;
   sources?: ChatSource[];
   isStreaming?: boolean;
+  attachedFiles?: AttachedFileInfo[];
 }
 
 interface ChatMessageProps {
@@ -28,6 +35,7 @@ interface ChatMessageProps {
 
 export function ChatMessage({ message }: ChatMessageProps) {
   const t = useTranslations('ChatTutor');
+  const hasFiles = message.attachedFiles && message.attachedFiles.length > 0;
 
   return (
     <div
@@ -44,18 +52,44 @@ export function ChatMessage({ message }: ChatMessageProps) {
             : 'bg-muted mr-4'
         )}
       >
-        {/* Message content */}
+        {hasFiles && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {message.attachedFiles!.map((f) => (
+              <AttachedFileCard
+                key={f.fileId}
+                name={f.name}
+                mimeType={f.mimeType}
+                sizeBytes={f.sizeBytes}
+              />
+            ))}
+          </div>
+        )}
+
+        {hasFiles && message.isUser && message.attachedFiles!.some((f) => f.mimeType.startsWith('image/')) && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {message.attachedFiles!
+              .filter((f) => f.mimeType.startsWith('image/'))
+              .map((f) => (
+                <div key={f.fileId} className="text-xs text-primary-foreground/70 italic">
+                  🖼 {f.name}
+                </div>
+              ))}
+          </div>
+        )}
+
         <div className="text-sm leading-relaxed">
           {message.isUser ? (
             <>
-              {message.content}
+              {message.content.trim() && message.content.trim() !== ' ' && (
+                <span>{message.content}</span>
+              )}
               {message.isStreaming && (
                 <span className="inline-block w-2 h-4 ml-1 bg-current animate-pulse" />
               )}
             </>
           ) : (
-            <div className="prose prose-sm max-w-none prose-p:my-1 prose-headings:mt-3 prose-headings:mb-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-blockquote:my-2 prose-pre:my-2 prose-table:text-xs [&_table]:w-full [&_table]:border-collapse [&_th]:border [&_th]:border-current/20 [&_th]:px-2 [&_th]:py-1 [&_td]:border [&_td]:border-current/20 [&_td]:px-2 [&_td]:py-1 overflow-x-auto">
-              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+            <div className="prose prose-sm max-w-none prose-p:my-1 prose-headings:mt-3 prose-headings:mb-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-blockquote:my-2 prose-pre:my-2 prose-table:text-xs [&_table]:w-full [&_table]:border-collapse [&_th]:border [&_th]:border-current/20 [&_th]:px-2 [&_th]:py-1 [&_td]:border [&_td]:border-current/20 [&_td]:px-2 [&_td]:py-1 overflow-x-auto">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {message.content}
               </ReactMarkdown>
               {message.isStreaming && (
@@ -65,7 +99,6 @@ export function ChatMessage({ message }: ChatMessageProps) {
           )}
         </div>
 
-        {/* Sources */}
         {message.sources && message.sources.length > 0 && (
           <div className="mt-2 pt-2 border-t border-current/20">
             <div className="text-xs font-medium opacity-75 mb-1">
@@ -77,7 +110,6 @@ export function ChatMessage({ message }: ChatMessageProps) {
                   key={index}
                   className="text-xs px-2 py-1 rounded-md bg-current/10 hover:bg-current/20 transition-colors"
                   onClick={() => {
-                    // TODO: Navigate to source material
                     console.log('Navigate to source:', source);
                   }}
                 >
@@ -90,7 +122,6 @@ export function ChatMessage({ message }: ChatMessageProps) {
           </div>
         )}
 
-        {/* Timestamp */}
         <div
           className={cn(
             'text-xs opacity-60 mt-1',

@@ -59,21 +59,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return response
 
     def _get_client_ip(self, request: Request) -> str:
-        """Extract client IP from request headers.
-
-        Uses the rightmost IP in X-Forwarded-For to prevent spoofing via
-        header injection. The rightmost IP is the one added by our trusted
-        proxy and cannot be forged by the client.
-        """
+        """Extract client IP from request headers."""
+        # Check for forwarded headers (behind proxy/load balancer)
         forwarded_for = request.headers.get("X-Forwarded-For")
         if forwarded_for:
-            ips = [ip.strip() for ip in forwarded_for.split(",")]
-            if ips:
-                return ips[-1]
+            return forwarded_for.split(",")[0].strip()
 
         real_ip = request.headers.get("X-Real-IP")
         if real_ip:
-            return real_ip.strip()
+            return real_ip
 
         return request.client.host if request.client else "unknown"
 
@@ -139,7 +133,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             await self._check_tutor_rate_limit(request, client_ip)
 
     async def _check_tutor_rate_limit(self, request: Request, client_ip: str) -> None:
-        """Check tutor message rate limit (200/day/user)."""
+        """Check tutor message rate limit (50/day/user)."""
         # TODO: Extract user_id from JWT token when auth is implemented
         # For now, use IP address as identifier
         user_identifier = client_ip
@@ -152,7 +146,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             # Count tutor messages today
             message_count = await redis_client.zcount(cache_key, day_start, current_time)
 
-            if message_count >= 200:
+            if message_count >= 50:
                 logger.warning(
                     "Tutor rate limit exceeded",
                     user_identifier=user_identifier,
@@ -162,7 +156,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     status_code=429,
                     detail={
                         "error": "Daily tutor message limit exceeded",
-                        "limit": 200,
+                        "limit": 50,
                         "window_hours": 24,
                         "retry_after": 86400 - (current_time % 86400),
                     },
@@ -217,7 +211,7 @@ async def get_rate_limit_status(client_ip: str, user_id: str = None) -> dict:
 
             status["tutor"] = {
                 "messages_today": tutor_count,
-                "limit": 200,
+                "limit": 50,
                 "window_hours": 24,
                 "remaining": max(0, 50 - tutor_count),
             }

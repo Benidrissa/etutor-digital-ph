@@ -1,13 +1,11 @@
 """Email OTP service for registration and login verification."""
 
-import hashlib
-import hmac
 import secrets
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, delete, func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -43,17 +41,6 @@ class EmailOTPService:
         """
         return f"{secrets.randbelow(1000000):06d}"
 
-    def hash_otp_code(self, otp_code: str) -> str:
-        """Hash an OTP code for secure storage.
-
-        Args:
-            otp_code: Plaintext OTP code
-
-        Returns:
-            SHA-256 hash of the OTP code
-        """
-        return hashlib.sha256(otp_code.encode()).hexdigest()
-
     async def send_registration_otp(
         self,
         email: str,
@@ -86,12 +73,12 @@ class EmailOTPService:
             otp_code = self.generate_otp_code()
             expires_at = datetime.utcnow() + timedelta(minutes=self.otp_expiry_minutes)
 
-            # Store OTP (hashed)
+            # Store OTP
             otp_record = EmailOTP(
                 id=uuid4(),
                 user_id=user_id,
                 email=email,
-                code=self.hash_otp_code(otp_code),
+                code=otp_code,
                 purpose="registration",
                 attempts=0,
                 expires_at=expires_at,
@@ -162,12 +149,12 @@ class EmailOTPService:
             otp_code = self.generate_otp_code()
             expires_at = datetime.utcnow() + timedelta(minutes=self.otp_expiry_minutes)
 
-            # Store OTP (hashed)
+            # Store OTP
             otp_record = EmailOTP(
                 id=uuid4(),
                 user_id=user.id,
                 email=email,
-                code=self.hash_otp_code(otp_code),
+                code=otp_code,
                 purpose="login",
                 attempts=0,
                 expires_at=expires_at,
@@ -242,8 +229,8 @@ class EmailOTPService:
             # Increment attempts
             otp_record.attempts += 1
 
-            # Verify code (constant-time comparison against hash)
-            if not hmac.compare_digest(otp_record.code, self.hash_otp_code(otp_code)):
+            # Verify code
+            if otp_record.code != otp_code:
                 await self.db.commit()  # Save attempt increment
                 attempts_left = self.max_attempts - otp_record.attempts
                 raise OTPError(f"Invalid OTP code. {attempts_left} attempts remaining.")
@@ -344,7 +331,7 @@ class EmailOTPService:
         """
         try:
             await self.db.execute(
-                delete(EmailOTP).where(
+                select(EmailOTP).where(
                     and_(EmailOTP.email == email, EmailOTP.expires_at < datetime.utcnow())
                 )
             )

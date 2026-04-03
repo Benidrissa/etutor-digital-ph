@@ -3,7 +3,6 @@
 import structlog
 from celery import Celery
 
-import app.domain.models  # noqa: F401 — register all SQLAlchemy models with the mapper
 from app.infrastructure.config.settings import settings
 
 logger = structlog.get_logger(__name__)
@@ -16,6 +15,7 @@ celery_app = Celery(
     include=[
         "app.tasks.content_generation",
         "app.tasks.data_etl",
+        "app.tasks.file_cleanup",
     ],
 )
 
@@ -52,6 +52,10 @@ celery_app.conf.beat_schedule = {
     "cleanup-expired-cache": {
         "task": "app.tasks.data_etl.cleanup_expired_cache",
         "schedule": 3600 * 6,  # Every 6 hours
+    },
+    "cleanup-expired-uploads": {
+        "task": "app.tasks.file_cleanup.cleanup_expired_uploads",
+        "schedule": 3600,  # Every hour
     },
 }
 

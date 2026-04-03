@@ -1,10 +1,20 @@
 """Pydantic schemas for tutor API endpoints."""
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+
+class FileUploadResponse(BaseModel):
+    """Response schema for file upload endpoint."""
+
+    file_id: str = Field(..., description="Unique identifier for the uploaded file")
+    original_name: str = Field(..., description="Original filename")
+    mime_type: str = Field(..., description="Detected MIME type")
+    size_bytes: int = Field(..., description="File size in bytes")
+    expires_at: datetime = Field(..., description="When the temp file will be deleted")
 
 
 class TutorMessage(BaseModel):
@@ -29,10 +39,7 @@ class TutorChatRequest(BaseModel):
     )
     context_id: UUID | None = Field(None, description="Context-specific ID")
     conversation_id: UUID | None = Field(None, description="Existing conversation ID")
-    tutor_mode: Literal["socratic", "explanatory"] = Field(
-        default="socratic",
-        description="Tutor mode: socratic (guided questions) or explanatory (direct answers)",
-    )
+    file_ids: list[str] = Field(default_factory=list, description="Uploaded file IDs to attach")
 
 
 class TutorChatResponse(BaseModel):

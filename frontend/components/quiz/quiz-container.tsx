@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
-import { Loader2, AlertTriangle, Play, RefreshCw } from 'lucide-react';
+import { Loader2, AlertTriangle, Play } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,29 +10,19 @@ import { Badge } from '@/components/ui/badge';
 import { QuizInterface } from './quiz-interface';
 import { QuizResults } from './quiz-results';
 import type { Quiz, QuizAttemptResponse } from '@/lib/api';
-import { generateQuiz, apiFetch } from '@/lib/api';
-import { useCurrentUser } from '@/lib/hooks/use-current-user';
-
-const POLL_INTERVAL_MS = 3000;
-const POLL_TIMEOUT_MS = 3 * 60 * 1000;
+import { generateQuiz } from '@/lib/api';
 
 interface QuizContainerProps {
   moduleId: string;
   unitId: string;
   language: string;
-  country?: string;
+  country: string;
   level: number;
   onComplete?: () => void;
   onError?: (error: string) => void;
 }
 
-interface GeneratingResponse {
-  status: 'generating';
-  task_id: string;
-  message: string;
-}
-
-type QuizState = 'loading' | 'generating' | 'ready' | 'in-progress' | 'completed' | 'error';
+type QuizState = 'loading' | 'ready' | 'in-progress' | 'completed' | 'error';
 
 export function QuizContainer({
   moduleId,
@@ -44,96 +34,30 @@ export function QuizContainer({
   onError
 }: QuizContainerProps) {
   const t = useTranslations('Quiz');
-  const currentUser = useCurrentUser();
-  const resolvedCountry = country || currentUser?.country || 'SN';
   
   const [state, setState] = useState<QuizState>('loading');
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [result, setResult] = useState<QuizAttemptResponse | null>(null);
   const [error, setError] = useState<string>('');
   const [retryCount, setRetryCount] = useState(0);
-  const [forceRegenerate, setForceRegenerate] = useState(false);
-
-  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pollStartRef = useRef<number>(0);
-
-  const pollStatus = (taskId: string, startTime: number) => {
-    if (Date.now() - startTime > POLL_TIMEOUT_MS) {
-      setState('error');
-      const msg = t('generationTimeout');
-      setError(msg);
-      onError?.(msg);
-      return;
-    }
-
-    pollTimerRef.current = setTimeout(async () => {
-      try {
-        const statusRes = await apiFetch<{ status: string; content_id?: string; error?: string }>(
-          `/api/v1/content/status/${taskId}`
-        );
-
-        if (statusRes.status === 'complete') {
-          const quizData = await generateQuiz({
-            module_id: moduleId,
-            unit_id: unitId,
-            language,
-            country: resolvedCountry,
-            level,
-            num_questions: 10,
-          });
-          setQuiz(quizData);
-          setForceRegenerate(false);
-          setState('ready');
-        } else if (statusRes.status === 'failed') {
-          const msg = t('generationFailed');
-          setError(msg);
-          setState('error');
-          onError?.(msg);
-        } else {
-          pollStatus(taskId, startTime);
-        }
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : t('failedToLoad');
-        setError(errorMessage);
-        setState('error');
-        onError?.(errorMessage);
-      }
-    }, POLL_INTERVAL_MS);
-  };
-
-  useEffect(() => {
-    return () => {
-      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
-    };
-  }, []);
   
   useEffect(() => {
-    if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
-
     const fetchQuiz = async () => {
       try {
         setState('loading');
         setError('');
         
-        const rawData = await generateQuiz({
+        const quizData = await generateQuiz({
           module_id: moduleId,
           unit_id: unitId,
           language,
-          country: resolvedCountry,
+          country,
           level,
           num_questions: 10,
-          force_regenerate: forceRegenerate,
-        }) as Quiz | GeneratingResponse;
-
-        if ('status' in rawData && rawData.status === 'generating') {
-          setState('generating');
-          pollStartRef.current = Date.now();
-          pollStatus((rawData as GeneratingResponse).task_id, pollStartRef.current);
-        } else {
-          setQuiz(rawData as Quiz);
-          setForceRegenerate(false);
-          setState('ready');
-        }
+        });
+        
+        setQuiz(quizData);
+        setState('ready');
       } catch (err) {
         console.error('Failed to load quiz:', err);
         const errorMessage = err instanceof Error ? err.message : t('failedToLoad');
@@ -145,7 +69,7 @@ export function QuizContainer({
     
     fetchQuiz();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moduleId, unitId, language, resolvedCountry, level, retryCount, forceRegenerate]);
+  }, [moduleId, unitId, language, country, level, retryCount]);
   
   const handleStartQuiz = () => {
     setState('in-progress');
@@ -167,12 +91,6 @@ export function QuizContainer({
     setQuiz(null);
     setRetryCount(prev => prev + 1);
   };
-
-  const handleRefreshContent = () => {
-    setResult(null);
-    setQuiz(null);
-    setForceRegenerate(true);
-  };
   
   const handleContinue = () => {
     onComplete?.();
@@ -189,26 +107,7 @@ export function QuizContainer({
               {t('generating')}
             </h2>
             <p className="text-stone-600 text-center max-w-md">
-              {t('loading')}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Generating State (async Celery task polling)
-  if (state === 'generating') {
-    return (
-      <div className="max-w-4xl mx-auto p-4">
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-teal-600 mb-4" />
-            <h2 className="text-lg font-semibold text-stone-900 mb-2">
-              {t('generatingContent')}
-            </h2>
-            <p className="text-stone-600 text-center max-w-md">
-              {t('generatingDescription')}
+              {quiz?.cached ? t('loading') : t('generating')}
             </p>
           </CardContent>
         </Card>
@@ -305,7 +204,7 @@ export function QuizContainer({
             </div>
             
             {/* Additional Info */}
-            <div className="flex flex-wrap gap-2 justify-center items-center">
+            <div className="flex flex-wrap gap-2 justify-center">
               <Badge variant="outline">
                 {t('level')} {level}
               </Badge>
@@ -317,15 +216,6 @@ export function QuizContainer({
               <Badge variant="outline">
                 {language.toUpperCase()}
               </Badge>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleRefreshContent}
-                className="min-h-11 gap-1.5 text-stone-500 hover:text-stone-900"
-              >
-                <RefreshCw className="w-4 h-4" />
-                <span className="hidden sm:inline">{t('refreshContent')}</span>
-              </Button>
             </div>
           </CardContent>
         </Card>

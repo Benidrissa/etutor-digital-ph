@@ -353,33 +353,6 @@ class CaseStudyResponse(BaseModel):
     }
 
 
-class PublicUnitDetail(BaseModel):
-    """Public unit info without user-specific progress data."""
-
-    id: str = Field(description="Unit UUID")
-    unit_number: str = Field(description="Unit number e.g. M01-U01")
-    title_fr: str
-    title_en: str
-    description_fr: str | None = None
-    description_en: str | None = None
-    estimated_minutes: int
-    order_index: int
-
-
-class ModuleUnitsResponse(BaseModel):
-    """Public module info with units list (no auth required, no progress data)."""
-
-    module_id: str = Field(description="Module UUID")
-    module_number: int
-    level: int
-    title_fr: str
-    title_en: str
-    description_fr: str | None = None
-    description_en: str | None = None
-    estimated_hours: int
-    units: list[PublicUnitDetail] = Field(default_factory=list)
-
-
 class ErrorResponse(BaseModel):
     """Error response schema."""
 

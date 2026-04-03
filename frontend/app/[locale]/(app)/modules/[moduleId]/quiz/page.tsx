@@ -36,6 +36,7 @@ export default async function QuizPage({ params, searchParams }: QuizPageProps) 
         moduleId={moduleId}
         unitId={unitId}
         language={language}
+        country="senegal"
         level={moduleData?.level || 1}
       />
     </div>

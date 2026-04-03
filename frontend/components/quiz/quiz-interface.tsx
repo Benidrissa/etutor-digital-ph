@@ -4,10 +4,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
 import { Clock, ChevronLeft, ChevronRight, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -168,11 +164,7 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
       <Card className="w-full">
         <CardHeader>
           <CardTitle className="text-lg leading-relaxed">
-            <div className="prose prose-sm max-w-none prose-p:my-0">
-              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                {currentQuestion.question}
-              </ReactMarkdown>
-            </div>
+            {currentQuestion.question}
           </CardTitle>
           
           {/* Question metadata */}
@@ -267,11 +259,7 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
                     
                     <div className={`text-sm ${isCorrect ? 'text-green-800' : 'text-red-800'}`}>
                       <div className="font-medium mb-1">{t('explanation')}</div>
-                      <div className="leading-relaxed prose prose-sm max-w-none overflow-x-auto">
-                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                          {currentQuestion.explanation}
-                        </ReactMarkdown>
-                      </div>
+                      <p className="leading-relaxed">{currentQuestion.explanation}</p>
                       
                       {/* Sources */}
                       {currentQuestion.sources_cited.length > 0 && (

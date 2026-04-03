@@ -1,5 +1,11 @@
 import { OnboardingFlow } from '@/components/onboarding/onboarding-flow';
 
-export default function OnboardingPage() {
+interface OnboardingPageProps {
+  params: {
+    locale: string;
+  };
+}
+
+export default function OnboardingPage({ params }: OnboardingPageProps) {
   return <OnboardingFlow />;
 }

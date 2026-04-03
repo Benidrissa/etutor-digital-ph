@@ -1,33 +1,26 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import "katex/dist/katex.min.css";
 
 const inter = Inter({
   variable: "--font-sans",
   subsets: ["latin"],
-  display: "swap",
-  weight: ["400", "500", "600", "700"],
-  preload: true,
 });
 
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-mono",
   subsets: ["latin"],
-  display: "swap",
-  weight: ["400", "500"],
-  preload: false,
 });
 
 export const metadata: Metadata = {
-  title: "SantePublique",
+  title: "SantePublique AOF",
   description:
     "Plateforme d'apprentissage adaptative en santé publique pour l'Afrique de l'Ouest",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "SantePublique",
+    title: "SantePublique AOF",
   },
   formatDetection: {
     telephone: false,
@@ -53,7 +46,7 @@ export default function RootLayout({
         <link rel="apple-touch-startup-image" href="/icon-512x512.svg" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="SantePublique" />
+        <meta name="apple-mobile-web-app-title" content="SantePublique AOF" />
       </head>
       <body className="min-h-dvh bg-background font-sans text-foreground antialiased">
         {children}

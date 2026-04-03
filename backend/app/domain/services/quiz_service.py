@@ -1,11 +1,11 @@
 """Quiz generation service using Claude API and RAG."""
 
+import json
 import uuid
 from uuid import UUID
 
 import structlog
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.claude_service import ClaudeService
@@ -32,7 +32,6 @@ class QuizService:
         level: int,
         num_questions: int,
         session: AsyncSession,
-        force_regenerate: bool = False,
     ) -> QuizResponse:
         """
         Get existing quiz from cache or generate new one using RAG + Claude API.
@@ -54,25 +53,17 @@ class QuizService:
             Exception: If quiz generation fails
         """
         try:
-            cached_quiz = None
-            if not force_regenerate:
-                # Cache lookup: match all 6 fields that form the unique index
-                # Use .first() with ORDER BY as safety net for any legacy duplicates
-                query = (
-                    select(GeneratedContent)
-                    .where(
-                        GeneratedContent.module_id == module_id,
-                        GeneratedContent.content_type == "quiz",
-                        GeneratedContent.language == language,
-                        GeneratedContent.level == level,
-                        GeneratedContent.country_context == country,
-                        GeneratedContent.content["unit_id"].astext == unit_id,
-                    )
-                    .order_by(GeneratedContent.generated_at.desc())
-                )
+            # Cache lookup: match module, unit, language, and level
+            query = select(GeneratedContent).where(
+                GeneratedContent.module_id == module_id,
+                GeneratedContent.content_type == "quiz",
+                GeneratedContent.language == language,
+                GeneratedContent.level == level,
+                GeneratedContent.content["unit_id"].astext == unit_id,
+            )
 
-                result = await session.execute(query)
-                cached_quiz = result.scalars().first()
+            result = await session.execute(query)
+            cached_quiz = result.scalar_one_or_none()
 
             if cached_quiz:
                 logger.info(
@@ -106,7 +97,6 @@ class QuizService:
                 module_id=module_id,
                 unit_id=unit_id,
                 language=language,
-                session=session,
                 country=country,
                 level=level,
                 num_questions=num_questions,
@@ -119,47 +109,15 @@ class QuizService:
                 content_type="quiz",
                 language=language,
                 level=level,
-                content={**quiz_content.model_dump(), "unit_id": unit_id},
+                content=quiz_content.model_dump(),
                 sources_cited=self._extract_sources_from_quiz(quiz_content),
                 country_context=country,
                 validated=False,
             )
 
             session.add(generated_content)
-            try:
-                await session.commit()
-                await session.refresh(generated_content)
-            except IntegrityError:
-                await session.rollback()
-                logger.warning(
-                    "Quiz cache INSERT conflict (race condition), fetching existing row",
-                    module_id=str(module_id),
-                    unit_id=unit_id,
-                    language=language,
-                )
-                conflict_result = await session.execute(
-                    select(GeneratedContent)
-                    .where(
-                        GeneratedContent.module_id == module_id,
-                        GeneratedContent.content_type == "quiz",
-                        GeneratedContent.language == language,
-                        GeneratedContent.level == level,
-                        GeneratedContent.content["unit_id"].astext == unit_id,
-                    )
-                    .order_by(GeneratedContent.generated_at.desc())
-                )
-                existing = conflict_result.scalars().first()
-                return QuizResponse(
-                    id=existing.id,
-                    module_id=existing.module_id,
-                    unit_id=existing.content.get("unit_id", unit_id),
-                    language=existing.language,
-                    level=existing.level,
-                    country_context=existing.country_context or country,
-                    content=QuizContent(**existing.content),
-                    generated_at=existing.generated_at.isoformat(),
-                    cached=True,
-                )
+            await session.commit()
+            await session.refresh(generated_content)
 
             logger.info(
                 "Quiz generated and cached",
@@ -197,7 +155,6 @@ class QuizService:
         country: str,
         level: int,
         num_questions: int,
-        session: AsyncSession | None = None,
     ) -> QuizContent:
         """
         Generate quiz content using RAG retrieval and Claude API.
@@ -221,7 +178,6 @@ class QuizService:
                 user_level=level,
                 user_language=language,
                 top_k=8,
-                session=session,
             )
 
             # Build context from retrieved chunks
@@ -233,7 +189,7 @@ class QuizService:
             )
 
             # Generate quiz using Claude API with structured prompt
-            system_prompt, user_message = self._build_quiz_prompt(
+            quiz_prompt = self._build_quiz_prompt(
                 context=context_text,
                 unit_id=unit_id,
                 language=language,
@@ -242,12 +198,10 @@ class QuizService:
                 num_questions=num_questions,
             )
 
-            response = await self.claude_service.generate_structured_content(
-                system_prompt, user_message, "quiz"
-            )
+            response = await self.claude_service.generate_content(quiz_prompt)
 
-            # Validate and normalize the parsed dict from Claude
-            quiz_data = self._validate_and_normalize_quiz(response, unit_id, num_questions)
+            # Parse Claude's response into structured quiz content
+            quiz_data = self._parse_quiz_response(response, unit_id, num_questions)
 
             return QuizContent(**quiz_data)
 
@@ -263,8 +217,8 @@ class QuizService:
         country: str,
         level: int,
         num_questions: int,
-    ) -> tuple[str, str]:
-        """Build the system and user prompts for Claude API to generate quiz questions."""
+    ) -> str:
+        """Build the prompt for Claude API to generate quiz questions."""
 
         lang_instruction = "in French" if language == "fr" else "in English"
         level_desc = {
@@ -274,11 +228,7 @@ class QuizService:
             4: "expert (research, policy implications)",
         }
 
-        system_prompt = """You are an expert public health educator creating adaptive quiz content for West African health professionals.
-
-CRITICAL: You MUST respond with valid JSON ONLY. No preamble, no explanation, no markdown code fences. Your entire response must be a single JSON object starting with { and ending with }. The JSON must have exactly these top-level keys: "title", "description", "questions", "time_limit_minutes", "passing_score"."""
-
-        user_message = f"""Create a multiple-choice quiz for public health professionals in West Africa.
+        return f"""You are creating a multiple-choice quiz for public health professionals in West Africa.
 
 CONTEXT MATERIAL:
 {context}
@@ -328,37 +278,45 @@ RESPONSE FORMAT (JSON):
 
 Generate the quiz now, ensuring all questions are relevant to public health practice in West Africa."""
 
-        return system_prompt, user_message
-
-    def _validate_and_normalize_quiz(
-        self, quiz_data: dict, unit_id: str, expected_questions: int
-    ) -> dict:
+    def _parse_quiz_response(self, response: str, unit_id: str, expected_questions: int) -> dict:
         """
-        Validate and normalize parsed quiz data from Claude API.
+        Parse Claude's response into structured quiz data.
 
         Args:
-            quiz_data: Parsed dict returned by generate_structured_content
+            response: Raw response from Claude API
             unit_id: Unit identifier to include in response
             expected_questions: Expected number of questions for validation
 
         Returns:
-            Normalized dictionary with quiz content
+            Dictionary with parsed quiz content
 
         Raises:
-            ValueError: If quiz_data is invalid or missing required fields
+            ValueError: If response cannot be parsed or is invalid
         """
         try:
-            if quiz_data.get("raw_response") is True:
-                raw_preview = str(quiz_data.get("content", ""))[:200]
-                raise ValueError(
-                    f"Claude returned non-JSON text (JSON parsing failed). Raw preview: {raw_preview!r}"
-                )
+            # Try to extract JSON from Claude's response
+            # Claude sometimes wraps JSON in markdown code blocks
+            response_text = response.strip()
 
+            if "```json" in response_text:
+                start = response_text.find("```json") + 7
+                end = response_text.find("```", start)
+                response_text = response_text[start:end].strip()
+            elif "```" in response_text:
+                start = response_text.find("```") + 3
+                end = response_text.rfind("```")
+                response_text = response_text[start:end].strip()
+
+            # Parse JSON
+            quiz_data = json.loads(response_text)
+
+            # Validate structure
             required_fields = ["title", "questions"]
             for field in required_fields:
                 if field not in quiz_data:
                     raise ValueError(f"Missing required field: {field}")
 
+            # Ensure description has a default value
             quiz_data.setdefault("description", "")
 
             questions = quiz_data["questions"]
@@ -374,18 +332,24 @@ Generate the quiz now, ensuring all questions are relevant to public health prac
                     got=len(questions),
                 )
 
+            # Validate each question
             for i, question in enumerate(questions):
                 self._validate_question(question, f"question {i + 1}")
 
+            # Set defaults for optional fields
             quiz_data.setdefault("time_limit_minutes", max(10, len(questions) * 2))
             quiz_data.setdefault("passing_score", 80.0)
             if quiz_data.get("passing_score", 80.0) < 80.0:
                 quiz_data["passing_score"] = 80.0
 
+            # Add unit_id to content
             quiz_data["unit_id"] = unit_id
 
             return quiz_data
 
+        except json.JSONDecodeError as e:
+            logger.error("Failed to parse quiz JSON", response_preview=response[:200], error=str(e))
+            raise ValueError(f"Invalid JSON response from Claude API: {e}")
         except Exception as e:
             logger.error("Quiz response validation failed", error=str(e))
             raise ValueError(f"Invalid quiz format: {e}")

@@ -18,11 +18,6 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # Skip if table already exists (created by SQLAlchemy auto-create)
-    conn = op.get_bind()
-    if conn.dialect.has_table(conn, "module_units"):
-        return
-
     # Create module_units table
     op.create_table(
         "module_units",

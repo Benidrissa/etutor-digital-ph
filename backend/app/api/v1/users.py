@@ -54,7 +54,6 @@ async def get_current_user_profile(
             avatar_url=user.avatar_url,
             last_active=user.last_active.isoformat(),
             created_at=user.created_at.isoformat(),
-            role=user.role,
         )
     except HTTPException:
         raise
@@ -119,7 +118,6 @@ async def update_user_profile(
             avatar_url=updated_user.avatar_url,
             last_active=updated_user.last_active.isoformat(),
             created_at=updated_user.created_at.isoformat(),
-            role=updated_user.role,
         )
 
         return ProfileUpdateResponse(
@@ -190,7 +188,6 @@ async def complete_onboarding(
             avatar_url=updated_user.avatar_url,
             last_active=updated_user.last_active.isoformat(),
             created_at=updated_user.created_at.isoformat(),
-            role=updated_user.role,
         )
 
     except Exception as e:
@@ -269,7 +266,6 @@ async def upload_avatar(
             avatar_url=updated_user.avatar_url,
             last_active=updated_user.last_active.isoformat(),
             created_at=updated_user.created_at.isoformat(),
-            role=updated_user.role,
         )
 
     except Exception as e:

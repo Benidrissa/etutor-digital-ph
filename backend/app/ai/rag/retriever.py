@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.rag.embeddings import EmbeddingService
 from app.domain.models.document_chunk import DocumentChunk
+from app.infrastructure.persistence.database import get_db_session
 
 logger = structlog.get_logger()
 
@@ -60,9 +61,7 @@ class SemanticRetriever:
 
         session_provided = session is not None
         if not session_provided:
-            from app.infrastructure.persistence.database import async_session_factory
-
-            async with async_session_factory() as session:
+            async with get_db_session() as session:
                 return await self._perform_search(
                     query_embedding, top_k, min_similarity, filters, session
                 )
@@ -251,9 +250,7 @@ class SemanticRetriever:
         """
         session_provided = session is not None
         if not session_provided:
-            from app.infrastructure.persistence.database import async_session_factory
-
-            async with async_session_factory() as session:
+            async with get_db_session() as session:
                 return await self._verify_search(session)
         else:
             return await self._verify_search(session)

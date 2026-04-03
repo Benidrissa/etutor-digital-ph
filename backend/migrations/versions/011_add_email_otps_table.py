@@ -1,7 +1,7 @@
 """Add email_otps table
 
 Revision ID: 011_add_email_otps_table
-Revises: 017_fix_unique_lesson_per_unit_index
+Revises: 9f4db5f73f90_merge_avatar_url_and_placement_test_
 Create Date: 2026-04-01 05:40:00.000000
 
 """
@@ -13,7 +13,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "011_add_email_otps_table"
-down_revision: str | None = "017_fix_unique_lesson_per_unit_index"
+down_revision: str | None = "9f4db5f73f90_merge_avatar_url_and_placement_test_"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

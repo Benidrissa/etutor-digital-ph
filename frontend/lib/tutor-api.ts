@@ -4,6 +4,57 @@ import { authClient } from '@/lib/auth';
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+export interface UploadedFile {
+  file_id: string;
+  original_name: string;
+  mime_type: string;
+  size_bytes: number;
+  expires_at: string;
+}
+
+export async function uploadTutorFile(
+  file: File,
+  onProgress?: (percent: number) => void
+): Promise<UploadedFile> {
+  const token = await authClient.getValidToken();
+  const formData = new FormData();
+  formData.append('file', file);
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_BASE}/api/v1/tutor/upload`);
+    xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status === 200) {
+        try {
+          resolve(JSON.parse(xhr.responseText) as UploadedFile);
+        } catch {
+          reject(new Error('Invalid response from server'));
+        }
+      } else if (xhr.status === 429) {
+        reject(new Error('DAILY_LIMIT_REACHED'));
+      } else {
+        try {
+          const err = JSON.parse(xhr.responseText);
+          reject(new Error(err.detail || 'Upload failed'));
+        } catch {
+          reject(new Error(`Upload failed: ${xhr.status}`));
+        }
+      }
+    };
+
+    xhr.onerror = () => reject(new Error('Network error during upload'));
+    xhr.send(formData);
+  });
+}
+
 const CACHE_KEY_CONVERSATIONS = 'tutor_conversations_cache';
 const CACHE_KEY_PREFIX_CONVERSATION = 'tutor_conversation_';
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -145,24 +196,4 @@ export function getOfflineConversation(conversationId: string): ConversationDeta
   } catch {
     return null;
   }
-}
-
-export interface TutorStats {
-  daily_messages_used: number;
-  daily_messages_limit: number;
-  total_conversations: number;
-  most_discussed_topics: string[];
-}
-
-export async function fetchTutorStats(): Promise<TutorStats> {
-  const token = await authClient.getValidToken();
-  const response = await fetch(`${API_BASE}/api/v1/tutor/stats`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch tutor stats: ${response.status}`);
-  }
-
-  return response.json();
 }

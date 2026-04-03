@@ -1,13 +1,13 @@
 {
   "Common": {
-    "appName": "SantePublique",
+    "appName": "SantePublique AOF",
     "loading": "Loading...",
     "offline": "You are offline — cached content available",
     "error": "An error occurred"
   },
   "PWA": {
     "installTitle": "Install App",
-    "installDescription": "Add SantePublique to your home screen for quick access and an optimized experience.",
+    "installDescription": "Add SantePublique AOF to your home screen for quick access and an optimized experience.",
     "install": "Install",
     "later": "Later"
   },
@@ -33,11 +33,7 @@
     "navigateTo": "Navigate to",
     "lessons": "Lessons",
     "quiz": "Quiz",
-    "caseStudy": "Case Study",
-    "logout": "Log out",
-    "logoutDescription": "Sign out of your account",
-    "admin": "Administration",
-    "adminDescription": "Access the administration panel"
+    "caseStudy": "Case Study"
   },
   "Auth": {
     "login": "Sign in",
@@ -143,7 +139,7 @@
   },
   "Dashboard": {
     "title": "Dashboard",
-    "welcome": "Welcome to SantePublique",
+    "welcome": "Welcome to SantePublique AOF",
     "subtitle": "Your public health learning platform",
     "streak": "Day streak",
     "nextReview": "Next review",
@@ -216,7 +212,7 @@
     "lockedDescription": "Complete the prerequisites to unlock this module",
     "unitStatus": {
       "pending": "Not started",
-      "in-progress": "In progress",
+      "in-progress": "In progress", 
       "completed": "Completed"
     },
     "unitNumber": "Unit {number}",
@@ -266,10 +262,6 @@
     "quizComplete": "Quiz Complete",
     "congratulations": "Congratulations! You have completed the quiz.",
     "needsImprovement": "Good effort! Review the explanations and try again when you're ready.",
-    "generatingContent": "Generating quiz questions...",
-    "generatingDescription": "This may take up to 3 minutes on first access.",
-    "generationTimeout": "Generation timed out. Please try again.",
-    "generationFailed": "Quiz generation failed. Please retry.",
     "error": "Quiz Error",
     "failedToLoad": "Failed to load quiz. Please try again.",
     "failedToSubmit": "Failed to submit quiz. Please try again.",
@@ -284,8 +276,7 @@
     "lessonCompleted": "Lesson validated!",
     "lessonCompletedDesc": "You scored ≥80%. This lesson is now marked as complete in your progress.",
     "lessonNotValidated": "Lesson not validated",
-    "lessonNotValidatedDesc": "You need at least {score}% to validate this lesson. Try again!",
-    "refreshContent": "Refresh content"
+    "lessonNotValidatedDesc": "You need at least {score}% to validate this lesson. Try again!"
   },
   "ChatTutor": {
     "title": "AI Tutor",
@@ -294,9 +285,9 @@
     "send": "Send",
     "typing": "The tutor is typing...",
     "offline": "Tutor is offline",
-    "messageLimit": "{count}/{max} messages today",
+    "messageLimit": "{count}/50 messages today",
     "messageLimitWarning": "Daily message limit reached",
-    "messageLimitWarningDescription": "You are approaching your daily message limit.",
+    "messageLimitWarningDescription": "You've used 40 out of 50 messages today",
     "messageLimitReached": "Daily message limit reached",
     "messageLimitReachedDescription": "Come back tomorrow for more AI tutor conversations",
     "suggestions": {
@@ -336,19 +327,25 @@
     "messageCount": "{count} {count, plural, one {message} other {messages}}",
     "cancel": "Cancel",
     "newConversationTitle": "New Conversation",
-    "conversations": "Conversations",
-    "openConversations": "Open conversations",
-    "closeDrawer": "Close",
-    "toggleSuggestions": "Quick actions",
-    "modeSocratic": "Socratic Mode",
-    "modeExplanatory": "Explanatory Mode",
-    "modeSocraticTooltip": "Guided questions",
-    "modeExplanatoryTooltip": "Direct answers"
+    "fileUpload": {
+      "attach": "Attach a file",
+      "attachAriaLabel": "Attach a file",
+      "remove": "Remove file",
+      "uploading": "Uploading...",
+      "uploadProgress": "{percent}%",
+      "tooLarge": "File too large (max 10 MB)",
+      "unsupportedType": "Unsupported file type",
+      "uploadFailed": "File upload failed",
+      "dailyLimitReached": "Daily upload limit reached (10 files/day)",
+      "dragDrop": "Drag and drop a file here",
+      "fileCard": "{name} ({size})",
+      "captureCamera": "Take a photo",
+      "acceptedTypes": "Images, PDF, CSV, XLSX, TXT, DOCX (max 10 MB)"
+    }
   },
   "Flashcards": {
     "title": "Flashcards",
     "loading": "Loading flashcards...",
-    "generating": "Generating your flashcards...",
     "noCardsToday": "No cards due today!",
     "wellDone": "Well done! Come back tomorrow for more reviews.",
     "cardCount": "Card {current} of {total}",
@@ -403,11 +400,11 @@
     "reviewDescription": "Review flashcards with spaced repetition for effective learning",
     "redirectingToLogin": "Redirecting to login...",
     "noFlashcardsYet": "No flashcards yet",
-    "noFlashcardsDescription": "Complete modules to generate flashcards, or try again.",
+    "noFlashcardsDescription": "Complete modules to generate flashcards.",
     "goToModules": "Go to Modules"
   },
   "Onboarding": {
-    "welcome": "Welcome to SantePublique",
+    "welcome": "Welcome to SantePublique AOF",
     "subtitle": "Let's set up your personalized learning experience",
     "step": "Step {current} of {total}",
     "next": "Next",
@@ -480,7 +477,7 @@
     "assessmentDomains": "Assessment Domains",
     "domains": {
       "foundations": "Public Health Foundations",
-      "epidemiology": "Epidemiology",
+      "epidemiology": "Epidemiology", 
       "biostatistics": "Biostatistics",
       "healthSystems": "Health Systems"
     },
@@ -491,7 +488,7 @@
     "timeRemaining": "Time remaining: {time}",
     "selectAnswer": "Select an answer to continue",
     "previous": "Previous",
-    "next": "Next",
+    "next": "Next", 
     "answered": "{count}/{total} answered",
     "submit": "Submit Assessment",
     "submitting": "Evaluating your responses...",
@@ -500,7 +497,7 @@
       "assignedLevel": "Your assigned level: Level {level}",
       "levelDescriptions": {
         "1": "Beginner - Build foundational knowledge",
-        "2": "Intermediate - Develop core competencies",
+        "2": "Intermediate - Develop core competencies", 
         "3": "Advanced - Strengthen specialized skills",
         "4": "Expert - Master advanced concepts"
       },
@@ -586,11 +583,6 @@
     "error": "An error occurred",
     "streamError": "Streaming error occurred",
     "loadError": "Error loading lesson",
-    "generatingContent": "Generating content...",
-    "generatingDescription": "This may take up to 3 minutes on first access.",
-    "generationTimeout": "Generation timed out. Please try again.",
-    "generationFailed": "Content generation failed. Please retry.",
-    "retry": "Retry",
     "level": "Level {level}",
     "readingTime": "5-10 min read",
     "cached": "Cached",
@@ -602,25 +594,12 @@
     "synthesis": "Synthesis",
     "keyPoints": "Key Points",
     "markComplete": "Mark as Complete",
-    "completed": "Completed",
-    "refreshContent": "Refresh content",
-    "validateWithQuiz": "Validate with Quiz",
-    "checkingStatus": "Checking..."
-  },
-  "LessonImage": {
-    "imagePending": "Generating illustration...",
-    "imageViewFullscreen": "View fullscreen",
-    "imageCloseFullscreen": "Close fullscreen"
+    "completed": "Completed"
   },
   "CaseStudyViewer": {
     "error": "An error occurred",
     "streamError": "Streaming error occurred",
     "loadError": "Error loading case study",
-    "generatingContent": "Generating case study...",
-    "generatingDescription": "This may take up to 3 minutes on first access.",
-    "generationTimeout": "Generation timed out. Please try again.",
-    "generationFailed": "Content generation failed. Please retry.",
-    "retry": "Retry",
     "level": "Level {level}",
     "estimatedTime": "40 min",
     "cached": "Cached",
@@ -631,11 +610,9 @@
     "guidedQuestions": "Guided Questions",
     "question": "Question {number}",
     "annotatedCorrection": "Annotated Correction",
-    "showCorrection": "Show correction",
     "sourceCitations": "Source Citations",
     "markComplete": "Mark as Complete",
-    "completed": "Completed",
-    "refreshContent": "Refresh content"
+    "completed": "Completed"
   },
   "QuizPage": {
     "backToModule": "Back to {module}"
@@ -658,39 +635,6 @@
     "clickToView": "Click to view:",
     "availableInLibrary": "Available in reference library",
     "footnote": "{count, plural, one {# source cited} other {# sources cited}}"
-  },
-  "PlacementResultsHistory": {
-    "title": "My Assessment Results",
-    "subtitle": "History of your diagnostic assessments",
-    "viewResults": "View my results",
-    "noResults": "No results yet",
-    "noResultsDescription": "You have not taken the diagnostic assessment yet.",
-    "attempt": "Attempt {number}",
-    "attemptDate": "Date",
-    "score": "Score",
-    "assignedLevel": "Assigned Level",
-    "domainBreakdown": "Results by Domain",
-    "level": "Level {level}",
-    "canRetakeNow": "You can retake the assessment now",
-    "canRetakeAfter": "Next attempt available on {date}",
-    "retakeTest": "Retake assessment",
-    "progression": "Progression",
-    "scoreImprovement": "+{points} points since last attempt",
-    "scoreSame": "Score unchanged",
-    "scoreDecrease": "{points} points since last attempt",
-    "levelUpgraded": "Level improved",
-    "levelSame": "Level unchanged",
-    "domains": {
-      "level_1_foundations": "PH Foundations",
-      "level_2_epidemiology": "Epidemiology",
-      "level_3_advanced": "Biostatistics",
-      "level_4_expert": "Health Systems"
-    },
-    "loading": "Loading results...",
-    "error": "Error loading results",
-    "tryAgain": "Try again",
-    "diagnosticAssessment": "Diagnostic Assessment",
-    "viewHistory": "View history"
   },
   "Profile": {
     "title": "Profile",
@@ -723,11 +667,8 @@
     "edit": "Edit",
     "cancel": "Cancel",
     "save": "Save Changes",
-    "logout": "Log out",
-    "logoutDescription": "Sign out of your account",
-    "loggingOut": "Logging out...",
     "languages": {
-      "french": "Français",
+      "french": "Fran\u00e7ais",
       "english": "English"
     },
     "levels": {
@@ -748,96 +689,6 @@
       "health_program_manager": "Health Program Manager",
       "student": "Student",
       "other": "Other"
-    }
-  },
-  "Roles": {
-    "user": "User",
-    "expert": "Expert",
-    "admin": "Administrator"
-  },
-  "Admin": {
-    "users": {
-      "title": "User Management",
-      "subtitle": "Manage user accounts and roles",
-      "searchPlaceholder": "Search by name or email...",
-      "filterCountry": "Country",
-      "filterLevel": "Level",
-      "filterRole": "Role",
-      "filterStatus": "Status",
-      "allCountries": "All countries",
-      "allLevels": "All levels",
-      "allRoles": "All roles",
-      "allStatuses": "All statuses",
-      "active": "Active",
-      "inactive": "Inactive",
-      "exportCsv": "Export CSV",
-      "noUsersFound": "No users found",
-      "noUsersDescription": "Try adjusting your search or filters.",
-      "userCount": "{count, plural, one {# user} other {# users}}",
-      "level": "Level {level}",
-      "lastActive": "Last active",
-      "memberSince": "Member since",
-      "streakDays": "{days} day streak",
-      "viewDetails": "View details",
-      "deactivate": "Deactivate",
-      "reactivate": "Reactivate",
-      "promoteToExpert": "Promote to Expert",
-      "promoteToAdmin": "Promote to Admin",
-      "demoteToUser": "Demote to User",
-      "confirmDeactivate": "Deactivate user?",
-      "confirmDeactivateDesc": "This user will no longer be able to log in.",
-      "confirmReactivate": "Reactivate user?",
-      "confirmReactivateDesc": "This user will be able to log in again.",
-      "confirmPromote": "Change role?",
-      "confirmPromoteDesc": "This will change the user's role to {role}.",
-      "actionSuccess": "Action completed successfully.",
-      "actionError": "Action failed. Please try again.",
-      "cancel": "Cancel",
-      "confirm": "Confirm",
-      "loading": "Loading users...",
-      "error": "Failed to load users."
-    },
-    "userDetail": {
-      "title": "User Details",
-      "backToList": "Back to users",
-      "profile": "Profile",
-      "progress": "Learning Progress",
-      "quizHistory": "Quiz History",
-      "auditLog": "Audit Log",
-      "notFound": "User not found.",
-      "loading": "Loading user details...",
-      "error": "Failed to load user details.",
-      "noProgress": "No module progress yet.",
-      "noQuizHistory": "No quiz attempts yet.",
-      "score": "{score}%",
-      "passed": "Passed",
-      "failed": "Failed",
-      "attemptDate": "Date",
-      "module": "Module",
-      "unit": "Unit",
-      "quizScore": "Score",
-      "moduleProgress": "Progress",
-      "completionPct": "{pct}% complete"
-    },
-    "auditLog": {
-      "title": "Audit Log",
-      "subtitle": "History of all admin actions",
-      "adminEmail": "Admin",
-      "targetUser": "User",
-      "action": "Action",
-      "details": "Details",
-      "date": "Date",
-      "noLogs": "No audit log entries.",
-      "loading": "Loading audit log...",
-      "error": "Failed to load audit log.",
-      "actions": {
-        "deactivate_user": "Deactivated user",
-        "reactivate_user": "Reactivated user",
-        "promote_to_expert": "Promoted to Expert",
-        "promote_to_admin": "Promoted to Admin",
-        "demote_to_user": "Demoted to User",
-        "update_role": "Updated role"
-      }
     }
   }
 }

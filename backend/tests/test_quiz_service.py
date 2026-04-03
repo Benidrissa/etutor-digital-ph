@@ -1,5 +1,6 @@
 """Tests for the quiz generation service."""
 
+import json
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
@@ -7,30 +8,32 @@ import pytest
 
 from app.domain.services.quiz_service import QuizService
 
-SAMPLE_QUIZ_DICT = {
-    "title": "Public Health Foundations Quiz",
-    "description": "Test your knowledge of public health fundamentals.",
-    "questions": [
-        {
-            "id": f"q{i}",
-            "question": f"Sample question {i}?",
-            "options": ["Option A", "Option B", "Option C", "Option D"],
-            "correct_answer": 0,
-            "explanation": f"Explanation {i}.",
-            "sources_cited": ["Donaldson Ch.1, p.10"],
-            "difficulty": "medium",
-        }
-        for i in range(1, 11)
-    ],
-    "time_limit_minutes": 15,
-    "passing_score": 80.0,
-}
+SAMPLE_QUIZ_JSON = json.dumps(
+    {
+        "title": "Public Health Foundations Quiz",
+        "description": "Test your knowledge of public health fundamentals.",
+        "questions": [
+            {
+                "id": f"q{i}",
+                "question": f"Sample question {i}?",
+                "options": ["Option A", "Option B", "Option C", "Option D"],
+                "correct_answer": 0,
+                "explanation": f"Explanation {i}.",
+                "sources_cited": ["Donaldson Ch.1, p.10"],
+                "difficulty": "medium",
+            }
+            for i in range(1, 11)
+        ],
+        "time_limit_minutes": 15,
+        "passing_score": 80.0,
+    }
+)
 
 
 @pytest.fixture
 def mock_claude_service():
     service = AsyncMock()
-    service.generate_structured_content = AsyncMock(return_value=SAMPLE_QUIZ_DICT)
+    service.generate_content = AsyncMock(return_value=SAMPLE_QUIZ_JSON)
     return service
 
 
@@ -52,61 +55,59 @@ def quiz_service(mock_claude_service, mock_retriever):
     return QuizService(mock_claude_service, mock_retriever)
 
 
-class TestValidateAndNormalizeQuiz:
-    def test_parses_valid_dict(self, quiz_service):
-        import copy
-
-        data = copy.deepcopy(SAMPLE_QUIZ_DICT)
-        result = quiz_service._validate_and_normalize_quiz(data, "M01-U04", 10)
+class TestParseQuizResponse:
+    def test_parses_valid_json_response(self, quiz_service):
+        result = quiz_service._parse_quiz_response(SAMPLE_QUIZ_JSON, "M01-U04", 10)
         assert result["title"] == "Public Health Foundations Quiz"
         assert len(result["questions"]) == 10
         assert result["unit_id"] == "M01-U04"
 
-    def test_raises_on_missing_title_field(self, quiz_service):
-        import copy
+    def test_parses_json_wrapped_in_markdown_code_block(self, quiz_service):
+        wrapped = f"```json\n{SAMPLE_QUIZ_JSON}\n```"
+        result = quiz_service._parse_quiz_response(wrapped, "M01-U04", 10)
+        assert len(result["questions"]) == 10
 
-        data = copy.deepcopy(SAMPLE_QUIZ_DICT)
+    def test_parses_json_wrapped_in_generic_code_block(self, quiz_service):
+        wrapped = f"```\n{SAMPLE_QUIZ_JSON}\n```"
+        result = quiz_service._parse_quiz_response(wrapped, "M01-U04", 10)
+        assert len(result["questions"]) == 10
+
+    def test_raises_on_invalid_json(self, quiz_service):
+        with pytest.raises(ValueError, match="Invalid JSON"):
+            quiz_service._parse_quiz_response("not valid json", "M01-U04", 10)
+
+    def test_raises_on_missing_title_field(self, quiz_service):
+        data = json.loads(SAMPLE_QUIZ_JSON)
         del data["title"]
         with pytest.raises(ValueError, match="Missing required field"):
-            quiz_service._validate_and_normalize_quiz(data, "M01-U04", 10)
+            quiz_service._parse_quiz_response(json.dumps(data), "M01-U04", 10)
 
     def test_raises_on_empty_questions_list(self, quiz_service):
-        import copy
-
-        data = copy.deepcopy(SAMPLE_QUIZ_DICT)
+        data = json.loads(SAMPLE_QUIZ_JSON)
         data["questions"] = []
         with pytest.raises(ValueError, match="at least one question"):
-            quiz_service._validate_and_normalize_quiz(data, "M01-U04", 10)
+            quiz_service._parse_quiz_response(json.dumps(data), "M01-U04", 10)
 
     def test_sets_default_passing_score_to_80(self, quiz_service):
-        import copy
-
-        data = copy.deepcopy(SAMPLE_QUIZ_DICT)
+        data = json.loads(SAMPLE_QUIZ_JSON)
         del data["passing_score"]
-        result = quiz_service._validate_and_normalize_quiz(data, "M01-U04", 10)
+        result = quiz_service._parse_quiz_response(json.dumps(data), "M01-U04", 10)
         assert result["passing_score"] == 80.0
 
     def test_enforces_minimum_passing_score_of_80(self, quiz_service):
-        import copy
-
-        data = copy.deepcopy(SAMPLE_QUIZ_DICT)
+        data = json.loads(SAMPLE_QUIZ_JSON)
         data["passing_score"] = 60.0
-        result = quiz_service._validate_and_normalize_quiz(data, "M01-U04", 10)
+        result = quiz_service._parse_quiz_response(json.dumps(data), "M01-U04", 10)
         assert result["passing_score"] == 80.0
 
     def test_accepts_slightly_fewer_questions_than_requested(self, quiz_service):
-        import copy
-
-        data = copy.deepcopy(SAMPLE_QUIZ_DICT)
+        data = json.loads(SAMPLE_QUIZ_JSON)
         data["questions"] = data["questions"][:8]
-        result = quiz_service._validate_and_normalize_quiz(data, "M01-U04", 10)
+        result = quiz_service._parse_quiz_response(json.dumps(data), "M01-U04", 10)
         assert len(result["questions"]) == 8
 
     def test_unit_id_added_to_result(self, quiz_service):
-        import copy
-
-        data = copy.deepcopy(SAMPLE_QUIZ_DICT)
-        result = quiz_service._validate_and_normalize_quiz(data, "M01-U04", 10)
+        result = quiz_service._parse_quiz_response(SAMPLE_QUIZ_JSON, "M01-U04", 10)
         assert result["unit_id"] == "M01-U04"
 
 
@@ -232,7 +233,7 @@ class TestGenerateQuizContent:
             num_questions=10,
         )
         mock_retriever.search_for_module.assert_called_once()
-        mock_claude_service.generate_structured_content.assert_called_once()
+        mock_claude_service.generate_content.assert_called_once()
         assert len(result.questions) == 10
 
     async def test_generated_content_has_passing_score_80(self, quiz_service, mock_claude_service):
@@ -248,7 +249,7 @@ class TestGenerateQuizContent:
         assert result.passing_score == 80.0
 
     async def test_raises_on_claude_error(self, quiz_service, mock_claude_service):
-        mock_claude_service.generate_structured_content.side_effect = Exception("API error")
+        mock_claude_service.generate_content.side_effect = Exception("API error")
         module_id = uuid.uuid4()
         with pytest.raises(Exception, match="API error"):
             await quiz_service._generate_quiz_content(
@@ -261,50 +262,9 @@ class TestGenerateQuizContent:
             )
 
 
-class TestRawResponseFallback:
-    def test_raises_on_raw_response_fallback(self, quiz_service):
-        raw_fallback = {
-            "content": "Here is your quiz: ...",
-            "type": "quiz",
-            "raw_response": True,
-        }
-        with pytest.raises(ValueError, match="Claude returned non-JSON text"):
-            quiz_service._validate_and_normalize_quiz(raw_fallback, "M01-U04", 10)
-
-    async def test_raises_when_claude_returns_raw_response(self, quiz_service, mock_claude_service):
-        raw_fallback = {
-            "content": "Here is your quiz: ...",
-            "type": "quiz",
-            "raw_response": True,
-        }
-        mock_claude_service.generate_structured_content = AsyncMock(return_value=raw_fallback)
-        module_id = uuid.uuid4()
-        with pytest.raises(ValueError, match="Invalid quiz format"):
-            await quiz_service._generate_quiz_content(
-                module_id=module_id,
-                unit_id="M01-U04",
-                language="fr",
-                country="senegal",
-                level=1,
-                num_questions=10,
-            )
-
-
 class TestBuildQuizPrompt:
-    def test_returns_tuple_of_system_and_user(self, quiz_service):
-        result = quiz_service._build_quiz_prompt(
-            context="Some context",
-            unit_id="M01-U04",
-            language="fr",
-            country="senegal",
-            level=1,
-            num_questions=10,
-        )
-        assert isinstance(result, tuple)
-        assert len(result) == 2
-
     def test_prompt_contains_unit_id(self, quiz_service):
-        _system_prompt, user_message = quiz_service._build_quiz_prompt(
+        prompt = quiz_service._build_quiz_prompt(
             context="Some context",
             unit_id="M01-U04",
             language="fr",
@@ -312,10 +272,10 @@ class TestBuildQuizPrompt:
             level=1,
             num_questions=10,
         )
-        assert "M01-U04" in user_message
+        assert "M01-U04" in prompt
 
     def test_prompt_uses_french_instruction(self, quiz_service):
-        _system_prompt, user_message = quiz_service._build_quiz_prompt(
+        prompt = quiz_service._build_quiz_prompt(
             context="context",
             unit_id="M01-U04",
             language="fr",
@@ -323,10 +283,10 @@ class TestBuildQuizPrompt:
             level=1,
             num_questions=5,
         )
-        assert "in French" in user_message
+        assert "in French" in prompt
 
     def test_prompt_uses_english_instruction(self, quiz_service):
-        _system_prompt, user_message = quiz_service._build_quiz_prompt(
+        prompt = quiz_service._build_quiz_prompt(
             context="context",
             unit_id="M01-U04",
             language="en",
@@ -334,10 +294,10 @@ class TestBuildQuizPrompt:
             level=2,
             num_questions=5,
         )
-        assert "in English" in user_message
+        assert "in English" in prompt
 
     def test_prompt_includes_passing_score_80(self, quiz_service):
-        _system_prompt, user_message = quiz_service._build_quiz_prompt(
+        prompt = quiz_service._build_quiz_prompt(
             context="context",
             unit_id="M01-U04",
             language="fr",
@@ -345,17 +305,4 @@ class TestBuildQuizPrompt:
             level=1,
             num_questions=10,
         )
-        assert "80.0" in user_message
-
-    def test_system_prompt_enforces_json_only(self, quiz_service):
-        system_prompt, _user_message = quiz_service._build_quiz_prompt(
-            context="context",
-            unit_id="M01-U04",
-            language="fr",
-            country="senegal",
-            level=1,
-            num_questions=10,
-        )
-        assert "CRITICAL" in system_prompt
-        assert "JSON" in system_prompt
-        assert "title" in system_prompt
+        assert "80.0" in prompt

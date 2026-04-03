@@ -1,6 +1,4 @@
-'use client';
-
-import { useTranslations } from 'next-intl';
+import { getTranslations } from 'next-intl/server';
 import { buttonVariants } from '@/components/ui/button';
 import {
   Card,
@@ -12,10 +10,16 @@ import {
 import { Link } from '@/i18n/routing';
 import { cn } from '@/lib/utils';
 
-export default function RegisterOptionsPage() {
-  const t = useTranslations('Auth');
-  const tCommon = useTranslations('Common');
+interface Props {
+  params: {
+    locale: string;
+  };
+}
 
+export default async function RegisterOptionsPage({ params }: Props) {
+  const t = await getTranslations('Auth');
+  const tCommon = await getTranslations('Common');
+  
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
       <Card className="w-full max-w-md">
@@ -24,6 +28,7 @@ export default function RegisterOptionsPage() {
           <CardDescription>{t('chooseVerificationMethod')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Email OTP Option */}
           <div className="space-y-4">
             <div className="rounded-lg border p-4 space-y-3">
               <div className="flex items-center gap-3">
@@ -37,8 +42,8 @@ export default function RegisterOptionsPage() {
                   <p className="text-sm text-muted-foreground">{t('emailVerificationDesc')}</p>
                 </div>
               </div>
-              <Link
-                href="/register-email-otp"
+              <Link 
+                href={`/${params.locale}/register-email-otp`}
                 className={cn(buttonVariants({ variant: "default" }), "w-full min-h-11")}
               >
                 {t('continueWithEmail')}
@@ -48,6 +53,7 @@ export default function RegisterOptionsPage() {
               </div>
             </div>
 
+            {/* Authenticator App Option */}
             <div className="space-y-4">
               <div className="rounded-lg border p-4 space-y-3">
                 <div className="flex items-center gap-3">
@@ -61,8 +67,8 @@ export default function RegisterOptionsPage() {
                     <p className="text-sm text-muted-foreground">{t('authenticatorAppDesc')}</p>
                   </div>
                 </div>
-                <Link
-                  href="/register-totp"
+                <Link 
+                  href={`/${params.locale}/register-totp`}
                   className={cn(buttonVariants({ variant: "outline" }), "w-full min-h-11")}
                 >
                   {t('continueWithAuthenticator')}
@@ -73,10 +79,11 @@ export default function RegisterOptionsPage() {
               </div>
             </div>
 
+            {/* Login Link */}
             <div className="text-center text-sm border-t pt-4">
               <span className="text-muted-foreground">{t('alreadyHaveAccount')} </span>
-              <Link
-                href="/login"
+              <Link 
+                href={`/${params.locale}/login`}
                 className="font-medium text-primary hover:underline"
               >
                 {t('signIn')}

@@ -71,33 +71,6 @@ export async function getModuleDetailWithProgress(
   );
 }
 
-export interface PublicUnitDetail {
-  id: string;
-  unit_number: string;
-  title_fr: string;
-  title_en: string;
-  description_fr?: string;
-  description_en?: string;
-  estimated_minutes: number;
-  order_index: number;
-}
-
-export interface ModuleUnitsResponse {
-  module_id: string;
-  module_number: number;
-  level: number;
-  title_fr: string;
-  title_en: string;
-  description_fr?: string;
-  description_en?: string;
-  estimated_hours: number;
-  units: PublicUnitDetail[];
-}
-
-export async function getModuleUnits(moduleId: string): Promise<ModuleUnitsResponse> {
-  return apiFetch<ModuleUnitsResponse>(`/api/v1/content/modules/${moduleId}/units`);
-}
-
 export async function trackLessonAccess(
   request: LessonAccessRequest
 ): Promise<ModuleProgressResponse> {
@@ -148,50 +121,6 @@ export async function apiFetch<T>(
 // Alias for backward compatibility and common usage
 export const fetchApi = apiFetch;
 
-// Lesson Image API Types
-export type LessonImageStatus = 'pending' | 'generating' | 'ready' | 'failed';
-
-export interface LessonImageResponse {
-  lesson_id: string;
-  status: LessonImageStatus;
-  url?: string;
-  alt_text?: string;
-  alt_text_fr?: string;
-  alt_text_en?: string;
-}
-
-interface _ApiLessonImage {
-  image_id: string;
-  lesson_id: string;
-  status: LessonImageStatus;
-  image_url: string | null;
-  alt_text: string;
-  format: string;
-  width: number;
-}
-
-interface _ApiLessonImagesListResponse {
-  lesson_id: string;
-  images: _ApiLessonImage[];
-  total: number;
-}
-
-export async function getLessonImageStatus(lessonId: string): Promise<LessonImageResponse> {
-  const data = await apiFetch<_ApiLessonImagesListResponse>(`/api/v1/images/lesson/${lessonId}`);
-  const first = data.images[0];
-  if (!first) {
-    return { lesson_id: lessonId, status: 'pending' };
-  }
-  return {
-    lesson_id: first.lesson_id,
-    status: first.status,
-    url: first.image_url ?? undefined,
-    alt_text: first.alt_text,
-    alt_text_fr: first.alt_text,
-    alt_text_en: first.alt_text,
-  };
-}
-
 export interface DashboardStats {
   streak_days: number;
   average_quiz_score: number;
@@ -235,27 +164,6 @@ export interface UpcomingReviewsResponse {
 export async function getUpcomingReviews(): Promise<UpcomingReviewsResponse> {
   const { authClient } = await import('./auth');
   return authClient.authenticatedFetch<UpcomingReviewsResponse>("/api/v1/flashcards/upcoming");
-}
-
-export interface FlashcardSetResponse {
-  module_id: string;
-  language: string;
-  level: number;
-  cards: unknown[];
-  total_cards: number;
-  cached: boolean;
-}
-
-export async function generateModuleFlashcards(params: {
-  moduleId: string;
-  language: string;
-  level?: number;
-}): Promise<FlashcardSetResponse> {
-  const { authClient } = await import('./auth');
-  const level = params.level ?? 1;
-  return authClient.authenticatedFetch<FlashcardSetResponse>(
-    `/api/v1/flashcards/modules/${params.moduleId}?language=${params.language}&level=${level}`
-  );
 }
 
 // Quiz API Types
@@ -331,7 +239,6 @@ export async function generateQuiz(params: {
   country: string;
   level: number;
   num_questions?: number;
-  force_regenerate?: boolean;
 }): Promise<Quiz> {
   return apiFetch<Quiz>("/api/v1/quiz/generate", {
     method: "POST",
@@ -342,7 +249,6 @@ export async function generateQuiz(params: {
       country: params.country,
       level: params.level,
       num_questions: params.num_questions || 10,
-      force_regenerate: params.force_regenerate || false,
     }),
   });
 }
@@ -384,22 +290,6 @@ export interface SummativeAssessmentResponse {
   next_retry_at?: string;
   attempt_count: number;
   attempted_at: string;
-}
-
-// Unit Quiz Validation
-export interface UnitQuizValidationStatus {
-  passed: boolean;
-  best_score: number | null;
-  attempt_count: number;
-}
-
-export async function checkUnitQuizPassed(
-  moduleId: string,
-  unitId: string
-): Promise<UnitQuizValidationStatus> {
-  return apiFetch<UnitQuizValidationStatus>(
-    `/api/v1/quiz/attempts/status?module_id=${encodeURIComponent(moduleId)}&unit_id=${encodeURIComponent(unitId)}`
-  );
 }
 
 // Summative Assessment API Functions

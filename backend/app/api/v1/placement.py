@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -15,12 +14,7 @@ from ...domain.models.quiz import PlacementTestAttempt
 from ...domain.models.user import User
 from ...domain.repositories.implementations.user_repository import UserRepository
 from ...domain.services.placement_service import PlacementService
-from .schemas.placement import (
-    PlacementAttemptSummary,
-    PlacementResultsHistory,
-    PlacementTestResponse,
-    PlacementTestSubmission,
-)
+from .schemas.placement import PlacementTestResponse, PlacementTestSubmission
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/placement-test", tags=["Placement Test"])
@@ -234,80 +228,6 @@ async def skip_placement_test(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to skip placement test",
-        )
-
-
-@router.get("/results", response_model=PlacementResultsHistory)
-async def get_placement_results_history(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db_session),
-) -> PlacementResultsHistory:
-    """Get all past placement test attempts for the authenticated user.
-
-    Returns:
-        PlacementResultsHistory with all attempts ordered newest first,
-        plus retake eligibility info.
-
-    Raises:
-        500: Failed to retrieve results
-    """
-    try:
-        result = await db.execute(
-            select(PlacementTestAttempt)
-            .where(PlacementTestAttempt.user_id == current_user.id)
-            .order_by(PlacementTestAttempt.attempted_at.desc())
-        )
-        attempts = list(result.scalars().all())
-
-        now = datetime.utcnow()
-        latest = attempts[0] if attempts else None
-        can_retake_now = latest is None or (
-            latest.can_retake_after is None or latest.can_retake_after <= now
-        )
-        next_retake_at = (
-            latest.can_retake_after
-            if latest and latest.can_retake_after and latest.can_retake_after > now
-            else None
-        )
-
-        attempt_summaries = [
-            PlacementAttemptSummary(
-                id=str(attempt.id),
-                attempt_number=idx + 1,
-                attempted_at=attempt.attempted_at,
-                score_percentage=attempt.raw_score,
-                assigned_level=attempt.assigned_level,
-                domain_scores=attempt.domain_scores or {},
-                can_retake_after=attempt.can_retake_after,
-            )
-            for idx, attempt in enumerate(reversed(attempts))
-        ]
-        attempt_summaries.sort(key=lambda a: a.attempted_at, reverse=True)
-
-        logger.info(
-            "Placement results history retrieved",
-            user_id=str(current_user.id),
-            total_attempts=len(attempts),
-        )
-
-        return PlacementResultsHistory(
-            attempts=attempt_summaries,
-            total_attempts=len(attempts),
-            can_retake_now=can_retake_now,
-            next_retake_at=next_retake_at,
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(
-            "Failed to retrieve placement results",
-            error=str(e),
-            user_id=str(current_user.id),
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve placement test results",
         )
 
 
