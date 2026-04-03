@@ -66,9 +66,7 @@ async def get_generation_status(task_id: str) -> JSONResponse:
             return JSONResponse(
                 {"status": "failed", "error": task_result.get("error", "Unknown error")}
             )
-        return JSONResponse(
-            {"status": "complete", "content_id": task_result.get("content_id")}
-        )
+        return JSONResponse({"status": "complete", "content_id": task_result.get("content_id")})
     elif state == "FAILURE":
         return JSONResponse({"status": "failed", "error": str(result.result)})
 
