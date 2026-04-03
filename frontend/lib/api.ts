@@ -155,10 +155,15 @@ export async function getLessonImageStatus(lessonId: string): Promise<LessonImag
   if (!first) {
     return { lesson_id: lessonId, status: 'pending' };
   }
+  const rawUrl = first.image_url ?? undefined;
+  const url =
+    rawUrl && rawUrl.startsWith('/')
+      ? `${API_BASE}${rawUrl}`
+      : rawUrl;
   return {
     lesson_id: first.lesson_id,
     status: first.status,
-    url: first.image_url ?? undefined,
+    url,
     alt_text: first.alt_text,
     alt_text_fr: first.alt_text,
     alt_text_en: first.alt_text,
