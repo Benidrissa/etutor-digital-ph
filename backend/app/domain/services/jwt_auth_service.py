@@ -140,7 +140,9 @@ class JWTAuthService:
             JWT token for password reset
         """
         now = datetime.utcnow()
-        expire = now + timedelta(hours=SettingsCache.instance().get("auth.magic_link_expiry_hours", 1))
+        expire = now + timedelta(
+            hours=SettingsCache.instance().get("auth.magic_link_expiry_hours", 1)
+        )
 
         payload = {
             "sub": user_id,

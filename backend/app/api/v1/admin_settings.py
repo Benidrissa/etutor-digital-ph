@@ -70,11 +70,15 @@ async def update_setting(
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Setting '{key}' not found")
     except ValueError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
-    db.add(AuditLog(
-        id=uuid.uuid4(), admin_id=uuid.UUID(admin.id), admin_email=admin.email,
-        action=AdminAction.update_setting,
-        details=json.dumps({"key": key, "old_value": old_value, "new_value": body.value}),
-    ))
+    db.add(
+        AuditLog(
+            id=uuid.uuid4(),
+            admin_id=uuid.UUID(admin.id),
+            admin_email=admin.email,
+            action=AdminAction.update_setting,
+            details=json.dumps({"key": key, "old_value": old_value, "new_value": body.value}),
+        )
+    )
     await db.commit()
     return SettingResponse(**updated)
 
@@ -90,11 +94,15 @@ async def reset_setting(
         reset = await _svc.reset_to_default(key)
     except KeyError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Setting '{key}' not found")
-    db.add(AuditLog(
-        id=uuid.uuid4(), admin_id=uuid.UUID(admin.id), admin_email=admin.email,
-        action=AdminAction.reset_setting,
-        details=json.dumps({"key": key, "old_value": old_value}),
-    ))
+    db.add(
+        AuditLog(
+            id=uuid.uuid4(),
+            admin_id=uuid.UUID(admin.id),
+            admin_email=admin.email,
+            action=AdminAction.reset_setting,
+            details=json.dumps({"key": key, "old_value": old_value}),
+        )
+    )
     await db.commit()
     return SettingResponse(**reset)
 
@@ -109,10 +117,14 @@ async def reset_category(
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Category '{category}' not found")
     count = await _svc.reset_category(category)
     if count:
-        db.add(AuditLog(
-            id=uuid.uuid4(), admin_id=uuid.UUID(admin.id), admin_email=admin.email,
-            action=AdminAction.reset_category,
-            details=json.dumps({"category": category, "reset_count": count}),
-        ))
+        db.add(
+            AuditLog(
+                id=uuid.uuid4(),
+                admin_id=uuid.UUID(admin.id),
+                admin_email=admin.email,
+                action=AdminAction.reset_category,
+                details=json.dumps({"category": category, "reset_count": count}),
+            )
+        )
         await db.commit()
     return ResetCategoryResponse(category=category, reset_count=count)

@@ -206,7 +206,8 @@ class FlashcardGenerationService:
                 raise ValueError("Unexpected response type from Claude API")
 
             _min_count = SettingsCache.instance().get(
-                "flashcards.min_generated_count", 15,
+                "flashcards.min_generated_count",
+                15,
             )
             if len(flashcard_data) < _min_count:
                 logger.warning(f"Generated only {len(flashcard_data)} flashcards, expected 15-30")

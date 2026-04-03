@@ -193,7 +193,9 @@ async def get_due_flashcards(
             cards_count=len(cards_data),
         )
 
-        _new_cards_per_session = SettingsCache.instance().get("flashcards.new_cards_per_session", 20)
+        _new_cards_per_session = SettingsCache.instance().get(
+            "flashcards.new_cards_per_session", 20
+        )
         return FlashcardDueResponse(
             user_id=current_user.id,
             cards=cards_data,
@@ -281,12 +283,15 @@ async def submit_flashcard_review(
         rating_value = rating_values.get(review_request.rating, 3)
 
         # Load FSRS parameters from settings
-        fsrs = SettingsCache.instance().get("flashcards.fsrs_params", {
-            "again": {"stability": 0.5, "difficulty": 1.0},
-            "hard": {"stability": 0.8, "difficulty": 0.5, "interval": 0.8},
-            "good": {"stability": 1.2, "difficulty": -0.1},
-            "easy": {"stability": 1.5, "difficulty": -0.2, "interval": 1.3},
-        })
+        fsrs = SettingsCache.instance().get(
+            "flashcards.fsrs_params",
+            {
+                "again": {"stability": 0.5, "difficulty": 1.0},
+                "hard": {"stability": 0.8, "difficulty": 0.5, "interval": 0.8},
+                "good": {"stability": 1.2, "difficulty": -0.1},
+                "easy": {"stability": 1.5, "difficulty": -0.2, "interval": 1.3},
+            },
+        )
 
         # Update stability and difficulty based on rating
         if rating_value == 1:  # Again
@@ -418,7 +423,9 @@ async def complete_flashcard_session(
         current_user.last_active = datetime.utcnow()
 
         # Check if user met daily target (20 cards or available cards)
-        daily_target_met = session_request.cards_reviewed >= min(SettingsCache.instance().get("flashcards.new_cards_per_session", 20), total_reviews)
+        daily_target_met = session_request.cards_reviewed >= min(
+            SettingsCache.instance().get("flashcards.new_cards_per_session", 20), total_reviews
+        )
 
         if daily_target_met:
             # Update streak if it's a new day
@@ -503,7 +510,8 @@ async def get_upcoming_reviews(
 
         # Get all scheduled flashcard reviews for the next 2 weeks
         _preview_days = SettingsCache.instance().get(
-            "flashcards.review_preview_days", 14,
+            "flashcards.review_preview_days",
+            14,
         )
         two_weeks_from_now = now + timedelta(days=_preview_days)
 

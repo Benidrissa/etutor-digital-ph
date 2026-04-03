@@ -379,7 +379,14 @@ Generate the quiz now, ensuring all questions are relevant to public health prac
                 self._validate_question(question, f"question {i + 1}")
 
             _passing = SettingsCache.instance().get("quiz.passing_score", 80.0)
-            quiz_data.setdefault("time_limit_minutes", max(SettingsCache.instance().get("quiz.time_limit_min_minutes", 10), len(questions) * SettingsCache.instance().get("quiz.time_limit_per_question_minutes", 1.5)))
+            quiz_data.setdefault(
+                "time_limit_minutes",
+                max(
+                    SettingsCache.instance().get("quiz.time_limit_min_minutes", 10),
+                    len(questions)
+                    * SettingsCache.instance().get("quiz.time_limit_per_question_minutes", 1.5),
+                ),
+            )
             quiz_data.setdefault("passing_score", _passing)
             if quiz_data.get("passing_score", _passing) < _passing:
                 quiz_data["passing_score"] = _passing

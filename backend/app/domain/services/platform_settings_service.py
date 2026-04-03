@@ -104,6 +104,7 @@ class PlatformSettingsService:
             return None
         try:
             from app.infrastructure.cache.redis import redis_client
+
             cached = await redis_client.get(f"{_REDIS_PREFIX}{key}")
             if cached is not None:
                 return json.loads(cached)
@@ -113,6 +114,7 @@ class PlatformSettingsService:
         val = overrides.get(key, defn.default)
         try:
             from app.infrastructure.cache.redis import redis_client
+
             await redis_client.setex(f"{_REDIS_PREFIX}{key}", _REDIS_TTL, json.dumps(val))
         except Exception:
             pass
@@ -120,12 +122,17 @@ class PlatformSettingsService:
 
     async def get_many(self, keys: list[str]) -> dict[str, Any]:
         overrides = _read_overrides()
-        return {k: overrides.get(k, DEFAULTS_BY_KEY[k].default) for k in keys if k in DEFAULTS_BY_KEY}
+        return {
+            k: overrides.get(k, DEFAULTS_BY_KEY[k].default) for k in keys if k in DEFAULTS_BY_KEY
+        }
 
     async def get_by_category(self, category: str) -> list[dict[str, Any]]:
         overrides = _read_overrides()
-        return [self._to_dict(d, overrides.get(d.key, d.default))
-                for d in SETTING_DEFINITIONS if d.category == category]
+        return [
+            self._to_dict(d, overrides.get(d.key, d.default))
+            for d in SETTING_DEFINITIONS
+            if d.category == category
+        ]
 
     async def get_all(self) -> list[dict[str, Any]]:
         overrides = _read_overrides()
@@ -133,7 +140,11 @@ class PlatformSettingsService:
 
     async def get_all_public(self) -> dict[str, Any]:
         overrides = _read_overrides()
-        return {d.key: overrides.get(d.key, d.default) for d in SETTING_DEFINITIONS if not d.is_sensitive}
+        return {
+            d.key: overrides.get(d.key, d.default)
+            for d in SETTING_DEFINITIONS
+            if not d.is_sensitive
+        }
 
     async def set(self, key: str, value: Any) -> dict[str, Any]:
         defn = DEFAULTS_BY_KEY.get(key)
@@ -145,6 +156,7 @@ class PlatformSettingsService:
         _write_overrides(overrides)
         try:
             from app.infrastructure.cache.redis import redis_client
+
             await redis_client.delete(f"{_REDIS_PREFIX}{key}")
         except Exception:
             pass
@@ -160,6 +172,7 @@ class PlatformSettingsService:
         _write_overrides(overrides)
         try:
             from app.infrastructure.cache.redis import redis_client
+
             await redis_client.delete(f"{_REDIS_PREFIX}{key}")
         except Exception:
             pass
@@ -175,6 +188,7 @@ class PlatformSettingsService:
             _write_overrides(overrides)
             try:
                 from app.infrastructure.cache.redis import redis_client
+
                 await redis_client.delete(*[f"{_REDIS_PREFIX}{k}" for k in keys])
             except Exception:
                 pass
@@ -184,10 +198,15 @@ class PlatformSettingsService:
     @staticmethod
     def _to_dict(defn: SettingDef, current: Any) -> dict[str, Any]:
         return {
-            "key": defn.key, "category": defn.category, "value": current,
-            "default_value": defn.default, "value_type": defn.value_type,
-            "label": defn.label, "description": defn.description,
-            "validation_rules": defn.validation, "is_sensitive": defn.is_sensitive,
+            "key": defn.key,
+            "category": defn.category,
+            "value": current,
+            "default_value": defn.default,
+            "value_type": defn.value_type,
+            "label": defn.label,
+            "description": defn.description,
+            "validation_rules": defn.validation,
+            "is_sensitive": defn.is_sensitive,
             "is_default": current == defn.default,
         }
 

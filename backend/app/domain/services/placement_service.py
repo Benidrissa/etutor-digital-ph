@@ -276,10 +276,14 @@ class PlacementService:
         adjusted = raw_score
 
         role_bonuses = SettingsCache.instance().get(
-            "placement.role_bonuses", {
-                "doctor": 5, "physician": 5,
-                "researcher": 8, "epidemiologist": 8,
-                "nurse": 3, "student": -3,
+            "placement.role_bonuses",
+            {
+                "doctor": 5,
+                "physician": 5,
+                "researcher": 8,
+                "epidemiologist": 8,
+                "nurse": 3,
+                "student": -3,
             },
         )
         role = context.get("professional_role", "").lower()
@@ -289,10 +293,14 @@ class PlacementService:
                 break
 
         time_adj = SettingsCache.instance().get(
-            "placement.time_adjustments", {
-                "too_fast_threshold": 600, "too_fast_penalty": -10,
-                "too_slow_threshold": 2400, "too_slow_penalty": -5,
-                "optimal_min": 900, "optimal_max": 1800,
+            "placement.time_adjustments",
+            {
+                "too_fast_threshold": 600,
+                "too_fast_penalty": -10,
+                "too_slow_threshold": 2400,
+                "too_slow_penalty": -5,
+                "optimal_min": 900,
+                "optimal_max": 1800,
                 "optimal_bonus": 2,
             },
         )
@@ -315,7 +323,8 @@ class PlacementService:
             Level 1-4
         """
         thresholds = SettingsCache.instance().get(
-            "placement.level_thresholds", LEVEL_THRESHOLDS,
+            "placement.level_thresholds",
+            LEVEL_THRESHOLDS,
         )
         # Keys may be strings when loaded from JSON settings
         for level, threshold in thresholds.items():
@@ -339,9 +348,12 @@ class PlacementService:
             "level_4": "Health Policy & Research",
         }
         _comp_threshold = SettingsCache.instance().get(
-            "placement.competency_threshold", 70,
+            "placement.competency_threshold",
+            70,
         )
-        competencies = [label_map[k] for k, v in level_scores.items() if v >= _comp_threshold and k in label_map]
+        competencies = [
+            label_map[k] for k, v in level_scores.items() if v >= _comp_threshold and k in label_map
+        ]
         return competencies if competencies else ["Foundation Building"]
 
     def _generate_recommendations(
