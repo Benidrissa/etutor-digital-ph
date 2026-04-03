@@ -5,6 +5,7 @@ import uuid
 
 import structlog
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.claude_service import ClaudeService
@@ -233,8 +234,28 @@ class FlashcardGenerationService:
         )
 
         session.add(generated_content)
-        await session.commit()
-        await session.refresh(generated_content)
+        try:
+            await session.commit()
+            await session.refresh(generated_content)
+        except IntegrityError:
+            await session.rollback()
+            logger.warning(
+                "Flashcard cache INSERT conflict (race condition), fetching existing row",
+                module_id=str(module_id),
+                language=language,
+                country=country,
+                level=level,
+            )
+            conflict_result = await session.execute(
+                select(GeneratedContent).where(
+                    GeneratedContent.module_id == module_id,
+                    GeneratedContent.content_type == "flashcard",
+                    GeneratedContent.language == language,
+                    GeneratedContent.country_context == country,
+                    GeneratedContent.level == level,
+                )
+            )
+            return conflict_result.scalar_one()
 
         logger.info("Flashcard set saved to database", content_id=str(content_id))
         return generated_content
