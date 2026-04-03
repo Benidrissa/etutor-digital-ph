@@ -4,7 +4,7 @@ import json
 import uuid
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -108,16 +108,20 @@ class FlashcardGenerationService:
         Returns:
             Existing GeneratedContent or None if not found
         """
-        query = select(GeneratedContent).where(
-            GeneratedContent.module_id == module_id,
-            GeneratedContent.content_type == "flashcard",
-            GeneratedContent.language == language,
-            GeneratedContent.country_context == country_context,
-            GeneratedContent.level == level,
+        query = (
+            select(GeneratedContent)
+            .where(
+                GeneratedContent.module_id == module_id,
+                GeneratedContent.content_type == "flashcard",
+                GeneratedContent.language == language,
+                GeneratedContent.country_context == country_context,
+                GeneratedContent.level == level,
+            )
+            .order_by(desc(GeneratedContent.generated_at))
         )
 
         result = await session.execute(query)
-        return result.scalar_one_or_none()
+        return result.scalars().first()
 
     async def _generate_flashcard_set(
         self,

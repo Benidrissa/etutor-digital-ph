@@ -210,7 +210,7 @@ class TestGetCachedLesson:
         session = AsyncMock(spec=AsyncSession)
         cached = make_cached_content("M01-U01")
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = cached
+        mock_result.scalars.return_value.first.return_value = cached
         session.execute = AsyncMock(return_value=mock_result)
 
         result = await lesson_service._get_cached_lesson(
@@ -225,7 +225,7 @@ class TestGetCachedLesson:
     async def test_returns_none_on_cache_miss(self, lesson_service, sample_module_id):
         session = AsyncMock(spec=AsyncSession)
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result.scalars.return_value.first.return_value = None
         session.execute = AsyncMock(return_value=mock_result)
 
         result = await lesson_service._get_cached_lesson(
@@ -242,10 +242,10 @@ class TestGetCachedLesson:
         cached_u02 = make_cached_content("M01-U02")
 
         mock_result_u01 = MagicMock()
-        mock_result_u01.scalar_one_or_none.return_value = cached_u01
+        mock_result_u01.scalars.return_value.first.return_value = cached_u01
 
         mock_result_u02 = MagicMock()
-        mock_result_u02.scalar_one_or_none.return_value = cached_u02
+        mock_result_u02.scalars.return_value.first.return_value = cached_u02
 
         session = AsyncMock(spec=AsyncSession)
         session.execute = AsyncMock(side_effect=[mock_result_u01, mock_result_u02])
@@ -270,7 +270,7 @@ class TestGetCachedLesson:
         session = AsyncMock(spec=AsyncSession)
         cached = make_cached_content("M01-U03")
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = cached
+        mock_result.scalars.return_value.first.return_value = cached
         session.execute = AsyncMock(return_value=mock_result)
 
         result = await lesson_service._get_cached_lesson(

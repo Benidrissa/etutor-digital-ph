@@ -112,7 +112,7 @@ class TestFlashcardGenerationService:
         session = AsyncMock(spec=AsyncSession)
 
         cache_miss_result = MagicMock()
-        cache_miss_result.scalar_one_or_none.return_value = None
+        cache_miss_result.scalars.return_value.first.return_value = None
 
         module_result = MagicMock()
         module_result.scalar_one_or_none.return_value = mock_module
@@ -188,7 +188,7 @@ class TestFlashcardGenerationService:
 
         session = AsyncMock(spec=AsyncSession)
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = existing_content
+        mock_result.scalars.return_value.first.return_value = existing_content
         session.execute = AsyncMock(return_value=mock_result)
 
         # Act
@@ -231,7 +231,7 @@ class TestFlashcardGenerationService:
 
         session = AsyncMock(spec=AsyncSession)
         cache_miss_result = MagicMock()
-        cache_miss_result.scalar_one_or_none.return_value = None
+        cache_miss_result.scalars.return_value.first.return_value = None
         module_result = MagicMock()
         module_result.scalar_one_or_none.return_value = mock_module
         session.execute = AsyncMock(side_effect=[cache_miss_result, module_result])
@@ -271,7 +271,7 @@ class TestFlashcardGenerationService:
 
         session = AsyncMock(spec=AsyncSession)
         cache_miss_result = MagicMock()
-        cache_miss_result.scalar_one_or_none.return_value = None
+        cache_miss_result.scalars.return_value.first.return_value = None
         module_result = MagicMock()
         module_result.scalar_one_or_none.return_value = mock_module
         session.execute = AsyncMock(side_effect=[cache_miss_result, module_result])
@@ -318,7 +318,7 @@ class TestFlashcardGenerationService:
 
         session = AsyncMock(spec=AsyncSession)
         cache_miss_result = MagicMock()
-        cache_miss_result.scalar_one_or_none.return_value = None
+        cache_miss_result.scalars.return_value.first.return_value = None
         module_result = MagicMock()
         module_result.scalar_one_or_none.return_value = mock_module
         session.execute = AsyncMock(side_effect=[cache_miss_result, module_result])
@@ -352,7 +352,7 @@ class TestFlashcardGenerationService:
 
         session = AsyncMock(spec=AsyncSession)
         cache_miss_result = MagicMock()
-        cache_miss_result.scalar_one_or_none.return_value = None
+        cache_miss_result.scalars.return_value.first.return_value = None
         module_not_found_result = MagicMock()
         module_not_found_result.scalar_one_or_none.return_value = None
         session.execute = AsyncMock(side_effect=[cache_miss_result, module_not_found_result])
@@ -389,7 +389,7 @@ class TestFlashcardGenerationService:
 
         session = AsyncMock(spec=AsyncSession)
         cache_miss_result = MagicMock()
-        cache_miss_result.scalar_one_or_none.return_value = None
+        cache_miss_result.scalars.return_value.first.return_value = None
         module_result = MagicMock()
         module_result.scalar_one_or_none.return_value = mock_module
         session.execute = AsyncMock(side_effect=[cache_miss_result, module_result])
