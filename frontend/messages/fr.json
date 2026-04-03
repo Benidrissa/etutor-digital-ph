@@ -839,5 +839,61 @@
         "update_role": "Rôle mis à jour"
       }
     }
+  },
+  "Courses": {
+    "catalog": "Catalogue de cours",
+    "catalogSubtitle": "Découvrez nos formations en santé publique",
+    "searchPlaceholder": "Rechercher un cours...",
+    "filterByDomain": "Filtrer par domaine",
+    "allDomains": "Tous les domaines",
+    "enroll": "S'inscrire",
+    "enrolled": "Inscrit",
+    "unenroll": "Se désinscrire",
+    "noCoursesFound": "Aucun cours disponible pour le moment.",
+    "estimatedHours": "{{hours}}h estimées",
+    "modules": "{{count}} modules",
+    "domain": "Domaine",
+    "status": {
+      "draft": "Brouillon",
+      "published": "Publié",
+      "archived": "Archivé"
+    },
+    "enrollSuccess": "Vous êtes maintenant inscrit à ce cours !",
+    "enrollError": "Impossible de s'inscrire à ce cours.",
+    "alreadyEnrolled": "Vous êtes déjà inscrit à ce cours.",
+    "loading": "Chargement des cours...",
+    "error": "Impossible de charger les cours."
+  },
+  "AdminCourses": {
+    "title": "Gestion des cours",
+    "subtitle": "Créer, modifier et publier des cours",
+    "createCourse": "Créer un cours",
+    "allCourses": "Tous les cours",
+    "noCourses": "Aucun cours créé pour le moment.",
+    "createFirst": "Créez votre premier cours en cliquant sur le bouton ci-dessus.",
+    "courseCreated": "Cours créé avec succès.",
+    "coursePublished": "Cours publié avec succès.",
+    "courseArchived": "Cours archivé.",
+    "loading": "Chargement...",
+    "error": "Une erreur est survenue.",
+    "form": {
+      "slug": "Identifiant unique (slug)",
+      "slugHelp": "Lettres minuscules, chiffres et tirets uniquement (ex: nutrition-communautaire)",
+      "titleFr": "Titre en français",
+      "titleEn": "Titre en anglais",
+      "descriptionFr": "Description en français",
+      "descriptionEn": "Description en anglais",
+      "domain": "Domaine",
+      "targetAudience": "Public cible",
+      "estimatedHours": "Durée estimée (heures)",
+      "submit": "Créer le cours",
+      "cancel": "Annuler"
+    },
+    "actions": {
+      "publish": "Publier",
+      "archive": "Archiver",
+      "edit": "Modifier",
+      "generateStructure": "Générer la structure (IA)"
+    }
   }
 }

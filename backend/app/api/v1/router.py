@@ -1,7 +1,9 @@
 from fastapi import APIRouter
 
 from app.api.v1.admin import router as admin_router
+from app.api.v1.admin_courses import router as admin_courses_router
 from app.api.v1.content import router as content_router
+from app.api.v1.courses import router as courses_router
 from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.flashcards import router as flashcards_router
 from app.api.v1.health import router as health_router
@@ -26,3 +28,5 @@ api_v1_router.include_router(flashcards_router)
 api_v1_router.include_router(tutor_router)
 api_v1_router.include_router(images_router)
 api_v1_router.include_router(admin_router)
+api_v1_router.include_router(admin_courses_router)
+api_v1_router.include_router(courses_router)

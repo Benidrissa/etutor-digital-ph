@@ -89,6 +89,10 @@ class SemanticRetriever:
         params: dict[str, Any] = {}
 
         if filters:
+            if "rag_collection_id" in filters:
+                where_clauses.append("source = :rag_collection_id")
+                params["rag_collection_id"] = filters["rag_collection_id"]
+
             if "source" in filters:
                 if isinstance(filters["source"], list):
                     where_clauses.append("source = ANY(:source_list)")

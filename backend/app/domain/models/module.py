@@ -12,6 +12,7 @@ from app.domain.models.base import Base
 if TYPE_CHECKING:
     from app.domain.models.content import GeneratedContent
     from app.domain.models.conversation import TutorConversation
+    from app.domain.models.course import Course
     from app.domain.models.module_unit import ModuleUnit
     from app.domain.models.progress import UserModuleProgress
     from app.domain.models.quiz import SummativeAssessmentAttempt
@@ -33,6 +34,11 @@ class Module(Base):
         ARRAY(UUID(as_uuid=True)), server_default="{}"
     )
     books_sources: Mapped[dict | None] = mapped_column(JSON)
+    course_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        index=True,
+    )
 
     user_progress: Mapped[list[UserModuleProgress]] = relationship(back_populates="module")
     generated_content: Mapped[list[GeneratedContent]] = relationship(back_populates="module")
@@ -41,3 +47,9 @@ class Module(Base):
         back_populates="module"
     )
     units: Mapped[list[ModuleUnit]] = relationship(back_populates="module")
+    course: Mapped[Course | None] = relationship(
+        "Course",
+        primaryjoin="Module.course_id == Course.id",
+        foreign_keys="[Module.course_id]",
+        back_populates="modules",
+    )

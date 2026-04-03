@@ -839,5 +839,61 @@
         "update_role": "Updated role"
       }
     }
+  },
+  "Courses": {
+    "catalog": "Course Catalog",
+    "catalogSubtitle": "Discover our public health training programs",
+    "searchPlaceholder": "Search courses...",
+    "filterByDomain": "Filter by domain",
+    "allDomains": "All domains",
+    "enroll": "Enroll",
+    "enrolled": "Enrolled",
+    "unenroll": "Unenroll",
+    "noCoursesFound": "No courses available at the moment.",
+    "estimatedHours": "{{hours}}h estimated",
+    "modules": "{{count}} modules",
+    "domain": "Domain",
+    "status": {
+      "draft": "Draft",
+      "published": "Published",
+      "archived": "Archived"
+    },
+    "enrollSuccess": "You are now enrolled in this course!",
+    "enrollError": "Failed to enroll in this course.",
+    "alreadyEnrolled": "You are already enrolled in this course.",
+    "loading": "Loading courses...",
+    "error": "Failed to load courses."
+  },
+  "AdminCourses": {
+    "title": "Course Management",
+    "subtitle": "Create, edit and publish courses",
+    "createCourse": "Create Course",
+    "allCourses": "All Courses",
+    "noCourses": "No courses created yet.",
+    "createFirst": "Create your first course by clicking the button above.",
+    "courseCreated": "Course created successfully.",
+    "coursePublished": "Course published successfully.",
+    "courseArchived": "Course archived.",
+    "loading": "Loading...",
+    "error": "An error occurred.",
+    "form": {
+      "slug": "Unique identifier (slug)",
+      "slugHelp": "Lowercase letters, numbers and hyphens only (e.g. community-nutrition)",
+      "titleFr": "Title in French",
+      "titleEn": "Title in English",
+      "descriptionFr": "Description in French",
+      "descriptionEn": "Description in English",
+      "domain": "Domain",
+      "targetAudience": "Target audience",
+      "estimatedHours": "Estimated duration (hours)",
+      "submit": "Create course",
+      "cancel": "Cancel"
+    },
+    "actions": {
+      "publish": "Publish",
+      "archive": "Archive",
+      "edit": "Edit",
+      "generateStructure": "Generate structure (AI)"
+    }
   }
 }
