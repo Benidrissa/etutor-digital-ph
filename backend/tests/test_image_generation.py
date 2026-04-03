@@ -249,6 +249,8 @@ class TestImageGenerationService:
         assert result.status == "ready"
         assert result.image_url == f"/api/v1/images/{result.id}/data"
         assert "oaidalleapiprodscus" not in (result.image_url or "")
+        assert result.image_data is not None
+        assert len(result.image_data) > 0
 
     async def test_failure_handling_sets_failed_status(self, service, mock_session):
         """When DALL-E raises an exception, status must be 'failed' and lesson unaffected."""
@@ -354,3 +356,57 @@ class TestImageGenerationService:
         assert callable(generate_lesson_image)
         assert hasattr(generate_lesson_image, "delay")
         assert hasattr(generate_lesson_image, "apply_async")
+
+    def test_backfill_task_is_registered(self):
+        """Verify backfill_missing_image_data task is importable and has expected signature."""
+        from app.tasks.content_generation import backfill_missing_image_data
+
+        assert callable(backfill_missing_image_data)
+        assert hasattr(backfill_missing_image_data, "delay")
+        assert hasattr(backfill_missing_image_data, "apply_async")
+
+    async def test_new_generation_image_data_not_null(
+        self, service, mock_session, mock_claude_response, mock_alt_text_response
+    ):
+        """image_data must be stored (not NULL) after successful DALL-E generation."""
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        dalle_response = MagicMock()
+        dalle_response.data = [MagicMock(url="https://example.com/img.png")]
+
+        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
+            mock_client = AsyncMock()
+            mock_anthropic_cls.return_value = mock_client
+            mock_client.messages.create = AsyncMock(
+                side_effect=[mock_claude_response, mock_alt_text_response]
+            )
+
+            with patch("openai.AsyncOpenAI") as mock_openai_cls:
+                mock_openai = AsyncMock()
+                mock_openai_cls.return_value = mock_openai
+                mock_openai.images.generate = AsyncMock(return_value=dalle_response)
+
+                with patch("httpx.AsyncClient") as mock_http_cls:
+                    mock_http = AsyncMock()
+                    mock_http_cls.return_value.__aenter__ = AsyncMock(return_value=mock_http)
+                    mock_http_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+                    mock_http.get = AsyncMock(
+                        return_value=MagicMock(
+                            content=b"FAKE_PNG_BINARY_DATA", raise_for_status=MagicMock()
+                        )
+                    )
+
+                    result = await service.generate_for_lesson(
+                        lesson_id=uuid.uuid4(),
+                        module_id=uuid.uuid4(),
+                        unit_id="u01",
+                        lesson_content="Lesson about tuberculosis surveillance in Senegal.",
+                        session=mock_session,
+                    )
+
+        assert result.image_data is not None, "image_data must not be NULL after generation"
+        assert len(result.image_data) > 0
+        assert result.image_url == f"/api/v1/images/{result.id}/data"
+        assert "blob.core.windows.net" not in (result.image_url or "")
