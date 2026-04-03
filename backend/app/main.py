@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.middleware.rate_limit import RateLimitMiddleware
+from app.api.middleware.security_headers import SecurityHeadersMiddleware
 from app.api.v1.router import api_v1_router
 from app.data.seeder import seed_module_units
 from app.infrastructure.config.settings import settings
@@ -76,6 +77,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add security headers middleware
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Add rate limiting middleware
 app.add_middleware(RateLimitMiddleware, global_rate_limit=100)
