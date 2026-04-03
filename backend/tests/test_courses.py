@@ -3,11 +3,13 @@
 import uuid
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select  # noqa: F401 — used in skipped tests
 
 from app.domain.models.course import Course  # noqa: F401 — used in skipped tests
 from app.domain.models.user import UserRole
 from app.domain.services.jwt_auth_service import JWTAuthService
+from app.main import app
 
 
 def _make_headers(role: str = "user", user_id: str | None = None) -> dict:
