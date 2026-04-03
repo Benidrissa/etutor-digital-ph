@@ -10,11 +10,15 @@ on:
 
 concurrency:
   group: claude-${{ github.event.issue.number || github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
-  # Gate: only 2 Claude runs at a time across all issues to avoid starving CI
+  # Gate: filter non-claude events early, then limit to 2 concurrent Claude runs
   gate:
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'issues' && github.event.label.name == 'claude' && github.event.issue.state == 'open')
     runs-on: ubuntu-latest
     concurrency:
       group: claude-global-gate
@@ -24,10 +28,6 @@ jobs:
 
   claude:
     needs: gate
-    if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'issues' && github.event.label.name == 'claude' && github.event.issue.state == 'open')
     runs-on: ubuntu-latest
     permissions:
       contents: write
