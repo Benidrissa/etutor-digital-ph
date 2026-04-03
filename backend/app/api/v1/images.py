@@ -66,6 +66,21 @@ def _get_alt_text(image: GeneratedImage, lang: str) -> str:
     return _ALT_TEXT[lang_key]
 
 
+def _resolve_image_url(image: GeneratedImage, request: Request) -> str | None:
+    """Return the best available URL for a ready image.
+
+    Priority:
+    1. If binary data is stored (image_data), return the /data endpoint URL.
+    2. Otherwise fall back to the raw image_url (DALL-E CDN, may be expired).
+    """
+    if image.status != "ready":
+        return None
+    if image.image_data:
+        base = str(request.base_url).rstrip("/")
+        return f"{base}/api/v1/images/{image.id}/data"
+    return image.image_url or None
+
+
 @router.get(
     "/lesson/{lesson_id}",
     response_model=LessonImagesListResponse,
@@ -76,6 +91,7 @@ def _get_alt_text(image: GeneratedImage, lang: str) -> str:
 )
 async def get_lesson_images(
     lesson_id: UUID,
+    request: Request,
     lang: str = "fr",
     db: AsyncSession = Depends(get_db_session),
 ) -> LessonImagesListResponse:
@@ -110,7 +126,7 @@ async def get_lesson_images(
                 image_id=img.id,
                 lesson_id=lesson_id,
                 status=img_status,
-                image_url=img.image_url if img_status == "ready" else None,
+                image_url=_resolve_image_url(img, request),
                 alt_text=_get_alt_text(img, lang),
                 format=img.format,
                 width=img.width,
@@ -188,15 +204,16 @@ async def get_image_status(
     return ImageStatusResponse(
         image_id=image_id,
         status=img_status,
-        image_url=img.image_url if img_status == "ready" else None,
+        image_url=_resolve_image_url(img, request),
     )
 
 
 @router.get(
     "/{image_id}/data",
-    status_code=status.HTTP_302_FOUND,
+    status_code=status.HTTP_200_OK,
     responses={
-        302: {"description": "Redirect to the image URL"},
+        200: {"content": {"image/webp": {}}, "description": "Binary WebP image data"},
+        302: {"description": "Redirect to CDN image URL (fallback when no binary data stored)"},
         404: {"description": "Image not found or not ready"},
     },
 )
@@ -205,10 +222,11 @@ async def get_image_data(
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
     """
-    Redirect to the WebP image URL stored in `generated_images.image_url`.
+    Serve the WebP image binary or redirect to CDN URL.
 
-    Returns 302 redirect when status='ready' and `image_url` is set.
-    Returns 404 when image is not found or not yet ready.
+    - If `image_data` (BYTEA) is stored: returns 200 with `Content-Type: image/webp`.
+    - Otherwise falls back to 302 redirect to `image_url` (CDN / DALL-E URL).
+    - Returns 404 when image is not found or not yet ready.
     """
     result = await db.execute(select(GeneratedImage).where(GeneratedImage.id == image_id))
     img = result.scalar_one_or_none()
@@ -222,7 +240,7 @@ async def get_image_data(
             },
         )
 
-    if img.status != "ready" or not img.image_url:
+    if img.status != "ready":
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
@@ -231,9 +249,28 @@ async def get_image_data(
             },
         )
 
-    logger.info("Image data requested", image_id=str(image_id), image_url=img.image_url)
+    if img.image_data:
+        logger.info("Serving binary image data", image_id=str(image_id))
+        return Response(
+            content=img.image_data,
+            media_type="image/webp",
+            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        )
 
-    return Response(
-        status_code=status.HTTP_302_FOUND,
-        headers={"Location": img.image_url, "Cache-Control": "public, max-age=31536000, immutable"},
+    if img.image_url:
+        logger.info("Redirecting to CDN image URL", image_id=str(image_id), image_url=img.image_url)
+        return Response(
+            status_code=status.HTTP_302_FOUND,
+            headers={
+                "Location": img.image_url,
+                "Cache-Control": "public, max-age=3600",
+            },
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail={
+            "error": "image_not_available",
+            "message": f"Image {image_id} has no data or URL available",
+        },
     )
