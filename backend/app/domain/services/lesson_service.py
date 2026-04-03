@@ -7,6 +7,7 @@ from datetime import datetime
 
 import structlog
 from sqlalchemy import and_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.claude_service import ClaudeService
@@ -418,8 +419,29 @@ class LessonGenerationService:
             validated=False,
         )
 
-        session.add(cached_content)
-        await session.commit()
+        try:
+            session.add(cached_content)
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            logger.warning(
+                "Lesson already cached by concurrent request, skipping insert",
+                module_id=str(lesson_response.module_id),
+                unit_id=lesson_response.unit_id,
+                language=lesson_response.language,
+            )
+            existing = await self._get_cached_lesson(
+                lesson_response.module_id,
+                lesson_response.unit_id,
+                lesson_response.language,
+                lesson_response.country_context,
+                lesson_response.level,
+                session,
+            )
+            if existing:
+                lesson_response.id = existing.id
+                lesson_response.cached = True
+            return
 
         logger.info(
             "Cached lesson content",
@@ -881,8 +903,29 @@ class CaseStudyGenerationService:
             validated=False,
         )
 
-        session.add(cached_content)
-        await session.commit()
+        try:
+            session.add(cached_content)
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            logger.warning(
+                "Case study already cached by concurrent request, skipping insert",
+                module_id=str(case_study_response.module_id),
+                unit_id=case_study_response.unit_id,
+                language=case_study_response.language,
+            )
+            existing = await self._get_cached_case_study(
+                case_study_response.module_id,
+                case_study_response.unit_id,
+                case_study_response.language,
+                case_study_response.country_context,
+                case_study_response.level,
+                session,
+            )
+            if existing:
+                case_study_response.id = existing.id
+                case_study_response.cached = True
+            return
 
         logger.info(
             "Cached case study content",

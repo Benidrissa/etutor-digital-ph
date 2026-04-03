@@ -5,6 +5,7 @@ import uuid
 
 import structlog
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.claude_service import ClaudeService
@@ -232,9 +233,31 @@ class FlashcardGenerationService:
             validated=False,
         )
 
-        session.add(generated_content)
-        await session.commit()
-        await session.refresh(generated_content)
+        try:
+            session.add(generated_content)
+            await session.commit()
+            await session.refresh(generated_content)
+        except IntegrityError:
+            await session.rollback()
+            logger.warning(
+                "Flashcard set already cached by concurrent request, fetching existing",
+                module_id=str(module_id),
+                language=language,
+                country=country,
+            )
+            existing_query = select(GeneratedContent).where(
+                GeneratedContent.module_id == module_id,
+                GeneratedContent.content_type == "flashcard",
+                GeneratedContent.language == language,
+                GeneratedContent.country_context == country,
+                GeneratedContent.level == level,
+            )
+            existing_result = await session.execute(existing_query)
+            existing = existing_result.scalar_one_or_none()
+            if existing:
+                logger.info("Returning existing flashcard set", content_id=str(existing.id))
+                return existing
+            raise
 
         logger.info("Flashcard set saved to database", content_id=str(content_id))
         return generated_content
