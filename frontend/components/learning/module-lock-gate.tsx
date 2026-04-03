@@ -10,6 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { getModuleProgress } from '@/lib/api';
 import { ModuleProgressOverlay } from '@/components/learning/module-progress-overlay';
+import { OfflineDownloadButton } from '@/components/modules/offline-download-button';
+import { ModuleOfflineBadge } from '@/components/modules/unit-list';
 import type { Module } from '@/lib/modules';
 
 interface ModuleLockGateProps {
@@ -173,6 +175,11 @@ export function ModuleLockGate({ moduleId, moduleData, prerequisites, language }
                 {t('viewFlashcards')}
               </Button>
             </Link>
+            <OfflineDownloadButton
+              moduleId={moduleId}
+              moduleTitle={moduleData.title[language]}
+            />
+            <ModuleOfflineBadge moduleId={moduleId} />
           </div>
         </div>
       </div>

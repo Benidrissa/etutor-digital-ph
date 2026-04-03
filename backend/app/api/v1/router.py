@@ -6,6 +6,7 @@ from app.api.v1.flashcards import router as flashcards_router
 from app.api.v1.health import router as health_router
 from app.api.v1.images import router as images_router
 from app.api.v1.local_auth import router as local_auth_router
+from app.api.v1.modules import router as modules_router
 from app.api.v1.placement import router as placement_router
 from app.api.v1.progress import router as progress_router
 from app.api.v1.quiz import router as quiz_router
@@ -24,3 +25,4 @@ api_v1_router.include_router(quiz_router)
 api_v1_router.include_router(flashcards_router)
 api_v1_router.include_router(tutor_router)
 api_v1_router.include_router(images_router)
+api_v1_router.include_router(modules_router)

@@ -747,5 +747,32 @@
       "student": "Student",
       "other": "Other"
     }
+  },
+  "OfflineDownload": {
+    "download": "Download for offline",
+    "availableOffline": "Available offline ✓",
+    "resumeDownload": "Resume ({pct}% downloaded)",
+    "loading": "Loading...",
+    "confirmTitle": "Download this module?",
+    "confirmDesc": "This module ({title}) is approximately {size}. It will be available offline.",
+    "wifiOnly": "Wi-Fi only (recommended)",
+    "resumeInfo": "Resuming download ({pct}% already downloaded)",
+    "cancel": "Cancel",
+    "close": "Close",
+    "retry": "Retry",
+    "remove": "Remove download",
+    "limitTitle": "Limit reached",
+    "limitDesc": "You can only download {max} modules for offline use. Remove a module to download another.",
+    "downloadingTitle": "Downloading…",
+    "downloadingDesc": "Each unit downloads independently and is immediately usable.",
+    "doneTitle": "Download complete!",
+    "doneDesc": "The module {title} is now available offline.",
+    "removeTitle": "Remove download?",
+    "removeDesc": "The module {title} will be removed from your offline storage.",
+    "errorTitle": "Download error",
+    "errorWifiRequired": "Wi-Fi required. Connect to Wi-Fi or disable the Wi-Fi only option.",
+    "errorDownloadFailed": "Download failed. Check your connection and try again.",
+    "badgeAvailable": "Offline ✓",
+    "badgePartial": "Partial ({pct}%)"
   }
 }

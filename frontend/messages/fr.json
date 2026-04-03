@@ -747,5 +747,32 @@
       "student": "Étudiant/e",
       "other": "Autre"
     }
+  },
+  "OfflineDownload": {
+    "download": "Télécharger pour hors-ligne",
+    "availableOffline": "Disponible hors-ligne ✓",
+    "resumeDownload": "Reprendre ({pct}% téléchargé)",
+    "loading": "Chargement...",
+    "confirmTitle": "Télécharger ce module ?",
+    "confirmDesc": "Ce module ({title}) pèse environ {size}. Il sera disponible hors-ligne.",
+    "wifiOnly": "Wi-Fi uniquement (recommandé)",
+    "resumeInfo": "Reprise du téléchargement ({pct}% déjà téléchargé)",
+    "cancel": "Annuler",
+    "close": "Fermer",
+    "retry": "Réessayer",
+    "remove": "Supprimer le téléchargement",
+    "limitTitle": "Limite atteinte",
+    "limitDesc": "Vous ne pouvez télécharger que {max} modules pour l'utilisation hors-ligne. Supprimez un module pour en télécharger un autre.",
+    "downloadingTitle": "Téléchargement en cours…",
+    "downloadingDesc": "Chaque unité est téléchargée indépendamment et utilisable immédiatement.",
+    "doneTitle": "Téléchargement terminé !",
+    "doneDesc": "Le module {title} est maintenant disponible hors-ligne.",
+    "removeTitle": "Supprimer le téléchargement ?",
+    "removeDesc": "Le module {title} sera supprimé de votre stockage hors-ligne.",
+    "errorTitle": "Erreur de téléchargement",
+    "errorWifiRequired": "Wi-Fi requis. Connectez-vous au Wi-Fi ou désactivez l'option Wi-Fi uniquement.",
+    "errorDownloadFailed": "Le téléchargement a échoué. Vérifiez votre connexion et réessayez.",
+    "badgeAvailable": "Hors-ligne ✓",
+    "badgePartial": "Partiel ({pct}%)"
   }
 }
