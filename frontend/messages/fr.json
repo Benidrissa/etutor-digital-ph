@@ -35,7 +35,9 @@
     "quiz": "Quiz",
     "caseStudy": "Étude de cas",
     "logout": "Déconnexion",
-    "logoutDescription": "Se déconnecter de votre compte"
+    "logoutDescription": "Se déconnecter de votre compte",
+    "admin": "Administration",
+    "adminDescription": "Accéder au panneau d'administration"
   },
   "Auth": {
     "login": "Se connecter",
@@ -746,6 +748,17 @@
       "health_program_manager": "Gestionnaire de programmes de santé",
       "student": "Étudiant/e",
       "other": "Autre"
+    }
+  },
+  "Roles": {
+    "user": "Utilisateur",
+    "expert": "Expert",
+    "admin": "Administrateur"
+  },
+  "Admin": {
+    "users": {
+      "title": "Gestion des utilisateurs",
+      "subtitle": "Gérer les comptes et les rôles des utilisateurs"
     }
   }
 }

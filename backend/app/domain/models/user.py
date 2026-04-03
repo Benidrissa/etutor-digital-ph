@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+import enum
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, String, func
+from sqlalchemy import DateTime, Enum, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.models.base import Base
+
+
+class UserRole(enum.StrEnum):
+    user = "user"
+    expert = "expert"
+    admin = "admin"
+
 
 if TYPE_CHECKING:
     from app.domain.models.auth import EmailOTP, MagicLink, RefreshToken, TOTPSecret
@@ -31,6 +39,9 @@ class User(Base):
     current_level: Mapped[int] = mapped_column(server_default="1")
     streak_days: Mapped[int] = mapped_column(server_default="0")
     avatar_url: Mapped[str | None] = mapped_column(String)
+    role: Mapped[UserRole] = mapped_column(
+        Enum(UserRole, name="userrole"), server_default="user", default=UserRole.user
+    )
     last_active: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
