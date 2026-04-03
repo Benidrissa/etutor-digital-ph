@@ -1,7 +1,7 @@
 """Add admin_syllabus_audit_log table for modification history.
 
-Revision ID: 014_add_admin_syllabus_audit_log
-Revises: 013_add_learner_memory_table
+Revision ID: 021_add_admin_syllabus_audit_log
+Revises: 019_hash_email_otp_codes
 Create Date: 2026-04-02
 """
 
@@ -11,8 +11,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "014_add_admin_syllabus_audit_log"
-down_revision: str | None = "013_add_learner_memory_table"
+revision: str = "021_add_admin_syllabus_audit_log"
+down_revision: str | None = "019_hash_email_otp_codes"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
