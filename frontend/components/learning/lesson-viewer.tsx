@@ -17,12 +17,8 @@ import { apiFetch, checkUnitQuizPassed } from '@/lib/api';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { useRouter } from 'next/navigation';
 import { useLocale } from 'next-intl';
-import {
-  getContentFromDB,
-  saveContentToDB,
-  queueOfflineAction,
-  isOnline,
-} from '@/lib/offline/content-loader';
+import { getOfflineContent, upsertOfflineContent, addOfflineAction } from '@/lib/offline/db';
+import { useNetworkStatus } from '@/lib/hooks/use-network-status';
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 3 * 60 * 1000;
@@ -84,12 +80,14 @@ export function LessonViewer({
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollStartRef = useRef<number>(0);
 
+  const { isOnline } = useNetworkStatus();
   const currentUser = useCurrentUser();
   const country = countryContext || currentUser?.country || 'SN';
   const router = useRouter();
   const locale = useLocale();
 
   const t = useTranslations('LessonViewer');
+  const tOffline = useTranslations('Offline');
 
   useEffect(() => {
     const checkQuizStatus = async () => {
@@ -105,7 +103,7 @@ export function LessonViewer({
     checkQuizStatus();
   }, [moduleId, unitId]);
 
-  const pollStatus = (taskId: string, startTime: number) => {
+  const pollStatus = (taskId: string, startTime: number, cacheKey: string) => {
     if (Date.now() - startTime > POLL_TIMEOUT_MS) {
       setIsGenerating(false);
       setIsLoading(false);
@@ -129,13 +127,21 @@ export function LessonViewer({
           setIsLoading(false);
           setIsRefreshing(false);
           setForceRegenerate(false);
+          await upsertOfflineContent({
+            unitId: cacheKey,
+            moduleId,
+            contentType: 'lesson',
+            locale: language,
+            content: lessonRes,
+            cachedAt: Date.now(),
+          });
         } else if (statusRes.status === 'failed') {
           setError(t('generationFailed'));
           setIsGenerating(false);
           setIsLoading(false);
           setIsRefreshing(false);
         } else {
-          pollStatus(taskId, startTime);
+          pollStatus(taskId, startTime, cacheKey);
         }
       } catch {
         setError(t('loadError'));
@@ -165,16 +171,16 @@ export function LessonViewer({
         lessonStartTime.current = Date.now();
 
         if (!forceRegenerate) {
-          const cached = await getContentFromDB<LessonData>('lessons', cacheKey);
+          const cached = await getOfflineContent(cacheKey);
           if (cached) {
-            setLessonData(cached);
+            setLessonData(cached.content as LessonData);
             setServedFromCache(true);
             setIsLoading(false);
             return;
           }
         }
 
-        if (!isOnline()) {
+        if (!isOnline) {
           setOfflineUnavailable(true);
           setIsLoading(false);
           return;
@@ -189,7 +195,7 @@ export function LessonViewer({
           setIsLoading(false);
           setIsGenerating(true);
           pollStartRef.current = Date.now();
-          pollStatus((res as GeneratingResponse).task_id, pollStartRef.current);
+          pollStatus((res as GeneratingResponse).task_id, pollStartRef.current, cacheKey);
         } else {
           const lesson = res as LessonData;
           setLessonData(lesson);
@@ -197,7 +203,14 @@ export function LessonViewer({
           setIsLoading(false);
           setIsRefreshing(false);
           setForceRegenerate(false);
-          await saveContentToDB('lessons', { ...lesson, id: cacheKey });
+          await upsertOfflineContent({
+            unitId: cacheKey,
+            moduleId,
+            contentType: 'lesson',
+            locale: language,
+            content: lesson,
+            cachedAt: Date.now(),
+          });
         }
       } catch (err) {
         console.error('Error loading lesson:', err);
@@ -219,9 +232,9 @@ export function LessonViewer({
 
   const handleValidateWithQuiz = async () => {
     const timeSpent = Math.floor((Date.now() - lessonStartTime.current) / 1000);
-    if (!isOnline()) {
-      await queueOfflineAction({
-        type: 'lesson_progress',
+    if (!isOnline) {
+      await addOfflineAction({
+        actionType: 'lesson_complete',
         payload: { module_id: moduleId, unit_id: unitId, time_spent_seconds: timeSpent },
       });
     }
@@ -276,8 +289,8 @@ export function LessonViewer({
         <Card className="border-gray-200">
           <CardContent className="p-6 text-center">
             <WifiOff className="w-8 h-8 text-gray-400 mx-auto mb-3" />
-            <div className="text-gray-800 font-medium mb-2">{t('offlineUnavailableTitle')}</div>
-            <p className="text-gray-600">{t('offlineUnavailable')}</p>
+            <div className="text-gray-800 font-medium mb-2">{tOffline('unavailableTitle')}</div>
+            <p className="text-gray-600">{tOffline('unavailableLesson')}</p>
           </CardContent>
         </Card>
       </div>
@@ -325,7 +338,7 @@ export function LessonViewer({
             {servedFromCache && (
               <Badge variant="secondary" className="flex items-center gap-1">
                 <WifiOff className="w-3 h-3" />
-                {t('offlineBadge')}
+                {tOffline('badge')}
               </Badge>
             )}
           </div>

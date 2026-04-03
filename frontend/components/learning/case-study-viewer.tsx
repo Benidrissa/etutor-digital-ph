@@ -17,12 +17,8 @@ import { LessonSkeleton } from './lesson-skeleton';
 import { SourceCitations } from './source-citations';
 import { apiFetch } from '@/lib/api';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
-import {
-  getContentFromDB,
-  saveContentToDB,
-  queueOfflineAction,
-  isOnline,
-} from '@/lib/offline/content-loader';
+import { getOfflineContent, upsertOfflineContent, addOfflineAction } from '@/lib/offline/db';
+import { useNetworkStatus } from '@/lib/hooks/use-network-status';
 
 interface CaseStudyContent {
   aof_context: string;
@@ -81,12 +77,14 @@ export function CaseStudyViewer({
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollStartRef = useRef<number>(0);
 
+  const { isOnline } = useNetworkStatus();
   const currentUser = useCurrentUser();
   const country = countryContext || currentUser?.country || 'SN';
 
   const t = useTranslations('CaseStudyViewer');
+  const tOffline = useTranslations('Offline');
 
-  const pollStatus = (taskId: string, startTime: number) => {
+  const pollStatus = (taskId: string, startTime: number, cacheKey: string) => {
     if (Date.now() - startTime > POLL_TIMEOUT_MS) {
       setIsGenerating(false);
       setIsLoading(false);
@@ -110,13 +108,21 @@ export function CaseStudyViewer({
           setIsLoading(false);
           setIsRefreshing(false);
           setForceRegenerate(false);
+          await upsertOfflineContent({
+            unitId: cacheKey,
+            moduleId,
+            contentType: 'case_study',
+            locale: language,
+            content: caseRes,
+            cachedAt: Date.now(),
+          });
         } else if (statusRes.status === 'failed') {
           setError(t('generationFailed'));
           setIsGenerating(false);
           setIsLoading(false);
           setIsRefreshing(false);
         } else {
-          pollStatus(taskId, startTime);
+          pollStatus(taskId, startTime, cacheKey);
         }
       } catch {
         setError(t('loadError'));
@@ -145,16 +151,16 @@ export function CaseStudyViewer({
         setOfflineUnavailable(false);
 
         if (!forceRegenerate) {
-          const cached = await getContentFromDB<CaseStudyData>('case_studies', cacheKey);
+          const cached = await getOfflineContent(cacheKey);
           if (cached) {
-            setCaseStudyData(cached);
+            setCaseStudyData(cached.content as CaseStudyData);
             setServedFromCache(true);
             setIsLoading(false);
             return;
           }
         }
 
-        if (!isOnline()) {
+        if (!isOnline) {
           setOfflineUnavailable(true);
           setIsLoading(false);
           return;
@@ -169,7 +175,7 @@ export function CaseStudyViewer({
           setIsLoading(false);
           setIsGenerating(true);
           pollStartRef.current = Date.now();
-          pollStatus((res as GeneratingResponse).task_id, pollStartRef.current);
+          pollStatus((res as GeneratingResponse).task_id, pollStartRef.current, cacheKey);
         } else {
           const caseStudy = res as CaseStudyData;
           setCaseStudyData(caseStudy);
@@ -177,7 +183,14 @@ export function CaseStudyViewer({
           setIsLoading(false);
           setIsRefreshing(false);
           setForceRegenerate(false);
-          await saveContentToDB('case_studies', { ...caseStudy, id: cacheKey });
+          await upsertOfflineContent({
+            unitId: cacheKey,
+            moduleId,
+            contentType: 'case_study',
+            locale: language,
+            content: caseStudy,
+            cachedAt: Date.now(),
+          });
         }
       } catch {
         setError(t('loadError'));
@@ -198,9 +211,9 @@ export function CaseStudyViewer({
 
   const handleMarkComplete = async () => {
     try {
-      if (!isOnline()) {
-        await queueOfflineAction({
-          type: 'case_study_complete',
+      if (!isOnline) {
+        await addOfflineAction({
+          actionType: 'case_study_complete',
           payload: { module_id: moduleId, unit_id: unitId },
         });
         setIsCompleted(true);
@@ -275,8 +288,8 @@ export function CaseStudyViewer({
         <Card className="border-gray-200">
           <CardContent className="p-6 text-center">
             <WifiOff className="w-8 h-8 text-gray-400 mx-auto mb-3" />
-            <div className="text-gray-800 font-medium mb-2">{t('offlineUnavailableTitle')}</div>
-            <p className="text-gray-600">{t('offlineUnavailable')}</p>
+            <div className="text-gray-800 font-medium mb-2">{tOffline('unavailableTitle')}</div>
+            <p className="text-gray-600">{tOffline('unavailableCaseStudy')}</p>
           </CardContent>
         </Card>
       </div>
@@ -326,7 +339,7 @@ export function CaseStudyViewer({
             {servedFromCache && (
               <Badge variant="secondary" className="flex items-center gap-1">
                 <WifiOff className="w-3 h-3" />
-                {t('offlineBadge')}
+                {tOffline('badge')}
               </Badge>
             )}
           </div>

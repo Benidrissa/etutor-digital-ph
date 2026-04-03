@@ -5,7 +5,8 @@ import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { queueOfflineAction, isOnline } from '@/lib/offline/content-loader';
+import { addOfflineAction } from '@/lib/offline/db';
+import { useNetworkStatus } from '@/lib/hooks/use-network-status';
 
 interface FlashcardData {
   id: string;
@@ -45,6 +46,7 @@ export function FlashcardDeck({
   language = 'fr' 
 }: FlashcardDeckProps) {
   const t = useTranslations('Flashcards');
+  const { isOnline } = useNetworkStatus();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [sessionStartTime] = useState(() => Date.now());
@@ -74,9 +76,9 @@ export function FlashcardDeck({
   const handleRating = async (rating: Rating) => {
     if (!currentCard) return;
 
-    if (!isOnline()) {
-      await queueOfflineAction({
-        type: 'flashcard_review',
+    if (!isOnline) {
+      await addOfflineAction({
+        actionType: 'flashcard_review',
         payload: { card_id: currentCard.id, review_id: currentCard.review_id, rating },
       });
     }

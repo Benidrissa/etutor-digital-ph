@@ -14,7 +14,8 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import type { Quiz, QuizAnswerSubmission, QuizAttemptResponse } from '@/lib/api';
 import { submitQuizAttempt } from '@/lib/api';
-import { queueOfflineAction, isOnline } from '@/lib/offline/content-loader';
+import { addOfflineAction } from '@/lib/offline/db';
+import { useNetworkStatus } from '@/lib/hooks/use-network-status';
 
 interface QuizInterfaceProps {
   quiz: Quiz;
@@ -30,6 +31,8 @@ interface QuestionState {
 
 export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps) {
   const t = useTranslations('Quiz');
+  const tOffline = useTranslations('Offline');
+  const { isOnline } = useNetworkStatus();
   
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [questionStates, setQuestionStates] = useState<QuestionState[]>(
@@ -109,14 +112,15 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
         time_taken_seconds: questionStates[index].timeSpentSeconds,
       }));
 
-      if (!isOnline()) {
+      if (!isOnline) {
         const correctCount = quiz.content.questions.reduce((acc, question, index) => {
           return acc + (questionStates[index].selectedOption === question.correct_answer ? 1 : 0);
         }, 0);
         const score = Math.round((correctCount / quiz.content.questions.length) * 100);
+        const passThreshold = quiz.content.passing_score;
 
-        await queueOfflineAction({
-          type: 'quiz_result',
+        await addOfflineAction({
+          actionType: 'quiz_answer',
           payload: {
             quiz_id: quiz.id,
             answers: answers.map((a) => ({ ...a })),
@@ -131,11 +135,11 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
           attempt_id: `offline-${Date.now()}`,
           quiz_id: quiz.id,
           score,
-          passed: score >= 80,
+          passed: score >= passThreshold,
           correct_answers: correctCount,
           total_questions: quiz.content.questions.length,
           total_time_seconds: totalTimeSeconds,
-          lesson_validated: score >= 80,
+          lesson_validated: score >= passThreshold,
           attempted_at: new Date().toISOString(),
           results: quiz.content.questions.map((question, i) => ({
             question_id: question.id,
@@ -163,7 +167,7 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
     } finally {
       setIsSubmitting(false);
     }
-  }, [quiz, questionStates, startTime, isSubmitting, onComplete, onError, t]);
+  }, [quiz, questionStates, startTime, isSubmitting, isOnline, onComplete, onError, t]);
 
   const handleNextQuestion = useCallback(() => {
     if (currentQuestionIndex < totalQuestions - 1) {
@@ -185,10 +189,10 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
   
   return (
     <div className="max-w-4xl mx-auto p-4 space-y-6">
-      {!isOnline() && (
+      {!isOnline && (
         <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-4 py-3 text-sm">
           <WifiOff className="w-4 h-4 flex-shrink-0" />
-          <span>{t('offlineBanner')}</span>
+          <span>{tOffline('banner')}</span>
         </div>
       )}
       {/* Progress Header */}
