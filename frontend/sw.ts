@@ -1,5 +1,11 @@
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
-import { Serwist, NetworkFirst, CacheFirst, StaleWhileRevalidate } from "serwist";
+import {
+  Serwist,
+  NetworkFirst,
+  CacheFirst,
+  StaleWhileRevalidate,
+  ExpirationPlugin,
+} from "serwist";
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -8,6 +14,8 @@ declare global {
 }
 
 declare const self: ServiceWorkerGlobalScope;
+
+const DAY_IN_SECONDS = 24 * 60 * 60;
 
 const serwist = new Serwist({
   precacheEntries: self.__SW_MANIFEST,
@@ -20,6 +28,10 @@ const serwist = new Serwist({
       handler: new CacheFirst({
         cacheName: "google-fonts",
         plugins: [
+          new ExpirationPlugin({
+            maxEntries: 30,
+            maxAgeSeconds: 365 * DAY_IN_SECONDS,
+          }),
           {
             cacheWillUpdate: async ({ response }) => {
               if (response && response.status === 200) return response;
@@ -34,12 +46,24 @@ const serwist = new Serwist({
       matcher: /\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/i,
       handler: new CacheFirst({
         cacheName: "static-images",
+        plugins: [
+          new ExpirationPlugin({
+            maxEntries: 100,
+            maxAgeSeconds: 30 * DAY_IN_SECONDS,
+          }),
+        ],
       }),
     },
     {
       matcher: /\.(?:js|css|woff2|woff|ttf|eot)$/i,
       handler: new CacheFirst({
         cacheName: "static-assets",
+        plugins: [
+          new ExpirationPlugin({
+            maxEntries: 200,
+            maxAgeSeconds: 30 * DAY_IN_SECONDS,
+          }),
+        ],
       }),
     },
     {
@@ -51,6 +75,12 @@ const serwist = new Serwist({
       },
       handler: new StaleWhileRevalidate({
         cacheName: "api-responses",
+        plugins: [
+          new ExpirationPlugin({
+            maxEntries: 50,
+            maxAgeSeconds: DAY_IN_SECONDS,
+          }),
+        ],
       }),
     },
     {

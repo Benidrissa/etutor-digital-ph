@@ -50,7 +50,7 @@ interface SantePubliqueDB extends DBSchema {
     indexes: { by_status: ModuleDownloadStatus };
   };
   offline_content: {
-    key: string;
+    key: [string, string];
     value: OfflineContent;
     indexes: {
       by_module: string;
@@ -65,7 +65,7 @@ interface SantePubliqueDB extends DBSchema {
 }
 
 const DB_NAME = "santepublique-offline";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbInstance: IDBPDatabase<SantePubliqueDB> | null = null;
 
@@ -73,23 +73,30 @@ export async function getDB(): Promise<IDBPDatabase<SantePubliqueDB>> {
   if (dbInstance) return dbInstance;
 
   dbInstance = await openDB<SantePubliqueDB>(DB_NAME, DB_VERSION, {
-    upgrade(db) {
-      const modulesStore = db.createObjectStore("offline_modules", {
-        keyPath: "moduleId",
-      });
-      modulesStore.createIndex("by_status", "status");
+    upgrade(db, oldVersion) {
+      if (oldVersion < 1) {
+        const modulesStore = db.createObjectStore("offline_modules", {
+          keyPath: "moduleId",
+        });
+        modulesStore.createIndex("by_status", "status");
 
-      const contentStore = db.createObjectStore("offline_content", {
-        keyPath: "unitId",
-      });
-      contentStore.createIndex("by_module", "moduleId");
-      contentStore.createIndex("by_content_type", "contentType");
+        const actionsStore = db.createObjectStore("offline_actions", {
+          keyPath: "id",
+          autoIncrement: true,
+        });
+        actionsStore.createIndex("by_synced", "synced");
+      }
 
-      const actionsStore = db.createObjectStore("offline_actions", {
-        keyPath: "id",
-        autoIncrement: true,
-      });
-      actionsStore.createIndex("by_synced", "synced");
+      if (oldVersion < 2) {
+        if (db.objectStoreNames.contains("offline_content")) {
+          db.deleteObjectStore("offline_content");
+        }
+        const contentStore = db.createObjectStore("offline_content", {
+          keyPath: ["unitId", "locale"],
+        });
+        contentStore.createIndex("by_module", "moduleId");
+        contentStore.createIndex("by_content_type", "contentType");
+      }
     },
   });
 
@@ -123,10 +130,11 @@ export async function getOfflineModulesByStatus(
 }
 
 export async function getOfflineContent(
-  unitId: string
+  unitId: string,
+  locale: "fr" | "en"
 ): Promise<OfflineContent | undefined> {
   const db = await getDB();
-  return db.get("offline_content", unitId);
+  return db.get("offline_content", [unitId, locale]);
 }
 
 export async function upsertOfflineContent(

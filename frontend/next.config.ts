@@ -1,22 +1,20 @@
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 import { withSentryConfig } from "@sentry/nextjs";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const withSerwist = require("@serwist/next").default({
+  swSrc: "sw.ts",
+  swDest: "public/sw.js",
+  disable:
+    process.env.NODE_ENV === "development" ||
+    process.env.NODE_ENV === "test",
+});
 
 const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
 
 const nextConfig: NextConfig = {
   output: "standalone",
 };
-
-const withSerwist =
-  process.env.NODE_ENV !== "test"
-    ? (await import("@serwist/next")).default({
-        swSrc: "sw.ts",
-        swDest: "public/sw.js",
-        reloadOnOnline: true,
-        disable: process.env.NODE_ENV === "development",
-      })
-    : (config: NextConfig) => config;
 
 export default withSentryConfig(withNextIntl(withSerwist(nextConfig)), {
   org: process.env.SENTRY_ORG,
