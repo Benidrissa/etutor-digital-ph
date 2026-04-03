@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
 import { X } from 'lucide-react';
+import Image from 'next/image';
 import { getLessonImageStatus } from '@/lib/api';
 import type { LessonImageStatus } from '@/lib/api';
 
@@ -91,11 +92,13 @@ export function LessonImage({ lessonId, language }: LessonImageProps) {
           aria-label={t('imageViewFullscreen')}
           onClick={() => setIsFullscreen(true)}
         >
-          <img
+          <Image
             src={imageUrl}
             alt={altText}
             width={512}
+            height={512}
             loading="lazy"
+            sizes="(max-width: 640px) 100vw, 512px"
             className={`w-full h-auto object-cover rounded-lg transition-opacity duration-300 ${
               isVisible ? 'opacity-100' : 'opacity-0'
             }`}
