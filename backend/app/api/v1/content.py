@@ -24,12 +24,15 @@ from app.api.v1.schemas.content import (
     FlashcardSetResponse,
     LessonGenerationRequest,
     LessonResponse,
+    ModuleUnitsResponse,
+    PublicUnitDetail,
     QuizGenerationRequest,
     QuizResponse,
     StreamingEvent,
 )
 from app.domain.models.content import GeneratedContent
 from app.domain.models.module import Module
+from app.domain.models.module_unit import ModuleUnit
 from app.domain.services.flashcard_service import FlashcardGenerationService
 from app.domain.services.lesson_service import CaseStudyGenerationService, LessonGenerationService
 from app.domain.services.progress_service import ProgressService
@@ -1147,3 +1150,98 @@ async def stream_case_study_by_module_and_unit(
             "Access-Control-Allow-Headers": "Cache-Control",
         },
     )
+
+
+@router.get(
+    "/modules/{module_id}/units",
+    response_model=ModuleUnitsResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        404: {"model": ErrorResponse, "description": "Module not found"},
+        500: {"model": ErrorResponse, "description": "Internal error"},
+    },
+)
+async def get_module_units(
+    module_id: str,
+    session: AsyncSession = Depends(get_db),
+) -> ModuleUnitsResponse:
+    """
+    Return module info and its units without progress data (no auth required).
+
+    Intended as a public fallback for unauthenticated users viewing module detail
+    pages.  Progress data stays behind authentication — this endpoint only returns
+    the curriculum structure so the page is never empty.
+
+    **Parameters:**
+    - **module_id**: Module identifier (code like "M01" or UUID string)
+    """
+    try:
+        resolved_module_id = await _resolve_module_id(module_id, session)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "module_not_found", "message": str(e)},
+        )
+
+    try:
+        module_query = select(Module).where(Module.id == resolved_module_id)
+        module_result = await session.execute(module_query)
+        module = module_result.scalar_one_or_none()
+
+        if not module:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "module_not_found",
+                    "message": f"Module {module_id} not found",
+                },
+            )
+
+        units_query = (
+            select(ModuleUnit)
+            .where(ModuleUnit.module_id == resolved_module_id)
+            .order_by(ModuleUnit.order_index)
+        )
+        units_result = await session.execute(units_query)
+        units = units_result.scalars().all()
+
+        public_units = [
+            PublicUnitDetail(
+                id=str(u.id),
+                unit_number=u.unit_number,
+                title_fr=u.title_fr,
+                title_en=u.title_en,
+                description_fr=u.description_fr,
+                description_en=u.description_en,
+                estimated_minutes=u.estimated_minutes,
+                order_index=u.order_index,
+            )
+            for u in units
+        ]
+
+        logger.info(
+            "Public module units requested",
+            module_id=str(resolved_module_id),
+            units_count=len(public_units),
+        )
+
+        return ModuleUnitsResponse(
+            module_id=str(module.id),
+            module_number=module.module_number,
+            level=module.level,
+            title_fr=module.title_fr,
+            title_en=module.title_en,
+            description_fr=module.description_fr,
+            description_en=module.description_en,
+            estimated_hours=module.estimated_hours,
+            units=public_units,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to fetch module units", module_id=module_id, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "internal_error", "message": "Failed to fetch module units"},
+        )
