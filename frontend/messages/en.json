@@ -747,5 +747,9 @@
       "student": "Student",
       "other": "Other"
     }
+  },
+  "Offline": {
+    "offline": "You are offline",
+    "reconnected": "Back online"
   }
 }

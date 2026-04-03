@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -231,6 +231,20 @@ class LocalAuthService:
             if not totp_record:
                 raise AuthenticationError("MFA not set up for this account")
 
+            _MAX_FAILED = 10
+            _LOCKOUT_MINUTES = 15
+
+            # Check account lockout
+            if (
+                totp_record.locked_until is not None
+                and totp_record.locked_until > datetime.utcnow()
+            ):
+                remaining = int((totp_record.locked_until - datetime.utcnow()).total_seconds() / 60)
+                raise AuthenticationError(
+                    f"Account temporarily locked due to too many failed attempts. "
+                    f"Try again in {remaining} minute(s)."
+                )
+
             # Try backup code first, then TOTP
             is_valid = False
             if len(totp_code) == 8:  # Backup code
@@ -243,7 +257,22 @@ class LocalAuthService:
                 is_valid = self.totp_service.verify_token(totp_record.secret, totp_code)
 
             if not is_valid:
+                totp_record.failed_attempts = (totp_record.failed_attempts or 0) + 1
+                if totp_record.failed_attempts >= _MAX_FAILED:
+                    totp_record.locked_until = datetime.utcnow() + timedelta(
+                        minutes=_LOCKOUT_MINUTES
+                    )
+                    totp_record.failed_attempts = 0
+                    await self.db.commit()
+                    raise AuthenticationError(
+                        f"Account locked for {_LOCKOUT_MINUTES} minutes after too many failed attempts."
+                    )
+                await self.db.commit()
                 raise AuthenticationError("Invalid authentication code")
+
+            # Reset failure counter on success
+            totp_record.failed_attempts = 0
+            totp_record.locked_until = None
 
             # Update user activity
             user.last_active = datetime.utcnow()
@@ -329,7 +358,7 @@ class LocalAuthService:
 
             # Clean up old magic links for this user
             await self.db.execute(
-                select(MagicLink).where(
+                delete(MagicLink).where(
                     and_(MagicLink.user_id == user.id, MagicLink.expires_at < datetime.utcnow())
                 )
             )
@@ -386,7 +415,7 @@ class LocalAuthService:
             magic_link.used_at = datetime.utcnow()
 
             # Remove existing TOTP setup
-            await self.db.execute(select(TOTPSecret).where(TOTPSecret.user_id == user.id))
+            await self.db.execute(delete(TOTPSecret).where(TOTPSecret.user_id == user.id))
 
             # Generate new TOTP setup
             totp_secret = self.totp_service.generate_secret()
@@ -502,7 +531,7 @@ class LocalAuthService:
             token_hash = self.jwt_service.hash_token(refresh_token)
 
             # Delete refresh token
-            await self.db.execute(select(RefreshToken).where(RefreshToken.token_hash == token_hash))
+            await self.db.execute(delete(RefreshToken).where(RefreshToken.token_hash == token_hash))
 
             await self.db.commit()
 

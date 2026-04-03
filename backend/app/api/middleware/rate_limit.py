@@ -59,15 +59,21 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return response
 
     def _get_client_ip(self, request: Request) -> str:
-        """Extract client IP from request headers."""
-        # Check for forwarded headers (behind proxy/load balancer)
+        """Extract client IP from request headers.
+
+        Uses the rightmost IP in X-Forwarded-For to prevent spoofing via
+        header injection. The rightmost IP is the one added by our trusted
+        proxy and cannot be forged by the client.
+        """
         forwarded_for = request.headers.get("X-Forwarded-For")
         if forwarded_for:
-            return forwarded_for.split(",")[0].strip()
+            ips = [ip.strip() for ip in forwarded_for.split(",")]
+            if ips:
+                return ips[-1]
 
         real_ip = request.headers.get("X-Real-IP")
         if real_ip:
-            return real_ip
+            return real_ip.strip()
 
         return request.client.host if request.client else "unknown"
 

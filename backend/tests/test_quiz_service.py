@@ -261,6 +261,35 @@ class TestGenerateQuizContent:
             )
 
 
+class TestRawResponseFallback:
+    def test_raises_on_raw_response_fallback(self, quiz_service):
+        raw_fallback = {
+            "content": "Here is your quiz: ...",
+            "type": "quiz",
+            "raw_response": True,
+        }
+        with pytest.raises(ValueError, match="Claude returned non-JSON text"):
+            quiz_service._validate_and_normalize_quiz(raw_fallback, "M01-U04", 10)
+
+    async def test_raises_when_claude_returns_raw_response(self, quiz_service, mock_claude_service):
+        raw_fallback = {
+            "content": "Here is your quiz: ...",
+            "type": "quiz",
+            "raw_response": True,
+        }
+        mock_claude_service.generate_structured_content = AsyncMock(return_value=raw_fallback)
+        module_id = uuid.uuid4()
+        with pytest.raises(ValueError, match="Invalid quiz format"):
+            await quiz_service._generate_quiz_content(
+                module_id=module_id,
+                unit_id="M01-U04",
+                language="fr",
+                country="senegal",
+                level=1,
+                num_questions=10,
+            )
+
+
 class TestBuildQuizPrompt:
     def test_returns_tuple_of_system_and_user(self, quiz_service):
         result = quiz_service._build_quiz_prompt(
@@ -317,3 +346,16 @@ class TestBuildQuizPrompt:
             num_questions=10,
         )
         assert "80.0" in user_message
+
+    def test_system_prompt_enforces_json_only(self, quiz_service):
+        system_prompt, _user_message = quiz_service._build_quiz_prompt(
+            context="context",
+            unit_id="M01-U04",
+            language="fr",
+            country="senegal",
+            level=1,
+            num_questions=10,
+        )
+        assert "CRITICAL" in system_prompt
+        assert "JSON" in system_prompt
+        assert "title" in system_prompt

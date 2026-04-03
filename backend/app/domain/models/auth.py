@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.models.base import Base
@@ -25,6 +25,8 @@ class TOTPSecret(Base):
     secret: Mapped[str] = mapped_column(String(64))  # Base32 encoded TOTP secret
     backup_codes: Mapped[str | None] = mapped_column(Text)  # JSON array of backup codes
     is_verified: Mapped[bool] = mapped_column(default=False)
+    failed_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -74,7 +76,7 @@ class EmailOTP(Base):
         ForeignKey("users.id"), index=True, nullable=True
     )  # Nullable for registration flow
     email: Mapped[str] = mapped_column(String(255), index=True)  # Store email for registration flow
-    code: Mapped[str] = mapped_column(String(6))  # 6-digit OTP code
+    code: Mapped[str] = mapped_column(String(64))  # SHA-256 hash of 6-digit OTP code
     purpose: Mapped[str] = mapped_column(String(20))  # "registration" or "login"
     attempts: Mapped[int] = mapped_column(default=0)  # Track verification attempts
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
