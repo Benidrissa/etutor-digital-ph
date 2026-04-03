@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, String, func
+from sqlalchemy import Boolean, DateTime, Enum, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.models.base import Base
@@ -42,6 +42,7 @@ class User(Base):
     role: Mapped[UserRole] = mapped_column(
         Enum(UserRole, name="userrole"), server_default="user", default=UserRole.user
     )
+    is_active: Mapped[bool] = mapped_column(Boolean, server_default="true", default=True)
     last_active: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

@@ -1,3 +1,4 @@
+from app.domain.models.audit_log import AuditLog
 from app.domain.models.auth import MagicLink, RefreshToken, TOTPSecret
 from app.domain.models.base import Base
 from app.domain.models.content import GeneratedContent
@@ -14,6 +15,7 @@ from app.domain.models.quiz import QuizAttempt
 from app.domain.models.user import User
 
 __all__ = [
+    "AuditLog",
     "Base",
     "DocumentChunk",
     "GeneratedContent",
