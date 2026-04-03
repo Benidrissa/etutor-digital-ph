@@ -6,8 +6,9 @@ from collections.abc import AsyncGenerator
 from uuid import UUID
 
 import structlog
+from celery.result import AsyncResult
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,15 +28,49 @@ from app.api.v1.schemas.content import (
     QuizResponse,
     StreamingEvent,
 )
+from app.domain.models.content import GeneratedContent
 from app.domain.models.module import Module
 from app.domain.services.flashcard_service import FlashcardGenerationService
 from app.domain.services.lesson_service import CaseStudyGenerationService, LessonGenerationService
 from app.domain.services.progress_service import ProgressService
 from app.domain.services.quiz_service import QuizService
 from app.infrastructure.config.settings import get_settings
+from app.tasks.content_generation import (
+    generate_case_study_task,
+    generate_lesson_task,
+)
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/content", tags=["content"])
+
+
+@router.get("/status/{task_id}", tags=["content"])
+async def get_generation_status(task_id: str) -> JSONResponse:
+    """Check the status of an async content generation task.
+
+    Returns:
+        JSON with status: pending | generating | complete | failed
+        On complete: content_id is included
+        On failed: error message is included
+    """
+    result = AsyncResult(task_id)
+    state = result.state
+
+    if state == "PENDING":
+        return JSONResponse({"status": "pending"})
+    elif state == "STARTED":
+        return JSONResponse({"status": "generating"})
+    elif state == "SUCCESS":
+        task_result = result.result or {}
+        if isinstance(task_result, dict) and task_result.get("status") == "failed":
+            return JSONResponse(
+                {"status": "failed", "error": task_result.get("error", "Unknown error")}
+            )
+        return JSONResponse({"status": "complete", "content_id": task_result.get("content_id")})
+    elif state == "FAILURE":
+        return JSONResponse({"status": "failed", "error": str(result.result)})
+
+    return JSONResponse({"status": state.lower()})
 
 
 async def _resolve_module_id(module_id: str, session: AsyncSession) -> UUID:
@@ -309,9 +344,10 @@ async def stream_lesson_generation(
 
 @router.get(
     "/lessons/{module_id}/{unit_id}",
-    response_model=LessonResponse,
     status_code=status.HTTP_200_OK,
     responses={
+        200: {"model": LessonResponse, "description": "Cached lesson returned"},
+        202: {"description": "Generation dispatched, poll /status/{task_id}"},
         400: {"model": ErrorResponse, "description": "Invalid request"},
         404: {"model": ErrorResponse, "description": "Module or unit not found"},
         500: {"model": ErrorResponse, "description": "Generation failed"},
@@ -327,16 +363,18 @@ async def get_or_generate_lesson_by_module_and_unit(
     lesson_service: LessonGenerationService = Depends(get_lesson_service),
     session: AsyncSession = Depends(get_db),
     current_user=Depends(get_optional_user),
-) -> LessonResponse:
+) -> JSONResponse:
     """
     Get or generate lesson content by module and unit ID.
 
-    This endpoint provides the main interface for the frontend to request lessons.
-    It accepts both module codes (e.g., "M01") and UUIDs, resolving codes to UUIDs
-    automatically via database lookup.
+    **Cache HIT (200):** Returns the cached lesson immediately.
 
-    When authenticated, accessing this endpoint marks the module as in_progress
-    in user_module_progress (FR-02.2).
+    **Cache MISS (202):** Dispatches a background Celery task and returns:
+    ```json
+    {"status": "generating", "task_id": "<uuid>", "message": "Content is being generated"}
+    ```
+    The client should poll `GET /api/v1/content/status/{task_id}` every 3 seconds.
+    When status is "complete", re-fetch this endpoint to get the cached content.
 
     **Parameters:**
     - **module_id**: Module identifier (code like "M01" or UUID string)
@@ -344,11 +382,7 @@ async def get_or_generate_lesson_by_module_and_unit(
     - **language**: Content language ("fr" or "en")
     - **level**: User's level (1-4)
     - **country**: Country context for examples (ISO 2-letter code)
-
-    **Returns:**
-    - Cached lesson if available
-    - Newly generated lesson if not cached
-    - Error if module/unit not found
+    - **force_regenerate**: Force new generation even if cached
     """
     try:
         logger.info(
@@ -360,43 +394,85 @@ async def get_or_generate_lesson_by_module_and_unit(
             country=country,
         )
 
-        # Resolve module_id to UUID if it's a module code
         resolved_module_id = await _resolve_module_id(module_id, session)
 
-        lesson_response = await lesson_service.get_or_generate_lesson(
-            module_id=resolved_module_id,
-            unit_id=unit_id,
-            language=language,
-            country=country,
-            level=level,
-            session=session,
-            force_regenerate=force_regenerate,
+        if not force_regenerate:
+            cached_query = (
+                select(GeneratedContent)
+                .where(GeneratedContent.module_id == resolved_module_id)
+                .where(GeneratedContent.content_type == "lesson")
+                .where(GeneratedContent.language == language)
+                .where(GeneratedContent.level == level)
+                .where(GeneratedContent.country_context == country)
+                .where(GeneratedContent.content["unit_id"].astext == unit_id)
+            )
+            cache_result = await session.execute(cached_query)
+            cached = cache_result.scalar_one_or_none()
+
+            if cached:
+                from app.api.v1.schemas.content import LessonContent as _LessonContent
+
+                content_dict = {k: v for k, v in cached.content.items() if k != "unit_id"}
+                lesson_response = LessonResponse(
+                    id=cached.id,
+                    module_id=cached.module_id,
+                    unit_id=cached.content.get("unit_id", unit_id),
+                    language=cached.language,
+                    level=cached.level,
+                    country_context=cached.country_context or country,
+                    content=_LessonContent(**content_dict),
+                    generated_at=cached.generated_at.isoformat(),
+                    cached=True,
+                )
+
+                if current_user is not None:
+                    try:
+                        from uuid import UUID as _UUID
+
+                        progress_service = ProgressService(session)
+                        await progress_service.track_lesson_access(
+                            user_id=_UUID(str(current_user.id)),
+                            module_id=resolved_module_id,
+                            lesson_id=lesson_response.id,
+                        )
+                    except Exception as track_err:
+                        logger.warning(
+                            "Failed to track lesson access (non-fatal)",
+                            error=str(track_err),
+                        )
+
+                logger.info(
+                    "Lesson cache hit",
+                    lesson_id=str(lesson_response.id),
+                )
+                return JSONResponse(
+                    content=lesson_response.model_dump(mode="json"),
+                    status_code=status.HTTP_200_OK,
+                )
+
+        task = generate_lesson_task.delay(
+            str(resolved_module_id),
+            unit_id,
+            language,
+            country,
+            level,
         )
-
-        # Track lesson access for authenticated users
-        if current_user is not None:
-            try:
-                from uuid import UUID as _UUID
-
-                progress_service = ProgressService(session)
-                await progress_service.track_lesson_access(
-                    user_id=_UUID(str(current_user.id)),
-                    module_id=resolved_module_id,
-                    lesson_id=lesson_response.id,
-                )
-            except Exception as track_err:
-                logger.warning(
-                    "Failed to track lesson access (non-fatal)",
-                    error=str(track_err),
-                )
 
         logger.info(
-            "Lesson request completed",
-            lesson_id=str(lesson_response.id),
-            cached=lesson_response.cached,
+            "Lesson generation dispatched",
+            module_id=str(resolved_module_id),
+            unit_id=unit_id,
+            task_id=task.id,
         )
 
-        return lesson_response
+        return JSONResponse(
+            content={
+                "status": "generating",
+                "task_id": task.id,
+                "message": "Content is being generated",
+            },
+            status_code=status.HTTP_202_ACCEPTED,
+        )
 
     except ValueError as e:
         logger.warning("Invalid lesson request", error=str(e))
@@ -843,9 +919,10 @@ async def get_quiz(
 
 @router.get(
     "/cases/{module_id}/{unit_id}",
-    response_model=CaseStudyResponse,
     status_code=status.HTTP_200_OK,
     responses={
+        200: {"model": CaseStudyResponse, "description": "Cached case study returned"},
+        202: {"description": "Generation dispatched, poll /status/{task_id}"},
         400: {"model": ErrorResponse, "description": "Invalid request"},
         404: {"model": ErrorResponse, "description": "Module or unit not found"},
         500: {"model": ErrorResponse, "description": "Generation failed"},
@@ -861,9 +938,17 @@ async def get_or_generate_case_study(
     case_study_service: CaseStudyGenerationService = Depends(get_case_study_service),
     session: AsyncSession = Depends(get_db),
     current_user=Depends(get_optional_user),
-) -> CaseStudyResponse:
+) -> JSONResponse:
     """
     Get or generate case study content by module and unit ID.
+
+    **Cache HIT (200):** Returns the cached case study immediately.
+
+    **Cache MISS (202):** Dispatches a background Celery task and returns:
+    ```json
+    {"status": "generating", "task_id": "<uuid>", "message": "Content is being generated"}
+    ```
+    Poll `GET /api/v1/content/status/{task_id}` every 3 seconds.
 
     **Parameters:**
     - **module_id**: Module identifier (code like "M01" or UUID string)
@@ -871,6 +956,7 @@ async def get_or_generate_case_study(
     - **language**: Content language ("fr" or "en")
     - **level**: User's level (1-4)
     - **country**: Country context for examples (ISO 2-letter code)
+    - **force_regenerate**: Force new generation even if cached
     """
     try:
         logger.info(
@@ -884,39 +970,83 @@ async def get_or_generate_case_study(
 
         resolved_module_id = await _resolve_module_id(module_id, session)
 
-        case_study_response = await case_study_service.get_or_generate_case_study(
-            module_id=resolved_module_id,
-            unit_id=unit_id,
-            language=language,
-            country=country,
-            level=level,
-            session=session,
-            force_regenerate=force_regenerate,
+        if not force_regenerate:
+            cached_query = (
+                select(GeneratedContent)
+                .where(GeneratedContent.module_id == resolved_module_id)
+                .where(GeneratedContent.content_type == "case")
+                .where(GeneratedContent.language == language)
+                .where(GeneratedContent.level == level)
+                .where(GeneratedContent.country_context == country)
+                .where(GeneratedContent.content["unit_id"].astext == unit_id)
+            )
+            cache_result = await session.execute(cached_query)
+            cached = cache_result.scalar_one_or_none()
+
+            if cached:
+                from app.api.v1.schemas.content import CaseStudyContent as _CaseStudyContent
+
+                content_dict = {k: v for k, v in cached.content.items() if k != "unit_id"}
+                case_study_response = CaseStudyResponse(
+                    id=cached.id,
+                    module_id=cached.module_id,
+                    unit_id=cached.content.get("unit_id", unit_id),
+                    language=cached.language,
+                    level=cached.level,
+                    country_context=cached.country_context or country,
+                    content=_CaseStudyContent(**content_dict),
+                    generated_at=cached.generated_at.isoformat(),
+                    cached=True,
+                )
+
+                if current_user is not None:
+                    try:
+                        from uuid import UUID as _UUID
+
+                        progress_service = ProgressService(session)
+                        await progress_service.track_lesson_access(
+                            user_id=_UUID(str(current_user.id)),
+                            module_id=resolved_module_id,
+                            lesson_id=case_study_response.id,
+                        )
+                    except Exception as track_err:
+                        logger.warning(
+                            "Failed to track case study access (non-fatal)",
+                            error=str(track_err),
+                        )
+
+                logger.info(
+                    "Case study cache hit",
+                    case_study_id=str(case_study_response.id),
+                )
+                return JSONResponse(
+                    content=case_study_response.model_dump(mode="json"),
+                    status_code=status.HTTP_200_OK,
+                )
+
+        task = generate_case_study_task.delay(
+            str(resolved_module_id),
+            unit_id,
+            language,
+            country,
+            level,
         )
-
-        if current_user is not None:
-            try:
-                from uuid import UUID as _UUID
-
-                progress_service = ProgressService(session)
-                await progress_service.track_lesson_access(
-                    user_id=_UUID(str(current_user.id)),
-                    module_id=resolved_module_id,
-                    lesson_id=case_study_response.id,
-                )
-            except Exception as track_err:
-                logger.warning(
-                    "Failed to track case study access (non-fatal)",
-                    error=str(track_err),
-                )
 
         logger.info(
-            "Case study request completed",
-            case_study_id=str(case_study_response.id),
-            cached=case_study_response.cached,
+            "Case study generation dispatched",
+            module_id=str(resolved_module_id),
+            unit_id=unit_id,
+            task_id=task.id,
         )
 
-        return case_study_response
+        return JSONResponse(
+            content={
+                "status": "generating",
+                "task_id": task.id,
+                "message": "Content is being generated",
+            },
+            status_code=status.HTTP_202_ACCEPTED,
+        )
 
     except ValueError as e:
         logger.warning("Invalid case study request", error=str(e))
