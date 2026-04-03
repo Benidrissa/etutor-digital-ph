@@ -271,9 +271,7 @@ class TestRawResponseFallback:
         with pytest.raises(ValueError, match="Claude returned non-JSON text"):
             quiz_service._validate_and_normalize_quiz(raw_fallback, "M01-U04", 10)
 
-    async def test_raises_when_claude_returns_raw_response(
-        self, quiz_service, mock_claude_service
-    ):
+    async def test_raises_when_claude_returns_raw_response(self, quiz_service, mock_claude_service):
         raw_fallback = {
             "content": "Here is your quiz: ...",
             "type": "quiz",
