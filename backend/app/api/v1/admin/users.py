@@ -19,11 +19,11 @@ from app.domain.models.quiz import QuizAttempt
 from app.domain.models.user import User, UserRole
 from app.domain.repositories.implementations.user_repository import UserRepository
 
-from .schemas.admin import AuditLogResponse
-from .schemas.users import UserProfileResponse
+from app.api.v1.schemas.admin import AuditLogResponse
+from app.api.v1.schemas.users import UserProfileResponse
 
 logger = get_logger(__name__)
-router = APIRouter(prefix="/admin", tags=["Admin"])
+router = APIRouter(tags=["Admin"])
 
 
 class UpdateRoleRequest(BaseModel):
