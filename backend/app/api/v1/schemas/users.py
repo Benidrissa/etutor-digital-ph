@@ -31,6 +31,7 @@ class UserProfileResponse(BaseModel):
     last_active: str
     created_at: str
     role: UserRole = UserRole.user
+    is_active: bool = True
 
 
 class UpdateProfileRequest(BaseModel):

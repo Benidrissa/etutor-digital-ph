@@ -1,4 +1,5 @@
 import { AdminGuard } from "@/components/admin/admin-guard";
+import { AdminNav } from "@/components/admin/admin-nav";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { Header } from "@/components/layout/header";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -10,6 +11,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <Sidebar />
         <div className="flex flex-1 flex-col min-h-0">
           <Header />
+          <AdminNav />
           <main className="flex flex-col flex-1 overflow-y-auto pb-16 pt-0 md:pb-0">
             {children}
           </main>
