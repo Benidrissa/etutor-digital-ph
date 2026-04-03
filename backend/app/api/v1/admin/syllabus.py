@@ -263,4 +263,3 @@ async def get_audit_log(
     except Exception as e:
         logger.warning("Audit log fetch failed", error=str(e))
         return []
-# PR #355 - Syllabus agent
