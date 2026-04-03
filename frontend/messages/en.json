@@ -758,7 +758,32 @@
   "Admin": {
     "users": {
       "title": "User Management",
-      "subtitle": "Manage user accounts and roles"
+      "subtitle": "Manage user accounts and roles",
+      "searchPlaceholder": "Search by name or email",
+      "filterRole": "Role",
+      "filterCountry": "Country",
+      "filterLevel": "Level",
+      "allRoles": "All roles",
+      "allCountries": "All countries",
+      "allLevels": "All levels",
+      "level": "Level {level}",
+      "columnName": "Name",
+      "columnEmail": "Email",
+      "columnRole": "Role",
+      "columnCountry": "Country",
+      "columnLevel": "Level",
+      "columnLastActive": "Last active",
+      "columnActions": "Actions",
+      "changeRole": "Change role",
+      "setRole": "Set as {role}",
+      "noUsers": "No users found",
+      "noUsersDescription": "Try adjusting your search or filters",
+      "roleUpdated": "Role updated",
+      "roleUpdateFailed": "Failed to update role",
+      "pageOf": "Page {page} of {total}",
+      "previous": "Previous",
+      "next": "Next",
+      "totalUsers": "{count} users"
     }
   }
 }

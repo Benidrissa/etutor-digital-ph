@@ -758,7 +758,32 @@
   "Admin": {
     "users": {
       "title": "Gestion des utilisateurs",
-      "subtitle": "Gérer les comptes et les rôles des utilisateurs"
+      "subtitle": "Gérer les comptes et les rôles des utilisateurs",
+      "searchPlaceholder": "Rechercher par nom ou email",
+      "filterRole": "Rôle",
+      "filterCountry": "Pays",
+      "filterLevel": "Niveau",
+      "allRoles": "Tous les rôles",
+      "allCountries": "Tous les pays",
+      "allLevels": "Tous les niveaux",
+      "level": "Niveau {level}",
+      "columnName": "Nom",
+      "columnEmail": "Email",
+      "columnRole": "Rôle",
+      "columnCountry": "Pays",
+      "columnLevel": "Niveau",
+      "columnLastActive": "Dernière activité",
+      "columnActions": "Actions",
+      "changeRole": "Changer le rôle",
+      "setRole": "Définir comme {role}",
+      "noUsers": "Aucun utilisateur trouvé",
+      "noUsersDescription": "Essayez de modifier votre recherche ou vos filtres",
+      "roleUpdated": "Rôle mis à jour",
+      "roleUpdateFailed": "Échec de la mise à jour du rôle",
+      "pageOf": "Page {page} sur {total}",
+      "previous": "Précédent",
+      "next": "Suivant",
+      "totalUsers": "{count} utilisateurs"
     }
   }
 }

@@ -2,9 +2,9 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from structlog import get_logger
 
 from app.api.deps import get_db as get_db_session
@@ -22,17 +22,49 @@ class UpdateRoleRequest(BaseModel):
     role: UserRole
 
 
-@router.get("/users", response_model=list[UserProfileResponse])
+class AdminUsersResponse(BaseModel):
+    items: list[UserProfileResponse]
+    total: int
+    page: int
+    limit: int
+    has_next: bool
+
+
+@router.get("/users", response_model=AdminUsersResponse)
 async def list_users(
+    search: str | None = Query(None, description="Search by name or email"),
+    role: UserRole | None = Query(None, description="Filter by role"),
+    country: str | None = Query(None, description="Filter by country"),
+    level: int | None = Query(None, ge=1, le=4, description="Filter by current level"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
     current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
     db=Depends(get_db_session),
-) -> list[UserProfileResponse]:
-    """List all users. Admin only."""
+) -> AdminUsersResponse:
+    """List users with search and filters. Admin only."""
     try:
-        result = await db.execute(select(User).order_by(User.created_at.desc()))
+        stmt = select(User)
+
+        if search:
+            pattern = f"%{search}%"
+            stmt = stmt.where(
+                or_(User.name.ilike(pattern), User.email.ilike(pattern))
+            )
+        if role is not None:
+            stmt = stmt.where(User.role == role)
+        if country is not None:
+            stmt = stmt.where(User.country == country)
+        if level is not None:
+            stmt = stmt.where(User.current_level == level)
+
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total: int = (await db.execute(count_stmt)).scalar_one()
+
+        stmt = stmt.order_by(User.created_at.desc()).offset((page - 1) * limit).limit(limit)
+        result = await db.execute(stmt)
         users = result.scalars().all()
 
-        return [
+        items = [
             UserProfileResponse(
                 id=str(u.id),
                 email=u.email,
@@ -49,6 +81,14 @@ async def list_users(
             )
             for u in users
         ]
+
+        return AdminUsersResponse(
+            items=items,
+            total=total,
+            page=page,
+            limit=limit,
+            has_next=(page * limit) < total,
+        )
     except Exception as e:
         logger.error("Failed to list users", error=str(e))
         raise HTTPException(
