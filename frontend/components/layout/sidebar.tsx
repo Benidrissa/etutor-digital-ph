@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { startTransition, useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations, useLocale } from "next-intl";
 import {
@@ -15,12 +15,28 @@ import {
   ChevronRight,
   Menu,
   LogOut,
+  ShieldCheck,
 } from "lucide-react";
 import { LocaleSwitcher } from "@/components/shared/locale-switcher";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth";
 import { useQueryClient } from "@tanstack/react-query";
+
+function getUserRole(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const token = localStorage.getItem("access_token");
+    if (!token) return null;
+    const base64Url = token.split(".")[1];
+    if (!base64Url) return null;
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(atob(base64)) as Record<string, unknown>;
+    return typeof payload?.role === "string" ? payload.role : null;
+  } catch {
+    return null;
+  }
+}
 
 export function Sidebar() {
   const t = useTranslations("Navigation");
@@ -31,6 +47,11 @@ export function Sidebar() {
   const queryClient = useQueryClient();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    startTransition(() => setUserRole(getUserRole()));
+  }, []);
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -80,6 +101,16 @@ export function Sidebar() {
       icon: Settings,
       description: t("settingsDescription")
     },
+    ...(userRole === "admin" || userRole === "expert"
+      ? [
+          {
+            href: `/${locale}/admin/users`,
+            label: t("admin"),
+            icon: ShieldCheck,
+            description: t("adminDescription"),
+          },
+        ]
+      : []),
   ];
 
   return (
