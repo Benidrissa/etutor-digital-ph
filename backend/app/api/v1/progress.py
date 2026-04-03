@@ -20,7 +20,8 @@ from app.api.v1.schemas.progress import (
     UnitProgressDetail,
 )
 from app.domain.models.user import User
-from app.domain.services.progress_service import _UNLOCK_THRESHOLD_SCORE, ProgressService
+from app.domain.services.platform_settings_service import SettingsCache
+from app.domain.services.progress_service import ProgressService
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/progress", tags=["progress"])
@@ -252,7 +253,7 @@ async def complete_lesson(
             user_id=user_id,
             module_id=request.module_id,
             unit_id=request.unit_id,
-            score=_UNLOCK_THRESHOLD_SCORE,
+            score=SettingsCache.instance().get("progress.unit_pass_score", 80.0),
             passed=True,
         )
 

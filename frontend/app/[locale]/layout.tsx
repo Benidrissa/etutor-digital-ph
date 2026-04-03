@@ -3,6 +3,7 @@ import { getMessages } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { QueryProvider } from "@/lib/query-provider";
+import { SettingsProvider } from "@/lib/settings-context";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
 
 export default async function LocaleLayout({
@@ -23,8 +24,10 @@ export default async function LocaleLayout({
   return (
     <NextIntlClientProvider messages={messages}>
       <QueryProvider>
-        {children}
-        <InstallPrompt />
+        <SettingsProvider>
+          {children}
+          <InstallPrompt />
+        </SettingsProvider>
       </QueryProvider>
     </NextIntlClientProvider>
   );

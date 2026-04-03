@@ -13,6 +13,7 @@ from app.ai.rag.retriever import SemanticRetriever
 from app.api.v1.schemas.content import FlashcardContent, FlashcardSetResponse
 from app.domain.models.content import GeneratedContent
 from app.domain.models.module import Module
+from app.domain.services.platform_settings_service import SettingsCache
 
 logger = structlog.get_logger()
 
@@ -162,7 +163,7 @@ class FlashcardGenerationService:
         # Retrieve relevant chunks using RAG
         search_results = await self.semantic_retriever.search(
             query=query,
-            top_k=12,  # Get more chunks for comprehensive flashcard generation
+            top_k=SettingsCache.instance().get("ai.rag_flashcard_top_k", 12),
             filters={"level": {"$lte": level}},  # Only content appropriate for user's level
             session=session,
         )
@@ -204,7 +205,11 @@ class FlashcardGenerationService:
             else:
                 raise ValueError("Unexpected response type from Claude API")
 
-            if len(flashcard_data) < 15:
+            _min_count = SettingsCache.instance().get(
+                "flashcards.min_generated_count",
+                15,
+            )
+            if len(flashcard_data) < _min_count:
                 logger.warning(f"Generated only {len(flashcard_data)} flashcards, expected 15-30")
 
             logger.info(f"Successfully generated {len(flashcard_data)} flashcards")

@@ -27,6 +27,7 @@ from app.api.v1.schemas.content import (
 from app.domain.models.content import GeneratedContent
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
+from app.domain.services.platform_settings_service import SettingsCache
 
 logger = structlog.get_logger()
 
@@ -162,7 +163,7 @@ class LessonGenerationService:
                 user_level=level,
                 user_language=language,
                 books_sources=module.books_sources,
-                top_k=8,
+                top_k=SettingsCache.instance().get("ai.rag_default_top_k", 8),
                 session=session,
             )
 
@@ -585,7 +586,7 @@ class CaseStudyGenerationService:
                 user_level=level,
                 user_language=language,
                 books_sources=module.books_sources,
-                top_k=8,
+                top_k=SettingsCache.instance().get("ai.rag_default_top_k", 8),
                 session=session,
             )
 

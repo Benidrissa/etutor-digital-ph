@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.rag.embeddings import EmbeddingService
 from app.domain.models.document_chunk import DocumentChunk
+from app.domain.services.platform_settings_service import SettingsCache
 
 logger = structlog.get_logger()
 
@@ -34,7 +35,7 @@ class SemanticRetriever:
     async def search(
         self,
         query: str,
-        top_k: int = 8,
+        top_k: int | None = None,
         min_similarity: float = 0.3,
         filters: dict[str, Any] | None = None,
         session: AsyncSession | None = None,
@@ -52,6 +53,7 @@ class SemanticRetriever:
         Returns:
             List of SearchResult objects ordered by similarity
         """
+        top_k = top_k or SettingsCache.instance().get("ai.rag_default_top_k", 8)
         if not query.strip():
             return []
 
@@ -121,6 +123,10 @@ class SemanticRetriever:
                     where_clauses.append("chapter = :chapter")
                     params["chapter"] = filters["chapter"]
 
+            if "rag_collection_id" in filters:
+                where_clauses.append("source = :rag_collection_id")
+                params["rag_collection_id"] = filters["rag_collection_id"]
+
         where_sql = " AND ".join(where_clauses)
 
         query_str = f"""
@@ -179,7 +185,11 @@ class SemanticRetriever:
         return search_results
 
     async def search_by_source(
-        self, query: str, sources: list[str], top_k: int = 8, session: AsyncSession | None = None
+        self,
+        query: str,
+        sources: list[str],
+        top_k: int | None = None,
+        session: AsyncSession | None = None,
     ) -> dict[str, list[SearchResult]]:
         """
         Search within specific sources and return results grouped by source.
@@ -193,6 +203,7 @@ class SemanticRetriever:
         Returns:
             Dictionary mapping source names to search results
         """
+        top_k = top_k or SettingsCache.instance().get("ai.rag_default_top_k", 8)
         results = {}
 
         for source in sources:
@@ -209,7 +220,7 @@ class SemanticRetriever:
         user_level: int,
         user_language: str,
         books_sources: dict[str, list[str]] | None = None,
-        top_k: int = 8,
+        top_k: int | None = None,
         session: AsyncSession | None = None,
     ) -> list[SearchResult]:
         """
@@ -226,6 +237,7 @@ class SemanticRetriever:
         Returns:
             List of SearchResult objects filtered by user context
         """
+        top_k = top_k or SettingsCache.instance().get("ai.rag_default_top_k", 8)
         # Don't filter by language — source books are all English,
         # Claude generates content in the user's target language
         filters: dict[str, Any] = {

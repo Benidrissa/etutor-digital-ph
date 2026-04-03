@@ -25,17 +25,19 @@ from app.domain.models.conversation import TutorConversation
 from app.domain.models.module import Module
 from app.domain.models.user import User
 from app.domain.services.learner_memory_service import LearnerMemoryService
+from app.domain.services.platform_settings_service import SettingsCache
 from app.domain.services.tutor_tools import TOOL_DEFINITIONS, TutorToolExecutor
 from app.infrastructure.config.settings import get_settings
 
 logger = structlog.get_logger()
 
-MAX_TOOL_CALLS = 3
-COMPACT_TRIGGER = 20
-COMPACT_KEEP_RECENT = 5
-COMPACT_SUMMARIZE_UP_TO = 15
+_sc = SettingsCache.instance
+MAX_TOOL_CALLS = _sc().get("tutor.max_tool_calls", 3)
+COMPACT_TRIGGER = _sc().get("tutor.compaction_trigger_messages", 20)
+COMPACT_KEEP_RECENT = _sc().get("tutor.compaction_keep_recent", 5)
+COMPACT_SUMMARIZE_UP_TO = _sc().get("tutor.compaction_summarize_up_to", 15)
 
-SESSION_CONTEXT_TOKEN_BUDGET = 1500
+SESSION_CONTEXT_TOKEN_BUDGET = _sc().get("tutor.context_token_budget", 1500)
 
 
 @dataclass
@@ -329,8 +331,8 @@ class TutorService:
                     system=system_prompt,
                     messages=api_messages,
                     tools=TOOL_DEFINITIONS,
-                    max_tokens=1500,
-                    temperature=0.7,
+                    max_tokens=_sc().get("tutor.response_max_tokens", 1500),
+                    temperature=_sc().get("tutor.response_temperature", 0.7),
                 )
 
                 tool_use_blocks = [
@@ -680,7 +682,7 @@ class TutorService:
             user_level=user.current_level,
             user_language=user.preferred_language,
             books_sources=books_sources,
-            top_k=8,
+            top_k=_sc().get("ai.rag_default_top_k", 8),
             session=session,
         )
 
@@ -772,8 +774,8 @@ class TutorService:
                 compact_response = await self.anthropic.messages.create(
                     model="claude-sonnet-4-6",
                     messages=[{"role": "user", "content": prompt}],
-                    max_tokens=600,
-                    temperature=0.3,
+                    max_tokens=_sc().get("tutor.compaction_max_tokens", 600),
+                    temperature=_sc().get("tutor.compaction_temperature", 0.3),
                 )
 
                 compact_text_parts = [

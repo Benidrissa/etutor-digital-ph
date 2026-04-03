@@ -14,11 +14,21 @@ from app.domain.models.lesson_reading import LessonReading
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.progress import UserModuleProgress
+from app.domain.services.platform_settings_service import SettingsCache
 
 logger = structlog.get_logger()
 
-_UNLOCK_THRESHOLD_PCT = 80.0
-_UNLOCK_THRESHOLD_SCORE = 80.0
+
+def _unlock_pct():
+    return SettingsCache.instance().get("progress.unlock_threshold_pct", 80.0)
+
+
+def _unlock_score():
+    return SettingsCache.instance().get("progress.unlock_threshold_score", 80.0)
+
+
+def _unit_pass_score():
+    return SettingsCache.instance().get("progress.unit_pass_score", 80.0)
 
 
 class ProgressService:
@@ -135,9 +145,9 @@ class ProgressService:
 
         # After commit, check whether N+1 unlock conditions are met
         if (
-            progress.completion_pct >= _UNLOCK_THRESHOLD_PCT
+            progress.completion_pct >= _unlock_pct()
             and progress.quiz_score_avg is not None
-            and progress.quiz_score_avg >= _UNLOCK_THRESHOLD_SCORE
+            and progress.quiz_score_avg >= _unlock_score()
         ):
             await self._unlock_next_module(user_id, module_id)
 
@@ -191,7 +201,7 @@ class ProgressService:
             )
         )
         max_score = attempt_result.scalar()
-        return max_score is not None and max_score >= _UNLOCK_THRESHOLD_SCORE
+        return max_score is not None and max_score >= _unlock_score()
 
     async def get_module_progress(
         self, user_id: UUID, module_id: UUID
@@ -472,7 +482,7 @@ class ProgressService:
                 )
             )
             max_score = attempt_result.scalar()
-            if max_score is not None and max_score >= 80.0:
+            if max_score is not None and max_score >= _unit_pass_score():
                 completed.add(unit_id)
 
         return completed

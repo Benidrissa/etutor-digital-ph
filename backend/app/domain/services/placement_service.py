@@ -16,6 +16,7 @@ from structlog import get_logger
 from ..models.module import Module
 from ..models.progress import UserModuleProgress
 from ..repositories.protocols import UserRepositoryProtocol
+from .platform_settings_service import SettingsCache
 
 logger = get_logger(__name__)
 
@@ -274,22 +275,41 @@ class PlacementService:
         """
         adjusted = raw_score
 
+        role_bonuses = SettingsCache.instance().get(
+            "placement.role_bonuses",
+            {
+                "doctor": 5,
+                "physician": 5,
+                "researcher": 8,
+                "epidemiologist": 8,
+                "nurse": 3,
+                "student": -3,
+            },
+        )
         role = context.get("professional_role", "").lower()
-        if "doctor" in role or "physician" in role:
-            adjusted += 5
-        elif "researcher" in role or "epidemiologist" in role:
-            adjusted += 8
-        elif "nurse" in role:
-            adjusted += 3
-        elif "student" in role:
-            adjusted -= 3
+        for keyword, bonus in role_bonuses.items():
+            if keyword in role:
+                adjusted += bonus
+                break
 
-        if time_taken < 600:
-            adjusted -= 10
-        elif time_taken > 2400:
-            adjusted -= 5
-        elif 900 <= time_taken <= 1800:
-            adjusted += 2
+        time_adj = SettingsCache.instance().get(
+            "placement.time_adjustments",
+            {
+                "too_fast_threshold": 600,
+                "too_fast_penalty": -10,
+                "too_slow_threshold": 2400,
+                "too_slow_penalty": -5,
+                "optimal_min": 900,
+                "optimal_max": 1800,
+                "optimal_bonus": 2,
+            },
+        )
+        if time_taken < time_adj["too_fast_threshold"]:
+            adjusted += time_adj["too_fast_penalty"]
+        elif time_taken > time_adj["too_slow_threshold"]:
+            adjusted += time_adj["too_slow_penalty"]
+        elif time_adj["optimal_min"] <= time_taken <= time_adj["optimal_max"]:
+            adjusted += time_adj["optimal_bonus"]
 
         return max(0.0, min(100.0, adjusted))
 
@@ -302,9 +322,14 @@ class PlacementService:
         Returns:
             Level 1-4
         """
-        for level, threshold in LEVEL_THRESHOLDS.items():
+        thresholds = SettingsCache.instance().get(
+            "placement.level_thresholds",
+            LEVEL_THRESHOLDS,
+        )
+        # Keys may be strings when loaded from JSON settings
+        for level, threshold in thresholds.items():
             if threshold["min"] <= score < threshold["max"]:
-                return level
+                return int(level)
         return 1
 
     def _identify_competencies(self, level_scores: dict[str, float]) -> list[str]:
@@ -322,7 +347,13 @@ class PlacementService:
             "level_3": "Advanced Statistics & Programming",
             "level_4": "Health Policy & Research",
         }
-        competencies = [label_map[k] for k, v in level_scores.items() if v >= 70 and k in label_map]
+        _comp_threshold = SettingsCache.instance().get(
+            "placement.competency_threshold",
+            70,
+        )
+        competencies = [
+            label_map[k] for k, v in level_scores.items() if v >= _comp_threshold and k in label_map
+        ]
         return competencies if competencies else ["Foundation Building"]
 
     def _generate_recommendations(

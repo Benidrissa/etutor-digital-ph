@@ -26,9 +26,15 @@ async def client() -> AsyncClient:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 async def test_engine():
-    """Create test database engine and initialize all tables."""
+    """Create test database engine and initialize all tables.
+
+    Function-scoped to avoid event loop conflicts — each test gets a fresh
+    engine on the current event loop. Tables are created/dropped per test.
+    """
+    import app.domain.models  # noqa: F401 — ensure all models registered
+
     engine = create_async_engine(settings.database_url, echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

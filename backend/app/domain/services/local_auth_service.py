@@ -13,6 +13,7 @@ from app.domain.models.user import User, UserRole
 from app.domain.services.email_otp_service import EmailOTPService
 from app.domain.services.email_service import EmailService
 from app.domain.services.jwt_auth_service import JWTAuthService
+from app.domain.services.platform_settings_service import SettingsCache
 from app.domain.services.totp_service import TOTPService
 from app.infrastructure.config.settings import settings
 
@@ -261,8 +262,9 @@ class LocalAuthService:
             if not totp_record:
                 raise AuthenticationError("MFA not set up for this account")
 
-            _MAX_FAILED = 10
-            _LOCKOUT_MINUTES = 15
+            _cache = SettingsCache.instance()
+            _MAX_FAILED = _cache.get("auth.max_failed_totp_attempts", 10)
+            _LOCKOUT_MINUTES = _cache.get("auth.totp_lockout_minutes", 15)
 
             # Check account lockout
             if (

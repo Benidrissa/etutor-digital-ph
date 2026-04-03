@@ -14,10 +14,11 @@ import type {
   SummativeAssessmentResponse, 
   SummativeAssessmentAttemptCheck 
 } from '@/lib/api';
-import { 
-  generateSummativeAssessment, 
-  canAttemptSummativeAssessment 
+import {
+  generateSummativeAssessment,
+  canAttemptSummativeAssessment
 } from '@/lib/api';
+import { useSettings } from '@/lib/settings-context';
 
 interface SummativeAssessmentContainerProps {
   moduleId: string;
@@ -39,6 +40,8 @@ export function SummativeAssessmentContainer({
   onRetry,
 }: SummativeAssessmentContainerProps) {
   const t = useTranslations('SummativeAssessment');
+  const { getSetting } = useSettings();
+  const summativeTimeLimit = getSetting<number>("quiz.summative_time_limit_minutes", 30);
   
   const [state, setState] = useState<AssessmentState>('checking');
   const [assessment, setAssessment] = useState<Quiz | null>(null);
@@ -208,7 +211,7 @@ export function SummativeAssessmentContainer({
         assessment={assessment}
         onComplete={handleAssessmentComplete}
         onError={handleAssessmentError}
-        timeLimit={30} // 30 minutes
+        timeLimit={summativeTimeLimit}
       />
     );
   }

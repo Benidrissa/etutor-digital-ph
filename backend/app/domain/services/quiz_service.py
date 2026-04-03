@@ -12,6 +12,7 @@ from app.ai.claude_service import ClaudeService
 from app.ai.rag.retriever import SemanticRetriever
 from app.api.v1.schemas.quiz import QuizContent, QuizResponse
 from app.domain.models.content import GeneratedContent
+from app.domain.services.platform_settings_service import SettingsCache
 
 logger = structlog.get_logger()
 
@@ -220,7 +221,7 @@ class QuizService:
                 query=search_query,
                 user_level=level,
                 user_language=language,
-                top_k=8,
+                top_k=SettingsCache.instance().get("ai.rag_default_top_k", 8),
                 session=session,
             )
 
@@ -322,8 +323,8 @@ RESPONSE FORMAT (JSON):
       "difficulty": "easy|medium|hard"
     }}
   ],
-  "time_limit_minutes": {max(10, num_questions * 1.5)},
-  "passing_score": 80.0
+  "time_limit_minutes": {max(SettingsCache.instance().get("quiz.time_limit_min_minutes", 10), num_questions * SettingsCache.instance().get("quiz.time_limit_per_question_minutes", 1.5))},
+  "passing_score": {SettingsCache.instance().get("quiz.passing_score", 80.0)}
 }}
 
 Generate the quiz now, ensuring all questions are relevant to public health practice in West Africa."""
@@ -377,10 +378,18 @@ Generate the quiz now, ensuring all questions are relevant to public health prac
             for i, question in enumerate(questions):
                 self._validate_question(question, f"question {i + 1}")
 
-            quiz_data.setdefault("time_limit_minutes", max(10, len(questions) * 2))
-            quiz_data.setdefault("passing_score", 80.0)
-            if quiz_data.get("passing_score", 80.0) < 80.0:
-                quiz_data["passing_score"] = 80.0
+            _passing = SettingsCache.instance().get("quiz.passing_score", 80.0)
+            quiz_data.setdefault(
+                "time_limit_minutes",
+                max(
+                    SettingsCache.instance().get("quiz.time_limit_min_minutes", 10),
+                    len(questions)
+                    * SettingsCache.instance().get("quiz.time_limit_per_question_minutes", 1.5),
+                ),
+            )
+            quiz_data.setdefault("passing_score", _passing)
+            if quiz_data.get("passing_score", _passing) < _passing:
+                quiz_data["passing_score"] = _passing
 
             quiz_data["unit_id"] = unit_id
 
