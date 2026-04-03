@@ -46,7 +46,7 @@ class SemanticRetriever:
             query: Search query text
             top_k: Number of top results to return
             min_similarity: Minimum similarity threshold (0.0-1.0)
-            filters: Optional filters (source, level, language, chapter)
+            filters: Optional filters (rag_collection_id, source, level, language, chapter)
             session: Database session
 
         Returns:
@@ -89,6 +89,10 @@ class SemanticRetriever:
         params: dict[str, Any] = {}
 
         if filters:
+            if "rag_collection_id" in filters:
+                where_clauses.append("rag_collection_id = :rag_collection_id")
+                params["rag_collection_id"] = filters["rag_collection_id"]
+
             if "source" in filters:
                 if isinstance(filters["source"], list):
                     where_clauses.append("source = ANY(:source_list)")
