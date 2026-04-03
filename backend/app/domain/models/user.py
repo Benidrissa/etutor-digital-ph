@@ -20,6 +20,7 @@ class UserRole(enum.StrEnum):
 if TYPE_CHECKING:
     from app.domain.models.auth import EmailOTP, MagicLink, RefreshToken, TOTPSecret
     from app.domain.models.conversation import TutorConversation
+    from app.domain.models.course import UserCourseEnrollment
     from app.domain.models.flashcard import FlashcardReview
     from app.domain.models.learner_memory import LearnerMemory
     from app.domain.models.lesson_reading import LessonReading
@@ -66,3 +67,4 @@ class User(Base):
     learner_memory: Mapped[LearnerMemory | None] = relationship(
         back_populates="user", uselist=False
     )
+    course_enrollments: Mapped[list[UserCourseEnrollment]] = relationship(back_populates="user")
