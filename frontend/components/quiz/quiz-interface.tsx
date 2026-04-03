@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
-import { Clock, ChevronLeft, ChevronRight, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Clock, ChevronLeft, ChevronRight, CheckCircle, XCircle, AlertCircle, WifiOff } from 'lucide-react';
 
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -14,6 +14,7 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import type { Quiz, QuizAnswerSubmission, QuizAttemptResponse } from '@/lib/api';
 import { submitQuizAttempt } from '@/lib/api';
+import { queueOfflineAction, isOnline } from '@/lib/offline/content-loader';
 
 interface QuizInterfaceProps {
   quiz: Quiz;
@@ -91,7 +92,6 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
   const handleFinishQuiz = useCallback(async () => {
     if (isSubmitting) return;
     
-    // Check if all questions are answered
     const unansweredQuestions = questionStates.filter(state => state.selectedOption === null);
     if (unansweredQuestions.length > 0) {
       onError(t('selectAnswer'));
@@ -108,6 +108,47 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
         selected_option: questionStates[index].selectedOption!,
         time_taken_seconds: questionStates[index].timeSpentSeconds,
       }));
+
+      if (!isOnline()) {
+        const correctCount = quiz.content.questions.reduce((acc, question, index) => {
+          return acc + (questionStates[index].selectedOption === question.correct_answer ? 1 : 0);
+        }, 0);
+        const score = Math.round((correctCount / quiz.content.questions.length) * 100);
+
+        await queueOfflineAction({
+          type: 'quiz_result',
+          payload: {
+            quiz_id: quiz.id,
+            answers: answers.map((a) => ({ ...a })),
+            total_time_seconds: totalTimeSeconds,
+            score,
+            correct_count: correctCount,
+            total_questions: quiz.content.questions.length,
+          },
+        });
+
+        const offlineResult: QuizAttemptResponse = {
+          attempt_id: `offline-${Date.now()}`,
+          quiz_id: quiz.id,
+          score,
+          passed: score >= 80,
+          correct_answers: correctCount,
+          total_questions: quiz.content.questions.length,
+          total_time_seconds: totalTimeSeconds,
+          lesson_validated: score >= 80,
+          attempted_at: new Date().toISOString(),
+          results: quiz.content.questions.map((question, i) => ({
+            question_id: question.id,
+            user_answer: questionStates[i].selectedOption!,
+            correct_answer: question.correct_answer,
+            is_correct: questionStates[i].selectedOption === question.correct_answer,
+            explanation: question.explanation,
+            time_taken_seconds: questionStates[i].timeSpentSeconds,
+          })),
+        };
+        onComplete(offlineResult);
+        return;
+      }
       
       const result = await submitQuizAttempt({
         quiz_id: quiz.id,
@@ -144,6 +185,12 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
   
   return (
     <div className="max-w-4xl mx-auto p-4 space-y-6">
+      {!isOnline() && (
+        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-4 py-3 text-sm">
+          <WifiOff className="w-4 h-4 flex-shrink-0" />
+          <span>{t('offlineBanner')}</span>
+        </div>
+      )}
       {/* Progress Header */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">

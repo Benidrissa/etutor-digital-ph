@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { CheckCircle, Clock, RefreshCw, PlayCircle, Loader2, AlertTriangle } from 'lucide-react';
+import { CheckCircle, Clock, RefreshCw, PlayCircle, Loader2, AlertTriangle, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +17,12 @@ import { apiFetch, checkUnitQuizPassed } from '@/lib/api';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { useRouter } from 'next/navigation';
 import { useLocale } from 'next-intl';
+import {
+  getContentFromDB,
+  saveContentToDB,
+  queueOfflineAction,
+  isOnline,
+} from '@/lib/offline/content-loader';
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 3 * 60 * 1000;
@@ -71,6 +77,9 @@ export function LessonViewer({
   const [isCheckingQuiz, setIsCheckingQuiz] = useState(false);
   const [forceRegenerate, setForceRegenerate] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [servedFromCache, setServedFromCache] = useState(false);
+  const [offlineUnavailable, setOfflineUnavailable] = useState(false);
+  const lessonStartTime = useRef<number>(Date.now());
 
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollStartRef = useRef<number>(0);
@@ -146,10 +155,30 @@ export function LessonViewer({
   useEffect(() => {
     if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
 
+    const cacheKey = `${moduleId}/${unitId}/${language}/${level}`;
+
     const load = async () => {
       try {
         setIsLoading(true);
         setError(null);
+        setOfflineUnavailable(false);
+        lessonStartTime.current = Date.now();
+
+        if (!forceRegenerate) {
+          const cached = await getContentFromDB<LessonData>('lessons', cacheKey);
+          if (cached) {
+            setLessonData(cached);
+            setServedFromCache(true);
+            setIsLoading(false);
+            return;
+          }
+        }
+
+        if (!isOnline()) {
+          setOfflineUnavailable(true);
+          setIsLoading(false);
+          return;
+        }
 
         const forceParam = forceRegenerate ? '&force_regenerate=true' : '';
         const res = await apiFetch<LessonData | GeneratingResponse>(
@@ -162,10 +191,13 @@ export function LessonViewer({
           pollStartRef.current = Date.now();
           pollStatus((res as GeneratingResponse).task_id, pollStartRef.current);
         } else {
-          setLessonData(res as LessonData);
+          const lesson = res as LessonData;
+          setLessonData(lesson);
+          setServedFromCache(false);
           setIsLoading(false);
           setIsRefreshing(false);
           setForceRegenerate(false);
+          await saveContentToDB('lessons', { ...lesson, id: cacheKey });
         }
       } catch (err) {
         console.error('Error loading lesson:', err);
@@ -185,7 +217,14 @@ export function LessonViewer({
     setForceRegenerate(true);
   };
 
-  const handleValidateWithQuiz = () => {
+  const handleValidateWithQuiz = async () => {
+    const timeSpent = Math.floor((Date.now() - lessonStartTime.current) / 1000);
+    if (!isOnline()) {
+      await queueOfflineAction({
+        type: 'lesson_progress',
+        payload: { module_id: moduleId, unit_id: unitId, time_spent_seconds: timeSpent },
+      });
+    }
     router.push(`/${locale}/modules/${moduleId}/quiz?unit=${unitId}`);
   };
 
@@ -231,6 +270,20 @@ export function LessonViewer({
     );
   }
 
+  if (offlineUnavailable) {
+    return (
+      <div className="container mx-auto max-w-4xl px-4 py-6">
+        <Card className="border-gray-200">
+          <CardContent className="p-6 text-center">
+            <WifiOff className="w-8 h-8 text-gray-400 mx-auto mb-3" />
+            <div className="text-gray-800 font-medium mb-2">{t('offlineUnavailableTitle')}</div>
+            <p className="text-gray-600">{t('offlineUnavailable')}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (isGenerating) {
     return (
       <div className="container mx-auto max-w-4xl px-4 py-6">
@@ -268,6 +321,12 @@ export function LessonViewer({
             </div>
             {lessonData.cached && (
               <Badge variant="secondary">{t('cached')}</Badge>
+            )}
+            {servedFromCache && (
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <WifiOff className="w-3 h-3" />
+                {t('offlineBadge')}
+              </Badge>
             )}
           </div>
           <Button

@@ -283,7 +283,8 @@
     "lessonCompletedDesc": "You scored ≥80%. This lesson is now marked as complete in your progress.",
     "lessonNotValidated": "Lesson not validated",
     "lessonNotValidatedDesc": "You need at least {score}% to validate this lesson. Try again!",
-    "refreshContent": "Refresh content"
+    "refreshContent": "Refresh content",
+    "offlineBanner": "Offline mode — results will sync when reconnected"
   },
   "ChatTutor": {
     "title": "AI Tutor",
@@ -584,6 +585,9 @@
     "error": "An error occurred",
     "streamError": "Streaming error occurred",
     "loadError": "Error loading lesson",
+    "offlineBadge": "Offline",
+    "offlineUnavailableTitle": "Content not available offline",
+    "offlineUnavailable": "This lesson has not been downloaded. Connect to access it.",
     "generatingContent": "Generating content...",
     "generatingDescription": "This may take up to 3 minutes on first access.",
     "generationTimeout": "Generation timed out. Please try again.",
@@ -614,6 +618,9 @@
     "error": "An error occurred",
     "streamError": "Streaming error occurred",
     "loadError": "Error loading case study",
+    "offlineBadge": "Offline",
+    "offlineUnavailableTitle": "Content not available offline",
+    "offlineUnavailable": "This case study has not been downloaded. Connect to access it.",
     "generatingContent": "Generating case study...",
     "generatingDescription": "This may take up to 3 minutes on first access.",
     "generationTimeout": "Generation timed out. Please try again.",

@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { queueOfflineAction, isOnline } from '@/lib/offline/content-loader';
 
 interface FlashcardData {
   id: string;
@@ -70,17 +71,22 @@ export function FlashcardDeck({
     setIsFlipped(!isFlipped);
   };
 
-  const handleRating = (rating: Rating) => {
+  const handleRating = async (rating: Rating) => {
     if (!currentCard) return;
 
-    // Record the review
+    if (!isOnline()) {
+      await queueOfflineAction({
+        type: 'flashcard_review',
+        payload: { card_id: currentCard.id, review_id: currentCard.review_id, rating },
+      });
+    }
+
     onReview(currentCard.id, currentCard.review_id, rating);
     
     const newRatings = [...reviewedRatings, rating];
     setReviewedRatings(newRatings);
 
     if (isLastCard) {
-      // Complete the session
       const sessionDuration = Math.floor((Date.now() - sessionStartTime) / 1000);
       onSessionComplete({
         cardsReviewed: cards.length,
@@ -88,7 +94,6 @@ export function FlashcardDeck({
         ratings: newRatings,
       });
     } else {
-      // Advance to next card
       setCurrentIndex(prev => prev + 1);
     }
   };

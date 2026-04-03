@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { CheckCircle, Clock, FileText, RefreshCw, Loader2, AlertTriangle } from 'lucide-react';
+import { CheckCircle, Clock, FileText, RefreshCw, Loader2, AlertTriangle, WifiOff } from 'lucide-react';
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 3 * 60 * 1000;
@@ -17,6 +17,12 @@ import { LessonSkeleton } from './lesson-skeleton';
 import { SourceCitations } from './source-citations';
 import { apiFetch } from '@/lib/api';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
+import {
+  getContentFromDB,
+  saveContentToDB,
+  queueOfflineAction,
+  isOnline,
+} from '@/lib/offline/content-loader';
 
 interface CaseStudyContent {
   aof_context: string;
@@ -69,6 +75,8 @@ export function CaseStudyViewer({
   const [correctionVisible, setCorrectionVisible] = useState(false);
   const [forceRegenerate, setForceRegenerate] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [servedFromCache, setServedFromCache] = useState(false);
+  const [offlineUnavailable, setOfflineUnavailable] = useState(false);
 
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollStartRef = useRef<number>(0);
@@ -128,10 +136,29 @@ export function CaseStudyViewer({
   useEffect(() => {
     if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
 
+    const cacheKey = `${moduleId}/${unitId}/${language}/${level}`;
+
     const load = async () => {
       try {
         setIsLoading(true);
         setError(null);
+        setOfflineUnavailable(false);
+
+        if (!forceRegenerate) {
+          const cached = await getContentFromDB<CaseStudyData>('case_studies', cacheKey);
+          if (cached) {
+            setCaseStudyData(cached);
+            setServedFromCache(true);
+            setIsLoading(false);
+            return;
+          }
+        }
+
+        if (!isOnline()) {
+          setOfflineUnavailable(true);
+          setIsLoading(false);
+          return;
+        }
 
         const forceParam = forceRegenerate ? '&force_regenerate=true' : '';
         const res = await apiFetch<CaseStudyData | GeneratingResponse>(
@@ -144,10 +171,13 @@ export function CaseStudyViewer({
           pollStartRef.current = Date.now();
           pollStatus((res as GeneratingResponse).task_id, pollStartRef.current);
         } else {
-          setCaseStudyData(res as CaseStudyData);
+          const caseStudy = res as CaseStudyData;
+          setCaseStudyData(caseStudy);
+          setServedFromCache(false);
           setIsLoading(false);
           setIsRefreshing(false);
           setForceRegenerate(false);
+          await saveContentToDB('case_studies', { ...caseStudy, id: cacheKey });
         }
       } catch {
         setError(t('loadError'));
@@ -168,6 +198,15 @@ export function CaseStudyViewer({
 
   const handleMarkComplete = async () => {
     try {
+      if (!isOnline()) {
+        await queueOfflineAction({
+          type: 'case_study_complete',
+          payload: { module_id: moduleId, unit_id: unitId },
+        });
+        setIsCompleted(true);
+        onComplete?.();
+        return;
+      }
       await apiFetch(`/api/v1/progress/complete-lesson`, {
         method: 'POST',
         body: JSON.stringify({
@@ -230,6 +269,20 @@ export function CaseStudyViewer({
     );
   }
 
+  if (offlineUnavailable) {
+    return (
+      <div className="container mx-auto max-w-4xl px-4 py-6">
+        <Card className="border-gray-200">
+          <CardContent className="p-6 text-center">
+            <WifiOff className="w-8 h-8 text-gray-400 mx-auto mb-3" />
+            <div className="text-gray-800 font-medium mb-2">{t('offlineUnavailableTitle')}</div>
+            <p className="text-gray-600">{t('offlineUnavailable')}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (isGenerating) {
     return (
       <div className="container mx-auto max-w-4xl px-4 py-6">
@@ -270,6 +323,12 @@ export function CaseStudyViewer({
               {t('estimatedTime')}
             </div>
             {caseStudyData.cached && <Badge variant="secondary">{t('cached')}</Badge>}
+            {servedFromCache && (
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <WifiOff className="w-3 h-3" />
+                {t('offlineBadge')}
+              </Badge>
+            )}
           </div>
           <Button
             variant="ghost"

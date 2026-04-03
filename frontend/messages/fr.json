@@ -283,7 +283,8 @@
     "lessonCompletedDesc": "Vous avez obtenu un score ≥ 80%. Cette leçon est maintenant marquée comme terminée dans votre progression.",
     "lessonNotValidated": "Leçon non validée",
     "lessonNotValidatedDesc": "Vous devez obtenir au moins {score}% pour valider cette leçon. Réessayez !",
-    "refreshContent": "Actualiser le contenu"
+    "refreshContent": "Actualiser le contenu",
+    "offlineBanner": "Mode hors-ligne — le résultat sera synchronisé à la reconnexion"
   },
   "ChatTutor": {
     "title": "Tuteur IA",
@@ -584,6 +585,9 @@
     "error": "Une erreur est survenue",
     "streamError": "Erreur lors de la diffusion en continu",
     "loadError": "Erreur lors du chargement de la leçon",
+    "offlineBadge": "Hors-ligne",
+    "offlineUnavailableTitle": "Contenu non disponible hors-ligne",
+    "offlineUnavailable": "Cette leçon n'a pas été téléchargée. Connectez-vous pour y accéder.",
     "generatingContent": "Génération du contenu...",
     "generatingDescription": "Cela peut prendre jusqu'à 3 minutes lors du premier accès.",
     "generationTimeout": "La génération a expiré. Veuillez réessayer.",
@@ -614,6 +618,9 @@
     "error": "Une erreur est survenue",
     "streamError": "Erreur lors de la diffusion en continu",
     "loadError": "Erreur lors du chargement de l'étude de cas",
+    "offlineBadge": "Hors-ligne",
+    "offlineUnavailableTitle": "Contenu non disponible hors-ligne",
+    "offlineUnavailable": "Cette étude de cas n'a pas été téléchargée. Connectez-vous pour y accéder.",
     "generatingContent": "Génération de l'étude de cas...",
     "generatingDescription": "Cela peut prendre jusqu'à 3 minutes lors du premier accès.",
     "generationTimeout": "La génération a expiré. Veuillez réessayer.",
