@@ -56,17 +56,23 @@ class QuizService:
         try:
             cached_quiz = None
             if not force_regenerate:
-                # Cache lookup: match module, unit, language, and level
-                query = select(GeneratedContent).where(
-                    GeneratedContent.module_id == module_id,
-                    GeneratedContent.content_type == "quiz",
-                    GeneratedContent.language == language,
-                    GeneratedContent.level == level,
-                    GeneratedContent.content["unit_id"].astext == unit_id,
+                # Cache lookup: match all 6 fields that form the unique index
+                # Use .first() with ORDER BY as safety net for any legacy duplicates
+                query = (
+                    select(GeneratedContent)
+                    .where(
+                        GeneratedContent.module_id == module_id,
+                        GeneratedContent.content_type == "quiz",
+                        GeneratedContent.language == language,
+                        GeneratedContent.level == level,
+                        GeneratedContent.country_context == country,
+                        GeneratedContent.content["unit_id"].astext == unit_id,
+                    )
+                    .order_by(GeneratedContent.generated_at.desc())
                 )
 
                 result = await session.execute(query)
-                cached_quiz = result.scalar_one_or_none()
+                cached_quiz = result.scalars().first()
 
             if cached_quiz:
                 logger.info(
@@ -132,16 +138,17 @@ class QuizService:
                     language=language,
                 )
                 conflict_result = await session.execute(
-                    select(GeneratedContent).where(
+                    select(GeneratedContent)
+                    .where(
                         GeneratedContent.module_id == module_id,
                         GeneratedContent.content_type == "quiz",
                         GeneratedContent.language == language,
                         GeneratedContent.level == level,
-                        GeneratedContent.country_context == country,
                         GeneratedContent.content["unit_id"].astext == unit_id,
                     )
+                    .order_by(GeneratedContent.generated_at.desc())
                 )
-                existing = conflict_result.scalar_one()
+                existing = conflict_result.scalars().first()
                 return QuizResponse(
                     id=existing.id,
                     module_id=existing.module_id,
