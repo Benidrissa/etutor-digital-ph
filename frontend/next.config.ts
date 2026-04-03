@@ -8,7 +8,17 @@ const nextConfig: NextConfig = {
   output: "standalone",
 };
 
-export default withSentryConfig(withNextIntl(nextConfig), {
+const withSerwist =
+  process.env.NODE_ENV !== "test"
+    ? (await import("@serwist/next")).default({
+        swSrc: "sw.ts",
+        swDest: "public/sw.js",
+        reloadOnOnline: true,
+        disable: process.env.NODE_ENV === "development",
+      })
+    : (config: NextConfig) => config;
+
+export default withSentryConfig(withNextIntl(withSerwist(nextConfig)), {
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
   authToken: process.env.SENTRY_AUTH_TOKEN,
