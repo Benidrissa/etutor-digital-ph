@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
 import { X } from 'lucide-react';
-import { getLessonImageStatus } from '@/lib/api';
+import { getLessonImageStatus, API_BASE } from '@/lib/api';
 import type { LessonImageStatus } from '@/lib/api';
 
 const POLL_INTERVAL_MS = 3000;
@@ -42,7 +42,10 @@ export function LessonImage({ lessonId, language }: LessonImageProps) {
               ? (data.alt_text_fr ?? data.alt_text ?? '')
               : (data.alt_text_en ?? data.alt_text ?? '');
           setAltText(alt);
-          setImageUrl(data.url);
+          const resolvedUrl = data.url.startsWith('/')
+            ? `${API_BASE}${data.url}`
+            : data.url;
+          setImageUrl(resolvedUrl);
           setTimeout(() => setIsVisible(true), 50);
           return;
         }
