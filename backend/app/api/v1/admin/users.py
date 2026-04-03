@@ -12,15 +12,14 @@ from structlog import get_logger
 
 from app.api.deps import get_db as get_db_session
 from app.api.deps_local_auth import AuthenticatedUser, require_role
+from app.api.v1.schemas.admin import AuditLogResponse
+from app.api.v1.schemas.users import UserProfileResponse
 from app.domain.models.audit_log import AdminAction, AuditLog
 from app.domain.models.module import Module
 from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import QuizAttempt
 from app.domain.models.user import User, UserRole
 from app.domain.repositories.implementations.user_repository import UserRepository
-
-from app.api.v1.schemas.admin import AuditLogResponse
-from app.api.v1.schemas.users import UserProfileResponse
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/admin", tags=["Admin"])
