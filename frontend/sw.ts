@@ -33,11 +33,11 @@ const serwist = new Serwist({
             maxAgeSeconds: 365 * DAY_IN_SECONDS,
           }),
           {
-            cacheWillUpdate: async ({ response }) => {
+            cacheWillUpdate: async ({ response }: { response: Response }) => {
               if (response && response.status === 200) return response;
               return null;
             },
-            cacheKeyWillBeUsed: async ({ request }) => request,
+            cacheKeyWillBeUsed: async ({ request }: { request: Request }) => request,
           },
         ],
       }),
@@ -67,7 +67,7 @@ const serwist = new Serwist({
       }),
     },
     {
-      matcher: ({ url, request }) => {
+      matcher: ({ url, request }: { url: URL; request: Request }) => {
         if (request.method !== "GET") return false;
         if (url.pathname.startsWith("/api/generate")) return false;
         if (url.pathname.startsWith("/api/")) return true;
@@ -84,7 +84,7 @@ const serwist = new Serwist({
       }),
     },
     {
-      matcher: ({ request }) => request.mode === "navigate",
+      matcher: ({ request }: { request: Request }) => request.mode === "navigate",
       handler: new NetworkFirst({
         cacheName: "pages",
         networkTimeoutSeconds: 3,
