@@ -92,7 +92,7 @@ async def export_users_csv(
         if level is not None:
             stmt = stmt.where(User.current_level == level)
         if role is not None:
-            stmt = stmt.where(User.role == role)
+            stmt = stmt.where(User.role == role.value)
         if is_active is not None:
             stmt = stmt.where(User.is_active == is_active)
 
@@ -174,7 +174,7 @@ async def count_users(
         if level is not None:
             stmt = stmt.where(User.current_level == level)
         if role is not None:
-            stmt = stmt.where(User.role == role)
+            stmt = stmt.where(User.role == role.value)
         if is_active is not None:
             stmt = stmt.where(User.is_active == is_active)
 
@@ -212,7 +212,7 @@ async def list_users(
         if level is not None:
             stmt = stmt.where(User.current_level == level)
         if role is not None:
-            stmt = stmt.where(User.role == role)
+            stmt = stmt.where(User.role == role.value)
         if is_active is not None:
             stmt = stmt.where(User.is_active == is_active)
 
