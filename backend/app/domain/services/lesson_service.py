@@ -237,10 +237,11 @@ class LessonGenerationService:
             .where(GeneratedContent.level == level)
             .where(GeneratedContent.country_context == country)
             .where(GeneratedContent.content["unit_id"].astext == unit_id)
+            .order_by(GeneratedContent.generated_at.desc())
         )
 
         result = await session.execute(query)
-        cached_content = result.scalar_one_or_none()
+        cached_content = result.scalars().first()
 
         if cached_content:
             return LessonResponse(
@@ -660,10 +661,11 @@ class CaseStudyGenerationService:
             .where(GeneratedContent.level == level)
             .where(GeneratedContent.country_context == country)
             .where(GeneratedContent.content["unit_id"].astext == unit_id)
+            .order_by(GeneratedContent.generated_at.desc())
         )
 
         result = await session.execute(query)
-        cached_content = result.scalar_one_or_none()
+        cached_content = result.scalars().first()
 
         if cached_content:
             return CaseStudyResponse(
