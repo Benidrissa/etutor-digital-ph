@@ -85,8 +85,7 @@ async def test_create_course_requires_admin_role(user_headers):
 # ---------------------------------------------------------------------------
 
 _SKIP_REASON = (
-    "pytest-asyncio 1.3.0 event loop conflict with async DB fixtures — "
-    "tracked in issue #554"
+    "pytest-asyncio 1.3.0 event loop conflict with async DB fixtures — tracked in issue #554"
 )
 
 
