@@ -1,7 +1,7 @@
 """Add courses, user_course_enrollments tables and modules.course_id FK
 
-Revision ID: 014_add_courses_and_enrollment_tables
-Revises: 013_add_learner_memory_table
+Revision ID: 020_add_courses_and_enrollment_tables
+Revises: 019_hash_email_otp_codes
 Create Date: 2026-04-02
 """
 
@@ -11,8 +11,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "014_add_courses_and_enrollment_tables"
-down_revision: str | None = "013_add_learner_memory_table"
+revision: str = "020_add_courses_and_enrollment_tables"
+down_revision: str | None = "019_hash_email_otp_codes"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

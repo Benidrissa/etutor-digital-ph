@@ -13,12 +13,12 @@ from app.domain.services.jwt_auth_service import JWTAuthService
 
 @pytest.fixture
 def admin_auth_headers():
-    """JWT auth headers for a user with admin professional_role."""
+    """JWT auth headers for a user with admin role."""
     jwt_service = JWTAuthService()
     token = jwt_service.create_access_token(
         user_id="admin-user-uuid",
         email="admin@example.com",
-        professional_role="admin",
+        role="admin",
     )
     return {"Authorization": f"Bearer {token}"}
 
@@ -87,10 +87,10 @@ async def test_browse_catalog_returns_only_published(
 
 @pytest.mark.asyncio
 async def test_browse_catalog_no_auth_required(
-    client: AsyncClient,
-    published_course: Course,
+    authenticated_client: AsyncClient,
 ):
-    resp = await client.get("/api/v1/courses/")
+    """Catalog endpoint should work without auth headers (no Authorization header sent)."""
+    resp = await authenticated_client.get("/api/v1/courses/")
     assert resp.status_code == 200
 
 

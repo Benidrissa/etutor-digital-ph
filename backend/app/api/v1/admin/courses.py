@@ -9,8 +9,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
-from app.api.deps_local_auth import AuthenticatedUser, verify_access_token
-from app.api.v1.schemas.courses import (
+from app.api.deps_local_auth import AuthenticatedUser, require_role
+from app.domain.models.course import Course
+from app.domain.models.module import Module
+from app.domain.models.user import UserRole
+from app.domain.services.course_agent_service import CourseAgentService
+
+from ..schemas.courses import (
     AgentGenerateRequest,
     CourseCreateRequest,
     CourseListResponse,
@@ -18,35 +23,17 @@ from app.api.v1.schemas.courses import (
     CourseUpdateRequest,
     ModuleDraftResponse,
 )
-from app.domain.models.course import Course
-from app.domain.models.module import Module
-from app.domain.services.course_agent_service import CourseAgentService
 
 logger = structlog.get_logger()
-router = APIRouter(prefix="/admin/courses", tags=["admin-courses"])
-
-
-def _require_admin(user: AuthenticatedUser) -> AuthenticatedUser:
-    """Raise 403 if the user is not an admin.
-
-    Currently uses a simple role field on the JWT payload.
-    Will be replaced by RBAC (#238) when implemented.
-    """
-    role = getattr(user, "professional_role", None) or ""
-    if role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
-    return user
+router = APIRouter(prefix="/courses", tags=["admin-courses"])
 
 
 @router.get("/", response_model=CourseListResponse)
 async def list_courses(
     db: AsyncSession = Depends(get_db),
-    user: AuthenticatedUser = Depends(verify_access_token),
+    user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
 ) -> CourseListResponse:
-    _require_admin(user)
+
     result = await db.execute(select(Course).order_by(Course.created_at.desc()))
     courses = result.scalars().all()
     return CourseListResponse(
@@ -59,9 +46,8 @@ async def list_courses(
 async def create_course(
     payload: CourseCreateRequest,
     db: AsyncSession = Depends(get_db),
-    user: AuthenticatedUser = Depends(verify_access_token),
+    user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
 ) -> CourseResponse:
-    _require_admin(user)
 
     existing = await db.execute(select(Course).where(Course.slug == payload.slug))
     if existing.scalar_one_or_none():
@@ -99,9 +85,9 @@ async def create_course(
 async def get_course(
     course_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: AuthenticatedUser = Depends(verify_access_token),
+    user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
 ) -> CourseResponse:
-    _require_admin(user)
+
     course = await db.get(Course, course_id)
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
@@ -113,9 +99,9 @@ async def update_course(
     course_id: uuid.UUID,
     payload: CourseUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    user: AuthenticatedUser = Depends(verify_access_token),
+    user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
 ) -> CourseResponse:
-    _require_admin(user)
+
     course = await db.get(Course, course_id)
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
@@ -133,9 +119,9 @@ async def update_course(
 async def publish_course(
     course_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: AuthenticatedUser = Depends(verify_access_token),
+    user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
 ) -> CourseResponse:
-    _require_admin(user)
+
     course = await db.get(Course, course_id)
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
@@ -158,9 +144,9 @@ async def publish_course(
 async def archive_course(
     course_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: AuthenticatedUser = Depends(verify_access_token),
+    user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
 ) -> CourseResponse:
-    _require_admin(user)
+
     course = await db.get(Course, course_id)
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
@@ -176,10 +162,10 @@ async def generate_course_structure(
     course_id: uuid.UUID,
     payload: AgentGenerateRequest,
     db: AsyncSession = Depends(get_db),
-    user: AuthenticatedUser = Depends(verify_access_token),
+    user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
 ) -> list[ModuleDraftResponse]:
     """Use the content creator agent to generate a course module structure."""
-    _require_admin(user)
+
     course = await db.get(Course, course_id)
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
@@ -207,9 +193,9 @@ async def generate_course_structure(
 async def list_course_modules(
     course_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: AuthenticatedUser = Depends(verify_access_token),
+    user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
 ) -> list[dict]:
-    _require_admin(user)
+
     result = await db.execute(
         select(Module).where(Module.course_id == course_id).order_by(Module.module_number)
     )

@@ -12,10 +12,10 @@ from app.api.deps_local_auth import AuthenticatedUser, require_role
 from app.domain.models.user import User, UserRole
 from app.domain.repositories.implementations.user_repository import UserRepository
 
-from .schemas.users import UserProfileResponse
+from ..schemas.users import UserProfileResponse
 
 logger = get_logger(__name__)
-router = APIRouter(prefix="/admin", tags=["Admin"])
+router = APIRouter(tags=["Admin"])
 
 
 class UpdateRoleRequest(BaseModel):
