@@ -127,7 +127,14 @@ class ImageGenerationService:
             "You are an expert in public health education for West Africa. "
             "Given lesson content, extract: "
             "1) A short key concept (5 words max), "
-            "2) A vivid DALL-E 3 illustration prompt (max 120 chars, educational style, no text), "
+            "2) A vivid DALL-E 3 illustration prompt that follows these STRICT rules:\n"
+            "   - NEVER include any text, words, labels, numbers, letters, captions, or titles in the image\n"
+            "   - Focus on visual metaphors, diagrams without text, people, scenes, objects\n"
+            "   - Style: clean flat illustration, infographic style, vibrant colors, educational\n"
+            "   - Context: West African setting, diverse people, health facilities\n"
+            "   - Max 120 chars\n"
+            "   - Examples of GOOD prompts: 'African health worker examining patient in rural clinic, stethoscope, colorful flat illustration'\n"
+            "   - Examples of BAD prompts: 'Chart showing mortality rates with labels and percentages'\n"
             "3) A JSON array of 5-8 lowercase semantic tags. "
             "Reply ONLY in this exact format:\n"
             "CONCEPT: <concept>\n"
@@ -174,9 +181,12 @@ class ImageGenerationService:
 
         client = AsyncOpenAI(api_key=settings.openai_api_key)
 
+        no_text_suffix = " I NEED this image to contain absolutely NO text, letters, numbers, or written words anywhere."
+        final_prompt = prompt + no_text_suffix
+
         response = await client.images.generate(
             model="dall-e-2",
-            prompt=prompt,
+            prompt=final_prompt,
             n=1,
             size="512x512",
             response_format="url",

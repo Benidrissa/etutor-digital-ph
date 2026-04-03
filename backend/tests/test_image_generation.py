@@ -245,6 +245,8 @@ class TestImageGenerationService:
             call_kwargs = mock_openai.images.generate.call_args.kwargs
             assert call_kwargs.get("model") == "dall-e-2"
             assert call_kwargs.get("size") == "512x512"
+            prompt_sent = call_kwargs.get("prompt", "")
+            assert "NO text" in prompt_sent or "no text" in prompt_sent.lower()
 
         assert result.status == "ready"
         assert result.image_url == f"/api/v1/images/{result.id}/data"
@@ -338,6 +340,26 @@ class TestImageGenerationService:
             )
 
         assert existing.reuse_count == 3
+
+    def test_system_prompt_contains_no_text_rules(self):
+        """System prompt for concept extraction must contain strict no-text rules."""
+        import inspect
+
+        from app.domain.services import image_service
+
+        source = inspect.getsource(image_service)
+        assert "NEVER include any text" in source
+        assert "West African setting" in source
+        assert "flat illustration" in source
+
+    def test_dalle_prompt_suffix_enforces_no_text(self):
+        """DALL-E prompt must include the no-text enforcement suffix."""
+        import inspect
+
+        from app.domain.services import image_service
+
+        source = inspect.getsource(image_service)
+        assert "NO text, letters, numbers, or written words" in source
 
     def test_openai_api_key_not_in_frontend_accessible_code(self):
         """Verify OPENAI_API_KEY is loaded from settings (server-side), not hardcoded."""
