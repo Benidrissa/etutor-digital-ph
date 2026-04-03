@@ -2,6 +2,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+import app.domain.models  # noqa: F401 — import all models so Base.metadata is fully populated
 from app.api.deps import get_db, get_db_session
 from app.domain.models import Base
 from app.domain.services.jwt_auth_service import JWTAuthService
@@ -26,9 +27,14 @@ async def client() -> AsyncClient:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="session", autouse=True)
 async def test_engine():
-    """Create test database engine and initialize all tables."""
+    """Create all tables before any test and tear them down after the session.
+
+    Autouse ensures that tests using ``api_client`` (which bypasses the
+    db_session override and hits the app's own engine on the same DB URL)
+    always find the schema ready.
+    """
     engine = create_async_engine(settings.database_url, echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
