@@ -103,6 +103,14 @@ def upgrade() -> None:
     )
     op.create_index("ix_modules_course_id", "modules", ["course_id"])
 
+    # Link all existing modules to the default course
+    op.execute(
+        f"""
+        UPDATE modules SET course_id = '{DEFAULT_COURSE_ID}'
+        WHERE course_id IS NULL
+        """
+    )
+
     op.create_table(
         "user_course_enrollment",
         sa.Column(
