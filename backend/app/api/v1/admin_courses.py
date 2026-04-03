@@ -2,7 +2,7 @@
 
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -183,7 +183,7 @@ async def publish_course(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
 
     course.status = "published"
-    course.published_at = datetime.now(tz=timezone.utc)
+    course.published_at = datetime.now(UTC)
 
     module_count_result = await db.execute(
         select(func.count()).select_from(Module).where(Module.course_id == course_id)

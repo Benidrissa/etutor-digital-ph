@@ -6,7 +6,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
-from app.domain.models.course import Course, UserCourseEnrollment
+from app.domain.models.course import Course
 from app.domain.models.user import UserRole
 from app.domain.services.jwt_auth_service import JWTAuthService
 from app.main import app
