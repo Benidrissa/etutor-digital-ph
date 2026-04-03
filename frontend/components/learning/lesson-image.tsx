@@ -125,10 +125,12 @@ export function LessonImage({ lessonId, language }: LessonImageProps) {
           >
             <X className="w-5 h-5" aria-hidden="true" />
           </button>
-          <img
+          <Image
             src={imageUrl}
             alt={altText}
             width={512}
+            height={512}
+            sizes="(max-width: 640px) 100vw, 512px"
             className="max-w-full max-h-full object-contain rounded-lg"
             onClick={(e) => e.stopPropagation()}
           />

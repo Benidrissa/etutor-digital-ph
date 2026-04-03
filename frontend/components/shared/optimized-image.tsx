@@ -11,7 +11,6 @@ interface OptimizedImageProps {
   height: number;
   className?: string;
   priority?: boolean;
-  fill?: false;
   sizes?: string;
   onLoad?: () => void;
 }
