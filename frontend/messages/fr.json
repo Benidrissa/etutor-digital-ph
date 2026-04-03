@@ -33,7 +33,9 @@
     "navigateTo": "Naviguer vers",
     "lessons": "Leçons",
     "quiz": "Quiz",
-    "caseStudy": "Étude de cas"
+    "caseStudy": "Étude de cas",
+    "logout": "Déconnexion",
+    "logoutDescription": "Se déconnecter de votre compte"
   },
   "Auth": {
     "login": "Se connecter",
@@ -705,6 +707,9 @@
     "edit": "Modifier",
     "cancel": "Annuler",
     "save": "Sauvegarder",
+    "logout": "Déconnexion",
+    "logoutDescription": "Se déconnecter de votre compte",
+    "loggingOut": "Déconnexion en cours...",
     "languages": {
       "french": "Français",
       "english": "English"
