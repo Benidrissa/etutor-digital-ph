@@ -16,6 +16,7 @@ class UserRole(enum.StrEnum):
     expert = "expert"
     admin = "admin"
 
+
 if TYPE_CHECKING:
     from app.domain.models.auth import EmailOTP, MagicLink, RefreshToken, TOTPSecret
     from app.domain.models.conversation import TutorConversation
