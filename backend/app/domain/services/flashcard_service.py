@@ -163,8 +163,9 @@ class FlashcardGenerationService:
         # Retrieve relevant chunks using RAG
         search_results = await self.semantic_retriever.search(
             query=query,
-            k=12,  # Get more chunks for comprehensive flashcard generation
+            top_k=12,  # Get more chunks for comprehensive flashcard generation
             filters={"level": {"$lte": level}},  # Only content appropriate for user's level
+            session=session,
         )
 
         if not search_results:
