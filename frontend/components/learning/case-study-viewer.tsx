@@ -1,8 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { CheckCircle, Clock, FileText, RefreshCw } from 'lucide-react';
+import { CheckCircle, Clock, FileText, RefreshCw, Loader2, AlertTriangle } from 'lucide-react';
+
+const POLL_INTERVAL_MS = 3000;
+const POLL_TIMEOUT_MS = 3 * 60 * 1000;
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +38,12 @@ interface CaseStudyData {
   cached: boolean;
 }
 
+interface GeneratingResponse {
+  status: 'generating';
+  task_id: string;
+  message: string;
+}
+
 interface CaseStudyViewerProps {
   moduleId: string;
   unitId: string;
@@ -53,95 +62,103 @@ export function CaseStudyViewer({
   onComplete,
 }: CaseStudyViewerProps) {
   const [caseStudyData, setCaseStudyData] = useState<CaseStudyData | null>(null);
-  const [isStreaming, setIsStreaming] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCompleted, setIsCompleted] = useState(false);
   const [correctionVisible, setCorrectionVisible] = useState(false);
   const [forceRegenerate, setForceRegenerate] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollStartRef = useRef<number>(0);
+
   const currentUser = useCurrentUser();
   const country = countryContext || currentUser?.country || 'SN';
 
   const t = useTranslations('CaseStudyViewer');
 
-  useEffect(() => {
-    let eventSource: EventSource | null = null;
+  const pollStatus = (taskId: string, startTime: number) => {
+    if (Date.now() - startTime > POLL_TIMEOUT_MS) {
+      setIsGenerating(false);
+      setIsLoading(false);
+      setIsRefreshing(false);
+      setError(t('generationTimeout'));
+      return;
+    }
 
-    const startStreaming = async () => {
+    pollTimerRef.current = setTimeout(async () => {
       try {
-        setIsStreaming(true);
-        setError(null);
+        const statusRes = await apiFetch<{ status: string; content_id?: string; error?: string }>(
+          `/api/v1/content/status/${taskId}`
+        );
 
-        if (!forceRegenerate) {
-          try {
-            const cachedData = await apiFetch<CaseStudyData>(
-              `/api/v1/content/cases/${moduleId}/${unitId}?language=${language}&level=${level}&country=${country}`
-            );
-
-            if (cachedData.cached) {
-              setCaseStudyData(cachedData);
-              setIsStreaming(false);
-              setIsRefreshing(false);
-              return;
-            }
-          } catch {
-          }
+        if (statusRes.status === 'complete') {
+          const caseRes = await apiFetch<CaseStudyData>(
+            `/api/v1/content/cases/${moduleId}/${unitId}?language=${language}&level=${level}&country=${country}`
+          );
+          setCaseStudyData(caseRes);
+          setIsGenerating(false);
+          setIsLoading(false);
+          setIsRefreshing(false);
+          setForceRegenerate(false);
+        } else if (statusRes.status === 'failed') {
+          setError(t('generationFailed'));
+          setIsGenerating(false);
+          setIsLoading(false);
+          setIsRefreshing(false);
+        } else {
+          pollStatus(taskId, startTime);
         }
-
-        const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-        const forceParam = forceRegenerate ? '&force_regenerate=true' : '';
-        const streamUrl = `${API_BASE}/api/v1/content/cases/${moduleId}/${unitId}/stream?language=${language}&level=${level}&country=${country}${forceParam}`;
-        eventSource = new EventSource(streamUrl);
-
-        eventSource.addEventListener('complete', (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            setCaseStudyData(data);
-            setIsStreaming(false);
-            setIsRefreshing(false);
-            setForceRegenerate(false);
-            eventSource?.close();
-          } catch (e) {
-            console.error('Error parsing SSE complete event:', e);
-            setError(t('streamError'));
-            setIsStreaming(false);
-            setIsRefreshing(false);
-            eventSource?.close();
-          }
-        });
-
-        eventSource.addEventListener('error', (event) => {
-          try {
-            const data = JSON.parse((event as MessageEvent).data);
-            console.error('SSE error event:', data);
-          } catch {
-          }
-          setError(t('streamError'));
-          setIsStreaming(false);
-          setIsRefreshing(false);
-          eventSource?.close();
-        });
-
-        eventSource.onerror = () => {
-          setError(t('streamError'));
-          setIsStreaming(false);
-          setIsRefreshing(false);
-          eventSource?.close();
-        };
       } catch {
         setError(t('loadError'));
-        setIsStreaming(false);
+        setIsGenerating(false);
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    }, POLL_INTERVAL_MS);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+
+    const load = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const forceParam = forceRegenerate ? '&force_regenerate=true' : '';
+        const res = await apiFetch<CaseStudyData | GeneratingResponse>(
+          `/api/v1/content/cases/${moduleId}/${unitId}?language=${language}&level=${level}&country=${country}${forceParam}`
+        );
+
+        if ('status' in res && res.status === 'generating') {
+          setIsLoading(false);
+          setIsGenerating(true);
+          pollStartRef.current = Date.now();
+          pollStatus((res as GeneratingResponse).task_id, pollStartRef.current);
+        } else {
+          setCaseStudyData(res as CaseStudyData);
+          setIsLoading(false);
+          setIsRefreshing(false);
+          setForceRegenerate(false);
+        }
+      } catch {
+        setError(t('loadError'));
+        setIsLoading(false);
         setIsRefreshing(false);
       }
     };
 
-    startStreaming();
-
-    return () => {
-      eventSource?.close();
-    };
-  }, [moduleId, unitId, language, level, country, forceRegenerate, t]);
+    load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moduleId, unitId, language, level, country, forceRegenerate]);
 
   const handleRefresh = () => {
     setCaseStudyData(null);
@@ -196,15 +213,38 @@ export function CaseStudyViewer({
       <div className="container mx-auto max-w-4xl px-4 py-6">
         <Card className="border-red-200">
           <CardContent className="p-6 text-center">
+            <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-3" />
             <div className="text-red-600 font-medium mb-2">{t('error')}</div>
-            <p className="text-gray-600">{error}</p>
+            <p className="text-gray-600 mb-4">{error}</p>
+            <Button
+              variant="outline"
+              onClick={() => { setError(null); setCaseStudyData(null); setForceRegenerate(false); setIsLoading(false); setIsGenerating(false); }}
+              className="min-h-11"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              {t('retry')}
+            </Button>
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  if (isStreaming && !caseStudyData) {
+  if (isGenerating) {
+    return (
+      <div className="container mx-auto max-w-4xl px-4 py-6">
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <Loader2 className="w-10 h-10 animate-spin text-teal-600 mb-4" />
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">{t('generatingContent')}</h2>
+            <p className="text-gray-600 text-center max-w-md">{t('generatingDescription')}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isLoading && !caseStudyData) {
     return <LessonSkeleton />;
   }
 
@@ -235,7 +275,7 @@ export function CaseStudyViewer({
             variant="ghost"
             size="sm"
             onClick={handleRefresh}
-            disabled={isRefreshing || isStreaming}
+            disabled={isRefreshing || isLoading || isGenerating}
             className="min-h-11 gap-1.5 text-gray-500 hover:text-gray-900"
             title={t('refreshContent')}
           >
@@ -329,7 +369,7 @@ export function CaseStudyViewer({
       <div className="mt-8 text-center">
         <Button
           onClick={handleMarkComplete}
-          disabled={isCompleted || isStreaming}
+          disabled={isCompleted || isLoading || isGenerating}
           className="min-h-11 px-8"
           size="lg"
         >

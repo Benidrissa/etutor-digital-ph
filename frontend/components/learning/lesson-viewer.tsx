@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { CheckCircle, Clock, RefreshCw, PlayCircle } from 'lucide-react';
+import { CheckCircle, Clock, RefreshCw, PlayCircle, Loader2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +17,9 @@ import { apiFetch, checkUnitQuizPassed } from '@/lib/api';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { useRouter } from 'next/navigation';
 import { useLocale } from 'next-intl';
+
+const POLL_INTERVAL_MS = 3000;
+const POLL_TIMEOUT_MS = 3 * 60 * 1000;
 
 interface LessonContent {
   introduction: string;
@@ -38,6 +41,12 @@ interface LessonData {
   cached: boolean;
 }
 
+interface GeneratingResponse {
+  status: 'generating';
+  task_id: string;
+  message: string;
+}
+
 interface LessonViewerProps {
   moduleId: string;
   unitId: string;
@@ -55,12 +64,16 @@ export function LessonViewer({
   countryContext,
 }: LessonViewerProps) {
   const [lessonData, setLessonData] = useState<LessonData | null>(null);
-  const [isStreaming, setIsStreaming] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isQuizPassed, setIsQuizPassed] = useState(false);
   const [isCheckingQuiz, setIsCheckingQuiz] = useState(false);
   const [forceRegenerate, setForceRegenerate] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollStartRef = useRef<number>(0);
 
   const currentUser = useCurrentUser();
   const country = countryContext || currentUser?.country || 'SN';
@@ -73,10 +86,9 @@ export function LessonViewer({
     const checkQuizStatus = async () => {
       setIsCheckingQuiz(true);
       try {
-        const status = await checkUnitQuizPassed(moduleId, unitId);
-        setIsQuizPassed(status.passed);
+        const quizStatus = await checkUnitQuizPassed(moduleId, unitId);
+        setIsQuizPassed(quizStatus.passed);
       } catch {
-        // If check fails, default to not passed (show quiz button)
       } finally {
         setIsCheckingQuiz(false);
       }
@@ -84,79 +96,88 @@ export function LessonViewer({
     checkQuizStatus();
   }, [moduleId, unitId]);
 
-  useEffect(() => {
-    let eventSource: EventSource | null = null;
-    
-    const startStreaming = async () => {
-      try {
-        setIsStreaming(true);
-        setError(null);
-        
-        if (!forceRegenerate) {
-          // First check if cached content exists
-          try {
-            const cachedData = await apiFetch<LessonData>(
-              `/api/v1/content/lessons/${moduleId}/${unitId}?language=${language}&level=${level}&country=${country}`
-            );
-            
-            if (cachedData.cached) {
-              setLessonData(cachedData);
-              setIsStreaming(false);
-              setIsRefreshing(false);
-              return;
-            }
-          } catch (cacheErr) {
-            // If cache check fails, continue to streaming
-            console.log('Cache check failed, falling back to streaming:', cacheErr);
-          }
-        }
+  const pollStatus = (taskId: string, startTime: number) => {
+    if (Date.now() - startTime > POLL_TIMEOUT_MS) {
+      setIsGenerating(false);
+      setIsLoading(false);
+      setIsRefreshing(false);
+      setError(t('generationTimeout'));
+      return;
+    }
 
-        // If no cached content or force_regenerate, start streaming
-        const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-        const forceParam = forceRegenerate ? '&force_regenerate=true' : '';
-        const streamUrl = `${API_BASE}/api/v1/content/lessons/${moduleId}/${unitId}/stream?language=${language}&level=${level}&country=${country}${forceParam}`;
-        eventSource = new EventSource(streamUrl);
-        
-        eventSource.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            
-            if (data.event === 'chunk') {
-              // For now, we'll just handle chunks in the complete event
-            } else if (data.event === 'complete') {
-              setLessonData(data.data);
-              setIsStreaming(false);
-              setIsRefreshing(false);
-              setForceRegenerate(false);
-              eventSource?.close();
-            }
-          } catch (e) {
-            console.error('Error parsing SSE data:', e);
-          }
-        };
-        
-        eventSource.onerror = (event) => {
-          console.error('SSE error:', event);
-          setError(t('streamError'));
-          setIsStreaming(false);
+    pollTimerRef.current = setTimeout(async () => {
+      try {
+        const statusRes = await apiFetch<{ status: string; content_id?: string; error?: string }>(
+          `/api/v1/content/status/${taskId}`
+        );
+
+        if (statusRes.status === 'complete') {
+          const lessonRes = await apiFetch<LessonData>(
+            `/api/v1/content/lessons/${moduleId}/${unitId}?language=${language}&level=${level}&country=${country}`
+          );
+          setLessonData(lessonRes);
+          setIsGenerating(false);
+          setIsLoading(false);
           setIsRefreshing(false);
-          eventSource?.close();
-        };
-        
-      } catch (err) {
-        console.error('Error starting lesson stream:', err);
+          setForceRegenerate(false);
+        } else if (statusRes.status === 'failed') {
+          setError(t('generationFailed'));
+          setIsGenerating(false);
+          setIsLoading(false);
+          setIsRefreshing(false);
+        } else {
+          pollStatus(taskId, startTime);
+        }
+      } catch {
         setError(t('loadError'));
-        setIsStreaming(false);
+        setIsGenerating(false);
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    }, POLL_INTERVAL_MS);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+
+    const load = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const forceParam = forceRegenerate ? '&force_regenerate=true' : '';
+        const res = await apiFetch<LessonData | GeneratingResponse>(
+          `/api/v1/content/lessons/${moduleId}/${unitId}?language=${language}&level=${level}&country=${country}${forceParam}`
+        );
+
+        if ('status' in res && res.status === 'generating') {
+          setIsLoading(false);
+          setIsGenerating(true);
+          pollStartRef.current = Date.now();
+          pollStatus((res as GeneratingResponse).task_id, pollStartRef.current);
+        } else {
+          setLessonData(res as LessonData);
+          setIsLoading(false);
+          setIsRefreshing(false);
+          setForceRegenerate(false);
+        }
+      } catch (err) {
+        console.error('Error loading lesson:', err);
+        setError(t('loadError'));
+        setIsLoading(false);
         setIsRefreshing(false);
       }
     };
 
-    startStreaming();
-
-    return () => {
-      eventSource?.close();
-    };
-  }, [moduleId, unitId, language, level, country, forceRegenerate, t]);
+    load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moduleId, unitId, language, level, country, forceRegenerate]);
 
   const handleRefresh = () => {
     setLessonData(null);
@@ -193,15 +214,38 @@ export function LessonViewer({
       <div className="container mx-auto max-w-4xl px-4 py-6">
         <Card className="border-red-200">
           <CardContent className="p-6 text-center">
+            <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-3" />
             <div className="text-red-600 font-medium mb-2">{t('error')}</div>
-            <p className="text-gray-600">{error}</p>
+            <p className="text-gray-600 mb-4">{error}</p>
+            <Button
+              variant="outline"
+              onClick={() => { setError(null); setLessonData(null); setForceRegenerate(false); setIsLoading(false); setIsGenerating(false); }}
+              className="min-h-11"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              {t('retry')}
+            </Button>
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  if (isStreaming && !lessonData) {
+  if (isGenerating) {
+    return (
+      <div className="container mx-auto max-w-4xl px-4 py-6">
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <Loader2 className="w-10 h-10 animate-spin text-teal-600 mb-4" />
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">{t('generatingContent')}</h2>
+            <p className="text-gray-600 text-center max-w-md">{t('generatingDescription')}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isLoading && !lessonData) {
     return <LessonSkeleton />;
   }
 
@@ -230,7 +274,7 @@ export function LessonViewer({
             variant="ghost"
             size="sm"
             onClick={handleRefresh}
-            disabled={isRefreshing || isStreaming}
+            disabled={isRefreshing || isLoading || isGenerating}
             className="min-h-11 gap-1.5 text-gray-500 hover:text-gray-900"
             title={t('refreshContent')}
           >
@@ -321,7 +365,7 @@ export function LessonViewer({
         ) : (
           <Button
             onClick={handleValidateWithQuiz}
-            disabled={isStreaming}
+            disabled={isLoading || isGenerating}
             className="min-h-11 px-8 bg-teal-600 hover:bg-teal-700"
             size="lg"
           >
