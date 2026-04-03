@@ -5,6 +5,7 @@ from uuid import UUID
 
 import structlog
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.claude_service import ClaudeService
@@ -118,8 +119,39 @@ class QuizService:
             )
 
             session.add(generated_content)
-            await session.commit()
-            await session.refresh(generated_content)
+            try:
+                await session.commit()
+                await session.refresh(generated_content)
+            except IntegrityError:
+                await session.rollback()
+                logger.warning(
+                    "Quiz cache INSERT conflict (race condition), fetching existing row",
+                    module_id=str(module_id),
+                    unit_id=unit_id,
+                    language=language,
+                )
+                conflict_result = await session.execute(
+                    select(GeneratedContent).where(
+                        GeneratedContent.module_id == module_id,
+                        GeneratedContent.content_type == "quiz",
+                        GeneratedContent.language == language,
+                        GeneratedContent.level == level,
+                        GeneratedContent.country_context == country,
+                        GeneratedContent.content["unit_id"].astext == unit_id,
+                    )
+                )
+                existing = conflict_result.scalar_one()
+                return QuizResponse(
+                    id=existing.id,
+                    module_id=existing.module_id,
+                    unit_id=existing.content.get("unit_id", unit_id),
+                    language=existing.language,
+                    level=existing.level,
+                    country_context=existing.country_context or country,
+                    content=QuizContent(**existing.content),
+                    generated_at=existing.generated_at.isoformat(),
+                    cached=True,
+                )
 
             logger.info(
                 "Quiz generated and cached",

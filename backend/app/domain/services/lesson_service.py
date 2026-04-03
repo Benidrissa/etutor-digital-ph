@@ -7,6 +7,7 @@ from datetime import datetime
 
 import structlog
 from sqlalchemy import and_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.claude_service import ClaudeService
@@ -419,7 +420,17 @@ class LessonGenerationService:
         )
 
         session.add(cached_content)
-        await session.commit()
+        try:
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            logger.warning(
+                "Lesson cache INSERT conflict (race condition), fetching existing row",
+                module_id=str(lesson_response.module_id),
+                unit_id=lesson_response.unit_id,
+                language=lesson_response.language,
+            )
+            return
 
         logger.info(
             "Cached lesson content",
@@ -882,7 +893,17 @@ class CaseStudyGenerationService:
         )
 
         session.add(cached_content)
-        await session.commit()
+        try:
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            logger.warning(
+                "Case study cache INSERT conflict (race condition), fetching existing row",
+                module_id=str(case_study_response.module_id),
+                unit_id=case_study_response.unit_id,
+                language=case_study_response.language,
+            )
+            return
 
         logger.info(
             "Cached case study content",
