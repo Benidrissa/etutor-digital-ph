@@ -747,5 +747,9 @@
       "student": "Étudiant/e",
       "other": "Autre"
     }
+  },
+  "Offline": {
+    "offline": "Vous êtes hors ligne",
+    "reconnected": "Connexion rétablie"
   }
 }
