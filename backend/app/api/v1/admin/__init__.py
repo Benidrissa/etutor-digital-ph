@@ -10,4 +10,3 @@ router.include_router(users_router)
 router.include_router(courses_router)
 
 __all__ = ["router"]
-Fri Apr  3 16:28:22 -01 2026
