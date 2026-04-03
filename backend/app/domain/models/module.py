@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ARRAY, Integer, String, Text
+from sqlalchemy import ARRAY, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -35,7 +35,7 @@ class Module(Base):
     )
     books_sources: Mapped[dict | None] = mapped_column(JSON)
     course_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("courses.id"), nullable=True, index=True
     )
 
     user_progress: Mapped[list[UserModuleProgress]] = relationship(back_populates="module")

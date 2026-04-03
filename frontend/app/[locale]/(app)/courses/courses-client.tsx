@@ -102,7 +102,7 @@ export function CourseCatalogClient() {
           />
         </div>
         {domains.length > 0 && (
-          <Select value={domain} onValueChange={setDomain}>
+          <Select value={domain} onValueChange={(v) => setDomain(v ?? '')}>
             <SelectTrigger className="w-full sm:w-52">
               <SelectValue placeholder={t('allDomains')} />
             </SelectTrigger>
