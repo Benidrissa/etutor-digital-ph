@@ -343,7 +343,22 @@
     "modeSocratic": "Socratic Mode",
     "modeExplanatory": "Explanatory Mode",
     "modeSocraticTooltip": "Guided questions",
-    "modeExplanatoryTooltip": "Direct answers"
+    "modeExplanatoryTooltip": "Direct answers",
+    "fileUpload": {
+      "attach": "Attach a file",
+      "attachAriaLabel": "Attach a file",
+      "remove": "Remove file",
+      "uploading": "Uploading...",
+      "uploadProgress": "{percent}%",
+      "tooLarge": "File too large (max 10 MB)",
+      "unsupportedType": "Unsupported file type",
+      "uploadFailed": "File upload failed",
+      "dailyLimitReached": "Daily upload limit reached (10 files/day)",
+      "dragDrop": "Drag and drop a file here",
+      "fileCard": "{name} ({size})",
+      "captureCamera": "Take a photo",
+      "acceptedTypes": "Images, PDF, CSV, XLSX, TXT, DOCX (max 10 MB)"
+    }
   },
   "Flashcards": {
     "title": "Flashcards",
