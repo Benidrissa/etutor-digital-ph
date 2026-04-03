@@ -35,7 +35,9 @@
     "quiz": "Quiz",
     "caseStudy": "Étude de cas",
     "logout": "Déconnexion",
-    "logoutDescription": "Se déconnecter de votre compte"
+    "logoutDescription": "Se déconnecter de votre compte",
+    "admin": "Administration",
+    "adminDescription": "Accéder au panneau d'administration"
   },
   "Auth": {
     "login": "Se connecter",
@@ -748,8 +750,15 @@
       "other": "Autre"
     }
   },
-  "Offline": {
-    "offline": "Vous êtes hors ligne",
-    "reconnected": "Connexion rétablie"
+  "Roles": {
+    "user": "Utilisateur",
+    "expert": "Expert",
+    "admin": "Administrateur"
+  },
+  "Admin": {
+    "users": {
+      "title": "Gestion des utilisateurs",
+      "subtitle": "Gérer les comptes et les rôles des utilisateurs"
+    }
   }
 }

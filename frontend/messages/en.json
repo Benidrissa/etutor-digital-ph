@@ -35,7 +35,9 @@
     "quiz": "Quiz",
     "caseStudy": "Case Study",
     "logout": "Log out",
-    "logoutDescription": "Sign out of your account"
+    "logoutDescription": "Sign out of your account",
+    "admin": "Administration",
+    "adminDescription": "Access the administration panel"
   },
   "Auth": {
     "login": "Sign in",
@@ -748,8 +750,15 @@
       "other": "Other"
     }
   },
-  "Offline": {
-    "offline": "You are offline",
-    "reconnected": "Back online"
+  "Roles": {
+    "user": "User",
+    "expert": "Expert",
+    "admin": "Administrator"
+  },
+  "Admin": {
+    "users": {
+      "title": "User Management",
+      "subtitle": "Manage user accounts and roles"
+    }
   }
 }
