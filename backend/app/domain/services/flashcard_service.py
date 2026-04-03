@@ -165,6 +165,7 @@ class FlashcardGenerationService:
             query=query,
             k=12,  # Get more chunks for comprehensive flashcard generation
             filters={"level": {"$lte": level}},  # Only content appropriate for user's level
+            session=session,
         )
 
         if not search_results:

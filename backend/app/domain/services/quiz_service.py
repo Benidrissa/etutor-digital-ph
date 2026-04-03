@@ -103,6 +103,7 @@ class QuizService:
                 country=country,
                 level=level,
                 num_questions=num_questions,
+                session=session,
             )
 
             # Store in cache
@@ -189,6 +190,7 @@ class QuizService:
         country: str,
         level: int,
         num_questions: int,
+        session: AsyncSession | None = None,
     ) -> QuizContent:
         """
         Generate quiz content using RAG retrieval and Claude API.
@@ -212,6 +214,7 @@ class QuizService:
                 user_level=level,
                 user_language=language,
                 top_k=8,
+                session=session,
             )
 
             # Build context from retrieved chunks
