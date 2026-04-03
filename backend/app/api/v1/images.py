@@ -69,13 +69,11 @@ def _get_alt_text(image: GeneratedImage, lang: str) -> str:
 def _resolve_image_url(img: GeneratedImage) -> str | None:
     """Return a public URL for a ready image.
 
-    Prefers `image_url` when already set (e.g. CDN URL).
-    Falls back to the data endpoint so binary BYTEA images are always servable.
+    Always returns our own data endpoint to avoid exposing expired third-party
+    URLs (e.g. Azure blob storage) stored in the DB.
     """
     if img.status != "ready":
         return None
-    if img.image_url:
-        return img.image_url
     return f"/api/v1/images/{img.id}/data"
 
 

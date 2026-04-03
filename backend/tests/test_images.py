@@ -152,6 +152,35 @@ class TestGetLessonImages:
         finally:
             app.dependency_overrides.pop(get_db_session, None)
 
+    async def test_azure_url_overridden_with_own_endpoint(
+        self, client: AsyncClient, allow_rate_limit
+    ) -> None:
+        azure_image = _make_image(
+            IMAGE_READY_ID,
+            LESSON_ID,
+            "ready",
+            image_url="https://oaidalleapiprodscus.blob.core.windows.net/expired-url",
+            alt_text_fr="Illustration de la leçon",
+        )
+        db_mock = AsyncMock()
+        db_mock.execute.return_value = _make_db_scalars([azure_image])
+        from app.api.deps import get_db_session
+        from app.main import app
+
+        async def override():
+            yield db_mock
+
+        app.dependency_overrides[get_db_session] = override
+        try:
+            response = await client.get(f"/api/v1/images/lesson/{LESSON_ID}")
+            assert response.status_code == 200
+            images = response.json()["images"]
+            assert len(images) == 1
+            assert images[0]["image_url"] == f"/api/v1/images/{IMAGE_READY_ID}/data"
+            assert "blob.core.windows.net" not in (images[0]["image_url"] or "")
+        finally:
+            app.dependency_overrides.pop(get_db_session, None)
+
     async def test_pending_image_has_null_url(self, client: AsyncClient, allow_rate_limit) -> None:
         db_mock = AsyncMock()
         db_mock.execute.return_value = _make_db_scalars(_ALL_LESSON_IMAGES)
