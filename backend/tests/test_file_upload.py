@@ -2,10 +2,9 @@
 
 import io
 import os
-import struct
 import uuid
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -110,6 +109,7 @@ class TestFileProcessor:
             old_file = tmp_path / "old_upload.png"
             old_file.write_bytes(b"old")
             import time
+
             old_time = time.time() - (25 * 3600)
             os.utime(old_file, (old_time, old_time))
 
@@ -181,6 +181,7 @@ class TestFileUploadEndpoint:
             "file_ids": ["non-existent-id"],
         }
         with patch("app.domain.services.tutor_service.TutorService.send_message") as mock_send:
+
             async def _fake_stream(*args, **kwargs):
                 yield {"type": "content", "data": {"text": "ok"}}
                 yield {"type": "finished", "data": {"remaining_messages": 49}, "finished": True}
