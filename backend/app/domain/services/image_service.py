@@ -88,6 +88,7 @@ class ImageGenerationService:
 
             image_record.status = "ready"
             image_record.image_url = image_url
+            image_record.image_data = webp_bytes
             image_record.alt_text_fr = alt_fr
             image_record.alt_text_en = alt_en
             image_record.width = width

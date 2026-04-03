@@ -66,6 +66,19 @@ def _get_alt_text(image: GeneratedImage, lang: str) -> str:
     return _ALT_TEXT[lang_key]
 
 
+def _resolve_image_url(img: GeneratedImage) -> str | None:
+    """Return a public URL for a ready image.
+
+    Prefers `image_url` when already set (e.g. CDN URL).
+    Falls back to the data endpoint so binary BYTEA images are always servable.
+    """
+    if img.status != "ready":
+        return None
+    if img.image_url:
+        return img.image_url
+    return f"/api/v1/images/{img.id}/data"
+
+
 @router.get(
     "/lesson/{lesson_id}",
     response_model=LessonImagesListResponse,
@@ -110,7 +123,7 @@ async def get_lesson_images(
                 image_id=img.id,
                 lesson_id=lesson_id,
                 status=img_status,
-                image_url=img.image_url if img_status == "ready" else None,
+                image_url=_resolve_image_url(img),
                 alt_text=_get_alt_text(img, lang),
                 format=img.format,
                 width=img.width,
@@ -188,15 +201,16 @@ async def get_image_status(
     return ImageStatusResponse(
         image_id=image_id,
         status=img_status,
-        image_url=img.image_url if img_status == "ready" else None,
+        image_url=_resolve_image_url(img),
     )
 
 
 @router.get(
     "/{image_id}/data",
-    status_code=status.HTTP_302_FOUND,
+    status_code=status.HTTP_200_OK,
     responses={
-        302: {"description": "Redirect to the image URL"},
+        200: {"content": {"image/webp": {}}, "description": "Binary WebP image data"},
+        302: {"description": "Redirect to the CDN image URL when binary data is unavailable"},
         404: {"description": "Image not found or not ready"},
     },
 )
@@ -205,10 +219,11 @@ async def get_image_data(
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
     """
-    Redirect to the WebP image URL stored in `generated_images.image_url`.
+    Serve the WebP image for a lesson illustration.
 
-    Returns 302 redirect when status='ready' and `image_url` is set.
-    Returns 404 when image is not found or not yet ready.
+    - Returns binary WebP (`Content-Type: image/webp`) when `image_data` is stored.
+    - Falls back to a 302 redirect to `image_url` when only a CDN URL is available.
+    - Returns 404 when the image is not found or not yet ready.
     """
     result = await db.execute(select(GeneratedImage).where(GeneratedImage.id == image_id))
     img = result.scalar_one_or_none()
@@ -222,7 +237,7 @@ async def get_image_data(
             },
         )
 
-    if img.status != "ready" or not img.image_url:
+    if img.status != "ready":
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
@@ -231,9 +246,28 @@ async def get_image_data(
             },
         )
 
-    logger.info("Image data requested", image_id=str(image_id), image_url=img.image_url)
+    if img.image_data:
+        logger.info("Serving binary image data", image_id=str(image_id))
+        return Response(
+            content=img.image_data,
+            media_type="image/webp",
+            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        )
 
-    return Response(
-        status_code=status.HTTP_302_FOUND,
-        headers={"Location": img.image_url, "Cache-Control": "public, max-age=31536000, immutable"},
+    if img.image_url:
+        logger.info("Redirecting to CDN image URL", image_id=str(image_id), image_url=img.image_url)
+        return Response(
+            status_code=status.HTTP_302_FOUND,
+            headers={
+                "Location": img.image_url,
+                "Cache-Control": "public, max-age=3600",
+            },
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail={
+            "error": "image_data_unavailable",
+            "message": f"Image {image_id} has no stored data or URL",
+        },
     )

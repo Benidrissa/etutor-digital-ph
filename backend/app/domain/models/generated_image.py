@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
-from sqlalchemy import ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import ForeignKey, Index, Integer, LargeBinary, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -36,6 +36,7 @@ class GeneratedImage(Base):
     concept: Mapped[str | None] = mapped_column(Text, nullable=True)
     prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     format: Mapped[str] = mapped_column(String(20), server_default="webp")
     width: Mapped[int] = mapped_column(Integer, server_default="512")
     alt_text_fr: Mapped[str | None] = mapped_column(Text, nullable=True)
