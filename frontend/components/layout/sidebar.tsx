@@ -15,12 +15,31 @@ import {
   ChevronRight,
   Menu,
   LogOut,
+  Shield,
 } from "lucide-react";
 import { LocaleSwitcher } from "@/components/shared/locale-switcher";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth";
 import { useQueryClient } from "@tanstack/react-query";
+
+function getUserRole(): string | null {
+  if (typeof window === "undefined") return null;
+  const token = localStorage.getItem("access_token");
+  if (!token) return null;
+  try {
+    const [, payload] = token.split(".");
+    const decoded = JSON.parse(atob(payload));
+    return decoded?.role ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function useUserRole(): string | null {
+  const [role] = useState<string | null>(() => getUserRole());
+  return role;
+}
 
 export function Sidebar() {
   const t = useTranslations("Navigation");
@@ -31,6 +50,7 @@ export function Sidebar() {
   const queryClient = useQueryClient();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const userRole = useUserRole();
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -42,6 +62,8 @@ export function Sidebar() {
       setIsLoggingOut(false);
     }
   };
+
+  const isAdminOrExpert = userRole === "admin" || userRole === "expert";
 
   const navItems = [
     {
@@ -80,6 +102,16 @@ export function Sidebar() {
       icon: Settings,
       description: t("settingsDescription")
     },
+    ...(isAdminOrExpert
+      ? [
+          {
+            href: `/${locale}/admin`,
+            label: t("admin"),
+            icon: Shield,
+            description: t("adminDescription"),
+          },
+        ]
+      : []),
   ];
 
   return (

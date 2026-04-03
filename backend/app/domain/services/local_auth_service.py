@@ -9,11 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from app.domain.models.auth import MagicLink, RefreshToken, TOTPSecret
-from app.domain.models.user import User
+from app.domain.models.user import User, UserRole
 from app.domain.services.email_otp_service import EmailOTPService
 from app.domain.services.email_service import EmailService
 from app.domain.services.jwt_auth_service import JWTAuthService
 from app.domain.services.totp_service import TOTPService
+from app.infrastructure.config.settings import settings
 
 logger = get_logger(__name__)
 
@@ -63,7 +64,12 @@ class LocalAuthService:
             if existing_user:
                 raise AuthenticationError("User already exists")
 
-            # Create user
+            # Create user — assign admin role if email matches ADMIN_EMAIL
+            user_role = (
+                UserRole.admin
+                if settings.admin_email and email.lower() == settings.admin_email.lower()
+                else UserRole.user
+            )
             user = User(
                 id=uuid4(),
                 email=email,
@@ -71,6 +77,7 @@ class LocalAuthService:
                 preferred_language=preferred_language,
                 country=country,
                 professional_role=professional_role,
+                role=user_role,
                 current_level=1,  # Will be set after placement test
                 streak_days=0,
                 last_active=datetime.utcnow(),
@@ -160,6 +167,7 @@ class LocalAuthService:
                 preferred_language=user.preferred_language,
                 country=user.country,
                 current_level=user.current_level,
+                role=user.role.value,
             )
 
             refresh_token = self.jwt_service.create_refresh_token()
@@ -255,6 +263,7 @@ class LocalAuthService:
                 preferred_language=user.preferred_language,
                 country=user.country,
                 current_level=user.current_level,
+                role=user.role.value,
             )
 
             refresh_token = self.jwt_service.create_refresh_token()
@@ -470,6 +479,7 @@ class LocalAuthService:
                 preferred_language=user.preferred_language,
                 country=user.country,
                 current_level=user.current_level,
+                role=user.role.value,
             )
 
             await self.db.commit()
@@ -545,7 +555,12 @@ class LocalAuthService:
             if existing_user:
                 raise AuthenticationError("User already exists")
 
-            # Create user (without TOTP setup)
+            # Create user (without TOTP setup) — assign admin role if email matches ADMIN_EMAIL
+            user_role = (
+                UserRole.admin
+                if settings.admin_email and email.lower() == settings.admin_email.lower()
+                else UserRole.user
+            )
             user = User(
                 id=uuid4(),
                 email=email,
@@ -553,6 +568,7 @@ class LocalAuthService:
                 preferred_language=preferred_language,
                 country=country,
                 professional_role=professional_role,
+                role=user_role,
                 current_level=1,  # Will be set after placement test
                 streak_days=0,
                 last_active=datetime.utcnow(),
@@ -627,6 +643,7 @@ class LocalAuthService:
                 preferred_language=user["preferred_language"],
                 country=user["country"],
                 current_level=user["current_level"],
+                role=user_obj.role.value,
             )
 
             refresh_token = self.jwt_service.create_refresh_token()
@@ -746,6 +763,7 @@ class LocalAuthService:
                 preferred_language=user["preferred_language"],
                 country=user["country"],
                 current_level=user["current_level"],
+                role=user_obj.role.value,
             )
 
             refresh_token = self.jwt_service.create_refresh_token()

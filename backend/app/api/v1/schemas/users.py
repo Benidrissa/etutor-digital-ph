@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel, Field
 
+from app.domain.models.user import UserRole
+
 
 class OnboardingRequest(BaseModel):
     """User onboarding profile update request."""
@@ -23,6 +25,7 @@ class UserProfileResponse(BaseModel):
     preferred_language: str
     country: str | None
     professional_role: str | None
+    role: UserRole = UserRole.user
     current_level: int
     streak_days: int
     avatar_url: str | None

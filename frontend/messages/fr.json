@@ -18,6 +18,8 @@
     "tutor": "Tuteur IA",
     "profile": "Profil",
     "settings": "Paramètres",
+    "admin": "Administration",
+    "adminDescription": "Accéder au panneau d'administration",
     "dashboardDescription": "Accéder à votre tableau de bord d'apprentissage",
     "modulesDescription": "Parcourir les modules d'apprentissage disponibles",
     "flashcardsDescription": "Réviser les flashcards et la répétition espacée",
@@ -689,6 +691,18 @@
     "tryAgain": "Réessayer",
     "diagnosticAssessment": "Évaluation diagnostique",
     "viewHistory": "Voir l'historique"
+  },
+  "Roles": {
+    "user": "Utilisateur",
+    "expert": "Expert",
+    "admin": "Administrateur"
+  },
+  "Admin": {
+    "title": "Administration",
+    "users": "Gestion des utilisateurs",
+    "usersDescription": "Voir et gérer tous les utilisateurs",
+    "accessDenied": "Accès refusé",
+    "accessDeniedDescription": "Vous n'avez pas les permissions nécessaires pour accéder à cette page."
   },
   "Profile": {
     "title": "Profil",

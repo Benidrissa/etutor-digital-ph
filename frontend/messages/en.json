@@ -18,6 +18,8 @@
     "tutor": "AI Tutor",
     "profile": "Profile",
     "settings": "Settings",
+    "admin": "Administration",
+    "adminDescription": "Access the administration panel",
     "dashboardDescription": "Navigate to your learning dashboard",
     "modulesDescription": "Browse available learning modules",
     "flashcardsDescription": "Review flashcards and spaced repetition",
@@ -689,6 +691,18 @@
     "tryAgain": "Try again",
     "diagnosticAssessment": "Diagnostic Assessment",
     "viewHistory": "View history"
+  },
+  "Roles": {
+    "user": "User",
+    "expert": "Expert",
+    "admin": "Administrator"
+  },
+  "Admin": {
+    "title": "Administration",
+    "users": "User Management",
+    "usersDescription": "View and manage all users",
+    "accessDenied": "Access Denied",
+    "accessDeniedDescription": "You do not have the required permissions to access this page."
   },
   "Profile": {
     "title": "Profile",

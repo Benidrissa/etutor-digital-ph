@@ -1,10 +1,13 @@
 """Dependencies for local JWT authentication."""
 
+from collections.abc import Callable
+
 import jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer
 from structlog import get_logger
 
+from ..domain.models.user import UserRole
 from ..domain.services.jwt_auth_service import JWTAuthService
 
 logger = get_logger(__name__)
@@ -23,6 +26,7 @@ class AuthenticatedUser:
         self.country = jwt_payload.get("country")
         self.current_level = jwt_payload.get("current_level", 1)
         self.professional_role = jwt_payload.get("professional_role")
+        self.role: UserRole = UserRole(jwt_payload.get("role", UserRole.user.value))
 
         # JWT metadata
         self.exp = jwt_payload.get("exp", 0)
@@ -103,6 +107,42 @@ async def get_current_user(
         AuthenticatedUser instance
     """
     return user
+
+
+def require_role(*allowed_roles: UserRole) -> Callable:
+    """FastAPI dependency factory that enforces role-based access control.
+
+    Args:
+        *allowed_roles: Roles that are permitted to access the endpoint.
+
+    Returns:
+        FastAPI dependency function that validates the user's role.
+
+    Raises:
+        HTTPException: 403 if the authenticated user's role is not in allowed_roles.
+
+    Example:
+        @router.get("/admin/users", dependencies=[Depends(require_role(UserRole.admin))])
+        @router.get("/validate", dependencies=[Depends(require_role(UserRole.expert, UserRole.admin))])
+    """
+
+    async def role_guard(
+        user: AuthenticatedUser = Depends(get_current_user),
+    ) -> AuthenticatedUser:
+        if user.role not in allowed_roles:
+            logger.warning(
+                "Access denied: insufficient role",
+                user_id=user.id,
+                user_role=user.role,
+                required_roles=[r.value for r in allowed_roles],
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions",
+            )
+        return user
+
+    return role_guard
 
 
 async def get_optional_user(
