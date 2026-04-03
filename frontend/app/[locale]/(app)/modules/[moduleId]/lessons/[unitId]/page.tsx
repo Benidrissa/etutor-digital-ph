@@ -72,6 +72,7 @@ export default async function LessonPage({ params }: LessonPageProps) {
           unitId={unitId}
           language={language}
           level={moduleLevel}
+          estimatedMinutes={unit?.estimatedMinutes}
         />
       )}
     </div>

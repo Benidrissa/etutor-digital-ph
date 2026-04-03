@@ -53,6 +53,7 @@ interface LessonViewerProps {
   language: 'fr' | 'en';
   level: number;
   countryContext?: string;
+  estimatedMinutes?: number;
   onComplete?: () => void;
 }
 
@@ -62,6 +63,7 @@ export function LessonViewer({
   language,
   level,
   countryContext,
+  estimatedMinutes,
 }: LessonViewerProps) {
   const [lessonData, setLessonData] = useState<LessonData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -264,7 +266,7 @@ export function LessonViewer({
             <Badge variant="outline">{t('level', { level })}</Badge>
             <div className="flex items-center text-gray-600">
               <Clock className="w-4 h-4 mr-1" />
-              {t('readingTime')}
+              {estimatedMinutes ? t('readingTime', { minutes: estimatedMinutes }) : t('readingTimeFallback')}
             </div>
             {lessonData.cached && (
               <Badge variant="secondary">{t('cached')}</Badge>

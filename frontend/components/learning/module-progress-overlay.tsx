@@ -93,7 +93,7 @@ export function ModuleProgressOverlay({
     description_fr: u.description?.fr,
     description_en: u.description?.en,
     estimated_minutes: u.estimatedMinutes,
-    order_index: i,
+    order_index: i + 1,
     status: u.status === 'in-progress' ? 'in_progress' : u.status,
   }));
 
@@ -156,7 +156,7 @@ export function ModuleProgressOverlay({
                         <div className="flex items-center gap-2 text-stone-600">
                           {getTypeIcon(unit)}
                           <span className="text-sm font-medium">
-                            {t('unitNumber', { number: unit.order_index + 1 })}
+                            {t('unitNumber', { number: unit.order_index })}
                           </span>
                         </div>
                         <div className="flex-1">
