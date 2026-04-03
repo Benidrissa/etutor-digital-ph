@@ -246,7 +246,7 @@ def generate_lesson_task(
     )
 
     async def _run() -> dict:
-        engine = create_async_engine(settings.database_url, echo=False)
+        engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         try:
             async with session_factory() as session:
@@ -335,7 +335,7 @@ def generate_case_study_task(
     )
 
     async def _run() -> dict:
-        engine = create_async_engine(settings.database_url, echo=False)
+        engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         try:
             async with session_factory() as session:
@@ -427,7 +427,7 @@ def generate_quiz_task(
     )
 
     async def _run() -> dict:
-        engine = create_async_engine(settings.database_url, echo=False)
+        engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         try:
             async with session_factory() as session:
@@ -514,7 +514,7 @@ def generate_flashcard_task(
     )
 
     async def _run() -> dict:
-        engine = create_async_engine(settings.database_url, echo=False)
+        engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         try:
             async with session_factory() as session:
