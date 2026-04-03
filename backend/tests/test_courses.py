@@ -85,11 +85,9 @@ async def test_create_course_requires_admin_role(user_headers):
 
 
 @pytest.mark.asyncio
-async def test_catalog_accessible_without_auth():
-    """GET /api/v1/courses must return 200 without auth."""
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        response = await ac.get("/api/v1/courses")
+async def test_catalog_accessible_without_auth(authenticated_client):
+    """GET /api/v1/courses must return 200 without auth (no auth header sent)."""
+    response = await authenticated_client.get("/api/v1/courses")
     assert response.status_code == 200
 
 
