@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
     api_v1_prefix: str = "/api/v1"
 
+    # Admin seeding
+    admin_email: str = ""
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
