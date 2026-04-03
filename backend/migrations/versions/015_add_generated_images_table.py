@@ -22,7 +22,11 @@ image_status_enum = postgresql.ENUM(
 
 
 def upgrade() -> None:
-    image_status_enum.create(op.get_bind(), checkfirst=True)
+    conn = op.get_bind()
+    if conn.dialect.has_table(conn, "generated_images"):
+        return
+
+    image_status_enum.create(conn, checkfirst=True)
 
     op.create_table(
         "generated_images",
