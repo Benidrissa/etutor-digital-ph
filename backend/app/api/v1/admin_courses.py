@@ -236,9 +236,7 @@ async def generate_course_structure(
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
 
-    max_number_result = await db.execute(
-        select(func.max(Module.module_number))
-    )
+    max_number_result = await db.execute(select(func.max(Module.module_number)))
     max_number = max_number_result.scalar_one() or 0
 
     agent = CourseAgentService()

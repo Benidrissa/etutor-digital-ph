@@ -117,9 +117,7 @@ async def test_create_course_saves_to_db(authenticated_client, db_session, admin
     assert data["status"] == "draft"
     assert data["slug"].startswith("community-nutrition")
 
-    result = await db_session.execute(
-        select(Course).where(Course.id == uuid.UUID(data["id"]))
-    )
+    result = await db_session.execute(select(Course).where(Course.id == uuid.UUID(data["id"])))
     course = result.scalar_one_or_none()
     assert course is not None
     assert course.title_fr == "Nutrition Communautaire"

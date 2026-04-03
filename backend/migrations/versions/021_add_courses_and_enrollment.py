@@ -132,9 +132,7 @@ def upgrade() -> None:
         sa.Column("completion_pct", sa.Float(), nullable=False, server_default="0.0"),
     )
     op.create_index("ix_user_course_enrollment_user_id", "user_course_enrollment", ["user_id"])
-    op.create_index(
-        "ix_user_course_enrollment_course_id", "user_course_enrollment", ["course_id"]
-    )
+    op.create_index("ix_user_course_enrollment_course_id", "user_course_enrollment", ["course_id"])
 
     op.execute(
         f"""

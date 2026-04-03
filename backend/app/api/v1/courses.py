@@ -76,9 +76,7 @@ async def list_published_courses(
     if search:
         q = search.lower()
         courses = [
-            c
-            for c in courses
-            if q in (c.title_fr or "").lower() or q in (c.title_en or "").lower()
+            c for c in courses if q in (c.title_fr or "").lower() or q in (c.title_en or "").lower()
         ]
 
     enrolled_ids: set[str] = set()
@@ -159,9 +157,7 @@ async def enroll_in_course(
     )
     db.add(enrollment)
 
-    modules_result = await db.execute(
-        select(Module).where(Module.course_id == course_id)
-    )
+    modules_result = await db.execute(select(Module).where(Module.course_id == course_id))
     modules = modules_result.scalars().all()
     for module in modules:
         prog_result = await db.execute(
@@ -213,9 +209,7 @@ async def unenroll_from_course(
     )
     enrollment = result.scalar_one_or_none()
     if not enrollment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Enrollment not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Enrollment not found")
 
     enrollment.status = "dropped"
     await db.commit()
