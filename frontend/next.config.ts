@@ -33,6 +33,11 @@ const nextConfig: NextConfig = {
         hostname: "**.railway.app",
         pathname: "/api/**",
       },
+      {
+        protocol: "https",
+        hostname: "api.elearning.portfolio2.kimbetien.com",
+        pathname: "/api/**",
+      },
     ],
   },
 
