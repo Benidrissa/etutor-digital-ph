@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.claude_service import ClaudeService
+from app.domain.services.platform_settings_service import SettingsCache
 from app.ai.prompts.case_study import (
     format_rag_context_for_case_study,
     get_case_study_system_prompt,
@@ -162,7 +163,7 @@ class LessonGenerationService:
                 user_level=level,
                 user_language=language,
                 books_sources=module.books_sources,
-                top_k=8,
+                top_k=SettingsCache.instance().get("ai.rag_default_top_k", 8),
                 session=session,
             )
 
@@ -585,7 +586,7 @@ class CaseStudyGenerationService:
                 user_level=level,
                 user_language=language,
                 books_sources=module.books_sources,
-                top_k=8,
+                top_k=SettingsCache.instance().get("ai.rag_default_top_k", 8),
                 session=session,
             )
 

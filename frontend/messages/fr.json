@@ -756,6 +756,21 @@
     "admin": "Administrateur"
   },
   "Admin": {
+    "settings": {
+      "title": "Paramètres de la plateforme",
+      "subtitle": "Configurer les paramètres globaux",
+      "save": "Enregistrer",
+      "reset": "Réinitialiser",
+      "resetCategory": "Réinitialiser la catégorie",
+      "resetConfirm": "Êtes-vous sûr ? Tous les paramètres de cette catégorie seront réinitialisés.",
+      "saved": "Paramètre enregistré",
+      "resetDone": "Paramètre réinitialisé",
+      "categoryResetDone": "{count} paramètres réinitialisés",
+      "sensitive": "Paramètre de sécurité",
+      "currentValue": "Valeur actuelle",
+      "defaultValue": "Défaut",
+      "modified": "Modifié"
+    },
     "users": {
       "title": "Gestion des utilisateurs",
       "subtitle": "Gérer les comptes et les rôles des utilisateurs",

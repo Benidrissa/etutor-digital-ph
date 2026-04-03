@@ -10,6 +10,7 @@ from structlog import get_logger
 
 from app.api.deps import get_db as get_db_session
 from app.api.deps_local_auth import get_current_user
+from app.domain.services.platform_settings_service import SettingsCache
 
 from ...domain.models.quiz import PlacementTestAttempt
 from ...domain.models.user import User
@@ -152,7 +153,7 @@ async def submit_placement_test(
             user_context=user_context,
             competency_areas=result.competency_areas,
             recommendations=result.recommendations,
-            can_retake_after=datetime.utcnow() + timedelta(days=90),  # 3 months
+            can_retake_after=datetime.utcnow() + timedelta(days=SettingsCache.instance().get("placement.retest_cooldown_days", 90)),
         )
 
         db.add(attempt)
@@ -175,7 +176,7 @@ async def submit_placement_test(
                 "en": _get_level_description_en(result.assigned_level),
                 "fr": _get_level_description_fr(result.assigned_level),
             },
-            "can_retake_after": (datetime.utcnow() + timedelta(days=90)).isoformat(),
+            "can_retake_after": (datetime.utcnow() + timedelta(days=SettingsCache.instance().get("placement.retest_cooldown_days", 90))).isoformat(),
         }
 
     except HTTPException:

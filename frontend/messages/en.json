@@ -756,6 +756,21 @@
     "admin": "Administrator"
   },
   "Admin": {
+    "settings": {
+      "title": "Platform Settings",
+      "subtitle": "Configure platform-wide parameters",
+      "save": "Save",
+      "reset": "Reset to Default",
+      "resetCategory": "Reset All in Category",
+      "resetConfirm": "Are you sure? This will reset all settings in this category to their defaults.",
+      "saved": "Setting saved successfully",
+      "resetDone": "Setting reset to default",
+      "categoryResetDone": "{count} settings reset to default",
+      "sensitive": "Security setting",
+      "currentValue": "Current value",
+      "defaultValue": "Default",
+      "modified": "Modified"
+    },
     "users": {
       "title": "User Management",
       "subtitle": "Manage user accounts and roles",

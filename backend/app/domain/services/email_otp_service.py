@@ -14,6 +14,7 @@ from structlog import get_logger
 from app.domain.models.auth import EmailOTP
 from app.domain.models.user import User
 from app.domain.services.email_service import EmailService
+from app.domain.services.platform_settings_service import SettingsCache
 
 logger = get_logger(__name__)
 
@@ -30,10 +31,11 @@ class EmailOTPService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.email_service = EmailService()
-        self.otp_expiry_minutes = 10  # OTP expires in 10 minutes
-        self.max_attempts = 5  # Max 5 verification attempts per OTP
-        self.rate_limit_window = 10 * 60  # 10 minutes in seconds
-        self.max_otps_per_window = 5  # Max 5 OTP requests per window
+        _cache = SettingsCache.instance()
+        self.otp_expiry_minutes = _cache.get("auth.otp_expiry_minutes", 10)
+        self.max_attempts = _cache.get("auth.otp_max_attempts", 5)
+        self.rate_limit_window = _cache.get("auth.otp_rate_limit_window_seconds", 600)
+        self.max_otps_per_window = _cache.get("auth.otp_max_requests_per_window", 5)
 
     def generate_otp_code(self) -> str:
         """Generate a 6-digit OTP code.

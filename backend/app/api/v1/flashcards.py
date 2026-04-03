@@ -29,6 +29,7 @@ from app.domain.models.flashcard import FlashcardReview
 from app.domain.models.module import Module
 from app.domain.models.user import User
 from app.domain.services.flashcard_service import FlashcardGenerationService
+from app.domain.services.platform_settings_service import SettingsCache
 from app.infrastructure.config.settings import get_settings
 
 logger = structlog.get_logger()
@@ -136,7 +137,7 @@ async def get_due_flashcards(
                         ),
                     )
                 )
-                .limit(20)
+                .limit(SettingsCache.instance().get("flashcards.new_cards_per_session", 20))
             )  # Limit new cards per session
 
             new_result = await session.execute(new_cards_query)
@@ -192,11 +193,12 @@ async def get_due_flashcards(
             cards_count=len(cards_data),
         )
 
+        _new_cards_per_session = SettingsCache.instance().get("flashcards.new_cards_per_session", 20)
         return FlashcardDueResponse(
             user_id=current_user.id,
             cards=cards_data,
             total_due=len(cards_data),
-            session_target=min(20, len(cards_data)),  # Reasonable daily target
+            session_target=min(_new_cards_per_session, len(cards_data)),
         )
 
     except Exception as e:
@@ -278,33 +280,41 @@ async def submit_flashcard_review(
         rating_values = {"again": 1, "hard": 2, "good": 3, "easy": 4}
         rating_value = rating_values.get(review_request.rating, 3)
 
+        # Load FSRS parameters from settings
+        fsrs = SettingsCache.instance().get("flashcards.fsrs_params", {
+            "again": {"stability": 0.5, "difficulty": 1.0},
+            "hard": {"stability": 0.8, "difficulty": 0.5, "interval": 0.8},
+            "good": {"stability": 1.2, "difficulty": -0.1},
+            "easy": {"stability": 1.5, "difficulty": -0.2, "interval": 1.3},
+        })
+
         # Update stability and difficulty based on rating
         if rating_value == 1:  # Again
-            new_stability = max(0.1, review.stability * 0.5)
-            new_difficulty = min(10.0, review.difficulty + 1.0)
+            new_stability = max(0.1, review.stability * fsrs["again"]["stability"])
+            new_difficulty = min(10.0, review.difficulty + fsrs["again"]["difficulty"])
             # Schedule for immediate review (same session)
             next_review = datetime.utcnow()
         elif rating_value == 2:  # Hard
-            new_stability = review.stability * 0.8
-            new_difficulty = min(10.0, review.difficulty + 0.5)
+            new_stability = review.stability * fsrs["hard"]["stability"]
+            new_difficulty = min(10.0, review.difficulty + fsrs["hard"]["difficulty"])
             # Schedule for 1-2 days
-            interval_days = max(1, int(new_stability * 0.8))
+            interval_days = max(1, int(new_stability * fsrs["hard"]["interval"]))
             next_review = datetime.utcnow().replace(
                 hour=9, minute=0, second=0, microsecond=0
             ) + timedelta(days=interval_days)
         elif rating_value == 3:  # Good
-            new_stability = review.stability * 1.2
-            new_difficulty = max(1.0, review.difficulty - 0.1)
+            new_stability = review.stability * fsrs["good"]["stability"]
+            new_difficulty = max(1.0, review.difficulty + fsrs["good"]["difficulty"])
             # Standard interval
             interval_days = max(1, int(new_stability))
             next_review = datetime.utcnow().replace(
                 hour=9, minute=0, second=0, microsecond=0
             ) + timedelta(days=interval_days)
         else:  # Easy
-            new_stability = review.stability * 1.5
-            new_difficulty = max(1.0, review.difficulty - 0.2)
+            new_stability = review.stability * fsrs["easy"]["stability"]
+            new_difficulty = max(1.0, review.difficulty + fsrs["easy"]["difficulty"])
             # Longer interval
-            interval_days = max(1, int(new_stability * 1.3))
+            interval_days = max(1, int(new_stability * fsrs["easy"]["interval"]))
             next_review = datetime.utcnow().replace(
                 hour=9, minute=0, second=0, microsecond=0
             ) + timedelta(days=interval_days)
@@ -408,7 +418,7 @@ async def complete_flashcard_session(
         current_user.last_active = datetime.utcnow()
 
         # Check if user met daily target (20 cards or available cards)
-        daily_target_met = session_request.cards_reviewed >= min(20, total_reviews)
+        daily_target_met = session_request.cards_reviewed >= min(SettingsCache.instance().get("flashcards.new_cards_per_session", 20), total_reviews)
 
         if daily_target_met:
             # Update streak if it's a new day
@@ -492,7 +502,10 @@ async def get_upcoming_reviews(
         today = now.date()
 
         # Get all scheduled flashcard reviews for the next 2 weeks
-        two_weeks_from_now = now + timedelta(days=14)
+        _preview_days = SettingsCache.instance().get(
+            "flashcards.review_preview_days", 14,
+        )
+        two_weeks_from_now = now + timedelta(days=_preview_days)
 
         review_query = (
             select(FlashcardReview, GeneratedContent)
