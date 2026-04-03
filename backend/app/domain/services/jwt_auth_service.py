@@ -20,7 +20,7 @@ class JWTAuthService:
         self.jwt_secret = settings.jwt_secret
         self.jwt_algorithm = "HS256"
         self.access_token_expire_minutes = 15  # Short lived access tokens
-        self.refresh_token_expire_days = 30  # Long lived refresh tokens
+        self.refresh_token_expire_days = 90  # 3 months session validity
 
     def create_access_token(self, user_id: str, email: str, **extra_claims: Any) -> str:
         """Create a JWT access token.
