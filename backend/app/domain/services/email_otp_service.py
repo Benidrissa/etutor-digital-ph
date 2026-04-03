@@ -1,12 +1,13 @@
 """Email OTP service for registration and login verification."""
 
 import hashlib
+import hmac
 import secrets
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -242,7 +243,7 @@ class EmailOTPService:
             otp_record.attempts += 1
 
             # Verify code (constant-time comparison against hash)
-            if otp_record.code != self.hash_otp_code(otp_code):
+            if not hmac.compare_digest(otp_record.code, self.hash_otp_code(otp_code)):
                 await self.db.commit()  # Save attempt increment
                 attempts_left = self.max_attempts - otp_record.attempts
                 raise OTPError(f"Invalid OTP code. {attempts_left} attempts remaining.")
@@ -343,7 +344,7 @@ class EmailOTPService:
         """
         try:
             await self.db.execute(
-                select(EmailOTP).where(
+                delete(EmailOTP).where(
                     and_(EmailOTP.email == email, EmailOTP.expires_at < datetime.utcnow())
                 )
             )
