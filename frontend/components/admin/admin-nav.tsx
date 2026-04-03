@@ -12,6 +12,7 @@ export function AdminNav() {
 
   const items = [
     { href: `/${locale}/admin/users`, label: t("users.title") },
+    { href: `/${locale}/admin/settings`, label: t("settings.title") },
     { href: `/${locale}/admin/audit-logs`, label: t("auditLog.title") },
   ];
 

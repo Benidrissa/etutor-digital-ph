@@ -25,17 +25,19 @@ from app.domain.models.conversation import TutorConversation
 from app.domain.models.module import Module
 from app.domain.models.user import User
 from app.domain.services.learner_memory_service import LearnerMemoryService
+from app.domain.services.platform_settings_service import SettingsCache
 from app.domain.services.tutor_tools import TOOL_DEFINITIONS, TutorToolExecutor
 from app.infrastructure.config.settings import get_settings
 
 logger = structlog.get_logger()
 
-MAX_TOOL_CALLS = 3
-COMPACT_TRIGGER = 20
-COMPACT_KEEP_RECENT = 5
-COMPACT_SUMMARIZE_UP_TO = 15
+_sc = SettingsCache.instance
+MAX_TOOL_CALLS = _sc().get("tutor.max_tool_calls", 3)
+COMPACT_TRIGGER = _sc().get("tutor.compaction_trigger_messages", 20)
+COMPACT_KEEP_RECENT = _sc().get("tutor.compaction_keep_recent", 5)
+COMPACT_SUMMARIZE_UP_TO = _sc().get("tutor.compaction_summarize_up_to", 15)
 
-SESSION_CONTEXT_TOKEN_BUDGET = 1500
+SESSION_CONTEXT_TOKEN_BUDGET = _sc().get("tutor.context_token_budget", 1500)
 
 
 @dataclass
@@ -211,6 +213,7 @@ class TutorService:
         context_id: uuid.UUID | None = None,
         conversation_id: uuid.UUID | None = None,
         tutor_mode: str = "socratic",
+        file_content_blocks: list[dict[str, Any]] | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """
         Send a message to the AI tutor and stream the response using agentic tool_use.
@@ -226,6 +229,7 @@ class TutorService:
             context_type: Optional context type ("module", "lesson", "quiz")
             context_id: Optional context-specific ID
             conversation_id: Optional existing conversation ID
+            file_content_blocks: Optional list of Claude API content blocks (images/text) from uploads
 
         Yields:
             Stream chunks with tutor response data
@@ -298,8 +302,14 @@ class TutorService:
                 "role": "user",
                 "content": message,
                 "timestamp": datetime.utcnow().isoformat(),
+                "has_files": bool(file_content_blocks),
             }
-            conversation_history.append({"role": "user", "content": message})
+
+            if file_content_blocks:
+                user_content: list[Any] = [*file_content_blocks, {"type": "text", "text": message}]
+                conversation_history.append({"role": "user", "content": user_content})
+            else:
+                conversation_history.append({"role": "user", "content": message})
 
             tool_executor = TutorToolExecutor(
                 retriever=self.retriever,
@@ -321,8 +331,8 @@ class TutorService:
                     system=system_prompt,
                     messages=api_messages,
                     tools=TOOL_DEFINITIONS,
-                    max_tokens=1500,
-                    temperature=0.7,
+                    max_tokens=_sc().get("tutor.response_max_tokens", 1500),
+                    temperature=_sc().get("tutor.response_temperature", 0.7),
                 )
 
                 tool_use_blocks = [
@@ -672,7 +682,7 @@ class TutorService:
             user_level=user.current_level,
             user_language=user.preferred_language,
             books_sources=books_sources,
-            top_k=8,
+            top_k=_sc().get("ai.rag_default_top_k", 8),
             session=session,
         )
 
@@ -764,8 +774,8 @@ class TutorService:
                 compact_response = await self.anthropic.messages.create(
                     model="claude-sonnet-4-6",
                     messages=[{"role": "user", "content": prompt}],
-                    max_tokens=600,
-                    temperature=0.3,
+                    max_tokens=_sc().get("tutor.compaction_max_tokens", 600),
+                    temperature=_sc().get("tutor.compaction_temperature", 0.3),
                 )
 
                 compact_text_parts = [

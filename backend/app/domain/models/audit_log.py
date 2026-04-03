@@ -22,6 +22,9 @@ class AdminAction(enum.StrEnum):
     promote_to_admin = "promote_to_admin"
     demote_to_user = "demote_to_user"
     update_role = "update_role"
+    update_setting = "update_setting"
+    reset_setting = "reset_setting"
+    reset_category = "reset_category"
 
 
 class AuditLog(Base):

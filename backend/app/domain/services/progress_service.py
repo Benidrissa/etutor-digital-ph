@@ -14,11 +14,21 @@ from app.domain.models.lesson_reading import LessonReading
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.progress import UserModuleProgress
+from app.domain.services.platform_settings_service import SettingsCache
 
 logger = structlog.get_logger()
 
-_UNLOCK_THRESHOLD_PCT = 80.0
-_UNLOCK_THRESHOLD_SCORE = 80.0
+
+def _unlock_pct():
+    return SettingsCache.instance().get("progress.unlock_threshold_pct", 80.0)
+
+
+def _unlock_score():
+    return SettingsCache.instance().get("progress.unlock_threshold_score", 80.0)
+
+
+def _unit_pass_score():
+    return SettingsCache.instance().get("progress.unit_pass_score", 80.0)
 
 
 class ProgressService:
@@ -135,11 +145,15 @@ class ProgressService:
 
         # After commit, check whether N+1 unlock conditions are met
         if (
-            progress.completion_pct >= _UNLOCK_THRESHOLD_PCT
+            progress.completion_pct >= _unlock_pct()
             and progress.quiz_score_avg is not None
-            and progress.quiz_score_avg >= _UNLOCK_THRESHOLD_SCORE
+            and progress.quiz_score_avg >= _unlock_score()
         ):
             await self._unlock_next_module(user_id, module_id)
+
+        # Prefetch next 2 lessons in background if quiz was passed
+        if passed:
+            await self._dispatch_prefetch_after_quiz(user_id, module_id, unit_id)
 
         logger.info(
             "Progress updated after quiz",
@@ -187,7 +201,7 @@ class ProgressService:
             )
         )
         max_score = attempt_result.scalar()
-        return max_score is not None and max_score >= _UNLOCK_THRESHOLD_SCORE
+        return max_score is not None and max_score >= _unlock_score()
 
     async def get_module_progress(
         self, user_id: UUID, module_id: UUID
@@ -375,6 +389,40 @@ class ProgressService:
                 module_number=next_module.module_number,
             )
 
+        # Prefetch first 2 lessons of the newly unlocked module
+        self._dispatch_prefetch(user_id, str(next_module.id), "")
+
+    async def _dispatch_prefetch_after_quiz(
+        self, user_id: UUID, module_id: UUID, unit_id: str
+    ) -> None:
+        """Dispatch background prefetch of the next 2 lessons after quiz pass."""
+        self._dispatch_prefetch(user_id, str(module_id), unit_id)
+
+    def _dispatch_prefetch(self, user_id: UUID, module_id: str, current_unit_id: str) -> None:
+        """Fire-and-forget Celery task to prefetch next 2 lessons."""
+        try:
+            from app.tasks.content_generation import prefetch_next_lessons_task
+
+            prefetch_next_lessons_task.apply_async(
+                kwargs={
+                    "user_id": str(user_id),
+                    "module_id": module_id,
+                    "current_unit_id": current_unit_id,
+                    "language": "fr",
+                    "country": "SN",
+                    "level": 1,
+                },
+                priority=3,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to dispatch prefetch task",
+                user_id=str(user_id),
+                module_id=module_id,
+                unit_id=current_unit_id,
+                error=str(exc),
+            )
+
     async def _get_or_create_progress(
         self, user_id: UUID, module_id: UUID, now: datetime
     ) -> UserModuleProgress:
@@ -434,7 +482,7 @@ class ProgressService:
                 )
             )
             max_score = attempt_result.scalar()
-            if max_score is not None and max_score >= 80.0:
+            if max_score is not None and max_score >= _unit_pass_score():
                 completed.add(unit_id)
 
         return completed

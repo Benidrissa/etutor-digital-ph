@@ -437,3 +437,49 @@ export async function submitSummativeAssessmentAttempt(
     body: JSON.stringify(request),
   });
 }
+
+// ── Platform Settings ─────────────────────────────────────────
+
+export interface PlatformSetting {
+  key: string;
+  category: string;
+  value: unknown;
+  default_value: unknown;
+  value_type: string;
+  label: string;
+  description: string;
+  validation_rules: { min?: number; max?: number } | null;
+  is_sensitive: boolean;
+  is_default: boolean;
+}
+
+export interface SettingsByCategory {
+  category: string;
+  settings: PlatformSetting[];
+}
+
+export async function getPublicSettings(): Promise<Record<string, unknown>> {
+  const res = await apiFetch<{ settings: Record<string, unknown> }>("/api/v1/settings/public");
+  return res.settings;
+}
+
+export async function getAdminSettings(): Promise<SettingsByCategory[]> {
+  return apiFetch<SettingsByCategory[]>("/api/v1/admin/settings");
+}
+
+export async function updateSetting(key: string, value: unknown): Promise<PlatformSetting> {
+  return apiFetch<PlatformSetting>(`/api/v1/admin/settings/${key}`, {
+    method: "PATCH",
+    body: JSON.stringify({ value }),
+  });
+}
+
+export async function resetSetting(key: string): Promise<PlatformSetting> {
+  return apiFetch<PlatformSetting>(`/api/v1/admin/settings/${key}/reset`, { method: "POST" });
+}
+
+export async function resetSettingCategory(
+  category: string
+): Promise<{ category: string; reset_count: number }> {
+  return apiFetch(`/api/v1/admin/settings/reset-category/${category}`, { method: "POST" });
+}

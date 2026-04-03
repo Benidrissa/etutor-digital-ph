@@ -13,6 +13,7 @@ from app.domain.models.user import User, UserRole
 from app.domain.services.email_otp_service import EmailOTPService
 from app.domain.services.email_service import EmailService
 from app.domain.services.jwt_auth_service import JWTAuthService
+from app.domain.services.platform_settings_service import SettingsCache
 from app.domain.services.totp_service import TOTPService
 from app.infrastructure.config.settings import settings
 
@@ -189,6 +190,26 @@ class LocalAuthService:
                 user.email, user.name, user.preferred_language
             )
 
+            # Kick off background prefetch of first 2 lessons for new user
+            try:
+                from app.tasks.content_generation import prefetch_next_lessons_task
+
+                prefetch_next_lessons_task.delay(
+                    user_id=str(user.id),
+                    module_id="",
+                    current_unit_id="",
+                    language=user.preferred_language,
+                    country=user.country or "SN",
+                    level=user.current_level or 1,
+                    module_number=1,
+                )
+            except Exception as prefetch_exc:
+                logger.warning(
+                    "Failed to dispatch prefetch task on registration",
+                    user_id=str(user.id),
+                    error=str(prefetch_exc),
+                )
+
             logger.info("TOTP setup verified", user_id=user_id, email=user.email)
 
             return {
@@ -241,8 +262,9 @@ class LocalAuthService:
             if not totp_record:
                 raise AuthenticationError("MFA not set up for this account")
 
-            _MAX_FAILED = 10
-            _LOCKOUT_MINUTES = 15
+            _cache = SettingsCache.instance()
+            _MAX_FAILED = _cache.get("auth.max_failed_totp_attempts", 10)
+            _LOCKOUT_MINUTES = _cache.get("auth.totp_lockout_minutes", 15)
 
             # Check account lockout
             if (
@@ -695,6 +717,26 @@ class LocalAuthService:
             await self.email_service.send_welcome_email(
                 user["email"], user["name"], user["preferred_language"]
             )
+
+            # Kick off background prefetch of first 2 lessons for new user
+            try:
+                from app.tasks.content_generation import prefetch_next_lessons_task
+
+                prefetch_next_lessons_task.delay(
+                    user_id=user["id"],
+                    module_id="",
+                    current_unit_id="",
+                    language=user["preferred_language"],
+                    country=user.get("country") or "SN",
+                    level=user.get("current_level") or 1,
+                    module_number=1,
+                )
+            except Exception as prefetch_exc:
+                logger.warning(
+                    "Failed to dispatch prefetch task on email OTP registration",
+                    user_id=user["id"],
+                    error=str(prefetch_exc),
+                )
 
             logger.info("Email OTP registration completed", user_id=user["id"], email=user["email"])
 

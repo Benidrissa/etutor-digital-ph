@@ -8,6 +8,7 @@ import anthropic
 import structlog
 from anthropic.types import Message
 
+from app.domain.services.platform_settings_service import SettingsCache
 from app.infrastructure.config.settings import get_settings
 
 logger = structlog.get_logger()
@@ -25,6 +26,10 @@ class ClaudeService:
             api_key=self.settings.anthropic_api_key,
             timeout=600.0,
         )
+
+        _cache = SettingsCache.instance()
+        self._max_tokens = _cache.get("ai.max_tokens_content", 64000)
+        self._temperature = _cache.get("ai.temperature_content", 0.7)
 
     async def generate_lesson_content_stream(
         self,
@@ -44,10 +49,10 @@ class ClaudeService:
         try:
             async with self.client.messages.stream(
                 model="claude-sonnet-4-6",
-                max_tokens=64000,
+                max_tokens=self._max_tokens,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
-                temperature=0.7,
+                temperature=self._temperature,
             ) as stream_manager:
                 async for event in stream_manager:
                     if event.type == "content_block_delta" and event.delta.type == "text_delta":
@@ -75,10 +80,10 @@ class ClaudeService:
         try:
             response = await self.client.messages.create(
                 model="claude-sonnet-4-6",
-                max_tokens=64000,
+                max_tokens=self._max_tokens,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
-                temperature=0.7,
+                temperature=self._temperature,
             )
             return response
 
@@ -106,10 +111,10 @@ class ClaudeService:
         try:
             response = await self.client.messages.create(
                 model="claude-sonnet-4-6",
-                max_tokens=64000,
+                max_tokens=self._max_tokens,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
-                temperature=0.7,
+                temperature=self._temperature,
             )
 
             if not response.content or len(response.content) == 0:

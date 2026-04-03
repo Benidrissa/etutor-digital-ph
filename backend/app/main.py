@@ -9,6 +9,7 @@ from app.api.middleware.rate_limit import RateLimitMiddleware
 from app.api.middleware.security_headers import SecurityHeadersMiddleware
 from app.api.v1.router import api_v1_router
 from app.data.seeder import seed_module_units
+from app.domain.services.platform_settings_service import SettingsCache
 from app.infrastructure.config.settings import settings
 from app.infrastructure.persistence.database import async_session_factory
 
@@ -60,6 +61,12 @@ async def lifespan(app: FastAPI):
             await seed_module_units(session)
     except Exception as exc:
         log.warning("module_units seed skipped", error=str(exc))
+
+    try:
+        SettingsCache.instance().refresh()
+    except Exception as exc:
+        log.warning("settings_cache load skipped", error=str(exc))
+
     yield
 
 

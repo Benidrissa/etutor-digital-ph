@@ -11,6 +11,7 @@ import { QuizInterface } from './quiz-interface';
 import { QuizResults } from './quiz-results';
 import type { Quiz, QuizAttemptResponse } from '@/lib/api';
 import { generateQuiz, apiFetch } from '@/lib/api';
+import { useSettings } from '@/lib/settings-context';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
 
 const POLL_INTERVAL_MS = 3000;
@@ -44,6 +45,8 @@ export function QuizContainer({
   onError
 }: QuizContainerProps) {
   const t = useTranslations('Quiz');
+  const { getSetting } = useSettings();
+  const unitQuestionsCount = getSetting<number>("quiz.unit_questions_count", 10);
   const currentUser = useCurrentUser();
   const resolvedCountry = country || currentUser?.country || 'SN';
   
@@ -79,7 +82,7 @@ export function QuizContainer({
             language,
             country: resolvedCountry,
             level,
-            num_questions: 10,
+            num_questions: unitQuestionsCount,
           });
           setQuiz(quizData);
           setForceRegenerate(false);
@@ -121,7 +124,7 @@ export function QuizContainer({
           language,
           country: resolvedCountry,
           level,
-          num_questions: 10,
+          num_questions: unitQuestionsCount,
           force_regenerate: forceRegenerate,
         }) as Quiz | GeneratingResponse;
 

@@ -8,6 +8,7 @@ from typing import Any
 import jwt
 from structlog import get_logger
 
+from app.domain.services.platform_settings_service import SettingsCache
 from app.infrastructure.config.settings import settings
 
 logger = get_logger(__name__)
@@ -19,8 +20,9 @@ class JWTAuthService:
     def __init__(self):
         self.jwt_secret = settings.jwt_secret
         self.jwt_algorithm = "HS256"
-        self.access_token_expire_minutes = 15  # Short lived access tokens
-        self.refresh_token_expire_days = 90  # 3 months session validity
+        _cache = SettingsCache.instance()
+        self.access_token_expire_minutes = _cache.get("auth.access_token_expiry_minutes", 15)
+        self.refresh_token_expire_days = _cache.get("auth.refresh_token_expiry_days", 90)
 
     def create_access_token(self, user_id: str, email: str, **extra_claims: Any) -> str:
         """Create a JWT access token.
@@ -138,7 +140,9 @@ class JWTAuthService:
             JWT token for password reset
         """
         now = datetime.utcnow()
-        expire = now + timedelta(hours=1)  # Magic links expire in 1 hour
+        expire = now + timedelta(
+            hours=SettingsCache.instance().get("auth.magic_link_expiry_hours", 1)
+        )
 
         payload = {
             "sub": user_id,

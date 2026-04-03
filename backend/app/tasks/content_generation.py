@@ -632,6 +632,256 @@ def generate_lesson_image(
 @celery_app.task(
     bind=True,
     base=CallbackTask,
+    soft_time_limit=360,
+    time_limit=400,
+    rate_limit="3/m",
+    priority=3,
+)
+def prefetch_next_lessons_task(
+    self,
+    user_id: str,
+    module_id: str,
+    current_unit_id: str,
+    language: str,
+    country: str,
+    level: int,
+    module_number: int | None = None,
+) -> dict:
+    """Pre-generate the next 2 lessons after current_unit_id for a learner.
+
+    Called after registration, quiz pass, or module unlock to eliminate
+    the 'Génération du contenu...' wait on first access.
+
+    Args:
+        user_id: UUID of the learner
+        module_id: UUID string of the current module, or empty string if module_number given
+        current_unit_id: Unit ID like 'M01-U01'; empty string means start of module
+        language: Content language (fr/en)
+        country: Country code for contextualization
+        level: User competency level (1-4)
+        module_number: Module number (e.g. 1 for M01); used when module_id is empty
+
+    Returns:
+        dict with prefetched unit_ids, skipped (already cached), and errors
+    """
+    import asyncio
+
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    from app.ai.claude_service import ClaudeService
+    from app.ai.rag.embeddings import EmbeddingService
+    from app.ai.rag.retriever import SemanticRetriever
+    from app.domain.models.content import GeneratedContent
+    from app.domain.models.module import Module
+    from app.domain.models.module_unit import ModuleUnit
+    from app.domain.services.lesson_service import LessonGenerationService
+    from app.infrastructure.config.settings import settings
+
+    logger.info(
+        "Starting lesson prefetch",
+        user_id=user_id,
+        module_id=module_id,
+        current_unit_id=current_unit_id,
+        language=language,
+        country=country,
+        level=level,
+        task_id=self.request.id,
+    )
+
+    async def _get_next_lesson_unit_ids(
+        session: AsyncSession,
+        module_uuid: uuid.UUID,
+        current_unit_id: str,
+        count: int = 2,
+    ) -> list[str]:
+        """Return unit IDs for the next N lesson-type units after current_unit_id."""
+        module_result = await session.execute(select(Module).where(Module.id == module_uuid))
+        module = module_result.scalar_one_or_none()
+        if not module:
+            return []
+
+        units_result = await session.execute(
+            select(ModuleUnit)
+            .where(ModuleUnit.module_id == module_uuid)
+            .order_by(ModuleUnit.order_index)
+        )
+        all_units = list(units_result.scalars().all())
+
+        current_idx = -1
+        if current_unit_id:
+            for i, u in enumerate(all_units):
+                uid = f"M{module.module_number:02d}-U{u.order_index + 1:02d}"
+                has_dot = "." in u.unit_number
+                ordinal = int(u.unit_number.split(".")[-1]) if has_dot else 0
+                alt_uid = f"M{module.module_number:02d}-U{ordinal:02d}" if has_dot else uid
+                if uid == current_unit_id or alt_uid == current_unit_id:
+                    current_idx = i
+                    break
+
+        next_lessons = []
+        for u in all_units[current_idx + 1 :]:
+            title = (u.title_fr or u.title_en or "").lower()
+            is_quiz_or_case = any(
+                kw in title
+                for kw in ("quiz", "évaluation", "evaluation", "étude de cas", "case study")
+            )
+            if not is_quiz_or_case:
+                uid = f"M{module.module_number:02d}-U{u.order_index + 1:02d}"
+                next_lessons.append(uid)
+            if len(next_lessons) >= count:
+                break
+
+        return next_lessons
+
+    async def _is_cached(
+        session: AsyncSession,
+        module_uuid: uuid.UUID,
+        unit_id: str,
+        language: str,
+        level: int,
+        country: str,
+    ) -> bool:
+        """Return True if lesson content already exists in generated_content cache."""
+        result = await session.execute(
+            select(GeneratedContent.id).where(
+                GeneratedContent.module_id == module_uuid,
+                GeneratedContent.content_type == "lesson",
+                GeneratedContent.language == language,
+                GeneratedContent.content["unit_id"].astext == unit_id,
+            )
+        )
+        return result.scalar_one_or_none() is not None
+
+    async def _run() -> dict:
+        engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
+        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        prefetched: list[str] = []
+        skipped: list[str] = []
+        errors: list[str] = []
+
+        try:
+            async with session_factory() as session:
+                if module_id:
+                    module_uuid = uuid.UUID(module_id)
+                elif module_number is not None:
+                    mod_result = await session.execute(
+                        select(Module).where(Module.module_number == module_number)
+                    )
+                    mod = mod_result.scalar_one_or_none()
+                    if not mod:
+                        logger.warning(
+                            "Module not found for prefetch",
+                            module_number=module_number,
+                            user_id=user_id,
+                        )
+                        return {
+                            "status": "skipped",
+                            "reason": "module_not_found",
+                            "prefetched": [],
+                            "skipped": [],
+                            "errors": [],
+                        }
+                    module_uuid = mod.id
+                else:
+                    logger.warning(
+                        "prefetch_next_lessons_task called with no module_id or module_number",
+                        user_id=user_id,
+                    )
+                    return {
+                        "status": "skipped",
+                        "reason": "no_module",
+                        "prefetched": [],
+                        "skipped": [],
+                        "errors": [],
+                    }
+
+                next_unit_ids = await _get_next_lesson_unit_ids(
+                    session, module_uuid, current_unit_id
+                )
+
+                logger.info(
+                    "Pre-fetching lessons",
+                    user_id=user_id,
+                    units=next_unit_ids,
+                )
+
+                embedding_service = EmbeddingService(
+                    api_key=settings.openai_api_key, model=settings.embedding_model
+                )
+                retriever = SemanticRetriever(embedding_service)
+                lesson_service = LessonGenerationService(ClaudeService(), retriever)
+
+                for unit_id_str in next_unit_ids:
+                    try:
+                        cached = await _is_cached(
+                            session, module_uuid, unit_id_str, language, level, country
+                        )
+                        if cached:
+                            skipped.append(unit_id_str)
+                            logger.info(
+                                "Skipping already cached lesson",
+                                unit_id=unit_id_str,
+                                user_id=user_id,
+                            )
+                            continue
+
+                        await lesson_service.get_or_generate_lesson(
+                            module_id=module_uuid,
+                            unit_id=unit_id_str,
+                            language=language,
+                            country=country,
+                            level=level,
+                            session=session,
+                        )
+                        prefetched.append(unit_id_str)
+                        logger.info(
+                            "Lesson pre-fetched",
+                            unit_id=unit_id_str,
+                            user_id=user_id,
+                        )
+                    except Exception as exc:
+                        errors.append(unit_id_str)
+                        logger.error(
+                            "Failed to pre-fetch lesson",
+                            unit_id=unit_id_str,
+                            user_id=user_id,
+                            error=str(exc),
+                        )
+        finally:
+            await engine.dispose()
+
+        return {
+            "status": "complete",
+            "prefetched": prefetched,
+            "skipped": skipped,
+            "errors": errors,
+        }
+
+    try:
+        result = asyncio.run(_run())
+        logger.info(
+            "Lesson prefetch completed",
+            user_id=user_id,
+            module_id=module_id,
+            result=result,
+            task_id=self.request.id,
+        )
+        return result
+    except Exception as exc:
+        logger.error(
+            "Lesson prefetch task failed",
+            user_id=user_id,
+            module_id=module_id,
+            exception=str(exc),
+            task_id=self.request.id,
+        )
+        return {"status": "failed", "error": str(exc)}
+
+
+@celery_app.task(
+    bind=True,
+    base=CallbackTask,
     soft_time_limit=600,
     time_limit=660,
     rate_limit="1/m",

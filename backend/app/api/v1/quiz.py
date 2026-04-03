@@ -31,6 +31,7 @@ from app.domain.models.module import Module
 from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import QuizAttempt, SummativeAssessmentAttempt
 from app.domain.models.user import User
+from app.domain.services.platform_settings_service import SettingsCache
 from app.domain.services.progress_service import ProgressService
 from app.domain.services.quiz_service import QuizService
 from app.infrastructure.config.settings import get_settings
@@ -383,9 +384,10 @@ async def submit_quiz_attempt(
 
         # Calculate final score
         score = round((correct_count / len(questions)) * 100, 1)
-        passing_score = quiz_data.get("passing_score", 80.0)
+        _quiz_passing = SettingsCache.instance().get("quiz.passing_score", 80.0)
+        passing_score = quiz_data.get("passing_score", _quiz_passing)
         passed = score >= passing_score
-        lesson_validated = score >= 80.0
+        lesson_validated = score >= _quiz_passing
 
         # Store attempt in database
         attempt = QuizAttempt(
@@ -521,13 +523,14 @@ async def generate_summative_assessment(
             language=request.language,
             country=request.country,
             level=request.level,
-            num_questions=20,  # Always 20 for summative
+            num_questions=SettingsCache.instance().get("quiz.summative_questions_count", 20),
             session=session,
         )
 
         # Ensure it's marked as summative in the content
-        if quiz_response.content.passing_score != 80.0:
-            quiz_response.content.passing_score = 80.0
+        _summative_passing = SettingsCache.instance().get("quiz.passing_score", 80.0)
+        if quiz_response.content.passing_score != _summative_passing:
+            quiz_response.content.passing_score = _summative_passing
 
         logger.info(
             "Summative assessment generation completed",
@@ -722,13 +725,14 @@ async def submit_summative_assessment_attempt(
         assessment_data = assessment_content.content
         questions = assessment_data["questions"]
 
-        # Validate this is a summative assessment (20 questions)
-        if len(questions) != 20:
+        # Validate this is a summative assessment
+        _summative_q_count = SettingsCache.instance().get("quiz.summative_questions_count", 20)
+        if len(questions) != _summative_q_count:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={
                     "error": "not_summative_assessment",
-                    "message": "This endpoint is only for summative assessments with 20 questions",
+                    "message": f"This endpoint is only for summative assessments with {_summative_q_count} questions",
                 },
             )
 
@@ -748,12 +752,12 @@ async def submit_summative_assessment_attempt(
             )
 
         # Validate answer count
-        if len(request.answers) != 20:
+        if len(request.answers) != _summative_q_count:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={
                     "error": "answer_count_mismatch",
-                    "message": f"Expected 20 answers, got {len(request.answers)}",
+                    "message": f"Expected {_summative_q_count} answers, got {len(request.answers)}",
                 },
             )
 
@@ -799,8 +803,9 @@ async def submit_summative_assessment_attempt(
             )
 
         # Calculate final score and pass status
-        score = round((correct_count / 20) * 100, 1)
-        passed = score >= 80.0
+        _summative_passing = SettingsCache.instance().get("quiz.passing_score", 80.0)
+        score = round((correct_count / _summative_q_count) * 100, 1)
+        passed = score >= _summative_passing
 
         # Determine next attempt number
         attempt_number = can_attempt_response.attempt_count + 1
@@ -882,7 +887,7 @@ async def submit_summative_assessment_attempt(
             attempt_id=attempt.id,
             assessment_id=request.quiz_id,
             score=score,
-            total_questions=20,
+            total_questions=_summative_q_count,
             correct_answers=correct_count,
             total_time_seconds=request.total_time_seconds,
             passed=passed,
