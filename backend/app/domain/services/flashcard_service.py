@@ -1,6 +1,5 @@
 """Service for flashcard generation and management."""
 
-import json
 import uuid
 
 import structlog
@@ -192,27 +191,21 @@ class FlashcardGenerationService:
         # Call Claude API
         try:
             response = await self.claude_service.generate_structured_content(
-                system_prompt=system_prompt,
-                user_prompt=rag_context,
-                max_tokens=8000,  # Large token budget for 15-30 flashcards
+                system_prompt, rag_context, "flashcard"
             )
 
-            # Parse the JSON response
-            try:
-                flashcard_data = json.loads(response)
+            # response is already a parsed dict or list
+            if isinstance(response, list):
+                flashcard_data = response
+            else:
+                flashcard_data = response.get("flashcards", response)
 
-                # Validate we got a list of flashcards
-                if not isinstance(flashcard_data, list):
-                    raise ValueError("Claude response is not a list of flashcards")
+            # Validate we got a list of flashcards
+            if not isinstance(flashcard_data, list):
+                raise ValueError("Claude response is not a list of flashcards")
 
-                if len(flashcard_data) < 15:
-                    logger.warning(
-                        f"Generated only {len(flashcard_data)} flashcards, expected 15-30"
-                    )
-
-            except json.JSONDecodeError:
-                logger.error("Failed to parse Claude response as JSON", response=response[:500])
-                raise ValueError("Invalid JSON response from Claude API")
+            if len(flashcard_data) < 15:
+                logger.warning(f"Generated only {len(flashcard_data)} flashcards, expected 15-30")
 
             logger.info(f"Successfully generated {len(flashcard_data)} flashcards")
 

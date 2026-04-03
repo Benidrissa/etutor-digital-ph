@@ -1,6 +1,5 @@
 """Tests for flashcard generation functionality."""
 
-import json
 import uuid
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
@@ -126,9 +125,7 @@ class TestFlashcardGenerationService:
         session.refresh = AsyncMock(side_effect=mock_refresh)
 
         mock_semantic_retriever.search.return_value = sample_search_results
-        mock_claude_service.generate_structured_content.return_value = json.dumps(
-            sample_flashcard_data
-        )
+        mock_claude_service.generate_structured_content.return_value = sample_flashcard_data
 
         result = await flashcard_service.get_or_generate_flashcard_set(
             module_id=module_id,
@@ -330,9 +327,9 @@ class TestFlashcardGenerationService:
         session.refresh = AsyncMock(side_effect=mock_refresh)
 
         mock_semantic_retriever.search.return_value = sample_search_results
-        mock_claude_service.generate_structured_content.return_value = "Invalid JSON"
+        mock_claude_service.generate_structured_content.return_value = {"unexpected": "structure"}
 
-        with pytest.raises(ValueError, match="Invalid JSON response"):
+        with pytest.raises(ValueError, match="Claude response is not a list of flashcards"):
             await flashcard_service.get_or_generate_flashcard_set(
                 module_id=module_id,
                 language=language,
@@ -400,9 +397,7 @@ class TestFlashcardGenerationService:
 
         session.refresh = AsyncMock(side_effect=mock_refresh)
         mock_semantic_retriever.search.return_value = sample_search_results
-        mock_claude_service.generate_structured_content.return_value = json.dumps(
-            sample_flashcard_data
-        )
+        mock_claude_service.generate_structured_content.return_value = sample_flashcard_data
 
         await flashcard_service.get_or_generate_flashcard_set(
             module_id=module_id,

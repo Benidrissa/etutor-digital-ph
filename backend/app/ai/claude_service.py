@@ -134,16 +134,23 @@ class ClaudeService:
                     if clean_text.rstrip().endswith("```"):
                         clean_text = clean_text.rstrip()[:-3]
 
-                # Look for JSON within the response text
-                json_start = clean_text.find("{")
-                json_end = clean_text.rfind("}") + 1
+                # Look for JSON within the response text (object or array)
+                import re
+
+                obj_start = clean_text.find("{")
+                arr_start = clean_text.find("[")
+
+                if arr_start >= 0 and (obj_start < 0 or arr_start < obj_start):
+                    json_start = arr_start
+                    json_end = clean_text.rfind("]") + 1
+                else:
+                    json_start = obj_start
+                    json_end = clean_text.rfind("}") + 1
 
                 if json_start >= 0 and json_end > json_start:
                     json_text = clean_text[json_start:json_end]
 
                     # Fix common Claude JSON mistakes
-                    import re
-
                     # Remove trailing commas before } or ]
                     json_text = re.sub(r",\s*([}\]])", r"\1", json_text)
 
