@@ -17,6 +17,11 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    conn = op.get_bind()
+    columns = [c["name"] for c in sa.inspect(conn).get_columns("tutor_conversations")]
+    if "compacted_context" in columns:
+        return
+
     op.add_column(
         "tutor_conversations",
         sa.Column("compacted_context", sa.Text(), nullable=True),

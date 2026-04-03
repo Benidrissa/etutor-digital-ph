@@ -17,6 +17,11 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    conn = op.get_bind()
+    columns = [c["name"] for c in sa.inspect(conn).get_columns("generated_images")]
+    if "image_data" in columns:
+        return
+
     op.add_column(
         "generated_images",
         sa.Column("image_data", sa.LargeBinary(), nullable=True),
