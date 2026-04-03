@@ -121,7 +121,7 @@ class ImageGenerationService:
         """Use Claude API to extract key concept, DALL-E prompt, and semantic tags."""
         import anthropic
 
-        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=600.0)
 
         system = (
             "You are an expert in public health education for West Africa. "
@@ -204,7 +204,7 @@ class ImageGenerationService:
         """Generate bilingual alt-text for the image."""
         import anthropic
 
-        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=600.0)
 
         message = await client.messages.create(
             model="claude-sonnet-4-6",

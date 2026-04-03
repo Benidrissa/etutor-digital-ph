@@ -9,8 +9,8 @@ from app.tasks.celery_app import celery_app
 
 logger = structlog.get_logger(__name__)
 
-POLL_SOFT_LIMIT = 180
-POLL_HARD_LIMIT = 200
+POLL_SOFT_LIMIT = 300
+POLL_HARD_LIMIT = 320
 
 
 class CallbackTask(Task):
