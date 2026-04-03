@@ -23,7 +23,7 @@ def admin_auth_headers():
     """JWT auth headers for a user with admin role."""
     jwt_service = JWTAuthService()
     token = jwt_service.create_access_token(
-        user_id="admin-user-uuid",
+        user_id=str(uuid.uuid4()),
         email="admin@example.com",
         role=UserRole.admin.value,
     )
