@@ -16,13 +16,20 @@ UNKNOWN_IMAGE_ID = uuid.uuid4()
 
 
 def _make_image(
-    image_id, lesson_id, img_status, image_url=None, alt_text_fr=None, alt_text_en=None
+    image_id,
+    lesson_id,
+    img_status,
+    image_url=None,
+    alt_text_fr=None,
+    alt_text_en=None,
+    image_data=None,
 ):
     img = MagicMock()
     img.id = image_id
     img.lesson_id = lesson_id
     img.status = img_status
     img.image_url = image_url
+    img.image_data = image_data
     img.alt_text_fr = alt_text_fr
     img.alt_text_en = alt_text_en
     img.format = "webp"
@@ -363,7 +370,33 @@ class TestGetImageStatus:
 
 
 class TestGetImageData:
-    async def test_ready_image_redirects(self, client: AsyncClient) -> None:
+    async def test_ready_image_serves_binary_data(self, client: AsyncClient) -> None:
+        ready_with_data = _make_image(
+            IMAGE_READY_ID,
+            LESSON_ID,
+            "ready",
+            image_data=b"fake-webp-bytes",
+        )
+        db_mock = AsyncMock()
+        db_mock.execute.return_value = _make_db_scalar_one_or_none(ready_with_data)
+        from app.api.deps import get_db_session
+        from app.main import app
+
+        async def override():
+            yield db_mock
+
+        app.dependency_overrides[get_db_session] = override
+        try:
+            response = await client.get(
+                f"/api/v1/images/{IMAGE_READY_ID}/data", follow_redirects=False
+            )
+            assert response.status_code == 200
+            assert response.headers["content-type"] == "image/webp"
+            assert response.content == b"fake-webp-bytes"
+        finally:
+            app.dependency_overrides.pop(get_db_session, None)
+
+    async def test_ready_image_redirects_when_no_binary_data(self, client: AsyncClient) -> None:
         db_mock = AsyncMock()
         db_mock.execute.return_value = _make_db_scalar_one_or_none(_READY_IMAGE)
         from app.api.deps import get_db_session

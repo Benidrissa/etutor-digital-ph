@@ -133,8 +133,36 @@ export interface LessonImageResponse {
   alt_text_en?: string;
 }
 
+interface _ApiLessonImage {
+  image_id: string;
+  lesson_id: string;
+  status: LessonImageStatus;
+  image_url: string | null;
+  alt_text: string;
+  format: string;
+  width: number;
+}
+
+interface _ApiLessonImagesListResponse {
+  lesson_id: string;
+  images: _ApiLessonImage[];
+  total: number;
+}
+
 export async function getLessonImageStatus(lessonId: string): Promise<LessonImageResponse> {
-  return apiFetch<LessonImageResponse>(`/api/v1/images/lesson/${lessonId}`);
+  const data = await apiFetch<_ApiLessonImagesListResponse>(`/api/v1/images/lesson/${lessonId}`);
+  const first = data.images[0];
+  if (!first) {
+    return { lesson_id: lessonId, status: 'pending' };
+  }
+  return {
+    lesson_id: first.lesson_id,
+    status: first.status,
+    url: first.image_url ?? undefined,
+    alt_text: first.alt_text,
+    alt_text_fr: first.alt_text,
+    alt_text_en: first.alt_text,
+  };
 }
 
 export interface DashboardStats {
