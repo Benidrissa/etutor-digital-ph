@@ -126,9 +126,7 @@ class TestFlashcardGenerationService:
         session.refresh = AsyncMock(side_effect=mock_refresh)
 
         mock_semantic_retriever.search.return_value = sample_search_results
-        mock_claude_service.generate_structured_content.return_value = json.dumps(
-            sample_flashcard_data
-        )
+        mock_claude_service.generate_structured_content.return_value = sample_flashcard_data
 
         result = await flashcard_service.get_or_generate_flashcard_set(
             module_id=module_id,
@@ -332,7 +330,7 @@ class TestFlashcardGenerationService:
         mock_semantic_retriever.search.return_value = sample_search_results
         mock_claude_service.generate_structured_content.return_value = "Invalid JSON"
 
-        with pytest.raises(ValueError, match="Invalid JSON response"):
+        with pytest.raises(ValueError, match="Unexpected response type"):
             await flashcard_service.get_or_generate_flashcard_set(
                 module_id=module_id,
                 language=language,
@@ -400,9 +398,7 @@ class TestFlashcardGenerationService:
 
         session.refresh = AsyncMock(side_effect=mock_refresh)
         mock_semantic_retriever.search.return_value = sample_search_results
-        mock_claude_service.generate_structured_content.return_value = json.dumps(
-            sample_flashcard_data
-        )
+        mock_claude_service.generate_structured_content.return_value = sample_flashcard_data
 
         await flashcard_service.get_or_generate_flashcard_set(
             module_id=module_id,
