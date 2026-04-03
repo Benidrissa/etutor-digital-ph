@@ -267,7 +267,11 @@ class QuizService:
             4: "expert (research, policy implications)",
         }
 
-        system_prompt = """You are an expert public health educator creating adaptive quiz content for West African health professionals. Always respond with valid JSON matching the requested format exactly."""
+        system_prompt = """You are an expert public health educator creating adaptive quiz content for West African health professionals.
+
+CRITICAL: You MUST respond with valid JSON ONLY. No preamble, no explanation, no markdown code fences. Your entire response must be a single JSON object starting with { and ending with }. Do not include any text before or after the JSON.
+
+The JSON must have exactly these top-level keys: "title", "description", "questions", "time_limit_minutes", "passing_score"."""
 
         user_message = f"""Create a multiple-choice quiz for public health professionals in West Africa.
 
@@ -339,6 +343,12 @@ Generate the quiz now, ensuring all questions are relevant to public health prac
             ValueError: If quiz_data is invalid or missing required fields
         """
         try:
+            if quiz_data.get("raw_response"):
+                raise ValueError(
+                    "Claude returned non-JSON response; could not parse quiz structure. "
+                    "Raw content preview: " + str(quiz_data.get("content", ""))[:200]
+                )
+
             required_fields = ["title", "questions"]
             for field in required_fields:
                 if field not in quiz_data:

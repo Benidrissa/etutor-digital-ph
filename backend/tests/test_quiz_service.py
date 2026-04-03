@@ -62,6 +62,11 @@ class TestValidateAndNormalizeQuiz:
         assert len(result["questions"]) == 10
         assert result["unit_id"] == "M01-U04"
 
+    def test_raises_on_raw_response_fallback(self, quiz_service):
+        data = {"content": "Here is your quiz...", "type": "quiz", "raw_response": True}
+        with pytest.raises(ValueError, match="Claude returned non-JSON response"):
+            quiz_service._validate_and_normalize_quiz(data, "M01-U04", 10)
+
     def test_raises_on_missing_title_field(self, quiz_service):
         import copy
 
@@ -251,6 +256,25 @@ class TestGenerateQuizContent:
         mock_claude_service.generate_structured_content.side_effect = Exception("API error")
         module_id = uuid.uuid4()
         with pytest.raises(Exception, match="API error"):
+            await quiz_service._generate_quiz_content(
+                module_id=module_id,
+                unit_id="M01-U04",
+                language="fr",
+                country="senegal",
+                level=1,
+                num_questions=10,
+            )
+
+    async def test_raises_when_claude_returns_raw_response(
+        self, quiz_service, mock_claude_service
+    ):
+        mock_claude_service.generate_structured_content.return_value = {
+            "content": "Here is a quiz about...",
+            "type": "quiz",
+            "raw_response": True,
+        }
+        module_id = uuid.uuid4()
+        with pytest.raises(ValueError, match="Claude returned non-JSON response"):
             await quiz_service._generate_quiz_content(
                 module_id=module_id,
                 unit_id="M01-U04",
