@@ -41,7 +41,7 @@ _READY_IMAGE = _make_image(
     IMAGE_READY_ID,
     LESSON_ID,
     "ready",
-    image_url="https://cdn.example.com/images/ready.webp",
+    image_url=f"/api/v1/images/{IMAGE_READY_ID}/data",
     alt_text_fr="Illustration de la leçon",
     alt_text_en="Lesson illustration",
 )
@@ -148,7 +148,7 @@ class TestGetLessonImages:
             images = {img["image_id"]: img for img in response.json()["images"]}
             ready = images[str(IMAGE_READY_ID)]
             assert ready["status"] == "ready"
-            assert ready["image_url"] == "https://cdn.example.com/images/ready.webp"
+            assert ready["image_url"] == f"/api/v1/images/{IMAGE_READY_ID}/data"
         finally:
             app.dependency_overrides.pop(get_db_session, None)
 
@@ -302,7 +302,7 @@ class TestGetImageStatus:
             assert response.status_code == 200
             data = response.json()
             assert data["status"] == "ready"
-            assert data["image_url"] == "https://cdn.example.com/images/ready.webp"
+            assert data["image_url"] == f"/api/v1/images/{IMAGE_READY_ID}/data"
         finally:
             app.dependency_overrides.pop(get_db_session, None)
 
@@ -396,9 +396,16 @@ class TestGetImageData:
         finally:
             app.dependency_overrides.pop(get_db_session, None)
 
-    async def test_ready_image_redirects_when_no_binary_data(self, client: AsyncClient) -> None:
+    async def test_ready_image_with_no_binary_data_returns_404(self, client: AsyncClient) -> None:
+        ready_no_data = _make_image(
+            IMAGE_READY_ID,
+            LESSON_ID,
+            "ready",
+            image_url=None,
+            image_data=None,
+        )
         db_mock = AsyncMock()
-        db_mock.execute.return_value = _make_db_scalar_one_or_none(_READY_IMAGE)
+        db_mock.execute.return_value = _make_db_scalar_one_or_none(ready_no_data)
         from app.api.deps import get_db_session
         from app.main import app
 
@@ -410,8 +417,8 @@ class TestGetImageData:
             response = await client.get(
                 f"/api/v1/images/{IMAGE_READY_ID}/data", follow_redirects=False
             )
-            assert response.status_code == 302
-            assert response.headers["location"] == "https://cdn.example.com/images/ready.webp"
+            assert response.status_code == 404
+            assert "image_data_unavailable" in response.json()["detail"]["error"]
         finally:
             app.dependency_overrides.pop(get_db_session, None)
 

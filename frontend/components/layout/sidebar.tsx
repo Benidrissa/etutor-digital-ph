@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useTranslations, useLocale } from "next-intl";
 import {
   Home,
@@ -14,17 +14,34 @@ import {
   ChevronLeft,
   ChevronRight,
   Menu,
+  LogOut,
 } from "lucide-react";
 import { LocaleSwitcher } from "@/components/shared/locale-switcher";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { authClient } from "@/lib/auth";
+import { useQueryClient } from "@tanstack/react-query";
 
 export function Sidebar() {
   const t = useTranslations("Navigation");
   const tCommon = useTranslations("Common");
   const pathname = usePathname();
   const locale = useLocale();
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await authClient.logout();
+      queryClient.clear();
+      router.push(`/${locale}/login`);
+    } catch {
+      setIsLoggingOut(false);
+    }
+  };
 
   const navItems = [
     {
@@ -132,11 +149,22 @@ export function Sidebar() {
       
       <div className="border-t p-2">
         {!isCollapsed ? (
-          <div className="p-2">
+          <div className="space-y-1 p-2">
             <LocaleSwitcher />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive min-h-11"
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              aria-label={t("logoutDescription")}
+            >
+              <LogOut className="mr-2 h-4 w-4" aria-hidden="true" />
+              {t("logout")}
+            </Button>
           </div>
         ) : (
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center gap-1">
             <Button
               variant="ghost"
               size="sm"
@@ -144,6 +172,16 @@ export function Sidebar() {
               aria-label={t("languageSettings")}
             >
               <Menu className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="min-h-11 min-w-11 p-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              aria-label={t("logoutDescription")}
+            >
+              <LogOut className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
         )}

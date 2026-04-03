@@ -64,11 +64,13 @@ class ImageGenerationService:
             if reusable is not None:
                 reusable.reuse_count = (reusable.reuse_count or 0) + 1
                 image_record.status = "ready"
-                image_record.image_url = reusable.image_url
+                image_record.image_url = f"/api/v1/images/{image_record.id}/data"
+                image_record.image_data = reusable.image_data
                 image_record.alt_text_fr = reusable.alt_text_fr
                 image_record.alt_text_en = reusable.alt_text_en
                 image_record.width = reusable.width
                 image_record.format = reusable.format
+                image_record.file_size_bytes = reusable.file_size_bytes
                 image_record.generated_at = datetime.utcnow()
                 await session.commit()
                 logger.info(
@@ -87,7 +89,7 @@ class ImageGenerationService:
             alt_fr, alt_en = await self._generate_alt_text(concept)
 
             image_record.status = "ready"
-            image_record.image_url = image_url
+            image_record.image_url = f"/api/v1/images/{image_record.id}/data"
             image_record.image_data = webp_bytes
             image_record.alt_text_fr = alt_fr
             image_record.alt_text_en = alt_en

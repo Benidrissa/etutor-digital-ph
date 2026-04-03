@@ -33,7 +33,9 @@
     "navigateTo": "Navigate to",
     "lessons": "Lessons",
     "quiz": "Quiz",
-    "caseStudy": "Case Study"
+    "caseStudy": "Case Study",
+    "logout": "Log out",
+    "logoutDescription": "Sign out of your account"
   },
   "Auth": {
     "login": "Sign in",
@@ -705,6 +707,9 @@
     "edit": "Edit",
     "cancel": "Cancel",
     "save": "Save Changes",
+    "logout": "Log out",
+    "logoutDescription": "Sign out of your account",
+    "loggingOut": "Logging out...",
     "languages": {
       "french": "Français",
       "english": "English"
