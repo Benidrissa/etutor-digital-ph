@@ -145,10 +145,12 @@ async def generate_quiz(
                 .where(GeneratedContent.content_type == "quiz")
                 .where(GeneratedContent.language == request.language)
                 .where(GeneratedContent.level == request.level)
+                .where(GeneratedContent.country_context == request.country)
                 .where(GeneratedContent.content["unit_id"].astext == request.unit_id)
+                .order_by(GeneratedContent.generated_at.desc())
             )
             cache_result = await session.execute(cached_query)
-            cached = cache_result.scalar_one_or_none()
+            cached = cache_result.scalars().first()
 
             if cached:
                 from app.api.v1.schemas.quiz import QuizContent as _QuizContent

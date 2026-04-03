@@ -405,9 +405,10 @@ async def get_or_generate_lesson_by_module_and_unit(
                 .where(GeneratedContent.level == level)
                 .where(GeneratedContent.country_context == country)
                 .where(GeneratedContent.content["unit_id"].astext == unit_id)
+                .order_by(GeneratedContent.generated_at.desc())
             )
             cache_result = await session.execute(cached_query)
-            cached = cache_result.scalar_one_or_none()
+            cached = cache_result.scalars().first()
 
             if cached:
                 from app.api.v1.schemas.content import LessonContent as _LessonContent
@@ -979,9 +980,10 @@ async def get_or_generate_case_study(
                 .where(GeneratedContent.level == level)
                 .where(GeneratedContent.country_context == country)
                 .where(GeneratedContent.content["unit_id"].astext == unit_id)
+                .order_by(GeneratedContent.generated_at.desc())
             )
             cache_result = await session.execute(cached_query)
-            cached = cache_result.scalar_one_or_none()
+            cached = cache_result.scalars().first()
 
             if cached:
                 from app.api.v1.schemas.content import CaseStudyContent as _CaseStudyContent
