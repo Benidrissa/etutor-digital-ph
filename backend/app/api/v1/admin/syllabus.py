@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.api.deps import get_db_session
-from app.api.deps_local_auth import AuthenticatedUser, get_current_user
+from app.api.deps_local_auth import AuthenticatedUser, require_role
 from app.api.v1.schemas.admin_syllabus import (
     AuditLogEntry,
     ModuleExportResponse,
@@ -25,6 +25,7 @@ from app.api.v1.schemas.admin_syllabus import (
     SyllabusAgentRequest,
 )
 from app.domain.models.module import Module
+from app.domain.models.user import UserRole
 from app.domain.services.syllabus_agent_service import SyllabusAgentService
 from app.infrastructure.config.settings import get_settings
 
@@ -33,17 +34,7 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/admin/syllabus", tags=["admin"])
 
 
-def _require_admin(
-    current_user: AuthenticatedUser = Depends(get_current_user),
-) -> AuthenticatedUser:
-    """Dependency that enforces admin role."""
-    role = getattr(current_user, "role", None) or getattr(current_user, "professional_role", None)
-    if role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin role required",
-        )
-    return current_user
+_require_admin = require_role(UserRole.admin)
 
 
 async def get_syllabus_agent_service() -> SyllabusAgentService:
