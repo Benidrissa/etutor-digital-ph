@@ -121,6 +121,10 @@ class SemanticRetriever:
                     where_clauses.append("chapter = :chapter")
                     params["chapter"] = filters["chapter"]
 
+            if "rag_collection_id" in filters:
+                where_clauses.append("source = :rag_collection_id")
+                params["rag_collection_id"] = filters["rag_collection_id"]
+
         where_sql = " AND ".join(where_clauses)
 
         query_str = f"""
