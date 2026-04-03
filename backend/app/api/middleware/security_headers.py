@@ -1,7 +1,5 @@
 """Security headers middleware (pure ASGI — no BaseHTTPMiddleware)."""
 
-from collections.abc import Callable
-
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.infrastructure.config.settings import settings
@@ -24,7 +22,6 @@ class SecurityHeadersMiddleware:
 
         async def send_with_headers(message: dict) -> None:
             if message["type"] == "http.response.start":
-                headers = dict(message.get("headers", []))
                 extra = [
                     (b"x-content-type-options", b"nosniff"),
                     (b"x-frame-options", b"DENY"),
