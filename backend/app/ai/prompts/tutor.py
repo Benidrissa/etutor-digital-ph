@@ -12,6 +12,8 @@ class TutorContext:
     user_language: str  # "fr" or "en"
     user_country: str  # ECOWAS country code
     module_id: str | None = None
+    module_title: str | None = None  # Human-readable title (fr or en)
+    module_number: int | None = None  # 1-15
     context_type: str | None = None  # "module" | "lesson" | "quiz" | None
     context_id: str | None = None
     learner_memory: str | None = None  # Pre-formatted memory text for system prompt
@@ -57,7 +59,7 @@ def get_socratic_system_prompt(context: TutorContext, rag_chunks: list[dict[str,
 - Niveau: {level_instruction}
 - Langue: {language_instruction}
 - Pays: {country_context}
-- Module actuel: {context.module_id or "Non spécifié"}
+- Module actuel: {_format_current_module(context)}
 - Mode: {"Socratique (guidage par questions)" if context.tutor_mode == "socratic" else "Explicatif (réponses directes)"}
 {_format_progress_section(context.progress_snapshot)}{_format_memory_section(context.learner_memory)}{_format_previous_session_section(context.previous_session_context)}
 
@@ -167,6 +169,17 @@ def _format_previous_session_section(previous_session_context: str | None) -> st
     if not previous_session_context:
         return ""
     return f'\n## CONTEXTE DE LA SESSION PRÉCÉDENTE\n{previous_session_context}\n(Utilise ce contexte pour assurer la continuité. Tu peux référencer naturellement les discussions précédentes: "Comme nous avons vu lors de notre dernière session...")'
+
+
+def _format_current_module(context: "TutorContext") -> str:
+    """Format the current module for display in the system prompt."""
+    if not context.module_id:
+        return "Non spécifié"
+    if context.module_title:
+        if context.module_number:
+            return f"Module {context.module_number}: {context.module_title}"
+        return context.module_title
+    return context.module_id
 
 
 def _format_progress_section(progress_snapshot: str | None) -> str:

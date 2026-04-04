@@ -281,11 +281,26 @@ class TutorService:
                 "data": {"conversation_id": str(conversation.id)},
             }
 
+            # Resolve module title for human-readable system prompt
+            module_title = None
+            module_number = None
+            if module_id:
+                module_obj = await session.get(Module, module_id)
+                if module_obj:
+                    module_title = (
+                        module_obj.title_fr
+                        if user.preferred_language == "fr"
+                        else module_obj.title_en
+                    )
+                    module_number = module_obj.module_number
+
             context = TutorContext(
                 user_level=user.current_level,
                 user_language=user.preferred_language,
                 user_country=user.country or "SN",
                 module_id=str(module_id) if module_id else None,
+                module_title=module_title,
+                module_number=module_number,
                 context_type=context_type,
                 tutor_mode=tutor_mode,
                 context_id=str(context_id) if context_id else None,
