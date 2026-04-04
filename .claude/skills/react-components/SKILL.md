@@ -89,14 +89,17 @@ This platform targets users on Android mid-range phones with 3G connections.
 
 ### Course catalog
 - Card grid layout (1 col mobile, 2 col tablet, 3 col desktop)
-- Each card: title (FR/EN), domain badge, estimated hours, module count, cover image
+- Each card: title (FR/EN), domain/level/audience badges (color-coded), estimated hours, module count, cover image
 - "Enroll" button (or "Enrolled" badge if already enrolled)
-- Filter by domain, search by title
-- API: `GET /api/v1/courses`, `POST /api/v1/courses/{id}/enroll`
+- Pill chip filter bar: filter by domain(s), level(s), audience type(s) — horizontally scrollable on mobile
+- Taxonomy endpoint: `GET /api/v1/courses/taxonomy` returns enum values with FR/EN labels
+- URL search params for shareable filter state, "Clear filters" button
+- API: `GET /api/v1/courses?course_domain=X&course_level=Y&audience_type=Z`, `POST /api/v1/courses/{id}/enroll`
+- Taxonomy arrays: course_domain[], course_level[], audience_type[] — each course can have multiple values
 
 ### Admin course management
-- Table view: all courses with status badge (draft/published/archived)
-- Create course dialog: title FR/EN, domain, target audience, hours, cover image
+- Table view: all courses with status badge (draft/published/archived) and taxonomy badges
+- Create/edit course dialog: title FR/EN, domain(s)/level(s)/audience(s) via MultiSelectChips, hours, cover image
 - Publish/archive action buttons with confirmation dialog
 - "Generate Structure" button: calls AI agent, shows loading, displays generated modules
 - API: `GET/POST /api/v1/admin/courses`, publish/archive/generate-structure endpoints

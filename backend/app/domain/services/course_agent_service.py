@@ -37,9 +37,10 @@ class CourseAgentService:
         self,
         title_fr: str,
         title_en: str,
-        domain: str | None,
-        target_audience: str | None,
-        estimated_hours: int,
+        course_domain: list[str] | None = None,
+        course_level: list[str] | None = None,
+        audience_type: list[str] | None = None,
+        estimated_hours: int = 20,
     ) -> list[dict[str, Any]]:
         """
         Generate a course module outline using Claude API.
@@ -61,15 +62,20 @@ class CourseAgentService:
 
             client = anthropic.AsyncAnthropic(api_key=api_key)
 
+            domains_str = ", ".join(course_domain) if course_domain else "General"
+            levels_str = ", ".join(course_level) if course_level else "All levels"
+            audience_str = ", ".join(audience_type) if audience_type else "Professionals"
+
             prompt = (
                 f"You are an expert instructional designer specializing in bilingual (FR/EN) "
-                f"adaptive e-learning for professionals. You design curricula using Bloom's "
+                f"adaptive e-learning. You design curricula using Bloom's "
                 f"taxonomy, Knowles' andragogy, the ADDIE model, and spiral learning.\n\n"
                 f"Create a complete course syllabus for:\n"
                 f"- Title FR: {title_fr}\n"
                 f"- Title EN: {title_en}\n"
-                f"- Domain: {domain or 'General'}\n"
-                f"- Target audience: {target_audience or 'Professionals'}\n"
+                f"- Domain(s): {domains_str}\n"
+                f"- Level(s): {levels_str}\n"
+                f"- Target audience: {audience_str}\n"
                 f"- Estimated total hours: {estimated_hours}\n\n"
                 f"## Design principles (mandatory)\n"
                 f"- Progressive complexity: start with foundational concepts (remember/understand), "
@@ -100,13 +106,33 @@ class CourseAgentService:
                 f"Return ONLY valid JSON, no markdown fences, no explanation."
             )
 
+            import json
+
             message = await client.messages.create(
                 model="claude-sonnet-4-6",
-                max_tokens=8192,
+                max_tokens=64000,
                 messages=[{"role": "user", "content": prompt}],
             )
 
-            import json
+            # Check for truncation
+            if message.stop_reason == "max_tokens":
+                logger.warning(
+                    "Response truncated at max_tokens, retrying",
+                    course=title_en,
+                    stop_reason=message.stop_reason,
+                )
+                message = await client.messages.create(
+                    model="claude-sonnet-4-6",
+                    max_tokens=64000,
+                    messages=[
+                        {"role": "user", "content": prompt},
+                        {"role": "assistant", "content": message.content[0].text},
+                        {
+                            "role": "user",
+                            "content": "The JSON was truncated. Please complete it from where you stopped. Return ONLY the remaining JSON to complete the array.",
+                        },
+                    ],
+                )
 
             raw = message.content[0].text.strip()
             if raw.startswith("```"):

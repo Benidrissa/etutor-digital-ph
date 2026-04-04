@@ -40,8 +40,9 @@ export interface AdminCourse {
   id: string;
   title_fr: string;
   title_en: string;
-  domain: string | null;
-  target_audience: string | null;
+  course_domain: string[];
+  course_level: string[];
+  audience_type: string[];
   estimated_hours: number;
   cover_image_url: string | null;
   status: 'draft' | 'published' | 'archived';
@@ -342,8 +343,19 @@ function CourseRow({
             <span className="font-medium text-sm truncate">{title}</span>
             <Badge variant={statusVariant}>{t(`status.${course.status}`)}</Badge>
           </div>
-          {course.domain && (
-            <span className="text-xs text-muted-foreground">{course.domain}</span>
+          {(course.course_domain?.length > 0 || course.course_level?.length > 0) && (
+            <div className="flex gap-1 flex-wrap">
+              {course.course_domain?.map((d) => (
+                <span key={d} className="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">
+                  {d.replace(/_/g, ' ')}
+                </span>
+              ))}
+              {course.course_level?.map((l) => (
+                <span key={l} className="text-[10px] font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-full px-1.5 py-0.5">
+                  {l}
+                </span>
+              ))}
+            </div>
           )}
           <div className="flex items-center gap-3 mt-1 flex-wrap">
             <span className="text-xs text-muted-foreground">

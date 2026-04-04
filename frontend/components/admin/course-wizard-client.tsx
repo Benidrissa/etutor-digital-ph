@@ -40,8 +40,9 @@ interface UploadedFile {
 interface CourseInfo {
   title_fr: string;
   title_en: string;
-  domain: string;
-  target_audience: string;
+  course_domain: string[];
+  course_level: string[];
+  audience_type: string[];
   estimated_hours: number;
 }
 
@@ -57,6 +58,23 @@ interface CourseWizardClientProps {
   onCourseCreated: () => void;
 }
 
+const DOMAIN_OPTIONS = [
+  "health_sciences", "natural_sciences", "social_sciences",
+  "mathematics", "engineering", "information_technology",
+  "education", "arts_humanities", "business_management",
+  "law", "agriculture", "environmental_studies", "other",
+] as const;
+
+const LEVEL_OPTIONS = [
+  "beginner", "intermediate", "advanced", "expert",
+] as const;
+
+const AUDIENCE_OPTIONS = [
+  "kindergarten", "primary_school", "secondary_school",
+  "university", "professional", "researcher",
+  "teacher", "policy_maker", "continuing_education",
+] as const;
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -65,6 +83,7 @@ function formatBytes(bytes: number): string {
 
 export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardClientProps) {
   const t = useTranslations("AdminCourses.wizard");
+  const tTax = useTranslations("Taxonomy");
   const queryClient = useQueryClient();
 
   const [step, setStep] = useState<WizardStep>("upload");
@@ -74,8 +93,9 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
   const [courseInfo, setCourseInfo] = useState<CourseInfo>({
     title_fr: "",
     title_en: "",
-    domain: "",
-    target_audience: "",
+    course_domain: [],
+    course_level: [],
+    audience_type: [],
     estimated_hours: 20,
   });
   const [infoErrors, setInfoErrors] = useState<Partial<CourseInfo>>({});
@@ -224,8 +244,9 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
         body: JSON.stringify({
           title_fr: courseInfo.title_fr,
           title_en: courseInfo.title_en,
-          domain: courseInfo.domain || null,
-          target_audience: courseInfo.target_audience || null,
+          course_domain: courseInfo.course_domain,
+          course_level: courseInfo.course_level,
+          audience_type: courseInfo.audience_type,
           estimated_hours: courseInfo.estimated_hours,
         }),
       });
@@ -270,7 +291,6 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
           method: "POST",
           body: JSON.stringify({
             estimated_hours: courseInfo.estimated_hours,
-            target_audience: courseInfo.target_audience || null,
           }),
         }
       );
@@ -548,25 +568,93 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="domain">{t("info.domain")}</Label>
-                  <Input
-                    id="domain"
-                    value={courseInfo.domain}
-                    onChange={(e) => setCourseInfo((p) => ({ ...p, domain: e.target.value }))}
-                    placeholder="Épidémiologie"
-                  />
+                  <Label>{t("info.domain")}</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {DOMAIN_OPTIONS.map((opt) => {
+                      const sel = courseInfo.course_domain.includes(opt);
+                      return (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() =>
+                            setCourseInfo((p) => ({
+                              ...p,
+                              course_domain: sel
+                                ? p.course_domain.filter((v) => v !== opt)
+                                : [...p.course_domain, opt],
+                            }))
+                          }
+                          className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors min-h-[32px] ${
+                            sel
+                              ? "bg-teal-600 text-white hover:bg-teal-700"
+                              : "bg-stone-100 text-stone-600 hover:bg-stone-200 border border-stone-200"
+                          }`}
+                        >
+                          {tTax(`domains.${opt}`)}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="target_audience">{t("info.targetAudience")}</Label>
-                  <Input
-                    id="target_audience"
-                    value={courseInfo.target_audience}
-                    onChange={(e) =>
-                      setCourseInfo((p) => ({ ...p, target_audience: e.target.value }))
-                    }
-                    placeholder="Agents de santé, épidémiologistes"
-                  />
+                  <Label>{t("info.level")}</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {LEVEL_OPTIONS.map((opt) => {
+                      const sel = courseInfo.course_level.includes(opt);
+                      return (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() =>
+                            setCourseInfo((p) => ({
+                              ...p,
+                              course_level: sel
+                                ? p.course_level.filter((v) => v !== opt)
+                                : [...p.course_level, opt],
+                            }))
+                          }
+                          className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors min-h-[32px] ${
+                            sel
+                              ? "bg-teal-600 text-white hover:bg-teal-700"
+                              : "bg-stone-100 text-stone-600 hover:bg-stone-200 border border-stone-200"
+                          }`}
+                        >
+                          {tTax(`levels.${opt}`)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>{t("info.audience")}</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {AUDIENCE_OPTIONS.map((opt) => {
+                      const sel = courseInfo.audience_type.includes(opt);
+                      return (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() =>
+                            setCourseInfo((p) => ({
+                              ...p,
+                              audience_type: sel
+                                ? p.audience_type.filter((v) => v !== opt)
+                                : [...p.audience_type, opt],
+                            }))
+                          }
+                          className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors min-h-[32px] ${
+                            sel
+                              ? "bg-teal-600 text-white hover:bg-teal-700"
+                              : "bg-stone-100 text-stone-600 hover:bg-stone-200 border border-stone-200"
+                          }`}
+                        >
+                          {tTax(`audience_types.${opt}`)}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 <div className="space-y-1.5">
