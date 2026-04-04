@@ -979,6 +979,7 @@
     "estimatedHours": "{hours} h estimées",
     "moduleCount": "{count, plural, one {# module} other {# modules}}",
     "generateStructure": "Générer la structure",
+    "generateStructureDisabled": "Archiver d'abord pour régénérer la structure",
     "generateError": "La génération a échoué. Veuillez réessayer.",
     "publish": "Publier",
     "archive": "Archiver",
