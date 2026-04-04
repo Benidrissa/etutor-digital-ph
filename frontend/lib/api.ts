@@ -1,5 +1,31 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+// Course Taxonomy Types
+export type CourseDomain =
+  | 'health_sciences' | 'natural_sciences' | 'social_sciences'
+  | 'mathematics' | 'engineering' | 'information_technology'
+  | 'education' | 'arts_humanities' | 'business_management'
+  | 'law' | 'agriculture' | 'environmental_studies' | 'other';
+
+export type CourseLevel = 'beginner' | 'intermediate' | 'advanced' | 'expert';
+
+export type AudienceType =
+  | 'kindergarten' | 'primary_school' | 'secondary_school'
+  | 'university' | 'professional' | 'researcher'
+  | 'teacher' | 'policy_maker' | 'continuing_education';
+
+export interface TaxonomyItem {
+  value: string;
+  label_fr: string;
+  label_en: string;
+}
+
+export interface TaxonomyResponse {
+  domains: TaxonomyItem[];
+  levels: TaxonomyItem[];
+  audience_types: TaxonomyItem[];
+}
+
 // Course Catalog API Types
 export interface CourseResponse {
   id: string;
@@ -8,7 +34,9 @@ export interface CourseResponse {
   title_en: string;
   description_fr?: string;
   description_en?: string;
-  domain: string;
+  course_domain: CourseDomain[];
+  course_level: CourseLevel[];
+  audience_type: AudienceType[];
   estimated_hours: number;
   module_count: number;
   cover_image_url?: string;
@@ -27,8 +55,23 @@ export interface CourseWithEnrollment extends CourseResponse {
   enrollment?: EnrollmentResponse;
 }
 
-export async function getCourses(): Promise<CourseResponse[]> {
-  return apiFetch<CourseResponse[]>("/api/v1/courses");
+export async function getCourseTaxonomy(): Promise<TaxonomyResponse> {
+  return apiFetch<TaxonomyResponse>("/api/v1/courses/taxonomy");
+}
+
+export async function getCourses(filters?: {
+  course_domain?: string;
+  course_level?: string;
+  audience_type?: string;
+  search?: string;
+}): Promise<CourseResponse[]> {
+  const params = new URLSearchParams();
+  if (filters?.course_domain) params.set("course_domain", filters.course_domain);
+  if (filters?.course_level) params.set("course_level", filters.course_level);
+  if (filters?.audience_type) params.set("audience_type", filters.audience_type);
+  if (filters?.search) params.set("search", filters.search);
+  const qs = params.toString();
+  return apiFetch<CourseResponse[]>(`/api/v1/courses${qs ? `?${qs}` : ""}`);
 }
 
 export async function enrollInCourse(courseId: string): Promise<EnrollmentResponse> {

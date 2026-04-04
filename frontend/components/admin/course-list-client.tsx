@@ -29,7 +29,9 @@ interface Course {
   slug: string;
   title_fr: string;
   title_en: string;
-  domain: string | null;
+  course_domain: string[];
+  course_level: string[];
+  audience_type: string[];
   module_count: number;
   status: "draft" | "published" | "archived";
   created_at: string;
@@ -165,7 +167,9 @@ export function CourseListClient() {
                     </div>
                     <p className="mt-0.5 text-sm text-muted-foreground">{course.title_en}</p>
                     <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                      {course.domain && <span>{course.domain}</span>}
+                      {course.course_domain?.length > 0 && (
+                        <span>{course.course_domain.map((d: string) => d.replace(/_/g, ' ')).join(', ')}</span>
+                      )}
                       <span className="flex items-center gap-1">
                         <BookOpen className="h-3 w-3" />
                         {course.module_count} {t("table.modules").toLowerCase()}

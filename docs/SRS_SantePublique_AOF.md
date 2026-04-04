@@ -523,7 +523,14 @@ Questionnaire adaptatif de 20 questions (15-20 min) couvrant 4 domaines : fondem
 La plateforme supporte plusieurs cours indépendants. Chaque cours contient des modules, a un cycle de vie (brouillon → publié → archivé), et un identifiant RAG pour la recherche vectorielle. Le cours par défaut "Santé Publique AOF" (15 modules, 320h) est créé automatiquement à la migration, et tous les utilisateurs existants y sont inscrits.
 
 **FR-02.0a** *(CRITIQUE)* — **Catalogue public**  
-Page accessible sans authentification listant les cours publiés. Filtrage par domaine et recherche textuelle (titre FR/EN). Chaque carte affiche : titre, domaine, durée estimée, nombre de modules, image de couverture, statut d'inscription si connecté.
+Page accessible sans authentification listant les cours publiés. Filtrage par domaine(s), niveau(x) et type de public via des badges-pilules cliquables, plus recherche textuelle (titre FR/EN). Chaque carte affiche : titre, badges de domaine/niveau/public, durée estimée, nombre de modules, image de couverture, statut d'inscription si connecté. L'endpoint `GET /api/v1/courses/taxonomy` fournit les valeurs de taxonomie avec libellés bilingues FR/EN.
+
+Taxonomie structurée :
+- **Domaines** (coursedomain[]) : health_sciences, natural_sciences, social_sciences, mathematics, engineering, information_technology, education, arts_humanities, business_management, law, agriculture, environmental_studies, other
+- **Niveaux** (courselevel[]) : beginner, intermediate, advanced, expert
+- **Types de public** (audiencetype[]) : kindergarten, primary_school, secondary_school, university, professional, researcher, teacher, policy_maker, continuing_education
+
+Chaque cours peut appartenir à **plusieurs** domaines, niveaux et types de public (colonnes tableau PostgreSQL avec index GIN).
 
 **FR-02.0b** *(CRITIQUE)* — **Inscription aux cours**  
 Un utilisateur connecté peut s'inscrire à un cours publié. L'inscription crée automatiquement les enregistrements UserModuleProgress pour chaque module du cours (statut "locked"). Double inscription retourne l'inscription existante. Désinscription = soft delete (statut "dropped").
@@ -629,8 +636,9 @@ courses {
   title_en TEXT,
   description_fr TEXT,
   description_en TEXT,
-  domain TEXT,
-  target_audience TEXT,
+  course_domain coursedomain[] DEFAULT '{}',
+  course_level courselevel[] DEFAULT '{}',
+  audience_type audiencetype[] DEFAULT '{}',
   languages TEXT DEFAULT 'fr,en',
   estimated_hours INT DEFAULT 20,
   module_count INT DEFAULT 0,

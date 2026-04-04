@@ -8,12 +8,20 @@ import { Button } from '@/components/ui/button';
 import { CheckCircle, Clock, BookOpen, GraduationCap } from 'lucide-react';
 import { enrollInCourse, type CourseResponse } from '@/lib/api';
 
+const LEVEL_COLORS: Record<string, string> = {
+  beginner: 'bg-green-50 text-green-700 border-green-200',
+  intermediate: 'bg-blue-50 text-blue-700 border-blue-200',
+  advanced: 'bg-amber-50 text-amber-700 border-amber-200',
+  expert: 'bg-red-50 text-red-700 border-red-200',
+};
+
 interface CourseCardProps {
   course: CourseResponse;
 }
 
 export function CourseCard({ course }: CourseCardProps) {
   const t = useTranslations('Courses');
+  const tTax = useTranslations('Taxonomy');
   const locale = useLocale() as 'en' | 'fr';
   const router = useRouter();
   const [isEnrolled, setIsEnrolled] = useState(course.enrolled);
@@ -66,11 +74,36 @@ export function CourseCard({ course }: CourseCardProps) {
             <CheckCircle className="h-5 w-5 text-teal-600 shrink-0 mt-0.5" aria-hidden="true" />
           )}
         </div>
-        {course.domain && (
-          <span className="inline-block text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 w-fit">
-            {course.domain}
-          </span>
-        )}
+
+        {/* Taxonomy badges */}
+        <div className="flex flex-wrap gap-1 mt-1">
+          {course.course_domain?.map((d) => (
+            <span
+              key={d}
+              className="inline-block text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5"
+            >
+              {tTax(`domains.${d}`)}
+            </span>
+          ))}
+          {course.course_level?.map((l) => (
+            <span
+              key={l}
+              className={`inline-block text-[10px] font-medium border rounded-full px-2 py-0.5 ${
+                LEVEL_COLORS[l] || 'bg-stone-50 text-stone-700 border-stone-200'
+              }`}
+            >
+              {tTax(`levels.${l}`)}
+            </span>
+          ))}
+          {course.audience_type?.map((a) => (
+            <span
+              key={a}
+              className="inline-block text-[10px] font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-2 py-0.5"
+            >
+              {tTax(`audience_types.${a}`)}
+            </span>
+          ))}
+        </div>
       </CardHeader>
 
       <CardContent className="flex flex-col flex-1 pt-0 gap-3">

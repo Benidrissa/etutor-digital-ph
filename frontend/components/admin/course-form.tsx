@@ -7,6 +7,14 @@ import { X, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { apiFetch } from '@/lib/api';
 import { authClient, AuthError } from '@/lib/auth';
 import type { AdminCourse } from './courses-client';
@@ -20,20 +28,90 @@ interface CourseFormProps {
 interface CoursePayload {
   title_fr: string;
   title_en: string;
-  domain: string;
-  target_audience: string;
+  course_domain: string[];
+  course_level: string[];
+  audience_type: string[];
   estimated_hours: number;
   cover_image_url: string;
 }
 
+// Taxonomy options — kept in sync with backend enums
+const DOMAIN_OPTIONS = [
+  'health_sciences', 'natural_sciences', 'social_sciences',
+  'mathematics', 'engineering', 'information_technology',
+  'education', 'arts_humanities', 'business_management',
+  'law', 'agriculture', 'environmental_studies', 'other',
+] as const;
+
+const LEVEL_OPTIONS = [
+  'beginner', 'intermediate', 'advanced', 'expert',
+] as const;
+
+const AUDIENCE_OPTIONS = [
+  'kindergarten', 'primary_school', 'secondary_school',
+  'university', 'professional', 'researcher',
+  'teacher', 'policy_maker', 'continuing_education',
+] as const;
+
+function MultiSelectChips({
+  label,
+  id,
+  options,
+  selected,
+  onToggle,
+  tKey,
+  t,
+}: {
+  label: string;
+  id: string;
+  options: readonly string[];
+  selected: string[];
+  onToggle: (val: string) => void;
+  tKey: string;
+  t: (key: string) => string;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <div className="flex flex-wrap gap-1.5" id={id}>
+        {options.map((opt) => {
+          const isSelected = selected.includes(opt);
+          return (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => onToggle(opt)}
+              className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium transition-colors min-h-[32px] ${
+                isSelected
+                  ? 'bg-teal-600 text-white hover:bg-teal-700'
+                  : 'bg-stone-100 text-stone-600 hover:bg-stone-200 border border-stone-200'
+              }`}
+            >
+              {t(`${tKey}.${opt}`)}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function CourseForm({ course, onClose, onSaved }: CourseFormProps) {
   const t = useTranslations('AdminCourses');
+  const tTax = useTranslations('Taxonomy');
   const router = useRouter();
 
   const [titleFr, setTitleFr] = useState(course?.title_fr ?? '');
   const [titleEn, setTitleEn] = useState(course?.title_en ?? '');
-  const [domain, setDomain] = useState(course?.domain ?? '');
-  const [targetAudience, setTargetAudience] = useState(course?.target_audience ?? '');
+  const [courseDomain, setCourseDomain] = useState<string[]>(
+    course?.course_domain ?? []
+  );
+  const [courseLevel, setCourseLevel] = useState<string[]>(
+    course?.course_level ?? []
+  );
+  const [audienceType, setAudienceType] = useState<string[]>(
+    course?.audience_type ?? []
+  );
   const [estimatedHours, setEstimatedHours] = useState<string>(
     course ? String(course.estimated_hours) : ''
   );
@@ -49,6 +127,9 @@ export function CourseForm({ course, onClose, onSaved }: CourseFormProps) {
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
   }, [onClose]);
+
+  const toggleArray = (arr: string[], val: string): string[] =>
+    arr.includes(val) ? arr.filter((v) => v !== val) : [...arr, val];
 
   const validate = () => {
     const errors: Record<string, string> = {};
@@ -75,8 +156,9 @@ export function CourseForm({ course, onClose, onSaved }: CourseFormProps) {
     const payload: CoursePayload = {
       title_fr: titleFr.trim(),
       title_en: titleEn.trim(),
-      domain: domain.trim(),
-      target_audience: targetAudience.trim(),
+      course_domain: courseDomain,
+      course_level: courseLevel,
+      audience_type: audienceType,
       estimated_hours: parseFloat(estimatedHours),
       cover_image_url: coverImageUrl.trim(),
     };
@@ -186,27 +268,35 @@ export function CourseForm({ course, onClose, onSaved }: CourseFormProps) {
             )}
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="course-domain">{t('domain')}</Label>
-            <Input
-              id="course-domain"
-              value={domain}
-              onChange={(e) => setDomain(e.target.value)}
-              placeholder={t('domainPlaceholder')}
-              className="min-h-11"
-            />
-          </div>
+          <MultiSelectChips
+            label={t('domain')}
+            id="course-domain"
+            options={DOMAIN_OPTIONS}
+            selected={courseDomain}
+            onToggle={(v) => setCourseDomain(toggleArray(courseDomain, v))}
+            tKey="domains"
+            t={(k) => tTax(k)}
+          />
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="course-audience">{t('targetAudience')}</Label>
-            <Input
-              id="course-audience"
-              value={targetAudience}
-              onChange={(e) => setTargetAudience(e.target.value)}
-              placeholder={t('targetAudiencePlaceholder')}
-              className="min-h-11"
-            />
-          </div>
+          <MultiSelectChips
+            label={t('level')}
+            id="course-level"
+            options={LEVEL_OPTIONS}
+            selected={courseLevel}
+            onToggle={(v) => setCourseLevel(toggleArray(courseLevel, v))}
+            tKey="levels"
+            t={(k) => tTax(k)}
+          />
+
+          <MultiSelectChips
+            label={t('audience')}
+            id="course-audience"
+            options={AUDIENCE_OPTIONS}
+            selected={audienceType}
+            onToggle={(v) => setAudienceType(toggleArray(audienceType, v))}
+            tKey="audience_types"
+            t={(k) => tTax(k)}
+          />
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="course-hours">{t('estimatedHoursField')}</Label>

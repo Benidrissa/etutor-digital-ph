@@ -181,8 +181,9 @@ class Course(Base):
     title_en: Mapped[str]
     description_fr: Mapped[str | None]
     description_en: Mapped[str | None]
-    domain: Mapped[str | None]
-    target_audience: Mapped[str | None]
+    course_domain: Mapped[list[str]]   # ARRAY(coursedomain enum), multi-select
+    course_level: Mapped[list[str]]    # ARRAY(courselevel enum), multi-select
+    audience_type: Mapped[list[str]]   # ARRAY(audiencetype enum), multi-select
     languages: Mapped[str] = mapped_column(default="fr,en")
     estimated_hours: Mapped[int] = mapped_column(default=20)
     module_count: Mapped[int] = mapped_column(default=0)
@@ -290,7 +291,8 @@ POST   /api/v1/users/me/placement     # Submit placement test → assigns level 
 
 ### FR-02: Courses, Catalog & Enrollment
 ```
-GET    /api/v1/courses                       # Public catalog (published courses, optional ?domain= ?search=)
+GET    /api/v1/courses/taxonomy               # Public: enum values with FR/EN labels (no auth)
+GET    /api/v1/courses                       # Public catalog (published courses, optional ?course_domain= ?course_level= ?audience_type= ?search=)
 GET    /api/v1/courses/my-enrollments        # User's enrolled courses (auth required)
 POST   /api/v1/courses/{id}/enroll           # Enroll in published course → creates UserModuleProgress
 POST   /api/v1/courses/{id}/unenroll         # Soft-delete enrollment (status="dropped")
