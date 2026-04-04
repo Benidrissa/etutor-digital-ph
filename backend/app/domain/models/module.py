@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from app.domain.models.content import GeneratedContent
     from app.domain.models.conversation import TutorConversation
     from app.domain.models.course import Course
+    from app.domain.models.module_media import ModuleMedia
     from app.domain.models.module_unit import ModuleUnit
     from app.domain.models.progress import UserModuleProgress
     from app.domain.models.quiz import SummativeAssessmentAttempt
@@ -48,3 +49,6 @@ class Module(Base):
     )
     units: Mapped[list[ModuleUnit]] = relationship(back_populates="module")
     course: Mapped[Course | None] = relationship(back_populates="modules")
+    media: Mapped[list[ModuleMedia]] = relationship(
+        back_populates="module", cascade="all, delete-orphan"
+    )

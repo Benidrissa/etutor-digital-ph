@@ -906,5 +906,25 @@
     "bloomLevel": "Bloom level",
     "estimatedHours": "Duration (h)",
     "moduleNumber": "Module number"
+  },
+  "ModuleMedia": {
+    "sectionTitle": "AI Summaries",
+    "audioSummary": "Audio Summary",
+    "videoSummary": "Video Summary",
+    "generate": "Generate",
+    "regenerate": "Regenerate",
+    "generating": "Generating… This may take a few minutes.",
+    "notGenerated": "Not yet generated",
+    "generationFailed": "Generation failed",
+    "retry": "Retry",
+    "play": "Play",
+    "pause": "Pause",
+    "mute": "Mute",
+    "unmute": "Unmute",
+    "volume": "Volume",
+    "seekBar": "Audio seek bar",
+    "download": "Download",
+    "videoScriptError": "Unable to load video script",
+    "videoUnavailable": "Video not available"
   }
 }

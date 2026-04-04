@@ -10,6 +10,7 @@ from app.domain.models.generated_image import GeneratedImage
 from app.domain.models.learner_memory import LearnerMemory
 from app.domain.models.lesson_reading import LessonReading
 from app.domain.models.module import Module
+from app.domain.models.module_media import ModuleMedia
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import QuizAttempt
@@ -28,6 +29,7 @@ __all__ = [
     "FlashcardReview",
     "MagicLink",
     "Module",
+    "ModuleMedia",
     "ModuleUnit",
     "RefreshToken",
     "TOTPSecret",

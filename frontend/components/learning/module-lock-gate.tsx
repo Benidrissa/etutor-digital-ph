@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { getModuleProgress } from '@/lib/api';
+import { useCurrentUser } from '@/lib/hooks/use-current-user';
+import { ModuleMediaSection } from '@/components/learning/module-media-section';
 import { ModuleProgressOverlay } from '@/components/learning/module-progress-overlay';
 import type { Module } from '@/lib/modules';
 
@@ -22,7 +24,9 @@ interface ModuleLockGateProps {
 export function ModuleLockGate({ moduleId, moduleData, prerequisites, language }: ModuleLockGateProps) {
   const t = useTranslations('ModuleOverview');
   const tCard = useTranslations('ModuleCard');
+  const currentUser = useCurrentUser();
   const [status, setStatus] = useState<'locked' | 'in_progress' | 'completed' | 'loading'>('loading');
+  const isAdmin = (currentUser as { role?: string } | null)?.role === 'admin';
 
   useEffect(() => {
     let cancelled = false;
@@ -132,6 +136,12 @@ export function ModuleLockGate({ moduleId, moduleData, prerequisites, language }
 
       <div className="grid md:grid-cols-3 gap-8">
         <div className="md:col-span-2 space-y-8">
+          <ModuleMediaSection
+            moduleId={moduleId}
+            language={language}
+            isAdmin={isAdmin}
+          />
+
           {moduleData.learningObjectives && (
             <Card>
               <CardHeader>

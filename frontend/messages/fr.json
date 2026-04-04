@@ -906,5 +906,25 @@
     "bloomLevel": "Niveau Bloom",
     "estimatedHours": "Durée (h)",
     "moduleNumber": "Numéro de module"
+  },
+  "ModuleMedia": {
+    "sectionTitle": "Résumés IA",
+    "audioSummary": "Résumé Audio",
+    "videoSummary": "Résumé Vidéo",
+    "generate": "Générer",
+    "regenerate": "Régénérer",
+    "generating": "Génération en cours… Cela peut prendre quelques minutes.",
+    "notGenerated": "Pas encore généré",
+    "generationFailed": "Échec de la génération",
+    "retry": "Réessayer",
+    "play": "Lecture",
+    "pause": "Pause",
+    "mute": "Couper le son",
+    "unmute": "Rétablir le son",
+    "volume": "Volume",
+    "seekBar": "Barre de lecture audio",
+    "download": "Télécharger",
+    "videoScriptError": "Impossible de charger le script vidéo",
+    "videoUnavailable": "Vidéo non disponible"
   }
 }

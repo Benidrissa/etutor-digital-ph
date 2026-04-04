@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     # OpenAI Embeddings
     openai_api_key: str = ""
 
+    # Google Gemini / Cloud TTS (for audio/video summaries — issue #539)
+    google_api_key: str = ""
+    google_cloud_tts_api_key: str = ""
+
     # Embeddings
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
