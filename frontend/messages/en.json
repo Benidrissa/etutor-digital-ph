@@ -1124,5 +1124,81 @@
     "bloomLevel": "Bloom level",
     "estimatedHours": "Duration (h)",
     "moduleNumber": "Module number"
+  },
+  "ExpertNav": {
+    "dashboard": "Dashboard",
+    "revenue": "Revenue",
+    "credits": "AI Credits",
+    "courses": "My Courses"
+  },
+  "ExpertRevenue": {
+    "title": "Revenue",
+    "subtitle": "Track your earnings and commissions",
+    "summaryCards": {
+      "totalEarned": "Total Earned",
+      "totalCommission": "Commissions",
+      "netEarnings": "Net Earnings"
+    },
+    "chart": {
+      "title": "Revenue — last 12 months",
+      "gross": "Gross",
+      "commission": "Commission",
+      "net": "Net",
+      "noData": "No revenue data available"
+    },
+    "transactions": {
+      "title": "Transactions",
+      "date": "Date",
+      "description": "Description",
+      "gross": "Gross",
+      "commission": "Commission",
+      "net": "Net",
+      "noTransactions": "No transactions",
+      "loading": "Loading transactions...",
+      "error": "Unable to load transactions."
+    },
+    "export": "Export (coming soon)",
+    "loading": "Loading revenue...",
+    "error": "Unable to load revenue data."
+  },
+  "ExpertCredits": {
+    "title": "AI Credits",
+    "subtitle": "Manage your content generation credits",
+    "balance": {
+      "title": "Current Balance",
+      "credits": "{count} credits",
+      "purchase": "Purchase Credits"
+    },
+    "breakdown": {
+      "title": "Generation Cost by Course",
+      "course": "Course",
+      "totalCost": "Total Cost",
+      "calls": "API Calls",
+      "lastUsed": "Last Used",
+      "noCourses": "No courses with generation costs",
+      "loading": "Loading costs...",
+      "error": "Unable to load generation costs."
+    },
+    "history": {
+      "title": "Usage History",
+      "date": "Date",
+      "course": "Course",
+      "operation": "Operation",
+      "tokensIn": "Input tokens",
+      "tokensOut": "Output tokens",
+      "cost": "Cost (USD)",
+      "noHistory": "No usage history",
+      "loading": "Loading history...",
+      "error": "Unable to load history."
+    },
+    "operations": {
+      "lesson_generation": "Lesson generation",
+      "quiz_generation": "Quiz generation",
+      "case_study_generation": "Case study generation",
+      "flashcard_generation": "Flashcard generation",
+      "tutor_chat": "Tutor chat"
+    },
+    "loading": "Loading credits...",
+    "error": "Unable to load credits data."
   }
 }

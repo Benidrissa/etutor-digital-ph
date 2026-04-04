@@ -1124,5 +1124,81 @@
     "bloomLevel": "Niveau Bloom",
     "estimatedHours": "Durée (h)",
     "moduleNumber": "Numéro de module"
+  },
+  "ExpertNav": {
+    "dashboard": "Tableau de bord",
+    "revenue": "Revenus",
+    "credits": "Crédits IA",
+    "courses": "Mes cours"
+  },
+  "ExpertRevenue": {
+    "title": "Revenus",
+    "subtitle": "Suivi de vos gains et commissions",
+    "summaryCards": {
+      "totalEarned": "Total brut",
+      "totalCommission": "Commissions",
+      "netEarnings": "Revenus nets"
+    },
+    "chart": {
+      "title": "Revenus des 12 derniers mois",
+      "gross": "Brut",
+      "commission": "Commission",
+      "net": "Net",
+      "noData": "Aucune donnée de revenus disponible"
+    },
+    "transactions": {
+      "title": "Transactions",
+      "date": "Date",
+      "description": "Description",
+      "gross": "Montant brut",
+      "commission": "Commission",
+      "net": "Net",
+      "noTransactions": "Aucune transaction",
+      "loading": "Chargement des transactions...",
+      "error": "Impossible de charger les transactions."
+    },
+    "export": "Exporter (bientôt disponible)",
+    "loading": "Chargement des revenus...",
+    "error": "Impossible de charger les données de revenus."
+  },
+  "ExpertCredits": {
+    "title": "Crédits IA",
+    "subtitle": "Gérez vos crédits de génération de contenu",
+    "balance": {
+      "title": "Solde actuel",
+      "credits": "{count} crédits",
+      "purchase": "Acheter des crédits"
+    },
+    "breakdown": {
+      "title": "Coût de génération par cours",
+      "course": "Cours",
+      "totalCost": "Coût total",
+      "calls": "Appels API",
+      "lastUsed": "Dernière utilisation",
+      "noCourses": "Aucun cours avec des coûts de génération",
+      "loading": "Chargement des coûts...",
+      "error": "Impossible de charger les coûts de génération."
+    },
+    "history": {
+      "title": "Historique des utilisations",
+      "date": "Date",
+      "course": "Cours",
+      "operation": "Opération",
+      "tokensIn": "Tokens entrée",
+      "tokensOut": "Tokens sortie",
+      "cost": "Coût (USD)",
+      "noHistory": "Aucun historique d'utilisation",
+      "loading": "Chargement de l'historique...",
+      "error": "Impossible de charger l'historique."
+    },
+    "operations": {
+      "lesson_generation": "Génération de leçon",
+      "quiz_generation": "Génération de quiz",
+      "case_study_generation": "Génération d'étude de cas",
+      "flashcard_generation": "Génération de flashcards",
+      "tutor_chat": "Chat tuteur"
+    },
+    "loading": "Chargement des crédits...",
+    "error": "Impossible de charger les données de crédits."
   }
 }
