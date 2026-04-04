@@ -13,7 +13,7 @@ import type { Unit } from '@/lib/modules';
 
 interface ModuleProgressOverlayProps {
   moduleId: string;
-  staticCompletionPercentage: number;
+  staticCompletionPercentage?: number;
   staticUnits?: Unit[];
 }
 
@@ -139,7 +139,7 @@ export function ModuleProgressOverlay({
     status: u.status === 'in-progress' ? 'in_progress' : u.status,
   }));
 
-  const completionPct = data ? data.completion_pct : staticCompletionPercentage;
+  const completionPct = data ? data.completion_pct : (staticCompletionPercentage ?? 0);
   const units = data ? data.units : staticUnitsFallback;
   const completedCount = units.filter(u => u.status === 'completed').length;
   const totalCount = units.length;

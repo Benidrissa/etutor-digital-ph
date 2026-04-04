@@ -246,6 +246,12 @@ class ProgressService:
                 {
                     "module_id": module.id,
                     "module_number": module.module_number,
+                    "title_fr": module.title_fr,
+                    "title_en": module.title_en,
+                    "description_fr": module.description_fr,
+                    "description_en": module.description_en,
+                    "level": module.level,
+                    "estimated_hours": module.estimated_hours,
                     "user_id": user_id,
                     "status": progress.status if progress else "locked",
                     "completion_pct": progress.completion_pct if progress else 0.0,

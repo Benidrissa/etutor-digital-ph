@@ -8,39 +8,77 @@ import { ChevronLeft, Lock, BookOpen, CheckCircle, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { getModuleProgress } from '@/lib/api';
+import { getModuleDetailWithProgress, getModuleUnits, type ModuleDetailWithProgressResponse } from '@/lib/api';
 import { ModuleProgressOverlay } from '@/components/learning/module-progress-overlay';
 import { ModuleMediaPlayer } from '@/components/learning/module-media-player';
-import type { Module } from '@/lib/modules';
 
 interface ModuleLockGateProps {
   moduleId: string;
-  moduleData: Module;
-  prerequisites: Module[];
   language: 'en' | 'fr';
 }
 
-export function ModuleLockGate({ moduleId, moduleData, prerequisites, language }: ModuleLockGateProps) {
+export function ModuleLockGate({ moduleId, language }: ModuleLockGateProps) {
   const t = useTranslations('ModuleOverview');
   const tCard = useTranslations('ModuleCard');
-  const [status, setStatus] = useState<'locked' | 'in_progress' | 'completed' | 'loading'>('loading');
+  const [moduleData, setModuleData] = useState<ModuleDetailWithProgressResponse | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    getModuleProgress(moduleId)
-      .then((res) => {
-        if (!cancelled) setStatus(res.status);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          const fallback = moduleData.status === 'in-progress' ? 'in_progress' : moduleData.status as 'locked' | 'completed';
-          setStatus(fallback);
-        }
-      });
-    return () => { cancelled = true; };
-  }, [moduleId, moduleData.status]);
 
-  if (status === 'loading') {
+    async function load() {
+      try {
+        const data = await getModuleDetailWithProgress(moduleId);
+        if (!cancelled) {
+          setModuleData(data);
+          setLoading(false);
+        }
+      } catch {
+        try {
+          const pub = await getModuleUnits(moduleId);
+          if (!cancelled) {
+            setModuleData({
+              id: pub.module_id,
+              module_number: pub.module_number,
+              level: pub.level,
+              title_fr: pub.title_fr,
+              title_en: pub.title_en,
+              description_fr: pub.description_fr,
+              description_en: pub.description_en,
+              estimated_hours: pub.estimated_hours,
+              prereq_modules: [],
+              status: 'locked',
+              completion_pct: 0,
+              quiz_score_avg: null,
+              time_spent_minutes: 0,
+              last_accessed: null,
+              units: pub.units.map((u) => ({
+                id: u.id,
+                unit_number: u.unit_number,
+                title_fr: u.title_fr,
+                title_en: u.title_en,
+                description_fr: u.description_fr,
+                description_en: u.description_en,
+                estimated_minutes: u.estimated_minutes,
+                order_index: u.order_index,
+                status: 'pending',
+              })),
+            });
+            setLoading(false);
+          }
+        } catch {
+          if (!cancelled) setLoading(false);
+        }
+      }
+    }
+
+    load();
+    return () => { cancelled = true; };
+  }, [moduleId]);
+
+  const status = moduleData?.status ?? 'locked';
+
+  if (loading) {
     return (
       <div className="container mx-auto max-w-4xl px-4 py-6">
         <div className="mb-6">
@@ -57,6 +95,9 @@ export function ModuleLockGate({ moduleId, moduleData, prerequisites, language }
       </div>
     );
   }
+
+  const title = language === 'fr' ? (moduleData?.title_fr ?? '') : (moduleData?.title_en ?? '');
+  const description = language === 'fr' ? moduleData?.description_fr : moduleData?.description_en;
 
   if (status === 'locked') {
     return (
@@ -75,24 +116,24 @@ export function ModuleLockGate({ moduleId, moduleData, prerequisites, language }
           <h1 className="text-2xl font-bold text-stone-900 mb-2">{t('locked')}</h1>
           <p className="text-stone-600 mb-8">{t('lockedDescription')}</p>
 
-          <Card className="max-w-md mx-auto">
-            <CardHeader>
-              <CardTitle className="text-lg">{t('prerequisites')}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-stone-600 mb-4">{t('prerequisitesDescription')}</p>
-              <div className="space-y-2">
-                {prerequisites.map((prereq) => (
-                  <div key={prereq.id} className="flex items-center justify-between p-3 bg-stone-50 rounded-lg">
-                    <span className="text-sm font-medium">{prereq.title[language]}</span>
-                    <Badge variant={prereq.status === 'completed' ? 'default' : 'secondary'}>
-                      {prereq.status === 'completed' ? '✓' : '○'}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          {(moduleData?.prereq_modules ?? []).length > 0 && (
+            <Card className="max-w-md mx-auto">
+              <CardHeader>
+                <CardTitle className="text-lg">{t('prerequisites')}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-stone-600 mb-4">{t('prerequisitesDescription')}</p>
+                <div className="space-y-2">
+                  {(moduleData?.prereq_modules ?? []).map((prereqId) => (
+                    <div key={prereqId} className="flex items-center justify-between p-3 bg-stone-50 rounded-lg">
+                      <span className="text-sm font-medium">{prereqId}</span>
+                      <Badge variant="secondary">○</Badge>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     );
@@ -109,11 +150,15 @@ export function ModuleLockGate({ moduleId, moduleData, prerequisites, language }
 
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-3">
-          <Badge variant="outline">{t('level', { level: moduleData.level })}</Badge>
-          <div className="flex items-center text-stone-600">
-            <Clock className="w-4 h-4 mr-1" />
-            {t('hours', { count: moduleData.estimatedHours })}
-          </div>
+          {moduleData && (
+            <Badge variant="outline">{t('level', { level: moduleData.level })}</Badge>
+          )}
+          {moduleData && (
+            <div className="flex items-center text-stone-600">
+              <Clock className="w-4 h-4 mr-1" />
+              {t('hours', { count: moduleData.estimated_hours })}
+            </div>
+          )}
           {status === 'completed' && (
             <div className="flex items-center text-teal-600">
               <CheckCircle className="w-4 h-4 mr-1" />
@@ -122,11 +167,11 @@ export function ModuleLockGate({ moduleId, moduleData, prerequisites, language }
           )}
         </div>
         <h1 className="text-3xl font-bold text-stone-900 mb-3">
-          {moduleData.title[language]}
+          {title}
         </h1>
-        {moduleData.description && (
+        {description && (
           <p className="text-lg text-stone-600 leading-relaxed">
-            {moduleData.description[language]}
+            {description}
           </p>
         )}
       </div>
@@ -135,28 +180,9 @@ export function ModuleLockGate({ moduleId, moduleData, prerequisites, language }
         <div className="md:col-span-2 space-y-8">
           <ModuleMediaPlayer moduleId={moduleId} language={language} />
 
-          {moduleData.learningObjectives && (
-            <Card>
-              <CardHeader>
-                <CardTitle>{t('learningObjectives')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-3">
-                  {moduleData.learningObjectives[language].map((objective, index) => (
-                    <li key={index} className="flex items-start gap-3">
-                      <CheckCircle className="w-5 h-5 text-teal-600 mt-0.5 flex-shrink-0" />
-                      <span className="text-stone-700">{objective}</span>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          )}
-
           <ModuleProgressOverlay
             moduleId={moduleId}
-            staticCompletionPercentage={moduleData.completionPercentage}
-            staticUnits={moduleData.units}
+            staticCompletionPercentage={moduleData?.completion_pct ?? 0}
           />
         </div>
 
