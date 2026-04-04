@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -75,6 +75,8 @@ export function CoursesClient() {
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const [generateTaskId, setGenerateTaskId] = useState<string | null>(null);
+  const generatePollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: courses, isLoading, error, refetch } = useAdminCourses();
 
@@ -112,7 +114,9 @@ export function CoursesClient() {
   const handleGenerateStructure = useCallback(
     async (course: AdminCourse) => {
       setGeneratingId(course.id);
+      setGenerateTaskId(null);
       setActionError(null);
+      setPendingAction(null);
       try {
         let token: string;
         try {
@@ -138,16 +142,70 @@ export function CoursesClient() {
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}`);
         }
-        queryClient.invalidateQueries({ queryKey: ['admin', 'courses'] });
+        const data = await res.json() as { task_id?: string; status?: string };
+        if (data.task_id) {
+          setGenerateTaskId(data.task_id);
+        } else {
+          setGeneratingId(null);
+          queryClient.invalidateQueries({ queryKey: ['admin', 'courses'] });
+        }
       } catch {
         setActionError(t('generateError'));
-      } finally {
         setGeneratingId(null);
-        setPendingAction(null);
       }
     },
     [router, locale, queryClient, t]
   );
+
+  useEffect(() => {
+    if (!generatingId || !generateTaskId) return;
+
+    let token: string | null = null;
+    authClient.getValidToken().then((t) => { token = t; }).catch(() => {});
+
+    const poll = async () => {
+      try {
+        const currentToken = token ?? await authClient.getValidToken();
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/admin/courses/${generatingId}/generate-status?task_id=${generateTaskId}`,
+          { headers: { Authorization: `Bearer ${currentToken}` } }
+        );
+        if (!res.ok) {
+          generatePollRef.current = setTimeout(poll, 5000);
+          return;
+        }
+        const status = await res.json() as {
+          task?: { state: string };
+        };
+
+        if (
+          status.task?.state === 'FAILURE' ||
+          status.task?.state === 'REVOKED'
+        ) {
+          setActionError(t('generateError'));
+          setGeneratingId(null);
+          setGenerateTaskId(null);
+          return;
+        }
+
+        if (status.task?.state === 'SUCCESS') {
+          setGeneratingId(null);
+          setGenerateTaskId(null);
+          queryClient.invalidateQueries({ queryKey: ['admin', 'courses'] });
+          return;
+        }
+
+        generatePollRef.current = setTimeout(poll, 3000);
+      } catch {
+        generatePollRef.current = setTimeout(poll, 5000);
+      }
+    };
+
+    generatePollRef.current = setTimeout(poll, 2000);
+    return () => {
+      if (generatePollRef.current) clearTimeout(generatePollRef.current);
+    };
+  }, [generatingId, generateTaskId, queryClient, t]);
 
   const handleFormSaved = () => {
     setFormOpen(false);

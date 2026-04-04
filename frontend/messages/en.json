@@ -1064,7 +1064,9 @@
         "generated": "Syllabus generated",
         "moduleCount": "{count} module(s) generated",
         "error": "Failed to generate syllabus.",
-        "noModules": "No modules generated. Please try again."
+        "noModules": "No modules generated. Please try again.",
+        "taskPending": "Waiting to start...",
+        "taskRunning": "Generating modules..."
       },
       "index": {
         "title": "RAG Indexation",
