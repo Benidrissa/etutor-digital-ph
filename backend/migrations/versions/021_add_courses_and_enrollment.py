@@ -39,7 +39,7 @@ def upgrade() -> None:
     )
 
     op.execute(
-        f"""
+        """
         CREATE TABLE IF NOT EXISTS courses (
             id UUID PRIMARY KEY,
             slug VARCHAR NOT NULL,
@@ -99,7 +99,7 @@ def upgrade() -> None:
     op.create_index("ix_modules_course_id", "modules", ["course_id"])
 
     op.execute(
-        f"""
+        """
         CREATE TABLE IF NOT EXISTS user_course_enrollment (
             user_id UUID REFERENCES users(id) NOT NULL,
             course_id UUID REFERENCES courses(id) NOT NULL,
