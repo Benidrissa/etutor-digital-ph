@@ -198,6 +198,110 @@ Always show a clear but non-intrusive offline banner:
 └────────────────────────────────┘
 ```
 
+## Expert dashboard layout
+
+```
+Desktop:
+┌──────┬──────────────────────────────────────────┐
+│ Side │ Expert Dashboard                          │
+│ nav  ├──────────────┬───────────────────────────┤
+│      │ Revenue card  │ Enrollments card          │
+│      │ (gold/amber)  │ (primary teal)            │
+│      ├──────────────┴───────────────────────────┤
+│      │ My Courses table (title, enrollments,     │
+│      │ avg rating ★, revenue, status badge)      │
+│      │ [+ New Course] button top-right           │
+└──────┴──────────────────────────────────────────┘
+
+Mobile:
+- Revenue + Enrollment as stacked summary cards (full-width)
+- Course list as card list (not table)
+- FAB (+) button bottom-right for new course
+```
+
+Design rules:
+- Revenue figures in gold/amber (`text-amber-600`) — expert motivation
+- Status badge colors: draft=gray, review=blue, published=green, archived=orange
+- Analytics charts: lazy-loaded, skeleton placeholder while loading
+
+## Marketplace browse/detail layout
+
+### Browse page
+```
+┌────────────────────────────┐
+│ Search bar                 │  ← sticky on mobile
+│ [Domain ▼] [Level ▼] [Free/Paid ▼] │
+├────────────────────────────┤
+│ [Course card]  [Course card] │  ← 1 col mobile, 2 col tablet, 3 col desktop
+│   Cover image                │
+│   Title                      │
+│   ★★★★☆ (4.2) · 128 enrolls │
+│   PriceBadge: "Free" / "50 crédits" │
+│   [Enroll] / [Purchase]      │
+└────────────────────────────┘
+```
+
+### Course detail page
+```
+┌────────────────────────────┐
+│ Cover image (16:9)         │
+├────────────────────────────┤
+│ Title                      │
+│ By [Expert name]           │
+│ ★★★★☆ 4.2 (45 reviews)    │
+│ PriceBadge + [Purchase CTA]│ ← sticky on mobile
+├────────────────────────────┤
+│ Description                │
+│ What you'll learn (bullets)│
+├────────────────────────────┤
+│ Reviews section            │
+│  [★★★★★] "Great course..." │
+│  [Load more]               │
+└────────────────────────────┘
+```
+
+Design rules:
+- PriceBadge: green pill for "Free", amber pill for paid
+- Purchase CTA: sticky at bottom on mobile (44px height minimum)
+- Star rating: filled amber stars (`text-amber-400`)
+- "Enrolled" state: CTA becomes green "Access Course" button
+
+## Billing/purchase page layout
+
+### Credit wallet page (`/billing`)
+```
+┌────────────────────────────┐
+│ Credit Balance             │
+│  ◎ 250 crédits             │  ← large, amber/gold
+│  [+ Top up credits]        │
+├────────────────────────────┤
+│ Recent transactions        │
+│  + 100   Top-up  Jan 15    │
+│  - 5     Lesson gen  Jan 14│
+│  - 50    Course purchase   │
+│  [View all]                │
+└────────────────────────────┘
+```
+
+### Top-up / purchase flow
+```
+┌────────────────────────────┐
+│ Buy Credits                │
+│                            │
+│  [50 credits — $5]         │  ← option cards (select one)
+│  [100 credits — $9]  ✓     │
+│  [200 credits — $16]       │
+│                            │
+│  [Continue to payment →]   │
+└────────────────────────────┘
+```
+
+Design rules:
+- Credit amount: large amber text, coin icon (`◎`)
+- Deduction transactions: red (`text-red-600`), top-ups: green (`text-green-600`)
+- Option cards: bordered, selected state with primary teal border + check
+- Purchase confirmation dialog before any credit deduction
+
 ## Page review checklist
 
 When reviewing any UI design or implementation:

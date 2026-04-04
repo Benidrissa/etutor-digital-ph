@@ -42,6 +42,17 @@ frontend/
 │   │   │   ├── sandbox/page.tsx          # Python/R code sandbox
 │   │   │   ├── certificates/page.tsx     # Earned certificates
 │   │   │   ├── settings/page.tsx         # Profile, language, country
+│   │   │   ├── billing/
+│   │   │   │   ├── page.tsx              # Credit balance + transaction history
+│   │   │   │   └── topup/page.tsx        # Credit top-up / purchase flow
+│   │   │   ├── marketplace/
+│   │   │   │   ├── page.tsx              # Browse paid + free courses with prices
+│   │   │   │   └── [courseId]/page.tsx   # Course detail: price, reviews, purchase
+│   │   │   ├── expert/                   # Expert-only pages (ExpertGuard)
+│   │   │   │   ├── layout.tsx            # Expert shell (ExpertGuard wraps children)
+│   │   │   │   ├── dashboard/page.tsx    # Revenue + enrollment analytics
+│   │   │   │   ├── courses/page.tsx      # Expert's own courses list
+│   │   │   │   └── courses/[courseId]/page.tsx  # Edit course, view analytics
 │   │   │   └── admin/                   # Admin-only pages (RBAC guarded)
 │   │   │       ├── courses/page.tsx     # Course CRUD, publish, AI generate
 │   │   │       ├── users/page.tsx       # User management
@@ -81,6 +92,25 @@ frontend/
 ### Route Groups
 - `(auth)` — unauthenticated pages (login, register, placement test)
 - `(app)` — authenticated app shell with navigation and offline support
+- `(app)/expert/` — expert-only area wrapped with `ExpertGuard`; requires role `expert` or `admin`
+- `(app)/marketplace/` — public course marketplace; no auth required to browse, auth required to purchase
+- `(app)/billing/` — credit wallet; requires auth
+
+### ExpertGuard component
+```tsx
+// components/shared/ExpertGuard.tsx
+// Server component that redirects non-expert users to /dashboard
+import { redirect } from '@/i18n/routing';
+import { getCurrentUser } from '@/lib/auth';
+
+export async function ExpertGuard({ children, locale }: { children: React.ReactNode; locale: string }) {
+  const user = await getCurrentUser();
+  if (!user || !['expert', 'admin'].includes(user.role)) {
+    redirect({ href: '/dashboard', locale });
+  }
+  return <>{children}</>;
+}
+```
 
 ## i18n with next-intl (mandatory)
 

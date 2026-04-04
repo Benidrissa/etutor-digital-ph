@@ -168,6 +168,58 @@ function useModule(moduleId: string) {
 - Use `next/image` with appropriate sizing for all images
 - Prefer Server Components; use `'use client'` only when needed
 
+## Billing & Marketplace components
+
+### Credit balance widget
+```tsx
+// components/billing/CreditBalanceWidget.tsx
+// Compact widget showing current credit balance — used in header/sidebar
+// Props: balance (number), showTopUpLink (boolean)
+// Shows: coin icon + formatted balance + optional "Top up" link
+// Color: amber/gold (--color-accent) for balance amount
+// Updates optimistically on credit deduction
+```
+
+### Marketplace components
+```tsx
+// components/marketplace/PriceBadge.tsx
+// Displays course price in credits or "Free"
+// Props: priceCredits (number), isFree (boolean)
+// Free: green badge "Gratuit / Free"
+// Paid: amber badge "X crédits"
+// Must use t('marketplace.free') and t('marketplace.credits', { count: X })
+
+// components/marketplace/StarRating.tsx
+// Read-only or interactive star rating (1–5)
+// Props: rating (number), reviewCount (number), interactive (boolean), onChange (fn)
+// Uses filled/empty star icons, aria-label for accessibility
+// Minimum touch target 44×44px on interactive variant
+
+// components/marketplace/PurchaseDialog.tsx
+// shadcn Dialog confirming credit purchase of a course
+// Shows: course title, price in credits, current balance, post-purchase balance
+// CTA: "Confirm purchase" — calls POST /api/v1/marketplace/{courseId}/purchase
+// Error state: insufficient credits → link to /billing/topup
+// Loading state during API call
+```
+
+### Expert dashboard components
+```tsx
+// components/expert/EnrollmentChart.tsx
+// Simple bar or line chart: enrollments over time for a course
+// Lazy-loaded (dynamic import) to keep initial bundle small
+// Uses native SVG or recharts (check if already in package.json first)
+
+// components/expert/RevenueCard.tsx
+// Card showing total credits earned, this month's earnings, payout status
+// Props: totalCredits, monthCredits, payoutStatus
+// Color: gold/amber accent for revenue figures
+
+// components/expert/CourseAnalyticsTable.tsx
+// Table: course title, enrollments, avg rating, revenue, status badge
+// Sortable columns, mobile-friendly (horizontal scroll on small screens)
+```
+
 ## Accessibility (WCAG 2.1 AA)
 
 - All interactive elements keyboard-navigable
