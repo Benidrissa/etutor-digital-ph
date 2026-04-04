@@ -93,12 +93,10 @@ def upgrade() -> None:
         """
     )
     op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_course_taxonomy_course_id "
-        "ON course_taxonomy (course_id)"
+        "CREATE INDEX IF NOT EXISTS ix_course_taxonomy_course_id ON course_taxonomy (course_id)"
     )
     op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_course_taxonomy_category_id "
-        "ON course_taxonomy (category_id)"
+        "CREATE INDEX IF NOT EXISTS ix_course_taxonomy_category_id ON course_taxonomy (category_id)"
     )
 
     # 4. Migrate existing data from array columns to junction table
@@ -143,10 +141,7 @@ def downgrade() -> None:
         "'education','arts_humanities','business_management',"
         "'law','agriculture','environmental_studies','other')"
     )
-    op.execute(
-        "CREATE TYPE courselevel AS ENUM ("
-        "'beginner','intermediate','advanced','expert')"
-    )
+    op.execute("CREATE TYPE courselevel AS ENUM ('beginner','intermediate','advanced','expert')")
     op.execute(
         "CREATE TYPE audiencetype AS ENUM ("
         "'kindergarten','primary_school','secondary_school',"
@@ -155,15 +150,9 @@ def downgrade() -> None:
     )
 
     # Re-add array columns
-    op.execute(
-        "ALTER TABLE courses ADD COLUMN course_domain coursedomain[] DEFAULT '{}'"
-    )
-    op.execute(
-        "ALTER TABLE courses ADD COLUMN course_level courselevel[] DEFAULT '{}'"
-    )
-    op.execute(
-        "ALTER TABLE courses ADD COLUMN audience_type audiencetype[] DEFAULT '{}'"
-    )
+    op.execute("ALTER TABLE courses ADD COLUMN course_domain coursedomain[] DEFAULT '{}'")
+    op.execute("ALTER TABLE courses ADD COLUMN course_level courselevel[] DEFAULT '{}'")
+    op.execute("ALTER TABLE courses ADD COLUMN audience_type audiencetype[] DEFAULT '{}'")
 
     # Migrate data back from junction table
     for col, cat_type, enum_type in [

@@ -129,9 +129,7 @@ async def create_course(
     tax_cats = []
     if all_slugs:
         result_cats = await db.execute(
-            select(TaxonomyCategory).where(
-                TaxonomyCategory.slug.in_([s for s, _ in all_slugs])
-            )
+            select(TaxonomyCategory).where(TaxonomyCategory.slug.in_([s for s, _ in all_slugs]))
         )
         tax_cats = list(result_cats.scalars().all())
 
@@ -200,9 +198,7 @@ async def update_course(
         )
         if all_slugs:
             result_cats = await db.execute(
-                select(TaxonomyCategory).where(
-                    TaxonomyCategory.slug.in_([s for s, _ in all_slugs])
-                )
+                select(TaxonomyCategory).where(TaxonomyCategory.slug.in_([s for s, _ in all_slugs]))
             )
             course.taxonomy_categories = list(result_cats.scalars().all())
         else:

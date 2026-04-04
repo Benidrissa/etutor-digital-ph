@@ -72,9 +72,7 @@ async def list_taxonomy(
 ) -> dict:
     """List all taxonomy categories grouped by type. Admin only."""
     result = await db.execute(
-        select(TaxonomyCategory).order_by(
-            TaxonomyCategory.type, TaxonomyCategory.sort_order
-        )
+        select(TaxonomyCategory).order_by(TaxonomyCategory.type, TaxonomyCategory.sort_order)
     )
     categories = result.scalars().all()
 
@@ -149,9 +147,7 @@ async def update_taxonomy_category(
     db=Depends(get_db_session),
 ) -> TaxonomyCategoryResponse:
     """Update a taxonomy category. Admin only."""
-    result = await db.execute(
-        select(TaxonomyCategory).where(TaxonomyCategory.id == category_id)
-    )
+    result = await db.execute(select(TaxonomyCategory).where(TaxonomyCategory.id == category_id))
     cat = result.scalar_one_or_none()
     if not cat:
         raise HTTPException(
@@ -180,9 +176,7 @@ async def delete_taxonomy_category(
     db=Depends(get_db_session),
 ) -> None:
     """Delete a taxonomy category. Fails if referenced by courses. Admin only."""
-    result = await db.execute(
-        select(TaxonomyCategory).where(TaxonomyCategory.id == category_id)
-    )
+    result = await db.execute(select(TaxonomyCategory).where(TaxonomyCategory.id == category_id))
     cat = result.scalar_one_or_none()
     if not cat:
         raise HTTPException(

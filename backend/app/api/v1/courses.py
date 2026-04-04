@@ -12,7 +12,7 @@ from app.api.deps_local_auth import get_current_user, get_optional_user
 from app.domain.models.course import Course, UserCourseEnrollment
 from app.domain.models.module import Module
 from app.domain.models.progress import UserModuleProgress
-from app.domain.models.taxonomy import CourseTaxonomy, TaxonomyCategory
+from app.domain.models.taxonomy import TaxonomyCategory
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/courses", tags=["Courses"])
@@ -48,9 +48,7 @@ class EnrollmentResponse(BaseModel):
     completion_pct: float
 
 
-def _taxonomy_by_type(
-    categories: list[TaxonomyCategory], cat_type: str
-) -> list[dict]:
+def _taxonomy_by_type(categories: list[TaxonomyCategory], cat_type: str) -> list[dict]:
     return [
         {"value": tc.slug, "label_fr": tc.label_fr, "label_en": tc.label_en}
         for tc in categories
@@ -99,11 +97,13 @@ async def get_taxonomy(db=Depends(get_db_session)) -> dict:
     for cat in categories:
         key = type_key.get(cat.type)
         if key:
-            grouped[key].append({
-                "value": cat.slug,
-                "label_fr": cat.label_fr,
-                "label_en": cat.label_en,
-            })
+            grouped[key].append(
+                {
+                    "value": cat.slug,
+                    "label_fr": cat.label_fr,
+                    "label_en": cat.label_en,
+                }
+            )
 
     return grouped
 
@@ -118,11 +118,7 @@ async def list_published_courses(
     db=Depends(get_db_session),
 ) -> list[CourseListItem]:
     """Browse published courses. No auth required."""
-    stmt = (
-        select(Course)
-        .where(Course.status == "published")
-        .order_by(Course.published_at.desc())
-    )
+    stmt = select(Course).where(Course.status == "published").order_by(Course.published_at.desc())
 
     if course_domain:
         stmt = stmt.where(
@@ -164,10 +160,7 @@ async def list_published_courses(
     if search:
         q = search.lower()
         courses = [
-            c
-            for c in courses
-            if q in (c.title_fr or "").lower()
-            or q in (c.title_en or "").lower()
+            c for c in courses if q in (c.title_fr or "").lower() or q in (c.title_en or "").lower()
         ]
 
     enrolled_ids: set[str] = set()
@@ -180,10 +173,7 @@ async def list_published_courses(
         )
         enrolled_ids = {str(row[0]) for row in enroll_result.all()}
 
-    return [
-        _course_to_list_item(c, enrolled=str(c.id) in enrolled_ids)
-        for c in courses
-    ]
+    return [_course_to_list_item(c, enrolled=str(c.id) in enrolled_ids) for c in courses]
 
 
 @router.get("/my-enrollments", response_model=list[CourseListItem])
@@ -251,9 +241,7 @@ async def enroll_in_course(
     )
     db.add(enrollment)
 
-    modules_result = await db.execute(
-        select(Module).where(Module.course_id == course_id)
-    )
+    modules_result = await db.execute(select(Module).where(Module.course_id == course_id))
     modules = modules_result.scalars().all()
     for module in modules:
         prog_result = await db.execute(

@@ -44,7 +44,11 @@ def upgrade() -> None:
             sa.ForeignKey("modules.id", ondelete="CASCADE"),
             nullable=False,
         ),
-        sa.Column("media_type", sa.Enum("audio_summary", "video_summary", "podcast_summary", name="mediatype"), nullable=False),
+        sa.Column(
+            "media_type",
+            sa.Enum("audio_summary", "video_summary", "podcast_summary", name="mediatype"),
+            nullable=False,
+        ),
         sa.Column("language", sa.String(2), nullable=False),
         sa.Column("storage_key", sa.String(), nullable=False),
         sa.Column("storage_url", sa.String(), nullable=False),
@@ -59,7 +63,9 @@ def upgrade() -> None:
         sa.Column("error_message", sa.Text(), nullable=True),
         sa.Column("metadata", postgresql.JSONB(), nullable=True),
         sa.Column("generated_at", sa.DateTime(timezone=True), nullable=True),
-        sa.UniqueConstraint("module_id", "media_type", "language", name="uq_module_media_module_type_lang"),
+        sa.UniqueConstraint(
+            "module_id", "media_type", "language", name="uq_module_media_module_type_lang"
+        ),
     )
     op.create_index("ix_module_media_module_id", "module_media", ["module_id"])
 

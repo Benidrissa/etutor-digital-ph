@@ -281,7 +281,7 @@ export function TaxonomyClient() {
     <>
       <div className="space-y-4">
         {SECTIONS.map(({ key, type }) => {
-          const items = (data as Record<string, TaxonomyCategoryAdmin[]>)[key] || [];
+          const items = (data as unknown as Record<string, TaxonomyCategoryAdmin[]>)[key] || [];
           const isExpanded = expandedSections.has(key);
 
           return (

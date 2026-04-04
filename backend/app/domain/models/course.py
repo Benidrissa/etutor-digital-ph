@@ -34,15 +34,11 @@ class Course(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     rag_collection_id: Mapped[str | None] = mapped_column(String)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     modules: Mapped[list[Module]] = relationship(back_populates="course")
-    enrollments: Mapped[list[UserCourseEnrollment]] = relationship(
-        back_populates="course"
-    )
+    enrollments: Mapped[list[UserCourseEnrollment]] = relationship(back_populates="course")
     taxonomy_categories: Mapped[list[TaxonomyCategory]] = relationship(
         secondary="course_taxonomy", lazy="selectin"
     )
@@ -51,12 +47,8 @@ class Course(Base):
 class UserCourseEnrollment(Base):
     __tablename__ = "user_course_enrollment"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id"), primary_key=True
-    )
-    course_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("courses.id"), primary_key=True
-    )
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    course_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("courses.id"), primary_key=True)
     enrolled_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
