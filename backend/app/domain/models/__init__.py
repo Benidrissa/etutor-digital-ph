@@ -4,6 +4,12 @@ from app.domain.models.base import Base
 from app.domain.models.content import GeneratedContent
 from app.domain.models.conversation import TutorConversation
 from app.domain.models.course import Course, UserCourseEnrollment
+from app.domain.models.credit import (
+    CreditAccount,
+    CreditPackage,
+    CreditTransaction,
+    TransactionType,
+)
 from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.flashcard import FlashcardReview
 from app.domain.models.generated_image import GeneratedImage
@@ -19,6 +25,9 @@ __all__ = [
     "AuditLog",
     "Base",
     "Course",
+    "CreditAccount",
+    "CreditPackage",
+    "CreditTransaction",
     "DocumentChunk",
     "GeneratedContent",
     "GeneratedImage",
@@ -31,6 +40,7 @@ __all__ = [
     "ModuleUnit",
     "RefreshToken",
     "TOTPSecret",
+    "TransactionType",
     "UserCourseEnrollment",
     "UserModuleProgress",
     "QuizAttempt",
