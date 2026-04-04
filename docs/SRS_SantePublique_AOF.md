@@ -37,6 +37,7 @@ La plateforme génère dynamiquement du contenu pédagogique à partir de 3 ouvr
 | Application web responsive (PWA) | ✅ | |
 | Application native iOS/Android | | ❌ Phase 2 |
 | Génération IA de contenu (RAG) | ✅ | |
+| Système multi-cours (catalogue, inscription, admin CRUD) | ✅ | |
 | Quiz, flashcards, cas pratiques | ✅ | |
 | Sandbox R/Python intégré | ✅ basique | |
 | Vidéos et cours en direct (live) | | ❌ Phase 3 |
@@ -516,13 +517,27 @@ Le système doit permettre l'inscription via : (1) email + mot de passe, (2) Goo
 **FR-01.2** *(CRITIQUE)* — **Évaluation diagnostique de placement**  
 Questionnaire adaptatif de 20 questions (15-20 min) couvrant 4 domaines : fondements SP, épidémiologie, biostatistiques, systèmes de santé. L'algorithme place l'utilisateur dans l'un des 4 niveaux. Test refaisable après 3 mois.
 
-### FR-02 : Navigation & Modules
+### FR-02 : Cours & Catalogue Multi-Cours
+
+**FR-02.0** *(CRITIQUE)* — **Système multi-cours**  
+La plateforme supporte plusieurs cours indépendants. Chaque cours contient des modules, a un cycle de vie (brouillon → publié → archivé), et un identifiant RAG pour la recherche vectorielle. Le cours par défaut "Santé Publique AOF" (15 modules, 320h) est créé automatiquement à la migration, et tous les utilisateurs existants y sont inscrits.
+
+**FR-02.0a** *(CRITIQUE)* — **Catalogue public**  
+Page accessible sans authentification listant les cours publiés. Filtrage par domaine et recherche textuelle (titre FR/EN). Chaque carte affiche : titre, domaine, durée estimée, nombre de modules, image de couverture, statut d'inscription si connecté.
+
+**FR-02.0b** *(CRITIQUE)* — **Inscription aux cours**  
+Un utilisateur connecté peut s'inscrire à un cours publié. L'inscription crée automatiquement les enregistrements UserModuleProgress pour chaque module du cours (statut "locked"). Double inscription retourne l'inscription existante. Désinscription = soft delete (statut "dropped").
+
+**FR-02.0c** *(CRITIQUE)* — **Administration des cours**  
+Un administrateur peut : créer un cours (brouillon), le publier, l'archiver, le supprimer (si brouillon sans inscrits), et générer automatiquement la structure des modules via l'agent IA (Claude API). Chaque cours a un slug unique auto-généré.
+
+### FR-02bis : Navigation & Modules
 
 **FR-02.1** *(CRITIQUE)* — **Dashboard de progression**  
-Affiche : carte des 15 modules avec statut (verrouillé/en cours/complété), % de complétion par module, score moyen aux quiz, streak quotidien, calendrier de révisions Spaced Repetition, et recommandations personnalisées.
+Affiche : carte des modules du cours inscrit avec statut (verrouillé/en cours/complété), % de complétion par module, score moyen aux quiz, streak quotidien, calendrier de révisions Spaced Repetition, et recommandations personnalisées.
 
 **FR-02.2** *(CRITIQUE)* — **Structure de module**  
-Chaque module : (1) Page d'aperçu avec objectifs et durée, (2) Unités d'apprentissage (3-6 par module, 10-15 min), (3) Quiz formatif par unité (10 questions), (4) Section flashcards, (5) Exercice pratique/cas d'étude, (6) Évaluation sommative (20 questions, score ≥ 80% pour validation).
+Chaque module appartient à un cours (FK course_id). Structure : (1) Page d'aperçu avec objectifs et durée, (2) Unités d'apprentissage (3-6 par module, 10-15 min), (3) Quiz formatif par unité (10 questions), (4) Section flashcards, (5) Exercice pratique/cas d'étude, (6) Évaluation sommative (20 questions, score ≥ 80% pour validation).
 
 ### FR-03 : Génération de Contenu IA
 
@@ -606,10 +621,41 @@ users {
   created_at TIMESTAMP
 }
 
+-- Table: courses
+courses {
+  id UUID PRIMARY KEY,
+  slug TEXT UNIQUE,
+  title_fr TEXT,
+  title_en TEXT,
+  description_fr TEXT,
+  description_en TEXT,
+  domain TEXT,
+  target_audience TEXT,
+  languages TEXT DEFAULT 'fr,en',
+  estimated_hours INT DEFAULT 20,
+  module_count INT DEFAULT 0,
+  status ENUM('draft','published','archived'),
+  cover_image_url TEXT,
+  created_by UUID FK → users.id,
+  rag_collection_id TEXT,
+  created_at TIMESTAMP,
+  published_at TIMESTAMP
+}
+
+-- Table: user_course_enrollment
+user_course_enrollment {
+  user_id UUID FK → users.id,
+  course_id UUID FK → courses.id,
+  enrolled_at TIMESTAMP,
+  status ENUM('active','completed','dropped'),
+  completion_pct FLOAT DEFAULT 0.0,
+  PRIMARY KEY (user_id, course_id)
+}
+
 -- Table: modules
 modules {
   id UUID PRIMARY KEY,
-  module_number INT (1-15),
+  module_number INT,
   level INT (1-4),
   title_fr TEXT,
   title_en TEXT,
@@ -617,6 +663,7 @@ modules {
   description_en TEXT,
   estimated_hours INT,
   bloom_level TEXT,
+  course_id UUID FK → courses.id (nullable),
   prereq_modules UUID[],
   books_sources JSONB  -- {donaldson: [ch2,ch3], triola: [ch4]}
 }

@@ -105,8 +105,21 @@ Map these to Tailwind config via `tailwind.config.ts` — use Tailwind classes, 
 
 ## Learning-specific design patterns
 
+### Course catalog
+- Card grid: 1 col (mobile) → 2 col (tablet) → 3 col (desktop)
+- Each card: cover image (or domain-colored gradient fallback), title, domain badge, duration, module count
+- "Enroll" CTA button (primary) or "Enrolled" badge (success green)
+- Filter row: domain dropdown + search input
+- Empty state: "No courses match your search"
+
+### Admin course management
+- Table layout: title, status badge (draft=gray, published=green, archived=orange), module count, created date
+- Actions column: publish/archive/delete buttons
+- Create dialog: shadcn Dialog with form (title FR/EN, domain, hours, cover image URL)
+- Generate structure: loading spinner → generated module list with checkmarks
+
 ### Module map (dashboard)
-- Grid of module cards showing: number, title, status icon, progress ring
+- Grid of module cards from enrolled course(s): number, title, status icon, progress ring
 - States: locked (gray, lock icon), in-progress (primary, progress %), completed (green, check)
 - Prerequisite lines connecting dependent modules
 - Current streak prominently displayed
@@ -147,6 +160,8 @@ Map these to Tailwind config via `tailwind.config.ts` — use Tailwind classes, 
 
 ## What to design (correct patterns)
 
+- **Course catalog**: Card grid with enroll buttons, domain filters, search
+- **Admin courses**: Table + create dialog + publish/archive actions
 - **Dashboard**: Module grid with progress + streak counter + review reminder
 - **Lists**: Clean card lists with clear hierarchy, not dense data tables
 - **Login**: Simple form, language selector, no hero section
