@@ -3,7 +3,7 @@
 Implements the unified credit economy for Phase 2 billing.
 
 Revision ID: 025_marketplace_and_credits
-Revises: 024_add_course_taxonomy
+Revises: 025_fix_module_number_unique_per_course
 Create Date: 2026-04-04
 """
 
@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "025_marketplace_and_credits"
-down_revision: str | None = "024_add_course_taxonomy"
+down_revision: str | None = "025_fix_module_number_unique_per_course"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

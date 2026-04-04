@@ -1,7 +1,7 @@
 """Add module_media table for audio/video/podcast summaries.
 
 Revision ID: 025_add_module_media
-Revises: 023_add_admin_syllabus_audit_log
+Revises: 025_marketplace_and_credits
 Create Date: 2026-04-04
 """
 
@@ -12,7 +12,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "025_add_module_media"
-down_revision: str | None = "023_add_admin_syllabus_audit_log"
+down_revision: str | None = "025_marketplace_and_credits"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "026_refactor_taxonomy_to_lookup_table"
-down_revision: str | None = "025_fix_module_number_unique_per_course"
+down_revision: str | None = "025_add_module_media"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
