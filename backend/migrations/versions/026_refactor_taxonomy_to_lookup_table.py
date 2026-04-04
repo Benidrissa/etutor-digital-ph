@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "026_refactor_taxonomy_to_lookup_table"
-down_revision: str | None = "025_fix_module_number_unique_per_course"
+down_revision: str | None = "025_add_module_media"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -111,7 +111,7 @@ def upgrade() -> None:
             INSERT INTO course_taxonomy (course_id, category_id)
             SELECT c.id, tc.id
             FROM courses c,
-                 LATERAL unnest(c.{col}) AS val
+                 LATERAL unnest(c.{col}::text[]) AS val
             JOIN taxonomy_categories tc ON tc.slug = val AND tc.type = '{cat_type}'
             WHERE c.{col} IS NOT NULL AND array_length(c.{col}, 1) > 0
             ON CONFLICT DO NOTHING

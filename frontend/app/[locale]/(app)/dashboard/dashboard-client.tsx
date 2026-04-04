@@ -65,10 +65,18 @@ export function DashboardClient() {
 
   if (enrollments.length === 1) {
     return (
-      <ModuleMap
-        courseId={enrollments[0].id}
-        onModuleClick={handleModuleClick}
-      />
+      <div className="space-y-4">
+        <ModuleMap
+          courseId={enrollments[0].id}
+          onModuleClick={handleModuleClick}
+        />
+        <button
+          className="w-full text-center text-teal-600 text-sm font-medium underline-offset-2 hover:underline min-h-11 rounded-lg border border-dashed border-teal-200 py-3 hover:bg-teal-50 transition-colors"
+          onClick={() => router.push('/courses')}
+        >
+          {t('browseMoreCourses')}
+        </button>
+      </div>
     );
   }
 
@@ -117,6 +125,12 @@ export function DashboardClient() {
           </div>
         );
       })}
+      <button
+        className="w-full text-center text-teal-600 text-sm font-medium underline-offset-2 hover:underline min-h-11 rounded-lg border border-dashed border-teal-200 py-3 hover:bg-teal-50 transition-colors"
+        onClick={() => router.push('/courses')}
+      >
+        {t('browseMoreCourses')}
+      </button>
     </div>
   );
 }

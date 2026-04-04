@@ -547,7 +547,7 @@ async def get_upcoming_reviews(
                 today_due_count += len(flashcards)
 
             # Get module info from content
-            module_name = content.module_id or "General Review"
+            module_name = str(content.module_id) if content.module_id else "General Review"
             # Simplify module names for display
             if module_name.startswith("M"):
                 # Extract module number and create display name
