@@ -138,6 +138,12 @@ export interface ModuleProgressResponse {
   module_id: string;
   user_id: string;
   module_number: number | null;
+  title_fr: string;
+  title_en: string;
+  description_fr?: string | null;
+  description_en?: string | null;
+  level: number;
+  estimated_hours: number;
   status: "locked" | "in_progress" | "completed";
   completion_pct: number;
   quiz_score_avg: number | null;

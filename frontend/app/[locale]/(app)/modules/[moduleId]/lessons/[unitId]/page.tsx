@@ -1,10 +1,9 @@
 import { getTranslations } from 'next-intl/server';
 import { getLocale } from 'next-intl/server';
-import { notFound } from 'next/navigation';
 import { Link } from '@/i18n/routing';
 import { ChevronLeft } from 'lucide-react';
 
-import { getModuleById } from '@/lib/modules';
+import { getModuleUnits } from '@/lib/api';
 import { LessonViewer } from '@/components/learning/lesson-viewer';
 import { CaseStudyViewer } from '@/components/learning/case-study-viewer';
 
@@ -17,13 +16,13 @@ export default async function LessonPage({ params }: LessonPageProps) {
   const locale = await getLocale();
   const t = await getTranslations('LessonPage');
 
-  const moduleData = getModuleById(moduleId);
   const language = locale as 'fr' | 'en';
-  const unit = moduleData?.units?.find(u => u.id === unitId);
-  const moduleTitle = moduleData?.title[language] || moduleId;
-  const unitTitle = unit?.title[language] || unitId;
+  const moduleData = await getModuleUnits(moduleId).catch(() => null);
+  const unit = moduleData?.units?.find(u => u.unit_number === unitId || u.id === unitId);
+  const moduleTitle = language === 'fr' ? (moduleData?.title_fr || moduleId) : (moduleData?.title_en || moduleId);
+  const unitTitle = language === 'fr' ? (unit?.title_fr || unitId) : (unit?.title_en || unitId);
   const moduleLevel = moduleData?.level || 1;
-  const isCaseStudy = unit?.type === 'case-study' || unitId.toLowerCase().includes('u05');
+  const isCaseStudy = unitId.toLowerCase().includes('u05');
 
   return (
     <div>
@@ -83,15 +82,14 @@ export async function generateMetadata({ params }: LessonPageProps) {
   const locale = await getLocale();
   const t = await getTranslations('LessonPage.metadata');
 
-  const moduleData = getModuleById(moduleId);
   const language = locale as 'fr' | 'en';
-  const unit = moduleData?.units?.find(u => u.id === unitId);
+  const moduleData = await getModuleUnits(moduleId).catch(() => null);
+  const unit = moduleData?.units?.find(u => u.unit_number === unitId || u.id === unitId);
+  const unitTitle = language === 'fr' ? (unit?.title_fr || unitId) : (unit?.title_en || unitId);
+  const modTitle = language === 'fr' ? (moduleData?.title_fr || moduleId) : (moduleData?.title_en || moduleId);
 
   return {
-    title: t('title', {
-      unit: unit?.title[language] || unitId,
-      module: moduleData?.title[language] || moduleId
-    }),
-    description: unit?.description?.[language] || moduleData?.description?.[language] || '',
+    title: t('title', { unit: unitTitle, module: modTitle }),
+    description: language === 'fr' ? (unit?.description_fr || moduleData?.description_fr || '') : (unit?.description_en || moduleData?.description_en || ''),
   };
 }

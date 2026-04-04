@@ -3,12 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { ModuleCard } from './module-card';
-import {
-  CURRICULUM_MODULES,
-  LEVEL_INFO,
-  getModulesByLevel,
-  type Module,
-} from '@/lib/modules';
+import type { Module } from '@/lib/modules';
 import { getAllModuleProgress, type ModuleProgressResponse } from '@/lib/api';
 
 interface ModuleMapProps {
@@ -16,41 +11,43 @@ interface ModuleMapProps {
   courseId?: string;
 }
 
-function mergeProgressIntoModules(
-  apiProgress: ModuleProgressResponse[]
-): Module[] {
-  const progressByNumber = new Map<number, ModuleProgressResponse>();
-  for (const p of apiProgress) {
-    if (p.module_number != null) {
-      progressByNumber.set(p.module_number, p);
-    }
-  }
+function apiProgressToModule(p: ModuleProgressResponse): Module {
+  const apiStatus = p.status;
+  const mappedStatus: Module['status'] =
+    apiStatus === 'completed'
+      ? 'completed'
+      : apiStatus === 'in_progress'
+      ? 'in-progress'
+      : 'locked';
 
-  return CURRICULUM_MODULES.map((mod) => {
-    const progress = progressByNumber.get(mod.number);
-    if (!progress) return mod;
-
-    const apiStatus = progress.status;
-    const mappedStatus: Module['status'] =
-      apiStatus === 'completed'
-        ? 'completed'
-        : apiStatus === 'in_progress'
-        ? 'in-progress'
-        : 'locked';
-
-    return {
-      ...mod,
-      status: mappedStatus,
-      completionPercentage: progress.completion_pct,
-    };
-  });
+  return {
+    id: p.module_id,
+    number: p.module_number ?? 0,
+    title: { en: p.title_en, fr: p.title_fr },
+    description:
+      p.description_en || p.description_fr
+        ? { en: p.description_en ?? '', fr: p.description_fr ?? '' }
+        : undefined,
+    level: (p.level as 1 | 2 | 3 | 4),
+    status: mappedStatus,
+    completionPercentage: p.completion_pct,
+    estimatedHours: p.estimated_hours,
+    prerequisites: [],
+  };
 }
+
+const LEVEL_LABELS: Record<number, { en: string; fr: string }> = {
+  1: { en: 'Level 1: Beginner', fr: 'Niveau 1 : Débutant' },
+  2: { en: 'Level 2: Intermediate', fr: 'Niveau 2 : Intermédiaire' },
+  3: { en: 'Level 3: Advanced', fr: 'Niveau 3 : Avancé' },
+  4: { en: 'Level 4: Expert', fr: 'Niveau 4 : Expert' },
+};
 
 export function ModuleMap({ onModuleClick, courseId }: ModuleMapProps) {
   const t = useTranslations('ModuleMap');
   const locale = useLocale() as 'en' | 'fr';
 
-  const [modules, setModules] = useState<Module[]>(CURRICULUM_MODULES);
+  const [modules, setModules] = useState<Module[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -59,7 +56,7 @@ export function ModuleMap({ onModuleClick, courseId }: ModuleMapProps) {
     getAllModuleProgress(courseId)
       .then((data) => {
         if (!cancelled) {
-          setModules(mergeProgressIntoModules(data));
+          setModules(data.map(apiProgressToModule));
           setLoading(false);
         }
       })
@@ -74,10 +71,12 @@ export function ModuleMap({ onModuleClick, courseId }: ModuleMapProps) {
     };
   }, [courseId]);
 
-  const levels = [1, 2, 3, 4] as const;
+  const levels = Array.from(new Set(modules.map((m) => m.level))).sort() as (1 | 2 | 3 | 4)[];
 
-  const getLevelProgress = (level: 1 | 2 | 3 | 4) => {
-    const levelModules = modules.filter((m) => m.level === level);
+  const getLevelModules = (level: number) => modules.filter((m) => m.level === level);
+
+  const getLevelProgress = (level: number) => {
+    const levelModules = getLevelModules(level);
     const completedModules = levelModules.filter((m) => m.status === 'completed').length;
     const totalModules = levelModules.length;
     const averageCompletion =
@@ -87,10 +86,12 @@ export function ModuleMap({ onModuleClick, courseId }: ModuleMapProps) {
     return { completedModules, totalModules, averageCompletion: Math.round(averageCompletion) };
   };
 
-  const isModuleUnlocked = (module: Module): boolean => {
-    if (module.status !== 'locked') return true;
-    if (module.prerequisites.length === 0) return true;
-    return false;
+  const isModuleUnlocked = (module: Module): boolean => module.status !== 'locked';
+
+  const getLevelLabel = (level: number): string => {
+    const label = LEVEL_LABELS[level];
+    if (label) return label[locale];
+    return locale === 'fr' ? `Niveau ${level}` : `Level ${level}`;
   };
 
   if (loading) {
@@ -112,11 +113,8 @@ export function ModuleMap({ onModuleClick, courseId }: ModuleMapProps) {
   return (
     <div className="space-y-8">
       {levels.map((level) => {
-        const levelModules = getModulesByLevel(level).map(
-          (m) => modules.find((mod) => mod.id === m.id) ?? m
-        );
+        const levelModules = getLevelModules(level);
         const levelProgress = getLevelProgress(level);
-        const levelInfo = LEVEL_INFO[level];
 
         return (
           <div key={level} className="space-y-4">
@@ -124,11 +122,8 @@ export function ModuleMap({ onModuleClick, courseId }: ModuleMapProps) {
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div>
                   <h3 className="text-lg font-medium text-stone-900">
-                    {levelInfo.title[locale]}
+                    {getLevelLabel(level)}
                   </h3>
-                  <p className="text-sm text-stone-600">
-                    {levelInfo.description[locale]}
-                  </p>
                 </div>
                 <div className="flex flex-col sm:items-end gap-1">
                   <div className="text-sm text-stone-600">
@@ -170,29 +165,31 @@ export function ModuleMap({ onModuleClick, courseId }: ModuleMapProps) {
         );
       })}
 
-      <div className="mt-8 rounded-lg bg-teal-50 p-6 text-center">
-        <h3 className="text-lg font-semibold text-teal-900">
-          {t('overallProgress')}
-        </h3>
-        <div className="mt-4 space-y-2">
-          {levels.map((level) => {
-            const progress = getLevelProgress(level);
-            return (
-              <div key={level} className="flex items-center justify-between">
-                <span className="text-sm text-teal-700">
-                  {LEVEL_INFO[level].title[locale]}
-                </span>
-                <span className="text-sm font-medium text-teal-800">
-                  {progress.completedModules}/{progress.totalModules} {t('modulesCompleted')}
-                </span>
-              </div>
-            );
-          })}
+      {levels.length > 0 && (
+        <div className="mt-8 rounded-lg bg-teal-50 p-6 text-center">
+          <h3 className="text-lg font-semibold text-teal-900">
+            {t('overallProgress')}
+          </h3>
+          <div className="mt-4 space-y-2">
+            {levels.map((level) => {
+              const progress = getLevelProgress(level);
+              return (
+                <div key={level} className="flex items-center justify-between">
+                  <span className="text-sm text-teal-700">
+                    {getLevelLabel(level)}
+                  </span>
+                  <span className="text-sm font-medium text-teal-800">
+                    {progress.completedModules}/{progress.totalModules} {t('modulesCompleted')}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-4 text-xs text-teal-600">
+            {t('estimatedCompletion')}
+          </div>
         </div>
-        <div className="mt-4 text-xs text-teal-600">
-          {t('totalHours', { count: 320 })} • {t('estimatedCompletion')}
-        </div>
-      </div>
+      )}
     </div>
   );
 }
