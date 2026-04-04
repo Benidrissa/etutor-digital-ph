@@ -7,6 +7,7 @@ import { useTranslations, useLocale } from "next-intl";
 import {
   Home,
   BookOpen,
+  GraduationCap,
   CreditCard,
   Bot,
   Settings,
@@ -70,6 +71,12 @@ export function Sidebar() {
       label: t("dashboard"),
       icon: Home,
       description: t("dashboardDescription")
+    },
+    {
+      href: `/${locale}/courses`,
+      label: t("courses"),
+      icon: GraduationCap,
+      description: t("coursesDescription")
     },
     {
       href: `/${locale}/modules`,

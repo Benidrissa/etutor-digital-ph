@@ -13,12 +13,14 @@
   },
   "Navigation": {
     "dashboard": "Dashboard",
+    "courses": "Courses",
     "modules": "Modules",
     "flashcards": "Flashcards",
     "tutor": "AI Tutor",
     "profile": "Profile",
     "settings": "Settings",
     "dashboardDescription": "Navigate to your learning dashboard",
+    "coursesDescription": "Browse the available course catalog",
     "modulesDescription": "Browse available learning modules",
     "flashcardsDescription": "Review flashcards and spaced repetition",
     "tutorDescription": "Chat with your AI learning tutor",
@@ -949,7 +951,99 @@
     "confirmArchive": "Archive course?",
     "confirmArchiveDesc": "The course will no longer be accessible to learners.",
     "confirmGenerate": "Generate AI structure?",
-    "confirmGenerateDesc": "The AI will automatically create a module outline for this course. This may take a few seconds."
+    "confirmGenerateDesc": "The AI will automatically create a module outline for this course. This may take a few seconds.",
+    "newCourse": "New course",
+    "noCoursesDesc": "Create your first course to get started.",
+    "table": {
+      "title": "Title",
+      "domain": "Domain",
+      "modules": "Modules",
+      "status": "Status",
+      "created": "Created",
+      "actions": "Actions"
+    },
+    "wizard": {
+      "title": "Create a new course",
+      "close": "Close",
+      "back": "Back",
+      "next": "Next",
+      "steps": {
+        "upload": "Resources",
+        "info": "Information",
+        "generate": "Syllabus",
+        "index": "Indexation",
+        "publish": "Publish"
+      },
+      "upload": {
+        "title": "Upload resources",
+        "description": "Upload reference PDFs (books, guidelines, articles) that will be used to generate course content.",
+        "dropzone": "Drag PDFs here or click to select",
+        "dropzoneActive": "Drop files here...",
+        "fileTypes": "PDF only, max 100 MB per file",
+        "uploading": "Uploading...",
+        "uploaded": "file(s) uploaded",
+        "uploadError": "Upload error",
+        "remove": "Remove",
+        "noFiles": "No resources uploaded",
+        "atLeastOne": "Upload at least one PDF before continuing."
+      },
+      "info": {
+        "title": "Course information",
+        "description": "Complete course metadata before generating the syllabus.",
+        "titleFr": "Title (FR)",
+        "titleEn": "Title (EN)",
+        "domain": "Domain",
+        "targetAudience": "Target audience",
+        "estimatedHours": "Estimated hours",
+        "creating": "Creating course...",
+        "titleFrRequired": "French title is required",
+        "titleEnRequired": "English title is required"
+      },
+      "generate": {
+        "title": "Generate syllabus",
+        "description": "The AI agent will analyze your resources and generate the course structure.",
+        "button": "Generate syllabus",
+        "generating": "Generating...",
+        "generated": "Syllabus generated",
+        "moduleCount": "{count} module(s) generated",
+        "error": "Failed to generate syllabus.",
+        "noModules": "No modules generated. Please try again."
+      },
+      "index": {
+        "title": "RAG Indexation",
+        "description": "The system indexes your resources into the vector database to enable on-demand content generation.",
+        "button": "Start indexation",
+        "indexing": "Indexing...",
+        "indexed": "Indexation complete",
+        "chunksIndexed": "{count} chunks indexed",
+        "error": "Indexation failed.",
+        "polling": "Checking status...",
+        "taskPending": "Waiting to start...",
+        "taskRunning": "Indexing PDFs..."
+      },
+      "publish": {
+        "title": "Publish course",
+        "description": "Your course is ready. Publish it to make it available to learners.",
+        "button": "Publish",
+        "publishing": "Publishing...",
+        "success": "Course published successfully!",
+        "successDesc": "The course is now visible in the catalog.",
+        "error": "Failed to publish course. Make sure indexation is complete.",
+        "summary": {
+          "title": "Course summary",
+          "modules": "Modules",
+          "chunks": "RAG chunks",
+          "status": "Status"
+        }
+      }
+    },
+    "errors": {
+      "load": "Failed to load courses.",
+      "publish": "Failed to publish course.",
+      "archive": "Failed to archive course.",
+      "delete": "Failed to delete course.",
+      "create": "Failed to create course."
+    }
   },
   "AdminSyllabus": {
     "pageTitle": "Syllabus Management",

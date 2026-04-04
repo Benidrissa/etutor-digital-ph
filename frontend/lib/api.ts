@@ -3,6 +3,7 @@ export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:800
 // Course Catalog API Types
 export interface CourseResponse {
   id: string;
+  slug: string;
   title_fr: string;
   title_en: string;
   description_fr?: string;
@@ -12,6 +13,7 @@ export interface CourseResponse {
   module_count: number;
   cover_image_url?: string;
   is_published: boolean;
+  enrolled: boolean;
 }
 
 export interface EnrollmentResponse {

@@ -34,6 +34,7 @@ import {
 import { apiFetch } from '@/lib/api';
 import { authClient, AuthError } from '@/lib/auth';
 import { CourseForm } from '@/components/admin/course-form';
+import { CourseWizardClient } from '@/components/admin/course-wizard-client';
 
 export interface AdminCourse {
   id: string;
@@ -69,6 +70,7 @@ export function CoursesClient() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<AdminCourse | null>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
@@ -193,7 +195,7 @@ export function CoursesClient() {
             {t('courseCount', { count: courses?.length ?? 0 })}
           </p>
           <Button
-            onClick={() => { setEditingCourse(null); setFormOpen(true); }}
+            onClick={() => setWizardOpen(true)}
             className="gap-2 min-h-11"
           >
             <Plus className="h-4 w-4" aria-hidden="true" />
@@ -233,6 +235,16 @@ export function CoursesClient() {
           course={editingCourse}
           onClose={() => { setFormOpen(false); setEditingCourse(null); }}
           onSaved={handleFormSaved}
+        />
+      )}
+
+      {wizardOpen && (
+        <CourseWizardClient
+          onClose={() => setWizardOpen(false)}
+          onCourseCreated={() => {
+            setWizardOpen(false);
+            queryClient.invalidateQueries({ queryKey: ['admin', 'courses'] });
+          }}
         />
       )}
 
