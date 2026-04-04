@@ -137,7 +137,7 @@ async def get_due_flashcards(
                         ),
                     )
                 )
-                .limit(SettingsCache.instance().get("flashcards.new_cards_per_session", 20))
+                .limit(SettingsCache.instance().get("flashcards__new_cards_per_session", 20))
             )  # Limit new cards per session
 
             new_result = await session.execute(new_cards_query)
@@ -194,7 +194,7 @@ async def get_due_flashcards(
         )
 
         _new_cards_per_session = SettingsCache.instance().get(
-            "flashcards.new_cards_per_session", 20
+            "flashcards__new_cards_per_session", 20
         )
         return FlashcardDueResponse(
             user_id=current_user.id,
@@ -284,7 +284,7 @@ async def submit_flashcard_review(
 
         # Load FSRS parameters from settings
         fsrs = SettingsCache.instance().get(
-            "flashcards.fsrs_params",
+            "flashcards__fsrs_params",
             {
                 "again": {"stability": 0.5, "difficulty": 1.0},
                 "hard": {"stability": 0.8, "difficulty": 0.5, "interval": 0.8},
@@ -424,7 +424,7 @@ async def complete_flashcard_session(
 
         # Check if user met daily target (20 cards or available cards)
         daily_target_met = session_request.cards_reviewed >= min(
-            SettingsCache.instance().get("flashcards.new_cards_per_session", 20), total_reviews
+            SettingsCache.instance().get("flashcards__new_cards_per_session", 20), total_reviews
         )
 
         if daily_target_met:
@@ -510,7 +510,7 @@ async def get_upcoming_reviews(
 
         # Get all scheduled flashcard reviews for the next 2 weeks
         _preview_days = SettingsCache.instance().get(
-            "flashcards.review_preview_days",
+            "flashcards__review_preview_days",
             14,
         )
         two_weeks_from_now = now + timedelta(days=_preview_days)

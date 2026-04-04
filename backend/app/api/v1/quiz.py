@@ -384,7 +384,7 @@ async def submit_quiz_attempt(
 
         # Calculate final score
         score = round((correct_count / len(questions)) * 100, 1)
-        _quiz_passing = SettingsCache.instance().get("quiz.passing_score", 80.0)
+        _quiz_passing = SettingsCache.instance().get("quiz__passing_score", 80.0)
         passing_score = quiz_data.get("passing_score", _quiz_passing)
         passed = score >= passing_score
         lesson_validated = score >= _quiz_passing
@@ -523,12 +523,12 @@ async def generate_summative_assessment(
             language=request.language,
             country=request.country,
             level=request.level,
-            num_questions=SettingsCache.instance().get("quiz.summative_questions_count", 20),
+            num_questions=SettingsCache.instance().get("quiz__summative_questions_count", 20),
             session=session,
         )
 
         # Ensure it's marked as summative in the content
-        _summative_passing = SettingsCache.instance().get("quiz.passing_score", 80.0)
+        _summative_passing = SettingsCache.instance().get("quiz__passing_score", 80.0)
         if quiz_response.content.passing_score != _summative_passing:
             quiz_response.content.passing_score = _summative_passing
 
@@ -726,7 +726,7 @@ async def submit_summative_assessment_attempt(
         questions = assessment_data["questions"]
 
         # Validate this is a summative assessment
-        _summative_q_count = SettingsCache.instance().get("quiz.summative_questions_count", 20)
+        _summative_q_count = SettingsCache.instance().get("quiz__summative_questions_count", 20)
         if len(questions) != _summative_q_count:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -803,7 +803,7 @@ async def submit_summative_assessment_attempt(
             )
 
         # Calculate final score and pass status
-        _summative_passing = SettingsCache.instance().get("quiz.passing_score", 80.0)
+        _summative_passing = SettingsCache.instance().get("quiz__passing_score", 80.0)
         score = round((correct_count / _summative_q_count) * 100, 1)
         passed = score >= _summative_passing
 
