@@ -359,3 +359,112 @@ class TestBuildQuizPrompt:
         assert "CRITICAL" in system_prompt
         assert "JSON" in system_prompt
         assert "title" in system_prompt
+
+
+class TestBuildQuizSearchQuery:
+    def test_returns_unit_id_when_module_is_none(self, quiz_service):
+        result = quiz_service._build_quiz_search_query(None, "M01-U04", "fr")
+        assert result == "unit M01-U04"
+
+    def test_uses_module_title_fr(self, quiz_service):
+        module = MagicMock()
+        module.title_fr = "Fondements de la santé publique"
+        module.title_en = "Foundations of Public Health"
+        module.description_fr = None
+        module.description_en = None
+        result = quiz_service._build_quiz_search_query(module, "M01-U01", "fr")
+        assert "Fondements de la santé publique" in result
+        assert "M01-U01" in result
+
+    def test_uses_module_title_en(self, quiz_service):
+        module = MagicMock()
+        module.title_fr = "Audit Interne"
+        module.title_en = "Internal Audit"
+        module.description_fr = None
+        module.description_en = None
+        result = quiz_service._build_quiz_search_query(module, "M01-U01", "en")
+        assert "Internal Audit" in result
+
+    def test_includes_description_up_to_200_chars(self, quiz_service):
+        module = MagicMock()
+        module.title_fr = "Module"
+        module.title_en = "Module"
+        module.description_fr = "A" * 300
+        module.description_en = "A" * 300
+        result = quiz_service._build_quiz_search_query(module, "M01-U01", "fr")
+        assert "A" * 200 in result
+        assert "A" * 201 not in result
+
+    def test_does_not_include_public_health_hardcode(self, quiz_service):
+        module = MagicMock()
+        module.title_fr = "Audit Interne GIAS 2024"
+        module.title_en = "Internal Audit GIAS 2024"
+        module.description_fr = None
+        module.description_en = None
+        result = quiz_service._build_quiz_search_query(module, "M01-U01", "fr")
+        assert "public health epidemiology" not in result.lower()
+
+
+class TestGenerateQuizContentPassesBooksSources:
+    async def test_passes_books_sources_to_retriever(
+        self, quiz_service, mock_retriever, mock_claude_service
+    ):
+        module_id = uuid.uuid4()
+        mock_session = AsyncMock()
+        mock_module = MagicMock()
+        mock_module.id = module_id
+        mock_module.title_fr = "Audit Interne GIAS 2024"
+        mock_module.title_en = "Internal Audit GIAS 2024"
+        mock_module.description_fr = None
+        mock_module.description_en = None
+        rag_collection_id = "a1b2c3d4-1234-5678-abcd-ef0123456789"
+        mock_module.books_sources = {rag_collection_id: []}
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=mock_module)
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        await quiz_service._generate_quiz_content(
+            module_id=module_id,
+            unit_id="M01-U01",
+            language="fr",
+            country="senegal",
+            level=1,
+            num_questions=5,
+            session=mock_session,
+        )
+
+        call_kwargs = mock_retriever.search_for_module.call_args
+        assert call_kwargs.kwargs["books_sources"] == {rag_collection_id: []}
+
+    async def test_search_query_uses_module_title_not_hardcode(
+        self, quiz_service, mock_retriever, mock_claude_service
+    ):
+        module_id = uuid.uuid4()
+        mock_session = AsyncMock()
+        mock_module = MagicMock()
+        mock_module.id = module_id
+        mock_module.title_fr = "Définition et Mission de l'Audit Interne"
+        mock_module.title_en = "Definition and Mission of Internal Audit"
+        mock_module.description_fr = None
+        mock_module.description_en = None
+        mock_module.books_sources = None
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=mock_module)
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        await quiz_service._generate_quiz_content(
+            module_id=module_id,
+            unit_id="M01-U01",
+            language="en",
+            country="senegal",
+            level=1,
+            num_questions=5,
+            session=mock_session,
+        )
+
+        call_kwargs = mock_retriever.search_for_module.call_args
+        actual_query = call_kwargs.kwargs["query"]
+        assert "Internal Audit" in actual_query
+        assert "public health epidemiology" not in actual_query.lower()
