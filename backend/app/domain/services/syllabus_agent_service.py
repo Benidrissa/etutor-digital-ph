@@ -20,6 +20,7 @@ import structlog
 from anthropic import AsyncAnthropic
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.ai.prompts.syllabus_agent import get_syllabus_agent_system_prompt, get_tool_definitions
 from app.ai.rag.embeddings import EmbeddingService
@@ -424,13 +425,15 @@ class SyllabusAgentService:
 
     async def get_modules_list(self, session: AsyncSession) -> list[dict]:
         """Return module list for the admin syllabus view."""
-        result = await session.execute(select(Module).order_by(Module.module_number))
+        result = await session.execute(
+            select(Module).options(selectinload(Module.units)).order_by(Module.module_number)
+        )
         modules = result.scalars().all()
         out = []
         for m in modules:
             books = m.books_sources or {}
             sources = books.get("source_references", [])
-            unit_count = len([u for u in (m.units if hasattr(m, "units") else [])])
+            unit_count = len(m.units)
             out.append(
                 {
                     "id": str(m.id),
