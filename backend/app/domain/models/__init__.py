@@ -7,6 +7,7 @@ from app.domain.models.course import Course, UserCourseEnrollment
 from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.flashcard import FlashcardReview
 from app.domain.models.generated_image import GeneratedImage
+from app.domain.models.generation_cost import ApiUsageLog
 from app.domain.models.learner_memory import LearnerMemory
 from app.domain.models.lesson_reading import LessonReading
 from app.domain.models.module import Module
@@ -16,6 +17,7 @@ from app.domain.models.quiz import QuizAttempt
 from app.domain.models.user import User
 
 __all__ = [
+    "ApiUsageLog",
     "AuditLog",
     "Base",
     "Course",
