@@ -1,10 +1,15 @@
 """Course content creator agent — generates full course structure via Claude API."""
 
+from __future__ import annotations
+
 import os
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
+
+if TYPE_CHECKING:
+    from app.domain.services.course_management_service import CostTracker
 
 logger = structlog.get_logger(__name__)
 
@@ -41,6 +46,7 @@ class CourseAgentService:
         course_level: list[str] | None = None,
         audience_type: list[str] | None = None,
         estimated_hours: int = 20,
+        cost_tracker: CostTracker | None = None,
     ) -> list[dict[str, Any]]:
         """
         Generate a course module outline using Claude API.
@@ -48,6 +54,11 @@ class CourseAgentService:
         Returns a list of module dicts with title_fr, title_en, description,
         estimated_hours, bloom_level, and a sequential module_number.
         Falls back to 2 placeholder modules if ANTHROPIC_API_KEY is not set.
+
+        Args:
+            cost_tracker: optional CostTracker for recording AI usage costs.
+                          Passed through from CourseManagementService when the
+                          expert context requires cost tracking.
         """
         api_key = os.getenv("ANTHROPIC_API_KEY", "")
         if not api_key:
