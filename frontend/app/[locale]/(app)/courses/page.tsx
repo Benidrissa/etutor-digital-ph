@@ -120,27 +120,29 @@ export default function CoursesPage() {
   // Load courses when filters change
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(false);
 
-    getCourses({
-      course_domain: activeDomain ?? undefined,
-      course_level: activeLevel ?? undefined,
-      audience_type: activeAudience ?? undefined,
-    })
-      .then((data) => {
+    async function fetchCourses() {
+      setLoading(true);
+      setError(false);
+      try {
+        const data = await getCourses({
+          course_domain: activeDomain ?? undefined,
+          course_level: activeLevel ?? undefined,
+          audience_type: activeAudience ?? undefined,
+        });
         if (!cancelled) {
           setCourses(data);
           setLoading(false);
         }
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) {
           setError(true);
           setLoading(false);
         }
-      });
+      }
+    }
 
+    fetchCourses();
     return () => {
       cancelled = true;
     };

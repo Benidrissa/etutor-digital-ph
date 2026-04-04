@@ -10,10 +10,7 @@ from structlog import get_logger
 from app.api.deps import get_db as get_db_session
 from app.api.deps_local_auth import get_current_user, get_optional_user
 from app.domain.models.course import (
-    AudienceType,
     Course,
-    CourseDomain,
-    CourseLevel,
     UserCourseEnrollment,
 )
 from app.domain.models.module import Module
