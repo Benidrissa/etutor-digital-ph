@@ -17,6 +17,7 @@ import {
   Menu,
   LogOut,
   ShieldCheck,
+  Star,
 } from "lucide-react";
 import { LocaleSwitcher } from "@/components/shared/locale-switcher";
 import { Button } from "@/components/ui/button";
@@ -108,7 +109,24 @@ export function Sidebar() {
       icon: Settings,
       description: t("settingsDescription")
     },
-    ...(userRole === "admin" || userRole === "expert"
+    ...(userRole === "expert" || userRole === "admin"
+      ? [
+          {
+            href: `/${locale}/expert/dashboard`,
+            label: t("expertDashboard"),
+            icon: Star,
+            description: t("expertDashboardDescription"),
+          },
+        ]
+      : [
+          {
+            href: `/${locale}/expert/activation`,
+            label: t("becomeExpert"),
+            icon: Star,
+            description: t("becomeExpertDescription"),
+          },
+        ]),
+    ...(userRole === "admin"
       ? [
           {
             href: `/${locale}/admin/users`,

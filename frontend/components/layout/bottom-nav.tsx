@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { startTransition, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useTranslations, useLocale } from "next-intl";
 import {
@@ -9,13 +10,36 @@ import {
   CreditCard,
   Bot,
   Settings,
+  Star,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+function getUserRole(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const token = localStorage.getItem("access_token");
+    if (!token) return null;
+    const base64Url = token.split(".")[1];
+    if (!base64Url) return null;
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(atob(base64)) as Record<string, unknown>;
+    return typeof payload?.role === "string" ? payload.role : null;
+  } catch {
+    return null;
+  }
+}
 
 export function BottomNav() {
   const t = useTranslations("Navigation");
   const pathname = usePathname();
   const locale = useLocale();
+  const [userRole, setUserRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    startTransition(() => setUserRole(getUserRole()));
+  }, []);
+
+  const isExpertOrAdmin = userRole === "expert" || userRole === "admin";
 
   const navItems = [
     {
@@ -42,12 +66,23 @@ export function BottomNav() {
       icon: Bot,
       description: t("tutorDescription")
     },
-    {
-      href: `/${locale}/settings`,
-      label: t("settings"),
-      icon: Settings,
-      description: t("settingsDescription")
-    },
+    ...(isExpertOrAdmin
+      ? [
+          {
+            href: `/${locale}/expert/dashboard`,
+            label: t("expertDashboard"),
+            icon: Star,
+            description: t("expertDashboardDescription"),
+          },
+        ]
+      : [
+          {
+            href: `/${locale}/settings`,
+            label: t("settings"),
+            icon: Settings,
+            description: t("settingsDescription"),
+          },
+        ]),
   ];
 
   return (

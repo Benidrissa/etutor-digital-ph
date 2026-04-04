@@ -39,7 +39,25 @@
     "logout": "Déconnexion",
     "logoutDescription": "Se déconnecter de votre compte",
     "admin": "Administration",
-    "adminDescription": "Accéder au panneau d'administration"
+    "adminDescription": "Accéder au panneau d'administration",
+    "expertDashboard": "Tableau Expert",
+    "expertDashboardDescription": "Accéder à votre tableau de bord expert",
+    "becomeExpert": "Devenir Expert",
+    "becomeExpertDescription": "Postuler pour devenir un expert de cours"
+  },
+  "Expert": {
+    "dashboard": "Vue d'ensemble",
+    "dashboardDescription": "Voir la vue d'ensemble de votre tableau de bord expert",
+    "myCourses": "Mes Cours",
+    "myCoursesDescription": "Gérer les cours que vous avez créés",
+    "revenue": "Revenus",
+    "revenueDescription": "Consulter vos revenus et gains",
+    "credits": "Crédits",
+    "creditsDescription": "Gérer vos crédits d'enseignement",
+    "becomeExpert": "Devenir Expert",
+    "becomeExpertDescription": "Postuler pour devenir un expert de cours sur cette plateforme",
+    "activation": "Activation Expert",
+    "activationDescription": "Complétez votre profil expert pour commencer à créer des cours"
   },
   "Auth": {
     "login": "Se connecter",

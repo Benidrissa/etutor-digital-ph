@@ -39,7 +39,25 @@
     "logout": "Log out",
     "logoutDescription": "Sign out of your account",
     "admin": "Administration",
-    "adminDescription": "Access the administration panel"
+    "adminDescription": "Access the administration panel",
+    "expertDashboard": "Expert Dashboard",
+    "expertDashboardDescription": "Access your expert dashboard",
+    "becomeExpert": "Become Expert",
+    "becomeExpertDescription": "Apply to become a course expert"
+  },
+  "Expert": {
+    "dashboard": "Overview",
+    "dashboardDescription": "View your expert dashboard overview",
+    "myCourses": "My Courses",
+    "myCoursesDescription": "Manage the courses you created",
+    "revenue": "Revenue",
+    "revenueDescription": "View your revenue and earnings",
+    "credits": "Credits",
+    "creditsDescription": "Manage your teaching credits",
+    "becomeExpert": "Become Expert",
+    "becomeExpertDescription": "Apply to become a course expert on this platform",
+    "activation": "Expert Activation",
+    "activationDescription": "Complete your expert profile to start creating courses"
   },
   "Auth": {
     "login": "Sign in",
