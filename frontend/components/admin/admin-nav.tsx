@@ -10,11 +10,10 @@ export function AdminNav() {
   const locale = useLocale();
   const pathname = usePathname();
 
-  const tCourses = useTranslations("AdminCourses");
-
   const items = [
-    { href: `/${locale}/admin/courses`, label: tCourses("pageTitle") },
     { href: `/${locale}/admin/users`, label: t("users.title") },
+    { href: `/${locale}/admin/courses`, label: t("courses.title") },
+    { href: `/${locale}/admin/syllabus`, label: t("syllabus.title") },
     { href: `/${locale}/admin/settings`, label: t("settings.title") },
     { href: `/${locale}/admin/audit-logs`, label: t("auditLog.title") },
   ];

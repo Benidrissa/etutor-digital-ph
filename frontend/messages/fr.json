@@ -771,6 +771,12 @@
     "admin": "Administrateur"
   },
   "Admin": {
+    "courses": {
+      "title": "Formations"
+    },
+    "syllabus": {
+      "title": "Syllabus"
+    },
     "settings": {
       "title": "Paramètres de la plateforme",
       "subtitle": "Configurer les paramètres globaux",
@@ -870,17 +876,74 @@
       }
     }
   },
+  "Courses": {
+    "title": "Catalogue des formations",
+    "subtitle": "Parcourez et inscrivez-vous aux formations en santé publique",
+    "loading": "Chargement des formations...",
+    "error": "Impossible de charger les formations. Veuillez réessayer.",
+    "noCourses": "Aucune formation disponible",
+    "noCoursesDescription": "Revenez bientôt pour découvrir les nouvelles formations.",
+    "enroll": "S'inscrire",
+    "enrolled": "Inscrit",
+    "enrolling": "Inscription...",
+    "enrollSuccess": "Inscription réussie !",
+    "enrollError": "Échec de l'inscription. Veuillez réessayer.",
+    "viewModules": "Voir les modules",
+    "hours": "{count, plural, one {# heure} other {# heures}}",
+    "modules": "{count, plural, one {# module} other {# modules}}",
+    "loginToEnroll": "Connectez-vous pour vous inscrire",
+    "alreadyEnrolled": "Déjà inscrit",
+    "domain": "Domaine",
+    "tryAgain": "Réessayer"
+  },
   "AdminCourses": {
-    "pageTitle": "Gestion des cours",
-    "pageDescription": "Créer, publier et gérer les cours de la plateforme",
-    "newCourse": "Nouveau cours",
-    "noCourses": "Aucun cours pour le moment",
-    "noCoursesDesc": "Créez votre premier cours pour commencer.",
+    "pageTitle": "Gestion des formations",
+    "pageDescription": "Créez, publiez et gérez les formations avec l'IA",
+    "createCourse": "Créer une formation",
+    "editCourse": "Modifier la formation",
+    "courseCount": "{count, plural, one {# formation} other {# formations}}",
+    "noCourses": "Aucune formation",
+    "noCoursesDescription": "Créez votre première formation pour commencer.",
     "status": {
       "draft": "Brouillon",
       "published": "Publié",
       "archived": "Archivé"
     },
+    "estimatedHours": "{hours} h estimées",
+    "moduleCount": "{count, plural, one {# module} other {# modules}}",
+    "generateStructure": "Générer la structure",
+    "generateError": "La génération a échoué. Veuillez réessayer.",
+    "publish": "Publier",
+    "archive": "Archiver",
+    "actions": "Actions",
+    "cancel": "Annuler",
+    "confirm": "Confirmer",
+    "save": "Enregistrer",
+    "close": "Fermer",
+    "titleFr": "Titre (FR)",
+    "titleEn": "Titre (EN)",
+    "titleFrPlaceholder": "ex. Épidémiologie en Afrique de l'Ouest",
+    "titleEnPlaceholder": "e.g. Epidemiology in West Africa",
+    "domain": "Domaine",
+    "domainPlaceholder": "ex. Épidémiologie, Biostatistiques",
+    "targetAudience": "Public cible",
+    "targetAudiencePlaceholder": "ex. Agents de santé communautaire",
+    "estimatedHoursField": "Durée estimée (heures)",
+    "coverImageUrl": "URL de l'image de couverture",
+    "fieldRequired": "Ce champ est requis.",
+    "fieldInvalidHours": "Veuillez entrer un nombre d'heures valide.",
+    "saveError": "Erreur lors de l'enregistrement. Veuillez réessayer.",
+    "errorLoading": "Erreur lors du chargement des formations.",
+    "retry": "Réessayer",
+    "actionError": "L'action a échoué. Veuillez réessayer.",
+    "confirmPublish": "Publier la formation ?",
+    "confirmPublishDesc": "La formation sera visible par tous les apprenants.",
+    "confirmArchive": "Archiver la formation ?",
+    "confirmArchiveDesc": "La formation ne sera plus accessible aux apprenants.",
+    "confirmGenerate": "Générer la structure IA ?",
+    "confirmGenerateDesc": "L'IA va créer automatiquement un plan de modules pour cette formation. Cela peut prendre quelques secondes.",
+    "newCourse": "Nouveau cours",
+    "noCoursesDesc": "Créez votre premier cours pour commencer.",
     "table": {
       "title": "Titre",
       "domain": "Domaine",
@@ -888,30 +951,6 @@
       "status": "Statut",
       "created": "Créé le",
       "actions": "Actions"
-    },
-    "actions": {
-      "publish": "Publier",
-      "archive": "Archiver",
-      "delete": "Supprimer",
-      "edit": "Modifier",
-      "wizard": "Ouvrir l'assistant"
-    },
-    "confirm": {
-      "publish": "Publier ce cours ?",
-      "publishDesc": "Le cours sera visible dans le catalogue public.",
-      "archive": "Archiver ce cours ?",
-      "archiveDesc": "Le cours ne sera plus accessible aux apprenants.",
-      "delete": "Supprimer ce cours ?",
-      "deleteDesc": "Cette action est irréversible. Seuls les cours en brouillon peuvent être supprimés.",
-      "confirm": "Confirmer",
-      "cancel": "Annuler"
-    },
-    "errors": {
-      "load": "Impossible de charger les cours.",
-      "publish": "Impossible de publier le cours.",
-      "archive": "Impossible d'archiver le cours.",
-      "delete": "Impossible de supprimer le cours.",
-      "create": "Impossible de créer le cours."
     },
     "wizard": {
       "title": "Créer un nouveau cours",
@@ -987,6 +1026,13 @@
           "status": "Statut"
         }
       }
+    },
+    "errors": {
+      "load": "Impossible de charger les cours.",
+      "publish": "Impossible de publier le cours.",
+      "archive": "Impossible d'archiver le cours.",
+      "delete": "Impossible de supprimer le cours.",
+      "create": "Impossible de créer le cours."
     }
   },
   "AdminSyllabus": {
