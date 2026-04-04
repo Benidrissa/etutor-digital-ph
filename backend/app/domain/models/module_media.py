@@ -5,7 +5,8 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+import sqlalchemy as sa
+from sqlalchemy import ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -31,26 +32,35 @@ class MediaStatus(enum.StrEnum):
 class ModuleMedia(Base):
     __tablename__ = "module_media"
     __table_args__ = (
-        UniqueConstraint(
-            "module_id",
-            "media_type",
-            "language",
-            name="uq_module_media_module_type_lang",
-        ),
         Index("ix_module_media_module_id", "module_id"),
+        Index("ix_module_media_status", "status"),
+        Index("ix_module_media_module_language_type", "module_id", "language", "media_type"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    module_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("modules.id", ondelete="CASCADE"))
-    media_type: Mapped[str] = mapped_column(String(32))
-    language: Mapped[str] = mapped_column(String(2))
-    storage_key: Mapped[str] = mapped_column(String)
-    storage_url: Mapped[str] = mapped_column(String)
+    module_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("modules.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    media_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        server_default="audio_summary",
+    )
+    language: Mapped[str] = mapped_column(String(10), nullable=False)
+    status: Mapped[str] = mapped_column(
+        sa.Enum("pending", "generating", "ready", "failed", name="media_status_enum"),
+        server_default="pending",
+        nullable=False,
+    )
+    storage_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    storage_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     file_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    status: Mapped[str] = mapped_column(String(16), server_default="pending")
+    script_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    generated_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
-    module: Mapped[Module] = relationship(back_populates="media")
+    module: Mapped[Module] = relationship("Module", foreign_keys=[module_id])
