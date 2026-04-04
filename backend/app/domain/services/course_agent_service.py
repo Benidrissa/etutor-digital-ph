@@ -82,7 +82,7 @@ class CourseAgentService:
                 f"- Bilingual: all text in both FR and EN\n\n"
                 f"## Output format\n"
                 f"Return a JSON array of modules. Each module must have:\n"
-                f'{{\n'
+                f"{{\n"
                 f'  "module_number": int,\n'
                 f'  "title_fr": str, "title_en": str,\n'
                 f'  "description_fr": str, "description_en": str,\n'
@@ -92,11 +92,11 @@ class CourseAgentService:
                 f'  "units": [\n'
                 f'    {{"title_fr": str, "title_en": str, "type": "lesson"|"quiz"|"case-study",\n'
                 f'     "description_fr": str, "description_en": str}}\n'
-                f'  ],\n'
+                f"  ],\n"
                 f'  "quiz_topics_fr": [str], "quiz_topics_en": [str],\n'
                 f'  "flashcard_categories_fr": [str], "flashcard_categories_en": [str],\n'
                 f'  "case_study_fr": str, "case_study_en": str\n'
-                f'}}\n\n'
+                f"}}\n\n"
                 f"Return ONLY valid JSON, no markdown fences, no explanation."
             )
 
