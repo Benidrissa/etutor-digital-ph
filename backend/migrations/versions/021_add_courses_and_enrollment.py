@@ -22,12 +22,18 @@ DEFAULT_COURSE_ID = "00000000-0000-0000-0000-000000000001"
 def upgrade() -> None:
     op.execute(
         """
-        CREATE TYPE coursestatus AS ENUM ('draft', 'published', 'archived')
+        DO $$ BEGIN
+            CREATE TYPE coursestatus AS ENUM ('draft', 'published', 'archived');
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$
         """
     )
     op.execute(
         """
-        CREATE TYPE enrollmentstatus AS ENUM ('active', 'completed', 'dropped')
+        DO $$ BEGIN
+            CREATE TYPE enrollmentstatus AS ENUM ('active', 'completed', 'dropped');
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$
         """
     )
 
