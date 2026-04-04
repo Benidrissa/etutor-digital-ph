@@ -493,7 +493,7 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
                         <CheckCircle2 className="h-4 w-4 text-green-600" />
                       )}
                       {f.status === "error" && (
-                        <AlertCircle className="h-4 w-4 text-destructive" title={f.error} />
+                        <span title={f.error}><AlertCircle className="h-4 w-4 text-destructive" /></span>
                       )}
                       <Button
                         variant="ghost"

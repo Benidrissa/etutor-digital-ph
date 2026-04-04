@@ -178,11 +178,9 @@ export function CourseListClient() {
                   </div>
 
                   <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-                        <MoreVertical className="h-4 w-4" />
-                        <span className="sr-only">{t("table.actions")}</span>
-                      </Button>
+                    <DropdownMenuTrigger className="group/button inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium outline-none transition-all select-none hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-expanded:bg-muted aria-expanded:text-foreground">
+                      <MoreVertical className="h-4 w-4" />
+                      <span className="sr-only">{t("table.actions")}</span>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       {course.status === "draft" && (
