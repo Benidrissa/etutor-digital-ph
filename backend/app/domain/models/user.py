@@ -19,6 +19,7 @@ class UserRole(enum.StrEnum):
 
 if TYPE_CHECKING:
     from app.domain.models.auth import EmailOTP, MagicLink, RefreshToken, TOTPSecret
+    from app.domain.models.billing import ApiUsageLog, CreditTransaction
     from app.domain.models.conversation import TutorConversation
     from app.domain.models.flashcard import FlashcardReview
     from app.domain.models.learner_memory import LearnerMemory
@@ -67,3 +68,7 @@ class User(Base):
     learner_memory: Mapped[LearnerMemory | None] = relationship(
         back_populates="user", uselist=False
     )
+
+    # Billing relationships
+    credit_transactions: Mapped[list[CreditTransaction]] = relationship(back_populates="user")
+    api_usage_logs: Mapped[list[ApiUsageLog]] = relationship(back_populates="user")
