@@ -1,10 +1,10 @@
-"""Admin endpoints for course management (CRUD, publish, agent-generate structure)."""
+"""Admin endpoints for course management (CRUD, publish, RAG indexation)."""
 
 import re
 import uuid
 from datetime import UTC, datetime
-from pathlib import Path
 
+from celery.result import AsyncResult
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -14,10 +14,12 @@ from app.api.deps import get_db as get_db_session
 from app.api.deps_local_auth import AuthenticatedUser, require_role
 from app.domain.models.course import Course, UserCourseEnrollment
 from app.domain.models.course_resource import CourseResource
+from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.module import Module
 from app.domain.models.user import UserRole
 from app.domain.services.course_agent_service import CourseAgentService
 from app.domain.services.file_processor import FileProcessor
+from app.tasks.rag_indexation import index_course_resources
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/admin/courses", tags=["Admin - Courses"])
@@ -185,6 +187,18 @@ async def publish_course(
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
 
+    chunk_count = await db.execute(
+        select(func.count())
+        .select_from(DocumentChunk)
+        .where(DocumentChunk.source == course.rag_collection_id)
+    )
+    if chunk_count.scalar_one() == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot publish: RAG indexation not complete. "
+            "Upload resources and run indexation first.",
+        )
+
     course.status = "published"
     course.published_at = datetime.now(UTC)
 
@@ -323,6 +337,11 @@ async def delete_course(
     logger.info("Course deleted", course_id=str(course_id), admin_id=current_user.id)
 
 
+# ---------------------------------------------------------------------------
+# Resource Upload
+# ---------------------------------------------------------------------------
+
+
 class CourseResourceResponse(BaseModel):
     id: str
     course_id: str
@@ -395,7 +414,9 @@ async def upload_course_resource(
             user_id=uuid.UUID(current_user.id),
         )
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
 
     resource = CourseResource(
         id=uuid.uuid4(),
@@ -420,82 +441,72 @@ async def upload_course_resource(
     return _resource_to_response(resource)
 
 
+# ---------------------------------------------------------------------------
+# RAG Indexation
+# ---------------------------------------------------------------------------
+
+
 @router.post("/{course_id}/index-resources")
-async def index_course_resources(
+async def trigger_rag_indexation(
     course_id: uuid.UUID,
     current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
     db=Depends(get_db_session),
 ) -> dict:
-    """
-    Index all uploaded resources into pgvector for this course.
-    Only indexes resources with status='uploaded'. Admin only.
-    """
+    """Trigger RAG indexation for course resources. Returns Celery task ID."""
     result = await db.execute(select(Course).where(Course.id == course_id))
     course = result.scalar_one_or_none()
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
 
-    resources_result = await db.execute(
-        select(CourseResource).where(
-            CourseResource.course_id == course_id,
-            CourseResource.status == "uploaded",
+    if not course.rag_collection_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Course has no rag_collection_id",
         )
-    )
-    resources = resources_result.scalars().all()
 
-    if not resources:
-        return {"indexed": 0, "message": "No pending resources to index"}
-
-    try:
-        from app.ai.rag.embeddings import EmbeddingService
-        from app.ai.rag.pipeline import RAGPipeline
-
-        embedding_service = EmbeddingService()
-        pipeline = RAGPipeline(embedding_service=embedding_service)
-    except Exception as exc:
-        logger.warning("RAG pipeline unavailable", error=str(exc))
-        for resource in resources:
-            resource.status = "indexed"
-            resource.chunks_indexed = 0
-            resource.indexed_at = datetime.now(UTC)
-        await db.commit()
-        return {"indexed": len(resources), "message": "Indexed (embedding service unavailable)"}
-
-    total_chunks = 0
-    indexed_count = 0
-
-    for resource in resources:
-        file_path = Path(resource.file_path)
-        if not file_path.exists():
-            resource.status = "error"
-            logger.warning("Resource file not found", resource_id=str(resource.id), path=str(file_path))
-            continue
-
-        try:
-            rag_source = f"course_{course_id}_{resource.original_name}"
-            chunk_count = await pipeline.process_pdf_document(
-                pdf_path=file_path,
-                source=rag_source,
-                session=db,
-            )
-            resource.status = "indexed"
-            resource.chunks_indexed = chunk_count
-            resource.indexed_at = datetime.now(UTC)
-            total_chunks += chunk_count
-            indexed_count += 1
-        except Exception as exc:
-            logger.error(
-                "Failed to index resource",
-                resource_id=str(resource.id),
-                error=str(exc),
-            )
-            resource.status = "error"
-
-    await db.commit()
+    task = index_course_resources.delay(str(course_id), course.rag_collection_id)
     logger.info(
-        "Course resources indexed",
+        "RAG indexation triggered",
         course_id=str(course_id),
-        indexed=indexed_count,
-        total_chunks=total_chunks,
+        task_id=task.id,
+        admin_id=current_user.id,
     )
-    return {"indexed": indexed_count, "total_chunks": total_chunks}
+    return {"task_id": task.id, "status": "started"}
+
+
+@router.get("/{course_id}/index-status")
+async def get_rag_index_status(
+    course_id: uuid.UUID,
+    task_id: str | None = None,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    db=Depends(get_db_session),
+) -> dict:
+    """Get RAG indexation status for a course."""
+    result = await db.execute(select(Course).where(Course.id == course_id))
+    course = result.scalar_one_or_none()
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    chunk_count = await db.execute(
+        select(func.count())
+        .select_from(DocumentChunk)
+        .where(DocumentChunk.source == course.rag_collection_id)
+    )
+    chunks_indexed = chunk_count.scalar_one()
+
+    response = {
+        "course_id": str(course_id),
+        "rag_collection_id": course.rag_collection_id,
+        "chunks_indexed": chunks_indexed,
+        "indexed": chunks_indexed > 0,
+    }
+
+    if task_id:
+        task_result = AsyncResult(task_id)
+        response["task"] = {
+            "id": task_id,
+            "state": task_result.state,
+            "meta": task_result.info if isinstance(task_result.info, dict) else {},
+        }
+
+    return response

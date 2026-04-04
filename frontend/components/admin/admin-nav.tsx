@@ -13,6 +13,8 @@ export function AdminNav() {
   const items = [
     { href: `/${locale}/admin/courses`, label: t("courses.navTitle") },
     { href: `/${locale}/admin/users`, label: t("users.title") },
+    { href: `/${locale}/admin/courses`, label: t("courses.title") },
+    { href: `/${locale}/admin/syllabus`, label: t("syllabus.title") },
     { href: `/${locale}/admin/settings`, label: t("settings.title") },
     { href: `/${locale}/admin/audit-logs`, label: t("auditLog.title") },
   ];

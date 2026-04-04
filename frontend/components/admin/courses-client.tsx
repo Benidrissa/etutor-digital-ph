@@ -1,0 +1,427 @@
+'use client';
+
+import { useState, useCallback } from 'react';
+import { useTranslations, useLocale } from 'next-intl';
+import { useRouter } from 'next/navigation';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  Plus,
+  MoreVertical,
+  Globe,
+  Archive,
+  Sparkles,
+  Loader2,
+  AlertCircle,
+  BookOpen,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
+import { apiFetch } from '@/lib/api';
+import { authClient, AuthError } from '@/lib/auth';
+import { CourseForm } from '@/components/admin/course-form';
+import { CourseWizardClient } from '@/components/admin/course-wizard-client';
+
+export interface AdminCourse {
+  id: string;
+  title_fr: string;
+  title_en: string;
+  domain: string | null;
+  target_audience: string | null;
+  estimated_hours: number;
+  cover_image_url: string | null;
+  status: 'draft' | 'published' | 'archived';
+  created_at: string;
+  updated_at: string;
+  module_count?: number;
+}
+
+type PendingAction =
+  | { type: 'publish'; course: AdminCourse }
+  | { type: 'archive'; course: AdminCourse }
+  | { type: 'generate'; course: AdminCourse };
+
+function useAdminCourses() {
+  return useQuery<AdminCourse[]>({
+    queryKey: ['admin', 'courses'],
+    queryFn: () => apiFetch<AdminCourse[]>('/api/v1/admin/courses'),
+  });
+}
+
+export function CoursesClient() {
+  const t = useTranslations('AdminCourses');
+  const locale = useLocale();
+  const router = useRouter();
+  const queryClient = useQueryClient();
+
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingCourse, setEditingCourse] = useState<AdminCourse | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
+
+  const { data: courses, isLoading, error, refetch } = useAdminCourses();
+
+  const publishMutation = useMutation({
+    mutationFn: (courseId: string) =>
+      apiFetch(`/api/v1/admin/courses/${courseId}/publish`, { method: 'POST' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'courses'] });
+      setPendingAction(null);
+      setActionError(null);
+    },
+    onError: () => setActionError(t('actionError')),
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: (courseId: string) =>
+      apiFetch(`/api/v1/admin/courses/${courseId}/archive`, { method: 'POST' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'courses'] });
+      setPendingAction(null);
+      setActionError(null);
+    },
+    onError: () => setActionError(t('actionError')),
+  });
+
+  const handleConfirmAction = () => {
+    if (!pendingAction) return;
+    if (pendingAction.type === 'publish') {
+      publishMutation.mutate(pendingAction.course.id);
+    } else if (pendingAction.type === 'archive') {
+      archiveMutation.mutate(pendingAction.course.id);
+    }
+  };
+
+  const handleGenerateStructure = useCallback(
+    async (course: AdminCourse) => {
+      setGeneratingId(course.id);
+      setActionError(null);
+      try {
+        let token: string;
+        try {
+          token = await authClient.getValidToken();
+        } catch (err) {
+          if (err instanceof AuthError && err.status === 401) {
+            router.push(`/${locale}/login`);
+            return;
+          }
+          throw err;
+        }
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/admin/courses/${course.id}/generate-structure`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        queryClient.invalidateQueries({ queryKey: ['admin', 'courses'] });
+      } catch {
+        setActionError(t('generateError'));
+      } finally {
+        setGeneratingId(null);
+        setPendingAction(null);
+      }
+    },
+    [router, locale, queryClient, t]
+  );
+
+  const handleFormSaved = () => {
+    setFormOpen(false);
+    setEditingCourse(null);
+    queryClient.invalidateQueries({ queryKey: ['admin', 'courses'] });
+  };
+
+  const handleWizardCreated = () => {
+    setWizardOpen(false);
+    queryClient.invalidateQueries({ queryKey: ['admin', 'courses'] });
+  };
+
+  const confirmTitle =
+    pendingAction?.type === 'publish'
+      ? t('confirmPublish')
+      : pendingAction?.type === 'archive'
+        ? t('confirmArchive')
+        : t('confirmGenerate');
+
+  const confirmDesc =
+    pendingAction?.type === 'publish'
+      ? t('confirmPublishDesc')
+      : pendingAction?.type === 'archive'
+        ? t('confirmArchiveDesc')
+        : t('confirmGenerateDesc');
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-8">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
+        <AlertCircle className="h-10 w-10 text-destructive" />
+        <p className="text-sm text-muted-foreground">{t('errorLoading')}</p>
+        <Button variant="outline" onClick={() => refetch()}>
+          {t('retry')}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            {t('courseCount', { count: courses?.length ?? 0 })}
+          </p>
+          <Button
+            onClick={() => setWizardOpen(true)}
+            className="gap-2 min-h-11"
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            {t('createCourse')}
+          </Button>
+        </div>
+
+        {actionError && (
+          <p className="text-sm text-destructive" role="alert">{actionError}</p>
+        )}
+
+        {!courses || courses.length === 0 ? (
+          <div className="py-16 text-center">
+            <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" aria-hidden="true" />
+            <p className="font-medium text-muted-foreground">{t('noCourses')}</p>
+            <p className="text-sm text-muted-foreground mt-1">{t('noCoursesDescription')}</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {courses.map((course) => (
+              <CourseRow
+                key={course.id}
+                course={course}
+                generatingId={generatingId}
+                onPublish={(c) => setPendingAction({ type: 'publish', course: c })}
+                onArchive={(c) => setPendingAction({ type: 'archive', course: c })}
+                onGenerateStructure={(c) => setPendingAction({ type: 'generate', course: c })}
+                onEdit={(c) => { setEditingCourse(c); setFormOpen(true); }}
+
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {wizardOpen && (
+        <CourseWizardClient
+          onClose={() => setWizardOpen(false)}
+          onCreated={handleWizardCreated}
+        />
+      )}
+
+      {formOpen && editingCourse && (
+        <CourseForm
+          course={editingCourse}
+          onClose={() => { setFormOpen(false); setEditingCourse(null); }}
+          onSaved={handleFormSaved}
+        />
+      )}
+
+      <AlertDialog
+        open={pendingAction !== null && pendingAction.type !== 'generate'}
+        onOpenChange={(open) => !open && setPendingAction(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogTitle>{confirmTitle}</AlertDialogTitle>
+          <AlertDialogDescription>{confirmDesc}</AlertDialogDescription>
+          <div className="flex justify-end gap-3 mt-4">
+            <AlertDialogCancel onClick={() => setPendingAction(null)}>
+              {t('cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmAction}
+              disabled={publishMutation.isPending || archiveMutation.isPending}
+            >
+              {t('confirm')}
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={pendingAction?.type === 'generate'}
+        onOpenChange={(open) => !open && setPendingAction(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogTitle>{confirmTitle}</AlertDialogTitle>
+          <AlertDialogDescription>{confirmDesc}</AlertDialogDescription>
+          <div className="flex justify-end gap-3 mt-4">
+            <AlertDialogCancel onClick={() => setPendingAction(null)}>
+              {t('cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingAction?.type === 'generate') {
+                  handleGenerateStructure(pendingAction.course);
+                }
+              }}
+              disabled={generatingId !== null}
+            >
+              {generatingId !== null ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                t('confirm')
+              )}
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+function CourseRow({
+  course,
+  generatingId,
+  onPublish,
+  onArchive,
+  onGenerateStructure,
+  onEdit,
+}: {
+  course: AdminCourse;
+  generatingId: string | null;
+  onPublish: (c: AdminCourse) => void;
+  onArchive: (c: AdminCourse) => void;
+  onGenerateStructure: (c: AdminCourse) => void;
+  onEdit: (c: AdminCourse) => void;
+}) {
+  const t = useTranslations('AdminCourses');
+  const locale = useLocale();
+
+  const title = locale === 'fr' ? course.title_fr : course.title_en;
+
+  const statusVariant =
+    course.status === 'published'
+      ? 'default'
+      : course.status === 'archived'
+        ? 'secondary'
+        : 'outline';
+
+  const isGenerating = generatingId === course.id;
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-start justify-between gap-3">
+        <button
+          className="flex flex-col gap-1 text-left min-w-0 flex-1"
+          onClick={() => onEdit(course)}
+          aria-label={t('editCourse')}
+        >
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-sm truncate">{title}</span>
+            <Badge variant={statusVariant}>{t(`status.${course.status}`)}</Badge>
+          </div>
+          {course.domain && (
+            <span className="text-xs text-muted-foreground">{course.domain}</span>
+          )}
+          <div className="flex items-center gap-3 mt-1 flex-wrap">
+            <span className="text-xs text-muted-foreground">
+              {t('estimatedHours', { hours: course.estimated_hours })}
+            </span>
+            {course.module_count !== undefined && (
+              <span className="text-xs text-muted-foreground">
+                {t('moduleCount', { count: course.module_count })}
+              </span>
+            )}
+          </div>
+        </button>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 min-h-11 hidden sm:flex"
+            onClick={() => onGenerateStructure(course)}
+            disabled={isGenerating}
+            aria-label={t('generateStructure')}
+          >
+            {isGenerating ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Sparkles className="h-4 w-4" aria-hidden="true" />
+            )}
+            <span className="hidden md:inline">{t('generateStructure')}</span>
+          </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="min-h-11 min-w-11 p-2 shrink-0"
+                  aria-label={t('actions')}
+                />
+              }
+            >
+              <MoreVertical className="h-4 w-4" aria-hidden="true" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => onEdit(course)}>
+                <BookOpen className="mr-2 h-4 w-4" />
+                {t('editCourse')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="sm:hidden"
+                onClick={() => onGenerateStructure(course)}
+                disabled={isGenerating}
+              >
+                <Sparkles className="mr-2 h-4 w-4" />
+                {t('generateStructure')}
+              </DropdownMenuItem>
+              {course.status !== 'published' && (
+                <DropdownMenuItem onClick={() => onPublish(course)}>
+                  <Globe className="mr-2 h-4 w-4" />
+                  {t('publish')}
+                </DropdownMenuItem>
+              )}
+              {course.status !== 'archived' && (
+                <DropdownMenuItem
+                  onClick={() => onArchive(course)}
+                  className="text-destructive"
+                >
+                  <Archive className="mr-2 h-4 w-4" />
+                  {t('archive')}
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    </Card>
+  );
+}

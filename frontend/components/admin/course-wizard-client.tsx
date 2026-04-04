@@ -863,6 +863,7 @@ interface Step5Props {
   course: CourseResponse | null;
   locale: 'fr' | 'en';
   indexResult: { indexed: number; total_chunks: number } | null;
+  isPublishing: boolean;
   publishError: string;
   published: boolean;
   onPublish: () => void;

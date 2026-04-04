@@ -32,10 +32,10 @@ class EmailOTPService:
         self.db = db
         self.email_service = EmailService()
         _cache = SettingsCache.instance()
-        self.otp_expiry_minutes = _cache.get("auth-otp_expiry_minutes", 10)
-        self.max_attempts = _cache.get("auth-otp_max_attempts", 5)
-        self.rate_limit_window = _cache.get("auth-otp_rate_limit_window_seconds", 600)
-        self.max_otps_per_window = _cache.get("auth-otp_max_requests_per_window", 5)
+        self.otp_expiry_minutes = _cache.get("auth-otp-expiry-minutes", 10)
+        self.max_attempts = _cache.get("auth-otp-max-attempts", 5)
+        self.rate_limit_window = _cache.get("auth-otp-rate-limit-window-seconds", 600)
+        self.max_otps_per_window = _cache.get("auth-otp-max-requests-per-window", 5)
 
     def generate_otp_code(self) -> str:
         """Generate a 6-digit OTP code.
