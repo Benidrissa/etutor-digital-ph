@@ -110,12 +110,10 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
 
         # Build books_sources from uploaded PDF filenames
         from pathlib import Path
+
         course_dir = Path("uploads/course_resources") / course_id
         if course_dir.exists():
-            pdf_names = [
-                f.stem.replace("_", " ")
-                for f in course_dir.glob("*.pdf")
-            ]
+            pdf_names = [f.stem.replace("_", " ") for f in course_dir.glob("*.pdf")]
             books_sources = {name: [] for name in pdf_names}
         elif rag_collection_id:
             books_sources = {rag_collection_id: []}
@@ -124,9 +122,7 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
 
         # Phase 3: Save modules + units in a clean session
         async with async_session() as session:
-            await session.execute(delete(Module).where(
-                Module.course_id == uuid.UUID(course_id)
-            ))
+            await session.execute(delete(Module).where(Module.course_id == uuid.UUID(course_id)))
 
             saved_modules = []
             for i, m in enumerate(module_dicts):
