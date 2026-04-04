@@ -20,14 +20,17 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.execute(
         """
-        CREATE TYPE adminaction AS ENUM (
-            'deactivate_user',
-            'reactivate_user',
-            'promote_to_expert',
-            'promote_to_admin',
-            'demote_to_user',
-            'update_role'
-        )
+        DO $$ BEGIN
+            CREATE TYPE adminaction AS ENUM (
+                'deactivate_user',
+                'reactivate_user',
+                'promote_to_expert',
+                'promote_to_admin',
+                'demote_to_user',
+                'update_role'
+            );
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$
         """
     )
     op.create_table(
