@@ -37,12 +37,12 @@ function getStatusIcon(status: 'pending' | 'in-progress' | 'completed') {
 }
 
 function detectUnitType(unit: UnitProgressDetail): 'lesson' | 'quiz' | 'case-study' {
+  if (unit.unit_type === 'quiz') return 'quiz';
+  if (unit.unit_type === 'case-study') return 'case-study';
+  if (unit.unit_type === 'lesson') return 'lesson';
   const title = (unit.title_fr || unit.title_en || '').toLowerCase();
   if (title.includes('quiz')) return 'quiz';
   if (title.includes('étude de cas') || title.includes('case study')) return 'case-study';
-  // Fallback: last unit in module of 5 is case-study, second-to-last is quiz
-  if (unit.order_index === 3) return 'quiz';
-  if (unit.order_index === 4) return 'case-study';
   return 'lesson';
 }
 
@@ -111,6 +111,7 @@ export function ModuleProgressOverlay({
                 description_en: u.description_en,
                 estimated_minutes: u.estimated_minutes,
                 order_index: u.order_index,
+                unit_type: u.unit_type,
                 status: 'pending',
               })),
             });

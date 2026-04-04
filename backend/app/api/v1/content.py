@@ -1215,6 +1215,8 @@ async def get_module_units(
                 description_en=u.description_en,
                 estimated_minutes=u.estimated_minutes,
                 order_index=u.order_index,
+                unit_type=getattr(u, "unit_type", "lesson"),
+                books_sources=getattr(u, "books_sources", None),
             )
             for u in units
         ]

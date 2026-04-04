@@ -66,6 +66,7 @@ async def seed_module_units(session: AsyncSession) -> None:
             description_en=unit_data["description_en"],
             estimated_minutes=unit_data["estimated_minutes"],
             order_index=unit_data["order_index"],
+            unit_type=unit_data.get("unit_type", "lesson"),
         )
         session.add(unit)
         inserted += 1

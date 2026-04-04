@@ -22,6 +22,7 @@ export interface UnitProgressDetail {
   estimated_minutes: number;
   order_index: number;
   status: "pending" | "in_progress" | "completed";
+  unit_type?: string;
 }
 
 export interface ModuleDetailWithProgressResponse {
@@ -80,6 +81,8 @@ export interface PublicUnitDetail {
   description_en?: string;
   estimated_minutes: number;
   order_index: number;
+  unit_type?: string;
+  books_sources?: Record<string, unknown> | null;
 }
 
 export interface ModuleUnitsResponse {

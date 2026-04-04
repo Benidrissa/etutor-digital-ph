@@ -56,6 +56,7 @@ class TestSeedData:
             "description_en",
             "estimated_minutes",
             "order_index",
+            "unit_type",
         }
         for unit in UNITS_SEED:
             for field in required_fields:
@@ -86,6 +87,23 @@ class TestSeedData:
     def test_estimated_minutes_positive(self):
         for unit in UNITS_SEED:
             assert unit["estimated_minutes"] > 0
+
+    def test_unit_type_values_valid(self):
+        valid_types = {"lesson", "quiz", "case-study"}
+        for unit in UNITS_SEED:
+            assert unit["unit_type"] in valid_types, (
+                f"unit {unit.get('unit_number')} has invalid unit_type '{unit.get('unit_type')}'"
+            )
+
+    def test_unit_type_matches_unit_number_suffix(self):
+        for unit in UNITS_SEED:
+            un = unit["unit_number"]
+            if un.endswith(".Q"):
+                assert unit["unit_type"] == "quiz", f"{un} should be quiz"
+            elif un.endswith(".C"):
+                assert unit["unit_type"] == "case-study", f"{un} should be case-study"
+            else:
+                assert unit["unit_type"] == "lesson", f"{un} should be lesson"
 
 
 class TestSeeder:

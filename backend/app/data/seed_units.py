@@ -31,6 +31,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "WHO definitions, health determinants, and essential public health functions in West Africa.",
         "estimated_minutes": 45,
         "order_index": 1,
+        "unit_type": "lesson",
     },
     {
         "module_number": 1,
@@ -41,6 +42,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Overview of health challenges in West Africa: infectious diseases, chronic diseases, and health inequalities.",
         "estimated_minutes": 45,
         "order_index": 2,
+        "unit_type": "lesson",
     },
     {
         "module_number": 1,
@@ -51,6 +53,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Ethical principles, health rights, professional responsibilities, and health equity.",
         "estimated_minutes": 45,
         "order_index": 3,
+        "unit_type": "lesson",
     },
     {
         "module_number": 1,
@@ -61,6 +64,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Knowledge assessment on key concepts, history, and functions of public health.",
         "estimated_minutes": 20,
         "order_index": 4,
+        "unit_type": "quiz",
     },
     {
         "module_number": 1,
@@ -71,6 +75,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Analysis of the West Africa Ebola epidemic response: lessons learned and health system strengthening.",
         "estimated_minutes": 30,
         "order_index": 5,
+        "unit_type": "case-study",
     },
     # -------------------------------------------------------------------------
     # M02 — Introduction aux données de santé et statistiques
@@ -84,6 +89,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Quantitative and qualitative variables, measures of central tendency and dispersion, health data visualization.",
         "estimated_minutes": 50,
         "order_index": 1,
+        "unit_type": "lesson",
     },
     {
         "module_number": 2,
@@ -94,6 +100,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "DHIS2, DHS surveys, HMIS, civil registration systems, and surveillance in West Africa.",
         "estimated_minutes": 45,
         "order_index": 2,
+        "unit_type": "lesson",
     },
     {
         "module_number": 2,
@@ -104,6 +111,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Collection methods, data quality, cleaning, and storage of public health data.",
         "estimated_minutes": 45,
         "order_index": 3,
+        "unit_type": "lesson",
     },
     {
         "module_number": 2,
@@ -114,6 +122,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Knowledge assessment on data types, sources, and descriptive statistics.",
         "estimated_minutes": 20,
         "order_index": 4,
+        "unit_type": "quiz",
     },
     {
         "module_number": 2,
@@ -124,6 +133,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Practical analysis of malaria surveillance data from Niger using DHIS2 and statistical tools.",
         "estimated_minutes": 40,
         "order_index": 5,
+        "unit_type": "case-study",
     },
     # -------------------------------------------------------------------------
     # M03 — Systèmes de santé en Afrique de l'Ouest
@@ -137,6 +147,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Governance, financing, human resources, medical products, information systems, and service delivery.",
         "estimated_minutes": 45,
         "order_index": 1,
+        "unit_type": "lesson",
     },
     {
         "module_number": 3,
@@ -147,6 +158,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Financing models, health insurance, universal health coverage, and financial protection.",
         "estimated_minutes": 45,
         "order_index": 2,
+        "unit_type": "lesson",
     },
     {
         "module_number": 3,
@@ -157,6 +169,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Comparative analysis: Ghana's NHIS, Senegal's CMU, Nigeria's system, and regional experiences.",
         "estimated_minutes": 40,
         "order_index": 3,
+        "unit_type": "lesson",
     },
     {
         "module_number": 3,
@@ -167,6 +180,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Knowledge assessment on health system building blocks and financing models.",
         "estimated_minutes": 20,
         "order_index": 4,
+        "unit_type": "quiz",
     },
     {
         "module_number": 3,
@@ -177,6 +191,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Analysis of Senegal's health system reform and universal health coverage implementation.",
         "estimated_minutes": 30,
         "order_index": 5,
+        "unit_type": "case-study",
     },
     # -------------------------------------------------------------------------
     # M04 — Épidémiologie appliquée
@@ -190,6 +205,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Calculation and interpretation of disease frequency measures: incidence, prevalence, mortality rates, and health indicators.",
         "estimated_minutes": 50,
         "order_index": 1,
+        "unit_type": "lesson",
     },
     {
         "module_number": 4,
@@ -200,6 +216,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Descriptive, analytical, and experimental studies: cohorts, case-controls, randomized controlled trials.",
         "estimated_minutes": 55,
         "order_index": 2,
+        "unit_type": "lesson",
     },
     {
         "module_number": 4,
@@ -210,6 +227,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Measures of association, Bradford Hill causality criteria, bias, and confounding factors.",
         "estimated_minutes": 50,
         "order_index": 3,
+        "unit_type": "lesson",
     },
     {
         "module_number": 4,
@@ -220,6 +238,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Assessment on epidemiological measures, study designs, and measures of association.",
         "estimated_minutes": 25,
         "order_index": 4,
+        "unit_type": "quiz",
     },
     {
         "module_number": 4,
@@ -230,6 +249,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Field investigation of a cholera outbreak in Niger: source identification, control measures, and reporting.",
         "estimated_minutes": 40,
         "order_index": 5,
+        "unit_type": "case-study",
     },
     # -------------------------------------------------------------------------
     # M05 — Biostatistiques pour la santé publique
@@ -243,6 +263,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Probabilities, normal distribution, binomial, Poisson distributions, and their public health applications.",
         "estimated_minutes": 55,
         "order_index": 1,
+        "unit_type": "lesson",
     },
     {
         "module_number": 5,
@@ -253,6 +274,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Construction of confidence intervals, t-tests, chi-square test, p-values, and statistical errors.",
         "estimated_minutes": 60,
         "order_index": 2,
+        "unit_type": "lesson",
     },
     {
         "module_number": 5,
@@ -263,6 +285,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Sample size calculation, statistical power, type I and II errors for health studies.",
         "estimated_minutes": 50,
         "order_index": 3,
+        "unit_type": "lesson",
     },
     {
         "module_number": 5,
@@ -273,6 +296,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Assessment on probabilities, statistical tests, and confidence intervals.",
         "estimated_minutes": 25,
         "order_index": 4,
+        "unit_type": "quiz",
     },
     {
         "module_number": 5,
@@ -283,6 +307,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Analysis of anemia prevalence in Mali using DHS data and biostatistical methods.",
         "estimated_minutes": 45,
         "order_index": 5,
+        "unit_type": "case-study",
     },
     # -------------------------------------------------------------------------
     # M06 — Maladies et déterminants de santé en Afrique de l'Ouest
@@ -296,6 +321,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Epidemiological transition, coexistence of infectious and non-communicable diseases, global burden of disease.",
         "estimated_minutes": 45,
         "order_index": 1,
+        "unit_type": "lesson",
     },
     {
         "module_number": 6,
@@ -306,6 +332,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Epidemiology, prevention, and control of malaria, tuberculosis, and HIV/AIDS in West Africa.",
         "estimated_minutes": 50,
         "order_index": 2,
+        "unit_type": "lesson",
     },
     {
         "module_number": 6,
@@ -316,6 +343,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Diabetes, hypertension, cancers, obesity, and social determinants influencing health in sub-Saharan Africa.",
         "estimated_minutes": 45,
         "order_index": 3,
+        "unit_type": "lesson",
     },
     {
         "module_number": 6,
@@ -326,6 +354,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Assessment on disease burden, priority diseases, and social determinants.",
         "estimated_minutes": 20,
         "order_index": 4,
+        "unit_type": "quiz",
     },
     {
         "module_number": 6,
@@ -336,6 +365,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Comparison of regional epidemiological profiles: analysis of health indicators across ECOWAS countries.",
         "estimated_minutes": 35,
         "order_index": 5,
+        "unit_type": "case-study",
     },
     # -------------------------------------------------------------------------
     # M07 — Outils et pratique de la santé publique
@@ -349,6 +379,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Leadership skills, community assessment methods, and health needs analysis.",
         "estimated_minutes": 45,
         "order_index": 1,
+        "unit_type": "lesson",
     },
     {
         "module_number": 7,
@@ -359,6 +390,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Behavioral models (HBM, TTM, TPB), health communication, and behavior change.",
         "estimated_minutes": 45,
         "order_index": 2,
+        "unit_type": "lesson",
     },
     {
         "module_number": 7,
@@ -369,6 +401,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Performance indicators, monitoring and evaluation, health team management, and conflict resolution.",
         "estimated_minutes": 40,
         "order_index": 3,
+        "unit_type": "lesson",
     },
     {
         "module_number": 7,
@@ -379,6 +412,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Assessment on leadership, behavioral theories, and performance management.",
         "estimated_minutes": 20,
         "order_index": 4,
+        "unit_type": "quiz",
     },
     {
         "module_number": 7,
@@ -389,6 +423,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Development of a district health plan in rural Burkina Faso: diagnosis, priorities, and interventions.",
         "estimated_minutes": 50,
         "order_index": 5,
+        "unit_type": "case-study",
     },
     # -------------------------------------------------------------------------
     # M08 — Surveillance épidémiologique numérique
@@ -402,6 +437,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Architecture and use of DHIS2 and SORMAS systems for real-time epidemiological surveillance.",
         "estimated_minutes": 55,
         "order_index": 1,
+        "unit_type": "lesson",
     },
     {
         "module_number": 8,
@@ -412,6 +448,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "WHO IDSR framework, alert detection, investigation, and outbreak response in Africa.",
         "estimated_minutes": 50,
         "order_index": 2,
+        "unit_type": "lesson",
     },
     {
         "module_number": 8,
@@ -422,6 +459,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "International Health Regulations (IHR), capacity assessment in West Africa, and border surveillance.",
         "estimated_minutes": 45,
         "order_index": 3,
+        "unit_type": "lesson",
     },
     {
         "module_number": 8,
@@ -432,6 +470,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Assessment on DHIS2, IDSR, and epidemiological surveillance capacities.",
         "estimated_minutes": 25,
         "order_index": 4,
+        "unit_type": "quiz",
     },
     {
         "module_number": 8,
@@ -442,6 +481,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Gap analysis of IHR capacities in West African countries and strengthening recommendations.",
         "estimated_minutes": 40,
         "order_index": 5,
+        "unit_type": "case-study",
     },
     # -------------------------------------------------------------------------
     # M09 — Statistiques avancées et analyse de données
@@ -455,6 +495,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Linear and logistic regression, one-way and two-way ANOVA, Kruskal-Wallis and Mann-Whitney tests.",
         "estimated_minutes": 60,
         "order_index": 1,
+        "unit_type": "lesson",
     },
     {
         "module_number": 9,
@@ -465,6 +506,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Survival functions, Kaplan-Meier estimator, log-rank test, Cox model, and clinical applications.",
         "estimated_minutes": 55,
         "order_index": 2,
+        "unit_type": "lesson",
     },
     {
         "module_number": 9,
@@ -475,6 +517,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Using R (tidyverse, ggplot2) and Python (pandas, matplotlib) to analyze public health data.",
         "estimated_minutes": 60,
         "order_index": 3,
+        "unit_type": "lesson",
     },
     {
         "module_number": 9,
@@ -485,6 +528,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Assessment on regression, ANOVA, survival analysis, and data analysis tools.",
         "estimated_minutes": 25,
         "order_index": 4,
+        "unit_type": "quiz",
     },
     {
         "module_number": 9,
@@ -495,6 +539,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Complete analysis of a real West African health dataset using R or Python.",
         "estimated_minutes": 60,
         "order_index": 5,
+        "unit_type": "case-study",
     },
     # -------------------------------------------------------------------------
     # M10 — Santé numérique et systèmes d'information sanitaire
@@ -508,6 +553,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Health information system architecture, mHealth in sub-Saharan Africa, and digital innovations.",
         "estimated_minutes": 50,
         "order_index": 1,
+        "unit_type": "lesson",
     },
     {
         "module_number": 10,
@@ -518,6 +564,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "HL7 FHIR standards, OpenHIE, health data exchange, and system integration in Africa.",
         "estimated_minutes": 45,
         "order_index": 2,
+        "unit_type": "lesson",
     },
     {
         "module_number": 10,
@@ -528,6 +575,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Artificial intelligence applied to health, diagnostic algorithms, bias, and ethical considerations.",
         "estimated_minutes": 45,
         "order_index": 3,
+        "unit_type": "lesson",
     },
     {
         "module_number": 10,
@@ -538,6 +586,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Assessment on health information systems, mHealth, and AI in health.",
         "estimated_minutes": 20,
         "order_index": 4,
+        "unit_type": "quiz",
     },
     {
         "module_number": 10,
@@ -548,6 +597,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Analysis of a successful mHealth deployment in sub-Saharan Africa: success factors and lessons learned.",
         "estimated_minutes": 35,
         "order_index": 5,
+        "unit_type": "case-study",
     },
     # -------------------------------------------------------------------------
     # M11 — Santé environnementale et One Health
@@ -561,6 +611,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Climate change impacts on health: vector-borne diseases, malnutrition, extreme heat, and displacement.",
         "estimated_minutes": 45,
         "order_index": 1,
+        "unit_type": "lesson",
     },
     {
         "module_number": 11,
@@ -571,6 +622,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Water, sanitation, and hygiene (WASH), waterborne diseases, and safe water access programs.",
         "estimated_minutes": 40,
         "order_index": 2,
+        "unit_type": "lesson",
     },
     {
         "module_number": 11,
@@ -581,6 +633,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Zoonotic diseases in West Africa, animal-human-environment interface, and the One Health approach.",
         "estimated_minutes": 40,
         "order_index": 3,
+        "unit_type": "lesson",
     },
     {
         "module_number": 11,
@@ -591,6 +644,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Assessment on climate change, WASH, zoonoses, and the One Health approach.",
         "estimated_minutes": 20,
         "order_index": 4,
+        "unit_type": "quiz",
     },
     {
         "module_number": 11,
@@ -601,6 +655,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Analysis of air quality in three major West African metropolises and public health impacts.",
         "estimated_minutes": 35,
         "order_index": 5,
+        "unit_type": "case-study",
     },
     # -------------------------------------------------------------------------
     # M12 — Santé maternelle, infantile et communautaire
@@ -614,6 +669,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Causes and factors of maternal mortality, effective interventions, and PMTCT programs in West Africa.",
         "estimated_minutes": 50,
         "order_index": 1,
+        "unit_type": "lesson",
     },
     {
         "module_number": 12,
@@ -624,6 +680,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Child nutritional indicators, vaccination programs, growth monitoring, and malnutrition.",
         "estimated_minutes": 45,
         "order_index": 2,
+        "unit_type": "lesson",
     },
     {
         "module_number": 12,
@@ -634,6 +691,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Community health worker roles, training, supervision, and impact on maternal and child health.",
         "estimated_minutes": 40,
         "order_index": 3,
+        "unit_type": "lesson",
     },
     {
         "module_number": 12,
@@ -644,6 +702,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Assessment on maternal mortality, nutrition, vaccination, and community health workers.",
         "estimated_minutes": 20,
         "order_index": 4,
+        "unit_type": "quiz",
     },
     {
         "module_number": 12,
@@ -654,6 +713,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Analysis of a successful maternal mortality reduction program in West Africa.",
         "estimated_minutes": 35,
         "order_index": 5,
+        "unit_type": "case-study",
     },
     # -------------------------------------------------------------------------
     # M13 — Leadership, politique et gouvernance
@@ -667,6 +727,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Policy cycle stages, stakeholder analysis, actor mapping, and decision-making processes.",
         "estimated_minutes": 50,
         "order_index": 1,
+        "unit_type": "lesson",
     },
     {
         "module_number": 13,
@@ -677,6 +738,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Advocacy strategies, health coalitions, public-private partnerships, and resource mobilization.",
         "estimated_minutes": 50,
         "order_index": 2,
+        "unit_type": "lesson",
     },
     {
         "module_number": 13,
@@ -687,6 +749,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Good governance principles, transparency, accountability, and anti-corruption in the health sector.",
         "estimated_minutes": 45,
         "order_index": 3,
+        "unit_type": "lesson",
     },
     {
         "module_number": 13,
@@ -697,6 +760,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Assessment on the policy cycle, advocacy, and health governance.",
         "estimated_minutes": 25,
         "order_index": 4,
+        "unit_type": "quiz",
     },
     {
         "module_number": 13,
@@ -707,6 +771,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Simulation of health financing advocacy to Niger's Ministry of Finance.",
         "estimated_minutes": 60,
         "order_index": 5,
+        "unit_type": "case-study",
     },
     # -------------------------------------------------------------------------
     # M14 — Recherche avancée et évaluation
@@ -720,6 +785,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Steps for designing a research protocol, research questions, objectives, methodology, and analysis plan.",
         "estimated_minutes": 55,
         "order_index": 1,
+        "unit_type": "lesson",
     },
     {
         "module_number": 14,
@@ -730,6 +796,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "PRISMA methods, inclusion/exclusion criteria, data extraction, pooled analysis, and quality assessment.",
         "estimated_minutes": 55,
         "order_index": 2,
+        "unit_type": "lesson",
     },
     {
         "module_number": 14,
@@ -740,6 +807,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Intervention logic, process, impact, and efficiency evaluation of health programs.",
         "estimated_minutes": 50,
         "order_index": 3,
+        "unit_type": "lesson",
     },
     {
         "module_number": 14,
@@ -750,6 +818,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Assessment on protocol design, systematic reviews, and evaluation frameworks.",
         "estimated_minutes": 25,
         "order_index": 4,
+        "unit_type": "quiz",
     },
     {
         "module_number": 14,
@@ -760,6 +829,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Evaluation of the impact of an insecticide-treated net distribution program in Nigeria.",
         "estimated_minutes": 50,
         "order_index": 5,
+        "unit_type": "case-study",
     },
     # -------------------------------------------------------------------------
     # M15 — Projet de synthèse intégrateur
@@ -773,6 +843,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Methodology for diagnosing a real health problem: situational analysis, cause tree, and prioritization.",
         "estimated_minutes": 60,
         "order_index": 1,
+        "unit_type": "lesson",
     },
     {
         "module_number": 15,
@@ -783,6 +854,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Analysis of available health data, identification of evidence-based interventions, and planning.",
         "estimated_minutes": 60,
         "order_index": 2,
+        "unit_type": "lesson",
     },
     {
         "module_number": 15,
@@ -793,6 +865,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Writing a policy brief, communicating results to decision-makers, and oral presentation.",
         "estimated_minutes": 55,
         "order_index": 3,
+        "unit_type": "lesson",
     },
     {
         "module_number": 15,
@@ -803,6 +876,7 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Summative assessment covering all 15 modules: integration of acquired knowledge and skills.",
         "estimated_minutes": 30,
         "order_index": 4,
+        "unit_type": "quiz",
     },
     {
         "module_number": 15,
@@ -813,5 +887,6 @@ UNITS_SEED: list[UnitSeed] = [
         "description_en": "Final integrative project on a real health problem: neonatal mortality (Niger), digital malaria intervention (Côte d'Ivoire), or AMR surveillance (Ghana).",
         "estimated_minutes": 90,
         "order_index": 5,
+        "unit_type": "case-study",
     },
 ]

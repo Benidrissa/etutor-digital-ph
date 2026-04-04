@@ -364,6 +364,10 @@ class PublicUnitDetail(BaseModel):
     description_en: str | None = None
     estimated_minutes: int
     order_index: int
+    unit_type: str = Field(default="lesson", description="Unit type: lesson, quiz, or case-study")
+    books_sources: dict | None = Field(
+        default=None, description="Unit-level book chapter references"
+    )
 
 
 class ModuleUnitsResponse(BaseModel):
