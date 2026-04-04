@@ -179,9 +179,7 @@ async def submit_placement_test(
             },
             "can_retake_after": (
                 datetime.utcnow()
-                + timedelta(
-                    days=SettingsCache.instance().get("placement-retest_cooldown_days", 90)
-                )
+                + timedelta(days=SettingsCache.instance().get("placement-retest_cooldown_days", 90))
             ).isoformat(),
         }
 
