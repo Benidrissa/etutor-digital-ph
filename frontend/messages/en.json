@@ -39,7 +39,10 @@
     "logout": "Log out",
     "logoutDescription": "Sign out of your account",
     "admin": "Administration",
-    "adminDescription": "Access the administration panel"
+    "adminDescription": "Access the administration panel",
+    "more": "More",
+    "moreMenuLabel": "More navigation options",
+    "closeMoreMenu": "Close more menu"
   },
   "Auth": {
     "login": "Sign in",
@@ -178,7 +181,8 @@
     "justGettingStarted": "Just getting started",
     "loading": "Loading...",
     "noEnrollments": "You are not enrolled in any courses yet.",
-    "browseCourses": "Browse available courses"
+    "browseCourses": "Browse available courses",
+    "browseMoreCourses": "Browse more courses"
   },
   "ModuleCard": {
     "locked": "Locked",

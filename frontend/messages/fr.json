@@ -39,7 +39,10 @@
     "logout": "Déconnexion",
     "logoutDescription": "Se déconnecter de votre compte",
     "admin": "Administration",
-    "adminDescription": "Accéder au panneau d'administration"
+    "adminDescription": "Accéder au panneau d'administration",
+    "more": "Plus",
+    "moreMenuLabel": "Plus d'options de navigation",
+    "closeMoreMenu": "Fermer le menu Plus"
   },
   "Auth": {
     "login": "Se connecter",
@@ -178,7 +181,8 @@
     "justGettingStarted": "Tout juste commencé",
     "loading": "Chargement...",
     "noEnrollments": "Vous n'êtes inscrit à aucune formation pour l'instant.",
-    "browseCourses": "Parcourir les formations disponibles"
+    "browseCourses": "Parcourir les formations disponibles",
+    "browseMoreCourses": "Parcourir d'autres formations"
   },
   "ModuleCard": {
     "locked": "Verrouillé",
