@@ -2,6 +2,8 @@
 
 from typing import Literal
 
+from app.ai.prompts.lesson import _apply_settings_template
+
 # Mapping of country codes to French names for contextualization
 COUNTRY_NAMES_FR = {
     "SN": "Sénégal",
@@ -40,8 +42,37 @@ COUNTRY_NAMES_EN = {
 }
 
 
-def get_flashcard_system_prompt(language: Literal["fr", "en"], country: str, level: int) -> str:
-    """Generate system prompt for flashcard content generation."""
+def get_flashcard_system_prompt(
+    language: Literal["fr", "en"],
+    country: str,
+    level: int,
+    course_title: str | None = None,
+    course_description: str | None = None,
+    module_title: str = "",
+    syllabus_context: str = "",
+    course_domain: str = "",
+) -> str:
+    """Generate system prompt for flashcard content generation.
+
+    If an admin has customized the prompt template in platform settings, it is
+    used with template variable interpolation via str.format_map(). Otherwise
+    falls back to the built-in prompt logic.
+    """
+    overridden = _apply_settings_template(
+        "ai-prompt-flashcard-system",
+        language,
+        country,
+        level,
+        "",
+        course_title,
+        course_description,
+        module_title,
+        "",
+        syllabus_context,
+        course_domain,
+    )
+    if overridden is not None:
+        return overridden
 
     country_names = COUNTRY_NAMES_FR if language == "fr" else COUNTRY_NAMES_EN
     country_name = country_names.get(country, country)

@@ -6,12 +6,14 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.ai.claude_service import ClaudeService
 from app.ai.prompts.flashcard import format_rag_context_for_flashcards, get_flashcard_system_prompt
 from app.ai.rag.retriever import SemanticRetriever
 from app.api.v1.schemas.content import FlashcardContent, FlashcardSetResponse
 from app.domain.models.content import GeneratedContent
+from app.domain.models.course import Course
 from app.domain.models.module import Module
 from app.domain.services.platform_settings_service import SettingsCache
 
@@ -142,7 +144,9 @@ class FlashcardGenerationService:
         Raises:
             ValueError: If module not found or generation fails
         """
-        module_query = select(Module).where(Module.id == module_id)
+        module_query = (
+            select(Module).where(Module.id == module_id).options(selectinload(Module.course))
+        )
         module_result = await session.execute(module_query)
         module = module_result.scalar_one_or_none()
 
@@ -181,10 +185,20 @@ class FlashcardGenerationService:
         )
 
         # Generate system prompt
+        course: Course | None = module.course
         system_prompt = get_flashcard_system_prompt(
             language=language,
             country=country,
             level=level,
+            course_title=(
+                (course.title_fr if language == "fr" else course.title_en) if course else None
+            ),
+            course_description=(
+                (course.description_fr if language == "fr" else course.description_en)
+                if course
+                else None
+            ),
+            module_title=module_title,
         )
 
         logger.info("Calling Claude API for flashcard generation")
