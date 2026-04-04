@@ -266,9 +266,7 @@ class TutorToolExecutor:
         module_ids = {row.module_id for row in progress_rows}
         modules_by_id: dict[Any, Module] = {}
         if module_ids:
-            modules_result = await session.execute(
-                select(Module).where(Module.id.in_(module_ids))
-            )
+            modules_result = await session.execute(select(Module).where(Module.id.in_(module_ids)))
             modules_by_id = {m.id: m for m in modules_result.scalars().all()}
 
         modules_progress = []
@@ -293,13 +291,15 @@ class TutorToolExecutor:
                 completed_modules.append(str(row.module_id))
 
             if row.quiz_score_avg is not None and row.quiz_score_avg < 60:
-                weak_domains.append({
-                    "module_id": str(row.module_id),
-                    "module_number": mod.module_number if mod else None,
-                    "title_fr": mod.title_fr if mod else None,
-                    "title_en": mod.title_en if mod else None,
-                    "quiz_score_avg": row.quiz_score_avg,
-                })
+                weak_domains.append(
+                    {
+                        "module_id": str(row.module_id),
+                        "module_number": mod.module_number if mod else None,
+                        "title_fr": mod.title_fr if mod else None,
+                        "title_en": mod.title_en if mod else None,
+                        "quiz_score_avg": row.quiz_score_avg,
+                    }
+                )
 
         # Fetch recent quizzes with eager-loaded GeneratedContent for module context
         quiz_query = (
