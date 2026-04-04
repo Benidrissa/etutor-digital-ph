@@ -91,8 +91,10 @@ export function DashboardClient() {
                 <h3 className="text-base font-semibold text-stone-900 truncate">
                   {title}
                 </h3>
-                {course.domain && (
-                  <span className="text-xs text-stone-500">{course.domain}</span>
+                {course.course_domain?.[0] && (
+                  <span className="text-xs text-stone-500">
+                    {locale === 'fr' ? course.course_domain[0].label_fr : course.course_domain[0].label_en}
+                  </span>
                 )}
               </div>
               <span

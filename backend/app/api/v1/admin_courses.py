@@ -16,7 +16,7 @@ from app.api.deps_local_auth import AuthenticatedUser, require_role
 from app.domain.models.course import Course, UserCourseEnrollment
 from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.module import Module
-from app.domain.models.taxonomy import CourseTaxonomy, TaxonomyCategory
+from app.domain.models.taxonomy import TaxonomyCategory
 from app.domain.models.user import UserRole
 from app.domain.services.course_agent_service import CourseAgentService
 from app.tasks.rag_indexation import UPLOAD_DIR, index_course_resources
