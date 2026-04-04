@@ -62,29 +62,55 @@ class CourseAgentService:
             client = anthropic.AsyncAnthropic(api_key=api_key)
 
             prompt = (
-                f"You are an expert instructional designer for a bilingual (FR/EN) "
-                f"adaptive e-learning platform for health professionals in West Africa.\n\n"
-                f"Create a structured course outline for:\n"
+                f"You are an expert instructional designer specializing in bilingual (FR/EN) "
+                f"adaptive e-learning for professionals. You design curricula using Bloom's "
+                f"taxonomy, Knowles' andragogy, the ADDIE model, and spiral learning.\n\n"
+                f"Create a complete course syllabus for:\n"
                 f"- Title FR: {title_fr}\n"
                 f"- Title EN: {title_en}\n"
                 f"- Domain: {domain or 'General'}\n"
-                f"- Target audience: {target_audience or 'Health professionals'}\n"
+                f"- Target audience: {target_audience or 'Professionals'}\n"
                 f"- Estimated total hours: {estimated_hours}\n\n"
+                f"## Design principles (mandatory)\n"
+                f"- Progressive complexity: start with foundational concepts (remember/understand), "
+                f"build to applied skills (apply/analyze), end with expert synthesis (evaluate/create)\n"
+                f"- Each module must be self-contained (10-25h) with clear learning objectives\n"
+                f"- Units are micro-learning (10-15 min each), 3-6 lessons per module\n"
+                f"- Every module includes: lessons, a formative quiz per lesson, a summative "
+                f"module quiz (20 questions, 80% pass), flashcards (20-40 bilingual cards), "
+                f"and a practical case study contextualized to the target audience\n"
+                f"- Bilingual: all text in both FR and EN\n\n"
+                f"## Output format\n"
                 f"Return a JSON array of modules. Each module must have:\n"
-                f"  title_fr, title_en, description_fr, description_en,\n"
-                f"  estimated_hours (integer), bloom_level (one of: remember, understand, apply, analyze, evaluate, create)\n\n"
+                f'{{\n'
+                f'  "module_number": int,\n'
+                f'  "title_fr": str, "title_en": str,\n'
+                f'  "description_fr": str, "description_en": str,\n'
+                f'  "estimated_hours": int,\n'
+                f'  "bloom_level": "remember"|"understand"|"apply"|"analyze"|"evaluate"|"create",\n'
+                f'  "learning_objectives_fr": [str], "learning_objectives_en": [str],\n'
+                f'  "units": [\n'
+                f'    {{"title_fr": str, "title_en": str, "type": "lesson"|"quiz"|"case-study",\n'
+                f'     "description_fr": str, "description_en": str}}\n'
+                f'  ],\n'
+                f'  "quiz_topics_fr": [str], "quiz_topics_en": [str],\n'
+                f'  "flashcard_categories_fr": [str], "flashcard_categories_en": [str],\n'
+                f'  "case_study_fr": str, "case_study_en": str\n'
+                f'}}\n\n'
                 f"Return ONLY valid JSON, no markdown fences, no explanation."
             )
 
             message = await client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=2048,
+                model="claude-sonnet-4-6",
+                max_tokens=8192,
                 messages=[{"role": "user", "content": prompt}],
             )
 
             import json
 
             raw = message.content[0].text.strip()
+            if raw.startswith("```"):
+                raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
             modules_raw: list[dict[str, Any]] = json.loads(raw)
 
             modules = []
@@ -98,6 +124,15 @@ class CourseAgentService:
                         "description_en": m.get("description_en"),
                         "estimated_hours": int(m.get("estimated_hours", 20)),
                         "bloom_level": m.get("bloom_level", "understand"),
+                        "learning_objectives_fr": m.get("learning_objectives_fr", []),
+                        "learning_objectives_en": m.get("learning_objectives_en", []),
+                        "units": m.get("units", []),
+                        "quiz_topics_fr": m.get("quiz_topics_fr", []),
+                        "quiz_topics_en": m.get("quiz_topics_en", []),
+                        "flashcard_categories_fr": m.get("flashcard_categories_fr", []),
+                        "flashcard_categories_en": m.get("flashcard_categories_en", []),
+                        "case_study_fr": m.get("case_study_fr"),
+                        "case_study_en": m.get("case_study_en"),
                     }
                 )
 
