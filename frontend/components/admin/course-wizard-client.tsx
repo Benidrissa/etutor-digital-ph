@@ -102,6 +102,7 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
   const [publishError, setPublishError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stepIndex = STEPS.indexOf(step);
@@ -182,11 +183,7 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
               : f
           )
         );
-        const dt = new DataTransfer();
-        pdfs.forEach((f) => dt.items.add(f));
-        (fileInputRef as React.MutableRefObject<{ _pendingFiles?: File[] }>).current = {
-          _pendingFiles: pdfs,
-        };
+        setPendingFiles((prev) => [...prev, ...pdfs]);
       }
     },
     [courseId, files, uploadFile]
@@ -248,8 +245,6 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
 
       setCourseId(course.id);
 
-      const ref = fileInputRef as React.MutableRefObject<{ _pendingFiles?: File[] }>;
-      const pendingFiles = ref.current?._pendingFiles || [];
       const headers = await getAuthHeaders();
 
       for (const file of pendingFiles) {
@@ -264,6 +259,7 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
 
       if (pendingFiles.length > 0) {
         setFiles((prev) => prev.map((f) => ({ ...f, status: "uploaded" as const })));
+        setPendingFiles([]);
       }
 
       setStep("generate");
@@ -280,6 +276,9 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
     setGenerateError(null);
 
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 300000); // 5 min timeout
+
       const result = await apiFetch<{ modules: GeneratedModule[]; count: number }>(
         `/api/v1/admin/courses/${courseId}/generate-structure`,
         {
@@ -287,11 +286,17 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
           body: JSON.stringify({
             estimated_hours: courseInfo.estimated_hours,
           }),
+          signal: controller.signal,
         }
       );
+      clearTimeout(timeout);
       setGeneratedModules(result.modules);
-    } catch {
-      setGenerateError(t("generate.error"));
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setGenerateError(t("generate.error") + " (timeout)");
+      } else {
+        setGenerateError(t("generate.error"));
+      }
     } finally {
       setIsGenerating(false);
     }

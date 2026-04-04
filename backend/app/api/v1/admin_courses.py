@@ -326,11 +326,7 @@ async def generate_course_structure(
             }
         )
 
-    course.module_count = (
-        await db.execute(
-            select(func.count()).select_from(Module).where(Module.course_id == course_id)
-        )
-    ).scalar_one() + len(module_dicts)
+    course.module_count = len(module_dicts)
 
     await db.commit()
     logger.info(

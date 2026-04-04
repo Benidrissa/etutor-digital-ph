@@ -102,15 +102,20 @@ class MediaSummaryService:
             )
             return cached
 
-        record = ModuleMedia(
-            id=uuid.uuid4(),
-            module_id=module_id,
-            media_type="audio_summary",
-            language=language,
-            status="pending",
-        )
-        session.add(record)
-        await session.flush()
+        # Reuse existing pending record (created by API endpoint) or create new
+        pending = await self._find_pending(module_id, language, session)
+        if pending is not None:
+            record = pending
+        else:
+            record = ModuleMedia(
+                id=uuid.uuid4(),
+                module_id=module_id,
+                media_type="audio_summary",
+                language=language,
+                status="pending",
+            )
+            session.add(record)
+            await session.flush()
 
         try:
             record.status = "generating"
@@ -197,6 +202,23 @@ class MediaSummaryService:
                 ModuleMedia.language == language,
                 ModuleMedia.media_type == "audio_summary",
                 ModuleMedia.status == "ready",
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def _find_pending(
+        self,
+        module_id: uuid.UUID,
+        language: str,
+        session: AsyncSession,
+    ) -> ModuleMedia | None:
+        """Return existing pending/generating record to avoid duplicates."""
+        result = await session.execute(
+            select(ModuleMedia).where(
+                ModuleMedia.module_id == module_id,
+                ModuleMedia.language == language,
+                ModuleMedia.media_type == "audio_summary",
+                ModuleMedia.status.in_(["pending", "generating"]),
             )
         )
         return result.scalar_one_or_none()
