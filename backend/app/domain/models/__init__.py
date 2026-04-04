@@ -9,6 +9,7 @@ from app.domain.models.flashcard import FlashcardReview
 from app.domain.models.generated_image import GeneratedImage
 from app.domain.models.learner_memory import LearnerMemory
 from app.domain.models.lesson_reading import LessonReading
+from app.domain.models.marketplace import CoursePrice, CourseReview
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.progress import UserModuleProgress
@@ -19,6 +20,8 @@ __all__ = [
     "AuditLog",
     "Base",
     "Course",
+    "CoursePrice",
+    "CourseReview",
     "DocumentChunk",
     "GeneratedContent",
     "GeneratedImage",
