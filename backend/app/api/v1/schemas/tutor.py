@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class FileUploadResponse(BaseModel):
@@ -44,6 +44,18 @@ class TutorChatRequest(BaseModel):
         description="Tutor mode: socratic (guided questions) or explanatory (direct answers)",
     )
     file_ids: list[str] = Field(default_factory=list, description="Uploaded file IDs to attach")
+    course_filter: list[UUID] | None = Field(
+        None,
+        max_length=2,
+        description="Optional list of course IDs (max 2) to scope RAG search for this conversation",
+    )
+
+    @field_validator("course_filter")
+    @classmethod
+    def validate_course_filter_max(cls, v: list[UUID] | None) -> list[UUID] | None:
+        if v is not None and len(v) > 2:
+            raise ValueError("course_filter accepts at most 2 course IDs")
+        return v
 
 
 class TutorChatResponse(BaseModel):
@@ -71,6 +83,9 @@ class ConversationSummary(BaseModel):
     has_context: bool = Field(
         False, description="Whether this conversation has prior compacted context"
     )
+    course_filter: list[UUID] | None = Field(
+        None, description="Course IDs this conversation is scoped to"
+    )
 
 
 class TutorConversationListResponse(BaseModel):
@@ -87,6 +102,9 @@ class TutorConversationResponse(BaseModel):
     module_id: UUID | None = Field(None, description="Associated module ID")
     messages: list[TutorMessage] = Field(..., description="All messages in conversation")
     created_at: datetime = Field(..., description="Conversation creation timestamp")
+    course_filter: list[UUID] | None = Field(
+        None, description="Course IDs this conversation is scoped to"
+    )
 
 
 class TutorStatsResponse(BaseModel):

@@ -361,6 +361,15 @@
     "modeExplanatory": "Explanatory Mode",
     "modeSocraticTooltip": "Guided questions",
     "modeExplanatoryTooltip": "Direct answers",
+    "courseFilter": {
+      "label": "Course scope",
+      "placeholder": "All enrolled courses",
+      "selectCourses": "Select courses (max 2)",
+      "maxReached": "Maximum 2 courses",
+      "noEnrollments": "No enrolled courses",
+      "outsideScope": "This content is from a course you are not enrolled in.",
+      "ariaLabel": "Filter tutor answers by course"
+    },
     "fileUpload": {
       "attach": "Attach a file",
       "attachAriaLabel": "Attach a file",

@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { X, MoreVertical, Trash2, Menu, HelpCircle, BookOpen } from 'lucide-react';
+import { X, MoreVertical, Trash2, Menu, HelpCircle, BookOpen, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,6 +38,7 @@ import {
   invalidateConversationsCache,
   deleteConversation as apiDeleteConversation,
 } from '@/lib/tutor-api';
+import { getMyEnrollments, type CourseWithEnrollment } from '@/lib/api';
 
 interface ChatPanelProps {
   isOpen: boolean;
@@ -77,6 +79,9 @@ export function ChatPanel({
     }
     return 'socratic';
   });
+  const [enrolledCourses, setEnrolledCourses] = useState<CourseWithEnrollment[]>([]);
+  const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>([]);
+  const [showCourseSelector, setShowCourseSelector] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const isLimitReached = currentUsage >= maxDailyUsage;
@@ -91,6 +96,14 @@ export function ChatPanel({
   useEffect(() => {
     localStorage.setItem('tutorMode', tutorMode);
   }, [tutorMode]);
+
+  useEffect(() => {
+    getMyEnrollments()
+      .then((courses) => {
+        setEnrolledCourses(courses);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetchTutorStats()
@@ -197,6 +210,7 @@ export function ChatPanel({
           module_id: moduleId ?? null,
           tutor_mode: tutorMode,
           file_ids: attachedFiles.map((f) => f.fileId),
+          course_filter: selectedCourseIds.length > 0 ? selectedCourseIds : null,
         }),
       });
 
@@ -313,6 +327,16 @@ export function ChatPanel({
     }
   };
 
+  const toggleCourseSelection = (courseId: string) => {
+    setSelectedCourseIds((prev) => {
+      if (prev.includes(courseId)) {
+        return prev.filter((id) => id !== courseId);
+      }
+      if (prev.length >= 2) return prev;
+      return [...prev, courseId];
+    });
+  };
+
   const handleClearHistory = async () => {
     if (activeConversationId) {
       try {
@@ -395,6 +419,71 @@ export function ChatPanel({
             </Button>
           </div>
         </div>
+
+        {/* Course Filter Bar */}
+        {enrolledCourses.length > 0 && (
+          <div className="px-3 py-1.5 border-b bg-background shrink-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1.5 text-xs text-muted-foreground px-2"
+                onClick={() => setShowCourseSelector(!showCourseSelector)}
+                aria-label={t('courseFilter.ariaLabel')}
+              >
+                <Filter className="h-3 w-3" />
+                {t('courseFilter.label')}
+              </Button>
+              {selectedCourseIds.length === 0 ? (
+                <span className="text-xs text-muted-foreground">{t('courseFilter.placeholder')}</span>
+              ) : (
+                selectedCourseIds.map((id) => {
+                  const course = enrolledCourses.find((c) => c.id === id);
+                  return course ? (
+                    <Badge
+                      key={id}
+                      variant="secondary"
+                      className="text-xs cursor-pointer h-6"
+                      onClick={() => toggleCourseSelection(id)}
+                    >
+                      {course.title_fr}
+                      <X className="h-3 w-3 ml-1" />
+                    </Badge>
+                  ) : null;
+                })
+              )}
+            </div>
+            {showCourseSelector && (
+              <div className="mt-1.5 flex flex-col gap-1">
+                {enrolledCourses.map((course) => {
+                  const selected = selectedCourseIds.includes(course.id);
+                  const maxReached = selectedCourseIds.length >= 2 && !selected;
+                  return (
+                    <button
+                      key={course.id}
+                      type="button"
+                      disabled={maxReached}
+                      onClick={() => toggleCourseSelection(course.id)}
+                      className={cn(
+                        'flex items-center gap-2 text-left text-xs px-2 py-1.5 rounded-md transition-colors min-h-[44px]',
+                        selected
+                          ? 'bg-primary/10 text-primary font-medium'
+                          : 'hover:bg-muted text-foreground',
+                        maxReached && 'opacity-40 cursor-not-allowed'
+                      )}
+                    >
+                      <span className="flex-1">{course.title_fr}</span>
+                      {selected && <span className="text-primary">✓</span>}
+                    </button>
+                  );
+                })}
+                {selectedCourseIds.length >= 2 && (
+                  <p className="text-xs text-muted-foreground px-2">{t('courseFilter.maxReached')}</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Usage Counter */}
         <UsageCounter

@@ -22,6 +22,7 @@ from app.ai.prompts.tutor import (
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.domain.models.conversation import TutorConversation
+from app.domain.models.course import Course, UserCourseEnrollment
 from app.domain.models.module import Module
 from app.domain.models.user import User
 from app.domain.services.learner_memory_service import LearnerMemoryService
@@ -214,6 +215,7 @@ class TutorService:
         conversation_id: uuid.UUID | None = None,
         tutor_mode: str = "socratic",
         file_content_blocks: list[dict[str, Any]] | None = None,
+        course_filter: list[uuid.UUID] | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """
         Send a message to the AI tutor and stream the response using agentic tool_use.
@@ -257,8 +259,14 @@ class TutorService:
         try:
             is_new_conversation = conversation_id is None
             conversation = await self._get_or_create_conversation(
-                user_id, module_id, conversation_id, session
+                user_id, module_id, conversation_id, session, course_filter=course_filter
             )
+
+            effective_course_filter = conversation.course_filter
+            if not effective_course_filter:
+                effective_course_filter = await self._get_default_course_filter(
+                    user_id, session
+                )
 
             session_ctx = await self.session_manager.build_session_context(
                 user=user,
@@ -281,6 +289,10 @@ class TutorService:
                 "data": {"conversation_id": str(conversation.id)},
             }
 
+            course_names = await self._get_course_names(
+                effective_course_filter or [], session
+            ) if effective_course_filter else []
+
             context = TutorContext(
                 user_level=user.current_level,
                 user_language=user.preferred_language,
@@ -292,6 +304,7 @@ class TutorService:
                 learner_memory=session_ctx.learner_memory,
                 previous_session_context=session_ctx.previous_compact,
                 progress_snapshot=session_ctx.progress_snapshot,
+                course_filter_names=course_names,
             )
 
             system_prompt = get_socratic_system_prompt(context, [])
@@ -317,6 +330,7 @@ class TutorService:
                 user_id=user_id,
                 user_level=user.current_level,
                 user_language=user.preferred_language,
+                course_filter=effective_course_filter,
             )
 
             tool_call_count = 0
@@ -532,6 +546,7 @@ class TutorService:
             "module_id": conversation.module_id,
             "messages": conversation.messages,
             "created_at": conversation.created_at,
+            "course_filter": conversation.course_filter,
         }
 
     async def list_conversations(
@@ -584,6 +599,7 @@ class TutorService:
                     "last_message_at": last_message_at,
                     "preview": preview,
                     "has_context": bool(conv.compacted_context),
+                    "course_filter": conv.course_filter,
                 }
             )
 
@@ -700,6 +716,7 @@ class TutorService:
         module_id: uuid.UUID | None,
         conversation_id: uuid.UUID | None,
         session: AsyncSession,
+        course_filter: list[uuid.UUID] | None = None,
     ) -> TutorConversation:
         """Get existing conversation or create a new one."""
         if isinstance(user_id, str):
@@ -713,19 +730,57 @@ class TutorService:
             result = await session.execute(query)
             conversation = result.scalar_one_or_none()
             if conversation:
+                if course_filter and not conversation.course_filter:
+                    conversation.course_filter = [str(c) for c in course_filter]
+                    session.add(conversation)
+                    await session.flush()
                 return conversation
 
+        course_filter_stored = [str(c) for c in course_filter] if course_filter else None
         conversation = TutorConversation(
             id=uuid.uuid4(),
             user_id=user_id,
             module_id=module_id,
             messages=[],
             created_at=datetime.utcnow(),
+            course_filter=course_filter_stored,
         )
         session.add(conversation)
         await session.flush()
 
         return conversation
+
+    async def _get_default_course_filter(
+        self,
+        user_id: uuid.UUID,
+        session: AsyncSession,
+    ) -> list[str] | None:
+        """Return the learner's most recently enrolled course ID as default filter."""
+        result = await session.execute(
+            select(UserCourseEnrollment)
+            .where(UserCourseEnrollment.user_id == user_id)
+            .order_by(UserCourseEnrollment.enrolled_at.desc())
+            .limit(1)
+        )
+        enrollment = result.scalar_one_or_none()
+        if enrollment:
+            return [str(enrollment.course_id)]
+        return None
+
+    async def _get_course_names(
+        self,
+        course_ids: list[str | uuid.UUID],
+        session: AsyncSession,
+    ) -> list[str]:
+        """Fetch display names for the given course IDs."""
+        if not course_ids:
+            return []
+        uuids = [uuid.UUID(str(c)) for c in course_ids]
+        result = await session.execute(
+            select(Course).where(Course.id.in_(uuids))
+        )
+        courses = result.scalars().all()
+        return [c.title_fr for c in courses]
 
     async def _retrieve_relevant_context(
         self, query: str, user: User, module_id: uuid.UUID | None, session: AsyncSession

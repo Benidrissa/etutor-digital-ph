@@ -18,6 +18,7 @@ class TutorContext:
     previous_session_context: str | None = None  # Compacted context from prior session
     progress_snapshot: str | None = None  # Short learner progress summary
     tutor_mode: str = "socratic"  # "socratic" (guided questions) or "explanatory" (direct answers)
+    course_filter_names: list[str] | None = None  # Display names of courses in scope
 
 
 def get_socratic_system_prompt(context: TutorContext, rag_chunks: list[dict[str, Any]]) -> str:
@@ -49,6 +50,7 @@ def get_socratic_system_prompt(context: TutorContext, rag_chunks: list[dict[str,
     sources_context = _format_sources_context(rag_chunks)
 
     pedagogical_section = _get_pedagogical_rules(context.tutor_mode)
+    course_scope_section = _format_course_scope_section(context.course_filter_names)
 
     prompt = f"""Tu es un tuteur IA spécialisé en santé publique pour l'Afrique de l'Ouest.
 {_get_mode_intro(context.tutor_mode)}
@@ -59,7 +61,7 @@ def get_socratic_system_prompt(context: TutorContext, rag_chunks: list[dict[str,
 - Pays: {country_context}
 - Module actuel: {context.module_id or "Non spécifié"}
 - Mode: {"Socratique (guidage par questions)" if context.tutor_mode == "socratic" else "Explicatif (réponses directes)"}
-{_format_progress_section(context.progress_snapshot)}{_format_memory_section(context.learner_memory)}{_format_previous_session_section(context.previous_session_context)}
+{_format_progress_section(context.progress_snapshot)}{_format_memory_section(context.learner_memory)}{_format_previous_session_section(context.previous_session_context)}{course_scope_section}
 
 {pedagogical_section}
 
@@ -153,6 +155,20 @@ une fois qu'on aura exploré cette idée ensemble ?"
 Réponds maintenant dans cette approche socratique stricte."""
 
     return prompt
+
+
+def _format_course_scope_section(course_filter_names: list[str] | None) -> str:
+    """Format course scope restriction as a section for the system prompt."""
+    if not course_filter_names:
+        return ""
+    course_list = ", ".join(course_filter_names)
+    return f"""
+
+## PÉRIMÈTRE DE RÉPONSE
+L'apprenant a limité cette conversation aux cours suivants: {course_list}
+- Réponds UNIQUEMENT avec du contenu pertinent à ces cours
+- Si la question sort du périmètre, indique poliment que le sujet sera couvert dans un autre cours
+- Cite uniquement les sources pertinentes aux cours sélectionnés"""
 
 
 def _format_memory_section(learner_memory: str | None) -> str:

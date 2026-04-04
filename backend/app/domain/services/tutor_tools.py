@@ -152,6 +152,7 @@ class TutorToolExecutor:
         user_level: int,
         user_language: str,
         learner_memory_service: LearnerMemoryService | None = None,
+        course_filter: list[uuid.UUID] | None = None,
     ):
         self.retriever = retriever
         self.anthropic = anthropic_client
@@ -159,6 +160,7 @@ class TutorToolExecutor:
         self.user_level = user_level
         self.user_language = user_language
         self.learner_memory_service = learner_memory_service or LearnerMemoryService()
+        self.course_filter = course_filter
 
     async def execute(
         self,
@@ -224,6 +226,11 @@ class TutorToolExecutor:
             except (ValueError, TypeError):
                 pass
 
+        if not books_sources and self.course_filter:
+            books_sources = await self._get_books_sources_for_courses(
+                self.course_filter, session
+            )
+
         results = await self.retriever.search_for_module(
             query=query,
             user_level=self.user_level,
@@ -232,6 +239,16 @@ class TutorToolExecutor:
             top_k=5,
             session=session,
         )
+
+        if not results and books_sources:
+            results = await self.retriever.search_for_module(
+                query=query,
+                user_level=self.user_level,
+                user_language=self.user_language,
+                books_sources=None,
+                top_k=5,
+                session=session,
+            )
 
         chunks = []
         for result in results:
@@ -252,6 +269,26 @@ class TutorToolExecutor:
             user_id=str(self.user_id),
         )
         return json.dumps({"query": query, "results": chunks, "count": len(chunks)})
+
+    async def _get_books_sources_for_courses(
+        self,
+        course_ids: list[uuid.UUID],
+        session: AsyncSession,
+    ) -> dict[str, list[str]] | None:
+        """Aggregate books_sources from all modules belonging to the given courses."""
+        from sqlalchemy import select as sa_select
+
+        result = await session.execute(
+            sa_select(Module).where(Module.course_id.in_(course_ids))
+        )
+        modules = result.scalars().all()
+        merged: dict[str, list[str]] = {}
+        for module in modules:
+            if module.books_sources:
+                for key, val in module.books_sources.items():
+                    if key not in merged:
+                        merged[key] = val
+        return merged if merged else None
 
     async def _get_learner_progress(self, tool_input: dict[str, Any], session: AsyncSession) -> str:
         """Execute get_learner_progress tool."""

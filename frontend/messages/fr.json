@@ -361,6 +361,15 @@
     "modeExplanatory": "Mode Explicatif",
     "modeSocraticTooltip": "Guidage par questions",
     "modeExplanatoryTooltip": "Réponses directes",
+    "courseFilter": {
+      "label": "Périmètre de cours",
+      "placeholder": "Tous les cours inscrits",
+      "selectCourses": "Sélectionner des cours (max 2)",
+      "maxReached": "Maximum 2 cours",
+      "noEnrollments": "Aucun cours inscrit",
+      "outsideScope": "Ce contenu provient d'un cours auquel vous n'êtes pas inscrit.",
+      "ariaLabel": "Filtrer les réponses du tuteur par cours"
+    },
     "fileUpload": {
       "attach": "Joindre un fichier",
       "attachAriaLabel": "Joindre un fichier",
