@@ -1,19 +1,6 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-// Course Taxonomy Types
-export type CourseDomain =
-  | 'health_sciences' | 'natural_sciences' | 'social_sciences'
-  | 'mathematics' | 'engineering' | 'information_technology'
-  | 'education' | 'arts_humanities' | 'business_management'
-  | 'law' | 'agriculture' | 'environmental_studies' | 'other';
-
-export type CourseLevel = 'beginner' | 'intermediate' | 'advanced' | 'expert';
-
-export type AudienceType =
-  | 'kindergarten' | 'primary_school' | 'secondary_school'
-  | 'university' | 'professional' | 'researcher'
-  | 'teacher' | 'policy_maker' | 'continuing_education';
-
+// Course Taxonomy Types (DB-driven, no hardcoded enums)
 export interface TaxonomyItem {
   value: string;
   label_fr: string;
@@ -26,6 +13,22 @@ export interface TaxonomyResponse {
   audience_types: TaxonomyItem[];
 }
 
+export interface TaxonomyCategoryAdmin {
+  id: string;
+  type: string;
+  slug: string;
+  label_fr: string;
+  label_en: string;
+  sort_order: number;
+  is_active: boolean;
+}
+
+export interface TaxonomyAdminResponse {
+  domains: TaxonomyCategoryAdmin[];
+  levels: TaxonomyCategoryAdmin[];
+  audience_types: TaxonomyCategoryAdmin[];
+}
+
 // Course Catalog API Types
 export interface CourseResponse {
   id: string;
@@ -34,9 +37,9 @@ export interface CourseResponse {
   title_en: string;
   description_fr?: string;
   description_en?: string;
-  course_domain: CourseDomain[];
-  course_level: CourseLevel[];
-  audience_type: AudienceType[];
+  course_domain: TaxonomyItem[];
+  course_level: TaxonomyItem[];
+  audience_type: TaxonomyItem[];
   estimated_hours: number;
   module_count: number;
   cover_image_url?: string;
@@ -79,6 +82,54 @@ export async function enrollInCourse(courseId: string): Promise<EnrollmentRespon
   return authClient.authenticatedFetch<EnrollmentResponse>(
     `/api/v1/courses/${courseId}/enroll`,
     { method: "POST" }
+  );
+}
+
+// Admin Taxonomy API
+export async function getAdminTaxonomy(): Promise<TaxonomyAdminResponse> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<TaxonomyAdminResponse>(
+    "/api/v1/admin/taxonomy"
+  );
+}
+
+export async function createTaxonomyCategory(data: {
+  type: string;
+  slug: string;
+  label_fr: string;
+  label_en: string;
+  sort_order?: number;
+}): Promise<TaxonomyCategoryAdmin> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<TaxonomyCategoryAdmin>(
+    "/api/v1/admin/taxonomy",
+    { method: "POST", body: JSON.stringify(data) }
+  );
+}
+
+export async function updateTaxonomyCategory(
+  id: string,
+  data: Partial<{ label_fr: string; label_en: string; sort_order: number; is_active: boolean }>
+): Promise<TaxonomyCategoryAdmin> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<TaxonomyCategoryAdmin>(
+    `/api/v1/admin/taxonomy/${id}`,
+    { method: "PATCH", body: JSON.stringify(data) }
+  );
+}
+
+export async function deleteTaxonomyCategory(id: string): Promise<void> {
+  const { authClient } = await import("./auth");
+  await authClient.authenticatedFetch(
+    `/api/v1/admin/taxonomy/${id}`,
+    { method: "DELETE" }
+  );
+}
+
+export async function getMyEnrollments(): Promise<CourseWithEnrollment[]> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<CourseWithEnrollment[]>(
+    "/api/v1/courses/my-enrollments"
   );
 }
 
@@ -139,9 +190,12 @@ export async function getModuleProgress(moduleId: string): Promise<ModuleProgres
   );
 }
 
-export async function getAllModuleProgress(): Promise<ModuleProgressResponse[]> {
+export async function getAllModuleProgress(courseId?: string): Promise<ModuleProgressResponse[]> {
   const { authClient } = await import("./auth");
-  return authClient.authenticatedFetch<ModuleProgressResponse[]>("/api/v1/progress/modules");
+  const url = courseId
+    ? `/api/v1/progress/modules?course_id=${encodeURIComponent(courseId)}`
+    : "/api/v1/progress/modules";
+  return authClient.authenticatedFetch<ModuleProgressResponse[]>(url);
 }
 
 export async function getModuleDetailWithProgress(
@@ -518,6 +572,47 @@ export async function submitSummativeAssessmentAttempt(
     method: "POST",
     body: JSON.stringify(request),
   });
+}
+
+// ── Module Media API ──────────────────────────────────────────
+
+export type MediaType = 'audio' | 'video';
+export type MediaStatus = 'pending' | 'generating' | 'ready' | 'failed';
+
+export interface ModuleMediaResponse {
+  id: string;
+  module_id: string;
+  media_type: MediaType;
+  language: string;
+  status: MediaStatus;
+  url?: string;
+  duration_seconds?: number;
+  file_size_bytes?: number;
+  generated_at?: string;
+}
+
+export interface GenerateModuleMediaRequest {
+  media_type: MediaType;
+  language: string;
+}
+
+export async function getModuleMedia(moduleId: string): Promise<ModuleMediaResponse[]> {
+  return apiFetch<ModuleMediaResponse[]>(`/api/v1/modules/${moduleId}/media`);
+}
+
+export async function generateModuleMedia(
+  moduleId: string,
+  mediaType: MediaType,
+  language: string
+): Promise<ModuleMediaResponse> {
+  return apiFetch<ModuleMediaResponse>(`/api/v1/modules/${moduleId}/media/generate`, {
+    method: 'POST',
+    body: JSON.stringify({ media_type: mediaType, language } satisfies GenerateModuleMediaRequest),
+  });
+}
+
+export async function deleteModuleMedia(moduleId: string, mediaId: string): Promise<void> {
+  await apiFetch<void>(`/api/v1/modules/${moduleId}/media/${mediaId}`, { method: 'DELETE' });
 }
 
 // ── Platform Settings ─────────────────────────────────────────

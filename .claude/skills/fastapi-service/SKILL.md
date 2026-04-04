@@ -57,7 +57,11 @@ backend/
 │   │   │   ├── tutor.py            # FR-03: AI tutor chat (SSE streaming)
 │   │   │   ├── datasets.py         # FR-06: AOF datasets library, sandbox validation
 │   │   │   ├── certificates.py     # Certificate generation + download
-│   │   │   └── dashboard.py        # FR-02: aggregated stats for dashboard
+│   │   │   ├── dashboard.py        # FR-02: aggregated stats for dashboard
+│   │   │   ├── billing.py          # FR-07: credit balance, packages, purchase, history
+│   │   │   ├── expert_courses.py   # FR-08: expert course CRUD, generate, publish, pricing
+│   │   │   ├── expert_dashboard.py # FR-08: expert analytics, learners, revenue
+│   │   │   └── marketplace.py      # FR-08: public browse, purchase, review
 │   │   ├── schemas/                # Pydantic V2 request/response models per endpoint
 │   │   │   ├── auth.py
 │   │   │   ├── modules.py
@@ -81,7 +85,10 @@ backend/
 │   │   │   ├── content.py          # generated_content table (lesson/quiz/flashcard/case)
 │   │   │   ├── quiz.py             # quiz_attempts table
 │   │   │   ├── flashcard.py        # flashcard_reviews table (FSRS state)
-│   │   │   └── conversation.py     # tutor_conversations table
+│   │   │   ├── conversation.py     # tutor_conversations table
+│   │   │   ├── credit.py           # credit_accounts, transactions, credit_packages
+│   │   │   ├── generation_cost.py  # api_usage_logs
+│   │   │   └── marketplace.py      # course_prices, course_reviews
 │   │   ├── services/
 │   │   │   ├── auth_service.py           # Local Auth (TOTP MFA) validation, placement test
 │   │   │   ├── module_service.py         # Prerequisite checks, unlock logic (80% threshold)
@@ -89,7 +96,12 @@ backend/
 │   │   │   ├── quiz_service.py           # CAT algorithm, scoring, question selection
 │   │   │   ├── flashcard_service.py      # FSRS scheduling, due card selection
 │   │   │   ├── tutor_service.py          # RAG chat, source citations, rate limiting
-│   │   │   └── dashboard_service.py      # Pre-aggregated stats
+│   │   │   ├── dashboard_service.py      # Pre-aggregated stats
+│   │   │   ├── credit_service.py         # FR-07: balance management, purchase, deduction
+│   │   │   ├── cost_tracker.py           # FR-07: wrap AI calls, track tokens, deduct credits
+│   │   │   ├── course_management_service.py  # Shared CRUD for admin + expert courses
+│   │   │   ├── marketplace_service.py    # FR-08: browse, purchase, review
+│   │   │   └── expert_dashboard_service.py   # FR-08: analytics, revenue
 │   │   └── repositories/           # Protocol-based data access
 │   │       ├── protocols.py        # Repository interfaces (Protocol classes)
 │   │       └── implementations/    # SQLAlchemy implementations
@@ -181,9 +193,8 @@ class Course(Base):
     title_en: Mapped[str]
     description_fr: Mapped[str | None]
     description_en: Mapped[str | None]
-    course_domain: Mapped[list[str]]   # ARRAY(coursedomain enum), multi-select
-    course_level: Mapped[list[str]]    # ARRAY(courselevel enum), multi-select
-    audience_type: Mapped[list[str]]   # ARRAY(audiencetype enum), multi-select
+    taxonomy_categories: Mapped[list[TaxonomyCategory]]  # via course_taxonomy junction, lazy="selectin"
+    # Taxonomy (domain/level/audience) managed via admin UI, stored in taxonomy_categories table
     languages: Mapped[str] = mapped_column(default="fr,en")
     estimated_hours: Mapped[int] = mapped_column(default=20)
     module_count: Mapped[int] = mapped_column(default=0)
@@ -191,9 +202,11 @@ class Course(Base):
     cover_image_url: Mapped[str | None]
     created_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
     rag_collection_id: Mapped[str | None]
+    is_marketplace: Mapped[bool] = mapped_column(default=False)
+    expert_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     published_at: Mapped[datetime | None]
-    # relationships: modules (one-to-many), enrollments (one-to-many)
+    # relationships: modules, enrollments, price (one-to-one CoursePrice), reviews (one-to-many CourseReview)
 
 class UserCourseEnrollment(Base):
     __tablename__ = "user_course_enrollment"
@@ -275,6 +288,70 @@ class TutorConversation(Base):
     module_id: Mapped[UUID] = mapped_column(ForeignKey("modules.id"))
     messages: Mapped[list] = mapped_column(JSONB)  # [{role, content, sources, timestamp}]
     created_at: Mapped[datetime] = mapped_column(default=func.now())
+
+# domain/models/credit.py
+class CreditAccount(Base):
+    __tablename__ = "credit_accounts"
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), unique=True)
+    balance: Mapped[int] = mapped_column(default=0)
+    total_purchased: Mapped[int] = mapped_column(default=0)
+    total_spent: Mapped[int] = mapped_column(default=0)
+    total_earned: Mapped[int] = mapped_column(default=0)
+    total_withdrawn: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
+
+class Transaction(Base):
+    __tablename__ = "transactions"
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    account_id: Mapped[UUID] = mapped_column(ForeignKey("credit_accounts.id"))
+    type: Mapped[str]  # Enum: credit_purchase|content_access|tutor_usage|offline_download|course_purchase|course_earning|commission|expert_activation|generation_cost|payout|refund|free_trial
+    amount: Mapped[int]  # signed: positive=credit, negative=debit
+    balance_after: Mapped[int]
+    reference_id: Mapped[UUID | None]
+    reference_type: Mapped[str | None]
+    description: Mapped[str]
+    metadata_json: Mapped[dict | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+
+# domain/models/generation_cost.py
+class ApiUsageLog(Base):
+    __tablename__ = "api_usage_logs"
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    course_id: Mapped[UUID | None] = mapped_column(ForeignKey("courses.id"))
+    module_id: Mapped[UUID | None] = mapped_column(ForeignKey("modules.id"))
+    content_id: Mapped[UUID | None] = mapped_column(ForeignKey("generated_content.id"))
+    usage_category: Mapped[str]  # "user"|"expert"|"system"
+    request_type: Mapped[str]   # "lesson"|"quiz"|"flashcard"|"case_study"|"tutor_chat"|"embedding"|"rag_indexing"|"course_structure"
+    api_provider: Mapped[str]
+    model_name: Mapped[str]
+    input_tokens: Mapped[int]
+    output_tokens: Mapped[int]
+    cost_credits: Mapped[int]
+    cost_usd: Mapped[float]
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+
+# domain/models/marketplace.py
+class CoursePrice(Base):
+    __tablename__ = "course_prices"
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id"), unique=True)
+    price_credits: Mapped[int]  # 0 = free
+    is_free: Mapped[bool]
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
+
+class CourseReview(Base):
+    __tablename__ = "course_reviews"
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id"))
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    rating: Mapped[int]  # 1-5
+    comment: Mapped[str | None]
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+    # Unique constraint: (course_id, user_id)
 ```
 
 ## API endpoints (map to SRS functional requirements)
@@ -291,8 +368,12 @@ POST   /api/v1/users/me/placement     # Submit placement test → assigns level 
 
 ### FR-02: Courses, Catalog & Enrollment
 ```
-GET    /api/v1/courses/taxonomy               # Public: enum values with FR/EN labels (no auth)
+GET    /api/v1/courses/taxonomy               # Public: active taxonomy values with FR/EN labels from DB (no auth)
 GET    /api/v1/courses                       # Public catalog (published courses, optional ?course_domain= ?course_level= ?audience_type= ?search=)
+GET    /api/v1/admin/taxonomy                # Admin: list all taxonomy categories grouped by type
+POST   /api/v1/admin/taxonomy                # Admin: create taxonomy category
+PATCH  /api/v1/admin/taxonomy/{id}           # Admin: update label/sort/active
+DELETE /api/v1/admin/taxonomy/{id}           # Admin: delete if unused (409 if referenced)
 GET    /api/v1/courses/my-enrollments        # User's enrolled courses (auth required)
 POST   /api/v1/courses/{id}/enroll           # Enroll in published course → creates UserModuleProgress
 POST   /api/v1/courses/{id}/unenroll         # Soft-delete enrollment (status="dropped")
@@ -345,6 +426,59 @@ GET    /api/v1/flashcards/due?since={ts}       # Delta sync for offline clients
 GET    /api/v1/datasets                        # List 20+ AOF datasets
 GET    /api/v1/datasets/{id}                   # Dataset detail + download URL
 POST   /api/v1/sandbox/validate                # Validate code exercise output
+```
+
+### FR-07: Billing & Credits
+```
+GET    /api/v1/billing/balance                 # Current credit balance (auth required)
+GET    /api/v1/billing/packages                # List credit packages
+POST   /api/v1/billing/purchase                # Purchase credits (virtual/Paystack)
+GET    /api/v1/billing/transactions            # Transaction history (paginated, filterable)
+GET    /api/v1/billing/usage                   # AI usage summary (daily/monthly)
+```
+
+Credit-gate middleware: before any AI operation (lesson gen, quiz gen, tutor chat), check `CreditService.check_balance()`. Return 402 with `{balance, required, purchase_url}` if insufficient. Skip for cached content (no AI call = no cost).
+
+```
+GET    /api/v1/billing/generation-rates        # Token rates + avg token counts per content type (cached 24h, public)
+```
+
+Response: `{credits_per_1k_input, credits_per_1k_output, credits_per_1k_embedding, avg_lesson_input_tokens, avg_lesson_output_tokens, avg_quiz_input_tokens, avg_quiz_output_tokens, avg_flashcard_input_tokens, avg_flashcard_output_tokens, avg_structure_input_tokens, avg_structure_output_tokens}`. Rates from platform settings; averages computed from `api_usage_logs` (or defaults). Frontend uses this to calculate cost estimates client-side before PDF upload.
+
+Celery periodic task (`tasks/cleanup.py`): delete uploaded PDF resources where `uploaded_at > 48h` AND `indexed = false` AND course is draft with no generated modules. Cascade delete resources when draft course is deleted.
+
+### FR-08: Expert Marketplace
+```
+# Expert course management (require_role: expert)
+GET    /api/v1/expert/courses                          # List own courses
+POST   /api/v1/expert/courses                          # Create draft marketplace course
+GET    /api/v1/expert/courses/{id}                     # Own course detail
+PATCH  /api/v1/expert/courses/{id}                     # Update metadata (draft only)
+DELETE /api/v1/expert/courses/{id}                     # Delete draft (no enrollments)
+POST   /api/v1/expert/courses/{id}/generate-structure  # AI-generate modules (deduct credits)
+POST   /api/v1/expert/courses/{id}/set-price           # Set credit price
+POST   /api/v1/expert/courses/{id}/publish             # Publish to marketplace
+POST   /api/v1/expert/courses/{id}/unpublish           # Revert to draft
+POST   /api/v1/expert/courses/{id}/resources           # Upload PDF
+POST   /api/v1/expert/courses/{id}/index-resources     # RAG indexation (deduct credits)
+
+# Expert dashboard (require_role: expert)
+GET    /api/v1/expert/dashboard/summary                       # Overview stats
+GET    /api/v1/expert/dashboard/courses/{id}/learners         # Enrolled learners
+GET    /api/v1/expert/dashboard/courses/{id}/analytics        # Quiz stats, completion
+GET    /api/v1/expert/dashboard/courses/{id}/reviews          # Learner reviews
+GET    /api/v1/expert/dashboard/revenue                       # Monthly revenue breakdown
+
+# Expert activation
+GET    /api/v1/expert/activation-cost                  # Cost to become expert
+POST   /api/v1/expert/activate                         # Activate expert role (deduct credits)
+
+# Marketplace (public)
+GET    /api/v1/marketplace/courses                     # Browse with filters, search, sort
+GET    /api/v1/marketplace/courses/{slug}              # Course detail + price + reviews
+POST   /api/v1/marketplace/courses/{id}/purchase       # Purchase with credits (auth)
+POST   /api/v1/marketplace/courses/{id}/review         # Leave review (auth, enrolled)
+GET    /api/v1/marketplace/courses/{id}/reviews        # List reviews
 ```
 
 ## RAG pipeline (3-phase, match SRS Section 6)

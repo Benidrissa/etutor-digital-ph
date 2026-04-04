@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Upload,
@@ -23,7 +23,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { apiFetch, API_BASE } from "@/lib/api";
+import { apiFetch, API_BASE, getCourseTaxonomy, type TaxonomyItem } from "@/lib/api";
 import { authClient } from "@/lib/auth";
 
 type WizardStep = "upload" | "info" | "generate" | "index" | "publish";
@@ -58,23 +58,6 @@ interface CourseWizardClientProps {
   onCourseCreated: () => void;
 }
 
-const DOMAIN_OPTIONS = [
-  "health_sciences", "natural_sciences", "social_sciences",
-  "mathematics", "engineering", "information_technology",
-  "education", "arts_humanities", "business_management",
-  "law", "agriculture", "environmental_studies", "other",
-] as const;
-
-const LEVEL_OPTIONS = [
-  "beginner", "intermediate", "advanced", "expert",
-] as const;
-
-const AUDIENCE_OPTIONS = [
-  "kindergarten", "primary_school", "secondary_school",
-  "university", "professional", "researcher",
-  "teacher", "policy_maker", "continuing_education",
-] as const;
-
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -83,7 +66,7 @@ function formatBytes(bytes: number): string {
 
 export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardClientProps) {
   const t = useTranslations("AdminCourses.wizard");
-  const tTax = useTranslations("Taxonomy");
+  const locale = useLocale();
   const queryClient = useQueryClient();
 
   const [step, setStep] = useState<WizardStep>("upload");
@@ -99,6 +82,9 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
     estimated_hours: 20,
   });
   const [infoErrors, setInfoErrors] = useState<Partial<CourseInfo>>({});
+  const [domainOptions, setDomainOptions] = useState<TaxonomyItem[]>([]);
+  const [levelOptions, setLevelOptions] = useState<TaxonomyItem[]>([]);
+  const [audienceOptions, setAudienceOptions] = useState<TaxonomyItem[]>([]);
   const [isCreatingCourse, setIsCreatingCourse] = useState(false);
   const [generatedModules, setGeneratedModules] = useState<GeneratedModule[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -119,6 +105,15 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stepIndex = STEPS.indexOf(step);
+
+  // Fetch taxonomy options from API
+  useEffect(() => {
+    getCourseTaxonomy().then((tax) => {
+      setDomainOptions(tax.domains);
+      setLevelOptions(tax.levels);
+      setAudienceOptions(tax.audience_types);
+    }).catch(() => {});
+  }, []);
 
   const getAuthHeaders = useCallback(async (): Promise<Record<string, string>> => {
     const token = await authClient.getValidToken();
@@ -567,95 +562,41 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
                   )}
                 </div>
 
-                <div className="space-y-1.5">
-                  <Label>{t("info.domain")}</Label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {DOMAIN_OPTIONS.map((opt) => {
-                      const sel = courseInfo.course_domain.includes(opt);
-                      return (
-                        <button
-                          key={opt}
-                          type="button"
-                          onClick={() =>
-                            setCourseInfo((p) => ({
-                              ...p,
-                              course_domain: sel
-                                ? p.course_domain.filter((v) => v !== opt)
-                                : [...p.course_domain, opt],
-                            }))
-                          }
-                          className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors min-h-[32px] ${
-                            sel
-                              ? "bg-teal-600 text-white hover:bg-teal-700"
-                              : "bg-stone-100 text-stone-600 hover:bg-stone-200 border border-stone-200"
-                          }`}
-                        >
-                          {tTax(`domains.${opt}`)}
-                        </button>
-                      );
-                    })}
+                {[
+                  { label: t("info.domain"), options: domainOptions, field: "course_domain" as const },
+                  { label: t("info.level"), options: levelOptions, field: "course_level" as const },
+                  { label: t("info.audience"), options: audienceOptions, field: "audience_type" as const },
+                ].map(({ label, options, field }) => (
+                  <div key={field} className="space-y-1.5">
+                    <Label>{label}</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {options.map((opt) => {
+                        const sel = courseInfo[field].includes(opt.value);
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() =>
+                              setCourseInfo((p) => ({
+                                ...p,
+                                [field]: sel
+                                  ? p[field].filter((v: string) => v !== opt.value)
+                                  : [...p[field], opt.value],
+                              }))
+                            }
+                            className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors min-h-[32px] ${
+                              sel
+                                ? "bg-teal-600 text-white hover:bg-teal-700"
+                                : "bg-stone-100 text-stone-600 hover:bg-stone-200 border border-stone-200"
+                            }`}
+                          >
+                            {locale === "fr" ? opt.label_fr : opt.label_en}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label>{t("info.level")}</Label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {LEVEL_OPTIONS.map((opt) => {
-                      const sel = courseInfo.course_level.includes(opt);
-                      return (
-                        <button
-                          key={opt}
-                          type="button"
-                          onClick={() =>
-                            setCourseInfo((p) => ({
-                              ...p,
-                              course_level: sel
-                                ? p.course_level.filter((v) => v !== opt)
-                                : [...p.course_level, opt],
-                            }))
-                          }
-                          className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors min-h-[32px] ${
-                            sel
-                              ? "bg-teal-600 text-white hover:bg-teal-700"
-                              : "bg-stone-100 text-stone-600 hover:bg-stone-200 border border-stone-200"
-                          }`}
-                        >
-                          {tTax(`levels.${opt}`)}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label>{t("info.audience")}</Label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {AUDIENCE_OPTIONS.map((opt) => {
-                      const sel = courseInfo.audience_type.includes(opt);
-                      return (
-                        <button
-                          key={opt}
-                          type="button"
-                          onClick={() =>
-                            setCourseInfo((p) => ({
-                              ...p,
-                              audience_type: sel
-                                ? p.audience_type.filter((v) => v !== opt)
-                                : [...p.audience_type, opt],
-                            }))
-                          }
-                          className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors min-h-[32px] ${
-                            sel
-                              ? "bg-teal-600 text-white hover:bg-teal-700"
-                              : "bg-stone-100 text-stone-600 hover:bg-stone-200 border border-stone-200"
-                          }`}
-                        >
-                          {tTax(`audience_types.${opt}`)}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                ))}
 
                 <div className="space-y-1.5">
                   <Label htmlFor="estimated_hours">{t("info.estimatedHours")}</Label>

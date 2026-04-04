@@ -13,6 +13,7 @@ import { getAllModuleProgress, type ModuleProgressResponse } from '@/lib/api';
 
 interface ModuleMapProps {
   onModuleClick: (moduleId: string) => void;
+  courseId?: string;
 }
 
 function mergeProgressIntoModules(
@@ -45,7 +46,7 @@ function mergeProgressIntoModules(
   });
 }
 
-export function ModuleMap({ onModuleClick }: ModuleMapProps) {
+export function ModuleMap({ onModuleClick, courseId }: ModuleMapProps) {
   const t = useTranslations('ModuleMap');
   const locale = useLocale() as 'en' | 'fr';
 
@@ -55,7 +56,7 @@ export function ModuleMap({ onModuleClick }: ModuleMapProps) {
 
   useEffect(() => {
     let cancelled = false;
-    getAllModuleProgress()
+    getAllModuleProgress(courseId)
       .then((data) => {
         if (!cancelled) {
           setModules(mergeProgressIntoModules(data));
@@ -71,7 +72,7 @@ export function ModuleMap({ onModuleClick }: ModuleMapProps) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [courseId]);
 
   const levels = [1, 2, 3, 4] as const;
 

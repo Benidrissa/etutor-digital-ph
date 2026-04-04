@@ -21,7 +21,6 @@ interface CourseCardProps {
 
 export function CourseCard({ course }: CourseCardProps) {
   const t = useTranslations('Courses');
-  const tTax = useTranslations('Taxonomy');
   const locale = useLocale() as 'en' | 'fr';
   const router = useRouter();
   const [isEnrolled, setIsEnrolled] = useState(course.enrolled);
@@ -75,32 +74,32 @@ export function CourseCard({ course }: CourseCardProps) {
           )}
         </div>
 
-        {/* Taxonomy badges */}
+        {/* Taxonomy badges — labels come from API, no i18n lookup */}
         <div className="flex flex-wrap gap-1 mt-1">
           {course.course_domain?.map((d) => (
             <span
-              key={d}
+              key={d.value}
               className="inline-block text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5"
             >
-              {tTax(`domains.${d}`)}
+              {locale === 'fr' ? d.label_fr : d.label_en}
             </span>
           ))}
           {course.course_level?.map((l) => (
             <span
-              key={l}
+              key={l.value}
               className={`inline-block text-[10px] font-medium border rounded-full px-2 py-0.5 ${
-                LEVEL_COLORS[l] || 'bg-stone-50 text-stone-700 border-stone-200'
+                LEVEL_COLORS[l.value] || 'bg-stone-50 text-stone-700 border-stone-200'
               }`}
             >
-              {tTax(`levels.${l}`)}
+              {locale === 'fr' ? l.label_fr : l.label_en}
             </span>
           ))}
           {course.audience_type?.map((a) => (
             <span
-              key={a}
+              key={a.value}
               className="inline-block text-[10px] font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-2 py-0.5"
             >
-              {tTax(`audience_types.${a}`)}
+              {locale === 'fr' ? a.label_fr : a.label_en}
             </span>
           ))}
         </div>

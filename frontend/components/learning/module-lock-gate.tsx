@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { getModuleProgress } from '@/lib/api';
 import { ModuleProgressOverlay } from '@/components/learning/module-progress-overlay';
+import { ModuleMediaPlayer } from '@/components/learning/module-media-player';
 import type { Module } from '@/lib/modules';
 
 interface ModuleLockGateProps {
@@ -132,6 +133,8 @@ export function ModuleLockGate({ moduleId, moduleData, prerequisites, language }
 
       <div className="grid md:grid-cols-3 gap-8">
         <div className="md:col-span-2 space-y-8">
+          <ModuleMediaPlayer moduleId={moduleId} language={language} />
+
           {moduleData.learningObjectives && (
             <Card>
               <CardHeader>

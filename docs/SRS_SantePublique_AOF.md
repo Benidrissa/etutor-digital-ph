@@ -83,6 +83,7 @@ Rendre la formation en santé publique de niveau expert accessible à tous les p
 | 📊 **Kofi** — Data Analyst, Ghana MoH | Informaticien en santé, configure DHIS2, veut maîtriser biostatistique et R | Statistiques avancées, R/Python, DHIS2 analytique | Laptop + smartphone, WiFi bureau lent, Anglophone |
 | 🎓 **Fatou** — Étudiante MPH, Dakar | Master en Sante Publique, prépare examens, bilingue FR/EN | Contenu structuré, flashcards, quiz d'entraînement | Android basique, WiFi campus, budget limité |
 | 🏥 **Ibrahim** — Directeur Sante, Burkina | Cadre supérieur MoH, 15 ans expérience | Leadership, politiques, gouvernance, évaluation programmes | iPad + smartphone haut de gamme, peu de temps |
+| 👨‍🏫 **Prof. Ousmane** — Expert épidémiologie, Côte d'Ivoire | Enseignant universitaire, 12 ans d'expérience, veut monétiser ses cours en ligne | Création de cours IA, suivi apprenants, tableau de bord revenus, revenus passifs | Laptop + smartphone haut de gamme, WiFi stable |
 
 ---
 
@@ -572,6 +573,97 @@ L'algorithme FSRS (ou SM-2 comme fallback) planifie les révisions selon la cour
 **FR-06.2** *(ÉLEVÉE)* — **Sandbox Python/R dans le navigateur**  
 Environnement d'exécution Python léger (Pyodide) dans le navigateur. Bibliothèques disponibles : pandas, numpy, scipy, matplotlib, lifelines, statsmodels. Code pré-rempli avec espaces à compléter. Vérification automatique des résultats.
 
+### FR-07 : Facturation & Système de Crédits
+
+**FR-07.1** *(CRITIQUE)* — **Système de crédits universel**  
+Chaque utilisateur dispose d'un compte de crédits. Les crédits sont la monnaie unique pour toutes les opérations : acc��s au contenu IA, téléchargement offline, inscription aux cours experts, activation du compte expert. Les crédits sont achetés via packs prédéfinis. Un essai gratuit de X crédits est attribué à l'inscription.
+
+**FR-07.2** *(CRITIQUE)* — **Suivi de consommation IA**  
+Chaque appel API IA (Claude, OpenAI) est enregistré avec les tokens consommés, le coût en crédits et en USD. Les taux de conversion tokens→crédits sont configurables par l'admin. L'utilisateur peut consulter sa consommation par jour/semaine/mois avec ventilation par type (leçons, quiz, tuteur, flashcards).
+
+**FR-07.3** *(CRITIQUE)* — **Contrôle de solde (credit gate)**  
+Avant chaque opération IA, le système vérifie que l'utilisateur dispose de crédits suffisants. Si insuffisant, retour HTTP 402 avec solde actuel et montant requis. Le contenu en cache (déjà généré) est gratuit.
+
+### FR-08 : Marketplace Expert
+
+**FR-08.1** *(ÉLEVÉE)* — **Activation du compte expert**  
+Un utilisateur peut devenir expert en dépensant des crédits (coût configurable). L'activation met à jour le rôle et donne accès au tableau de bord expert.
+
+**FR-08.2** *(ÉLEVÉE)* — **Gestion des cours expert**  
+Un expert peut créer des cours (brouillon), générer la structure via IA (crédits déduits), fixer un prix en crédits, publier sur la marketplace, gérer les ressources PDF et l'indexation RAG. Toutes les opérations sont limitées aux cours de l'expert (vérification de propriété).
+
+**FR-08.3** *(ÉLEVÉE)* — **Marketplace publique**  
+Page de découverte des cours publiés par les experts. Filtrage par domaine, niveau, public, prix. Recherche textuelle. Tri par popularité, note, prix, date. Chaque carte affiche : titre, prix (crédits ou gratuit), note moyenne, nom de l'expert.
+
+**FR-08.4** *(ÉLEVÉE)* — **Achat de cours**  
+L'apprenant achète un cours en dépensant des crédits. L'achat crée automatiquement l'inscription et initialise la progression. La commission plateforme est déduite et le solde net crédité à l'expert. Trois transactions sont enregistrées (paiement, revenu expert, commission).
+
+**FR-08.5** *(ÉLEVÉE)* — **Tableau de bord expert**  
+L'expert consulte : vue d'ensemble (cours, apprenants, revenus, solde), liste des apprenants par cours, statistiques de quiz, avis des apprenants, graphique de revenus mensuel.
+
+**FR-08.6** *(ÉLEVÉE)* — **Estimation du coût de génération côté client**  
+Avant le téléversement des PDF, le système calcule côté client le coût estimé de la génération complète du cours. Le nombre de pages PDF est lu via pdf.js sans upload. L'estimation inclut : embedding des PDF, génération de la structure, leçons, quiz et flashcards pour chaque module/unité. Les taux de crédits sont récupérés via un endpoint léger (`GET /api/v1/billing/generation-rates`, cache Redis 24h). L'estimation est comparée au solde de l'expert avec avertissement si insuffisant.
+
+**FR-08.7** *(MOYENNE)* — **Nettoyage automatique des PDF non utilisés**  
+Une tâche Celery périodique supprime les ressources PDF uploadées mais jamais indexées après 48h. La suppression d'un cours brouillon cascade sur ses ressources. Toutes les suppressions sont journalisées.
+
+---
+
+### Epic 15 : Facturation, Crédits & Marketplace Expert
+
+**US-070** *(P0 — CRITIQUE)* — En tant qu'apprenant, je veux charger des crédits sur mon compte via carte bancaire ou mobile money afin d'accéder au contenu de la plateforme.
+- **AC1:** Page d'achat de packs de crédits avec prix en XOF/USD
+- **AC2:** Crédits ajoutés immédiatement après paiement (virtuel pour MVP)
+- **AC3:** Historique des transactions accessible depuis le profil
+- **AC4:** Crédits d'essai gratuits attribués à l'inscription
+
+**US-071** *(P0 — CRITIQUE)* — En tant qu'apprenant, je veux dépenser des crédits pour accéder au contenu IA (leçons, quiz, tuteur), télécharger des modules hors-ligne, et m'inscrire aux cours d'experts.
+- **AC1:** Chaque appel IA (leçon, quiz, flashcard, tuteur) déduit des crédits basés sur les tokens consommés
+- **AC2:** Le contenu en cache est gratuit (pas de nouvel appel IA)
+- **AC3:** Téléchargement offline coûte un forfait par module (configurable)
+- **AC4:** Erreur 402 si crédits insuffisants avec lien vers achat
+
+**US-072** *(P1 — ÉLEVÉE)* — En tant qu'utilisateur, je veux activer un compte expert en dépensant des crédits afin de pouvoir créer et vendre mes cours.
+- **AC1:** Bouton "Devenir Expert" accessible depuis le profil
+- **AC2:** Coût d'activation configurable par l'admin
+- **AC3:** Rôle utilisateur mis à jour immédiatement après activation
+- **AC4:** Nouveau JWT émis avec role=expert
+
+**US-073** *(P1 — ÉLEVÉE)* — En tant qu'expert, je veux créer un cours avec génération IA de la structure et du contenu, et le vendre sur la marketplace.
+- **AC1:** Wizard de création : métadonnées → génération IA → prix → publication
+- **AC2:** Coûts de gén��ration IA déduits des crédits de l'expert
+- **AC3:** L'expert fixe le prix en crédits (ou gratuit)
+- **AC4:** Le cours apparaît dans la marketplace après publication
+
+**US-077** *(P1 — ÉLEVÉE)* — En tant qu'expert, je veux voir le coût estimé de la génération de mon cours avant de téléverser mes PDF afin d'éviter les surprises.
+- **AC1:** Estimation calculée côté client à partir du nombre de pages PDF (via pdf.js), du nombre de modules et des taux de crédits
+- **AC2:** Ventilation affichée : embedding, structure, leçons, quiz, flashcards
+- **AC3:** Comparaison avec le solde actuel : suffisant / insuffisant
+- **AC4:** Mention "estimation — le coût réel dépend de la complexité du contenu"
+
+**US-078** *(P2 — MOYENNE)* — En tant que plateforme, je veux supprimer automatiquement les PDF non utilisés afin d'économiser du stockage.
+- **AC1:** Les PDF uploadés mais jamais indexés sont supprimés après 48h
+- **AC2:** La suppression d'un cours brouillon cascade sur ses ressources
+- **AC3:** Les suppressions sont journalisées pour audit
+
+**US-074** *(P1 — ÉLEVÉE)* — En tant qu'expert, je veux consulter mon tableau de bord avec mes apprenants, statistiques de quiz, avis et revenus.
+- **AC1:** Vue d'ensemble : nombre de cours, apprenants actifs, revenus mensuels, solde crédits
+- **AC2:** Liste des apprenants par cours avec progression %
+- **AC3:** Statistiques de quiz : taux de réussite, score moyen
+- **AC4:** Graphique des revenus mensuels (brut, commission, net)
+
+**US-075** *(P2 — MOYENNE)* — En tant qu'apprenant, je veux laisser un avis et une note sur un cours complété afin d'aider les autres apprenants.
+- **AC1:** Note de 1 à 5 étoiles + commentaire optionnel
+- **AC2:** Un seul avis par apprenant par cours
+- **AC3:** L'avis n'est possible qu'après inscription au cours
+- **AC4:** Note moyenne affichée sur la page du cours
+
+**US-076** *(P1 — ÉLEVÉE)* — En tant que plateforme, je veux collecter une commission sur chaque vente de cours afin d'assurer la viabilité du service.
+- **AC1:** Pourcentage de commission configurable par l'admin (défaut 20%)
+- **AC2:** Commission déduite automatiquement lors de l'achat
+- **AC3:** 3 transactions créées : paiement apprenant, revenu expert, commission plateforme
+- **AC4:** Rapport de revenus visible dans le tableau de bord admin
+
 ---
 
 ## 8. Exigences Non-Fonctionnelles
@@ -628,6 +720,26 @@ users {
   created_at TIMESTAMP
 }
 
+-- Table: taxonomy_categories (admin-managed lookup)
+taxonomy_categories {
+  id UUID PRIMARY KEY,
+  type VARCHAR(20),  -- 'domain' | 'level' | 'audience'
+  slug VARCHAR(100),
+  label_fr TEXT,
+  label_en TEXT,
+  sort_order INT DEFAULT 0,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ,
+  UNIQUE(type, slug)
+}
+
+-- Table: course_taxonomy (many-to-many junction)
+course_taxonomy {
+  course_id UUID FK → courses.id ON DELETE CASCADE,
+  category_id UUID FK → taxonomy_categories.id ON DELETE RESTRICT,
+  PK(course_id, category_id)
+}
+
 -- Table: courses
 courses {
   id UUID PRIMARY KEY,
@@ -636,9 +748,6 @@ courses {
   title_en TEXT,
   description_fr TEXT,
   description_en TEXT,
-  course_domain coursedomain[] DEFAULT '{}',
-  course_level courselevel[] DEFAULT '{}',
-  audience_type audiencetype[] DEFAULT '{}',
   languages TEXT DEFAULT 'fr,en',
   estimated_hours INT DEFAULT 20,
   module_count INT DEFAULT 0,
@@ -646,6 +755,8 @@ courses {
   cover_image_url TEXT,
   created_by UUID FK → users.id,
   rag_collection_id TEXT,
+  is_marketplace BOOLEAN DEFAULT false,
+  expert_id UUID FK → users.id,
   created_at TIMESTAMP,
   published_at TIMESTAMP
 }
@@ -657,6 +768,7 @@ user_course_enrollment {
   enrolled_at TIMESTAMP,
   status ENUM('active','completed','dropped'),
   completion_pct FLOAT DEFAULT 0.0,
+  payment_transaction_id UUID FK → transactions.id,
   PRIMARY KEY (user_id, course_id)
 }
 
@@ -733,6 +845,86 @@ tutor_conversations {
   messages JSONB,  -- [{role, content, sources, timestamp}]
   created_at TIMESTAMP
 }
+
+-- Table: credit_accounts (FR-07)
+credit_accounts {
+  id UUID PRIMARY KEY,
+  user_id UUID FK → users.id UNIQUE,
+  balance BIGINT DEFAULT 0,
+  total_purchased BIGINT DEFAULT 0,
+  total_spent BIGINT DEFAULT 0,
+  total_earned BIGINT DEFAULT 0,
+  total_withdrawn BIGINT DEFAULT 0,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+}
+
+-- Table: transactions (FR-07)
+transactions {
+  id UUID PRIMARY KEY,
+  account_id UUID FK → credit_accounts.id,
+  type ENUM('credit_purchase','content_access','tutor_usage','offline_download','course_purchase','course_earning','commission','expert_activation','generation_cost','payout','refund','free_trial'),
+  amount BIGINT,  -- positif = crédit, négatif = débit
+  balance_after BIGINT,
+  reference_id UUID,
+  reference_type TEXT,
+  description TEXT,
+  metadata_json JSONB,
+  created_at TIMESTAMP
+}
+
+-- Table: credit_packages (FR-07)
+credit_packages {
+  id UUID PRIMARY KEY,
+  name_fr TEXT,
+  name_en TEXT,
+  credits BIGINT,
+  price_xof BIGINT,
+  price_usd NUMERIC(10,2),
+  is_active BOOLEAN,
+  sort_order INT,
+  created_at TIMESTAMP
+}
+
+-- Table: api_usage_logs (FR-07)
+api_usage_logs {
+  id UUID PRIMARY KEY,
+  user_id UUID FK → users.id,
+  course_id UUID FK → courses.id,
+  module_id UUID FK → modules.id,
+  content_id UUID FK → generated_content.id,
+  usage_category ENUM('user','expert','system'),
+  request_type ENUM('lesson','quiz','flashcard','case_study','tutor_chat','embedding','rag_indexing','course_structure'),
+  api_provider TEXT,
+  model_name TEXT,
+  input_tokens INT,
+  output_tokens INT,
+  cost_credits BIGINT,
+  cost_usd NUMERIC(10,6),
+  created_at TIMESTAMP
+}
+
+-- Table: course_prices (FR-08)
+course_prices {
+  id UUID PRIMARY KEY,
+  course_id UUID FK → courses.id UNIQUE,
+  price_credits BIGINT,
+  is_free BOOLEAN,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+}
+
+-- Table: course_reviews (FR-08)
+course_reviews {
+  id UUID PRIMARY KEY,
+  course_id UUID FK → courses.id,
+  user_id UUID FK → users.id,
+  rating INT CHECK (1-5),
+  comment TEXT,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP,
+  UNIQUE(course_id, user_id)
+}
 ```
 
 ---
@@ -751,6 +943,7 @@ tutor_conversations {
 | Resend / Sendgrid | Emails transactionnels, rappels | API email | Événementiel |
 | Cloudflare | CDN, Edge caching, DDoS protection | Workers SDK | Continu |
 | Sentry | Monitoring erreurs frontend + backend | Sentry SDK | Continu |
+| Paystack / Flutterwave | Paiement cartes + mobile money (Orange, Wave, MTN, MobiCash) | paystack.com/api | Événementiel |
 
 ---
 
@@ -778,6 +971,9 @@ tutor_conversations {
 | 💻 Sandbox | Éditeur Python/R, dataset chargé, vérification automatique résultats | Écrire code, Exécuter, Soumettre |
 | 🤖 Tuteur virtuel | Chat FR/EN, réponses sourcées, suggestions exercices | Poser question, Voir sources |
 | 🏆 Certificat | Attestation complétion niveau, badge numérique | Télécharger PDF, Partager LinkedIn |
+| 💰 Crédits & Facturation | Solde crédits, achat de packs, historique transactions, consommation IA | Acheter crédits, Voir historique |
+| 👨‍🏫 Tableau de bord Expert | Mes cours, apprenants, analytics quiz, revenus, solde | Créer cours, Voir apprenants, Publier |
+| 🛒 Marketplace | Catalogue des cours experts, filtres, prix, avis | Parcourir, Acheter, Laisser un avis |
 
 ---
 
@@ -810,7 +1006,7 @@ tutor_conversations {
 |---|---|---|---|
 | **Phase 0** — Setup & Infrastructure | 2 sem. | Repo GitHub, CI/CD, environnements dev/staging/prod, DB schema, indexation RAG des 3 livres | — |
 | **Phase 1** — MVP Alpha | 6 sem. | Auth, Onboarding, Dashboard, M01+M02+M03 avec contenu généré, Quiz basique, Flashcards | M01, M02, M03 |
-| **Phase 2** — Beta Fermée | 8 sem. | Intégration DHIS2/DHS, Cas pratiques, Sandbox Python, Tuteur virtuel, Quiz adaptatif | M04, M05, M06, M07 |
+| **Phase 2** — Beta Fermée | 8 sem. | Intégration DHIS2/DHS, Cas pratiques, Sandbox Python, Tuteur virtuel, Quiz adaptatif, **Système de crédits, Marketplace expert, Tableau de bord expert, Activation expert** | M04, M05, M06, M07 |
 | **Phase 3** — Beta Ouverte | 8 sem. | Révision espacée FSRS, Surveillance numérique, Statistiques avancées, Profil pays | M08, M09, M10 |
 | **Phase 4** — Release v1.0 | 6 sem. | Modules Env & SMNI, Niveaux 3-4, Certifications PDF, Optimisation performance | M11, M12, M13, M14 |
 | **Phase 5** — v1.1 Capstone | 4 sem. | Module M15, Forum communautaire, Analytics apprenants, App store PWA | M15 |
