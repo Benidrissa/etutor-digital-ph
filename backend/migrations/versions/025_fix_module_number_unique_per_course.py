@@ -26,6 +26,5 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute("DROP INDEX IF EXISTS ix_modules_course_module_number")
     op.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS ix_modules_module_number "
-        "ON modules (module_number)"
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_modules_module_number ON modules (module_number)"
     )
