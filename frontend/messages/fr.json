@@ -949,7 +949,99 @@
     "confirmArchive": "Archiver la formation ?",
     "confirmArchiveDesc": "La formation ne sera plus accessible aux apprenants.",
     "confirmGenerate": "Générer la structure IA ?",
-    "confirmGenerateDesc": "L'IA va créer automatiquement un plan de modules pour cette formation. Cela peut prendre quelques secondes."
+    "confirmGenerateDesc": "L'IA va créer automatiquement un plan de modules pour cette formation. Cela peut prendre quelques secondes.",
+    "newCourse": "Nouveau cours",
+    "noCoursesDesc": "Créez votre premier cours pour commencer.",
+    "table": {
+      "title": "Titre",
+      "domain": "Domaine",
+      "modules": "Modules",
+      "status": "Statut",
+      "created": "Créé le",
+      "actions": "Actions"
+    },
+    "wizard": {
+      "title": "Créer un nouveau cours",
+      "close": "Fermer",
+      "back": "Retour",
+      "next": "Suivant",
+      "steps": {
+        "upload": "Ressources",
+        "info": "Informations",
+        "generate": "Syllabus",
+        "index": "Indexation",
+        "publish": "Publication"
+      },
+      "upload": {
+        "title": "Téléverser les ressources",
+        "description": "Téléversez les PDF de référence (livres, guides, articles) qui serviront à générer le contenu du cours.",
+        "dropzone": "Glissez vos PDF ici ou cliquez pour sélectionner",
+        "dropzoneActive": "Déposez les fichiers ici...",
+        "fileTypes": "PDF uniquement, max 100 Mo par fichier",
+        "uploading": "Téléversement en cours...",
+        "uploaded": "fichier(s) téléversé(s)",
+        "uploadError": "Erreur lors du téléversement",
+        "remove": "Supprimer",
+        "noFiles": "Aucune ressource téléversée",
+        "atLeastOne": "Téléversez au moins un PDF avant de continuer."
+      },
+      "info": {
+        "title": "Informations du cours",
+        "description": "Complétez les métadonnées du cours avant la génération du syllabus.",
+        "titleFr": "Titre (FR)",
+        "titleEn": "Titre (EN)",
+        "domain": "Domaine",
+        "targetAudience": "Public cible",
+        "estimatedHours": "Durée estimée (heures)",
+        "creating": "Création du cours...",
+        "titleFrRequired": "Le titre en français est requis",
+        "titleEnRequired": "Le titre en anglais est requis"
+      },
+      "generate": {
+        "title": "Générer le syllabus",
+        "description": "L'agent IA va analyser vos ressources et générer la structure du cours.",
+        "button": "Générer le syllabus",
+        "generating": "Génération en cours...",
+        "generated": "Syllabus généré",
+        "moduleCount": "{count} module(s) généré(s)",
+        "error": "Erreur lors de la génération du syllabus.",
+        "noModules": "Aucun module généré. Réessayez."
+      },
+      "index": {
+        "title": "Indexation RAG",
+        "description": "Le système indexe vos ressources dans la base vectorielle pour permettre la génération de contenu à la demande.",
+        "button": "Démarrer l'indexation",
+        "indexing": "Indexation en cours...",
+        "indexed": "Indexation terminée",
+        "chunksIndexed": "{count} fragments indexés",
+        "error": "Erreur lors de l'indexation.",
+        "polling": "Vérification du statut...",
+        "taskPending": "En attente de démarrage...",
+        "taskRunning": "Indexation des PDFs..."
+      },
+      "publish": {
+        "title": "Publier le cours",
+        "description": "Le cours est prêt. Publiez-le pour le rendre accessible aux apprenants.",
+        "button": "Publier",
+        "publishing": "Publication en cours...",
+        "success": "Cours publié avec succès !",
+        "successDesc": "Le cours est maintenant visible dans le catalogue.",
+        "error": "Impossible de publier le cours. Vérifiez que l'indexation est terminée.",
+        "summary": {
+          "title": "Résumé du cours",
+          "modules": "Modules",
+          "chunks": "Fragments RAG",
+          "status": "Statut"
+        }
+      }
+    },
+    "errors": {
+      "load": "Impossible de charger les cours.",
+      "publish": "Impossible de publier le cours.",
+      "archive": "Impossible d'archiver le cours.",
+      "delete": "Impossible de supprimer le cours.",
+      "create": "Impossible de créer le cours."
+    }
   },
   "AdminSyllabus": {
     "pageTitle": "Gestion du syllabus",

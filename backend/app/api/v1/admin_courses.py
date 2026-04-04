@@ -3,9 +3,10 @@
 import re
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 
 from celery.result import AsyncResult
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from structlog import get_logger
@@ -17,7 +18,7 @@ from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.module import Module
 from app.domain.models.user import UserRole
 from app.domain.services.course_agent_service import CourseAgentService
-from app.tasks.rag_indexation import index_course_resources
+from app.tasks.rag_indexation import UPLOAD_DIR, index_course_resources
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/admin/courses", tags=["Admin - Courses"])
@@ -407,3 +408,126 @@ async def get_rag_index_status(
         }
 
     return response
+
+
+# ---------------------------------------------------------------------------
+# Resource Upload
+# ---------------------------------------------------------------------------
+
+ALLOWED_RESOURCE_TYPES = {"application/pdf"}
+MAX_RESOURCE_SIZE = 100 * 1024 * 1024  # 100 MB
+
+
+@router.get("/{course_id}/resources")
+async def list_course_resources(
+    course_id: uuid.UUID,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    db=Depends(get_db_session),
+) -> dict:
+    """List uploaded resource files for a course."""
+    result = await db.execute(select(Course).where(Course.id == course_id))
+    course = result.scalar_one_or_none()
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    course_dir = UPLOAD_DIR / str(course_id)
+    if not course_dir.exists():
+        return {"course_id": str(course_id), "files": []}
+
+    files = []
+    for f in sorted(course_dir.glob("*.pdf")):
+        stat = f.stat()
+        files.append(
+            {
+                "name": f.name,
+                "size_bytes": stat.st_size,
+                "uploaded_at": datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
+            }
+        )
+
+    return {"course_id": str(course_id), "files": files}
+
+
+@router.post("/{course_id}/resources", status_code=status.HTTP_201_CREATED)
+async def upload_course_resource(
+    course_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    db=Depends(get_db_session),
+) -> dict:
+    """Upload a PDF resource for a course. Stored in uploads/course_resources/{course_id}/."""
+    result = await db.execute(select(Course).where(Course.id == course_id))
+    course = result.scalar_one_or_none()
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    content_type = file.content_type or ""
+    if content_type not in ALLOWED_RESOURCE_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Only PDF files are accepted. Got: {content_type}",
+        )
+
+    data = await file.read()
+    if len(data) > MAX_RESOURCE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File exceeds maximum size of 100MB",
+        )
+
+    if not data.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File does not appear to be a valid PDF",
+        )
+
+    safe_name = re.sub(r"[^\w.\-]", "_", Path(file.filename or "resource.pdf").name)
+    if not safe_name.lower().endswith(".pdf"):
+        safe_name += ".pdf"
+
+    course_dir = UPLOAD_DIR / str(course_id)
+    course_dir.mkdir(parents=True, exist_ok=True)
+    dest = course_dir / safe_name
+
+    dest.write_bytes(data)
+
+    logger.info(
+        "Course resource uploaded",
+        course_id=str(course_id),
+        filename=safe_name,
+        size_bytes=len(data),
+        admin_id=current_user.id,
+    )
+
+    return {
+        "course_id": str(course_id),
+        "name": safe_name,
+        "size_bytes": len(data),
+    }
+
+
+@router.delete("/{course_id}/resources/{filename}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_course_resource(
+    course_id: uuid.UUID,
+    filename: str,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    db=Depends(get_db_session),
+) -> None:
+    """Delete an uploaded resource file from a course."""
+    result = await db.execute(select(Course).where(Course.id == course_id))
+    course = result.scalar_one_or_none()
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    safe_name = re.sub(r"[^\w.\-]", "_", Path(filename).name)
+    file_path = UPLOAD_DIR / str(course_id) / safe_name
+    if not file_path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+
+    file_path.unlink()
+    logger.info(
+        "Course resource deleted",
+        course_id=str(course_id),
+        filename=safe_name,
+        admin_id=current_user.id,
+    )
