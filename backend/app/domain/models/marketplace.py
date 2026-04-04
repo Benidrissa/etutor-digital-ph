@@ -4,7 +4,16 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, Text, UniqueConstraint, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.models.base import Base
@@ -33,7 +42,9 @@ class CoursePrice(Base):
 
 class CourseReview(Base):
     __tablename__ = "course_reviews"
-    __table_args__ = (UniqueConstraint("course_id", "user_id", name="uq_course_reviews_course_user"),)
+    __table_args__ = (
+        UniqueConstraint("course_id", "user_id", name="uq_course_reviews_course_user"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     course_id: Mapped[uuid.UUID] = mapped_column(
