@@ -2,6 +2,8 @@
 
 from typing import Literal
 
+from app.domain.services.platform_settings_service import SettingsCache
+
 # Mapping of country codes to French names for contextualization
 COUNTRY_NAMES_FR = {
     "SN": "Sénégal",
@@ -40,6 +42,81 @@ COUNTRY_NAMES_EN = {
 }
 
 
+def _build_template_vars(
+    language: str,
+    country: str,
+    level: int,
+    bloom_level: str,
+    course_title: str | None,
+    course_description: str | None,
+    module_title: str = "",
+    unit_title: str = "",
+    syllabus_context: str = "",
+    course_domain: str = "",
+) -> dict:
+    """Build a dict of all template variables for prompt interpolation."""
+    country_names = COUNTRY_NAMES_FR if language == "fr" else COUNTRY_NAMES_EN
+    country_name = country_names.get(country, country)
+    domain = course_title or ("santé publique" if language == "fr" else "public health")
+    return {
+        "course_title": course_title or ("santé publique" if language == "fr" else "public health"),
+        "course_description": course_description or "",
+        "course_domain": course_domain or domain,
+        "module_title": module_title,
+        "unit_title": unit_title,
+        "country": country_name,
+        "language": language,
+        "level": str(level),
+        "bloom_level": bloom_level,
+        "syllabus_context": syllabus_context,
+    }
+
+
+def _apply_settings_template(
+    setting_key: str,
+    language: str,
+    country: str,
+    level: int,
+    bloom_level: str,
+    course_title: str | None,
+    course_description: str | None,
+    module_title: str = "",
+    unit_title: str = "",
+    syllabus_context: str = "",
+    course_domain: str = "",
+) -> str | None:
+    """Try to render an admin-overridden prompt template from settings.
+
+    Returns the rendered string if the setting has been overridden from its
+    compiled default, otherwise returns None so callers fall back to the
+    built-in logic.
+    """
+    try:
+        from app.infrastructure.config.platform_defaults import DEFAULTS_BY_KEY
+
+        defn = DEFAULTS_BY_KEY.get(setting_key)
+        if defn is None:
+            return None
+        current = SettingsCache.instance().get(setting_key)
+        if current is None or current == defn.default:
+            return None
+        vars_map = _build_template_vars(
+            language,
+            country,
+            level,
+            bloom_level,
+            course_title,
+            course_description,
+            module_title,
+            unit_title,
+            syllabus_context,
+            course_domain,
+        )
+        return current.format_map(vars_map)
+    except Exception:
+        return None
+
+
 def get_lesson_system_prompt(
     language: Literal["fr", "en"],
     country: str,
@@ -47,8 +124,32 @@ def get_lesson_system_prompt(
     bloom_level: str,
     course_title: str | None = None,
     course_description: str | None = None,
+    module_title: str = "",
+    unit_title: str = "",
+    syllabus_context: str = "",
+    course_domain: str = "",
 ) -> str:
-    """Generate system prompt for lesson content generation."""
+    """Generate system prompt for lesson content generation.
+
+    If an admin has customized the prompt template in platform settings, it is
+    used with template variable interpolation via str.format_map(). Otherwise
+    falls back to the built-in course-aware prompt logic.
+    """
+    overridden = _apply_settings_template(
+        "ai-prompt-lesson-system",
+        language,
+        country,
+        level,
+        bloom_level,
+        course_title,
+        course_description,
+        module_title,
+        unit_title,
+        syllabus_context,
+        course_domain,
+    )
+    if overridden is not None:
+        return overridden
 
     country_names = COUNTRY_NAMES_FR if language == "fr" else COUNTRY_NAMES_EN
     country_name = country_names.get(country, country)

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations, useLocale } from "next-intl";
@@ -12,10 +13,32 @@ interface BreadcrumbItem {
   current?: boolean;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function BreadcrumbNav() {
   const pathname = usePathname();
   const t = useTranslations("Navigation");
   const locale = useLocale();
+  const [moduleNames, setModuleNames] = useState<Record<string, string>>({});
+
+  // Fetch module title when path contains a UUID after /modules/
+  useEffect(() => {
+    const segments = pathname.split("/").filter(Boolean).slice(1);
+    const modIdx = segments.indexOf("modules");
+    if (modIdx >= 0 && modIdx + 1 < segments.length) {
+      const id = segments[modIdx + 1];
+      if (UUID_RE.test(id) && !moduleNames[id]) {
+        import("@/lib/api").then(({ getModuleDetailWithProgress }) =>
+          getModuleDetailWithProgress(id)
+            .then((mod) => {
+              const title = locale === "fr" ? mod.title_fr : mod.title_en;
+              if (title) setModuleNames((prev) => ({ ...prev, [id]: title }));
+            })
+            .catch(() => {})
+        );
+      }
+    }
+  }, [pathname, locale, moduleNames]);
 
   // Generate breadcrumb items based on current path
   const generateBreadcrumbs = (): BreadcrumbItem[] => {
@@ -67,8 +90,15 @@ export function BreadcrumbNav() {
           label = t("caseStudy");
           break;
         default:
-          // For dynamic segments like module IDs, keep as is or fetch from context
-          label = segment.charAt(0).toUpperCase() + segment.slice(1);
+          // Resolve UUIDs to readable names (e.g., module titles)
+          if (UUID_RE.test(segment) && moduleNames[segment]) {
+            label = moduleNames[segment];
+          } else if (UUID_RE.test(segment)) {
+            // Skip showing raw UUIDs — will resolve on next render
+            continue;
+          } else {
+            label = segment.charAt(0).toUpperCase() + segment.slice(1);
+          }
       }
 
       breadcrumbs.push({

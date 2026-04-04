@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.ai.claude_service import ClaudeService
+from app.ai.prompts.quiz import get_quiz_system_prompt
 from app.ai.rag.retriever import SemanticRetriever
 from app.api.v1.schemas.quiz import QuizContent, QuizResponse
 from app.domain.models.content import GeneratedContent
@@ -264,6 +265,10 @@ class QuizService:
                     if course
                     else None
                 ),
+                module_title=(
+                    (module.title_fr if language == "fr" else module.title_en) if module else ""
+                ),
+                bloom_level=module.bloom_level if module else "",
             )
 
             response = await self.claude_service.generate_structured_content(
@@ -308,6 +313,10 @@ class QuizService:
         num_questions: int,
         course_title: str | None = None,
         course_description: str | None = None,
+        module_title: str = "",
+        bloom_level: str = "",
+        syllabus_context: str = "",
+        course_domain: str = "",
     ) -> tuple[str, str]:
         """Build the system and user prompts for Claude API to generate quiz questions."""
 
@@ -321,7 +330,28 @@ class QuizService:
 
         domain = course_title or "public health"
 
-        system_prompt = f"""You are an expert educator creating adaptive quiz content for West African professionals in {domain}.
+        admin_system = get_quiz_system_prompt(
+            language,
+            country,
+            level,
+            bloom_level,
+            course_title,
+            course_description,
+            module_title,
+            unit_id,
+            syllabus_context,
+            course_domain,
+        )
+        if admin_system is not None:
+            system_prompt = (
+                admin_system
+                + "\n\nCRITICAL: You MUST respond with valid JSON ONLY. No preamble, no explanation, "
+                "no markdown code fences. Your entire response must be a single JSON object starting "
+                'with { and ending with }. The JSON must have exactly these top-level keys: "title", '
+                '"description", "questions", "time_limit_minutes", "passing_score".'
+            )
+        else:
+            system_prompt = f"""You are an expert educator creating adaptive quiz content for West African professionals in {domain}.
 
 CRITICAL: You MUST respond with valid JSON ONLY. No preamble, no explanation, no markdown code fences. Your entire response must be a single JSON object starting with {{ and ending with }}. The JSON must have exactly these top-level keys: "title", "description", "questions", "time_limit_minutes", "passing_score"."""
 

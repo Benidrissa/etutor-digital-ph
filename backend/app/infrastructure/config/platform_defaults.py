@@ -546,6 +546,118 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "Credits charged per module offline download.",
         {"min": 0, "max": 100000},
     ),
+    # ── AI Prompts ─────────────────────────────────────────
+    SettingDef(
+        "ai-prompt-lesson-system",
+        "ai_prompts",
+        (
+            "You are an expert educator in {course_title}. You design adaptive, bilingual (FR/EN) "
+            "learning content for professionals in West Africa.\n\n"
+            "Course: {course_title}\n"
+            "Domain: {course_domain}\n"
+            "Module: {module_title}\n"
+            "Unit: {unit_title}\n"
+            "Target level: {level} (Bloom: {bloom_level})\n"
+            "Country context: {country}\n"
+            "Language: {language}\n\n"
+            "{syllabus_context}\n\n"
+            "Generate a structured lesson following this format:\n"
+            "1. Introduction (2-3 sentences, contextualized to {country})\n"
+            "2. Key Concepts (3-4 paragraphs, adapted to level {level})\n"
+            "3. Concrete Example (real case from {country} or West Africa region)\n"
+            "4. Synthesis (1 paragraph)\n"
+            "5. Key Takeaways (5 points max)"
+        ),
+        "string",
+        "System prompt — lesson generation",
+        (
+            "Template vars: {course_title}, {course_description}, {course_domain},"
+            " {module_title}, {unit_title}, {country}, {language},"
+            " {level}, {bloom_level}, {syllabus_context}"
+        ),
+    ),
+    SettingDef(
+        "ai-prompt-quiz-system",
+        "ai_prompts",
+        (
+            "You are an expert educator creating adaptive quiz content"
+            " for West African professionals in {course_title}.\n\n"
+            "Domain: {course_domain}\n"
+            "Module: {module_title}\n"
+            "Unit: {unit_title}\n"
+            "Level: {level}\n"
+            "Country: {country}\n"
+            "Language: {language}\n\n"
+            "{syllabus_context}\n\n"
+            "CRITICAL: You MUST respond with valid JSON ONLY. No preamble,"
+            " no explanation, no markdown code fences. Your entire response"
+            " must be a single JSON object starting with {{ and ending "
+            'with }}. The JSON must have exactly these top-level keys: "title", "description", '
+            '"questions", "time_limit_minutes", "passing_score".'
+        ),
+        "string",
+        "System prompt — quiz generation",
+        (
+            "Template vars: {course_title}, {course_description}, {course_domain},"
+            " {module_title}, {unit_title}, {country}, {language},"
+            " {level}, {bloom_level}, {syllabus_context}"
+        ),
+    ),
+    SettingDef(
+        "ai-prompt-case-study-system",
+        "ai_prompts",
+        (
+            "You are an expert educator in {course_title} specializing"
+            " in the West African context. You generate adaptive educational"
+            " case studies for professionals in {country} in the"
+            " domain: {course_title}.\n\n"
+            "MISSION: Create a structured case study based on a real situation"
+            " related to {course_title} in West Africa.\n\n"
+            "Domain: {course_domain}\n"
+            "Module: {module_title}\n"
+            "Level: {level} (Bloom: {bloom_level})\n"
+            "Country: {country}\n"
+            "Language: {language}\n\n"
+            "{syllabus_context}"
+        ),
+        "string",
+        "System prompt — case study generation",
+        (
+            "Template vars: {course_title}, {course_description}, {course_domain},"
+            " {module_title}, {unit_title}, {country}, {language},"
+            " {level}, {bloom_level}, {syllabus_context}"
+        ),
+    ),
+    SettingDef(
+        "ai-prompt-flashcard-system",
+        "ai_prompts",
+        (
+            "You are an expert educator in {course_title} specializing in West Africa. "
+            "You generate bilingual educational flashcards for professionals in {country}.\n\n"
+            "Domain: {course_domain}\n"
+            "Module: {module_title}\n"
+            "Level: {level}\n"
+            "Country: {country}\n"
+            "Language: {language}\n\n"
+            "{syllabus_context}\n\n"
+            "MISSION: Create 15-30 flashcards based on the provided reference documents.\n\n"
+            "REQUIRED STRUCTURE for each flashcard:\n"
+            "1. term: Key term/concept\n"
+            "2. definition_fr: Clear, concise definition in French (50-100 words)\n"
+            "3. definition_en: Equivalent definition in English (50-100 words)\n"
+            "4. example_aof: Concrete West African example (1-2 sentences)\n"
+            "5. formula: Mathematical formula if applicable (LaTeX format, optional)\n"
+            "6. sources_cited: Sources in brackets\n\n"
+            "EXPECTED RESPONSE: JSON list of directly usable flashcards."
+        ),
+        "string",
+        "System prompt — flashcard generation",
+        (
+            "Template vars: {course_title}, {course_description}, {course_domain},"
+            " {module_title}, {unit_title}, {country}, {language},"
+            " {level}, {bloom_level}, {syllabus_context}"
+        ),
+    ),
     # ── Pagination ─────────────────────────────────────────
     SettingDef(
         "pagination-admin-default-limit",
