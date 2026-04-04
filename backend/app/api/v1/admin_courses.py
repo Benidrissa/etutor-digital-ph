@@ -8,7 +8,7 @@ from pathlib import Path
 from celery.result import AsyncResult
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 from structlog import get_logger
 
 from app.api.deps import get_db as get_db_session
@@ -18,8 +18,8 @@ from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.module import Module
 from app.domain.models.taxonomy import TaxonomyCategory
 from app.domain.models.user import UserRole
-from app.domain.services.course_agent_service import CourseAgentService
 from app.tasks.rag_indexation import UPLOAD_DIR, index_course_resources
+from app.tasks.syllabus_generation import generate_course_syllabus
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/admin/courses", tags=["Admin - Courses"])
@@ -281,62 +281,60 @@ async def generate_course_structure(
     db=Depends(get_db_session),
 ) -> dict:
     """
-    Use content creator agent to generate module outline for a course.
-    Saves generated modules to the database with course_id FK. Admin only.
+    Dispatch a Celery task to generate module outline for a course via Claude API.
+    Returns immediately with task_id for polling. Admin only.
     """
     result = await db.execute(select(Course).where(Course.id == course_id))
     course = result.scalar_one_or_none()
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
 
-    # Clear existing modules — regenerate replaces, not appends
-    await db.execute(delete(Module).where(Module.course_id == course_id))
-    await db.flush()
-
-    cats = course.taxonomy_categories or []
-    agent = CourseAgentService()
-    module_dicts = await agent.generate_course_structure(
-        title_fr=course.title_fr,
-        title_en=course.title_en,
-        course_domain=[tc.slug for tc in cats if tc.type == "domain"],
-        course_level=[tc.slug for tc in cats if tc.type == "level"],
-        audience_type=[tc.slug for tc in cats if tc.type == "audience"],
-        estimated_hours=request.estimated_hours or course.estimated_hours,
+    task = generate_course_syllabus.delay(
+        str(course_id),
+        request.estimated_hours or course.estimated_hours,
     )
-
-    saved_modules = []
-    for i, m in enumerate(module_dicts):
-        module = Module(
-            id=uuid.uuid4(),
-            module_number=i + 1,
-            level=1,
-            title_fr=m["title_fr"],
-            title_en=m["title_en"],
-            description_fr=m.get("description_fr"),
-            description_en=m.get("description_en"),
-            estimated_hours=m.get("estimated_hours", 20),
-            bloom_level=m.get("bloom_level"),
-            course_id=course_id,
-        )
-        db.add(module)
-        saved_modules.append(
-            {
-                "id": str(module.id),
-                "module_number": module.module_number,
-                "title_fr": module.title_fr,
-                "title_en": module.title_en,
-            }
-        )
-
-    course.module_count = len(module_dicts)
-
-    await db.commit()
     logger.info(
-        "Course structure generated and saved",
+        "Syllabus generation triggered",
         course_id=str(course_id),
-        module_count=len(saved_modules),
+        task_id=task.id,
+        admin_id=current_user.id,
     )
-    return {"modules": saved_modules, "count": len(saved_modules)}
+    return {"task_id": task.id, "status": "started"}
+
+
+@router.get("/{course_id}/generate-status")
+async def get_generate_status(
+    course_id: uuid.UUID,
+    task_id: str | None = None,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    db=Depends(get_db_session),
+) -> dict:
+    """Get syllabus generation status for a course."""
+    result = await db.execute(select(Course).where(Course.id == course_id))
+    course = result.scalar_one_or_none()
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    module_count_result = await db.execute(
+        select(func.count()).select_from(Module).where(Module.course_id == course_id)
+    )
+    modules_count = module_count_result.scalar_one()
+
+    response: dict = {
+        "course_id": str(course_id),
+        "modules_count": modules_count,
+        "has_modules": modules_count > 0,
+    }
+
+    if task_id:
+        task_result = AsyncResult(task_id)
+        response["task"] = {
+            "id": task_id,
+            "state": task_result.state,
+            "meta": task_result.info if isinstance(task_result.info, dict) else {},
+        }
+
+    return response
 
 
 @router.delete("/{course_id}", status_code=status.HTTP_204_NO_CONTENT)

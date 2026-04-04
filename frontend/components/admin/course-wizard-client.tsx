@@ -164,6 +164,8 @@ export function CourseWizardClient({
   const [generatedModules, setGeneratedModules] = useState<GeneratedModule[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [generateTaskId, setGenerateTaskId] = useState<string | null>(null);
+  const [generateTaskState, setGenerateTaskState] = useState<string | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [indexStatus, setIndexStatus] = useState<IndexStatus | null>(null);
   const [isIndexing, setIsIndexing] = useState(false);
@@ -176,6 +178,7 @@ export function CourseWizardClient({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const generatePollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stepIndex = STEPS.indexOf(step);
 
@@ -357,12 +360,14 @@ export function CourseWizardClient({
     if (!courseId) return;
     setIsGenerating(true);
     setGenerateError(null);
+    setGenerateTaskId(null);
+    setGenerateTaskState(null);
 
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 300000);
 
-      const result = await apiFetch<{ modules: GeneratedModule[]; count: number }>(
+      const result = await apiFetch<{ task_id: string; status: string }>(
         `/api/v1/admin/courses/${courseId}/generate-structure`,
         {
           method: "POST",
@@ -373,17 +378,60 @@ export function CourseWizardClient({
         }
       );
       clearTimeout(timeout);
-      setGeneratedModules(result.modules);
+      setGenerateTaskId(result.task_id);
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
         setGenerateError(t("generate.error") + " (timeout)");
       } else {
         setGenerateError(t("generate.error"));
       }
-    } finally {
       setIsGenerating(false);
     }
   }, [courseId, courseInfo, t]);
+
+  useEffect(() => {
+    if (!courseId || !isGenerating || !generateTaskId) return;
+
+    const poll = async () => {
+      try {
+        const status = await apiFetch<{
+          has_modules: boolean;
+          modules_count: number;
+          task?: { state: string; meta?: Record<string, unknown> };
+        }>(`/api/v1/admin/courses/${courseId}/generate-status?task_id=${generateTaskId}`);
+
+        setGenerateTaskState(status.task?.state ?? null);
+
+        if (
+          status.task?.state === "FAILURE" ||
+          status.task?.state === "REVOKED"
+        ) {
+          setGenerateError(t("generate.error"));
+          setIsGenerating(false);
+          return;
+        }
+
+        if (status.task?.state === "SUCCESS") {
+          const meta = status.task.meta ?? {};
+          const modules = meta.modules;
+          if (Array.isArray(modules)) {
+            setGeneratedModules(modules as GeneratedModule[]);
+          }
+          setIsGenerating(false);
+          return;
+        }
+
+        generatePollRef.current = setTimeout(poll, 3000);
+      } catch {
+        generatePollRef.current = setTimeout(poll, 5000);
+      }
+    };
+
+    generatePollRef.current = setTimeout(poll, 2000);
+    return () => {
+      if (generatePollRef.current) clearTimeout(generatePollRef.current);
+    };
+  }, [courseId, isGenerating, generateTaskId, t]);
 
   const startIndexation = useCallback(async () => {
     if (!courseId) return;
@@ -770,7 +818,13 @@ export function CourseWizardClient({
                 {isGenerating && (
                   <div className="flex flex-col items-center gap-3 py-8">
                     <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-                    <p className="text-sm text-muted-foreground">{t("generate.generating")}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {generateTaskState === "GENERATING" || generateTaskState === "SAVING"
+                        ? t("generate.taskRunning")
+                        : generateTaskState
+                        ? t("generate.taskRunning")
+                        : t("generate.taskPending")}
+                    </p>
                   </div>
                 )}
 

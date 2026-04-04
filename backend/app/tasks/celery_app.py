@@ -18,6 +18,7 @@ celery_app = Celery(
         "app.tasks.data_etl",
         "app.tasks.file_cleanup",
         "app.tasks.rag_indexation",
+        "app.tasks.syllabus_generation",
     ],
 )
 
