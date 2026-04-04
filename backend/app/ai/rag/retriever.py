@@ -1,5 +1,6 @@
 """Semantic retrieval service for the RAG pipeline."""
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -248,7 +249,24 @@ class SemanticRetriever:
         if books_sources:
             source_list = list(books_sources.keys())
             if source_list:
-                filters["source"] = source_list
+                # Detect whether keys are rag_collection_id UUIDs (new-style courses)
+                # or named textbook sources like "donaldson" (legacy public health course).
+                # UUID pattern: 8-4-4-4-12 hex chars separated by hyphens.
+                _uuid_pattern = re.compile(
+                    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                    re.IGNORECASE,
+                )
+                uuid_keys = [k for k in source_list if _uuid_pattern.match(k)]
+                named_keys = [k for k in source_list if not _uuid_pattern.match(k)]
+
+                if uuid_keys and not named_keys:
+                    # New-style course: every key is a rag_collection_id; search only
+                    # within those collections by matching the source column.
+                    filters["source"] = uuid_keys
+                elif named_keys:
+                    # Legacy public-health course (donaldson / triola / scutchfield)
+                    # or a mix — use the named keys as source filters.
+                    filters["source"] = named_keys
 
         return await self.search(query=query, top_k=top_k, filters=filters, session=session)
 

@@ -16,8 +16,10 @@ from app.api.deps_local_auth import AuthenticatedUser, require_role
 from app.domain.models.course import Course, UserCourseEnrollment
 from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.module import Module
+from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.taxonomy import TaxonomyCategory
 from app.domain.models.user import UserRole
+from app.tasks.content_generation import generate_lesson_task
 from app.tasks.rag_indexation import UPLOAD_DIR, index_course_resources
 from app.tasks.syllabus_generation import generate_course_syllabus
 
@@ -576,3 +578,81 @@ async def delete_course_resource(
         filename=safe_name,
         admin_id=current_user.id,
     )
+
+
+# ---------------------------------------------------------------------------
+# Content Pre-generation
+# ---------------------------------------------------------------------------
+
+
+class GenerateContentRequest(BaseModel):
+    language: str = "fr"
+    country: str = "SN"
+    level: int = 1
+
+
+@router.post("/{course_id}/modules/{module_id}/generate-content")
+async def admin_generate_module_content(
+    course_id: uuid.UUID,
+    module_id: uuid.UUID,
+    request: GenerateContentRequest,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    db=Depends(get_db_session),
+) -> dict:
+    """Trigger lesson content generation for all units in a module. Admin only.
+
+    Allows admins to pre-generate and verify lesson quality before learners access it.
+    Returns task IDs that can be polled for status.
+    """
+    course_result = await db.execute(select(Course).where(Course.id == course_id))
+    course = course_result.scalar_one_or_none()
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    module_result = await db.execute(
+        select(Module).where(Module.id == module_id, Module.course_id == course_id)
+    )
+    module = module_result.scalar_one_or_none()
+    if not module:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Module not found in this course"
+        )
+
+    units_result = await db.execute(
+        select(ModuleUnit).where(ModuleUnit.module_id == module_id).order_by(ModuleUnit.order_index)
+    )
+    units = units_result.scalars().all()
+
+    if not units:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Module has no units. Generate the syllabus first.",
+        )
+
+    dispatched = []
+    for unit in units:
+        unit_id = f"M{module.module_number:02d}-U{unit.order_index + 1:02d}"
+        task = generate_lesson_task.delay(
+            str(module_id),
+            unit_id,
+            request.language,
+            request.country,
+            request.level,
+        )
+        dispatched.append({"unit_id": unit_id, "task_id": task.id})
+
+    logger.info(
+        "Admin triggered content generation for module",
+        course_id=str(course_id),
+        module_id=str(module_id),
+        units_count=len(dispatched),
+        admin_id=current_user.id,
+    )
+
+    return {
+        "course_id": str(course_id),
+        "module_id": str(module_id),
+        "module_number": module.module_number,
+        "units_dispatched": len(dispatched),
+        "tasks": dispatched,
+    }

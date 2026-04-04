@@ -222,14 +222,20 @@ class ProgressService:
         )
         return list(result.scalars().all())
 
-    async def get_all_modules_with_progress(self, user_id: UUID) -> list[dict]:
+    async def get_all_modules_with_progress(
+        self, user_id: UUID, course_id: UUID | None = None
+    ) -> list[dict]:
         """
-        Return ALL modules with their real lock/unlock status for the user.
+        Return modules with their real lock/unlock status for the user.
 
+        When course_id is provided, only modules belonging to that course are returned.
         Modules without a progress record default to 'locked'.
         Returns data ordered by module_number.
         """
-        modules_result = await self.db.execute(select(Module).order_by(Module.module_number))
+        stmt = select(Module).order_by(Module.module_number)
+        if course_id is not None:
+            stmt = stmt.where(Module.course_id == course_id)
+        modules_result = await self.db.execute(stmt)
         modules = list(modules_result.scalars().all())
 
         progress_result = await self.db.execute(

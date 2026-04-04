@@ -807,3 +807,142 @@ class TestUnlockNextModule:
             if isinstance(obj, UserModuleProgress) and obj.module_id != module_id
         ]
         assert len(new_progress_rows) == 0
+
+
+class TestGetAllModulesWithProgress:
+    async def test_returns_all_modules_when_no_course_id(self, progress_service, mock_db, user_id):
+        from app.domain.models.module import Module
+
+        course_id = uuid.uuid4()
+        module1 = Module(
+            id=uuid.uuid4(),
+            module_number=1,
+            level=1,
+            title_fr="M01 FR",
+            title_en="M01 EN",
+            estimated_hours=20,
+            course_id=course_id,
+        )
+        module2 = Module(
+            id=uuid.uuid4(),
+            module_number=2,
+            level=1,
+            title_fr="M02 FR",
+            title_en="M02 EN",
+            estimated_hours=25,
+            course_id=uuid.uuid4(),
+        )
+
+        call_count = 0
+        executed_stmts = []
+
+        async def mock_execute(stmt):
+            nonlocal call_count
+            call_count += 1
+            executed_stmts.append(stmt)
+            mock_result = MagicMock()
+            if call_count == 1:
+                mock_result.scalars.return_value.all.return_value = [module1, module2]
+            else:
+                mock_result.scalars.return_value.all.return_value = []
+            return mock_result
+
+        mock_db.execute = mock_execute
+
+        result = await progress_service.get_all_modules_with_progress(user_id)
+
+        assert len(result) == 2
+        assert result[0]["module_number"] == 1
+        assert result[1]["module_number"] == 2
+
+    async def test_filters_by_course_id_when_provided(self, progress_service, mock_db, user_id):
+        from app.domain.models.module import Module
+
+        target_course_id = uuid.uuid4()
+        module_in_course = Module(
+            id=uuid.uuid4(),
+            module_number=1,
+            level=1,
+            title_fr="M01 FR",
+            title_en="M01 EN",
+            estimated_hours=20,
+            course_id=target_course_id,
+        )
+
+        call_count = 0
+
+        async def mock_execute(stmt):
+            nonlocal call_count
+            call_count += 1
+            mock_result = MagicMock()
+            if call_count == 1:
+                mock_result.scalars.return_value.all.return_value = [module_in_course]
+            else:
+                mock_result.scalars.return_value.all.return_value = []
+            return mock_result
+
+        mock_db.execute = mock_execute
+
+        result = await progress_service.get_all_modules_with_progress(
+            user_id, course_id=target_course_id
+        )
+
+        assert len(result) == 1
+        assert result[0]["module_number"] == 1
+
+    async def test_defaults_status_to_locked_when_no_progress(
+        self, progress_service, mock_db, user_id
+    ):
+        from app.domain.models.module import Module
+
+        module = Module(
+            id=uuid.uuid4(),
+            module_number=1,
+            level=1,
+            title_fr="M01 FR",
+            title_en="M01 EN",
+            estimated_hours=20,
+        )
+
+        call_count = 0
+
+        async def mock_execute(stmt):
+            nonlocal call_count
+            call_count += 1
+            mock_result = MagicMock()
+            if call_count == 1:
+                mock_result.scalars.return_value.all.return_value = [module]
+            else:
+                mock_result.scalars.return_value.all.return_value = []
+            return mock_result
+
+        mock_db.execute = mock_execute
+
+        result = await progress_service.get_all_modules_with_progress(user_id)
+
+        assert len(result) == 1
+        assert result[0]["status"] == "locked"
+        assert result[0]["completion_pct"] == 0.0
+
+    async def test_returns_empty_list_when_course_has_no_modules(
+        self, progress_service, mock_db, user_id
+    ):
+        course_id = uuid.uuid4()
+
+        call_count = 0
+
+        async def mock_execute(stmt):
+            nonlocal call_count
+            call_count += 1
+            mock_result = MagicMock()
+            if call_count == 1:
+                mock_result.scalars.return_value.all.return_value = []
+            else:
+                mock_result.scalars.return_value.all.return_value = []
+            return mock_result
+
+        mock_db.execute = mock_execute
+
+        result = await progress_service.get_all_modules_with_progress(user_id, course_id=course_id)
+
+        assert result == []
