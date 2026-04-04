@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ARRAY, DateTime, Enum, ForeignKey, String, Text, func
+from sqlalchemy import ARRAY, Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.models.base import Base
@@ -89,6 +89,8 @@ class Course(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     rag_collection_id: Mapped[str | None] = mapped_column(String)
+    is_marketplace: Mapped[bool] = mapped_column(Boolean, server_default="false", default=False)
+    credit_price: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

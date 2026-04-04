@@ -6,6 +6,7 @@ from app.api.v1.admin_settings import router as admin_settings_router
 from app.api.v1.content import router as content_router
 from app.api.v1.courses import router as courses_router
 from app.api.v1.dashboard import router as dashboard_router
+from app.api.v1.expert_courses import router as expert_courses_router
 from app.api.v1.flashcards import router as flashcards_router
 from app.api.v1.health import router as health_router
 from app.api.v1.images import router as images_router
@@ -31,4 +32,5 @@ api_v1_router.include_router(images_router)
 api_v1_router.include_router(admin_router)
 api_v1_router.include_router(admin_settings_router)
 api_v1_router.include_router(admin_courses_router)
+api_v1_router.include_router(expert_courses_router)
 api_v1_router.include_router(courses_router)
