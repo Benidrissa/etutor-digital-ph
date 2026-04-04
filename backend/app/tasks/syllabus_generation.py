@@ -156,15 +156,12 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
                 )
 
             # Update course metadata via raw SQL to avoid selectin loading
-            from sqlalchemy import text, cast
-            from sqlalchemy.dialects.postgresql import JSONB as PG_JSONB
             import json
 
+            from sqlalchemy import text
+
             await session.execute(
-                text(
-                    "UPDATE courses SET module_count = :mc, syllabus_json = :sj "
-                    "WHERE id = :cid"
-                ),
+                text("UPDATE courses SET module_count = :mc, syllabus_json = :sj WHERE id = :cid"),
                 {
                     "mc": len(module_dicts),
                     "sj": json.dumps(module_dicts),
