@@ -2,10 +2,11 @@
 
 import csv
 import io
+from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from structlog import get_logger
@@ -78,7 +79,7 @@ async def export_users_csv(
     is_active: bool | None = Query(None),
     current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
     db=Depends(get_db_session),
-) -> StreamingResponse:
+) -> Response:
     """Export user list as CSV. Admin only."""
     try:
         stmt = select(User)
@@ -138,10 +139,11 @@ async def export_users_csv(
         output.seek(0)
         logger.info("Admin exported users CSV", admin_id=current_user.id, count=len(users))
 
-        return StreamingResponse(
-            iter([output.getvalue()]),
+        filename = f"users_export_{date.today()}.csv"
+        return Response(
+            content=output.getvalue(),
             media_type="text/csv",
-            headers={"Content-Disposition": "attachment; filename=users_export.csv"},
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
         )
     except Exception as e:
         logger.error("Failed to export users CSV", error=str(e))
