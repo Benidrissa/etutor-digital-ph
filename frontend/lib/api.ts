@@ -1,5 +1,42 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+// Course Catalog API Types
+export interface CourseResponse {
+  id: string;
+  title_fr: string;
+  title_en: string;
+  description_fr?: string;
+  description_en?: string;
+  domain: string;
+  estimated_hours: number;
+  module_count: number;
+  cover_image_url?: string;
+  is_published: boolean;
+}
+
+export interface EnrollmentResponse {
+  course_id: string;
+  user_id: string;
+  enrolled_at: string;
+  status: "active" | "completed" | "dropped";
+}
+
+export interface CourseWithEnrollment extends CourseResponse {
+  enrollment?: EnrollmentResponse;
+}
+
+export async function getCourses(): Promise<CourseResponse[]> {
+  return apiFetch<CourseResponse[]>("/api/v1/courses");
+}
+
+export async function enrollInCourse(courseId: string): Promise<EnrollmentResponse> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<EnrollmentResponse>(
+    `/api/v1/courses/${courseId}/enroll`,
+    { method: "POST" }
+  );
+}
+
 // Progress API Types
 export interface ModuleProgressResponse {
   module_id: string;

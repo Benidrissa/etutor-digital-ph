@@ -876,6 +876,26 @@
       }
     }
   },
+  "Courses": {
+    "title": "Course Catalog",
+    "subtitle": "Browse and enroll in public health courses",
+    "loading": "Loading courses...",
+    "error": "Failed to load courses. Please try again.",
+    "noCourses": "No courses available",
+    "noCoursesDescription": "Check back soon for new courses.",
+    "enroll": "Enroll",
+    "enrolled": "Enrolled",
+    "enrolling": "Enrolling...",
+    "enrollSuccess": "Successfully enrolled!",
+    "enrollError": "Enrollment failed. Please try again.",
+    "viewModules": "View Modules",
+    "hours": "{count, plural, one {# hour} other {# hours}}",
+    "modules": "{count, plural, one {# module} other {# modules}}",
+    "loginToEnroll": "Sign in to enroll",
+    "alreadyEnrolled": "Already enrolled",
+    "domain": "Domain",
+    "tryAgain": "Try again"
+  },
   "AdminCourses": {
     "pageTitle": "Course Management",
     "pageDescription": "Create, publish and manage courses with AI",

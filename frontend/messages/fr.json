@@ -876,6 +876,26 @@
       }
     }
   },
+  "Courses": {
+    "title": "Catalogue des formations",
+    "subtitle": "Parcourez et inscrivez-vous aux formations en santé publique",
+    "loading": "Chargement des formations...",
+    "error": "Impossible de charger les formations. Veuillez réessayer.",
+    "noCourses": "Aucune formation disponible",
+    "noCoursesDescription": "Revenez bientôt pour découvrir les nouvelles formations.",
+    "enroll": "S'inscrire",
+    "enrolled": "Inscrit",
+    "enrolling": "Inscription...",
+    "enrollSuccess": "Inscription réussie !",
+    "enrollError": "Échec de l'inscription. Veuillez réessayer.",
+    "viewModules": "Voir les modules",
+    "hours": "{count, plural, one {# heure} other {# heures}}",
+    "modules": "{count, plural, one {# module} other {# modules}}",
+    "loginToEnroll": "Connectez-vous pour vous inscrire",
+    "alreadyEnrolled": "Déjà inscrit",
+    "domain": "Domaine",
+    "tryAgain": "Réessayer"
+  },
   "AdminCourses": {
     "pageTitle": "Gestion des formations",
     "pageDescription": "Créez, publiez et gérez les formations avec l'IA",
