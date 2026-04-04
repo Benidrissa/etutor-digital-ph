@@ -468,8 +468,8 @@ export async function getAdminSettings(): Promise<SettingsByCategory[]> {
 }
 
 export async function updateSetting(key: string, value: unknown): Promise<PlatformSetting> {
-  return apiFetch<PlatformSetting>(`/api/v1/admin/settings/by-key?key=${encodeURIComponent(key)}`, {
-    method: "PATCH",
+  return apiFetch<PlatformSetting>(`/api/v1/admin/settings/update-key?key=${encodeURIComponent(key)}`, {
+    method: "POST",
     body: JSON.stringify({ value }),
   });
 }

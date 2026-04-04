@@ -56,7 +56,7 @@ async def get_setting(
     raise HTTPException(status.HTTP_404_NOT_FOUND, f"Setting '{key}' not found")
 
 
-@router.patch("/admin/settings/by-key", response_model=SettingResponse)
+@router.post("/admin/settings/update-key", response_model=SettingResponse)
 async def update_setting(
     body: SettingUpdateRequest,
     key: str = Query(..., description="Setting key, e.g. quiz.passing_score"),
