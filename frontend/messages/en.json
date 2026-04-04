@@ -175,7 +175,10 @@
     "errorOccurred": "An error occurred",
     "unableToLoadStats": "Unable to load dashboard statistics",
     "noQuizzesTakenYet": "No quizzes taken yet",
-    "justGettingStarted": "Just getting started"
+    "justGettingStarted": "Just getting started",
+    "loading": "Loading...",
+    "noEnrollments": "You are not enrolled in any courses yet.",
+    "browseCourses": "Browse available courses"
   },
   "ModuleCard": {
     "locked": "Locked",
