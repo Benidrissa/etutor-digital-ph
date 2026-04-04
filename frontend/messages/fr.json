@@ -637,6 +637,23 @@
     "imageViewFullscreen": "Voir en plein écran",
     "imageCloseFullscreen": "Fermer le plein écran"
   },
+  "ModuleMediaPlayer": {
+    "listenToSummary": "Écouter le résumé",
+    "watchSummary": "Regarder le résumé",
+    "downloadMedia": "Télécharger",
+    "generateAudio": "Générer l'audio",
+    "generateVideo": "Générer la vidéo",
+    "mediaGenerating": "Génération en cours...",
+    "mediaReady": "Disponible",
+    "mediaNotAvailable": "Pas encore disponible",
+    "generating": "Génération en cours...",
+    "errorGenerating": "Échec de la génération. Veuillez réessayer.",
+    "errorLoading": "Erreur lors du chargement du média.",
+    "retry": "Réessayer",
+    "play": "Lire",
+    "pause": "Pause",
+    "duration": "{minutes}:{seconds}"
+  },
   "CaseStudyViewer": {
     "error": "Une erreur est survenue",
     "streamError": "Erreur lors de la diffusion en continu",

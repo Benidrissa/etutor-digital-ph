@@ -564,6 +564,47 @@ export async function submitSummativeAssessmentAttempt(
   });
 }
 
+// ── Module Media API ──────────────────────────────────────────
+
+export type MediaType = 'audio' | 'video';
+export type MediaStatus = 'pending' | 'generating' | 'ready' | 'failed';
+
+export interface ModuleMediaResponse {
+  id: string;
+  module_id: string;
+  media_type: MediaType;
+  language: string;
+  status: MediaStatus;
+  url?: string;
+  duration_seconds?: number;
+  file_size_bytes?: number;
+  generated_at?: string;
+}
+
+export interface GenerateModuleMediaRequest {
+  media_type: MediaType;
+  language: string;
+}
+
+export async function getModuleMedia(moduleId: string): Promise<ModuleMediaResponse[]> {
+  return apiFetch<ModuleMediaResponse[]>(`/api/v1/modules/${moduleId}/media`);
+}
+
+export async function generateModuleMedia(
+  moduleId: string,
+  mediaType: MediaType,
+  language: string
+): Promise<ModuleMediaResponse> {
+  return apiFetch<ModuleMediaResponse>(`/api/v1/modules/${moduleId}/media/generate`, {
+    method: 'POST',
+    body: JSON.stringify({ media_type: mediaType, language } satisfies GenerateModuleMediaRequest),
+  });
+}
+
+export async function deleteModuleMedia(moduleId: string, mediaId: string): Promise<void> {
+  await apiFetch<void>(`/api/v1/modules/${moduleId}/media/${mediaId}`, { method: 'DELETE' });
+}
+
 // ── Platform Settings ─────────────────────────────────────────
 
 export interface PlatformSetting {

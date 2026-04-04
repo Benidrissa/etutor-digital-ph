@@ -637,6 +637,23 @@
     "imageViewFullscreen": "View fullscreen",
     "imageCloseFullscreen": "Close fullscreen"
   },
+  "ModuleMediaPlayer": {
+    "listenToSummary": "Listen to summary",
+    "watchSummary": "Watch summary",
+    "downloadMedia": "Download",
+    "generateAudio": "Generate audio",
+    "generateVideo": "Generate video",
+    "mediaGenerating": "Generating...",
+    "mediaReady": "Available",
+    "mediaNotAvailable": "Not yet available",
+    "generating": "Generation in progress...",
+    "errorGenerating": "Generation failed. Please try again.",
+    "errorLoading": "Error loading media.",
+    "retry": "Retry",
+    "play": "Play",
+    "pause": "Pause",
+    "duration": "{minutes}:{seconds}"
+  },
   "CaseStudyViewer": {
     "error": "An error occurred",
     "streamError": "Streaming error occurred",
