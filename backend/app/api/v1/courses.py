@@ -255,7 +255,7 @@ async def enroll_in_course(
                 UserModuleProgress(
                     user_id=uuid.UUID(current_user.id),
                     module_id=module.id,
-                    status="locked",
+                    status="in_progress" if module.module_number == 1 else "locked",
                     completion_pct=0.0,
                     time_spent_minutes=0,
                 )
