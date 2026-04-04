@@ -771,6 +771,12 @@
     "admin": "Administrateur"
   },
   "Admin": {
+    "courses": {
+      "title": "Formations"
+    },
+    "syllabus": {
+      "title": "Syllabus"
+    },
     "settings": {
       "title": "Paramètres de la plateforme",
       "subtitle": "Configurer les paramètres globaux",
@@ -869,6 +875,53 @@
         "update_role": "Rôle mis à jour"
       }
     }
+  },
+  "AdminCourses": {
+    "pageTitle": "Gestion des formations",
+    "pageDescription": "Créez, publiez et gérez les formations avec l'IA",
+    "createCourse": "Créer une formation",
+    "editCourse": "Modifier la formation",
+    "courseCount": "{count, plural, one {# formation} other {# formations}}",
+    "noCourses": "Aucune formation",
+    "noCoursesDescription": "Créez votre première formation pour commencer.",
+    "status": {
+      "draft": "Brouillon",
+      "published": "Publié",
+      "archived": "Archivé"
+    },
+    "estimatedHours": "{hours} h estimées",
+    "moduleCount": "{count, plural, one {# module} other {# modules}}",
+    "generateStructure": "Générer la structure",
+    "generateError": "La génération a échoué. Veuillez réessayer.",
+    "publish": "Publier",
+    "archive": "Archiver",
+    "actions": "Actions",
+    "cancel": "Annuler",
+    "confirm": "Confirmer",
+    "save": "Enregistrer",
+    "close": "Fermer",
+    "titleFr": "Titre (FR)",
+    "titleEn": "Titre (EN)",
+    "titleFrPlaceholder": "ex. Épidémiologie en Afrique de l'Ouest",
+    "titleEnPlaceholder": "e.g. Epidemiology in West Africa",
+    "domain": "Domaine",
+    "domainPlaceholder": "ex. Épidémiologie, Biostatistiques",
+    "targetAudience": "Public cible",
+    "targetAudiencePlaceholder": "ex. Agents de santé communautaire",
+    "estimatedHoursField": "Durée estimée (heures)",
+    "coverImageUrl": "URL de l'image de couverture",
+    "fieldRequired": "Ce champ est requis.",
+    "fieldInvalidHours": "Veuillez entrer un nombre d'heures valide.",
+    "saveError": "Erreur lors de l'enregistrement. Veuillez réessayer.",
+    "errorLoading": "Erreur lors du chargement des formations.",
+    "retry": "Réessayer",
+    "actionError": "L'action a échoué. Veuillez réessayer.",
+    "confirmPublish": "Publier la formation ?",
+    "confirmPublishDesc": "La formation sera visible par tous les apprenants.",
+    "confirmArchive": "Archiver la formation ?",
+    "confirmArchiveDesc": "La formation ne sera plus accessible aux apprenants.",
+    "confirmGenerate": "Générer la structure IA ?",
+    "confirmGenerateDesc": "L'IA va créer automatiquement un plan de modules pour cette formation. Cela peut prendre quelques secondes."
   },
   "AdminSyllabus": {
     "pageTitle": "Gestion du syllabus",

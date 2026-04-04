@@ -46,7 +46,7 @@ export function QuizContainer({
 }: QuizContainerProps) {
   const t = useTranslations('Quiz');
   const { getSetting } = useSettings();
-  const unitQuestionsCount = getSetting<number>("quiz-unit_questions_count", 10);
+  const unitQuestionsCount = getSetting<number>("quiz-unit-questions-count", 10);
   const currentUser = useCurrentUser();
   const resolvedCountry = country || currentUser?.country || 'SN';
   

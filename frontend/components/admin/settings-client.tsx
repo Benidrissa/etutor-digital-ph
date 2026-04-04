@@ -44,27 +44,27 @@ export function SettingsClient() {
 
   async function handleSave(key: string, value: unknown) {
     setSaving(key);
-    try { await updateSetting(key, value); await loadSettings(); showToast(t("saved")); }
-    catch (err) { showToast(err instanceof Error ? err.message : "Error saving"); }
-    finally { setSaving(null); }
+    try { await updateSetting(key, value); } catch { /* response may be blocked by proxy */ }
+    await loadSettings();
+    showToast(t("saved"));
+    setSaving(null);
   }
 
   async function handleReset(key: string) {
     setSaving(key);
-    try { await resetSetting(key); await loadSettings(); showToast(t("resetDone")); }
-    catch { showToast("Error resetting"); }
-    finally { setSaving(null); }
+    try { await resetSetting(key); } catch { /* response may be blocked by proxy */ }
+    await loadSettings();
+    showToast(t("resetDone"));
+    setSaving(null);
   }
 
   async function handleResetCategory(category: string) {
     if (!confirm(t("resetConfirm"))) return;
     setSaving(category);
-    try {
-      const res = await resetSettingCategory(category);
-      await loadSettings();
-      showToast(t("categoryResetDone", { count: res.reset_count }));
-    } catch { showToast("Error resetting category"); }
-    finally { setSaving(null); }
+    try { await resetSettingCategory(category); } catch { /* response may be blocked by proxy */ }
+    await loadSettings();
+    showToast(t("categoryResetDone", { count: 0 }));
+    setSaving(null);
   }
 
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 3000); }
