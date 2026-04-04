@@ -61,6 +61,7 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
         engine = create_async_engine(settings.database_url, echo=False)
         async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
+        # Phase 1: Read course metadata in its own session
         async with async_session() as session:
             result = await session.execute(select(Course).where(Course.id == uuid.UUID(course_id)))
             course = result.scalar_one_or_none()
@@ -72,40 +73,62 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
                     "modules": [],
                 }
 
-            cats = course.taxonomy_categories or []
-
-            self.update_state(
-                state="GENERATING",
-                meta={"step": "calling_claude", "progress": 20, "modules_count": 0},
-            )
-
-            agent = CourseAgentService()
-            module_dicts = await agent.generate_course_structure(
-                title_fr=course.title_fr,
-                title_en=course.title_en,
-                course_domain=[tc.slug for tc in cats if tc.type == "domain"],
-                course_level=[tc.slug for tc in cats if tc.type == "level"],
-                audience_type=[tc.slug for tc in cats if tc.type == "audience"],
-                estimated_hours=estimated_hours or course.estimated_hours,
-            )
-
-            self.update_state(
-                state="SAVING",
-                meta={
-                    "step": "saving",
-                    "progress": 80,
-                    "modules_count": len(module_dicts),
-                },
-            )
-
-            await session.execute(delete(Module).where(Module.course_id == uuid.UUID(course_id)))
-            await session.flush()
-
+            # Cache values before closing session
+            title_fr = course.title_fr
+            title_en = course.title_en
+            course_hours = course.estimated_hours
             rag_collection_id = course.rag_collection_id
+            cats = list(course.taxonomy_categories or [])
+            domain_slugs = [tc.slug for tc in cats if tc.type == "domain"]
+            level_slugs = [tc.slug for tc in cats if tc.type == "level"]
+            audience_slugs = [tc.slug for tc in cats if tc.type == "audience"]
+
+        # Phase 2: Call Claude API (no DB session needed)
+        self.update_state(
+            state="GENERATING",
+            meta={"step": "calling_claude", "progress": 20, "modules_count": 0},
+        )
+
+        agent = CourseAgentService()
+        module_dicts = await agent.generate_course_structure(
+            title_fr=title_fr,
+            title_en=title_en,
+            course_domain=domain_slugs,
+            course_level=level_slugs,
+            audience_type=audience_slugs,
+            estimated_hours=estimated_hours or course_hours,
+        )
+
+        self.update_state(
+            state="SAVING",
+            meta={
+                "step": "saving",
+                "progress": 80,
+                "modules_count": len(module_dicts),
+            },
+        )
+
+        # Build books_sources from uploaded PDF filenames
+        from pathlib import Path
+
+        course_dir = Path("uploads/course_resources") / course_id
+        if course_dir.exists():
+            pdf_names = [f.stem.replace("_", " ") for f in course_dir.glob("*.pdf")]
+            books_sources = {name: [] for name in pdf_names}
+        elif rag_collection_id:
+            books_sources = {rag_collection_id: []}
+        else:
+            books_sources = None
+
+        # Phase 3: Save modules + units in a clean session
+        async with async_session() as session:
+            await session.execute(delete(Module).where(Module.course_id == uuid.UUID(course_id)))
+
             saved_modules = []
             for i, m in enumerate(module_dicts):
+                module_id = uuid.uuid4()
                 module = Module(
-                    id=uuid.uuid4(),
+                    id=module_id,
                     module_number=i + 1,
                     level=1,
                     title_fr=m["title_fr"],
@@ -115,36 +138,49 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
                     estimated_hours=m.get("estimated_hours", 20),
                     bloom_level=m.get("bloom_level"),
                     course_id=uuid.UUID(course_id),
-                    books_sources={rag_collection_id: []} if rag_collection_id else None,
+                    books_sources=books_sources,
                 )
                 session.add(module)
-                await session.flush()
 
+                # Save units from AI response
                 for j, u in enumerate(m.get("units", [])):
                     unit = ModuleUnit(
                         id=uuid.uuid4(),
-                        module_id=module.id,
-                        unit_number=str(j + 1),
+                        module_id=module_id,
+                        unit_number=f"{i + 1}.{j + 1}",
                         title_fr=u.get("title_fr", f"Unité {j + 1}"),
                         title_en=u.get("title_en", f"Unit {j + 1}"),
                         description_fr=u.get("description_fr"),
                         description_en=u.get("description_en"),
+                        estimated_minutes=15,
                         order_index=j,
                     )
                     session.add(unit)
 
                 saved_modules.append(
                     {
-                        "id": str(module.id),
-                        "module_number": module.module_number,
-                        "title_fr": module.title_fr,
-                        "title_en": module.title_en,
+                        "id": str(module_id),
+                        "module_number": i + 1,
+                        "title_fr": m["title_fr"],
+                        "title_en": m["title_en"],
                         "units_count": len(m.get("units", [])),
                     }
                 )
 
-            course.module_count = len(module_dicts)
-            course.syllabus_json = module_dicts
+            # Update course metadata via raw SQL to avoid selectin loading
+            import json
+
+            from sqlalchemy import text
+
+            await session.execute(
+                text("UPDATE courses SET module_count = :mc, syllabus_json = :sj WHERE id = :cid"),
+                {
+                    "mc": len(module_dicts),
+                    "sj": json.dumps(module_dicts),
+                    "cid": course_id,
+                },
+            )
+
             await session.commit()
 
             logger.info(

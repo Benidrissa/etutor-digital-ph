@@ -171,9 +171,11 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                 },
             )
 
+            # Use PDF filename (without extension) as readable source for citations
+            source_name = pdf_path.stem.replace("_", " ")
             chunks = await pipeline.process_pdf_document(
                 pdf_path=str(pdf_path),
-                source=rag_collection_id,
+                source=source_name,
             )
             total_chunks += chunks
 

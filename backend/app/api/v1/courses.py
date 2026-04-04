@@ -251,12 +251,11 @@ async def enroll_in_course(
             )
         )
         if prog_result.scalar_one_or_none() is None:
-            module_status = "in_progress" if module.module_number == 1 else "locked"
             db.add(
                 UserModuleProgress(
                     user_id=uuid.UUID(current_user.id),
                     module_id=module.id,
-                    status=module_status,
+                    status="in_progress" if module.module_number == 1 else "locked",
                     completion_pct=0.0,
                     time_spent_minutes=0,
                 )
