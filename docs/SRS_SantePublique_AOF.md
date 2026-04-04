@@ -44,6 +44,7 @@ La plateforme génère dynamiquement du contenu pédagogique à partir de 3 ouvr
 | Intégration DHIS2 données réelles | | ❌ Phase 2 |
 | LMS institutionnel (SCORM) | | ❌ Phase 3 |
 | Certification officielle (PDF + badge) | | ❌ Phase 2 |
+| Système de crédits & marketplace expert | | ✅ Phase 2 |
 
 ---
 
@@ -382,6 +383,54 @@ Rendre la formation en santé publique de niveau expert accessible à tous les p
 - **AC2:** Quiz généré en < 5s (P95)
 - **AC3:** Skeleton loader + progress indicator pendant la génération
 - **AC4:** Fallback gracieux si l'API Claude est indisponible (contenu cache ou message d'erreur)
+
+---
+
+### Epic 15 : Billing, Credits & Expert Marketplace
+
+**US-070** *(P0 — CRITIQUE)* — En tant qu'apprenant, je veux recharger des crédits via un moyen de paiement afin de financer mon accès au contenu IA, aux modules offline et aux cours d'experts.
+- **AC1:** Interface de rechargement avec sélection de forfaits de crédits disponibles
+- **AC2:** Intégration Paystack pour le paiement (carte, mobile money)
+- **AC3:** Crédits crédités sur le compte immédiatement après confirmation du paiement
+- **AC4:** Historique des transactions accessible dans le profil
+
+**US-071** *(P0 — CRITIQUE)* — En tant qu'apprenant, je veux utiliser mes crédits pour accéder au contenu IA généré, aux modules téléchargeables offline et aux cours d'experts.
+- **AC1:** Chaque interaction IA (leçon, quiz, tuteur) consomme un nombre défini de crédits
+- **AC2:** Téléchargement d'un module pour usage offline déduit des crédits
+- **AC3:** Inscription à un cours d'expert déduit le prix en crédits
+- **AC4:** Solde de crédits visible en permanence dans le header
+- **AC5:** Alerte quand le solde est inférieur à 10 crédits
+
+**US-072** *(P1 — ÉLEVÉE)* — En tant qu'utilisateur, je veux activer un compte expert en dépensant des crédits d'activation afin de pouvoir créer et vendre des cours.
+- **AC1:** Page d'activation expert avec description des avantages et coût en crédits
+- **AC2:** Déduction des crédits d'activation lors de la validation
+- **AC3:** Rôle "expert" activé sur le compte après confirmation
+- **AC4:** Accès au tableau de bord expert après activation
+
+**US-073** *(P1 — ÉLEVÉE)* — En tant qu'expert, je veux créer des cours et les mettre en vente sur la marketplace afin de générer des revenus.
+- **AC1:** Interface de création de cours avec titre (FR/EN), description, modules, prix en crédits
+- **AC2:** Upload de contenu (PDF, vidéo, exercices)
+- **AC3:** Workflow de publication : brouillon → soumis → validé par admin → publié
+- **AC4:** Prix en crédits configurable par l'expert
+
+**US-074** *(P1 — ÉLEVÉE)* — En tant qu'expert, je veux accéder à un tableau de bord avec le suivi de mes apprenants, les analytics et mes revenus.
+- **AC1:** Nombre d'apprenants inscrits à chaque cours
+- **AC2:** Taux de complétion moyen par cours
+- **AC3:** Revenus en crédits générés (total + par période)
+- **AC4:** Scores moyens aux quiz par cours
+- **AC5:** Demande de retrait des revenus en monnaie locale
+
+**US-075** *(P2 — MOYENNE)* — En tant qu'apprenant, je veux laisser un avis et une note sur un cours d'expert afin d'aider les autres apprenants.
+- **AC1:** Note de 1 à 5 étoiles après complétion d'au moins 30% du cours
+- **AC2:** Commentaire texte optionnel (max 500 caractères)
+- **AC3:** Note moyenne affichée sur la carte du cours dans la marketplace
+- **AC4:** Un seul avis par apprenant par cours
+
+**US-076** *(P1 — ÉLEVÉE)* — En tant que plateforme, je veux collecter une commission sur les ventes de cours d'experts afin de financer l'infrastructure.
+- **AC1:** Commission de 20% automatiquement prélevée sur chaque vente
+- **AC2:** Expert reçoit 80% du prix en crédits sur son solde
+- **AC3:** Dashboard admin avec récapitulatif des commissions perçues
+- **AC4:** Rapport mensuel de commissions exportable en CSV
 
 ---
 
@@ -919,11 +968,28 @@ course_reviews {
   id UUID PRIMARY KEY,
   course_id UUID FK → courses.id,
   user_id UUID FK → users.id,
-  rating INT CHECK (1-5),
+  rating INT CHECK (rating BETWEEN 1 AND 5),
   comment TEXT,
   created_at TIMESTAMP,
-  updated_at TIMESTAMP,
-  UNIQUE(course_id, user_id)
+  UNIQUE (course_id, user_id)
+}
+```
+
+**Tables mises à jour :**
+
+```sql
+-- courses (champs ajoutés)
+courses {
+  ...
+  is_marketplace BOOLEAN DEFAULT false,  -- Cours vendu sur la marketplace
+  expert_id UUID FK → users.id,          -- Expert créateur (nullable pour cours plateforme)
+  rating_avg FLOAT DEFAULT 0.0           -- Note moyenne (recalculée)
+}
+
+-- user_course_enrollment (champ ajouté)
+user_course_enrollment {
+  ...
+  payment_transaction_id UUID FK → transactions.id  -- Transaction d'achat (nullable si cours gratuit)
 }
 ```
 
@@ -940,6 +1006,7 @@ course_reviews {
 | WHO AFRO Open Data | Bulletins épidémiologiques régionaux | who.int/afro/data | Hebdomadaire |
 | PubMed API (E-utils) | Articles récents santé publique AOF | eutils.ncbi.nlm.nih.gov | Mensuelle |
 | Local Auth (FastAPI) | Auth email+password, TOTP 2FA, email OTP, magic link, JWT+refresh | pyotp, python-jose, PyJWT | Temps réel |
+| Paystack | Paiements carte et mobile money (Orange Money, MTN MoMo, Wave) | api.paystack.co/v1 | Événementiel |
 | Resend / Sendgrid | Emails transactionnels, rappels | API email | Événementiel |
 | Cloudflare | CDN, Edge caching, DDoS protection | Workers SDK | Continu |
 | Sentry | Monitoring erreurs frontend + backend | Sentry SDK | Continu |
