@@ -568,3 +568,102 @@ export async function resetSettingCategory(
 ): Promise<{ category: string; reset_count: number }> {
   return apiFetch(`/api/v1/admin/settings/reset-category/${category}`, { method: "POST" });
 }
+
+// ── Marketplace API Types ──────────────────────────────────────
+
+export interface ExpertProfile {
+  id: string;
+  name: string;
+  avatar_url?: string;
+  bio_fr?: string;
+  bio_en?: string;
+  courses_count: number;
+}
+
+export interface CourseModule {
+  id: string;
+  title_fr: string;
+  title_en: string;
+  order_index: number;
+}
+
+export interface CourseReview {
+  id: string;
+  user_id: string;
+  user_name: string;
+  user_avatar_url?: string;
+  rating: number;
+  comment?: string;
+  created_at: string;
+}
+
+export interface CourseReviewsResponse {
+  reviews: CourseReview[];
+  total: number;
+  average_rating: number;
+  review_count: number;
+  page: number;
+  page_size: number;
+}
+
+export interface CourseDetailResponse extends CourseResponse {
+  expert?: ExpertProfile;
+  modules_preview: CourseModule[];
+  average_rating: number;
+  review_count: number;
+  price_credits: number;
+  is_free: boolean;
+}
+
+export interface UserBalance {
+  balance: number;
+  currency: string;
+}
+
+export interface PurchaseResponse {
+  enrollment_id: string;
+  course_id: string;
+  credits_spent: number;
+  balance_after: number;
+}
+
+export interface ReviewSubmission {
+  course_id: string;
+  rating: number;
+  comment?: string;
+}
+
+export async function getCourseBySlug(slug: string): Promise<CourseDetailResponse> {
+  return apiFetch<CourseDetailResponse>(`/api/v1/courses/slug/${slug}`);
+}
+
+export async function getCourseReviews(
+  courseId: string,
+  page = 1,
+  pageSize = 10
+): Promise<CourseReviewsResponse> {
+  return apiFetch<CourseReviewsResponse>(
+    `/api/v1/courses/${courseId}/reviews?page=${page}&page_size=${pageSize}`
+  );
+}
+
+export async function purchaseCourse(courseId: string): Promise<PurchaseResponse> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<PurchaseResponse>(
+    `/api/v1/courses/${courseId}/purchase`,
+    { method: "POST" }
+  );
+}
+
+export async function getUserBalance(): Promise<UserBalance> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<UserBalance>("/api/v1/users/balance");
+}
+
+export async function submitCourseReview(data: ReviewSubmission): Promise<CourseReview> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<CourseReview>(`/api/v1/courses/${data.course_id}/reviews`, {
+    method: "POST",
+    body: JSON.stringify({ rating: data.rating, comment: data.comment }),
+  });
+}
