@@ -2,9 +2,19 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
-import { Plus, MessageSquare, X } from 'lucide-react';
+import { Plus, MessageSquare, X, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { ChatPanel } from '@/components/chat';
 import { ChatProvider } from '@/components/chat';
 import { cn } from '@/lib/utils';
@@ -12,6 +22,8 @@ import {
   fetchConversations,
   getOfflineConversations,
   invalidateConversationsCache,
+  deleteConversation,
+  deleteAllConversations,
   type ConversationSummary,
 } from '@/lib/tutor-api';
 
@@ -22,6 +34,8 @@ export function TutorPageClient() {
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [showClearAllDialog, setShowClearAllDialog] = useState(false);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -83,11 +97,31 @@ export function TutorPageClient() {
     []
   );
 
+  const handleDeleteConversation = async (id: string) => {
+    try {
+      await deleteConversation(id);
+    } catch { /* proxy may block response */ }
+    if (selectedConversation === id) {
+      setSelectedConversation(null);
+    }
+    setDeleteTarget(null);
+    await loadConversations();
+  };
+
+  const handleClearAll = async () => {
+    try {
+      await deleteAllConversations();
+    } catch { /* proxy may block response */ }
+    setSelectedConversation(null);
+    setShowClearAllDialog(false);
+    await loadConversations();
+  };
+
   const selectedConvData = conversations.find((c) => c.id === selectedConversation);
 
   const conversationListContent = (
     <>
-      <div className="p-3 border-b shrink-0">
+      <div className="p-3 border-b shrink-0 space-y-2">
         <Button
           className="w-full justify-start gap-2 min-h-[44px]"
           variant="outline"
@@ -96,6 +130,17 @@ export function TutorPageClient() {
           <Plus className="h-4 w-4" />
           {t('newConversation')}
         </Button>
+        {conversations.length > 0 && (
+          <Button
+            className="w-full justify-start gap-2 min-h-[44px]"
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowClearAllDialog(true)}
+          >
+            <Trash2 className="h-4 w-4" />
+            {t('clearAll')}
+          </Button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto min-h-0">
@@ -127,7 +172,7 @@ export function TutorPageClient() {
               <Card
                 key={conversation.id}
                 className={cn(
-                  'p-3 cursor-pointer transition-colors hover:bg-accent/50',
+                  'p-3 cursor-pointer transition-colors hover:bg-accent/50 group',
                   selectedConversation === conversation.id && 'bg-accent border-primary'
                 )}
                 onClick={() => handleConversationSelect(conversation.id)}
@@ -160,6 +205,16 @@ export function TutorPageClient() {
                   <span className="text-xs text-muted-foreground">
                     {t('messageCount', { count: conversation.message_count })}
                   </span>
+                  <button
+                    className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity min-w-[44px] min-h-[44px] flex items-center justify-center md:opacity-0 md:group-hover:opacity-100"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteTarget(conversation.id);
+                    }}
+                    aria-label={t('deleteConversation')}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
               </Card>
             ))}
@@ -244,6 +299,38 @@ export function TutorPageClient() {
           {selectedConvData.preview || t('newConversationTitle')}
         </div>
       )}
+
+      {/* Delete single conversation dialog */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('confirmDeleteConversation')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('confirmDeleteConversationDescription')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => deleteTarget && handleDeleteConversation(deleteTarget)}>
+              {t('deleteConversation')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Clear all conversations dialog */}
+      <AlertDialog open={showClearAllDialog} onOpenChange={setShowClearAllDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('confirmClearAll')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('confirmClearAllDescription')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleClearAll}>
+              {t('clearAll')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </ChatProvider>
   );
 }

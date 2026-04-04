@@ -35,6 +35,7 @@ import {
   getOfflineConversation,
   invalidateConversationCache,
   invalidateConversationsCache,
+  deleteConversation as apiDeleteConversation,
 } from '@/lib/tutor-api';
 
 interface ChatPanelProps {
@@ -312,9 +313,16 @@ export function ChatPanel({
     }
   };
 
-  const handleClearHistory = () => {
+  const handleClearHistory = async () => {
+    if (activeConversationId) {
+      try {
+        await apiDeleteConversation(activeConversationId);
+      } catch { /* proxy may block response */ }
+    }
     setMessages([welcomeMessage]);
+    setActiveConversationId(null);
     setShowClearDialog(false);
+    onConversationCreated?.('');  // Signal parent to refresh list
   };
 
   if (!isOpen) return null;

@@ -300,3 +300,40 @@ async def get_remaining_messages(
         "daily_limit": stats["daily_messages_limit"],
         "messages_used": stats["daily_messages_used"],
     }
+
+
+@router.delete(
+    "/conversations/{conversation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_conversation(
+    conversation_id: uuid.UUID,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    tutor_service: TutorService = Depends(get_tutor_service),
+) -> None:
+    """Delete a specific conversation."""
+    deleted = await tutor_service.delete_conversation(
+        user_id=current_user.id,
+        conversation_id=conversation_id,
+        session=session,
+    )
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found",
+        )
+
+
+@router.delete("/conversations")
+async def delete_all_conversations(
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    tutor_service: TutorService = Depends(get_tutor_service),
+) -> dict[str, int]:
+    """Delete all conversations for the authenticated user."""
+    count = await tutor_service.delete_all_conversations(
+        user_id=current_user.id,
+        session=session,
+    )
+    return {"deleted_count": count}
