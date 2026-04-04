@@ -1,13 +1,13 @@
 {
   "Common": {
-    "appName": "SantePublique",
+    "appName": "Tutor",
     "loading": "Loading...",
     "offline": "You are offline — cached content available",
     "error": "An error occurred"
   },
   "PWA": {
     "installTitle": "Install App",
-    "installDescription": "Add SantePublique to your home screen for quick access and an optimized experience.",
+    "installDescription": "Add Tutor to your home screen for quick access and an optimized experience.",
     "install": "Install",
     "later": "Later"
   },
@@ -145,7 +145,7 @@
   },
   "Dashboard": {
     "title": "Dashboard",
-    "welcome": "Welcome to SantePublique",
+    "welcome": "Welcome to Tutor",
     "subtitle": "Your public health learning platform",
     "streak": "Day streak",
     "nextReview": "Next review",
@@ -432,7 +432,7 @@
     "goToModules": "Go to Modules"
   },
   "Onboarding": {
-    "welcome": "Welcome to SantePublique",
+    "welcome": "Welcome to Tutor",
     "subtitle": "Let's set up your personalized learning experience",
     "step": "Step {current} of {total}",
     "next": "Next",
