@@ -44,7 +44,7 @@ export function CourseCard({ course }: CourseCardProps) {
   };
 
   const handleViewModules = () => {
-    router.push(`/modules`);
+    router.push(`/modules?course_id=${course.id}`);
   };
 
   return (

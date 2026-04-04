@@ -281,6 +281,9 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
     setGenerateTaskState(null);
 
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 300000); // 5 min timeout
+
       const result = await apiFetch<{ task_id: string; status: string }>(
         `/api/v1/admin/courses/${courseId}/generate-structure`,
         {
@@ -288,11 +291,17 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
           body: JSON.stringify({
             estimated_hours: courseInfo.estimated_hours,
           }),
+          signal: controller.signal,
         }
       );
+      clearTimeout(timeout);
       setGenerateTaskId(result.task_id);
-    } catch {
-      setGenerateError(t("generate.error"));
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setGenerateError(t("generate.error") + " (timeout)");
+      } else {
+        setGenerateError(t("generate.error"));
+      }
       setIsGenerating(false);
     }
   }, [courseId, courseInfo, t]);

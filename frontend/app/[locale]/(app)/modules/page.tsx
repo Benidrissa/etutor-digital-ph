@@ -2,11 +2,14 @@
 
 import { useTranslations } from 'next-intl';
 import { useRouter } from '@/i18n/routing';
+import { useSearchParams } from 'next/navigation';
 import { ModuleMap } from '@/components/learning/module-map';
 
 export default function ModulesPage() {
   const t = useTranslations('ModuleMap');
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const courseId = searchParams.get('course_id') ?? undefined;
 
   const handleModuleClick = (moduleId: string) => {
     router.push(`/modules/${moduleId}`);
@@ -23,7 +26,7 @@ export default function ModulesPage() {
         </p>
       </div>
 
-      <ModuleMap onModuleClick={handleModuleClick} />
+      <ModuleMap onModuleClick={handleModuleClick} courseId={courseId} />
     </div>
   );
 }
