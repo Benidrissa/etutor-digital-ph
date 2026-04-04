@@ -29,8 +29,9 @@ class CreateCourseRequest(BaseModel):
     title_en: str
     description_fr: str | None = None
     description_en: str | None = None
-    domain: str | None = None
-    target_audience: str | None = None
+    course_domain: list[str] = []
+    course_level: list[str] = []
+    audience_type: list[str] = []
     languages: str = "fr,en"
     estimated_hours: int = 20
     cover_image_url: str | None = None
@@ -44,8 +45,9 @@ class CourseResponse(BaseModel):
     title_en: str
     description_fr: str | None
     description_en: str | None
-    domain: str | None
-    target_audience: str | None
+    course_domain: list[str]
+    course_level: list[str]
+    audience_type: list[str]
     languages: str
     estimated_hours: int
     module_count: int
@@ -65,8 +67,9 @@ def _course_to_response(course: Course) -> CourseResponse:
         title_en=course.title_en,
         description_fr=course.description_fr,
         description_en=course.description_en,
-        domain=course.domain,
-        target_audience=course.target_audience,
+        course_domain=list(course.course_domain or []),
+        course_level=list(course.course_level or []),
+        audience_type=list(course.audience_type or []),
         languages=course.languages,
         estimated_hours=course.estimated_hours,
         module_count=course.module_count,
@@ -122,8 +125,9 @@ async def create_course(
         title_en=request.title_en,
         description_fr=request.description_fr,
         description_en=request.description_en,
-        domain=request.domain,
-        target_audience=request.target_audience,
+        course_domain=request.course_domain,
+        course_level=request.course_level,
+        audience_type=request.audience_type,
         languages=request.languages,
         estimated_hours=request.estimated_hours,
         cover_image_url=request.cover_image_url,
@@ -234,7 +238,6 @@ async def archive_course(
 
 class GenerateStructureRequest(BaseModel):
     estimated_hours: int = 20
-    target_audience: str | None = None
 
 
 @router.post("/{course_id}/generate-structure")
@@ -253,15 +256,19 @@ async def generate_course_structure(
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
 
-    max_number_result = await db.execute(select(func.max(Module.module_number)))
+    # Module numbers are per-course, start at 1
+    max_number_result = await db.execute(
+        select(func.max(Module.module_number)).where(Module.course_id == course_id)
+    )
     max_number = max_number_result.scalar_one() or 0
 
     agent = CourseAgentService()
     module_dicts = await agent.generate_course_structure(
         title_fr=course.title_fr,
         title_en=course.title_en,
-        domain=course.domain,
-        target_audience=request.target_audience or course.target_audience,
+        course_domain=list(course.course_domain or []),
+        course_level=list(course.course_level or []),
+        audience_type=list(course.audience_type or []),
         estimated_hours=request.estimated_hours or course.estimated_hours,
     )
 
