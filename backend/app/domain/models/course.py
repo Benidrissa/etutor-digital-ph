@@ -75,15 +75,9 @@ class Course(Base):
     title_en: Mapped[str] = mapped_column(Text)
     description_fr: Mapped[str | None] = mapped_column(Text)
     description_en: Mapped[str | None] = mapped_column(Text)
-    course_domain: Mapped[list[str]] = mapped_column(
-        ARRAY(_domain_enum), server_default="{}"
-    )
-    course_level: Mapped[list[str]] = mapped_column(
-        ARRAY(_level_enum), server_default="{}"
-    )
-    audience_type: Mapped[list[str]] = mapped_column(
-        ARRAY(_audience_enum), server_default="{}"
-    )
+    course_domain: Mapped[list[str]] = mapped_column(ARRAY(_domain_enum), server_default="{}")
+    course_level: Mapped[list[str]] = mapped_column(ARRAY(_level_enum), server_default="{}")
+    audience_type: Mapped[list[str]] = mapped_column(ARRAY(_audience_enum), server_default="{}")
     languages: Mapped[str] = mapped_column(String, server_default="fr,en")
     estimated_hours: Mapped[int] = mapped_column(server_default="20")
     module_count: Mapped[int] = mapped_column(server_default="0")

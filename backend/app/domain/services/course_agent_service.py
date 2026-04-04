@@ -127,7 +127,10 @@ class CourseAgentService:
                     messages=[
                         {"role": "user", "content": prompt},
                         {"role": "assistant", "content": message.content[0].text},
-                        {"role": "user", "content": "The JSON was truncated. Please complete it from where you stopped. Return ONLY the remaining JSON to complete the array."},
+                        {
+                            "role": "user",
+                            "content": "The JSON was truncated. Please complete it from where you stopped. Return ONLY the remaining JSON to complete the array.",
+                        },
                     ],
                 )
 

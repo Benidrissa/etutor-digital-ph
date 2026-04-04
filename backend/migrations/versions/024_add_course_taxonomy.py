@@ -60,16 +60,13 @@ def upgrade() -> None:
 
     # --- Add array columns ---
     op.execute(
-        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS "
-        "course_domain coursedomain[] DEFAULT '{}'"
+        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS course_domain coursedomain[] DEFAULT '{}'"
     )
     op.execute(
-        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS "
-        "course_level courselevel[] DEFAULT '{}'"
+        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS course_level courselevel[] DEFAULT '{}'"
     )
     op.execute(
-        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS "
-        "audience_type audiencetype[] DEFAULT '{}'"
+        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS audience_type audiencetype[] DEFAULT '{}'"
     )
 
     # --- Migrate existing seed course ---
@@ -89,16 +86,13 @@ def upgrade() -> None:
 
     # --- Indexes for array filtering (GIN) ---
     op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_courses_course_domain "
-        "ON courses USING GIN (course_domain)"
+        "CREATE INDEX IF NOT EXISTS ix_courses_course_domain ON courses USING GIN (course_domain)"
     )
     op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_courses_course_level "
-        "ON courses USING GIN (course_level)"
+        "CREATE INDEX IF NOT EXISTS ix_courses_course_level ON courses USING GIN (course_level)"
     )
     op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_courses_audience_type "
-        "ON courses USING GIN (audience_type)"
+        "CREATE INDEX IF NOT EXISTS ix_courses_audience_type ON courses USING GIN (audience_type)"
     )
 
 

@@ -167,9 +167,7 @@ class EnrollmentResponse(BaseModel):
     completion_pct: float
 
 
-def _course_to_list_item(
-    course: Course, enrolled: bool = False
-) -> CourseListItem:
+def _course_to_list_item(course: Course, enrolled: bool = False) -> CourseListItem:
     return CourseListItem(
         id=str(course.id),
         slug=course.slug,
@@ -196,10 +194,9 @@ def _course_to_list_item(
 @router.get("/taxonomy")
 async def get_taxonomy() -> dict:
     """Return valid taxonomy values with bilingual labels. No auth."""
+
     def _to_list(labels: dict[str, dict[str, str]]) -> list[dict]:
-        return [
-            {"value": k, **v} for k, v in labels.items()
-        ]
+        return [{"value": k, **v} for k, v in labels.items()]
 
     return {
         "domains": _to_list(DOMAIN_LABELS),
@@ -210,40 +207,22 @@ async def get_taxonomy() -> dict:
 
 @router.get("", response_model=list[CourseListItem])
 async def list_published_courses(
-    course_domain: str | None = Query(
-        None, description="Filter by domain (enum value)"
-    ),
-    course_level: str | None = Query(
-        None, description="Filter by level (enum value)"
-    ),
-    audience_type: str | None = Query(
-        None, description="Filter by audience type (enum value)"
-    ),
-    search: str | None = Query(
-        None, description="Search in title FR/EN"
-    ),
+    course_domain: str | None = Query(None, description="Filter by domain (enum value)"),
+    course_level: str | None = Query(None, description="Filter by level (enum value)"),
+    audience_type: str | None = Query(None, description="Filter by audience type (enum value)"),
+    search: str | None = Query(None, description="Search in title FR/EN"),
     current_user=Depends(get_optional_user),
     db=Depends(get_db_session),
 ) -> list[CourseListItem]:
     """Browse published courses. No auth required."""
-    stmt = (
-        select(Course)
-        .where(Course.status == "published")
-        .order_by(Course.published_at.desc())
-    )
+    stmt = select(Course).where(Course.status == "published").order_by(Course.published_at.desc())
 
     if course_domain:
-        stmt = stmt.where(
-            Course.course_domain.any(course_domain)
-        )
+        stmt = stmt.where(Course.course_domain.any(course_domain))
     if course_level:
-        stmt = stmt.where(
-            Course.course_level.any(course_level)
-        )
+        stmt = stmt.where(Course.course_level.any(course_level))
     if audience_type:
-        stmt = stmt.where(
-            Course.audience_type.any(audience_type)
-        )
+        stmt = stmt.where(Course.audience_type.any(audience_type))
 
     result = await db.execute(stmt)
     courses = result.scalars().all()
@@ -251,27 +230,20 @@ async def list_published_courses(
     if search:
         q = search.lower()
         courses = [
-            c
-            for c in courses
-            if q in (c.title_fr or "").lower()
-            or q in (c.title_en or "").lower()
+            c for c in courses if q in (c.title_fr or "").lower() or q in (c.title_en or "").lower()
         ]
 
     enrolled_ids: set[str] = set()
     if current_user:
         enroll_result = await db.execute(
             select(UserCourseEnrollment.course_id).where(
-                UserCourseEnrollment.user_id
-                == uuid.UUID(current_user.id),
+                UserCourseEnrollment.user_id == uuid.UUID(current_user.id),
                 UserCourseEnrollment.status == "active",
             )
         )
         enrolled_ids = {str(row[0]) for row in enroll_result.all()}
 
-    return [
-        _course_to_list_item(c, enrolled=str(c.id) in enrolled_ids)
-        for c in courses
-    ]
+    return [_course_to_list_item(c, enrolled=str(c.id) in enrolled_ids) for c in courses]
 
 
 @router.get("/my-enrollments", response_model=list[CourseListItem])
@@ -285,10 +257,7 @@ async def my_enrollments(
         .join(
             UserCourseEnrollment,
             (UserCourseEnrollment.course_id == Course.id)
-            & (
-                UserCourseEnrollment.user_id
-                == uuid.UUID(current_user.id)
-            )
+            & (UserCourseEnrollment.user_id == uuid.UUID(current_user.id))
             & (UserCourseEnrollment.status == "active"),
         )
         .order_by(UserCourseEnrollment.enrolled_at.desc())
@@ -305,9 +274,7 @@ async def enroll_in_course(
 ) -> EnrollmentResponse:
     """Enroll the current user in a published course."""
     course_result = await db.execute(
-        select(Course).where(
-            Course.id == course_id, Course.status == "published"
-        )
+        select(Course).where(Course.id == course_id, Course.status == "published")
     )
     course = course_result.scalar_one_or_none()
     if not course:
@@ -318,8 +285,7 @@ async def enroll_in_course(
 
     existing_result = await db.execute(
         select(UserCourseEnrollment).where(
-            UserCourseEnrollment.user_id
-            == uuid.UUID(current_user.id),
+            UserCourseEnrollment.user_id == uuid.UUID(current_user.id),
             UserCourseEnrollment.course_id == course_id,
         )
     )
@@ -345,15 +311,12 @@ async def enroll_in_course(
     )
     db.add(enrollment)
 
-    modules_result = await db.execute(
-        select(Module).where(Module.course_id == course_id)
-    )
+    modules_result = await db.execute(select(Module).where(Module.course_id == course_id))
     modules = modules_result.scalars().all()
     for module in modules:
         prog_result = await db.execute(
             select(UserModuleProgress).where(
-                UserModuleProgress.user_id
-                == uuid.UUID(current_user.id),
+                UserModuleProgress.user_id == uuid.UUID(current_user.id),
                 UserModuleProgress.module_id == module.id,
             )
         )
@@ -397,8 +360,7 @@ async def unenroll_from_course(
     """Drop enrollment in a course."""
     result = await db.execute(
         select(UserCourseEnrollment).where(
-            UserCourseEnrollment.user_id
-            == uuid.UUID(current_user.id),
+            UserCourseEnrollment.user_id == uuid.UUID(current_user.id),
             UserCourseEnrollment.course_id == course_id,
         )
     )
