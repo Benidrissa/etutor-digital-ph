@@ -884,6 +884,30 @@
         "demote_to_user": "Rétrogradé Utilisateur",
         "update_role": "Rôle mis à jour"
       }
+    },
+    "taxonomy": {
+      "title": "Taxonomie",
+      "subtitle": "Gérer les domaines, niveaux et types de public des cours",
+      "addCategory": "Ajouter une catégorie",
+      "editCategory": "Modifier",
+      "deleteCategory": "Supprimer",
+      "deleteConfirm": "Supprimer cette catégorie ?",
+      "deleteConfirmDesc": "Cette action est irréversible.",
+      "deleteBlocked": "Impossible de supprimer : utilisée par un ou plusieurs cours.",
+      "slug": "Identifiant",
+      "labelFr": "Libellé français",
+      "labelEn": "Libellé anglais",
+      "sortOrder": "Ordre",
+      "active": "Actif",
+      "inactive": "Inactif",
+      "save": "Enregistrer",
+      "cancel": "Annuler",
+      "saved": "Enregistré",
+      "sections": {
+        "domain": "Domaines",
+        "level": "Niveaux",
+        "audience": "Publics"
+      }
     }
   },
   "Courses": {
@@ -914,40 +938,6 @@
     "allAudiences": "Tous les publics",
     "clearFilters": "Effacer les filtres",
     "activeFilters": "{count, plural, one {# filtre actif} other {# filtres actifs}}"
-  },
-  "Taxonomy": {
-    "domains": {
-      "health_sciences": "Sciences de la santé",
-      "natural_sciences": "Sciences naturelles",
-      "social_sciences": "Sciences sociales",
-      "mathematics": "Mathématiques",
-      "engineering": "Ingénierie",
-      "information_technology": "Informatique",
-      "education": "Éducation",
-      "arts_humanities": "Arts et lettres",
-      "business_management": "Gestion et commerce",
-      "law": "Droit",
-      "agriculture": "Agriculture",
-      "environmental_studies": "Études environnementales",
-      "other": "Autre"
-    },
-    "levels": {
-      "beginner": "Débutant",
-      "intermediate": "Intermédiaire",
-      "advanced": "Avancé",
-      "expert": "Expert"
-    },
-    "audience_types": {
-      "kindergarten": "Maternelle",
-      "primary_school": "Primaire",
-      "secondary_school": "Secondaire",
-      "university": "Universitaire",
-      "professional": "Professionnel",
-      "researcher": "Chercheur",
-      "teacher": "Enseignant",
-      "policy_maker": "Décideur politique",
-      "continuing_education": "Formation continue"
-    }
   },
   "AdminCourses": {
     "pageTitle": "Gestion des formations",

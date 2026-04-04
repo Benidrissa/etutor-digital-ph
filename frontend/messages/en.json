@@ -884,6 +884,30 @@
         "demote_to_user": "Demoted to User",
         "update_role": "Updated role"
       }
+    },
+    "taxonomy": {
+      "title": "Taxonomy",
+      "subtitle": "Manage course domains, levels and audience types",
+      "addCategory": "Add category",
+      "editCategory": "Edit",
+      "deleteCategory": "Delete",
+      "deleteConfirm": "Delete this category?",
+      "deleteConfirmDesc": "This cannot be undone.",
+      "deleteBlocked": "Cannot delete: used by one or more courses.",
+      "slug": "Slug",
+      "labelFr": "French label",
+      "labelEn": "English label",
+      "sortOrder": "Order",
+      "active": "Active",
+      "inactive": "Inactive",
+      "save": "Save",
+      "cancel": "Cancel",
+      "saved": "Saved",
+      "sections": {
+        "domain": "Domains",
+        "level": "Levels",
+        "audience": "Audiences"
+      }
     }
   },
   "Courses": {
@@ -914,40 +938,6 @@
     "allAudiences": "All audiences",
     "clearFilters": "Clear filters",
     "activeFilters": "{count, plural, one {# active filter} other {# active filters}}"
-  },
-  "Taxonomy": {
-    "domains": {
-      "health_sciences": "Health Sciences",
-      "natural_sciences": "Natural Sciences",
-      "social_sciences": "Social Sciences",
-      "mathematics": "Mathematics",
-      "engineering": "Engineering",
-      "information_technology": "Information Technology",
-      "education": "Education",
-      "arts_humanities": "Arts & Humanities",
-      "business_management": "Business & Management",
-      "law": "Law",
-      "agriculture": "Agriculture",
-      "environmental_studies": "Environmental Studies",
-      "other": "Other"
-    },
-    "levels": {
-      "beginner": "Beginner",
-      "intermediate": "Intermediate",
-      "advanced": "Advanced",
-      "expert": "Expert"
-    },
-    "audience_types": {
-      "kindergarten": "Kindergarten",
-      "primary_school": "Primary School",
-      "secondary_school": "Secondary School",
-      "university": "University",
-      "professional": "Professional",
-      "researcher": "Researcher",
-      "teacher": "Teacher",
-      "policy_maker": "Policy Maker",
-      "continuing_education": "Continuing Education"
-    }
   },
   "AdminCourses": {
     "pageTitle": "Course Management",
