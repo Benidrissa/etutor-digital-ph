@@ -18,14 +18,8 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.execute(
-        "ALTER TABLE module_media "
-        "RENAME COLUMN metadata TO media_metadata"
-    )
+    op.execute("ALTER TABLE module_media RENAME COLUMN metadata TO media_metadata")
 
 
 def downgrade() -> None:
-    op.execute(
-        "ALTER TABLE module_media "
-        "RENAME COLUMN media_metadata TO metadata"
-    )
+    op.execute("ALTER TABLE module_media RENAME COLUMN media_metadata TO metadata")
