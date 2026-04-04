@@ -49,19 +49,13 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
     )
 
     async def _run_generation():
-        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-        from sqlalchemy.orm import sessionmaker
-
         from app.domain.models.course import Course
         from app.domain.models.module import Module
         from app.domain.models.module_unit import ModuleUnit
         from app.domain.services.course_agent_service import CourseAgentService
-        from app.infrastructure.config.settings import settings
+        from app.infrastructure.persistence.database import async_session_factory
 
-        engine = create_async_engine(settings.database_url, echo=False)
-        async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-
-        async with async_session() as session:
+        async with async_session_factory() as session:
             result = await session.execute(select(Course).where(Course.id == uuid.UUID(course_id)))
             course = result.scalar_one_or_none()
             if not course:
@@ -72,7 +66,14 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
                     "modules": [],
                 }
 
-            cats = course.taxonomy_categories or []
+            cats = list(course.taxonomy_categories or [])
+            course_domain = [tc.slug for tc in cats if tc.type == "domain"]
+            course_level = [tc.slug for tc in cats if tc.type == "level"]
+            audience_type = [tc.slug for tc in cats if tc.type == "audience"]
+            title_fr = course.title_fr
+            title_en = course.title_en
+            effective_hours = estimated_hours or course.estimated_hours
+            rag_collection_id = course.rag_collection_id
 
             self.update_state(
                 state="GENERATING",
@@ -81,12 +82,12 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
 
             agent = CourseAgentService()
             module_dicts = await agent.generate_course_structure(
-                title_fr=course.title_fr,
-                title_en=course.title_en,
-                course_domain=[tc.slug for tc in cats if tc.type == "domain"],
-                course_level=[tc.slug for tc in cats if tc.type == "level"],
-                audience_type=[tc.slug for tc in cats if tc.type == "audience"],
-                estimated_hours=estimated_hours or course.estimated_hours,
+                title_fr=title_fr,
+                title_en=title_en,
+                course_domain=course_domain,
+                course_level=course_level,
+                audience_type=audience_type,
+                estimated_hours=effective_hours,
             )
 
             self.update_state(
@@ -99,9 +100,7 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
             )
 
             await session.execute(delete(Module).where(Module.course_id == uuid.UUID(course_id)))
-            await session.flush()
 
-            rag_collection_id = course.rag_collection_id
             saved_modules = []
             for i, m in enumerate(module_dicts):
                 module = Module(
@@ -118,7 +117,6 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
                     books_sources={rag_collection_id: []} if rag_collection_id else None,
                 )
                 session.add(module)
-                await session.flush()
 
                 for j, u in enumerate(m.get("units", [])):
                     unit = ModuleUnit(
