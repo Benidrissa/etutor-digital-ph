@@ -771,6 +771,12 @@
     "admin": "Administrator"
   },
   "Admin": {
+    "courses": {
+      "title": "Courses"
+    },
+    "syllabus": {
+      "title": "Syllabus"
+    },
     "settings": {
       "title": "Platform Settings",
       "subtitle": "Configure platform-wide parameters",
@@ -869,6 +875,73 @@
         "update_role": "Updated role"
       }
     }
+  },
+  "Courses": {
+    "title": "Course Catalog",
+    "subtitle": "Browse and enroll in public health courses",
+    "loading": "Loading courses...",
+    "error": "Failed to load courses. Please try again.",
+    "noCourses": "No courses available",
+    "noCoursesDescription": "Check back soon for new courses.",
+    "enroll": "Enroll",
+    "enrolled": "Enrolled",
+    "enrolling": "Enrolling...",
+    "enrollSuccess": "Successfully enrolled!",
+    "enrollError": "Enrollment failed. Please try again.",
+    "viewModules": "View Modules",
+    "hours": "{count, plural, one {# hour} other {# hours}}",
+    "modules": "{count, plural, one {# module} other {# modules}}",
+    "loginToEnroll": "Sign in to enroll",
+    "alreadyEnrolled": "Already enrolled",
+    "domain": "Domain",
+    "tryAgain": "Try again"
+  },
+  "AdminCourses": {
+    "pageTitle": "Course Management",
+    "pageDescription": "Create, publish and manage courses with AI",
+    "createCourse": "Create course",
+    "editCourse": "Edit course",
+    "courseCount": "{count, plural, one {# course} other {# courses}}",
+    "noCourses": "No courses yet",
+    "noCoursesDescription": "Create your first course to get started.",
+    "status": {
+      "draft": "Draft",
+      "published": "Published",
+      "archived": "Archived"
+    },
+    "estimatedHours": "{hours} h estimated",
+    "moduleCount": "{count, plural, one {# module} other {# modules}}",
+    "generateStructure": "Generate structure",
+    "generateError": "Generation failed. Please try again.",
+    "publish": "Publish",
+    "archive": "Archive",
+    "actions": "Actions",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save",
+    "close": "Close",
+    "titleFr": "Title (FR)",
+    "titleEn": "Title (EN)",
+    "titleFrPlaceholder": "e.g. Épidémiologie en Afrique de l'Ouest",
+    "titleEnPlaceholder": "e.g. Epidemiology in West Africa",
+    "domain": "Domain",
+    "domainPlaceholder": "e.g. Epidemiology, Biostatistics",
+    "targetAudience": "Target audience",
+    "targetAudiencePlaceholder": "e.g. Community health workers",
+    "estimatedHoursField": "Estimated duration (hours)",
+    "coverImageUrl": "Cover image URL",
+    "fieldRequired": "This field is required.",
+    "fieldInvalidHours": "Please enter a valid number of hours.",
+    "saveError": "Failed to save. Please try again.",
+    "errorLoading": "Failed to load courses.",
+    "retry": "Retry",
+    "actionError": "Action failed. Please try again.",
+    "confirmPublish": "Publish course?",
+    "confirmPublishDesc": "The course will be visible to all learners.",
+    "confirmArchive": "Archive course?",
+    "confirmArchiveDesc": "The course will no longer be accessible to learners.",
+    "confirmGenerate": "Generate AI structure?",
+    "confirmGenerateDesc": "The AI will automatically create a module outline for this course. This may take a few seconds."
   },
   "AdminSyllabus": {
     "pageTitle": "Syllabus Management",
