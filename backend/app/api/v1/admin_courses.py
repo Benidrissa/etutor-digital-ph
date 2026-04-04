@@ -8,7 +8,7 @@ from pathlib import Path
 from celery.result import AsyncResult
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from structlog import get_logger
 
 from app.api.deps import get_db as get_db_session
@@ -256,11 +256,9 @@ async def generate_course_structure(
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
 
-    # Module numbers are per-course, start at 1
-    max_number_result = await db.execute(
-        select(func.max(Module.module_number)).where(Module.course_id == course_id)
-    )
-    max_number = max_number_result.scalar_one() or 0
+    # Clear existing modules — regenerate replaces, not appends
+    await db.execute(delete(Module).where(Module.course_id == course_id))
+    await db.flush()
 
     agent = CourseAgentService()
     module_dicts = await agent.generate_course_structure(
@@ -276,7 +274,7 @@ async def generate_course_structure(
     for i, m in enumerate(module_dicts):
         module = Module(
             id=uuid.uuid4(),
-            module_number=max_number + i + 1,
+            module_number=i + 1,
             level=1,
             title_fr=m["title_fr"],
             title_en=m["title_en"],
