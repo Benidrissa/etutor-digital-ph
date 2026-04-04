@@ -7,11 +7,13 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.ai.claude_service import ClaudeService
 from app.ai.rag.retriever import SemanticRetriever
 from app.api.v1.schemas.quiz import QuizContent, QuizResponse
 from app.domain.models.content import GeneratedContent
+from app.domain.models.course import Course
 from app.domain.models.module import Module
 from app.domain.services.platform_settings_service import SettingsCache
 
@@ -217,9 +219,16 @@ class QuizService:
         """
         try:
             module: Module | None = None
+            course: Course | None = None
             if session is not None:
-                module_result = await session.execute(select(Module).where(Module.id == module_id))
+                module_result = await session.execute(
+                    select(Module)
+                    .where(Module.id == module_id)
+                    .options(selectinload(Module.course))
+                )
                 module = module_result.scalar_one_or_none()
+                if module:
+                    course = module.course
 
             search_query = self._build_quiz_search_query(module, unit_id, language)
             search_results = await self.semantic_retriever.search_for_module(
@@ -247,6 +256,14 @@ class QuizService:
                 country=country,
                 level=level,
                 num_questions=num_questions,
+                course_title=(
+                    (course.title_fr if language == "fr" else course.title_en) if course else None
+                ),
+                course_description=(
+                    (course.description_fr if language == "fr" else course.description_en)
+                    if course
+                    else None
+                ),
             )
 
             response = await self.claude_service.generate_structured_content(
@@ -289,6 +306,8 @@ class QuizService:
         country: str,
         level: int,
         num_questions: int,
+        course_title: str | None = None,
+        course_description: str | None = None,
     ) -> tuple[str, str]:
         """Build the system and user prompts for Claude API to generate quiz questions."""
 
@@ -300,17 +319,41 @@ class QuizService:
             4: "expert (research, policy implications)",
         }
 
-        system_prompt = """You are an expert public health educator creating adaptive quiz content for West African health professionals.
+        domain = course_title or "public health"
 
-CRITICAL: You MUST respond with valid JSON ONLY. No preamble, no explanation, no markdown code fences. Your entire response must be a single JSON object starting with { and ending with }. The JSON must have exactly these top-level keys: "title", "description", "questions", "time_limit_minutes", "passing_score"."""
+        system_prompt = f"""You are an expert educator creating adaptive quiz content for West African professionals in {domain}.
 
-        user_message = f"""Create a multiple-choice quiz for public health professionals in West Africa.
+CRITICAL: You MUST respond with valid JSON ONLY. No preamble, no explanation, no markdown code fences. Your entire response must be a single JSON object starting with {{ and ending with }}. The JSON must have exactly these top-level keys: "title", "description", "questions", "time_limit_minutes", "passing_score"."""
+
+        audience = (
+            f"professionals in {domain} in {country}"
+            if course_title
+            else f"public health professionals in {country}"
+        )
+        context_note = (
+            f"Use examples relevant to {country} and West African context when possible, adapted to {domain}"
+            if course_title
+            else f"Use examples relevant to {country} and West African context when possible"
+        )
+        practical_note = (
+            f"Focus on practical applications for {domain} work"
+            if course_title
+            else "Focus on practical applications for public health work"
+        )
+        closing_note = (
+            f"Generate the quiz now, ensuring all questions are relevant to {domain} practice in West Africa."
+            if course_title
+            else "Generate the quiz now, ensuring all questions are relevant to public health practice in West Africa."
+        )
+
+        user_message = f"""Create a multiple-choice quiz for {audience}.
 
 CONTEXT MATERIAL:
 {context}
 
 QUIZ REQUIREMENTS:
-- Target audience: Public health professionals in {country}
+- Target audience: {audience.capitalize()}
+- Domain: {domain}
 - Language: {lang_instruction}
 - Level: {level_desc.get(level, "intermediate")}
 - Unit: {unit_id}
@@ -324,9 +367,9 @@ INSTRUCTIONS:
 3. Only ONE option should be correct
 4. Include clear explanations for why the correct answer is right
 5. Add source citations from the context material
-6. Use examples relevant to {country} and West African context when possible
+6. {context_note}
 7. Progress from easier to harder questions
-8. Focus on practical applications for public health work
+8. {practical_note}
 
 RESPONSE FORMAT (JSON):
 {{
@@ -352,7 +395,7 @@ RESPONSE FORMAT (JSON):
   "passing_score": {SettingsCache.instance().get("quiz-passing-score", 80.0)}
 }}
 
-Generate the quiz now, ensuring all questions are relevant to public health practice in West Africa."""
+{closing_note}"""
 
         return system_prompt, user_message
 

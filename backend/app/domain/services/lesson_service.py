@@ -9,6 +9,7 @@ import structlog
 from sqlalchemy import and_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.ai.claude_service import ClaudeService
 from app.ai.prompts.case_study import (
@@ -25,6 +26,7 @@ from app.api.v1.schemas.content import (
     StreamingEvent,
 )
 from app.domain.models.content import GeneratedContent
+from app.domain.models.course import Course
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.services.platform_settings_service import SettingsCache
@@ -82,8 +84,10 @@ class LessonGenerationService:
                 )
                 return cached_lesson
 
-        # Get module information
-        module_result = await session.execute(select(Module).where(Module.id == module_id))
+        # Get module information (eager-load course for prompt context)
+        module_result = await session.execute(
+            select(Module).where(Module.id == module_id).options(selectinload(Module.course))
+        )
         module = module_result.scalar_one_or_none()
 
         if not module:
@@ -141,8 +145,10 @@ class LessonGenerationService:
                 yield StreamingEvent(event="complete", data=cached_lesson.model_dump())
                 return
 
-            # Get module information
-            module_result = await session.execute(select(Module).where(Module.id == module_id))
+            # Get module information (eager-load course for prompt context)
+            module_result = await session.execute(
+                select(Module).where(Module.id == module_id).options(selectinload(Module.course))
+            )
             module = module_result.scalar_one_or_none()
 
             if not module:
@@ -177,7 +183,21 @@ class LessonGenerationService:
             yield StreamingEvent(event="chunk", data="Documents trouvés, génération en cours...")
 
             # Generate lesson using Claude API with streaming
-            system_prompt = get_lesson_system_prompt(language, country, level, module.bloom_level)
+            course: Course | None = module.course
+            system_prompt = get_lesson_system_prompt(
+                language,
+                country,
+                level,
+                module.bloom_level,
+                course_title=(
+                    (course.title_fr if language == "fr" else course.title_en) if course else None
+                ),
+                course_description=(
+                    (course.description_fr if language == "fr" else course.description_en)
+                    if course
+                    else None
+                ),
+            )
             user_message = format_rag_context_for_lesson(
                 rag_chunks,
                 query,
@@ -286,7 +306,21 @@ class LessonGenerationService:
             raise ValueError(f"No relevant content found for module {module.id}, unit {unit_id}")
 
         # Generate content with Claude
-        system_prompt = get_lesson_system_prompt(language, country, level, module.bloom_level)
+        course: Course | None = module.course
+        system_prompt = get_lesson_system_prompt(
+            language,
+            country,
+            level,
+            module.bloom_level,
+            course_title=(
+                (course.title_fr if language == "fr" else course.title_en) if course else None
+            ),
+            course_description=(
+                (course.description_fr if language == "fr" else course.description_en)
+                if course
+                else None
+            ),
+        )
         user_message = format_rag_context_for_lesson(
             rag_chunks,
             query,
@@ -520,7 +554,9 @@ class CaseStudyGenerationService:
                 )
                 return cached
 
-        module_result = await session.execute(select(Module).where(Module.id == module_id))
+        module_result = await session.execute(
+            select(Module).where(Module.id == module_id).options(selectinload(Module.course))
+        )
         module = module_result.scalar_one_or_none()
 
         if not module:
@@ -567,7 +603,9 @@ class CaseStudyGenerationService:
                 yield StreamingEvent(event="complete", data=cached.model_dump())
                 return
 
-            module_result = await session.execute(select(Module).where(Module.id == module_id))
+            module_result = await session.execute(
+                select(Module).where(Module.id == module_id).options(selectinload(Module.course))
+            )
             module = module_result.scalar_one_or_none()
 
             if not module:
@@ -600,8 +638,20 @@ class CaseStudyGenerationService:
             yield StreamingEvent(event="chunk", data="Documents trouvés, génération en cours...")
 
             module_key = f"M{module.module_number:02d}"
+            course: Course | None = module.course
             system_prompt = get_case_study_system_prompt(
-                language, country, level, module.bloom_level
+                language,
+                country,
+                level,
+                module.bloom_level,
+                course_title=(
+                    (course.title_fr if language == "fr" else course.title_en) if course else None
+                ),
+                course_description=(
+                    (course.description_fr if language == "fr" else course.description_en)
+                    if course
+                    else None
+                ),
             )
             user_message = format_rag_context_for_case_study(
                 rag_chunks,
@@ -610,6 +660,7 @@ class CaseStudyGenerationService:
                 unit_id,
                 language,
                 module_id=module_key,
+                syllabus_json=course.syllabus_json if course else None,
             )
 
             accumulated_content = ""
@@ -708,7 +759,21 @@ class CaseStudyGenerationService:
             raise ValueError(f"No relevant content found for module {module.id}, unit {unit_id}")
 
         module_key = f"M{module.module_number:02d}"
-        system_prompt = get_case_study_system_prompt(language, country, level, module.bloom_level)
+        course: Course | None = module.course
+        system_prompt = get_case_study_system_prompt(
+            language,
+            country,
+            level,
+            module.bloom_level,
+            course_title=(
+                (course.title_fr if language == "fr" else course.title_en) if course else None
+            ),
+            course_description=(
+                (course.description_fr if language == "fr" else course.description_en)
+                if course
+                else None
+            ),
+        )
         user_message = format_rag_context_for_case_study(
             rag_chunks,
             query,
@@ -716,6 +781,7 @@ class CaseStudyGenerationService:
             unit_id,
             language,
             module_id=module_key,
+            syllabus_json=course.syllabus_json if course else None,
         )
 
         response = await self.claude_service.generate_lesson_content(system_prompt, user_message)

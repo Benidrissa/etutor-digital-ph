@@ -37,7 +37,12 @@ CASE_STUDY_TOPICS = {
 
 
 def get_case_study_system_prompt(
-    language: Literal["fr", "en"], country: str, level: int, bloom_level: str
+    language: Literal["fr", "en"],
+    country: str,
+    level: int,
+    bloom_level: str,
+    course_title: str | None = None,
+    course_description: str | None = None,
 ) -> str:
     """Generate system prompt for case study content generation."""
 
@@ -45,10 +50,35 @@ def get_case_study_system_prompt(
     country_name = country_names.get(country, country)
 
     if language == "fr":
-        return f"""Tu es un expert pédagogue en santé publique spécialisé en Afrique de l'Ouest.
-Tu génères des études de cas éducatives adaptatives pour des professionnels de santé au {country_name}.
+        if course_title:
+            expert_role = f"Tu es un expert pédagogue en {course_title} spécialisé pour le contexte d'Afrique de l'Ouest."
+            audience_line = f"Tu génères des études de cas éducatives adaptatives pour des professionnels au {country_name} dans le domaine : {course_title}."
+            mission_line = f"Créer une étude de cas structurée basée sur une situation réelle liée à {course_title} en AOF."
+            context_section = (
+                f"   - Présente la situation géographique, économique et organisationnelle\n"
+                f"   - Décrit le contexte institutionnel du pays concerné\n"
+                f"   - Fournit les indicateurs pertinents pour {course_title} avant l'événement"
+            )
+            data_sources = "   - Sources : organisations professionnelles, rapports institutionnels, données du secteur"
+            conclusion_line = f"   - Relie les conclusions aux pratiques de {course_title} en AOF"
+        else:
+            expert_role = (
+                "Tu es un expert pédagogue en santé publique spécialisé en Afrique de l'Ouest."
+            )
+            audience_line = f"Tu génères des études de cas éducatives adaptatives pour des professionnels de santé au {country_name}."
+            mission_line = "Créer une étude de cas structurée basée sur un événement de santé publique réel en AOF."
+            context_section = (
+                "   - Présente la situation géographique, économique et sanitaire\n"
+                "   - Décrit le système de santé du pays concerné\n"
+                "   - Fournit les indicateurs de santé pertinents avant l'événement"
+            )
+            data_sources = "   - Sources : DHIS2, OMS AFRO, MSF, ministère de la santé"
+            conclusion_line = "   - Relie les conclusions aux pratiques de santé publique en AOF"
 
-MISSION : Créer une étude de cas structurée basée sur un événement de santé publique réel en AOF.
+        return f"""{expert_role}
+{audience_line}
+
+MISSION : {mission_line}
 
 CONTEXTE UTILISATEUR :
 - Pays : {country_name}
@@ -59,15 +89,13 @@ CONTEXTE UTILISATEUR :
 STRUCTURE REQUISE pour l'étude de cas :
 
 1. **Contexte AOF** (2-3 paragraphes)
-   - Présente la situation géographique, économique et sanitaire
-   - Décrit le système de santé du pays concerné
-   - Fournit les indicateurs de santé pertinents avant l'événement
+{context_section}
 
 2. **Données réelles** (tableaux ou listes structurées)
-   - Données épidémiologiques : cas confirmés, décès, taux d'attaque
+   - Données quantitatives : chiffres clés, indicateurs mesurables
    - Données temporelles : chronologie de l'événement
-   - Données géographiques : distribution des cas
-   - Sources : DHIS2, OMS AFRO, MSF, ministère de la santé
+   - Données géographiques ou organisationnelles : distribution des faits
+{data_sources}
 
 3. **Questions guidées** (4-6 questions progressives)
    - Niveau débutant : questions d'identification et de description
@@ -79,7 +107,7 @@ STRUCTURE REQUISE pour l'étude de cas :
    - Répond à chaque question guidée avec une explication complète
    - Cite les références bibliographiques utilisées
    - Propose des leçons apprises et recommandations
-   - Relie les conclusions aux pratiques de santé publique en AOF
+{conclusion_line}
 
 EXIGENCES CRITIQUES :
 - Base-toi UNIQUEMENT sur les documents fournis - ne pas inventer d'informations
@@ -91,10 +119,37 @@ EXIGENCES CRITIQUES :
 RÉPONSE ATTENDUE : Étude de cas directement utilisable, structurée en 4 sections numérotées."""
 
     else:
-        return f"""You are a public health education expert specializing in West Africa.
-You generate adaptive educational case studies for health professionals in {country_name}.
+        if course_title:
+            expert_role = f"You are an expert educator in {course_title} specializing in the West African context."
+            audience_line = f"You generate adaptive educational case studies for professionals in {country_name} in the domain: {course_title}."
+            mission_line = f"Create a structured case study based on a real situation related to {course_title} in West Africa."
+            context_section = (
+                f"   - Present the geographic, economic and organizational situation\n"
+                f"   - Describe the institutional context of the country concerned\n"
+                f"   - Provide relevant indicators for {course_title} before the event"
+            )
+            data_sources = (
+                "   - Sources: professional organizations, institutional reports, sector data"
+            )
+            conclusion_line = f"   - Links conclusions to {course_title} practices in West Africa"
+        else:
+            expert_role = "You are a public health education expert specializing in West Africa."
+            audience_line = f"You generate adaptive educational case studies for health professionals in {country_name}."
+            mission_line = (
+                "Create a structured case study based on a real public health event in West Africa."
+            )
+            context_section = (
+                "   - Present the geographic, economic and health situation\n"
+                "   - Describe the health system of the country concerned\n"
+                "   - Provide relevant health indicators before the event"
+            )
+            data_sources = "   - Sources: DHIS2, WHO AFRO, MSF, Ministry of Health"
+            conclusion_line = "   - Links conclusions to public health practices in West Africa"
 
-MISSION: Create a structured case study based on a real public health event in West Africa.
+        return f"""{expert_role}
+{audience_line}
+
+MISSION: {mission_line}
 
 USER CONTEXT:
 - Country: {country_name}
@@ -105,15 +160,13 @@ USER CONTEXT:
 REQUIRED STRUCTURE for the case study:
 
 1. **AOF Context** (2-3 paragraphs)
-   - Present the geographic, economic and health situation
-   - Describe the health system of the country concerned
-   - Provide relevant health indicators before the event
+{context_section}
 
 2. **Real Data** (tables or structured lists)
-   - Epidemiological data: confirmed cases, deaths, attack rates
+   - Quantitative data: key figures, measurable indicators
    - Temporal data: event timeline
-   - Geographic data: case distribution
-   - Sources: DHIS2, WHO AFRO, MSF, Ministry of Health
+   - Geographic or organizational data: distribution of facts
+{data_sources}
 
 3. **Guided Questions** (4-6 progressive questions)
    - Beginner level: identification and description questions
@@ -125,16 +178,41 @@ REQUIRED STRUCTURE for the case study:
    - Answers each guided question with full explanation
    - Cites used bibliographic references
    - Proposes lessons learned and recommendations
-   - Links conclusions to public health practices in West Africa
+{conclusion_line}
 
 CRITICAL REQUIREMENTS:
 - Base content ONLY on provided documents - do not invent information
 - Cite sources in brackets [Donaldson Ch.3, p.45]
-- Use real or realistic data for AOF context
+- Use real or realistic data for West African context
 - Adapt question complexity to level {level}/4
 - Include at least one verifiable numeric data point
 
 EXPECTED RESPONSE: Directly usable case study, structured in 4 numbered sections."""
+
+
+def _get_case_study_topic(
+    module_id: str | None,
+    language: Literal["fr", "en"],
+    syllabus_json: dict | None = None,
+) -> str | None:
+    """Resolve case study topic from syllabus_json or fallback to CASE_STUDY_TOPICS."""
+    if syllabus_json:
+        case_study_topics = syllabus_json.get("case_study_topics") or syllabus_json.get(
+            "case_studies"
+        )
+        if isinstance(case_study_topics, list) and case_study_topics:
+            first = case_study_topics[0]
+            if isinstance(first, dict):
+                return first.get(language) or first.get("fr") or first.get("en") or str(first)
+            return str(first)
+        if isinstance(case_study_topics, dict):
+            return case_study_topics.get(language) or case_study_topics.get("fr")
+
+    module_key = module_id.upper() if module_id else None
+    if module_key and module_key in CASE_STUDY_TOPICS:
+        return CASE_STUDY_TOPICS[module_key][language]
+
+    return None
 
 
 def format_rag_context_for_case_study(
@@ -144,13 +222,11 @@ def format_rag_context_for_case_study(
     unit_id: str,
     language: Literal["fr", "en"],
     module_id: str | None = None,
+    syllabus_json: dict | None = None,
 ) -> str:
     """Format RAG chunks into context for case study generation."""
 
-    module_key = module_id.upper() if module_id else None
-    topic = None
-    if module_key and module_key in CASE_STUDY_TOPICS:
-        topic = CASE_STUDY_TOPICS[module_key][language]
+    topic = _get_case_study_topic(module_id, language, syllabus_json)
 
     if language == "fr":
         topic_line = f'Sujet recommandé : "{topic}"\n' if topic else ""
