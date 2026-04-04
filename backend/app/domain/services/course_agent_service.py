@@ -110,39 +110,31 @@ class CourseAgentService:
 
             message = await client.messages.create(
                 model="claude-sonnet-4-6",
-                max_tokens=16384,
+                max_tokens=64000,
                 messages=[{"role": "user", "content": prompt}],
             )
+
+            # Check for truncation
+            if message.stop_reason == "max_tokens":
+                logger.warning(
+                    "Response truncated at max_tokens, retrying",
+                    course=title_en,
+                    stop_reason=message.stop_reason,
+                )
+                message = await client.messages.create(
+                    model="claude-sonnet-4-6",
+                    max_tokens=64000,
+                    messages=[
+                        {"role": "user", "content": prompt},
+                        {"role": "assistant", "content": message.content[0].text},
+                        {"role": "user", "content": "The JSON was truncated. Please complete it from where you stopped. Return ONLY the remaining JSON to complete the array."},
+                    ],
+                )
 
             raw = message.content[0].text.strip()
             if raw.startswith("```"):
                 raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-
-            try:
-                modules_raw: list[dict[str, Any]] = json.loads(raw)
-            except json.JSONDecodeError:
-                # Response was truncated — retry with shorter output request
-                logger.warning(
-                    "JSON parse failed, retrying with compact format",
-                    course=title_en,
-                )
-                compact_prompt = (
-                    f"Generate a course outline for '{title_en}' ({estimated_hours}h). "
-                    f"Return a JSON array of 5-10 modules. Each module: "
-                    f'{{"title_fr": str, "title_en": str, "description_fr": str, '
-                    f'"description_en": str, "estimated_hours": int, '
-                    f'"bloom_level": "remember"|"understand"|"apply"|"analyze"|"evaluate"|"create"}}. '
-                    f"ONLY valid JSON, no markdown."
-                )
-                retry_msg = await client.messages.create(
-                    model="claude-sonnet-4-6",
-                    max_tokens=4096,
-                    messages=[{"role": "user", "content": compact_prompt}],
-                )
-                raw = retry_msg.content[0].text.strip()
-                if raw.startswith("```"):
-                    raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-                modules_raw = json.loads(raw)
+            modules_raw: list[dict[str, Any]] = json.loads(raw)
 
             modules = []
             for i, m in enumerate(modules_raw, start=1):
