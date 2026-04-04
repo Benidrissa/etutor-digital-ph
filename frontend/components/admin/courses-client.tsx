@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -13,6 +13,7 @@ import {
   Loader2,
   AlertCircle,
   BookOpen,
+  RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +36,14 @@ import { apiFetch } from '@/lib/api';
 import { authClient, AuthError } from '@/lib/auth';
 import { CourseForm } from '@/components/admin/course-form';
 import { CourseWizardClient } from '@/components/admin/course-wizard-client';
+import type { CourseWizardClientProps } from '@/components/admin/course-wizard-client';
+
+const WIZARD_STORAGE_KEY = 'wizard_state';
+
+interface WizardPersistedState {
+  courseId: string;
+  step: CourseWizardClientProps['resumeStep'];
+}
 
 export interface AdminCourse {
   id: string;
@@ -49,6 +58,14 @@ export interface AdminCourse {
   created_at: string;
   updated_at: string;
   module_count?: number;
+  indexation_task_id?: string | null;
+}
+
+interface IndexStatusResponse {
+  indexed: boolean;
+  chunks_indexed: number;
+  indexation_task_id?: string;
+  task?: { state: string };
 }
 
 type PendingAction =
@@ -63,6 +80,15 @@ function useAdminCourses() {
   });
 }
 
+function useIndexStatus(courseId: string | null) {
+  return useQuery<IndexStatusResponse>({
+    queryKey: ['admin', 'course-index-status', courseId],
+    queryFn: () => apiFetch<IndexStatusResponse>(`/api/v1/admin/courses/${courseId}/index-status`),
+    enabled: !!courseId,
+    refetchInterval: 5000,
+  });
+}
+
 export function CoursesClient() {
   const t = useTranslations('AdminCourses');
   const locale = useLocale();
@@ -72,11 +98,28 @@ export function CoursesClient() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<AdminCourse | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardResumeProps, setWizardResumeProps] = useState<{
+    courseId?: string;
+    step?: CourseWizardClientProps['resumeStep'];
+  }>({});
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
 
   const { data: courses, isLoading, error, refetch } = useAdminCourses();
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(WIZARD_STORAGE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as WizardPersistedState;
+        if (saved.courseId && saved.step) {
+          setWizardResumeProps({ courseId: saved.courseId, step: saved.step });
+        }
+      }
+    } catch {
+    }
+  }, []);
 
   const publishMutation = useMutation({
     mutationFn: (courseId: string) =>
@@ -155,6 +198,27 @@ export function CoursesClient() {
     queryClient.invalidateQueries({ queryKey: ['admin', 'courses'] });
   };
 
+  const handleOpenWizard = () => {
+    setWizardResumeProps({});
+    setWizardOpen(true);
+  };
+
+  const handleResumeWizard = (courseId: string) => {
+    setWizardResumeProps({ courseId, step: 'index' });
+    setWizardOpen(true);
+  };
+
+  const handleWizardClose = () => {
+    setWizardOpen(false);
+    setWizardResumeProps({});
+  };
+
+  const handleWizardCourseCreated = () => {
+    setWizardOpen(false);
+    setWizardResumeProps({});
+    queryClient.invalidateQueries({ queryKey: ['admin', 'courses'] });
+  };
+
   const confirmTitle =
     pendingAction?.type === 'publish'
       ? t('confirmPublish')
@@ -168,6 +232,11 @@ export function CoursesClient() {
       : pendingAction?.type === 'archive'
         ? t('confirmArchiveDesc')
         : t('confirmGenerateDesc');
+
+  const inProgressCourseIds = new Set<string>();
+  if (wizardResumeProps.courseId) {
+    inProgressCourseIds.add(wizardResumeProps.courseId);
+  }
 
   if (isLoading) {
     return (
@@ -197,7 +266,7 @@ export function CoursesClient() {
             {t('courseCount', { count: courses?.length ?? 0 })}
           </p>
           <Button
-            onClick={() => setWizardOpen(true)}
+            onClick={handleOpenWizard}
             className="gap-2 min-h-11"
           >
             <Plus className="h-4 w-4" aria-hidden="true" />
@@ -222,10 +291,15 @@ export function CoursesClient() {
                 key={course.id}
                 course={course}
                 generatingId={generatingId}
+                isIndexingInProgress={
+                  wizardResumeProps.courseId === course.id ||
+                  !!course.indexation_task_id
+                }
                 onPublish={(c) => setPendingAction({ type: 'publish', course: c })}
                 onArchive={(c) => setPendingAction({ type: 'archive', course: c })}
                 onGenerateStructure={(c) => setPendingAction({ type: 'generate', course: c })}
                 onEdit={(c) => { setEditingCourse(c); setFormOpen(true); }}
+                onResumeIndexing={(c) => handleResumeWizard(c.id)}
               />
             ))}
           </div>
@@ -242,11 +316,10 @@ export function CoursesClient() {
 
       {wizardOpen && (
         <CourseWizardClient
-          onClose={() => setWizardOpen(false)}
-          onCourseCreated={() => {
-            setWizardOpen(false);
-            queryClient.invalidateQueries({ queryKey: ['admin', 'courses'] });
-          }}
+          onClose={handleWizardClose}
+          onCourseCreated={handleWizardCourseCreated}
+          resumeCourseId={wizardResumeProps.courseId}
+          resumeStep={wizardResumeProps.step}
         />
       )}
 
@@ -306,20 +379,34 @@ export function CoursesClient() {
 function CourseRow({
   course,
   generatingId,
+  isIndexingInProgress,
   onPublish,
   onArchive,
   onGenerateStructure,
   onEdit,
+  onResumeIndexing,
 }: {
   course: AdminCourse;
   generatingId: string | null;
+  isIndexingInProgress: boolean;
   onPublish: (c: AdminCourse) => void;
   onArchive: (c: AdminCourse) => void;
   onGenerateStructure: (c: AdminCourse) => void;
   onEdit: (c: AdminCourse) => void;
+  onResumeIndexing: (c: AdminCourse) => void;
 }) {
   const t = useTranslations('AdminCourses');
   const locale = useLocale();
+
+  const { data: indexStatus } = useIndexStatus(
+    isIndexingInProgress ? course.id : null
+  );
+
+  const isRunning =
+    isIndexingInProgress &&
+    indexStatus?.task?.state !== 'SUCCESS' &&
+    indexStatus?.task?.state !== 'FAILURE' &&
+    !indexStatus?.indexed;
 
   const title = locale === 'fr' ? course.title_fr : course.title_en;
 
@@ -343,6 +430,12 @@ function CourseRow({
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-sm truncate">{title}</span>
             <Badge variant={statusVariant}>{t(`status.${course.status}`)}</Badge>
+            {isRunning && (
+              <Badge className="bg-amber-100 text-amber-700 border-amber-300 gap-1">
+                <RefreshCw className="h-3 w-3 animate-spin" aria-hidden="true" />
+                {t('indexingBadge')}
+              </Badge>
+            )}
           </div>
           {(course.course_domain?.length > 0 || course.course_level?.length > 0) && (
             <div className="flex gap-1 flex-wrap">
@@ -371,6 +464,19 @@ function CourseRow({
         </button>
 
         <div className="flex items-center gap-2 shrink-0">
+          {isRunning && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 min-h-11 hidden sm:flex text-amber-700 border-amber-300 hover:bg-amber-50"
+              onClick={() => onResumeIndexing(course)}
+              aria-label={t('resumeCreation')}
+            >
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              <span className="hidden md:inline">{t('resumeCreation')}</span>
+            </Button>
+          )}
+
           <Button
             variant="outline"
             size="sm"
@@ -405,6 +511,12 @@ function CourseRow({
                 <BookOpen className="mr-2 h-4 w-4" />
                 {t('editCourse')}
               </DropdownMenuItem>
+              {isRunning && (
+                <DropdownMenuItem onClick={() => onResumeIndexing(course)}>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  {t('resumeCreation')}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 className="sm:hidden"
                 onClick={() => onGenerateStructure(course)}

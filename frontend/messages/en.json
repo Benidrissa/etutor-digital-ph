@@ -1076,7 +1076,22 @@
         "error": "Indexation failed.",
         "polling": "Checking status...",
         "taskPending": "Waiting to start...",
-        "taskRunning": "Indexing PDFs..."
+        "taskRunning": "Indexing PDFs...",
+        "stepExtracting": "Extracting text...",
+        "stepChunking": "Chunking documents...",
+        "stepEmbedding": "Generating embeddings...",
+        "stepStoring": "Storing chunks...",
+        "stepComplete": "Indexation complete",
+        "etaSeconds": "~{seconds}s remaining",
+        "etaMinutes": "~{minutes} min remaining",
+        "filesProgress": "File {processed}/{total}",
+        "chunksProgress": "{count} chunks processed",
+        "closeWhileRunning": "Indexation is running. You can close and come back later.",
+        "closeConfirmTitle": "Close wizard?",
+        "closeConfirmDesc": "Indexation keeps running in the background. You can resume from the course list.",
+        "closeConfirmStay": "Stay",
+        "closeConfirmLeave": "Close",
+        "resumeHint": "Indexation is running in the background — close and come back later if needed."
       },
       "publish": {
         "title": "Publish course",
@@ -1094,6 +1109,8 @@
         }
       }
     },
+    "indexingBadge": "Indexing...",
+    "resumeCreation": "Resume course creation",
     "errors": {
       "load": "Failed to load courses.",
       "publish": "Failed to publish course.",

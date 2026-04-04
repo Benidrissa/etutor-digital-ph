@@ -1076,7 +1076,22 @@
         "error": "Erreur lors de l'indexation.",
         "polling": "Vérification du statut...",
         "taskPending": "En attente de démarrage...",
-        "taskRunning": "Indexation des PDFs..."
+        "taskRunning": "Indexation des PDFs...",
+        "stepExtracting": "Extraction du texte...",
+        "stepChunking": "Découpage en fragments...",
+        "stepEmbedding": "Génération des embeddings...",
+        "stepStoring": "Enregistrement des fragments...",
+        "stepComplete": "Indexation terminée",
+        "etaSeconds": "~{seconds}s restantes",
+        "etaMinutes": "~{minutes} min restantes",
+        "filesProgress": "Fichier {processed}/{total}",
+        "chunksProgress": "{count} fragments traités",
+        "closeWhileRunning": "L'indexation est en cours. Vous pouvez fermer et revenir plus tard.",
+        "closeConfirmTitle": "Fermer l'assistant ?",
+        "closeConfirmDesc": "L'indexation continue en arrière-plan. Vous pouvez reprendre depuis la liste des formations.",
+        "closeConfirmStay": "Rester",
+        "closeConfirmLeave": "Fermer",
+        "resumeHint": "L'indexation tourne en arrière-plan — fermez et revenez plus tard si besoin."
       },
       "publish": {
         "title": "Publier le cours",
@@ -1094,6 +1109,8 @@
         }
       }
     },
+    "indexingBadge": "Indexation...",
+    "resumeCreation": "Reprendre la création",
     "errors": {
       "load": "Impossible de charger les cours.",
       "publish": "Impossible de publier le cours.",

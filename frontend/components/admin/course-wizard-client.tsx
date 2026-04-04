@@ -16,6 +16,7 @@ import {
   ChevronRight,
   BookOpen,
   AlertCircle,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,12 +24,25 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogTitle,
+  AlertDialogDescription,
+} from "@/components/ui/alert-dialog";
 import { apiFetch, API_BASE, getCourseTaxonomy, type TaxonomyItem } from "@/lib/api";
 import { authClient } from "@/lib/auth";
 
 type WizardStep = "upload" | "info" | "generate" | "index" | "publish";
 
 const STEPS: WizardStep[] = ["upload", "info", "generate", "index", "publish"];
+
+const WIZARD_STORAGE_KEY = "wizard_state";
+
+interface WizardPersistedState {
+  courseId: string;
+  step: WizardStep;
+}
 
 interface UploadedFile {
   name: string;
@@ -53,9 +67,28 @@ interface GeneratedModule {
   title_en: string;
 }
 
-interface CourseWizardClientProps {
+interface IndexStatus {
+  indexed: boolean;
+  chunks_indexed: number;
+  indexation_task_id?: string;
+  task?: {
+    state: string;
+    step?: string;
+    step_label?: string;
+    progress?: number;
+    files_total?: number;
+    files_processed?: number;
+    current_file?: string;
+    chunks_processed?: number;
+    estimated_seconds_remaining?: number;
+  };
+}
+
+export interface CourseWizardClientProps {
   onClose: () => void;
   onCourseCreated: () => void;
+  resumeCourseId?: string;
+  resumeStep?: WizardStep;
 }
 
 function formatBytes(bytes: number): string {
@@ -64,15 +97,38 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardClientProps) {
+function formatEta(seconds: number | undefined, t: ReturnType<typeof useTranslations>): string | null {
+  if (seconds === undefined || seconds === null) return null;
+  if (seconds <= 0) return null;
+  if (seconds < 60) return t("index.etaSeconds", { seconds: Math.round(seconds) });
+  return t("index.etaMinutes", { minutes: Math.ceil(seconds / 60) });
+}
+
+function stepKeyFromState(state: string | undefined): string {
+  switch (state) {
+    case "EXTRACTING": return "stepExtracting";
+    case "CHUNKING": return "stepChunking";
+    case "EMBEDDING": return "stepEmbedding";
+    case "STORING": return "stepStoring";
+    case "COMPLETE": return "stepComplete";
+    default: return "taskPending";
+  }
+}
+
+export function CourseWizardClient({
+  onClose,
+  onCourseCreated,
+  resumeCourseId,
+  resumeStep,
+}: CourseWizardClientProps) {
   const t = useTranslations("AdminCourses.wizard");
   const locale = useLocale();
   const queryClient = useQueryClient();
 
-  const [step, setStep] = useState<WizardStep>("upload");
+  const [step, setStep] = useState<WizardStep>(resumeStep ?? "upload");
   const [isDragOver, setIsDragOver] = useState(false);
   const [files, setFiles] = useState<UploadedFile[]>([]);
-  const [courseId, setCourseId] = useState<string | null>(null);
+  const [courseId, setCourseId] = useState<string | null>(resumeCourseId ?? null);
   const [courseInfo, setCourseInfo] = useState<CourseInfo>({
     title_fr: "",
     title_en: "",
@@ -90,16 +146,13 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
-  const [indexStatus, setIndexStatus] = useState<{
-    indexed: boolean;
-    chunks_indexed: number;
-    task_state?: string;
-  } | null>(null);
+  const [indexStatus, setIndexStatus] = useState<IndexStatus | null>(null);
   const [isIndexing, setIsIndexing] = useState(false);
   const [indexError, setIndexError] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishSuccess, setPublishSuccess] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -107,13 +160,23 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
 
   const stepIndex = STEPS.indexOf(step);
 
-  // Fetch taxonomy options from API
   useEffect(() => {
     getCourseTaxonomy().then((tax) => {
       setDomainOptions(tax.domains);
       setLevelOptions(tax.levels);
       setAudienceOptions(tax.audience_types);
     }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (courseId && step) {
+      const state: WizardPersistedState = { courseId, step };
+      localStorage.setItem(WIZARD_STORAGE_KEY, JSON.stringify(state));
+    }
+  }, [courseId, step]);
+
+  const clearPersistedState = useCallback(() => {
+    localStorage.removeItem(WIZARD_STORAGE_KEY);
   }, []);
 
   const getAuthHeaders = useCallback(async (): Promise<Record<string, string>> => {
@@ -268,7 +331,7 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
     } finally {
       setIsCreatingCourse(false);
     }
-  }, [courseInfo, getAuthHeaders, t]);
+  }, [courseInfo, pendingFiles, getAuthHeaders, t]);
 
   const generateSyllabus = useCallback(async () => {
     if (!courseId) return;
@@ -277,7 +340,7 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
 
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 300000); // 5 min timeout
+      const timeout = setTimeout(() => controller.abort(), 300000);
 
       const result = await apiFetch<{ modules: GeneratedModule[]; count: number }>(
         `/api/v1/admin/courses/${courseId}/generate-structure`,
@@ -325,17 +388,11 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
     const poll = async () => {
       try {
         const params = taskId ? `?task_id=${taskId}` : "";
-        const status = await apiFetch<{
-          indexed: boolean;
-          chunks_indexed: number;
-          task?: { state: string };
-        }>(`/api/v1/admin/courses/${courseId}/index-status${params}`);
+        const status = await apiFetch<IndexStatus>(
+          `/api/v1/admin/courses/${courseId}/index-status${params}`
+        );
 
-        setIndexStatus({
-          indexed: status.indexed,
-          chunks_indexed: status.chunks_indexed,
-          task_state: status.task?.state,
-        });
+        setIndexStatus(status);
 
         if (status.indexed && status.chunks_indexed > 0) {
           setIsIndexing(false);
@@ -363,6 +420,12 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
     };
   }, [courseId, isIndexing, taskId, t]);
 
+  useEffect(() => {
+    if (resumeCourseId && resumeStep === "index") {
+      setIsIndexing(true);
+    }
+  }, [resumeCourseId, resumeStep]);
+
   const publishCourse = useCallback(async () => {
     if (!courseId) return;
     setIsPublishing(true);
@@ -371,6 +434,7 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
     try {
       await apiFetch(`/api/v1/admin/courses/${courseId}/publish`, { method: "POST" });
       setPublishSuccess(true);
+      clearPersistedState();
       queryClient.invalidateQueries({ queryKey: ["admin-courses"] });
       onCourseCreated();
     } catch {
@@ -378,7 +442,20 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
     } finally {
       setIsPublishing(false);
     }
-  }, [courseId, queryClient, onCourseCreated, t]);
+  }, [courseId, queryClient, onCourseCreated, clearPersistedState, t]);
+
+  const handleCloseRequest = useCallback(() => {
+    if (isIndexing) {
+      setShowCloseConfirm(true);
+    } else {
+      onClose();
+    }
+  }, [isIndexing, onClose]);
+
+  const handleCloseConfirmed = useCallback(() => {
+    setShowCloseConfirm(false);
+    onClose();
+  }, [onClose]);
 
   const canGoNext = (): boolean => {
     if (step === "upload") return files.filter((f) => f.status === "uploaded").length > 0;
@@ -417,431 +494,478 @@ export function CourseWizardClient({ onClose, onCourseCreated }: CourseWizardCli
     return <>{icons[s]}</>;
   };
 
+  const indexProgress = indexStatus?.task?.progress ?? (isIndexing ? 10 : 0);
+  const indexStepKey = stepKeyFromState(indexStatus?.task?.state);
+  const indexEta = formatEta(indexStatus?.task?.estimated_seconds_remaining, t);
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background">
-      <div className="flex items-center justify-between border-b px-4 py-3 shrink-0">
-        <h2 className="text-lg font-semibold">{t("title")}</h2>
-        <Button variant="ghost" size="icon" onClick={onClose} aria-label={t("close")}>
-          <X className="h-5 w-5" />
-        </Button>
-      </div>
-
-      <div className="border-b px-4 py-3 shrink-0">
-        <div className="flex items-center gap-1 overflow-x-auto">
-          {STEPS.map((s, i) => (
-            <div key={s} className="flex items-center gap-1 shrink-0">
-              <div
-                className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                  s === step
-                    ? "bg-primary text-primary-foreground"
-                    : i < stepIndex
-                    ? "bg-primary/20 text-primary"
-                    : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {i < stepIndex ? (
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                ) : (
-                  <StepIcon s={s} />
-                )}
-                <span className="hidden sm:inline">{t(`steps.${s}`)}</span>
-              </div>
-              {i < STEPS.length - 1 && (
-                <div className={`h-px w-4 ${i < stepIndex ? "bg-primary/40" : "bg-border"}`} />
-              )}
-            </div>
-          ))}
+    <>
+      <div className="fixed inset-0 z-50 flex flex-col bg-background">
+        <div className="flex items-center justify-between border-b px-4 py-3 shrink-0">
+          <h2 className="text-lg font-semibold">{t("title")}</h2>
+          <Button variant="ghost" size="icon" onClick={handleCloseRequest} aria-label={t("close")}>
+            <X className="h-5 w-5" />
+          </Button>
         </div>
-      </div>
 
-      <div className="flex-1 overflow-y-auto p-4 md:p-6">
-        <div className="mx-auto max-w-2xl">
-          {step === "upload" && (
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-xl font-semibold">{t("upload.title")}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">{t("upload.description")}</p>
-              </div>
-
-              <div
-                onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
-                onDragLeave={() => setIsDragOver(false)}
-                onDrop={onDrop}
-                onClick={() => fileInputRef.current?.click()}
-                className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors ${
-                  isDragOver
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-primary/50 hover:bg-muted/50"
-                }`}
-                role="button"
-                tabIndex={0}
-                aria-label={t("upload.dropzone")}
-                onKeyDown={(e) => e.key === "Enter" && fileInputRef.current?.click()}
-              >
-                <Upload className="mb-3 h-8 w-8 text-muted-foreground" />
-                <p className="text-sm font-medium">
-                  {isDragOver ? t("upload.dropzoneActive") : t("upload.dropzone")}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">{t("upload.fileTypes")}</p>
-              </div>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/pdf"
-                multiple
-                className="hidden"
-                onChange={onFileInput}
-              />
-
-              {files.length > 0 && (
-                <div className="space-y-2">
-                  {files.map((f) => (
-                    <div
-                      key={f.name}
-                      className="flex items-center gap-3 rounded-lg border bg-card p-3"
-                    >
-                      <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{f.name}</p>
-                        <p className="text-xs text-muted-foreground">{formatBytes(f.size_bytes)}</p>
-                      </div>
-                      {f.status === "uploading" && (
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                      )}
-                      {f.status === "uploaded" && (
-                        <CheckCircle2 className="h-4 w-4 text-green-600" />
-                      )}
-                      {f.status === "error" && (
-                        <span title={f.error}><AlertCircle className="h-4 w-4 text-destructive" /></span>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 shrink-0"
-                        onClick={(e) => { e.stopPropagation(); removeFile(f.name); }}
-                        aria-label={t("upload.remove")}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {step === "info" && (
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-xl font-semibold">{t("info.title")}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">{t("info.description")}</p>
-              </div>
-
-              <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="title_fr">{t("info.titleFr")} *</Label>
-                  <Input
-                    id="title_fr"
-                    value={courseInfo.title_fr}
-                    onChange={(e) => setCourseInfo((p) => ({ ...p, title_fr: e.target.value }))}
-                    placeholder="Santé Publique en Afrique de l'Ouest"
-                    className={infoErrors.title_fr ? "border-destructive" : ""}
-                  />
-                  {infoErrors.title_fr && (
-                    <p className="text-xs text-destructive">{infoErrors.title_fr}</p>
-                  )}
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="title_en">{t("info.titleEn")} *</Label>
-                  <Input
-                    id="title_en"
-                    value={courseInfo.title_en}
-                    onChange={(e) => setCourseInfo((p) => ({ ...p, title_en: e.target.value }))}
-                    placeholder="Public Health in West Africa"
-                    className={infoErrors.title_en ? "border-destructive" : ""}
-                  />
-                  {infoErrors.title_en && (
-                    <p className="text-xs text-destructive">{infoErrors.title_en}</p>
-                  )}
-                </div>
-
-                {[
-                  { label: t("info.domain"), options: domainOptions, field: "course_domain" as const },
-                  { label: t("info.level"), options: levelOptions, field: "course_level" as const },
-                  { label: t("info.audience"), options: audienceOptions, field: "audience_type" as const },
-                ].map(({ label, options, field }) => (
-                  <div key={field} className="space-y-1.5">
-                    <Label>{label}</Label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {options.map((opt) => {
-                        const sel = courseInfo[field].includes(opt.value);
-                        return (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() =>
-                              setCourseInfo((p) => ({
-                                ...p,
-                                [field]: sel
-                                  ? p[field].filter((v: string) => v !== opt.value)
-                                  : [...p[field], opt.value],
-                              }))
-                            }
-                            className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors min-h-[32px] ${
-                              sel
-                                ? "bg-teal-600 text-white hover:bg-teal-700"
-                                : "bg-stone-100 text-stone-600 hover:bg-stone-200 border border-stone-200"
-                            }`}
-                          >
-                            {locale === "fr" ? opt.label_fr : opt.label_en}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="estimated_hours">{t("info.estimatedHours")}</Label>
-                  <Input
-                    id="estimated_hours"
-                    type="number"
-                    min={1}
-                    max={500}
-                    value={courseInfo.estimated_hours}
-                    onChange={(e) =>
-                      setCourseInfo((p) => ({
-                        ...p,
-                        estimated_hours: parseInt(e.target.value) || 20,
-                      }))
-                    }
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {step === "generate" && (
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-xl font-semibold">{t("generate.title")}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">{t("generate.description")}</p>
-              </div>
-
-              {generatedModules.length === 0 && !isGenerating && (
-                <Button
-                  onClick={generateSyllabus}
-                  className="w-full min-h-11"
-                  disabled={isGenerating}
+        <div className="border-b px-4 py-3 shrink-0">
+          <div className="flex items-center gap-1 overflow-x-auto">
+            {STEPS.map((s, i) => (
+              <div key={s} className="flex items-center gap-1 shrink-0">
+                <div
+                  className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                    s === step
+                      ? "bg-primary text-primary-foreground"
+                      : i < stepIndex
+                      ? "bg-primary/20 text-primary"
+                      : "bg-muted text-muted-foreground"
+                  }`}
                 >
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  {t("generate.button")}
-                </Button>
-              )}
-
-              {isGenerating && (
-                <div className="flex flex-col items-center gap-3 py-8">
-                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-                  <p className="text-sm text-muted-foreground">{t("generate.generating")}</p>
+                  {i < stepIndex ? (
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                  ) : (
+                    <StepIcon s={s} />
+                  )}
+                  <span className="hidden sm:inline">{t(`steps.${s}`)}</span>
                 </div>
-              )}
+                {i < STEPS.length - 1 && (
+                  <div className={`h-px w-4 ${i < stepIndex ? "bg-primary/40" : "bg-border"}`} />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
 
-              {generateError && (
-                <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  {generateError}
+        <div className="flex-1 overflow-y-auto p-4 md:p-6">
+          <div className="mx-auto max-w-2xl">
+            {step === "upload" && (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-xl font-semibold">{t("upload.title")}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{t("upload.description")}</p>
                 </div>
-              )}
 
-              {generatedModules.length > 0 && (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-green-600" />
-                    <p className="text-sm font-medium text-green-700">
-                      {t("generate.moduleCount", { count: generatedModules.length })}
-                    </p>
-                  </div>
-                  <div className="space-y-2 max-h-80 overflow-y-auto">
-                    {generatedModules.map((m) => (
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+                  onDragLeave={() => setIsDragOver(false)}
+                  onDrop={onDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors ${
+                    isDragOver
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/50 hover:bg-muted/50"
+                  }`}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={t("upload.dropzone")}
+                  onKeyDown={(e) => e.key === "Enter" && fileInputRef.current?.click()}
+                >
+                  <Upload className="mb-3 h-8 w-8 text-muted-foreground" />
+                  <p className="text-sm font-medium">
+                    {isDragOver ? t("upload.dropzoneActive") : t("upload.dropzone")}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">{t("upload.fileTypes")}</p>
+                </div>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/pdf"
+                  multiple
+                  className="hidden"
+                  onChange={onFileInput}
+                />
+
+                {files.length > 0 && (
+                  <div className="space-y-2">
+                    {files.map((f) => (
                       <div
-                        key={m.id}
+                        key={f.name}
                         className="flex items-center gap-3 rounded-lg border bg-card p-3"
                       >
-                        <Badge variant="outline" className="shrink-0 text-xs">
-                          M{m.module_number}
-                        </Badge>
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">{m.title_fr}</p>
-                          <p className="truncate text-xs text-muted-foreground">{m.title_en}</p>
+                        <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">{f.name}</p>
+                          <p className="text-xs text-muted-foreground">{formatBytes(f.size_bytes)}</p>
                         </div>
+                        {f.status === "uploading" && (
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                        )}
+                        {f.status === "uploaded" && (
+                          <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        )}
+                        {f.status === "error" && (
+                          <span title={f.error}><AlertCircle className="h-4 w-4 text-destructive" /></span>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0"
+                          onClick={(e) => { e.stopPropagation(); removeFile(f.name); }}
+                          aria-label={t("upload.remove")}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {step === "index" && (
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-xl font-semibold">{t("index.title")}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">{t("index.description")}</p>
+                )}
               </div>
+            )}
 
-              {!isIndexing && !indexStatus?.indexed && (
-                <Button onClick={startIndexation} className="w-full min-h-11" disabled={isIndexing}>
-                  <Database className="mr-2 h-4 w-4" />
-                  {t("index.button")}
-                </Button>
-              )}
-
-              {isIndexing && (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                    <p className="text-sm text-muted-foreground">
-                      {indexStatus?.task_state === "INDEXING"
-                        ? t("index.taskRunning")
-                        : indexStatus?.task_state === "EXTRACTING"
-                        ? t("index.taskRunning")
-                        : t("index.taskPending")}
-                    </p>
-                  </div>
-                  <Progress value={indexStatus?.chunks_indexed ? 70 : 20} className="h-2" />
-                  {indexStatus && indexStatus.chunks_indexed > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      {t("index.chunksIndexed", { count: indexStatus.chunks_indexed })}
-                    </p>
-                  )}
+            {step === "info" && (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-xl font-semibold">{t("info.title")}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{t("info.description")}</p>
                 </div>
-              )}
 
-              {indexError && (
-                <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  {indexError}
-                </div>
-              )}
-
-              {indexStatus?.indexed && (
-                <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-900 dark:bg-green-950">
-                  <CheckCircle2 className="h-5 w-5 text-green-600" />
-                  <div>
-                    <p className="text-sm font-medium text-green-700 dark:text-green-400">
-                      {t("index.indexed")}
-                    </p>
-                    <p className="text-xs text-green-600 dark:text-green-500">
-                      {t("index.chunksIndexed", { count: indexStatus.chunks_indexed })}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {step === "publish" && (
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-xl font-semibold">{t("publish.title")}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">{t("publish.description")}</p>
-              </div>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">{t("publish.summary.title")}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">{t("publish.summary.modules")}</span>
-                    <span className="font-medium">{generatedModules.length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">{t("publish.summary.chunks")}</span>
-                    <span className="font-medium">{indexStatus?.chunks_indexed ?? 0}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">{t("publish.summary.status")}</span>
-                    <Badge variant="outline" className="text-amber-600 border-amber-300">
-                      draft
-                    </Badge>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {publishSuccess ? (
-                <div className="flex flex-col items-center gap-3 py-4 text-center">
-                  <CheckCircle2 className="h-12 w-12 text-green-600" />
-                  <div>
-                    <p className="font-semibold text-green-700">{t("publish.success")}</p>
-                    <p className="text-sm text-muted-foreground">{t("publish.successDesc")}</p>
-                  </div>
-                  <Button onClick={onClose} className="mt-2">
-                    {t("close")}
-                  </Button>
-                </div>
-              ) : (
-                <>
-                  {publishError && (
-                    <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                      <AlertCircle className="h-4 w-4 shrink-0" />
-                      {publishError}
-                    </div>
-                  )}
-                  <Button
-                    onClick={publishCourse}
-                    className="w-full min-h-11"
-                    disabled={isPublishing}
-                  >
-                    {isPublishing ? (
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
-                    ) : (
-                      <Rocket className="mr-2 h-4 w-4" />
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="title_fr">{t("info.titleFr")} *</Label>
+                    <Input
+                      id="title_fr"
+                      value={courseInfo.title_fr}
+                      onChange={(e) => setCourseInfo((p) => ({ ...p, title_fr: e.target.value }))}
+                      placeholder="Santé Publique en Afrique de l'Ouest"
+                      className={infoErrors.title_fr ? "border-destructive" : ""}
+                    />
+                    {infoErrors.title_fr && (
+                      <p className="text-xs text-destructive">{infoErrors.title_fr}</p>
                     )}
-                    {isPublishing ? t("publish.publishing") : t("publish.button")}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="title_en">{t("info.titleEn")} *</Label>
+                    <Input
+                      id="title_en"
+                      value={courseInfo.title_en}
+                      onChange={(e) => setCourseInfo((p) => ({ ...p, title_en: e.target.value }))}
+                      placeholder="Public Health in West Africa"
+                      className={infoErrors.title_en ? "border-destructive" : ""}
+                    />
+                    {infoErrors.title_en && (
+                      <p className="text-xs text-destructive">{infoErrors.title_en}</p>
+                    )}
+                  </div>
+
+                  {[
+                    { label: t("info.domain"), options: domainOptions, field: "course_domain" as const },
+                    { label: t("info.level"), options: levelOptions, field: "course_level" as const },
+                    { label: t("info.audience"), options: audienceOptions, field: "audience_type" as const },
+                  ].map(({ label, options, field }) => (
+                    <div key={field} className="space-y-1.5">
+                      <Label>{label}</Label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {options.map((opt) => {
+                          const sel = courseInfo[field].includes(opt.value);
+                          return (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() =>
+                                setCourseInfo((p) => ({
+                                  ...p,
+                                  [field]: sel
+                                    ? p[field].filter((v: string) => v !== opt.value)
+                                    : [...p[field], opt.value],
+                                }))
+                              }
+                              className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors min-h-[32px] ${
+                                sel
+                                  ? "bg-teal-600 text-white hover:bg-teal-700"
+                                  : "bg-stone-100 text-stone-600 hover:bg-stone-200 border border-stone-200"
+                              }`}
+                            >
+                              {locale === "fr" ? opt.label_fr : opt.label_en}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="estimated_hours">{t("info.estimatedHours")}</Label>
+                    <Input
+                      id="estimated_hours"
+                      type="number"
+                      min={1}
+                      max={500}
+                      value={courseInfo.estimated_hours}
+                      onChange={(e) =>
+                        setCourseInfo((p) => ({
+                          ...p,
+                          estimated_hours: parseInt(e.target.value) || 20,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {step === "generate" && (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-xl font-semibold">{t("generate.title")}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{t("generate.description")}</p>
+                </div>
+
+                {generatedModules.length === 0 && !isGenerating && (
+                  <Button
+                    onClick={generateSyllabus}
+                    className="w-full min-h-11"
+                    disabled={isGenerating}
+                  >
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    {t("generate.button")}
                   </Button>
-                </>
-              )}
-            </div>
-          )}
+                )}
+
+                {isGenerating && (
+                  <div className="flex flex-col items-center gap-3 py-8">
+                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                    <p className="text-sm text-muted-foreground">{t("generate.generating")}</p>
+                  </div>
+                )}
+
+                {generateError && (
+                  <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    {generateError}
+                  </div>
+                )}
+
+                {generatedModules.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      <p className="text-sm font-medium text-green-700">
+                        {t("generate.moduleCount", { count: generatedModules.length })}
+                      </p>
+                    </div>
+                    <div className="space-y-2 max-h-80 overflow-y-auto">
+                      {generatedModules.map((m) => (
+                        <div
+                          key={m.id}
+                          className="flex items-center gap-3 rounded-lg border bg-card p-3"
+                        >
+                          <Badge variant="outline" className="shrink-0 text-xs">
+                            M{m.module_number}
+                          </Badge>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{m.title_fr}</p>
+                            <p className="truncate text-xs text-muted-foreground">{m.title_en}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {step === "index" && (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-xl font-semibold">{t("index.title")}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{t("index.description")}</p>
+                </div>
+
+                {!isIndexing && !indexStatus?.indexed && (
+                  <Button onClick={startIndexation} className="w-full min-h-11" disabled={isIndexing}>
+                    <Database className="mr-2 h-4 w-4" />
+                    {t("index.button")}
+                  </Button>
+                )}
+
+                {isIndexing && (
+                  <div className="space-y-3 rounded-lg border bg-card p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                        <p className="text-sm font-medium truncate">
+                          {t(`index.${indexStepKey}`)}
+                        </p>
+                      </div>
+                      {indexEta && (
+                        <div className="flex items-center gap-1 shrink-0 text-xs text-muted-foreground">
+                          <Clock className="h-3 w-3" />
+                          <span>{indexEta}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <Progress value={indexProgress} className="h-2" />
+
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      {indexStatus?.task?.files_total !== undefined && indexStatus.task.files_total > 0 && (
+                        <span>
+                          {t("index.filesProgress", {
+                            processed: indexStatus.task.files_processed ?? 0,
+                            total: indexStatus.task.files_total,
+                          })}
+                        </span>
+                      )}
+                      {indexStatus?.task?.chunks_processed !== undefined && indexStatus.task.chunks_processed > 0 && (
+                        <span>
+                          {t("index.chunksProgress", { count: indexStatus.task.chunks_processed })}
+                        </span>
+                      )}
+                    </div>
+
+                    {indexStatus?.task?.current_file && (
+                      <p className="truncate text-xs text-muted-foreground">
+                        {indexStatus.task.current_file}
+                      </p>
+                    )}
+
+                    <p className="text-xs text-muted-foreground/70 border-t pt-2">
+                      {t("index.resumeHint")}
+                    </p>
+                  </div>
+                )}
+
+                {indexError && (
+                  <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    {indexError}
+                  </div>
+                )}
+
+                {indexStatus?.indexed && (
+                  <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-900 dark:bg-green-950">
+                    <CheckCircle2 className="h-5 w-5 text-green-600" />
+                    <div>
+                      <p className="text-sm font-medium text-green-700 dark:text-green-400">
+                        {t("index.indexed")}
+                      </p>
+                      <p className="text-xs text-green-600 dark:text-green-500">
+                        {t("index.chunksIndexed", { count: indexStatus.chunks_indexed })}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {step === "publish" && (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-xl font-semibold">{t("publish.title")}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{t("publish.description")}</p>
+                </div>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">{t("publish.summary.title")}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("publish.summary.modules")}</span>
+                      <span className="font-medium">{generatedModules.length}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("publish.summary.chunks")}</span>
+                      <span className="font-medium">{indexStatus?.chunks_indexed ?? 0}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{t("publish.summary.status")}</span>
+                      <Badge variant="outline" className="text-amber-600 border-amber-300">
+                        draft
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {publishSuccess ? (
+                  <div className="flex flex-col items-center gap-3 py-4 text-center">
+                    <CheckCircle2 className="h-12 w-12 text-green-600" />
+                    <div>
+                      <p className="font-semibold text-green-700">{t("publish.success")}</p>
+                      <p className="text-sm text-muted-foreground">{t("publish.successDesc")}</p>
+                    </div>
+                    <Button onClick={onClose} className="mt-2">
+                      {t("close")}
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    {publishError && (
+                      <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                        <AlertCircle className="h-4 w-4 shrink-0" />
+                        {publishError}
+                      </div>
+                    )}
+                    <Button
+                      onClick={publishCourse}
+                      className="w-full min-h-11"
+                      disabled={isPublishing}
+                    >
+                      {isPublishing ? (
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
+                      ) : (
+                        <Rocket className="mr-2 h-4 w-4" />
+                      )}
+                      {isPublishing ? t("publish.publishing") : t("publish.button")}
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
 
-      {!publishSuccess && (
-        <div className="flex items-center justify-between border-t bg-background px-4 py-3 shrink-0">
-          <Button
-            variant="outline"
-            onClick={handleBack}
-            disabled={stepIndex === 0}
-            className="min-h-11"
-          >
-            <ChevronLeft className="mr-1 h-4 w-4" />
-            {t("back")}
-          </Button>
-
-          {step !== "publish" && (
+        {!publishSuccess && (
+          <div className="flex items-center justify-between border-t bg-background px-4 py-3 shrink-0">
             <Button
-              onClick={handleNext}
-              disabled={!canGoNext() || isCreatingCourse || isGenerating}
+              variant="outline"
+              onClick={handleBack}
+              disabled={stepIndex === 0}
               className="min-h-11"
             >
-              {isCreatingCourse ? (
-                <>
-                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  {t("info.creating")}
-                </>
-              ) : (
-                <>
-                  {t("next")}
-                  <ChevronRight className="ml-1 h-4 w-4" />
-                </>
-              )}
+              <ChevronLeft className="mr-1 h-4 w-4" />
+              {t("back")}
             </Button>
-          )}
-        </div>
-      )}
-    </div>
+
+            {step !== "publish" && (
+              <Button
+                onClick={handleNext}
+                disabled={!canGoNext() || isCreatingCourse || isGenerating}
+                className="min-h-11"
+              >
+                {isCreatingCourse ? (
+                  <>
+                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    {t("info.creating")}
+                  </>
+                ) : (
+                  <>
+                    {t("next")}
+                    <ChevronRight className="ml-1 h-4 w-4" />
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+
+      <AlertDialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}>
+        <AlertDialogContent>
+          <AlertDialogTitle>{t("index.closeConfirmTitle")}</AlertDialogTitle>
+          <AlertDialogDescription>{t("index.closeConfirmDesc")}</AlertDialogDescription>
+          <div className="flex justify-end gap-3 mt-4">
+            <Button variant="outline" onClick={() => setShowCloseConfirm(false)}>
+              {t("index.closeConfirmStay")}
+            </Button>
+            <Button onClick={handleCloseConfirmed}>
+              {t("index.closeConfirmLeave")}
+            </Button>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

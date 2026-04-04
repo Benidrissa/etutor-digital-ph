@@ -394,6 +394,10 @@ async def trigger_rag_indexation(
         )
 
     task = index_course_resources.delay(str(course_id), course.rag_collection_id)
+
+    course.indexation_task_id = task.id
+    await db.commit()
+
     logger.info(
         "RAG indexation triggered",
         course_id=str(course_id),
@@ -424,20 +428,30 @@ async def get_rag_index_status(
     )
     chunks_indexed = chunk_count.scalar_one()
 
+    effective_task_id = task_id or course.indexation_task_id
+
     response = {
         "course_id": str(course_id),
         "rag_collection_id": course.rag_collection_id,
+        "indexation_task_id": effective_task_id,
         "chunks_indexed": chunks_indexed,
         "indexed": chunks_indexed > 0,
     }
 
-    # If task_id provided, check Celery task status
-    if task_id:
-        task_result = AsyncResult(task_id)
+    if effective_task_id:
+        task_result = AsyncResult(effective_task_id)
+        meta = task_result.info if isinstance(task_result.info, dict) else {}
         response["task"] = {
-            "id": task_id,
+            "id": effective_task_id,
             "state": task_result.state,
-            "meta": task_result.info if isinstance(task_result.info, dict) else {},
+            "step": meta.get("step"),
+            "step_label": meta.get("step_label"),
+            "progress": meta.get("progress", 0),
+            "files_total": meta.get("files_total", 0),
+            "files_processed": meta.get("files_processed", 0),
+            "current_file": meta.get("current_file"),
+            "chunks_processed": meta.get("chunks_processed", 0),
+            "estimated_seconds_remaining": meta.get("estimated_seconds_remaining"),
         }
 
     return response

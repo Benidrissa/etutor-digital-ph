@@ -1,6 +1,7 @@
 """Celery task for RAG indexation — processes course PDFs into vector embeddings."""
 
 import os
+import time
 from pathlib import Path
 
 import structlog
@@ -11,6 +12,23 @@ from app.tasks.celery_app import celery_app
 logger = structlog.get_logger(__name__)
 
 UPLOAD_DIR = Path("uploads/course_resources")
+
+# Rough per-MB throughput estimates for ETA (seconds)
+_SECS_PER_MB_EXTRACT = 2.0
+_SECS_PER_MB_CHUNK = 0.5
+_SECS_PER_CHUNK_EMBED = 0.05
+_SECS_PER_CHUNK_STORE = 0.02
+
+
+def _estimate_total_seconds(pdf_files: list[Path]) -> float:
+    total_mb = sum(f.stat().st_size for f in pdf_files) / (1024 * 1024)
+    estimated_chunks = total_mb * 40
+    return (
+        total_mb * _SECS_PER_MB_EXTRACT
+        + total_mb * _SECS_PER_MB_CHUNK
+        + estimated_chunks * _SECS_PER_CHUNK_EMBED
+        + estimated_chunks * _SECS_PER_CHUNK_STORE
+    )
 
 
 class RAGTask(Task):
@@ -47,8 +65,6 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
         rag_collection_id=rag_collection_id,
     )
 
-    self.update_state(state="EXTRACTING", meta={"step": "extracting", "progress": 0})
-
     course_dir = UPLOAD_DIR / course_id
     if not course_dir.exists():
         return {
@@ -65,6 +81,31 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
             "chunks_stored": 0,
         }
 
+    estimated_total = _estimate_total_seconds(pdf_files)
+    start_time = time.monotonic()
+
+    def _remaining(progress_fraction: float) -> int:
+        elapsed = time.monotonic() - start_time
+        if progress_fraction <= 0:
+            return int(estimated_total)
+        estimated_at_rate = elapsed / progress_fraction
+        remaining = max(0, estimated_at_rate - elapsed)
+        return int(remaining)
+
+    self.update_state(
+        state="EXTRACTING",
+        meta={
+            "step": "extracting",
+            "step_label": "Extracting text from PDFs",
+            "progress": 0,
+            "files_total": len(pdf_files),
+            "files_processed": 0,
+            "current_file": pdf_files[0].name if pdf_files else "",
+            "chunks_processed": 0,
+            "estimated_seconds_remaining": int(estimated_total),
+        },
+    )
+
     async def _run_pipeline():
         openai_key = os.getenv("OPENAI_API_KEY", "")
         if not openai_key:
@@ -78,14 +119,51 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
 
         total_chunks = 0
         for i, pdf_path in enumerate(pdf_files):
+            file_progress = i / len(pdf_files)
+
             self.update_state(
-                state="INDEXING",
+                state="EXTRACTING",
                 meta={
-                    "step": "indexing",
-                    "progress": int((i / len(pdf_files)) * 100),
-                    "current_file": pdf_path.name,
-                    "files_processed": i,
+                    "step": "extracting",
+                    "step_label": f"Extracting PDF {i + 1}/{len(pdf_files)}",
+                    "progress": int(file_progress * 25),
                     "files_total": len(pdf_files),
+                    "files_processed": i,
+                    "current_file": pdf_path.name,
+                    "chunks_processed": total_chunks,
+                    "estimated_seconds_remaining": _remaining(file_progress * 0.25),
+                },
+            )
+
+            self.update_state(
+                state="CHUNKING",
+                meta={
+                    "step": "chunking",
+                    "step_label": f"Chunking PDF {i + 1}/{len(pdf_files)}",
+                    "progress": int(file_progress * 25 + 25),
+                    "files_total": len(pdf_files),
+                    "files_processed": i,
+                    "current_file": pdf_path.name,
+                    "chunks_processed": total_chunks,
+                    "estimated_seconds_remaining": _remaining(
+                        file_progress * 0.25 + 0.25
+                    ),
+                },
+            )
+
+            self.update_state(
+                state="EMBEDDING",
+                meta={
+                    "step": "embedding",
+                    "step_label": f"Generating embeddings {i + 1}/{len(pdf_files)}",
+                    "progress": int(file_progress * 25 + 50),
+                    "files_total": len(pdf_files),
+                    "files_processed": i,
+                    "current_file": pdf_path.name,
+                    "chunks_processed": total_chunks,
+                    "estimated_seconds_remaining": _remaining(
+                        file_progress * 0.25 + 0.50
+                    ),
                 },
             )
 
@@ -94,6 +172,23 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                 source=rag_collection_id,
             )
             total_chunks += chunks
+
+            self.update_state(
+                state="STORING",
+                meta={
+                    "step": "storing",
+                    "step_label": f"Storing {total_chunks} chunks",
+                    "progress": int((i + 1) / len(pdf_files) * 25 + 75),
+                    "files_total": len(pdf_files),
+                    "files_processed": i + 1,
+                    "current_file": pdf_path.name,
+                    "chunks_processed": total_chunks,
+                    "estimated_seconds_remaining": _remaining(
+                        (i + 1) / len(pdf_files) * 0.25 + 0.75
+                    ),
+                },
+            )
+
             logger.info(
                 "PDF indexed",
                 file=pdf_path.name,
@@ -108,7 +203,16 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
 
         self.update_state(
             state="COMPLETE",
-            meta={"step": "complete", "progress": 100, "chunks_stored": total_chunks},
+            meta={
+                "step": "complete",
+                "step_label": "Indexation complete",
+                "progress": 100,
+                "chunks_stored": total_chunks,
+                "files_total": len(pdf_files),
+                "files_processed": len(pdf_files),
+                "chunks_processed": total_chunks,
+                "estimated_seconds_remaining": 0,
+            },
         )
 
         return {
