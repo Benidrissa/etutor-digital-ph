@@ -8,6 +8,7 @@ import structlog
 from anthropic.types import ToolParam
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.ai.rag.retriever import SemanticRetriever
 from app.domain.models.content import GeneratedContent
@@ -261,13 +262,26 @@ class TutorToolExecutor:
         progress_result = await session.execute(progress_query)
         progress_rows = progress_result.scalars().all()
 
+        # Batch-fetch Module rows for human-readable titles
+        module_ids = {row.module_id for row in progress_rows}
+        modules_by_id: dict[Any, Module] = {}
+        if module_ids:
+            modules_result = await session.execute(
+                select(Module).where(Module.id.in_(module_ids))
+            )
+            modules_by_id = {m.id: m for m in modules_result.scalars().all()}
+
         modules_progress = []
         completed_modules = []
         weak_domains = []
 
         for row in progress_rows:
+            mod = modules_by_id.get(row.module_id)
             module_data = {
                 "module_id": str(row.module_id),
+                "module_number": mod.module_number if mod else None,
+                "title_fr": mod.title_fr if mod else None,
+                "title_en": mod.title_en if mod else None,
                 "status": row.status,
                 "completion_pct": row.completion_pct,
                 "quiz_score_avg": row.quiz_score_avg,
@@ -279,23 +293,54 @@ class TutorToolExecutor:
                 completed_modules.append(str(row.module_id))
 
             if row.quiz_score_avg is not None and row.quiz_score_avg < 60:
-                weak_domains.append(
-                    {"module_id": str(row.module_id), "quiz_score_avg": row.quiz_score_avg}
-                )
+                weak_domains.append({
+                    "module_id": str(row.module_id),
+                    "module_number": mod.module_number if mod else None,
+                    "title_fr": mod.title_fr if mod else None,
+                    "title_en": mod.title_en if mod else None,
+                    "quiz_score_avg": row.quiz_score_avg,
+                })
 
+        # Fetch recent quizzes with eager-loaded GeneratedContent for module context
         quiz_query = (
             select(QuizAttempt)
             .where(QuizAttempt.user_id == self.user_id)
+            .options(selectinload(QuizAttempt.quiz))
             .order_by(QuizAttempt.attempted_at.desc())
             .limit(5)
         )
         quiz_result = await session.execute(quiz_query)
         recent_quizzes = quiz_result.scalars().all()
 
-        recent_scores = [
-            {"quiz_id": str(q.quiz_id), "score": q.score, "attempted_at": str(q.attempted_at)}
+        # Fetch any additional modules referenced by quizzes
+        quiz_module_ids = {
+            q.quiz.module_id
             for q in recent_quizzes
-        ]
+            if q.quiz and q.quiz.module_id and q.quiz.module_id not in modules_by_id
+        }
+        if quiz_module_ids:
+            extra_modules = await session.execute(
+                select(Module).where(Module.id.in_(quiz_module_ids))
+            )
+            for m in extra_modules.scalars().all():
+                modules_by_id[m.id] = m
+
+        recent_scores = []
+        for q in recent_quizzes:
+            quiz_info: dict[str, Any] = {
+                "quiz_id": str(q.quiz_id),
+                "score": q.score,
+                "attempted_at": str(q.attempted_at),
+            }
+            if q.quiz:
+                quiz_mod = modules_by_id.get(q.quiz.module_id)
+                quiz_info["module_number"] = quiz_mod.module_number if quiz_mod else None
+                quiz_info["module_title_fr"] = quiz_mod.title_fr if quiz_mod else None
+                quiz_info["module_title_en"] = quiz_mod.title_en if quiz_mod else None
+                content = q.quiz.content or {}
+                quiz_info["quiz_topic"] = content.get("title") or content.get("unit_id")
+                quiz_info["content_type"] = q.quiz.content_type
+            recent_scores.append(quiz_info)
 
         placement_query = (
             select(PlacementTestAttempt)
