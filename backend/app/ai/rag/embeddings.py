@@ -1,10 +1,16 @@
 """Embeddings service for RAG pipeline using OpenAI text-embedding-3-small."""
 
 import asyncio
-from typing import Any
+import uuid
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from openai import AsyncOpenAI
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.domain.services.cost_tracker import CostTracker
 
 logger = structlog.get_logger()
 
@@ -12,17 +18,32 @@ logger = structlog.get_logger()
 class EmbeddingService:
     """Service for generating embeddings using OpenAI's text-embedding-3-small model."""
 
-    def __init__(self, api_key: str, model: str = "text-embedding-3-small"):
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "text-embedding-3-small",
+        cost_tracker: "CostTracker | None" = None,
+    ):
         self.client = AsyncOpenAI(api_key=api_key)
         self.model = model
         self.dimensions = 1536  # text-embedding-3-small dimensions
+        self._cost_tracker = cost_tracker
 
-    async def generate_embedding(self, text: str) -> list[float]:
+    async def generate_embedding(
+        self,
+        text: str,
+        user_id: uuid.UUID | None = None,
+        context: str = "embedding",
+        session: "AsyncSession | None" = None,
+    ) -> list[float]:
         """
         Generate embedding for a single text.
 
         Args:
             text: Text to embed
+            user_id: Optional learner UUID for cost tracking.
+            context: Call-site label used in usage logs.
+            session: DB session for usage logging and credit deduction.
 
         Returns:
             List of float values representing the embedding vector
@@ -31,13 +52,28 @@ class EmbeddingService:
             response = await self.client.embeddings.create(
                 input=text, model=self.model, dimensions=self.dimensions
             )
+
+            if self._cost_tracker is not None:
+                await self._cost_tracker.track_embedding_call(
+                    response=response,
+                    user_id=user_id,
+                    context=context,
+                    session=session,
+                )
+
             return response.data[0].embedding
         except Exception as e:
             logger.error("Failed to generate embedding", text_length=len(text), error=str(e))
             raise
 
     async def generate_embeddings_batch(
-        self, texts: list[str], batch_size: int = 100, max_concurrent: int = 10
+        self,
+        texts: list[str],
+        batch_size: int = 100,
+        max_concurrent: int = 10,
+        user_id: uuid.UUID | None = None,
+        context: str = "embedding_batch",
+        session: "AsyncSession | None" = None,
     ) -> list[list[float]]:
         """
         Generate embeddings for multiple texts in batches with concurrency control.
@@ -46,6 +82,9 @@ class EmbeddingService:
             texts: List of texts to embed
             batch_size: Number of texts to embed in each API call
             max_concurrent: Maximum number of concurrent API calls
+            user_id: Optional learner UUID for cost tracking.
+            context: Call-site label used in usage logs.
+            session: DB session for usage logging and credit deduction.
 
         Returns:
             List of embedding vectors in the same order as input texts
@@ -65,6 +104,15 @@ class EmbeddingService:
                     response = await self.client.embeddings.create(
                         input=batch, model=self.model, dimensions=self.dimensions
                     )
+
+                    if self._cost_tracker is not None:
+                        await self._cost_tracker.track_embedding_call(
+                            response=response,
+                            user_id=user_id,
+                            context=context,
+                            session=session,
+                        )
+
                     return [data.embedding for data in response.data]
                 except Exception as e:
                     logger.error(

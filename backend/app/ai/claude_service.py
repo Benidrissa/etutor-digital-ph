@@ -1,8 +1,9 @@
 """Claude API service for content generation."""
 
 import json
+import uuid
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import anthropic
 import structlog
@@ -11,13 +12,21 @@ from anthropic.types import Message
 from app.domain.services.platform_settings_service import SettingsCache
 from app.infrastructure.config.settings import get_settings
 
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.domain.services.cost_tracker import CostTracker
+
 logger = structlog.get_logger()
 
 
 class ClaudeService:
     """Service for interacting with Claude API for content generation."""
 
-    def __init__(self):
+    def __init__(
+        self,
+        cost_tracker: "CostTracker | None" = None,
+    ):
         self.settings = get_settings()
         if not self.settings.anthropic_api_key:
             raise ValueError("ANTHROPIC_API_KEY is required")
@@ -30,6 +39,7 @@ class ClaudeService:
         _cache = SettingsCache.instance()
         self._max_tokens = _cache.get("ai-max-tokens-content", 64000)
         self._temperature = _cache.get("ai-temperature-content", 0.7)
+        self._cost_tracker = cost_tracker
 
     async def generate_lesson_content_stream(
         self,
@@ -66,6 +76,9 @@ class ClaudeService:
         self,
         system_prompt: str,
         user_message: str,
+        user_id: uuid.UUID | None = None,
+        context: str = "lesson",
+        session: "AsyncSession | None" = None,
     ) -> Message:
         """
         Generate lesson content using Claude API without streaming.
@@ -73,6 +86,9 @@ class ClaudeService:
         Args:
             system_prompt: System prompt for pedagogical context
             user_message: User message with RAG context and requirements
+            user_id: Optional learner UUID for cost tracking.
+            context: Call-site label used in usage logs.
+            session: DB session for usage logging and credit deduction.
 
         Returns:
             Message object from Claude API
@@ -85,6 +101,15 @@ class ClaudeService:
                 messages=[{"role": "user", "content": user_message}],
                 temperature=self._temperature,
             )
+
+            if self._cost_tracker is not None:
+                await self._cost_tracker.track_anthropic_call(
+                    response=response,
+                    user_id=user_id,
+                    context=context,
+                    session=session,
+                )
+
             return response
 
         except Exception as e:
@@ -96,6 +121,8 @@ class ClaudeService:
         system_prompt: str,
         user_message: str,
         content_type: str,
+        user_id: uuid.UUID | None = None,
+        session: "AsyncSession | None" = None,
     ) -> dict[str, Any]:
         """
         Generate structured content (non-streaming) and parse JSON response.
@@ -104,6 +131,8 @@ class ClaudeService:
             system_prompt: System prompt with JSON structure requirements
             user_message: User message with context
             content_type: Type of content being generated (lesson, quiz, etc.)
+            user_id: Optional learner UUID for cost tracking.
+            session: DB session for usage logging and credit deduction.
 
         Returns:
             Parsed JSON content as dictionary
@@ -116,6 +145,14 @@ class ClaudeService:
                 messages=[{"role": "user", "content": user_message}],
                 temperature=self._temperature,
             )
+
+            if self._cost_tracker is not None:
+                await self._cost_tracker.track_anthropic_call(
+                    response=response,
+                    user_id=user_id,
+                    context=content_type,
+                    session=session,
+                )
 
             if not response.content or len(response.content) == 0:
                 raise ValueError("Empty response from Claude API")

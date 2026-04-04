@@ -484,6 +484,34 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "Default tutor conversations returned.",
         {"min": 5, "max": 100},
     ),
+    # ── Credits & Cost Tracking ────────────────────────────
+    SettingDef(
+        "credits-per-1k-input-tokens",
+        "credits",
+        1.0,
+        "float",
+        "Credits per 1k input tokens (Claude)",
+        "Credit rate for Claude API input tokens.",
+        {"min": 0.0, "max": 1000.0},
+    ),
+    SettingDef(
+        "credits-per-1k-output-tokens",
+        "credits",
+        3.0,
+        "float",
+        "Credits per 1k output tokens (Claude)",
+        "Credit rate for Claude API output tokens.",
+        {"min": 0.0, "max": 1000.0},
+    ),
+    SettingDef(
+        "credits-per-1k-embedding-tokens",
+        "credits",
+        0.1,
+        "float",
+        "Credits per 1k embedding tokens (OpenAI)",
+        "Credit rate for OpenAI embedding tokens.",
+        {"min": 0.0, "max": 1000.0},
+    ),
 ]
 
 DEFAULTS_BY_KEY: dict[str, SettingDef] = {s.key: s for s in SETTING_DEFINITIONS}
