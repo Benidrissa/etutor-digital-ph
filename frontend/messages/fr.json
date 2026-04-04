@@ -1064,7 +1064,9 @@
         "generated": "Syllabus généré",
         "moduleCount": "{count} module(s) généré(s)",
         "error": "Erreur lors de la génération du syllabus.",
-        "noModules": "Aucun module généré. Réessayez."
+        "noModules": "Aucun module généré. Réessayez.",
+        "taskPending": "En attente de démarrage...",
+        "taskRunning": "Génération des modules..."
       },
       "index": {
         "title": "Indexation RAG",
@@ -1076,8 +1078,28 @@
         "error": "Erreur lors de l'indexation.",
         "polling": "Vérification du statut...",
         "taskPending": "En attente de démarrage...",
-        "taskRunning": "Indexation des PDFs..."
+        "taskRunning": "Indexation des PDFs...",
+        "stepExtracting": "Extraction du texte des PDFs",
+        "stepChunking": "Découpage en segments",
+        "stepEmbedding": "Génération des embeddings",
+        "stepStoring": "Stockage des fragments",
+        "stepComplete": "Indexation terminée",
+        "etaSeconds": "~{seconds}s restantes",
+        "etaMinutes": "~{minutes} min restantes",
+        "etaLessThan": "Moins d'une minute",
+        "filesProgress": "Fichier {current}/{total}",
+        "chunksProgress": "{count} fragments traités",
+        "resumeHint": "Vous pouvez fermer et revenir plus tard. La tâche continue en arrière-plan.",
+        "inProgress": "Indexation en cours"
       },
+      "closeWhileRunning": {
+        "title": "Indexation en cours",
+        "description": "L'indexation tourne toujours en arrière-plan. Vous pouvez fermer et revenir plus tard pour reprendre.",
+        "confirmClose": "Fermer et reprendre plus tard",
+        "cancel": "Rester"
+      },
+      "resumeFrom": "Reprendre la création du cours",
+      "indexingBadge": "Indexation en cours",
       "publish": {
         "title": "Publier le cours",
         "description": "Le cours est prêt. Publiez-le pour le rendre accessible aux apprenants.",
