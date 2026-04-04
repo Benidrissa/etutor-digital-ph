@@ -11,6 +11,7 @@ export function AdminNav() {
   const pathname = usePathname();
 
   const items = [
+    { href: `/${locale}/admin/courses`, label: t("courses.navTitle") },
     { href: `/${locale}/admin/users`, label: t("users.title") },
     { href: `/${locale}/admin/settings`, label: t("settings.title") },
     { href: `/${locale}/admin/audit-logs`, label: t("auditLog.title") },

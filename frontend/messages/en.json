@@ -868,6 +868,9 @@
         "demote_to_user": "Demoted to User",
         "update_role": "Updated role"
       }
+    },
+    "courses": {
+      "navTitle": "Courses"
     }
   },
   "AdminSyllabus": {
@@ -906,5 +909,110 @@
     "bloomLevel": "Bloom level",
     "estimatedHours": "Duration (h)",
     "moduleNumber": "Module number"
+  },
+  "AdminCourses": {
+    "navTitle": "Courses",
+    "pageTitle": "Course Management",
+    "pageSubtitle": "Create, configure, and publish courses",
+    "createCourse": "New Course",
+    "noCourses": "No courses yet",
+    "noCoursesDesc": "Create your first course to get started.",
+    "statusDraft": "Draft",
+    "statusPublished": "Published",
+    "statusArchived": "Archived",
+    "modules": "{count, plural, one {# module} other {# modules}}",
+    "hours": "{count}h",
+    "publish": "Publish",
+    "archive": "Archive",
+    "delete": "Delete",
+    "confirmPublish": "Publish this course?",
+    "confirmPublishDesc": "Learners will be able to enroll once published.",
+    "confirmArchive": "Archive this course?",
+    "confirmArchiveDesc": "The course will no longer appear in the catalog.",
+    "confirmDelete": "Delete this course?",
+    "confirmDeleteDesc": "This action cannot be undone.",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "actionSuccess": "Action completed successfully.",
+    "actionError": "Action failed. Please try again.",
+    "loading": "Loading courses…",
+    "error": "Could not load courses.",
+    "wizard": {
+      "title": "Create a New Course",
+      "step1": "Resources",
+      "step2": "Syllabus",
+      "step3": "Review",
+      "step4": "Indexation",
+      "step5": "Publish",
+      "next": "Next",
+      "back": "Back",
+      "close": "Close"
+    },
+    "step1": {
+      "title": "Upload Resources",
+      "subtitle": "Upload reference books, articles, or guidelines (PDF) for this course.",
+      "dropzone": "Drag and drop PDF files here, or",
+      "browse": "browse",
+      "maxSize": "Max 10 MB per file",
+      "uploading": "Uploading…",
+      "uploadError": "Upload failed: {name}",
+      "noFiles": "No files uploaded yet.",
+      "removeFile": "Remove",
+      "continue": "Continue with {count, plural, one {# file} other {# files}}"
+    },
+    "step2": {
+      "title": "Course Information",
+      "subtitle": "Fill in the basic details, then generate the syllabus with AI.",
+      "titleFrLabel": "Title (FR)",
+      "titleEnLabel": "Title (EN)",
+      "domainLabel": "Domain",
+      "audienceLabel": "Target Audience",
+      "hoursLabel": "Estimated Duration (hours)",
+      "generate": "Generate Syllabus",
+      "generating": "Generating…",
+      "generatedModules": "{count, plural, one {# module generated} other {# modules generated}}",
+      "generateError": "Generation failed. Please try again.",
+      "required": "This field is required."
+    },
+    "step3": {
+      "title": "Review Syllabus",
+      "subtitle": "Review the generated modules. You can edit them via the syllabus editor.",
+      "openEditor": "Open Syllabus Editor",
+      "moduleCount": "{count, plural, one {# module} other {# modules}}",
+      "hours": "{hours}h",
+      "approved": "Syllabus approved",
+      "approve": "Approve and continue"
+    },
+    "step4": {
+      "title": "RAG Indexation",
+      "subtitle": "Resources are indexed into the vector database to power on-demand content generation.",
+      "startIndex": "Start Indexation",
+      "indexing": "Indexing…",
+      "done": "Indexation complete",
+      "chunksIndexed": "{count, plural, one {# chunk indexed} other {# chunks indexed}}",
+      "indexError": "Indexation failed. Please try again.",
+      "noResources": "No resources to index."
+    },
+    "step5": {
+      "title": "Publish Course",
+      "subtitle": "The course will appear in the catalog and learners will be able to enroll.",
+      "publish": "Publish Course",
+      "publishing": "Publishing…",
+      "published": "Course published!",
+      "publishError": "Publishing failed. Please try again."
+    },
+    "createForm": {
+      "title": "Create a Course (Draft)",
+      "titleFrLabel": "Title in French",
+      "titleEnLabel": "Title in English",
+      "descFrLabel": "Description (FR)",
+      "descEnLabel": "Description (EN)",
+      "domainLabel": "Domain",
+      "audienceLabel": "Target Audience",
+      "hoursLabel": "Estimated Duration (hours)",
+      "create": "Create Course",
+      "creating": "Creating…",
+      "createError": "Creation failed. Please try again."
+    }
   }
 }

@@ -868,6 +868,9 @@
         "demote_to_user": "Rétrogradé Utilisateur",
         "update_role": "Rôle mis à jour"
       }
+    },
+    "courses": {
+      "navTitle": "Cours"
     }
   },
   "AdminSyllabus": {
@@ -906,5 +909,110 @@
     "bloomLevel": "Niveau Bloom",
     "estimatedHours": "Durée (h)",
     "moduleNumber": "Numéro de module"
+  },
+  "AdminCourses": {
+    "navTitle": "Cours",
+    "pageTitle": "Gestion des cours",
+    "pageSubtitle": "Créer, configurer et publier des cours",
+    "createCourse": "Nouveau cours",
+    "noCourses": "Aucun cours pour l'instant",
+    "noCoursesDesc": "Créez votre premier cours pour commencer.",
+    "statusDraft": "Brouillon",
+    "statusPublished": "Publié",
+    "statusArchived": "Archivé",
+    "modules": "{count, plural, one {# module} other {# modules}}",
+    "hours": "{count}h",
+    "publish": "Publier",
+    "archive": "Archiver",
+    "delete": "Supprimer",
+    "confirmPublish": "Publier ce cours ?",
+    "confirmPublishDesc": "Les apprenants pourront s'inscrire dès la publication.",
+    "confirmArchive": "Archiver ce cours ?",
+    "confirmArchiveDesc": "Le cours ne sera plus visible dans le catalogue.",
+    "confirmDelete": "Supprimer ce cours ?",
+    "confirmDeleteDesc": "Cette action est irréversible.",
+    "cancel": "Annuler",
+    "confirm": "Confirmer",
+    "actionSuccess": "Action effectuée avec succès.",
+    "actionError": "L'action a échoué. Veuillez réessayer.",
+    "loading": "Chargement des cours…",
+    "error": "Impossible de charger les cours.",
+    "wizard": {
+      "title": "Créer un nouveau cours",
+      "step1": "Ressources",
+      "step2": "Syllabus",
+      "step3": "Validation",
+      "step4": "Indexation",
+      "step5": "Publication",
+      "next": "Suivant",
+      "back": "Retour",
+      "close": "Fermer"
+    },
+    "step1": {
+      "title": "Importer les ressources",
+      "subtitle": "Importez les livres, articles ou guides de référence du cours (PDF).",
+      "dropzone": "Glissez-déposez vos fichiers PDF ici, ou",
+      "browse": "parcourir",
+      "maxSize": "Max 10 Mo par fichier",
+      "uploading": "Téléchargement…",
+      "uploadError": "Erreur lors du téléchargement : {name}",
+      "noFiles": "Aucun fichier importé pour l'instant.",
+      "removeFile": "Supprimer",
+      "continue": "Continuer avec {count, plural, one {# fichier} other {# fichiers}}"
+    },
+    "step2": {
+      "title": "Informations du cours",
+      "subtitle": "Renseignez les informations de base, puis générez le syllabus avec l'IA.",
+      "titleFrLabel": "Titre (FR)",
+      "titleEnLabel": "Titre (EN)",
+      "domainLabel": "Domaine",
+      "audienceLabel": "Public cible",
+      "hoursLabel": "Durée estimée (heures)",
+      "generate": "Générer le syllabus",
+      "generating": "Génération en cours…",
+      "generatedModules": "{count, plural, one {# module généré} other {# modules générés}}",
+      "generateError": "La génération a échoué. Veuillez réessayer.",
+      "required": "Ce champ est requis."
+    },
+    "step3": {
+      "title": "Valider le syllabus",
+      "subtitle": "Vérifiez les modules générés. Vous pouvez les modifier via l'éditeur de syllabus.",
+      "openEditor": "Ouvrir l'éditeur de syllabus",
+      "moduleCount": "{count, plural, one {# module} other {# modules}}",
+      "hours": "{hours}h",
+      "approved": "Syllabus approuvé",
+      "approve": "Approuver et continuer"
+    },
+    "step4": {
+      "title": "Indexation RAG",
+      "subtitle": "Les ressources sont indexées dans la base vectorielle pour alimenter la génération de contenu.",
+      "startIndex": "Lancer l'indexation",
+      "indexing": "Indexation en cours…",
+      "done": "Indexation terminée",
+      "chunksIndexed": "{count, plural, one {# chunk indexé} other {# chunks indexés}}",
+      "indexError": "L'indexation a échoué. Veuillez réessayer.",
+      "noResources": "Aucune ressource à indexer."
+    },
+    "step5": {
+      "title": "Publier le cours",
+      "subtitle": "Le cours sera visible dans le catalogue et les apprenants pourront s'inscrire.",
+      "publish": "Publier le cours",
+      "publishing": "Publication…",
+      "published": "Cours publié !",
+      "publishError": "La publication a échoué. Veuillez réessayer."
+    },
+    "createForm": {
+      "title": "Créer un cours (brouillon)",
+      "titleFrLabel": "Titre en français",
+      "titleEnLabel": "Titre en anglais",
+      "descFrLabel": "Description (FR)",
+      "descEnLabel": "Description (EN)",
+      "domainLabel": "Domaine",
+      "audienceLabel": "Public cible",
+      "hoursLabel": "Durée estimée (heures)",
+      "create": "Créer le cours",
+      "creating": "Création…",
+      "createError": "La création a échoué. Veuillez réessayer."
+    }
   }
 }
