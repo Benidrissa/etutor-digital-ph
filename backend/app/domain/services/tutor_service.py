@@ -589,6 +589,66 @@ class TutorService:
 
         return {"conversations": summaries, "total": total}
 
+    async def delete_conversation(
+        self,
+        user_id: str | uuid.UUID,
+        conversation_id: uuid.UUID,
+        session: AsyncSession,
+    ) -> bool:
+        """Delete a specific conversation. Returns True if deleted."""
+        if isinstance(user_id, str):
+            user_id = uuid.UUID(user_id)
+
+        query = select(TutorConversation).where(
+            TutorConversation.id == conversation_id,
+            TutorConversation.user_id == user_id,
+        )
+        result = await session.execute(query)
+        conversation = result.scalar_one_or_none()
+
+        if not conversation:
+            return False
+
+        await session.delete(conversation)
+        await session.commit()
+
+        logger.info(
+            "Conversation deleted",
+            user_id=str(user_id),
+            conversation_id=str(conversation_id),
+            message_count=len(conversation.messages) if conversation.messages else 0,
+        )
+        return True
+
+    async def delete_all_conversations(
+        self,
+        user_id: str | uuid.UUID,
+        session: AsyncSession,
+    ) -> int:
+        """Delete all conversations for a user. Returns count deleted."""
+        if isinstance(user_id, str):
+            user_id = uuid.UUID(user_id)
+
+        query = select(TutorConversation).where(
+            TutorConversation.user_id == user_id,
+        )
+        result = await session.execute(query)
+        conversations = result.scalars().all()
+
+        count = len(conversations)
+        for conv in conversations:
+            await session.delete(conv)
+
+        if count:
+            await session.commit()
+            logger.info(
+                "All conversations deleted",
+                user_id=str(user_id),
+                deleted_count=count,
+            )
+
+        return count
+
     async def get_tutor_stats(
         self, user_id: str | uuid.UUID, session: AsyncSession
     ) -> dict[str, Any]:

@@ -35,6 +35,7 @@ import {
   getOfflineConversation,
   invalidateConversationCache,
   invalidateConversationsCache,
+  deleteConversation as apiDeleteConversation,
 } from '@/lib/tutor-api';
 
 interface ChatPanelProps {
@@ -70,7 +71,12 @@ export function ChatPanel({
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
     conversationId ?? null
   );
-  const [tutorMode, setTutorMode] = useState<'socratic' | 'explanatory'>('socratic');
+  const [tutorMode, setTutorMode] = useState<'socratic' | 'explanatory'>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('tutorMode') as 'socratic' | 'explanatory') || 'socratic';
+    }
+    return 'socratic';
+  });
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const isLimitReached = currentUsage >= maxDailyUsage;
@@ -81,6 +87,10 @@ export function ChatPanel({
     isUser: false,
     timestamp: new Date(),
   };
+
+  useEffect(() => {
+    localStorage.setItem('tutorMode', tutorMode);
+  }, [tutorMode]);
 
   useEffect(() => {
     fetchTutorStats()
@@ -303,9 +313,16 @@ export function ChatPanel({
     }
   };
 
-  const handleClearHistory = () => {
+  const handleClearHistory = async () => {
+    if (activeConversationId) {
+      try {
+        await apiDeleteConversation(activeConversationId);
+      } catch { /* proxy may block response */ }
+    }
     setMessages([welcomeMessage]);
+    setActiveConversationId(null);
     setShowClearDialog(false);
+    onConversationCreated?.('');  // Signal parent to refresh list
   };
 
   if (!isOpen) return null;

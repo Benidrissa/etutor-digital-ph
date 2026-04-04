@@ -205,6 +205,33 @@ export interface TutorStats {
   most_discussed_topics: string[];
 }
 
+export async function deleteConversation(conversationId: string): Promise<void> {
+  const token = await authClient.getValidToken();
+  const response = await fetch(
+    `${API_BASE}/api/v1/tutor/conversations/${conversationId}`,
+    { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!response.ok && response.status !== 204) {
+    throw new Error(`Failed to delete conversation: ${response.status}`);
+  }
+  invalidateConversationsCache();
+  invalidateConversationCache(conversationId);
+}
+
+export async function deleteAllConversations(): Promise<number> {
+  const token = await authClient.getValidToken();
+  const response = await fetch(`${API_BASE}/api/v1/tutor/conversations`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to delete conversations: ${response.status}`);
+  }
+  invalidateConversationsCache();
+  const data = await response.json();
+  return data.deleted_count;
+}
+
 export async function fetchTutorStats(): Promise<TutorStats> {
   const token = await authClient.getValidToken();
   const response = await fetch(`${API_BASE}/api/v1/tutor/stats`, {
