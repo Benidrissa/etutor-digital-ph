@@ -190,6 +190,73 @@ export async function trackLessonAccess(
   });
 }
 
+// Marketplace API Types
+export interface MarketplaceCourse {
+  id: string;
+  slug: string;
+  title_fr: string;
+  title_en: string;
+  description_fr?: string;
+  description_en?: string;
+  course_domain: CourseDomain[];
+  course_level: CourseLevel[];
+  audience_type: AudienceType[];
+  estimated_hours: number;
+  module_count: number;
+  cover_image_url?: string;
+  is_free: boolean;
+  price_credits: number;
+  rating: number;
+  review_count: number;
+  expert_name: string;
+  expert_avatar_url?: string;
+  enrolled: boolean;
+}
+
+export type MarketplaceSortOption =
+  | 'newest'
+  | 'popular'
+  | 'rating'
+  | 'price_asc'
+  | 'price_desc';
+
+export type MarketplacePriceFilter = 'all' | 'free' | 'paid';
+
+export interface MarketplaceFilters {
+  search?: string;
+  domain?: string;
+  level?: string;
+  audience?: string;
+  price?: MarketplacePriceFilter;
+  sort?: MarketplaceSortOption;
+  page?: number;
+  page_size?: number;
+}
+
+export interface MarketplaceResponse {
+  items: MarketplaceCourse[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export async function getMarketplaceCourses(
+  filters?: MarketplaceFilters
+): Promise<MarketplaceResponse> {
+  const params = new URLSearchParams();
+  if (filters?.search) params.set('search', filters.search);
+  if (filters?.domain) params.set('domain', filters.domain);
+  if (filters?.level) params.set('level', filters.level);
+  if (filters?.audience) params.set('audience', filters.audience);
+  if (filters?.price && filters.price !== 'all') params.set('price', filters.price);
+  if (filters?.sort) params.set('sort', filters.sort);
+  if (filters?.page) params.set('page', String(filters.page));
+  if (filters?.page_size) params.set('page_size', String(filters.page_size));
+  const qs = params.toString();
+  return apiFetch<MarketplaceResponse>(`/api/v1/marketplace/courses${qs ? `?${qs}` : ''}`);
+}
+
 export async function apiFetch<T>(
   path: string,
   options?: RequestInit

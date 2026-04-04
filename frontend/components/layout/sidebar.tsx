@@ -17,6 +17,7 @@ import {
   Menu,
   LogOut,
   ShieldCheck,
+  ShoppingBag,
 } from "lucide-react";
 import { LocaleSwitcher } from "@/components/shared/locale-switcher";
 import { Button } from "@/components/ui/button";
@@ -77,6 +78,12 @@ export function Sidebar() {
       label: t("courses"),
       icon: GraduationCap,
       description: t("coursesDescription")
+    },
+    {
+      href: `/${locale}/marketplace`,
+      label: t("marketplace"),
+      icon: ShoppingBag,
+      description: t("marketplaceDescription")
     },
     {
       href: `/${locale}/modules`,

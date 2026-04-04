@@ -8,7 +8,7 @@ import {
   BookOpen,
   CreditCard,
   Bot,
-  Settings,
+  ShoppingBag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -37,16 +37,16 @@ export function BottomNav() {
       description: t("flashcardsDescription")
     },
     {
+      href: `/${locale}/marketplace`,
+      label: t("marketplace"),
+      icon: ShoppingBag,
+      description: t("marketplaceDescription")
+    },
+    {
       href: `/${locale}/tutor`,
       label: t("tutor"),
       icon: Bot,
       description: t("tutorDescription")
-    },
-    {
-      href: `/${locale}/settings`,
-      label: t("settings"),
-      icon: Settings,
-      description: t("settingsDescription")
     },
   ];
 
