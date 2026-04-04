@@ -41,7 +41,7 @@ export function SummativeAssessmentContainer({
 }: SummativeAssessmentContainerProps) {
   const t = useTranslations('SummativeAssessment');
   const { getSetting } = useSettings();
-  const summativeTimeLimit = getSetting<number>("quiz-summative_time_limit_minutes", 30);
+  const summativeTimeLimit = getSetting<number>("quiz-summative-time-limit-minutes", 30);
   
   const [state, setState] = useState<AssessmentState>('checking');
   const [assessment, setAssessment] = useState<Quiz | null>(null);

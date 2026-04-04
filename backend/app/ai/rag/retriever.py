@@ -53,7 +53,7 @@ class SemanticRetriever:
         Returns:
             List of SearchResult objects ordered by similarity
         """
-        top_k = top_k or SettingsCache.instance().get("ai-rag_default_top_k", 8)
+        top_k = top_k or SettingsCache.instance().get("ai-rag-default-top-k", 8)
         if not query.strip():
             return []
 
@@ -203,7 +203,7 @@ class SemanticRetriever:
         Returns:
             Dictionary mapping source names to search results
         """
-        top_k = top_k or SettingsCache.instance().get("ai-rag_default_top_k", 8)
+        top_k = top_k or SettingsCache.instance().get("ai-rag-default-top-k", 8)
         results = {}
 
         for source in sources:
@@ -237,7 +237,7 @@ class SemanticRetriever:
         Returns:
             List of SearchResult objects filtered by user context
         """
-        top_k = top_k or SettingsCache.instance().get("ai-rag_default_top_k", 8)
+        top_k = top_k or SettingsCache.instance().get("ai-rag-default-top-k", 8)
         # Don't filter by language — source books are all English,
         # Claude generates content in the user's target language
         filters: dict[str, Any] = {

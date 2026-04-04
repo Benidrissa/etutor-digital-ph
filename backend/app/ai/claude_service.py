@@ -28,8 +28,8 @@ class ClaudeService:
         )
 
         _cache = SettingsCache.instance()
-        self._max_tokens = _cache.get("ai-max_tokens_content", 64000)
-        self._temperature = _cache.get("ai-temperature_content", 0.7)
+        self._max_tokens = _cache.get("ai-max-tokens-content", 64000)
+        self._temperature = _cache.get("ai-temperature-content", 0.7)
 
     async def generate_lesson_content_stream(
         self,
