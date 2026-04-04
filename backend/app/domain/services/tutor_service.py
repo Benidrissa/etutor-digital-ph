@@ -725,11 +725,12 @@ class TutorService:
             )
 
         for msg in recent_messages:
-            if msg.get("role") and msg.get("content"):
+            content = (msg.get("content") or "").strip()
+            if msg.get("role") and content:
                 claude_messages.append(
                     {
                         "role": msg["role"],
-                        "content": msg["content"],
+                        "content": content,
                     }
                 )
 
