@@ -6,7 +6,7 @@ test.describe('Login Page', () => {
   });
 
   test('renders login form with all fields', async ({ page }) => {
-    await expect(page.getByText('SantePublique')).toBeVisible();
+    await expect(page.getByText('Tutor')).toBeVisible();
     await expect(page.getByText('Sign in', { exact: true }).first()).toBeVisible();
     await expect(page.locator('#email')).toBeVisible();
     await expect(page.locator('#totp_code')).toBeVisible();
@@ -103,7 +103,7 @@ test.describe('Registration Page', () => {
   });
 
   test('renders step 1 registration form', async ({ page }) => {
-    await expect(page.getByText('SantePublique')).toBeVisible();
+    await expect(page.getByText('Tutor')).toBeVisible();
     await expect(page.locator('#name')).toBeVisible();
     await expect(page.locator('#email')).toBeVisible();
     await expect(page.locator('#language')).toBeVisible();

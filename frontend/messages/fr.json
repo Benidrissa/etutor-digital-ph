@@ -1,13 +1,13 @@
 {
   "Common": {
-    "appName": "SantePublique",
+    "appName": "Tutor",
     "loading": "Chargement...",
     "offline": "Vous êtes hors ligne — contenu en cache disponible",
     "error": "Une erreur est survenue"
   },
   "PWA": {
     "installTitle": "Installer l'application",
-    "installDescription": "Ajoutez SantePublique à votre écran d'accueil pour un accès rapide et une expérience optimisée.",
+    "installDescription": "Ajoutez Tutor à votre écran d'accueil pour un accès rapide et une expérience optimisée.",
     "install": "Installer",
     "later": "Plus tard"
   },
@@ -145,7 +145,7 @@
   },
   "Dashboard": {
     "title": "Tableau de bord",
-    "welcome": "Bienvenue sur SantePublique",
+    "welcome": "Bienvenue sur Tutor",
     "subtitle": "Votre plateforme d'apprentissage en santé publique",
     "streak": "Jours consécutifs",
     "nextReview": "Prochaine révision",
@@ -432,7 +432,7 @@
     "goToModules": "Aller aux modules"
   },
   "Onboarding": {
-    "welcome": "Bienvenue sur SantePublique",
+    "welcome": "Bienvenue sur Tutor",
     "subtitle": "Configurons votre expérience d'apprentissage personnalisée",
     "step": "Étape {current} de {total}",
     "next": "Suivant",

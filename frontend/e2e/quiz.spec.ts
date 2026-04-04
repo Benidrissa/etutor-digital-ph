@@ -43,7 +43,7 @@ test.describe('Quiz Components - Unit Tests via Auth Pages', () => {
     // Verify quiz i18n keys exist by checking the messages file loads
     await page.goto('/en/login');
     // If we can load any page, the i18n bundle including Quiz keys is available
-    await expect(page.getByText('SantePublique')).toBeVisible();
+    await expect(page.getByText('Tutor')).toBeVisible();
   });
 });
 
