@@ -34,6 +34,7 @@ class Course(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     rag_collection_id: Mapped[str | None] = mapped_column(String)
+    indexation_task_id: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

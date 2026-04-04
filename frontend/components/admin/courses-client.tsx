@@ -13,6 +13,7 @@ import {
   Loader2,
   AlertCircle,
   BookOpen,
+  Database,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -34,7 +35,7 @@ import {
 import { apiFetch } from '@/lib/api';
 import { authClient, AuthError } from '@/lib/auth';
 import { CourseForm } from '@/components/admin/course-form';
-import { CourseWizardClient } from '@/components/admin/course-wizard-client';
+import { CourseWizardClient, loadWizardState } from '@/components/admin/course-wizard-client';
 
 export interface AdminCourse {
   id: string;
@@ -49,7 +50,10 @@ export interface AdminCourse {
   created_at: string;
   updated_at: string;
   module_count?: number;
+  indexation_task_id?: string | null;
 }
+
+type WizardStep = 'upload' | 'info' | 'generate' | 'index' | 'publish';
 
 type PendingAction =
   | { type: 'publish'; course: AdminCourse }
@@ -72,11 +76,21 @@ export function CoursesClient() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<AdminCourse | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardResumeCourseId, setWizardResumeCourseId] = useState<string | undefined>();
+  const [wizardResumeStep, setWizardResumeStep] = useState<WizardStep | undefined>();
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [generateTaskId, setGenerateTaskId] = useState<string | null>(null);
   const generatePollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const saved = loadWizardState();
+    if (saved) {
+      setWizardResumeCourseId(saved.courseId);
+      setWizardResumeStep(saved.step as WizardStep);
+    }
+  }, []);
 
   const { data: courses, isLoading, error, refetch } = useAdminCourses();
 
@@ -213,6 +227,28 @@ export function CoursesClient() {
     queryClient.invalidateQueries({ queryKey: ['admin', 'courses'] });
   };
 
+  const openWizardFresh = () => {
+    setWizardResumeCourseId(undefined);
+    setWizardResumeStep(undefined);
+    setWizardOpen(true);
+  };
+
+  const openWizardResume = () => {
+    setWizardOpen(true);
+  };
+
+  const handleWizardClose = () => {
+    setWizardOpen(false);
+    const saved = loadWizardState();
+    if (saved) {
+      setWizardResumeCourseId(saved.courseId);
+      setWizardResumeStep(saved.step as WizardStep);
+    } else {
+      setWizardResumeCourseId(undefined);
+      setWizardResumeStep(undefined);
+    }
+  };
+
   const confirmTitle =
     pendingAction?.type === 'publish'
       ? t('confirmPublish')
@@ -250,17 +286,29 @@ export function CoursesClient() {
   return (
     <>
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <p className="text-sm text-muted-foreground">
             {t('courseCount', { count: courses?.length ?? 0 })}
           </p>
-          <Button
-            onClick={() => setWizardOpen(true)}
-            className="gap-2 min-h-11"
-          >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            {t('createCourse')}
-          </Button>
+          <div className="flex items-center gap-2">
+            {wizardResumeCourseId && (
+              <Button
+                variant="outline"
+                onClick={openWizardResume}
+                className="gap-2 min-h-11 text-amber-700 border-amber-300 hover:bg-amber-50"
+              >
+                <Database className="h-4 w-4 animate-pulse" aria-hidden="true" />
+                {t('wizard.resumeFrom')}
+              </Button>
+            )}
+            <Button
+              onClick={openWizardFresh}
+              className="gap-2 min-h-11"
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              {t('createCourse')}
+            </Button>
+          </div>
         </div>
 
         {actionError && (
@@ -280,10 +328,12 @@ export function CoursesClient() {
                 key={course.id}
                 course={course}
                 generatingId={generatingId}
+                resumeCourseId={wizardResumeCourseId}
                 onPublish={(c) => setPendingAction({ type: 'publish', course: c })}
                 onArchive={(c) => setPendingAction({ type: 'archive', course: c })}
                 onGenerateStructure={(c) => setPendingAction({ type: 'generate', course: c })}
                 onEdit={(c) => { setEditingCourse(c); setFormOpen(true); }}
+                onResumeWizard={() => { setWizardResumeCourseId(course.id); setWizardResumeStep(wizardResumeStep); openWizardResume(); }}
               />
             ))}
           </div>
@@ -300,11 +350,15 @@ export function CoursesClient() {
 
       {wizardOpen && (
         <CourseWizardClient
-          onClose={() => setWizardOpen(false)}
+          onClose={handleWizardClose}
           onCourseCreated={() => {
             setWizardOpen(false);
+            setWizardResumeCourseId(undefined);
+            setWizardResumeStep(undefined);
             queryClient.invalidateQueries({ queryKey: ['admin', 'courses'] });
           }}
+          resumeCourseId={wizardResumeCourseId}
+          resumeStep={wizardResumeStep}
         />
       )}
 
@@ -364,17 +418,21 @@ export function CoursesClient() {
 function CourseRow({
   course,
   generatingId,
+  resumeCourseId,
   onPublish,
   onArchive,
   onGenerateStructure,
   onEdit,
+  onResumeWizard,
 }: {
   course: AdminCourse;
   generatingId: string | null;
+  resumeCourseId?: string;
   onPublish: (c: AdminCourse) => void;
   onArchive: (c: AdminCourse) => void;
   onGenerateStructure: (c: AdminCourse) => void;
   onEdit: (c: AdminCourse) => void;
+  onResumeWizard: () => void;
 }) {
   const t = useTranslations('AdminCourses');
   const locale = useLocale();
@@ -389,18 +447,25 @@ function CourseRow({
         : 'outline';
 
   const isGenerating = generatingId === course.id;
+  const isIndexingInProgress = resumeCourseId === course.id;
 
   return (
-    <Card className="p-4">
+    <Card className={`p-4 ${isIndexingInProgress ? 'border-amber-300 dark:border-amber-700' : ''}`}>
       <div className="flex items-start justify-between gap-3">
         <button
           className="flex flex-col gap-1 text-left min-w-0 flex-1"
-          onClick={() => onEdit(course)}
-          aria-label={t('editCourse')}
+          onClick={isIndexingInProgress ? onResumeWizard : () => onEdit(course)}
+          aria-label={isIndexingInProgress ? t('wizard.resumeFrom') : t('editCourse')}
         >
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-sm truncate">{title}</span>
             <Badge variant={statusVariant}>{t(`status.${course.status}`)}</Badge>
+            {isIndexingInProgress && (
+              <Badge className="gap-1 bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-100 dark:bg-amber-900 dark:text-amber-200">
+                <Database className="h-3 w-3 animate-pulse" aria-hidden="true" />
+                {t('wizard.indexingBadge')}
+              </Badge>
+            )}
           </div>
           {(course.course_domain?.length > 0 || course.course_level?.length > 0) && (
             <div className="flex gap-1 flex-wrap">
