@@ -177,3 +177,29 @@ function useModule(moduleId: string) {
 - Screen reader support (VoiceOver, TalkBack)
 - `role` and `aria-*` attributes on custom components
 - shadcn/ui components are accessible by default — leverage them
+
+## Billing Components (`components/billing/`)
+
+- **`balance-widget.tsx`** — Credit balance display for sidebar/header. Shows current balance, low balance warning. Clickable → navigate to purchase page.
+- **`purchase-card.tsx`** — Credit package card: name, credits, price. Select → confirm dialog.
+- **`insufficient-balance-modal.tsx`** — Triggered on 402 response. Shows balance, required amount, CTA to buy credits. Reusable across all content pages.
+
+## Expert Components (`components/expert/`)
+
+- **`expert-guard.tsx`** — Role gate: checks JWT for role=expert or admin. Redirects non-experts.
+- **`expert-nav.tsx`** — Tab navigation: Overview, My Courses, Revenue, Credits.
+- **`course-card.tsx`** — Expert's course card with status badge, enrollment count, revenue.
+- **`revenue-chart.tsx`** — Monthly revenue bar chart (gross, commission, net).
+- **`credit-balance.tsx`** — Credit balance widget for expert dashboard.
+- **`cost-estimator.tsx`** — Client-side course generation cost estimator. Uses pdf.js to read page count from selected PDFs without uploading. Calculates estimated credits for embedding, structure, lessons, quizzes, flashcards. Shows breakdown + balance comparison. Rates fetched from `GET /api/v1/billing/generation-rates`.
+
+## Marketplace Components (`components/marketplace/`)
+
+- **`course-grid.tsx`** — Responsive grid of marketplace courses (1/2/3 columns).
+- **`marketplace-card.tsx`** — Course card: title, price badge, rating, expert avatar.
+- **`price-badge.tsx`** — "Free" or "X credits" badge with appropriate styling.
+- **`star-rating.tsx`** — Star rating display (read-only) and input (interactive). 1-5 stars.
+- **`review-card.tsx`** — Individual review: rating stars, comment, user name, date.
+- **`purchase-dialog.tsx`** — Purchase confirmation: price, current balance, balance after. Confirm/cancel.
+- **`review-form.tsx`** — Star rating selector + comment textarea. Submit review.
+- **`expert-bio.tsx`** — Expert info section: name, avatar, course count.

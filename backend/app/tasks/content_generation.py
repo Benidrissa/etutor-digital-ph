@@ -985,3 +985,88 @@ def backfill_missing_image_data(self) -> dict:
             task_id=self.request.id,
         )
         return {"processed": 0, "succeeded": 0, "failed": 0, "error": str(exc)}
+
+
+@celery_app.task(
+    bind=True,
+    base=CallbackTask,
+    soft_time_limit=600,
+    time_limit=650,
+    rate_limit="2/m",
+)
+def generate_media_summary(
+    self,
+    module_id: str,
+    language: str,
+    media_type: str = "audio_summary",
+) -> dict:
+    """Generate an audio summary for a module via Claude script + Gemini TTS.
+
+    Args:
+        module_id: UUID of the module
+        language: Language code (fr/en)
+        media_type: Media type (default: "audio_summary")
+
+    Returns:
+        dict with media_id and status
+    """
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    from app.ai.claude_service import ClaudeService
+    from app.ai.rag.embeddings import EmbeddingService
+    from app.ai.rag.retriever import SemanticRetriever
+    from app.domain.services.media_summary_service import MediaSummaryService
+    from app.infrastructure.config.settings import settings
+    from app.infrastructure.storage.s3 import S3StorageService
+
+    logger.info(
+        "Starting audio summary generation",
+        module_id=module_id,
+        language=language,
+        media_type=media_type,
+        task_id=self.request.id,
+    )
+
+    async def _run() -> dict:
+        engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
+        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        try:
+            async with session_factory() as session:
+                embedding_service = EmbeddingService(
+                    api_key=settings.openai_api_key, model=settings.embedding_model
+                )
+                retriever = SemanticRetriever(embedding_service)
+                service = MediaSummaryService(
+                    claude_service=ClaudeService(),
+                    retriever=retriever,
+                    storage=S3StorageService(),
+                )
+                media = await service.generate_audio_summary(
+                    module_id=uuid.UUID(module_id),
+                    language=language,
+                    session=session,
+                )
+                return {"media_id": str(media.id), "status": media.status}
+        finally:
+            await engine.dispose()
+
+    try:
+        result = asyncio.run(_run())
+        logger.info(
+            "Audio summary generation completed",
+            module_id=module_id,
+            result=result,
+            task_id=self.request.id,
+        )
+        return result
+    except Exception as exc:
+        logger.error(
+            "Audio summary generation failed",
+            module_id=module_id,
+            language=language,
+            exception=str(exc),
+            task_id=self.request.id,
+        )
+        return {"media_id": None, "status": "failed", "error": str(exc)}

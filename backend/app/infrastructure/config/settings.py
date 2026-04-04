@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     # Anthropic Claude API
     anthropic_api_key: str = ""
 
+    # Google AI (Gemini TTS)
+    google_api_key: str = ""
+
     # OpenAI Embeddings
     openai_api_key: str = ""
 
@@ -60,6 +63,13 @@ class Settings(BaseSettings):
     )
     upload_max_pdf_tokens: int = 5000
     upload_max_csv_rows: int = 20
+
+    # MinIO / S3-compatible object storage
+    minio_endpoint: str = "http://localhost:9000"
+    minio_access_key: str = ""
+    minio_secret_key: str = ""
+    minio_bucket_media: str = "santepublique-media"
+    minio_public_url: str = "http://localhost:9000"
 
     @property
     def cors_origins_list(self) -> list[str]:

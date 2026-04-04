@@ -1,13 +1,13 @@
 {
   "Common": {
-    "appName": "SantePublique",
+    "appName": "Tutor",
     "loading": "Chargement...",
     "offline": "Vous êtes hors ligne — contenu en cache disponible",
     "error": "Une erreur est survenue"
   },
   "PWA": {
     "installTitle": "Installer l'application",
-    "installDescription": "Ajoutez SantePublique à votre écran d'accueil pour un accès rapide et une expérience optimisée.",
+    "installDescription": "Ajoutez Tutor à votre écran d'accueil pour un accès rapide et une expérience optimisée.",
     "install": "Installer",
     "later": "Plus tard"
   },
@@ -145,7 +145,7 @@
   },
   "Dashboard": {
     "title": "Tableau de bord",
-    "welcome": "Bienvenue sur SantePublique",
+    "welcome": "Bienvenue sur Tutor",
     "subtitle": "Votre plateforme d'apprentissage en santé publique",
     "streak": "Jours consécutifs",
     "nextReview": "Prochaine révision",
@@ -175,7 +175,10 @@
     "errorOccurred": "Une erreur s'est produite",
     "unableToLoadStats": "Impossible de charger les statistiques du tableau de bord",
     "noQuizzesTakenYet": "Aucun quiz passé",
-    "justGettingStarted": "Tout juste commencé"
+    "justGettingStarted": "Tout juste commencé",
+    "loading": "Chargement...",
+    "noEnrollments": "Vous n'êtes inscrit à aucune formation pour l'instant.",
+    "browseCourses": "Parcourir les formations disponibles"
   },
   "ModuleCard": {
     "locked": "Verrouillé",
@@ -432,7 +435,7 @@
     "goToModules": "Aller aux modules"
   },
   "Onboarding": {
-    "welcome": "Bienvenue sur SantePublique",
+    "welcome": "Bienvenue sur Tutor",
     "subtitle": "Configurons votre expérience d'apprentissage personnalisée",
     "step": "Étape {current} de {total}",
     "next": "Suivant",
@@ -636,6 +639,23 @@
     "imagePending": "Illustration en cours de génération...",
     "imageViewFullscreen": "Voir en plein écran",
     "imageCloseFullscreen": "Fermer le plein écran"
+  },
+  "ModuleMediaPlayer": {
+    "listenToSummary": "Écouter le résumé",
+    "watchSummary": "Regarder le résumé",
+    "downloadMedia": "Télécharger",
+    "generateAudio": "Générer l'audio",
+    "generateVideo": "Générer la vidéo",
+    "mediaGenerating": "Génération en cours...",
+    "mediaReady": "Disponible",
+    "mediaNotAvailable": "Pas encore disponible",
+    "generating": "Génération en cours...",
+    "errorGenerating": "Échec de la génération. Veuillez réessayer.",
+    "errorLoading": "Erreur lors du chargement du média.",
+    "retry": "Réessayer",
+    "play": "Lire",
+    "pause": "Pause",
+    "duration": "{minutes}:{seconds}"
   },
   "CaseStudyViewer": {
     "error": "Une erreur est survenue",
@@ -884,6 +904,30 @@
         "demote_to_user": "Rétrogradé Utilisateur",
         "update_role": "Rôle mis à jour"
       }
+    },
+    "taxonomy": {
+      "title": "Taxonomie",
+      "subtitle": "Gérer les domaines, niveaux et types de public des cours",
+      "addCategory": "Ajouter une catégorie",
+      "editCategory": "Modifier",
+      "deleteCategory": "Supprimer",
+      "deleteConfirm": "Supprimer cette catégorie ?",
+      "deleteConfirmDesc": "Cette action est irréversible.",
+      "deleteBlocked": "Impossible de supprimer : utilisée par un ou plusieurs cours.",
+      "slug": "Identifiant",
+      "labelFr": "Libellé français",
+      "labelEn": "Libellé anglais",
+      "sortOrder": "Ordre",
+      "active": "Actif",
+      "inactive": "Inactif",
+      "save": "Enregistrer",
+      "cancel": "Annuler",
+      "saved": "Enregistré",
+      "sections": {
+        "domain": "Domaines",
+        "level": "Niveaux",
+        "audience": "Publics"
+      }
     }
   },
   "Courses": {
@@ -914,40 +958,6 @@
     "allAudiences": "Tous les publics",
     "clearFilters": "Effacer les filtres",
     "activeFilters": "{count, plural, one {# filtre actif} other {# filtres actifs}}"
-  },
-  "Taxonomy": {
-    "domains": {
-      "health_sciences": "Sciences de la santé",
-      "natural_sciences": "Sciences naturelles",
-      "social_sciences": "Sciences sociales",
-      "mathematics": "Mathématiques",
-      "engineering": "Ingénierie",
-      "information_technology": "Informatique",
-      "education": "Éducation",
-      "arts_humanities": "Arts et lettres",
-      "business_management": "Gestion et commerce",
-      "law": "Droit",
-      "agriculture": "Agriculture",
-      "environmental_studies": "Études environnementales",
-      "other": "Autre"
-    },
-    "levels": {
-      "beginner": "Débutant",
-      "intermediate": "Intermédiaire",
-      "advanced": "Avancé",
-      "expert": "Expert"
-    },
-    "audience_types": {
-      "kindergarten": "Maternelle",
-      "primary_school": "Primaire",
-      "secondary_school": "Secondaire",
-      "university": "Universitaire",
-      "professional": "Professionnel",
-      "researcher": "Chercheur",
-      "teacher": "Enseignant",
-      "policy_maker": "Décideur politique",
-      "continuing_education": "Formation continue"
-    }
   },
   "AdminCourses": {
     "pageTitle": "Gestion des formations",
