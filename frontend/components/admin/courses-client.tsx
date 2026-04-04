@@ -132,6 +132,7 @@ export function CoursesClient() {
               Authorization: `Bearer ${token}`,
               'Content-Type': 'application/json',
             },
+            body: JSON.stringify({ estimated_hours: course.estimated_hours || 20 }),
           }
         );
         if (!res.ok) {

@@ -16,6 +16,7 @@ from app.api.deps_local_auth import AuthenticatedUser, require_role
 from app.domain.models.course import Course, UserCourseEnrollment
 from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.module import Module
+from app.domain.models.taxonomy import TaxonomyCategory
 from app.domain.models.user import UserRole
 from app.domain.services.course_agent_service import CourseAgentService
 from app.tasks.rag_indexation import UPLOAD_DIR, index_course_resources
@@ -60,6 +61,7 @@ class CourseResponse(BaseModel):
 
 
 def _course_to_response(course: Course) -> CourseResponse:
+    cats = course.taxonomy_categories or []
     return CourseResponse(
         id=str(course.id),
         slug=course.slug,
@@ -67,9 +69,9 @@ def _course_to_response(course: Course) -> CourseResponse:
         title_en=course.title_en,
         description_fr=course.description_fr,
         description_en=course.description_en,
-        course_domain=list(course.course_domain or []),
-        course_level=list(course.course_level or []),
-        audience_type=list(course.audience_type or []),
+        course_domain=[tc.slug for tc in cats if tc.type == "domain"],
+        course_level=[tc.slug for tc in cats if tc.type == "level"],
+        audience_type=[tc.slug for tc in cats if tc.type == "audience"],
         languages=course.languages,
         estimated_hours=course.estimated_hours,
         module_count=course.module_count,
@@ -118,6 +120,19 @@ async def create_course(
         slug = f"{base_slug}-{suffix}"
         suffix += 1
 
+    # Look up taxonomy categories by slug
+    all_slugs = (
+        [(s, "domain") for s in request.course_domain]
+        + [(s, "level") for s in request.course_level]
+        + [(s, "audience") for s in request.audience_type]
+    )
+    tax_cats = []
+    if all_slugs:
+        result_cats = await db.execute(
+            select(TaxonomyCategory).where(TaxonomyCategory.slug.in_([s for s, _ in all_slugs]))
+        )
+        tax_cats = list(result_cats.scalars().all())
+
     course = Course(
         id=uuid.uuid4(),
         slug=slug,
@@ -125,15 +140,13 @@ async def create_course(
         title_en=request.title_en,
         description_fr=request.description_fr,
         description_en=request.description_en,
-        course_domain=request.course_domain,
-        course_level=request.course_level,
-        audience_type=request.audience_type,
         languages=request.languages,
         estimated_hours=request.estimated_hours,
         cover_image_url=request.cover_image_url,
         rag_collection_id=request.rag_collection_id or str(uuid.uuid4()),
         created_by=uuid.UUID(current_user.id),
         status="draft",
+        taxonomy_categories=tax_cats,
     )
     db.add(course)
     await db.commit()
@@ -170,8 +183,26 @@ async def update_course(
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
 
+    taxonomy_fields = {"course_domain", "course_level", "audience_type"}
     for field, value in request.model_dump(exclude_unset=True).items():
-        setattr(course, field, value)
+        if field not in taxonomy_fields:
+            setattr(course, field, value)
+
+    # Update taxonomy if any taxonomy fields were provided
+    data = request.model_dump(exclude_unset=True)
+    if taxonomy_fields & data.keys():
+        all_slugs = (
+            [(s, "domain") for s in data.get("course_domain", [])]
+            + [(s, "level") for s in data.get("course_level", [])]
+            + [(s, "audience") for s in data.get("audience_type", [])]
+        )
+        if all_slugs:
+            result_cats = await db.execute(
+                select(TaxonomyCategory).where(TaxonomyCategory.slug.in_([s for s, _ in all_slugs]))
+            )
+            course.taxonomy_categories = list(result_cats.scalars().all())
+        else:
+            course.taxonomy_categories = []
 
     await db.commit()
     await db.refresh(course)
@@ -260,13 +291,14 @@ async def generate_course_structure(
     await db.execute(delete(Module).where(Module.course_id == course_id))
     await db.flush()
 
+    cats = course.taxonomy_categories or []
     agent = CourseAgentService()
     module_dicts = await agent.generate_course_structure(
         title_fr=course.title_fr,
         title_en=course.title_en,
-        course_domain=list(course.course_domain or []),
-        course_level=list(course.course_level or []),
-        audience_type=list(course.audience_type or []),
+        course_domain=[tc.slug for tc in cats if tc.type == "domain"],
+        course_level=[tc.slug for tc in cats if tc.type == "level"],
+        audience_type=[tc.slug for tc in cats if tc.type == "audience"],
         estimated_hours=request.estimated_hours or course.estimated_hours,
     )
 

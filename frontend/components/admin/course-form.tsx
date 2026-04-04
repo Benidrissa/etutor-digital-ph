@@ -1,21 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { X, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, getCourseTaxonomy, type TaxonomyItem } from '@/lib/api';
 import { authClient, AuthError } from '@/lib/auth';
 import type { AdminCourse } from './courses-client';
 
@@ -35,59 +27,39 @@ interface CoursePayload {
   cover_image_url: string;
 }
 
-// Taxonomy options — kept in sync with backend enums
-const DOMAIN_OPTIONS = [
-  'health_sciences', 'natural_sciences', 'social_sciences',
-  'mathematics', 'engineering', 'information_technology',
-  'education', 'arts_humanities', 'business_management',
-  'law', 'agriculture', 'environmental_studies', 'other',
-] as const;
-
-const LEVEL_OPTIONS = [
-  'beginner', 'intermediate', 'advanced', 'expert',
-] as const;
-
-const AUDIENCE_OPTIONS = [
-  'kindergarten', 'primary_school', 'secondary_school',
-  'university', 'professional', 'researcher',
-  'teacher', 'policy_maker', 'continuing_education',
-] as const;
-
 function MultiSelectChips({
   label,
   id,
   options,
   selected,
   onToggle,
-  tKey,
-  t,
+  locale,
 }: {
   label: string;
   id: string;
-  options: readonly string[];
+  options: TaxonomyItem[];
   selected: string[];
   onToggle: (val: string) => void;
-  tKey: string;
-  t: (key: string) => string;
+  locale: string;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={id}>{label}</Label>
       <div className="flex flex-wrap gap-1.5" id={id}>
         {options.map((opt) => {
-          const isSelected = selected.includes(opt);
+          const isSelected = selected.includes(opt.value);
           return (
             <button
-              key={opt}
+              key={opt.value}
               type="button"
-              onClick={() => onToggle(opt)}
+              onClick={() => onToggle(opt.value)}
               className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium transition-colors min-h-[32px] ${
                 isSelected
                   ? 'bg-teal-600 text-white hover:bg-teal-700'
                   : 'bg-stone-100 text-stone-600 hover:bg-stone-200 border border-stone-200'
               }`}
             >
-              {t(`${tKey}.${opt}`)}
+              {locale === 'fr' ? opt.label_fr : opt.label_en}
             </button>
           );
         })}
@@ -98,7 +70,7 @@ function MultiSelectChips({
 
 export function CourseForm({ course, onClose, onSaved }: CourseFormProps) {
   const t = useTranslations('AdminCourses');
-  const tTax = useTranslations('Taxonomy');
+  const locale = useLocale();
   const router = useRouter();
 
   const [titleFr, setTitleFr] = useState(course?.title_fr ?? '');
@@ -119,6 +91,19 @@ export function CourseForm({ course, onClose, onSaved }: CourseFormProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  // Fetch taxonomy from API
+  const [domainOptions, setDomainOptions] = useState<TaxonomyItem[]>([]);
+  const [levelOptions, setLevelOptions] = useState<TaxonomyItem[]>([]);
+  const [audienceOptions, setAudienceOptions] = useState<TaxonomyItem[]>([]);
+
+  useEffect(() => {
+    getCourseTaxonomy().then((tax) => {
+      setDomainOptions(tax.domains);
+      setLevelOptions(tax.levels);
+      setAudienceOptions(tax.audience_types);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -271,31 +256,28 @@ export function CourseForm({ course, onClose, onSaved }: CourseFormProps) {
           <MultiSelectChips
             label={t('domain')}
             id="course-domain"
-            options={DOMAIN_OPTIONS}
+            options={domainOptions}
             selected={courseDomain}
             onToggle={(v) => setCourseDomain(toggleArray(courseDomain, v))}
-            tKey="domains"
-            t={(k) => tTax(k)}
+            locale={locale}
           />
 
           <MultiSelectChips
             label={t('level')}
             id="course-level"
-            options={LEVEL_OPTIONS}
+            options={levelOptions}
             selected={courseLevel}
             onToggle={(v) => setCourseLevel(toggleArray(courseLevel, v))}
-            tKey="levels"
-            t={(k) => tTax(k)}
+            locale={locale}
           />
 
           <MultiSelectChips
             label={t('audience')}
             id="course-audience"
-            options={AUDIENCE_OPTIONS}
+            options={audienceOptions}
             selected={audienceType}
             onToggle={(v) => setAudienceType(toggleArray(audienceType, v))}
-            tKey="audience_types"
-            t={(k) => tTax(k)}
+            locale={locale}
           />
 
           <div className="flex flex-col gap-1.5">
