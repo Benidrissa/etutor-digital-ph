@@ -12,6 +12,7 @@ from app.ai.claude_service import ClaudeService
 from app.ai.rag.retriever import SemanticRetriever
 from app.api.v1.schemas.quiz import QuizContent, QuizResponse
 from app.domain.models.content import GeneratedContent
+from app.domain.models.module import Module
 from app.domain.services.platform_settings_service import SettingsCache
 
 logger = structlog.get_logger()
@@ -215,12 +216,17 @@ class QuizService:
             QuizContent with generated questions and metadata
         """
         try:
-            # Retrieve relevant content chunks using RAG
-            search_query = f"module {module_id} unit {unit_id} public health epidemiology concepts"
+            module: Module | None = None
+            if session is not None:
+                module_result = await session.execute(select(Module).where(Module.id == module_id))
+                module = module_result.scalar_one_or_none()
+
+            search_query = self._build_quiz_search_query(module, unit_id, language)
             search_results = await self.semantic_retriever.search_for_module(
                 query=search_query,
                 user_level=level,
                 user_language=language,
+                books_sources=module.books_sources if module else None,
                 top_k=SettingsCache.instance().get("ai-rag-default-top-k", 8),
                 session=session,
             )
@@ -255,6 +261,25 @@ class QuizService:
         except Exception as e:
             logger.error("Quiz content generation failed", error=str(e))
             raise
+
+    def _build_quiz_search_query(
+        self,
+        module: "Module | None",
+        unit_id: str,
+        language: str,
+    ) -> str:
+        """Build a context-aware RAG search query from module/unit metadata."""
+        if module is None:
+            return f"unit {unit_id}"
+
+        title = module.title_fr if language == "fr" else module.title_en
+        description = module.description_fr if language == "fr" else module.description_en
+        parts = [title]
+        if unit_id:
+            parts.append(unit_id)
+        if description:
+            parts.append(description[:200])
+        return " ".join(parts)
 
     def _build_quiz_prompt(
         self,
