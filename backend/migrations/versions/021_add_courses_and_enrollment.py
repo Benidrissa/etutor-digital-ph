@@ -20,6 +20,7 @@ DEFAULT_COURSE_ID = "00000000-0000-0000-0000-000000000001"
 
 
 def upgrade() -> None:
+    # Use raw SQL for entire courses table to avoid SQLAlchemy auto-creating enums
     op.execute(
         """
         DO $$ BEGIN
@@ -37,40 +38,28 @@ def upgrade() -> None:
         """
     )
 
-    op.create_table(
-        "courses",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("slug", sa.String(), nullable=False),
-        sa.Column("title_fr", sa.Text(), nullable=False),
-        sa.Column("title_en", sa.Text(), nullable=False),
-        sa.Column("description_fr", sa.Text(), nullable=True),
-        sa.Column("description_en", sa.Text(), nullable=True),
-        sa.Column("domain", sa.String(), nullable=True),
-        sa.Column("target_audience", sa.Text(), nullable=True),
-        sa.Column("languages", sa.String(), nullable=False, server_default="fr,en"),
-        sa.Column("estimated_hours", sa.Integer(), nullable=False, server_default="20"),
-        sa.Column("module_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column(
-            "status",
-            sa.Enum("draft", "published", "archived", name="coursestatus", create_type=False),
-            nullable=False,
-            server_default="draft",
-        ),
-        sa.Column("cover_image_url", sa.String(), nullable=True),
-        sa.Column(
-            "created_by",
-            postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("users.id", ondelete="SET NULL"),
-            nullable=True,
-        ),
-        sa.Column("rag_collection_id", sa.String(), nullable=True),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.func.now(),
-            nullable=False,
-        ),
-        sa.Column("published_at", sa.DateTime(timezone=True), nullable=True),
+    op.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS courses (
+            id UUID PRIMARY KEY,
+            slug VARCHAR NOT NULL,
+            title_fr TEXT NOT NULL,
+            title_en TEXT NOT NULL,
+            description_fr TEXT,
+            description_en TEXT,
+            domain VARCHAR,
+            target_audience TEXT,
+            languages VARCHAR NOT NULL DEFAULT 'fr,en',
+            estimated_hours INTEGER NOT NULL DEFAULT 20,
+            module_count INTEGER NOT NULL DEFAULT 0,
+            status coursestatus NOT NULL DEFAULT 'draft',
+            cover_image_url VARCHAR,
+            created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+            rag_collection_id VARCHAR,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            published_at TIMESTAMPTZ
+        )
+        """
     )
     op.create_index("ix_courses_slug", "courses", ["slug"], unique=True)
     op.create_index("ix_courses_status", "courses", ["status"])
@@ -109,33 +98,17 @@ def upgrade() -> None:
     )
     op.create_index("ix_modules_course_id", "modules", ["course_id"])
 
-    op.create_table(
-        "user_course_enrollment",
-        sa.Column(
-            "user_id",
-            postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("users.id"),
-            primary_key=True,
-        ),
-        sa.Column(
-            "course_id",
-            postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("courses.id"),
-            primary_key=True,
-        ),
-        sa.Column(
-            "enrolled_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.func.now(),
-            nullable=False,
-        ),
-        sa.Column(
-            "status",
-            sa.Enum("active", "completed", "dropped", name="enrollmentstatus", create_type=False),
-            nullable=False,
-            server_default="active",
-        ),
-        sa.Column("completion_pct", sa.Float(), nullable=False, server_default="0.0"),
+    op.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS user_course_enrollment (
+            user_id UUID REFERENCES users(id) NOT NULL,
+            course_id UUID REFERENCES courses(id) NOT NULL,
+            enrolled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            status enrollmentstatus NOT NULL DEFAULT 'active',
+            completion_pct FLOAT NOT NULL DEFAULT 0.0,
+            PRIMARY KEY (user_id, course_id)
+        )
+        """
     )
     op.create_index("ix_user_course_enrollment_user_id", "user_course_enrollment", ["user_id"])
     op.create_index("ix_user_course_enrollment_course_id", "user_course_enrollment", ["course_id"])
