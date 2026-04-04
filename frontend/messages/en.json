@@ -690,6 +690,7 @@
     "backToModule": "Back to {module}"
   },
   "LessonPage": {
+    "dashboard": "Dashboard",
     "modules": "Modules",
     "backToModule": "Back to Module",
     "metadata": {

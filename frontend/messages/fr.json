@@ -690,6 +690,7 @@
     "backToModule": "Retour à {module}"
   },
   "LessonPage": {
+    "dashboard": "Tableau de bord",
     "modules": "Modules",
     "backToModule": "Retour au Module",
     "metadata": {
