@@ -39,11 +39,11 @@ La plateforme génère dynamiquement du contenu pédagogique à partir de 3 ouvr
 | Génération IA de contenu (RAG) | ✅ | |
 | Système multi-cours (catalogue, inscription, admin CRUD) | ✅ | |
 | Quiz, flashcards, cas pratiques | ✅ | |
-| Sandbox R/Python intégré | ✅ basique | |
+| Sandbox R/Python intégré (Pyodide) | | ❌ Phase 2 |
 | Vidéos et cours en direct (live) | | ❌ Phase 3 |
-| Intégration DHIS2 données réelles | ✅ | |
-| LMS institutionnel (SCORM) | | ❌ Phase 2 |
-| Certification officielle (PDF + badge) | ✅ | |
+| Intégration DHIS2 données réelles | | ❌ Phase 2 |
+| LMS institutionnel (SCORM) | | ❌ Phase 3 |
+| Certification officielle (PDF + badge) | | ❌ Phase 2 |
 
 ---
 
@@ -511,8 +511,8 @@ Règles:
 
 ### FR-01 : Authentification & Gestion de Compte
 
-**FR-01.1** *(CRITIQUE)* — **Inscription et connexion multi-méthodes**  
-Le système doit permettre l'inscription via : (1) email + mot de passe, (2) Google OAuth, (3) LinkedIn OAuth. À l'inscription, l'utilisateur sélectionne sa langue, son pays, son rôle professionnel et son niveau auto-estimé. Un email de vérification est envoyé. Après vérification, redirection vers l'évaluation diagnostique.
+**FR-01.1** *(CRITIQUE)* — **Inscription et connexion sécurisée**  
+Le système permet l'inscription via email + mot de passe. À l'inscription, l'utilisateur sélectionne sa langue, son pays et son rôle professionnel. Vérification par email OTP. Authentification par JWT + refresh tokens. Sécurité renforcée par TOTP 2FA (Google/Microsoft Authenticator) et récupération via magic link email. Après vérification, redirection vers l'évaluation diagnostique.
 
 **FR-01.2** *(CRITIQUE)* — **Évaluation diagnostique de placement**  
 Questionnaire adaptatif de 20 questions (15-20 min) couvrant 4 domaines : fondements SP, épidémiologie, biostatistiques, systèmes de santé. L'algorithme place l'utilisateur dans l'un des 4 niveaux. Test refaisable après 3 mois.
@@ -594,7 +594,7 @@ Environnement d'exécution Python léger (Pyodide) dans le navigateur. Biblioth�
 
 | Domaine | Mesures |
 |---|---|
-| Authentification | JWT + refresh tokens, HTTPS obligatoire, rate limiting (100 req/min/IP), 2FA optionnel |
+| Authentification | JWT + refresh tokens, HTTPS obligatoire, rate limiting (100 req/min/IP), TOTP 2FA (Google/Microsoft Authenticator), email OTP, magic link recovery |
 | Protection des données | Chiffrement au repos (AES-256), en transit (TLS 1.3), PII minimales collectées |
 | API Claude | Clé API côté serveur uniquement, jamais exposée au frontend. Proxy sécurisé. |
 | Sandbox code | Pyodide exécuté en WebWorker isolé. Pas d'accès réseau depuis sandbox. |
@@ -739,7 +739,7 @@ tutor_conversations {
 | World Bank Health | Indicateurs santé, financement | api.worldbank.org/v2/indicator | Mensuelle |
 | WHO AFRO Open Data | Bulletins épidémiologiques régionaux | who.int/afro/data | Hebdomadaire |
 | PubMed API (E-utils) | Articles récents santé publique AOF | eutils.ncbi.nlm.nih.gov | Mensuelle |
-| Local Auth (FastAPI) | Authentification TOTP MFA, JWT, magic link recovery | pyotp, python-jose | Temps réel |
+| Local Auth (FastAPI) | Auth email+password, TOTP 2FA, email OTP, magic link, JWT+refresh | pyotp, python-jose, PyJWT | Temps réel |
 | Resend / Sendgrid | Emails transactionnels, rappels | API email | Événementiel |
 | Cloudflare | CDN, Edge caching, DDoS protection | Workers SDK | Continu |
 | Sentry | Monitoring erreurs frontend + backend | Sentry SDK | Continu |
