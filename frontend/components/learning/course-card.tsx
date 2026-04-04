@@ -6,31 +6,29 @@ import { useRouter } from '@/i18n/routing';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, Clock, BookOpen, GraduationCap } from 'lucide-react';
-import { enrollInCourse, type CourseResponse, type EnrollmentResponse } from '@/lib/api';
+import { enrollInCourse, type CourseResponse } from '@/lib/api';
 
 interface CourseCardProps {
   course: CourseResponse;
-  enrollment?: EnrollmentResponse;
 }
 
-export function CourseCard({ course, enrollment: initialEnrollment }: CourseCardProps) {
+export function CourseCard({ course }: CourseCardProps) {
   const t = useTranslations('Courses');
   const locale = useLocale() as 'en' | 'fr';
   const router = useRouter();
-  const [enrollment, setEnrollment] = useState<EnrollmentResponse | undefined>(initialEnrollment);
+  const [isEnrolled, setIsEnrolled] = useState(course.enrolled);
   const [enrolling, setEnrolling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const title = locale === 'fr' ? course.title_fr : course.title_en;
   const description = locale === 'fr' ? course.description_fr : course.description_en;
-  const isEnrolled = !!enrollment;
 
   const handleEnroll = async () => {
     setEnrolling(true);
     setError(null);
     try {
-      const result = await enrollInCourse(course.id);
-      setEnrollment(result);
+      await enrollInCourse(course.id);
+      setIsEnrolled(true);
     } catch {
       setError(t('enrollError'));
     } finally {
