@@ -152,6 +152,7 @@ class TutorToolExecutor:
         user_level: int,
         user_language: str,
         learner_memory_service: LearnerMemoryService | None = None,
+        course_filter: list[uuid.UUID] | None = None,
     ):
         self.retriever = retriever
         self.anthropic = anthropic_client
@@ -159,6 +160,7 @@ class TutorToolExecutor:
         self.user_level = user_level
         self.user_language = user_language
         self.learner_memory_service = learner_memory_service or LearnerMemoryService()
+        self.course_filter = course_filter
 
     async def execute(
         self,
@@ -214,15 +216,10 @@ class TutorToolExecutor:
         query = tool_input["query"]
         module_id_str = tool_input.get("module_id")
 
-        books_sources = None
-        if module_id_str:
-            try:
-                module_id = uuid.UUID(module_id_str)
-                module = await session.get(Module, module_id)
-                if module:
-                    books_sources = module.books_sources
-            except (ValueError, TypeError):
-                pass
+        books_sources = await self._aggregate_books_sources(
+            module_id_str=module_id_str,
+            session=session,
+        )
 
         results = await self.retriever.search_for_module(
             query=query,
@@ -232,6 +229,18 @@ class TutorToolExecutor:
             top_k=5,
             session=session,
         )
+
+        out_of_scope = False
+        if not results and books_sources is not None:
+            results = await self.retriever.search_for_module(
+                query=query,
+                user_level=self.user_level,
+                user_language=self.user_language,
+                books_sources=None,
+                top_k=5,
+                session=session,
+            )
+            out_of_scope = True
 
         chunks = []
         for result in results:
@@ -249,9 +258,63 @@ class TutorToolExecutor:
             "search_knowledge_base tool completed",
             query=query,
             results_count=len(chunks),
+            out_of_scope=out_of_scope,
             user_id=str(self.user_id),
         )
-        return json.dumps({"query": query, "results": chunks, "count": len(chunks)})
+        return json.dumps(
+            {
+                "query": query,
+                "results": chunks,
+                "count": len(chunks),
+                "out_of_scope": out_of_scope,
+            }
+        )
+
+    async def _aggregate_books_sources(
+        self,
+        module_id_str: str | None,
+        session: AsyncSession,
+    ) -> dict | None:
+        """Aggregate books_sources from enrolled course modules or a specific module.
+
+        Priority:
+        1. Specific module_id provided by Claude (use that module's books_sources)
+        2. course_filter set on this executor (aggregate from all modules of those courses)
+        3. None (no filtering — search full knowledge base)
+        """
+        if module_id_str:
+            try:
+                module_id = uuid.UUID(module_id_str)
+                module = await session.get(Module, module_id)
+                if module and module.books_sources:
+                    return module.books_sources
+            except (ValueError, TypeError):
+                pass
+            return None
+
+        if not self.course_filter:
+            return None
+
+        modules_result = await session.execute(
+            select(Module.books_sources).where(
+                Module.course_id.in_(self.course_filter),
+                Module.books_sources.isnot(None),
+            )
+        )
+        all_sources = modules_result.scalars().all()
+
+        if not all_sources:
+            return None
+
+        merged: dict = {}
+        for src in all_sources:
+            if isinstance(src, dict):
+                for k, v in src.items():
+                    if k not in merged:
+                        merged[k] = v
+                    elif isinstance(merged[k], list) and isinstance(v, list):
+                        merged[k] = list(set(merged[k] + v))
+        return merged if merged else None
 
     async def _get_learner_progress(self, tool_input: dict[str, Any], session: AsyncSession) -> str:
         """Execute get_learner_progress tool."""

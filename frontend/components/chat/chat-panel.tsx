@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { X, MoreVertical, Trash2, Menu, HelpCircle, BookOpen } from 'lucide-react';
+import { X, MoreVertical, Trash2, Menu, HelpCircle, BookOpen, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,6 +38,7 @@ import {
   invalidateConversationsCache,
   deleteConversation as apiDeleteConversation,
 } from '@/lib/tutor-api';
+import { getMyEnrollments, type CourseWithEnrollment } from '@/lib/api';
 
 interface ChatPanelProps {
   isOpen: boolean;
@@ -77,6 +79,8 @@ export function ChatPanel({
     }
     return 'socratic';
   });
+  const [enrolledCourses, setEnrolledCourses] = useState<CourseWithEnrollment[]>([]);
+  const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>([]);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const isLimitReached = currentUsage >= maxDailyUsage;
@@ -99,6 +103,18 @@ export function ChatPanel({
         setCurrentUsage(stats.daily_messages_used);
       })
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    getMyEnrollments()
+      .then((courses) => {
+        setEnrolledCourses(courses);
+        if (courses.length > 0 && selectedCourseIds.length === 0) {
+          setSelectedCourseIds([courses[0].id]);
+        }
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -197,6 +213,7 @@ export function ChatPanel({
           module_id: moduleId ?? null,
           tutor_mode: tutorMode,
           file_ids: attachedFiles.map((f) => f.fileId),
+          course_filter: selectedCourseIds.length > 0 ? selectedCourseIds : null,
         }),
       });
 
@@ -359,6 +376,60 @@ export function ChatPanel({
             <h2 className="text-base font-semibold">{t('title')}</h2>
           </div>
           <div className="flex items-center gap-1">
+            {enrolledCourses.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 gap-1 text-xs max-w-[120px]"
+                    title={t('courseFilter.label')}
+                  >
+                    <BookOpen className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">
+                      {selectedCourseIds.length > 0
+                        ? t('courseFilter.label')
+                        : t('courseFilter.allCourses')}
+                    </span>
+                    <ChevronDown className="h-3 w-3 shrink-0" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64">
+                  {enrolledCourses.map((course) => {
+                    const isSelected = selectedCourseIds.includes(course.id);
+                    const isDisabled = !isSelected && selectedCourseIds.length >= 2;
+                    return (
+                      <DropdownMenuItem
+                        key={course.id}
+                        onSelect={(e) => {
+                          e.preventDefault();
+                          if (isSelected) {
+                            setSelectedCourseIds((prev) => prev.filter((id) => id !== course.id));
+                          } else if (!isDisabled) {
+                            setSelectedCourseIds((prev) => [...prev, course.id]);
+                          }
+                        }}
+                        disabled={isDisabled}
+                        className={cn('gap-2', isSelected && 'bg-accent')}
+                      >
+                        <span
+                          className={cn(
+                            'h-2 w-2 rounded-full shrink-0',
+                            isSelected ? 'bg-primary' : 'bg-muted-foreground/30'
+                          )}
+                        />
+                        <span className="truncate text-sm">{course.title_fr}</span>
+                      </DropdownMenuItem>
+                    );
+                  })}
+                  {selectedCourseIds.length >= 2 && (
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                      {t('courseFilter.maxCourses')}
+                    </div>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             <Button
               variant={tutorMode === 'socratic' ? 'default' : 'outline'}
               size="sm"
@@ -402,6 +473,33 @@ export function ChatPanel({
           maxUsage={maxDailyUsage}
           className="px-3 py-1"
         />
+
+        {/* Course filter chips */}
+        {selectedCourseIds.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 px-3 pb-2" aria-label={t('courseFilter.selectedCourses')}>
+            {selectedCourseIds.map((id) => {
+              const course = enrolledCourses.find((c) => c.id === id);
+              if (!course) return null;
+              return (
+                <Badge
+                  key={id}
+                  variant="secondary"
+                  className="gap-1 text-xs pr-1 h-6"
+                >
+                  <span className="truncate max-w-[120px]">{course.title_fr}</span>
+                  <button
+                    type="button"
+                    className="h-4 w-4 rounded-full flex items-center justify-center hover:bg-muted-foreground/20 min-w-[1rem]"
+                    onClick={() => setSelectedCourseIds((prev) => prev.filter((cid) => cid !== id))}
+                    aria-label={t('courseFilter.removeAriaLabel', { course: course.title_fr })}
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </Badge>
+              );
+            })}
+          </div>
+        )}
 
         {/* Messages */}
         <div className="flex-1 flex flex-col min-h-0">

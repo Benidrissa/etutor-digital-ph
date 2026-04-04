@@ -361,6 +361,15 @@
     "modeExplanatory": "Mode Explicatif",
     "modeSocraticTooltip": "Guidage par questions",
     "modeExplanatoryTooltip": "Réponses directes",
+    "courseFilter": {
+      "label": "Cours",
+      "placeholder": "Filtrer par cours",
+      "noEnrollments": "Aucun cours inscrit",
+      "maxCourses": "Maximum 2 cours",
+      "selectedCourses": "Cours sélectionnés",
+      "removeAriaLabel": "Retirer {course}",
+      "allCourses": "Tous les cours"
+    },
     "fileUpload": {
       "attach": "Joindre un fichier",
       "attachAriaLabel": "Joindre un fichier",
