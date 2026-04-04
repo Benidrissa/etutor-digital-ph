@@ -276,7 +276,7 @@ class PlacementService:
         adjusted = raw_score
 
         role_bonuses = SettingsCache.instance().get(
-            "placement__role_bonuses",
+            "placement-role_bonuses",
             {
                 "doctor": 5,
                 "physician": 5,
@@ -293,7 +293,7 @@ class PlacementService:
                 break
 
         time_adj = SettingsCache.instance().get(
-            "placement__time_adjustments",
+            "placement-time_adjustments",
             {
                 "too_fast_threshold": 600,
                 "too_fast_penalty": -10,
@@ -323,7 +323,7 @@ class PlacementService:
             Level 1-4
         """
         thresholds = SettingsCache.instance().get(
-            "placement__level_thresholds",
+            "placement-level_thresholds",
             LEVEL_THRESHOLDS,
         )
         # Keys may be strings when loaded from JSON settings
@@ -348,7 +348,7 @@ class PlacementService:
             "level_4": "Health Policy & Research",
         }
         _comp_threshold = SettingsCache.instance().get(
-            "placement__competency_threshold",
+            "placement-competency_threshold",
             70,
         )
         competencies = [

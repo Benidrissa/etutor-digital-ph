@@ -154,7 +154,7 @@ async def submit_placement_test(
             competency_areas=result.competency_areas,
             recommendations=result.recommendations,
             can_retake_after=datetime.utcnow()
-            + timedelta(days=SettingsCache.instance().get("placement__retest_cooldown_days", 90)),
+            + timedelta(days=SettingsCache.instance().get("placement-retest_cooldown_days", 90)),
         )
 
         db.add(attempt)
@@ -180,7 +180,7 @@ async def submit_placement_test(
             "can_retake_after": (
                 datetime.utcnow()
                 + timedelta(
-                    days=SettingsCache.instance().get("placement__retest_cooldown_days", 90)
+                    days=SettingsCache.instance().get("placement-retest_cooldown_days", 90)
                 )
             ).isoformat(),
         }

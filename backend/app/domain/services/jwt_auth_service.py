@@ -21,8 +21,8 @@ class JWTAuthService:
         self.jwt_secret = settings.jwt_secret
         self.jwt_algorithm = "HS256"
         _cache = SettingsCache.instance()
-        self.access_token_expire_minutes = _cache.get("auth__access_token_expiry_minutes", 15)
-        self.refresh_token_expire_days = _cache.get("auth__refresh_token_expiry_days", 90)
+        self.access_token_expire_minutes = _cache.get("auth-access_token_expiry_minutes", 15)
+        self.refresh_token_expire_days = _cache.get("auth-refresh_token_expiry_days", 90)
 
     def create_access_token(self, user_id: str, email: str, **extra_claims: Any) -> str:
         """Create a JWT access token.
@@ -141,7 +141,7 @@ class JWTAuthService:
         """
         now = datetime.utcnow()
         expire = now + timedelta(
-            hours=SettingsCache.instance().get("auth__magic_link_expiry_hours", 1)
+            hours=SettingsCache.instance().get("auth-magic_link_expiry_hours", 1)
         )
 
         payload = {

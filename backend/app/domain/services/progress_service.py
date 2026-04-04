@@ -20,15 +20,15 @@ logger = structlog.get_logger()
 
 
 def _unlock_pct():
-    return SettingsCache.instance().get("progress__unlock_threshold_pct", 80.0)
+    return SettingsCache.instance().get("progress-unlock_threshold_pct", 80.0)
 
 
 def _unlock_score():
-    return SettingsCache.instance().get("progress__unlock_threshold_score", 80.0)
+    return SettingsCache.instance().get("progress-unlock_threshold_score", 80.0)
 
 
 def _unit_pass_score():
-    return SettingsCache.instance().get("progress__unit_pass_score", 80.0)
+    return SettingsCache.instance().get("progress-unit_pass_score", 80.0)
 
 
 class ProgressService:
