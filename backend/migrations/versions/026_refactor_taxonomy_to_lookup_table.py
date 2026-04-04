@@ -111,7 +111,7 @@ def upgrade() -> None:
             INSERT INTO course_taxonomy (course_id, category_id)
             SELECT c.id, tc.id
             FROM courses c,
-                 LATERAL unnest(c.{col}) AS val
+                 LATERAL unnest(c.{col}::text[]) AS val
             JOIN taxonomy_categories tc ON tc.slug = val AND tc.type = '{cat_type}'
             WHERE c.{col} IS NOT NULL AND array_length(c.{col}, 1) > 0
             ON CONFLICT DO NOTHING
