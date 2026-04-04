@@ -163,7 +163,7 @@ class LessonGenerationService:
                 user_level=level,
                 user_language=language,
                 books_sources=module.books_sources,
-                top_k=SettingsCache.instance().get("ai__rag_default_top_k", 8),
+                top_k=SettingsCache.instance().get("ai-rag-default-top-k", 8),
                 session=session,
             )
 
@@ -586,7 +586,7 @@ class CaseStudyGenerationService:
                 user_level=level,
                 user_language=language,
                 books_sources=module.books_sources,
-                top_k=SettingsCache.instance().get("ai__rag_default_top_k", 8),
+                top_k=SettingsCache.instance().get("ai-rag-default-top-k", 8),
                 session=session,
             )
 

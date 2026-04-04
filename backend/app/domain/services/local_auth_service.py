@@ -263,8 +263,8 @@ class LocalAuthService:
                 raise AuthenticationError("MFA not set up for this account")
 
             _cache = SettingsCache.instance()
-            _MAX_FAILED = _cache.get("auth__max_failed_totp_attempts", 10)
-            _LOCKOUT_MINUTES = _cache.get("auth__totp_lockout_minutes", 15)
+            _MAX_FAILED = _cache.get("auth-max-failed-totp-attempts", 10)
+            _LOCKOUT_MINUTES = _cache.get("auth-totp-lockout-minutes", 15)
 
             # Check account lockout
             if (

@@ -48,6 +48,8 @@ backend/
 │   │   ├── v1/
 │   │   │   ├── auth.py             # FR-01: register, login, OAuth, placement test trigger
 │   │   │   ├── users.py            # FR-01: profile, language/country prefs, level
+│   │   │   ├── courses.py          # FR-02: public catalog, enroll/unenroll
+│   │   │   ├── admin_courses.py    # FR-02: admin CRUD, publish, AI generate structure
 │   │   │   ├── modules.py          # FR-02: list modules, progress, unlock logic
 │   │   │   ├── lessons.py          # FR-03: AI-generated lesson viewer (SSE streaming)
 │   │   │   ├── quizzes.py          # FR-04: adaptive quiz, submit answers, scores
@@ -170,11 +172,41 @@ class User(Base):
     last_active: Mapped[datetime]
     created_at: Mapped[datetime] = mapped_column(default=func.now())
 
+# domain/models/course.py
+class Course(Base):
+    __tablename__ = "courses"
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    slug: Mapped[str] = mapped_column(unique=True)
+    title_fr: Mapped[str]
+    title_en: Mapped[str]
+    description_fr: Mapped[str | None]
+    description_en: Mapped[str | None]
+    domain: Mapped[str | None]
+    target_audience: Mapped[str | None]
+    languages: Mapped[str] = mapped_column(default="fr,en")
+    estimated_hours: Mapped[int] = mapped_column(default=20)
+    module_count: Mapped[int] = mapped_column(default=0)
+    status: Mapped[str]  # "draft" | "published" | "archived"
+    cover_image_url: Mapped[str | None]
+    created_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    rag_collection_id: Mapped[str | None]
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+    published_at: Mapped[datetime | None]
+    # relationships: modules (one-to-many), enrollments (one-to-many)
+
+class UserCourseEnrollment(Base):
+    __tablename__ = "user_course_enrollment"
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    course_id: Mapped[UUID] = mapped_column(ForeignKey("courses.id"), primary_key=True)
+    enrolled_at: Mapped[datetime] = mapped_column(default=func.now())
+    status: Mapped[str]  # "active" | "completed" | "dropped"
+    completion_pct: Mapped[float] = mapped_column(default=0.0)
+
 # domain/models/module.py
 class Module(Base):
     __tablename__ = "modules"
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    module_number: Mapped[int]      # 1-15
+    module_number: Mapped[int]
     level: Mapped[int]              # 1-4
     title_fr: Mapped[str]
     title_en: Mapped[str]
@@ -182,6 +214,7 @@ class Module(Base):
     description_en: Mapped[str]
     estimated_hours: Mapped[int]
     bloom_level: Mapped[str]
+    course_id: Mapped[UUID | None] = mapped_column(ForeignKey("courses.id"))
     prereq_modules: Mapped[list] = mapped_column(ARRAY(UUID))
     books_sources: Mapped[dict] = mapped_column(JSONB)  # {donaldson: [ch2,ch3], triola: [ch4]}
 
@@ -255,9 +288,25 @@ PATCH  /api/v1/users/me               # Update language, country, preferences
 POST   /api/v1/users/me/placement     # Submit placement test → assigns level 1-4
 ```
 
-### FR-02: Modules & Progression
+### FR-02: Courses, Catalog & Enrollment
 ```
-GET    /api/v1/modules                # List 15 modules with user progress + lock status
+GET    /api/v1/courses                       # Public catalog (published courses, optional ?domain= ?search=)
+GET    /api/v1/courses/my-enrollments        # User's enrolled courses (auth required)
+POST   /api/v1/courses/{id}/enroll           # Enroll in published course → creates UserModuleProgress
+POST   /api/v1/courses/{id}/unenroll         # Soft-delete enrollment (status="dropped")
+GET    /api/v1/admin/courses                 # Admin: list all courses (all statuses)
+POST   /api/v1/admin/courses                 # Admin: create course (draft)
+GET    /api/v1/admin/courses/{id}            # Admin: course detail
+PATCH  /api/v1/admin/courses/{id}            # Admin: update course
+DELETE /api/v1/admin/courses/{id}            # Admin: delete (draft only, no enrollments)
+POST   /api/v1/admin/courses/{id}/publish    # Admin: publish course
+POST   /api/v1/admin/courses/{id}/archive    # Admin: archive course
+POST   /api/v1/admin/courses/{id}/generate-structure  # Admin: AI-generate modules via Claude
+```
+
+### FR-02bis: Modules & Progression
+```
+GET    /api/v1/modules                # List modules with user progress + lock status
 GET    /api/v1/modules/{id}           # Module detail: units, objectives, progress
 GET    /api/v1/dashboard              # Pre-aggregated: streak, progress map, due reviews, recommendations
 ```

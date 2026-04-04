@@ -37,12 +37,13 @@ La plateforme génère dynamiquement du contenu pédagogique à partir de 3 ouvr
 | Application web responsive (PWA) | ✅ | |
 | Application native iOS/Android | | ❌ Phase 2 |
 | Génération IA de contenu (RAG) | ✅ | |
+| Système multi-cours (catalogue, inscription, admin CRUD) | ✅ | |
 | Quiz, flashcards, cas pratiques | ✅ | |
-| Sandbox R/Python intégré | ✅ basique | |
+| Sandbox R/Python intégré (Pyodide) | | ❌ Phase 2 |
 | Vidéos et cours en direct (live) | | ❌ Phase 3 |
-| Intégration DHIS2 données réelles | ✅ | |
-| LMS institutionnel (SCORM) | | ❌ Phase 2 |
-| Certification officielle (PDF + badge) | ✅ | |
+| Intégration DHIS2 données réelles | | ❌ Phase 2 |
+| LMS institutionnel (SCORM) | | ❌ Phase 3 |
+| Certification officielle (PDF + badge) | | ❌ Phase 2 |
 
 ---
 
@@ -510,19 +511,33 @@ Règles:
 
 ### FR-01 : Authentification & Gestion de Compte
 
-**FR-01.1** *(CRITIQUE)* — **Inscription et connexion multi-méthodes**  
-Le système doit permettre l'inscription via : (1) email + mot de passe, (2) Google OAuth, (3) LinkedIn OAuth. À l'inscription, l'utilisateur sélectionne sa langue, son pays, son rôle professionnel et son niveau auto-estimé. Un email de vérification est envoyé. Après vérification, redirection vers l'évaluation diagnostique.
+**FR-01.1** *(CRITIQUE)* — **Inscription et connexion sécurisée**  
+Le système permet l'inscription via email + mot de passe. À l'inscription, l'utilisateur sélectionne sa langue, son pays et son rôle professionnel. Vérification par email OTP. Authentification par JWT + refresh tokens. Sécurité renforcée par TOTP 2FA (Google/Microsoft Authenticator) et récupération via magic link email. Après vérification, redirection vers l'évaluation diagnostique.
 
 **FR-01.2** *(CRITIQUE)* — **Évaluation diagnostique de placement**  
 Questionnaire adaptatif de 20 questions (15-20 min) couvrant 4 domaines : fondements SP, épidémiologie, biostatistiques, systèmes de santé. L'algorithme place l'utilisateur dans l'un des 4 niveaux. Test refaisable après 3 mois.
 
-### FR-02 : Navigation & Modules
+### FR-02 : Cours & Catalogue Multi-Cours
+
+**FR-02.0** *(CRITIQUE)* — **Système multi-cours**  
+La plateforme supporte plusieurs cours indépendants. Chaque cours contient des modules, a un cycle de vie (brouillon → publié → archivé), et un identifiant RAG pour la recherche vectorielle. Le cours par défaut "Santé Publique AOF" (15 modules, 320h) est créé automatiquement à la migration, et tous les utilisateurs existants y sont inscrits.
+
+**FR-02.0a** *(CRITIQUE)* — **Catalogue public**  
+Page accessible sans authentification listant les cours publiés. Filtrage par domaine et recherche textuelle (titre FR/EN). Chaque carte affiche : titre, domaine, durée estimée, nombre de modules, image de couverture, statut d'inscription si connecté.
+
+**FR-02.0b** *(CRITIQUE)* — **Inscription aux cours**  
+Un utilisateur connecté peut s'inscrire à un cours publié. L'inscription crée automatiquement les enregistrements UserModuleProgress pour chaque module du cours (statut "locked"). Double inscription retourne l'inscription existante. Désinscription = soft delete (statut "dropped").
+
+**FR-02.0c** *(CRITIQUE)* — **Administration des cours**  
+Un administrateur peut : créer un cours (brouillon), le publier, l'archiver, le supprimer (si brouillon sans inscrits), et générer automatiquement la structure des modules via l'agent IA (Claude API). Chaque cours a un slug unique auto-généré.
+
+### FR-02bis : Navigation & Modules
 
 **FR-02.1** *(CRITIQUE)* — **Dashboard de progression**  
-Affiche : carte des 15 modules avec statut (verrouillé/en cours/complété), % de complétion par module, score moyen aux quiz, streak quotidien, calendrier de révisions Spaced Repetition, et recommandations personnalisées.
+Affiche : carte des modules du cours inscrit avec statut (verrouillé/en cours/complété), % de complétion par module, score moyen aux quiz, streak quotidien, calendrier de révisions Spaced Repetition, et recommandations personnalisées.
 
 **FR-02.2** *(CRITIQUE)* — **Structure de module**  
-Chaque module : (1) Page d'aperçu avec objectifs et durée, (2) Unités d'apprentissage (3-6 par module, 10-15 min), (3) Quiz formatif par unité (10 questions), (4) Section flashcards, (5) Exercice pratique/cas d'étude, (6) Évaluation sommative (20 questions, score ≥ 80% pour validation).
+Chaque module appartient à un cours (FK course_id). Structure : (1) Page d'aperçu avec objectifs et durée, (2) Unités d'apprentissage (3-6 par module, 10-15 min), (3) Quiz formatif par unité (10 questions), (4) Section flashcards, (5) Exercice pratique/cas d'étude, (6) Évaluation sommative (20 questions, score ≥ 80% pour validation).
 
 ### FR-03 : Génération de Contenu IA
 
@@ -579,7 +594,7 @@ Environnement d'exécution Python léger (Pyodide) dans le navigateur. Biblioth�
 
 | Domaine | Mesures |
 |---|---|
-| Authentification | JWT + refresh tokens, HTTPS obligatoire, rate limiting (100 req/min/IP), 2FA optionnel |
+| Authentification | JWT + refresh tokens, HTTPS obligatoire, rate limiting (100 req/min/IP), TOTP 2FA (Google/Microsoft Authenticator), email OTP, magic link recovery |
 | Protection des données | Chiffrement au repos (AES-256), en transit (TLS 1.3), PII minimales collectées |
 | API Claude | Clé API côté serveur uniquement, jamais exposée au frontend. Proxy sécurisé. |
 | Sandbox code | Pyodide exécuté en WebWorker isolé. Pas d'accès réseau depuis sandbox. |
@@ -606,10 +621,41 @@ users {
   created_at TIMESTAMP
 }
 
+-- Table: courses
+courses {
+  id UUID PRIMARY KEY,
+  slug TEXT UNIQUE,
+  title_fr TEXT,
+  title_en TEXT,
+  description_fr TEXT,
+  description_en TEXT,
+  domain TEXT,
+  target_audience TEXT,
+  languages TEXT DEFAULT 'fr,en',
+  estimated_hours INT DEFAULT 20,
+  module_count INT DEFAULT 0,
+  status ENUM('draft','published','archived'),
+  cover_image_url TEXT,
+  created_by UUID FK → users.id,
+  rag_collection_id TEXT,
+  created_at TIMESTAMP,
+  published_at TIMESTAMP
+}
+
+-- Table: user_course_enrollment
+user_course_enrollment {
+  user_id UUID FK → users.id,
+  course_id UUID FK → courses.id,
+  enrolled_at TIMESTAMP,
+  status ENUM('active','completed','dropped'),
+  completion_pct FLOAT DEFAULT 0.0,
+  PRIMARY KEY (user_id, course_id)
+}
+
 -- Table: modules
 modules {
   id UUID PRIMARY KEY,
-  module_number INT (1-15),
+  module_number INT,
   level INT (1-4),
   title_fr TEXT,
   title_en TEXT,
@@ -617,6 +663,7 @@ modules {
   description_en TEXT,
   estimated_hours INT,
   bloom_level TEXT,
+  course_id UUID FK → courses.id (nullable),
   prereq_modules UUID[],
   books_sources JSONB  -- {donaldson: [ch2,ch3], triola: [ch4]}
 }
@@ -692,7 +739,7 @@ tutor_conversations {
 | World Bank Health | Indicateurs santé, financement | api.worldbank.org/v2/indicator | Mensuelle |
 | WHO AFRO Open Data | Bulletins épidémiologiques régionaux | who.int/afro/data | Hebdomadaire |
 | PubMed API (E-utils) | Articles récents santé publique AOF | eutils.ncbi.nlm.nih.gov | Mensuelle |
-| Local Auth (FastAPI) | Authentification TOTP MFA, JWT, magic link recovery | pyotp, python-jose | Temps réel |
+| Local Auth (FastAPI) | Auth email+password, TOTP 2FA, email OTP, magic link, JWT+refresh | pyotp, python-jose, PyJWT | Temps réel |
 | Resend / Sendgrid | Emails transactionnels, rappels | API email | Événementiel |
 | Cloudflare | CDN, Edge caching, DDoS protection | Workers SDK | Continu |
 | Sentry | Monitoring erreurs frontend + backend | Sentry SDK | Continu |

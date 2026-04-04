@@ -87,6 +87,20 @@ This platform targets users on Android mid-range phones with 3G connections.
 
 ## Learning-specific components
 
+### Course catalog
+- Card grid layout (1 col mobile, 2 col tablet, 3 col desktop)
+- Each card: title (FR/EN), domain badge, estimated hours, module count, cover image
+- "Enroll" button (or "Enrolled" badge if already enrolled)
+- Filter by domain, search by title
+- API: `GET /api/v1/courses`, `POST /api/v1/courses/{id}/enroll`
+
+### Admin course management
+- Table view: all courses with status badge (draft/published/archived)
+- Create course dialog: title FR/EN, domain, target audience, hours, cover image
+- Publish/archive action buttons with confirmation dialog
+- "Generate Structure" button: calls AI agent, shows loading, displays generated modules
+- API: `GET/POST /api/v1/admin/courses`, publish/archive/generate-structure endpoints
+
 ### Lesson viewer
 - Stream AI-generated content via SSE (show skeleton while loading)
 - Bilingual term highlights: tap to see FR↔EN translation
@@ -108,7 +122,7 @@ This platform targets users on Android mid-range phones with 3G connections.
 - Session summary: cards reviewed, accuracy
 
 ### Progress dashboard
-- Module map: 15 modules with lock/progress/complete status
+- Module map: modules from enrolled course(s) with lock/progress/complete status
 - Circular progress rings per module
 - Daily streak counter with flame icon
 - Next review schedule (from FSRS)

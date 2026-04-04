@@ -1,9 +1,10 @@
-"""Admin endpoints for course management (CRUD, publish, agent-generate structure)."""
+"""Admin endpoints for course management (CRUD, publish, RAG indexation)."""
 
 import re
 import uuid
 from datetime import UTC, datetime
 
+from celery.result import AsyncResult
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -12,9 +13,11 @@ from structlog import get_logger
 from app.api.deps import get_db as get_db_session
 from app.api.deps_local_auth import AuthenticatedUser, require_role
 from app.domain.models.course import Course, UserCourseEnrollment
+from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.module import Module
 from app.domain.models.user import UserRole
 from app.domain.services.course_agent_service import CourseAgentService
+from app.tasks.rag_indexation import index_course_resources
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/admin/courses", tags=["Admin - Courses"])
@@ -182,6 +185,19 @@ async def publish_course(
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
 
+    # Check RAG indexation is complete before publishing
+    chunk_count = await db.execute(
+        select(func.count())
+        .select_from(DocumentChunk)
+        .where(DocumentChunk.source == course.rag_collection_id)
+    )
+    if chunk_count.scalar_one() == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot publish: RAG indexation not complete. "
+            "Upload resources and run indexation first.",
+        )
+
     course.status = "published"
     course.published_at = datetime.now(UTC)
 
@@ -318,3 +334,76 @@ async def delete_course(
     await db.delete(course)
     await db.commit()
     logger.info("Course deleted", course_id=str(course_id), admin_id=current_user.id)
+
+
+# ---------------------------------------------------------------------------
+# RAG Indexation
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{course_id}/index-resources")
+async def trigger_rag_indexation(
+    course_id: uuid.UUID,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    db=Depends(get_db_session),
+) -> dict:
+    """Trigger RAG indexation for course resources. Returns Celery task ID."""
+    result = await db.execute(select(Course).where(Course.id == course_id))
+    course = result.scalar_one_or_none()
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    if not course.rag_collection_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Course has no rag_collection_id",
+        )
+
+    task = index_course_resources.delay(str(course_id), course.rag_collection_id)
+    logger.info(
+        "RAG indexation triggered",
+        course_id=str(course_id),
+        task_id=task.id,
+        admin_id=current_user.id,
+    )
+    return {"task_id": task.id, "status": "started"}
+
+
+@router.get("/{course_id}/index-status")
+async def get_rag_index_status(
+    course_id: uuid.UUID,
+    task_id: str | None = None,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    db=Depends(get_db_session),
+) -> dict:
+    """Get RAG indexation status for a course."""
+    result = await db.execute(select(Course).where(Course.id == course_id))
+    course = result.scalar_one_or_none()
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    # Count existing chunks for this course
+    chunk_count = await db.execute(
+        select(func.count())
+        .select_from(DocumentChunk)
+        .where(DocumentChunk.source == course.rag_collection_id)
+    )
+    chunks_indexed = chunk_count.scalar_one()
+
+    response = {
+        "course_id": str(course_id),
+        "rag_collection_id": course.rag_collection_id,
+        "chunks_indexed": chunks_indexed,
+        "indexed": chunks_indexed > 0,
+    }
+
+    # If task_id provided, check Celery task status
+    if task_id:
+        task_result = AsyncResult(task_id)
+        response["task"] = {
+            "id": task_id,
+            "state": task_result.state,
+            "meta": task_result.info if isinstance(task_result.info, dict) else {},
+        }
+
+    return response
