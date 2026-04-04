@@ -42,6 +42,7 @@ services:
       SENTRY_DSN: ${SENTRY_DSN}
     volumes:
       - ./resources:/app/resources
+      - uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -106,6 +107,7 @@ services:
       SENTRY_DSN: ${SENTRY_DSN}
     volumes:
       - ./resources:/app/resources
+      - uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -120,6 +122,7 @@ services:
 volumes:
   pgdata:
   redisdata:
+  uploads:
 
 networks:
   etutor-data:
