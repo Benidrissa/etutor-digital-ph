@@ -76,9 +76,7 @@ async def update_setting(
             admin_id=uuid.UUID(admin.id),
             admin_email=admin.email,
             action=AdminAction.update_setting,
-            details=json.dumps(
-                {"key": key, "old_value": old_value, "new_value": body.value}
-            ),
+            details=json.dumps({"key": key, "old_value": old_value, "new_value": body.value}),
         )
     )
     await db.commit()
@@ -109,19 +107,14 @@ async def reset_setting(
     return SettingResponse(**reset)
 
 
-@router.post(
-    "/admin/settings/reset-category/{category}",
-    response_model=ResetCategoryResponse,
-)
+@router.post("/admin/settings/reset-category/{category}", response_model=ResetCategoryResponse)
 async def reset_category(
     category: str,
     admin: AuthenticatedUser = Depends(require_role(UserRole.admin)),
     db: AsyncSession = Depends(get_db_session),
 ):
     if category not in CATEGORIES:
-        raise HTTPException(
-            status.HTTP_404_NOT_FOUND, f"Category '{category}' not found"
-        )
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Category '{category}' not found")
     count = await _svc.reset_category(category)
     if count:
         db.add(
@@ -130,9 +123,7 @@ async def reset_category(
                 admin_id=uuid.UUID(admin.id),
                 admin_email=admin.email,
                 action=AdminAction.reset_category,
-                details=json.dumps(
-                    {"category": category, "reset_count": count}
-                ),
+                details=json.dumps({"category": category, "reset_count": count}),
             )
         )
         await db.commit()

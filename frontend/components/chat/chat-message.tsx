@@ -6,11 +6,19 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { cn } from '@/lib/utils';
+import { AttachedFileCard } from '@/components/chat/file-preview';
 
 export interface ChatSource {
   title: string;
   chapter?: number;
   page?: number;
+}
+
+export interface AttachedFileInfo {
+  fileId: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
 }
 
 export interface ChatMessage {
@@ -20,6 +28,7 @@ export interface ChatMessage {
   timestamp: Date;
   sources?: ChatSource[];
   isStreaming?: boolean;
+  attachedFiles?: AttachedFileInfo[];
 }
 
 interface ChatMessageProps {
@@ -28,6 +37,7 @@ interface ChatMessageProps {
 
 export function ChatMessage({ message }: ChatMessageProps) {
   const t = useTranslations('ChatTutor');
+  const hasFiles = message.attachedFiles && message.attachedFiles.length > 0;
 
   return (
     <div
@@ -44,11 +54,37 @@ export function ChatMessage({ message }: ChatMessageProps) {
             : 'bg-muted mr-4'
         )}
       >
-        {/* Message content */}
+        {hasFiles && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {message.attachedFiles!.map((f) => (
+              <AttachedFileCard
+                key={f.fileId}
+                name={f.name}
+                mimeType={f.mimeType}
+                sizeBytes={f.sizeBytes}
+              />
+            ))}
+          </div>
+        )}
+
+        {hasFiles && message.isUser && message.attachedFiles!.some((f) => f.mimeType.startsWith('image/')) && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {message.attachedFiles!
+              .filter((f) => f.mimeType.startsWith('image/'))
+              .map((f) => (
+                <div key={f.fileId} className="text-xs text-primary-foreground/70 italic">
+                  🖼 {f.name}
+                </div>
+              ))}
+          </div>
+        )}
+
         <div className="text-sm leading-relaxed">
           {message.isUser ? (
             <>
-              {message.content}
+              {message.content.trim() && message.content.trim() !== ' ' && (
+                <span>{message.content}</span>
+              )}
               {message.isStreaming && (
                 <span className="inline-block w-2 h-4 ml-1 bg-current animate-pulse" />
               )}
@@ -65,7 +101,6 @@ export function ChatMessage({ message }: ChatMessageProps) {
           )}
         </div>
 
-        {/* Sources */}
         {message.sources && message.sources.length > 0 && (
           <div className="mt-2 pt-2 border-t border-current/20">
             <div className="text-xs font-medium opacity-75 mb-1">
@@ -77,7 +112,6 @@ export function ChatMessage({ message }: ChatMessageProps) {
                   key={index}
                   className="text-xs px-2 py-1 rounded-md bg-current/10 hover:bg-current/20 transition-colors"
                   onClick={() => {
-                    // TODO: Navigate to source material
                     console.log('Navigate to source:', source);
                   }}
                 >
@@ -90,7 +124,6 @@ export function ChatMessage({ message }: ChatMessageProps) {
           </div>
         )}
 
-        {/* Timestamp */}
         <div
           className={cn(
             'text-xs opacity-60 mt-1',
