@@ -1124,5 +1124,80 @@
     "bloomLevel": "Bloom level",
     "estimatedHours": "Duration (h)",
     "moduleNumber": "Module number"
+  },
+  "Expert": {
+    "nav": {
+      "dashboard": "Dashboard",
+      "courses": "My Courses"
+    }
+  },
+  "ExpertDashboard": {
+    "pageTitle": "Expert Dashboard",
+    "pageDescription": "Overview of your courses and learners",
+    "loading": "Loading dashboard...",
+    "errorLoading": "Failed to load dashboard data.",
+    "retry": "Retry",
+    "totalCourses": "Total Courses",
+    "activeLearners": "Active Learners",
+    "monthlyRevenue": "Monthly Revenue",
+    "creditBalance": "Credit Balance",
+    "myCourses": "My Courses",
+    "noCourses": "No courses yet",
+    "learnerCount": "{count, plural, one {# learner} other {# learners}}",
+    "completionRate": "{rate}% completed",
+    "viewCourse": "View course"
+  },
+  "ExpertLearners": {
+    "pageTitle": "Course Learners",
+    "pageDescription": "Learners enrolled in this course",
+    "loading": "Loading learners...",
+    "errorLoading": "Failed to load learners.",
+    "retry": "Retry",
+    "searchPlaceholder": "Search by name or email...",
+    "search": "Search",
+    "learnerCount": "{count, plural, one {# learner} other {# learners}}",
+    "noLearners": "No learners enrolled yet",
+    "name": "Name",
+    "email": "Email",
+    "enrolledDate": "Enrolled",
+    "progress": "Progress",
+    "lastActive": "Last Active",
+    "previousPage": "Previous page",
+    "nextPage": "Next page",
+    "previous": "Previous",
+    "next": "Next",
+    "pageOf": "Page {page} of {total}"
+  },
+  "ExpertAnalytics": {
+    "pageTitle": "Course Analytics",
+    "pageDescription": "Performance metrics for this course",
+    "loading": "Loading analytics...",
+    "errorLoading": "Failed to load analytics.",
+    "retry": "Retry",
+    "quizPassRate": "Quiz Pass Rate",
+    "avgQuizScore": "Avg. Quiz Score",
+    "completionFunnel": "Completion Funnel",
+    "funnel": {
+      "enrolled": "Enrolled",
+      "started": "Started",
+      "halfComplete": "50% Done",
+      "completed": "Completed"
+    },
+    "timeSpentDistribution": "Time Spent Distribution",
+    "timeSpentUnit": "Number of learners per time bracket"
+  },
+  "ExpertReviews": {
+    "pageTitle": "Course Reviews",
+    "pageDescription": "Learner reviews and ratings",
+    "loading": "Loading reviews...",
+    "errorLoading": "Failed to load reviews.",
+    "retry": "Retry",
+    "totalReviews": "{count, plural, one {# review} other {# reviews}}",
+    "noReviews": "No reviews yet",
+    "previousPage": "Previous page",
+    "nextPage": "Next page",
+    "previous": "Previous",
+    "next": "Next",
+    "pageOf": "Page {page} of {total}"
   }
 }

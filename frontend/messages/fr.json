@@ -1124,5 +1124,80 @@
     "bloomLevel": "Niveau Bloom",
     "estimatedHours": "Durée (h)",
     "moduleNumber": "Numéro de module"
+  },
+  "Expert": {
+    "nav": {
+      "dashboard": "Tableau de bord",
+      "courses": "Mes formations"
+    }
+  },
+  "ExpertDashboard": {
+    "pageTitle": "Tableau de bord expert",
+    "pageDescription": "Vue d'ensemble de vos formations et apprenants",
+    "loading": "Chargement du tableau de bord...",
+    "errorLoading": "Erreur lors du chargement des données.",
+    "retry": "Réessayer",
+    "totalCourses": "Formations totales",
+    "activeLearners": "Apprenants actifs",
+    "monthlyRevenue": "Revenus mensuels",
+    "creditBalance": "Solde de crédits",
+    "myCourses": "Mes formations",
+    "noCourses": "Aucune formation pour l'instant",
+    "learnerCount": "{count, plural, one {# apprenant} other {# apprenants}}",
+    "completionRate": "{rate}% complété",
+    "viewCourse": "Voir la formation"
+  },
+  "ExpertLearners": {
+    "pageTitle": "Apprenants de la formation",
+    "pageDescription": "Apprenants inscrits à cette formation",
+    "loading": "Chargement des apprenants...",
+    "errorLoading": "Erreur lors du chargement des apprenants.",
+    "retry": "Réessayer",
+    "searchPlaceholder": "Rechercher par nom ou e-mail...",
+    "search": "Rechercher",
+    "learnerCount": "{count, plural, one {# apprenant} other {# apprenants}}",
+    "noLearners": "Aucun apprenant inscrit pour l'instant",
+    "name": "Nom",
+    "email": "Email",
+    "enrolledDate": "Inscrit le",
+    "progress": "Progression",
+    "lastActive": "Dernière activité",
+    "previousPage": "Page précédente",
+    "nextPage": "Page suivante",
+    "previous": "Précédent",
+    "next": "Suivant",
+    "pageOf": "Page {page} sur {total}"
+  },
+  "ExpertAnalytics": {
+    "pageTitle": "Analytiques de la formation",
+    "pageDescription": "Indicateurs de performance de cette formation",
+    "loading": "Chargement des analytiques...",
+    "errorLoading": "Erreur lors du chargement des analytiques.",
+    "retry": "Réessayer",
+    "quizPassRate": "Taux de réussite aux quiz",
+    "avgQuizScore": "Score moyen aux quiz",
+    "completionFunnel": "Entonnoir de complétion",
+    "funnel": {
+      "enrolled": "Inscrits",
+      "started": "Commencé",
+      "halfComplete": "50% terminé",
+      "completed": "Complété"
+    },
+    "timeSpentDistribution": "Distribution du temps passé",
+    "timeSpentUnit": "Nombre d'apprenants par tranche de temps"
+  },
+  "ExpertReviews": {
+    "pageTitle": "Avis sur la formation",
+    "pageDescription": "Avis et notes des apprenants",
+    "loading": "Chargement des avis...",
+    "errorLoading": "Erreur lors du chargement des avis.",
+    "retry": "Réessayer",
+    "totalReviews": "{count, plural, one {# avis} other {# avis}}",
+    "noReviews": "Aucun avis pour l'instant",
+    "previousPage": "Page précédente",
+    "nextPage": "Page suivante",
+    "previous": "Précédent",
+    "next": "Suivant",
+    "pageOf": "Page {page} sur {total}"
   }
 }
