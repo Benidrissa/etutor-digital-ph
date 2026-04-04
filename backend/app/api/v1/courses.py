@@ -12,7 +12,7 @@ from app.api.deps_local_auth import get_current_user, get_optional_user
 from app.domain.models.course import Course, UserCourseEnrollment
 from app.domain.models.module import Module
 from app.domain.models.progress import UserModuleProgress
-from app.domain.models.taxonomy import TaxonomyCategory
+from app.domain.models.taxonomy import CourseTaxonomy, TaxonomyCategory
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/courses", tags=["Courses"])
