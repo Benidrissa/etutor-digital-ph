@@ -163,7 +163,7 @@ class FlashcardGenerationService:
         # Retrieve relevant chunks using RAG
         search_results = await self.semantic_retriever.search(
             query=query,
-            top_k=SettingsCache.instance().get("ai__rag_flashcard_top_k", 12),
+            top_k=SettingsCache.instance().get("ai-rag_flashcard_top_k", 12),
             filters={"level": {"$lte": level}},  # Only content appropriate for user's level
             session=session,
         )
@@ -206,7 +206,7 @@ class FlashcardGenerationService:
                 raise ValueError("Unexpected response type from Claude API")
 
             _min_count = SettingsCache.instance().get(
-                "flashcards__min_generated_count",
+                "flashcards-min_generated_count",
                 15,
             )
             if len(flashcard_data) < _min_count:

@@ -24,6 +24,9 @@ frontend/
 │   │   ├── (app)/                        # Authenticated app shell
 │   │   │   ├── layout.tsx                # App layout (nav, offline indicator)
 │   │   │   ├── dashboard/page.tsx        # Module map, streak, next reviews
+│   │   │   ├── courses/
+│   │   │   │   ├── page.tsx              # Public course catalog (browse + enroll)
+│   │   │   │   └── [courseId]/page.tsx   # Course detail + enrolled modules
 │   │   │   ├── modules/
 │   │   │   │   ├── page.tsx              # All modules list
 │   │   │   │   └── [moduleId]/
@@ -38,7 +41,11 @@ frontend/
 │   │   │   ├── tutor/page.tsx            # AI tutor chat
 │   │   │   ├── sandbox/page.tsx          # Python/R code sandbox
 │   │   │   ├── certificates/page.tsx     # Earned certificates
-│   │   │   └── settings/page.tsx         # Profile, language, country
+│   │   │   ├── settings/page.tsx         # Profile, language, country
+│   │   │   └── admin/                   # Admin-only pages (RBAC guarded)
+│   │   │       ├── courses/page.tsx     # Course CRUD, publish, AI generate
+│   │   │       ├── users/page.tsx       # User management
+│   │   │       └── syllabus/page.tsx    # Syllabus editor
 │   │   └── ...
 │   └── api/                    # Route handlers (if needed for BFF)
 ├── components/
