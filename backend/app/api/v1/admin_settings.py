@@ -3,7 +3,7 @@
 import json
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -45,9 +45,9 @@ async def list_settings(
     ]
 
 
-@router.get("/admin/settings/{key:path}", response_model=SettingResponse)
+@router.get("/admin/settings/by-key", response_model=SettingResponse)
 async def get_setting(
-    key: str,
+    key: str = Query(..., description="Setting key, e.g. quiz.passing_score"),
     admin: AuthenticatedUser = Depends(require_role(UserRole.admin)),
 ):
     for s in await _svc.get_all():
@@ -56,10 +56,10 @@ async def get_setting(
     raise HTTPException(status.HTTP_404_NOT_FOUND, f"Setting '{key}' not found")
 
 
-@router.patch("/admin/settings/{key:path}", response_model=SettingResponse)
+@router.patch("/admin/settings/by-key", response_model=SettingResponse)
 async def update_setting(
-    key: str,
     body: SettingUpdateRequest,
+    key: str = Query(..., description="Setting key, e.g. quiz.passing_score"),
     admin: AuthenticatedUser = Depends(require_role(UserRole.admin)),
     db: AsyncSession = Depends(get_db_session),
 ):
@@ -76,16 +76,18 @@ async def update_setting(
             admin_id=uuid.UUID(admin.id),
             admin_email=admin.email,
             action=AdminAction.update_setting,
-            details=json.dumps({"key": key, "old_value": old_value, "new_value": body.value}),
+            details=json.dumps(
+                {"key": key, "old_value": old_value, "new_value": body.value}
+            ),
         )
     )
     await db.commit()
     return SettingResponse(**updated)
 
 
-@router.post("/admin/settings/{key:path}/reset", response_model=SettingResponse)
+@router.post("/admin/settings/reset-key", response_model=SettingResponse)
 async def reset_setting(
-    key: str,
+    key: str = Query(..., description="Setting key to reset"),
     admin: AuthenticatedUser = Depends(require_role(UserRole.admin)),
     db: AsyncSession = Depends(get_db_session),
 ):
@@ -107,14 +109,19 @@ async def reset_setting(
     return SettingResponse(**reset)
 
 
-@router.post("/admin/settings/reset-category/{category}", response_model=ResetCategoryResponse)
+@router.post(
+    "/admin/settings/reset-category/{category}",
+    response_model=ResetCategoryResponse,
+)
 async def reset_category(
     category: str,
     admin: AuthenticatedUser = Depends(require_role(UserRole.admin)),
     db: AsyncSession = Depends(get_db_session),
 ):
     if category not in CATEGORIES:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Category '{category}' not found")
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, f"Category '{category}' not found"
+        )
     count = await _svc.reset_category(category)
     if count:
         db.add(
@@ -123,7 +130,9 @@ async def reset_category(
                 admin_id=uuid.UUID(admin.id),
                 admin_email=admin.email,
                 action=AdminAction.reset_category,
-                details=json.dumps({"category": category, "reset_count": count}),
+                details=json.dumps(
+                    {"category": category, "reset_count": count}
+                ),
             )
         )
         await db.commit()
