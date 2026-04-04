@@ -3,7 +3,8 @@ import { getLocale } from 'next-intl/server';
 import { Link } from '@/i18n/routing';
 import { ChevronLeft } from 'lucide-react';
 
-import { getModuleUnits } from '@/lib/api';
+import { getModuleUnits, API_BASE } from '@/lib/api';
+import type { ModuleUnitsResponse } from '@/lib/api';
 import { LessonViewer } from '@/components/learning/lesson-viewer';
 import { CaseStudyViewer } from '@/components/learning/case-study-viewer';
 
@@ -11,13 +12,26 @@ interface LessonPageProps {
   params: Promise<{ moduleId: string; unitId: string }>;
 }
 
+async function fetchModuleData(moduleId: string): Promise<ModuleUnitsResponse | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/content/modules/${moduleId}/units`, {
+      next: { revalidate: 300 },
+    });
+    if (!res.ok) return null;
+    return res.json() as Promise<ModuleUnitsResponse>;
+  } catch {
+    return getModuleUnits(moduleId).catch(() => null);
+  }
+}
+
 export default async function LessonPage({ params }: LessonPageProps) {
   const { moduleId, unitId } = await params;
   const locale = await getLocale();
   const t = await getTranslations('LessonPage');
+  const tNav = await getTranslations('Navigation');
 
   const language = locale as 'fr' | 'en';
-  const moduleData = await getModuleUnits(moduleId).catch(() => null);
+  const moduleData = await fetchModuleData(moduleId);
   const unit = moduleData?.units?.find(u => u.unit_number === unitId || u.id === unitId);
   const moduleTitle = language === 'fr' ? (moduleData?.title_fr || moduleId) : (moduleData?.title_en || moduleId);
   const unitTitle = language === 'fr' ? (unit?.title_fr || unitId) : (unit?.title_en || unitId);
@@ -30,10 +44,17 @@ export default async function LessonPage({ params }: LessonPageProps) {
       <div className="container mx-auto max-w-4xl px-4 py-4 border-b">
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <Link
+            href="/dashboard"
+            className="hover:text-gray-900 transition-colors"
+          >
+            {tNav('dashboard')}
+          </Link>
+          <span>/</span>
+          <Link
             href="/modules"
             className="hover:text-gray-900 transition-colors"
           >
-            {t('modules')}
+            {tNav('modules')}
           </Link>
           <span>/</span>
           <Link
@@ -83,7 +104,7 @@ export async function generateMetadata({ params }: LessonPageProps) {
   const t = await getTranslations('LessonPage.metadata');
 
   const language = locale as 'fr' | 'en';
-  const moduleData = await getModuleUnits(moduleId).catch(() => null);
+  const moduleData = await fetchModuleData(moduleId);
   const unit = moduleData?.units?.find(u => u.unit_number === unitId || u.id === unitId);
   const unitTitle = language === 'fr' ? (unit?.title_fr || unitId) : (unit?.title_en || unitId);
   const modTitle = language === 'fr' ? (moduleData?.title_fr || moduleId) : (moduleData?.title_en || moduleId);
