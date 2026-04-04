@@ -175,7 +175,10 @@
     "errorOccurred": "Une erreur s'est produite",
     "unableToLoadStats": "Impossible de charger les statistiques du tableau de bord",
     "noQuizzesTakenYet": "Aucun quiz passé",
-    "justGettingStarted": "Tout juste commencé"
+    "justGettingStarted": "Tout juste commencé",
+    "loading": "Chargement...",
+    "noEnrollments": "Vous n'êtes inscrit à aucune formation pour l'instant.",
+    "browseCourses": "Parcourir les formations disponibles"
   },
   "ModuleCard": {
     "locked": "Verrouillé",

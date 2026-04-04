@@ -126,6 +126,13 @@ export async function deleteTaxonomyCategory(id: string): Promise<void> {
   );
 }
 
+export async function getMyEnrollments(): Promise<CourseWithEnrollment[]> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<CourseWithEnrollment[]>(
+    "/api/v1/courses/my-enrollments"
+  );
+}
+
 // Progress API Types
 export interface ModuleProgressResponse {
   module_id: string;
@@ -183,9 +190,12 @@ export async function getModuleProgress(moduleId: string): Promise<ModuleProgres
   );
 }
 
-export async function getAllModuleProgress(): Promise<ModuleProgressResponse[]> {
+export async function getAllModuleProgress(courseId?: string): Promise<ModuleProgressResponse[]> {
   const { authClient } = await import("./auth");
-  return authClient.authenticatedFetch<ModuleProgressResponse[]>("/api/v1/progress/modules");
+  const url = courseId
+    ? `/api/v1/progress/modules?course_id=${encodeURIComponent(courseId)}`
+    : "/api/v1/progress/modules";
+  return authClient.authenticatedFetch<ModuleProgressResponse[]>(url);
 }
 
 export async function getModuleDetailWithProgress(
