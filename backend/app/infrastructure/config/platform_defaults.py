@@ -26,7 +26,7 @@ class SettingDef:
 SETTING_DEFINITIONS: list[SettingDef] = [
     # ── Quiz & Assessment ──────────────────────────────────
     SettingDef(
-        "quiz.unit_questions_count",
+        "quiz__unit_questions_count",
         "quiz",
         10,
         "integer",
@@ -35,7 +35,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 3, "max": 50},
     ),
     SettingDef(
-        "quiz.summative_questions_count",
+        "quiz__summative_questions_count",
         "quiz",
         20,
         "integer",
@@ -44,7 +44,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 5, "max": 50},
     ),
     SettingDef(
-        "quiz.passing_score",
+        "quiz__passing_score",
         "quiz",
         80.0,
         "float",
@@ -53,7 +53,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 40, "max": 100},
     ),
     SettingDef(
-        "quiz.time_limit_min_minutes",
+        "quiz__time_limit_min_minutes",
         "quiz",
         10,
         "integer",
@@ -62,7 +62,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 5, "max": 60},
     ),
     SettingDef(
-        "quiz.time_limit_per_question_minutes",
+        "quiz__time_limit_per_question_minutes",
         "quiz",
         1.5,
         "float",
@@ -71,7 +71,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 0.5, "max": 5.0},
     ),
     SettingDef(
-        "quiz.summative_time_limit_minutes",
+        "quiz__summative_time_limit_minutes",
         "quiz",
         30,
         "integer",
@@ -81,7 +81,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
     ),
     # ── Progress & Unlocking ───────────────────────────────
     SettingDef(
-        "progress.unlock_threshold_pct",
+        "progress__unlock_threshold_pct",
         "progress",
         80.0,
         "float",
@@ -90,7 +90,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 50, "max": 100},
     ),
     SettingDef(
-        "progress.unlock_threshold_score",
+        "progress__unlock_threshold_score",
         "progress",
         80.0,
         "float",
@@ -99,7 +99,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 50, "max": 100},
     ),
     SettingDef(
-        "progress.unit_pass_score",
+        "progress__unit_pass_score",
         "progress",
         80.0,
         "float",
@@ -109,7 +109,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
     ),
     # ── Flashcards (FSRS) ─────────────────────────────────
     SettingDef(
-        "flashcards.new_cards_per_session",
+        "flashcards__new_cards_per_session",
         "flashcards",
         20,
         "integer",
@@ -118,7 +118,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 5, "max": 100},
     ),
     SettingDef(
-        "flashcards.review_preview_days",
+        "flashcards__review_preview_days",
         "flashcards",
         14,
         "integer",
@@ -127,7 +127,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 7, "max": 90},
     ),
     SettingDef(
-        "flashcards.min_generated_count",
+        "flashcards__min_generated_count",
         "flashcards",
         15,
         "integer",
@@ -136,7 +136,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 5, "max": 50},
     ),
     SettingDef(
-        "flashcards.fsrs_params",
+        "flashcards__fsrs_params",
         "flashcards",
         {
             "again": {"stability": 0.5, "difficulty": 1.0},
@@ -150,7 +150,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
     ),
     # ── Placement Test ─────────────────────────────────────
     SettingDef(
-        "placement.level_thresholds",
+        "placement__level_thresholds",
         "placement",
         {"1": [0, 40], "2": [40, 60], "3": [60, 80], "4": [80, 101]},
         "json",
@@ -158,7 +158,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "Score ranges for level assignment.",
     ),
     SettingDef(
-        "placement.retest_cooldown_days",
+        "placement__retest_cooldown_days",
         "placement",
         90,
         "integer",
@@ -167,7 +167,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 0, "max": 365},
     ),
     SettingDef(
-        "placement.role_bonuses",
+        "placement__role_bonuses",
         "placement",
         {"doctor": 5, "researcher": 8, "nurse": 3, "student": -3},
         "json",
@@ -175,7 +175,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "Bonuses/penalties by profession.",
     ),
     SettingDef(
-        "placement.time_adjustments",
+        "placement__time_adjustments",
         "placement",
         {
             "fast_threshold_sec": 600,
@@ -190,7 +190,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "Penalties/bonuses by completion time.",
     ),
     SettingDef(
-        "placement.competency_threshold",
+        "placement__competency_threshold",
         "placement",
         70,
         "integer",
@@ -200,7 +200,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
     ),
     # ── Auth & Security (sensitive) ────────────────────────
     SettingDef(
-        "auth.access_token_expiry_minutes",
+        "auth__access_token_expiry_minutes",
         "auth",
         15,
         "integer",
@@ -210,7 +210,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         True,
     ),
     SettingDef(
-        "auth.refresh_token_expiry_days",
+        "auth__refresh_token_expiry_days",
         "auth",
         90,
         "integer",
@@ -220,7 +220,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         True,
     ),
     SettingDef(
-        "auth.magic_link_expiry_hours",
+        "auth__magic_link_expiry_hours",
         "auth",
         1,
         "integer",
@@ -230,7 +230,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         True,
     ),
     SettingDef(
-        "auth.max_failed_totp_attempts",
+        "auth__max_failed_totp_attempts",
         "auth",
         10,
         "integer",
@@ -240,7 +240,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         True,
     ),
     SettingDef(
-        "auth.totp_lockout_minutes",
+        "auth__totp_lockout_minutes",
         "auth",
         15,
         "integer",
@@ -250,7 +250,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         True,
     ),
     SettingDef(
-        "auth.otp_expiry_minutes",
+        "auth__otp_expiry_minutes",
         "auth",
         10,
         "integer",
@@ -260,7 +260,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         True,
     ),
     SettingDef(
-        "auth.otp_max_attempts",
+        "auth__otp_max_attempts",
         "auth",
         5,
         "integer",
@@ -270,7 +270,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         True,
     ),
     SettingDef(
-        "auth.otp_rate_limit_window_seconds",
+        "auth__otp_rate_limit_window_seconds",
         "auth",
         600,
         "integer",
@@ -280,7 +280,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         True,
     ),
     SettingDef(
-        "auth.otp_max_requests_per_window",
+        "auth__otp_max_requests_per_window",
         "auth",
         5,
         "integer",
@@ -290,7 +290,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         True,
     ),
     SettingDef(
-        "auth.backup_codes_count",
+        "auth__backup_codes_count",
         "auth",
         8,
         "integer",
@@ -301,7 +301,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
     ),
     # ── Rate Limiting ──────────────────────────────────────
     SettingDef(
-        "rate_limiting.global_requests_per_minute",
+        "rate_limiting__global_requests_per_minute",
         "rate_limiting",
         100,
         "integer",
@@ -311,7 +311,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         True,
     ),
     SettingDef(
-        "rate_limiting.tutor_daily_limit",
+        "rate_limiting__tutor_daily_limit",
         "rate_limiting",
         200,
         "integer",
@@ -321,7 +321,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
     ),
     # ── AI & Content Generation ────────────────────────────
     SettingDef(
-        "ai.max_tokens_content",
+        "ai__max_tokens_content",
         "ai",
         64000,
         "integer",
@@ -330,7 +330,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 4000, "max": 128000},
     ),
     SettingDef(
-        "ai.temperature_content",
+        "ai__temperature_content",
         "ai",
         0.7,
         "float",
@@ -339,7 +339,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 0.0, "max": 1.5},
     ),
     SettingDef(
-        "ai.rag_default_top_k",
+        "ai__rag_default_top_k",
         "ai",
         8,
         "integer",
@@ -348,7 +348,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 3, "max": 30},
     ),
     SettingDef(
-        "ai.rag_flashcard_top_k",
+        "ai__rag_flashcard_top_k",
         "ai",
         12,
         "integer",
@@ -358,7 +358,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
     ),
     # ── Tutor ──────────────────────────────────────────────
     SettingDef(
-        "tutor.response_max_tokens",
+        "tutor__response_max_tokens",
         "tutor",
         1500,
         "integer",
@@ -367,7 +367,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 500, "max": 8000},
     ),
     SettingDef(
-        "tutor.response_temperature",
+        "tutor__response_temperature",
         "tutor",
         0.7,
         "float",
@@ -376,7 +376,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 0.0, "max": 1.5},
     ),
     SettingDef(
-        "tutor.compaction_trigger_messages",
+        "tutor__compaction_trigger_messages",
         "tutor",
         20,
         "integer",
@@ -385,7 +385,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 10, "max": 100},
     ),
     SettingDef(
-        "tutor.compaction_keep_recent",
+        "tutor__compaction_keep_recent",
         "tutor",
         5,
         "integer",
@@ -394,7 +394,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 2, "max": 20},
     ),
     SettingDef(
-        "tutor.compaction_summarize_up_to",
+        "tutor__compaction_summarize_up_to",
         "tutor",
         15,
         "integer",
@@ -403,7 +403,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 5, "max": 50},
     ),
     SettingDef(
-        "tutor.context_token_budget",
+        "tutor__context_token_budget",
         "tutor",
         1500,
         "integer",
@@ -412,7 +412,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 500, "max": 5000},
     ),
     SettingDef(
-        "tutor.max_tool_calls",
+        "tutor__max_tool_calls",
         "tutor",
         3,
         "integer",
@@ -421,7 +421,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 1, "max": 10},
     ),
     SettingDef(
-        "tutor.compaction_max_tokens",
+        "tutor__compaction_max_tokens",
         "tutor",
         600,
         "integer",
@@ -430,7 +430,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 200, "max": 2000},
     ),
     SettingDef(
-        "tutor.compaction_temperature",
+        "tutor__compaction_temperature",
         "tutor",
         0.3,
         "float",
@@ -439,7 +439,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 0.0, "max": 1.0},
     ),
     SettingDef(
-        "tutor.suggestions_max_tokens",
+        "tutor__suggestions_max_tokens",
         "tutor",
         800,
         "integer",
@@ -448,7 +448,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 200, "max": 2000},
     ),
     SettingDef(
-        "tutor.suggestions_temperature",
+        "tutor__suggestions_temperature",
         "tutor",
         0.5,
         "float",
@@ -458,7 +458,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
     ),
     # ── Pagination ─────────────────────────────────────────
     SettingDef(
-        "pagination.admin_default_limit",
+        "pagination__admin_default_limit",
         "pagination",
         50,
         "integer",
@@ -467,7 +467,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 10, "max": 200},
     ),
     SettingDef(
-        "pagination.admin_max_limit",
+        "pagination__admin_max_limit",
         "pagination",
         200,
         "integer",
@@ -476,7 +476,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 50, "max": 1000},
     ),
     SettingDef(
-        "pagination.conversation_history_limit",
+        "pagination__conversation_history_limit",
         "pagination",
         20,
         "integer",

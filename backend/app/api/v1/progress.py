@@ -253,7 +253,7 @@ async def complete_lesson(
             user_id=user_id,
             module_id=request.module_id,
             unit_id=request.unit_id,
-            score=SettingsCache.instance().get("progress.unit_pass_score", 80.0),
+            score=SettingsCache.instance().get("progress__unit_pass_score", 80.0),
             passed=True,
         )
 
