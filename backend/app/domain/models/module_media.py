@@ -31,7 +31,12 @@ class MediaStatus(enum.StrEnum):
 class ModuleMedia(Base):
     __tablename__ = "module_media"
     __table_args__ = (
-        UniqueConstraint("module_id", "media_type", "language", name="uq_module_media_module_type_lang"),
+        UniqueConstraint(
+            "module_id",
+            "media_type",
+            "language",
+            name="uq_module_media_module_type_lang",
+        ),
         Index("ix_module_media_module_id", "module_id"),
     )
 
