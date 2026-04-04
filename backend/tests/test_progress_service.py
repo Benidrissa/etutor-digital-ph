@@ -924,6 +924,56 @@ class TestGetAllModulesWithProgress:
         assert result[0]["status"] == "locked"
         assert result[0]["completion_pct"] == 0.0
 
+    async def test_includes_null_course_id_modules_when_filtering(
+        self, progress_service, mock_db, user_id
+    ):
+        from app.domain.models.module import Module
+
+        target_course_id = uuid.uuid4()
+        module_with_null_course = Module(
+            id=uuid.uuid4(),
+            module_number=1,
+            level=1,
+            title_fr="M01 FR",
+            title_en="M01 EN",
+            estimated_hours=20,
+            course_id=None,
+        )
+        module_with_matching_course = Module(
+            id=uuid.uuid4(),
+            module_number=2,
+            level=1,
+            title_fr="M02 FR",
+            title_en="M02 EN",
+            estimated_hours=20,
+            course_id=target_course_id,
+        )
+
+        call_count = 0
+
+        async def mock_execute(stmt):
+            nonlocal call_count
+            call_count += 1
+            mock_result = MagicMock()
+            if call_count == 1:
+                mock_result.scalars.return_value.all.return_value = [
+                    module_with_null_course,
+                    module_with_matching_course,
+                ]
+            else:
+                mock_result.scalars.return_value.all.return_value = []
+            return mock_result
+
+        mock_db.execute = mock_execute
+
+        result = await progress_service.get_all_modules_with_progress(
+            user_id, course_id=target_course_id
+        )
+
+        assert len(result) == 2
+        module_numbers = {r["module_number"] for r in result}
+        assert module_numbers == {1, 2}
+
     async def test_returns_empty_list_when_course_has_no_modules(
         self, progress_service, mock_db, user_id
     ):

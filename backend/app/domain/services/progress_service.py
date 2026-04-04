@@ -7,7 +7,7 @@ from datetime import datetime
 from uuid import UUID
 
 import structlog
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.models.lesson_reading import LessonReading
@@ -234,7 +234,9 @@ class ProgressService:
         """
         stmt = select(Module).order_by(Module.module_number)
         if course_id is not None:
-            stmt = stmt.where(Module.course_id == course_id)
+            stmt = stmt.where(
+                or_(Module.course_id == course_id, Module.course_id.is_(None))
+            )
         modules_result = await self.db.execute(stmt)
         modules = list(modules_result.scalars().all())
 
