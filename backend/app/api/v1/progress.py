@@ -4,7 +4,7 @@ from typing import Annotated
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
@@ -136,17 +136,19 @@ async def get_module_progress(
 async def get_all_module_progress(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    course_id: Annotated[UUID | None, Query(description="Filter modules by course ID")] = None,
 ) -> list[ModuleProgressResponse]:
     """
     Get current user's progress for all modules.
 
-    Returns ALL modules (including locked ones), ordered by module_number.
+    When course_id is provided, only modules belonging to that course are returned.
+    Without course_id, returns ALL modules (including locked ones), ordered by module_number.
     Locked modules with no progress record have status 'locked' and 0% completion.
     """
     try:
         user_id = UUID(str(current_user.id))
         service = ProgressService(db)
-        all_modules = await service.get_all_modules_with_progress(user_id)
+        all_modules = await service.get_all_modules_with_progress(user_id, course_id=course_id)
 
         return [
             ModuleProgressResponse(
