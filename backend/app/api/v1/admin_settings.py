@@ -3,7 +3,7 @@
 import json
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -17,6 +17,7 @@ from app.infrastructure.config.platform_defaults import CATEGORIES
 from .schemas.settings import (
     PublicSettingsResponse,
     ResetCategoryResponse,
+    SettingResetRequest,
     SettingResponse,
     SettingsByCategoryResponse,
     SettingUpdateRequest,
@@ -45,24 +46,14 @@ async def list_settings(
     ]
 
 
-@router.get("/admin/settings/by-key", response_model=SettingResponse)
-async def get_setting(
-    key: str = Query(..., description="Setting key, e.g. quiz.passing_score"),
-    admin: AuthenticatedUser = Depends(require_role(UserRole.admin)),
-):
-    for s in await _svc.get_all():
-        if s["key"] == key:
-            return SettingResponse(**s)
-    raise HTTPException(status.HTTP_404_NOT_FOUND, f"Setting '{key}' not found")
-
-
-@router.post("/admin/settings/update-key", response_model=SettingResponse)
+@router.post("/admin/settings/update", response_model=SettingResponse)
 async def update_setting(
     body: SettingUpdateRequest,
-    key: str = Query(..., description="Setting key, e.g. quiz.passing_score"),
     admin: AuthenticatedUser = Depends(require_role(UserRole.admin)),
     db: AsyncSession = Depends(get_db_session),
 ):
+    """Update a setting. Key and value are in the request body."""
+    key = body.key
     old_value = await _svc.get(key)
     try:
         updated = await _svc.set(key, body.value)
@@ -83,12 +74,14 @@ async def update_setting(
     return SettingResponse(**updated)
 
 
-@router.post("/admin/settings/reset-key", response_model=SettingResponse)
+@router.post("/admin/settings/reset", response_model=SettingResponse)
 async def reset_setting(
-    key: str = Query(..., description="Setting key to reset"),
+    body: SettingResetRequest,
     admin: AuthenticatedUser = Depends(require_role(UserRole.admin)),
     db: AsyncSession = Depends(get_db_session),
 ):
+    """Reset a setting to default. Key is in the request body."""
+    key = body.key
     old_value = await _svc.get(key)
     try:
         reset = await _svc.reset_to_default(key)

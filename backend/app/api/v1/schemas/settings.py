@@ -19,7 +19,12 @@ class SettingResponse(BaseModel):
 
 
 class SettingUpdateRequest(BaseModel):
+    key: str
     value: Any
+
+
+class SettingResetRequest(BaseModel):
+    key: str
 
 
 class SettingsByCategoryResponse(BaseModel):
