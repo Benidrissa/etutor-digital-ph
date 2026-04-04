@@ -377,8 +377,8 @@ Respond ONLY with valid JSON in this exact format:
         response = await self.anthropic.messages.create(
             model="claude-sonnet-4-6",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=SettingsCache.instance().get("tutor-suggestions_max_tokens", 800),
-            temperature=SettingsCache.instance().get("tutor-suggestions_temperature", 0.5),
+            max_tokens=SettingsCache.instance().get("tutor-suggestions-max-tokens", 800),
+            temperature=SettingsCache.instance().get("tutor-suggestions-temperature", 0.5),
         )
 
         quiz_text = response.content[0].text.strip()
