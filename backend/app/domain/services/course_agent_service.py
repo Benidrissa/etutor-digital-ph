@@ -108,20 +108,21 @@ class CourseAgentService:
 
             import json
 
-            message = await client.messages.create(
+            # Use streaming to avoid timeout with large max_tokens
+            async with client.messages.stream(
                 model="claude-sonnet-4-6",
                 max_tokens=64000,
                 messages=[{"role": "user", "content": prompt}],
-            )
+            ) as stream:
+                message = await stream.get_final_message()
 
             # Check for truncation
             if message.stop_reason == "max_tokens":
                 logger.warning(
                     "Response truncated at max_tokens, retrying",
                     course=title_en,
-                    stop_reason=message.stop_reason,
                 )
-                message = await client.messages.create(
+                async with client.messages.stream(
                     model="claude-sonnet-4-6",
                     max_tokens=64000,
                     messages=[
@@ -129,10 +130,13 @@ class CourseAgentService:
                         {"role": "assistant", "content": message.content[0].text},
                         {
                             "role": "user",
-                            "content": "The JSON was truncated. Please complete it from where you stopped. Return ONLY the remaining JSON to complete the array.",
+                            "content": "The JSON was truncated. Please complete it "
+                            "from where you stopped. Return ONLY the remaining "
+                            "JSON to complete the array.",
                         },
                     ],
-                )
+                ) as stream:
+                    message = await stream.get_final_message()
 
             raw = message.content[0].text.strip()
             if raw.startswith("```"):
