@@ -54,6 +54,7 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
 
         from app.domain.models.course import Course
         from app.domain.models.module import Module
+        from app.domain.models.module_unit import ModuleUnit
         from app.domain.services.course_agent_service import CourseAgentService
         from app.infrastructure.config.settings import settings
 
@@ -100,6 +101,7 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
             await session.execute(delete(Module).where(Module.course_id == uuid.UUID(course_id)))
             await session.flush()
 
+            rag_collection_id = course.rag_collection_id
             saved_modules = []
             for i, m in enumerate(module_dicts):
                 module = Module(
@@ -113,18 +115,36 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
                     estimated_hours=m.get("estimated_hours", 20),
                     bloom_level=m.get("bloom_level"),
                     course_id=uuid.UUID(course_id),
+                    books_sources={rag_collection_id: []} if rag_collection_id else None,
                 )
                 session.add(module)
+                await session.flush()
+
+                for j, u in enumerate(m.get("units", [])):
+                    unit = ModuleUnit(
+                        id=uuid.uuid4(),
+                        module_id=module.id,
+                        unit_number=str(j + 1),
+                        title_fr=u.get("title_fr", f"Unité {j + 1}"),
+                        title_en=u.get("title_en", f"Unit {j + 1}"),
+                        description_fr=u.get("description_fr"),
+                        description_en=u.get("description_en"),
+                        order_index=j,
+                    )
+                    session.add(unit)
+
                 saved_modules.append(
                     {
                         "id": str(module.id),
                         "module_number": module.module_number,
                         "title_fr": module.title_fr,
                         "title_en": module.title_en,
+                        "units_count": len(m.get("units", [])),
                     }
                 )
 
             course.module_count = len(module_dicts)
+            course.syllabus_json = module_dicts
             await session.commit()
 
             logger.info(
