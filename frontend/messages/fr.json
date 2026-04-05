@@ -546,7 +546,8 @@
     "error": {
       "failedToLoad": "Échec du chargement de l'évaluation. Veuillez réessayer.",
       "failedToSubmit": "Échec de la soumission de l'évaluation. Veuillez vérifier votre connexion et réessayer.",
-      "timeExpired": "Le temps a expiré. Votre évaluation a été soumise automatiquement."
+      "timeExpired": "Le temps a expiré. Votre évaluation a été soumise automatiquement.",
+      "retry": "Ignorer et réessayer"
     }
   },
   "SummativeAssessment": {

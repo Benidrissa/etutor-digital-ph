@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
+from ..models.course import Course
 from ..models.module import Module
 from ..models.progress import UserModuleProgress
 from ..repositories.protocols import UserRepositoryProtocol
@@ -174,7 +175,14 @@ class PlacementService:
         user.current_level = assigned_level
         await self.user_repo.update(user)
 
-        await self._unlock_modules_after_placement(user_id, assigned_level, db)
+        try:
+            await self._unlock_modules_after_placement(user_id, assigned_level, db)
+        except Exception:
+            logger.exception(
+                "Module unlock failed after placement; level still assigned",
+                user_id=str(user_id),
+                assigned_level=assigned_level,
+            )
 
         result = PlacementTestResult(
             assigned_level=assigned_level,
@@ -209,7 +217,22 @@ class PlacementService:
             assigned_level: Level assigned by placement test (1-4)
             db: Database session
         """
-        modules_result = await db.execute(select(Module).order_by(Module.module_number))
+        default_slug = SettingsCache.instance().get("default-course-slug", "sante-publique-aof")
+        course_result = await db.execute(select(Course).where(Course.slug == default_slug))
+        default_course = course_result.scalar_one_or_none()
+
+        modules_query = select(Module).order_by(Module.module_number)
+        if default_course is not None:
+            modules_query = modules_query.where(Module.course_id == default_course.id)
+        else:
+            logger.warning(
+                "Default course not found, skipping module unlock",
+                slug=default_slug,
+                user_id=str(user_id),
+            )
+            return
+
+        modules_result = await db.execute(modules_query)
         all_modules = list(modules_result.scalars().all())
 
         first_module_at_level: UUID | None = None

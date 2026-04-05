@@ -45,6 +45,7 @@ export function PlacementTestInterface({ onComplete, locale }: PlacementTestInte
   const [timeLeft, setTimeLeft] = useState(20 * 60); // 20 minutes in seconds
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [startTime] = useState(Date.now());
 
   // Load test questions
@@ -107,6 +108,7 @@ export function PlacementTestInterface({ onComplete, locale }: PlacementTestInte
     if (!testData) return;
 
     setIsSubmitting(true);
+    setSubmitError(null);
 
     try {
       const timeTaken = Math.floor((Date.now() - startTime) / 1000);
@@ -124,6 +126,10 @@ export function PlacementTestInterface({ onComplete, locale }: PlacementTestInte
       onComplete(result);
     } catch (error) {
       console.error('Failed to submit placement test:', error);
+      if (!autoSubmit) {
+        setSubmitError(t('error.failedToSubmit'));
+      }
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -236,6 +242,19 @@ export function PlacementTestInterface({ onComplete, locale }: PlacementTestInte
           </div>
         </CardContent>
       </Card>
+
+      {/* Submission error */}
+      {submitError && (
+        <div className="rounded-lg border border-destructive bg-destructive/10 p-4 text-sm text-destructive">
+          <p>{submitError}</p>
+          <button
+            onClick={() => setSubmitError(null)}
+            className="mt-2 underline underline-offset-2 hover:no-underline"
+          >
+            {t('error.retry')}
+          </button>
+        </div>
+      )}
 
       {/* Navigation */}
       <div className="flex justify-between">
