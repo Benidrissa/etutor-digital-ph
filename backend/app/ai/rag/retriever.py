@@ -3,6 +3,7 @@
 import re
 from dataclasses import dataclass
 from typing import Any
+from uuid import UUID
 
 import structlog
 from sqlalchemy import select, text
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.rag.embeddings import EmbeddingService
 from app.domain.models.document_chunk import DocumentChunk
+from app.domain.models.source_image import SourceImage, SourceImageChunk
 from app.domain.services.platform_settings_service import SettingsCache
 
 logger = structlog.get_logger()
@@ -269,6 +271,188 @@ class SemanticRetriever:
                     filters["source"] = named_keys
 
         return await self.search(query=query, top_k=top_k, filters=filters, session=session)
+
+    async def get_linked_images(
+        self,
+        chunk_ids: list[UUID],
+        session: AsyncSession,
+        max_per_chunk: int = 3,
+        max_total: int = 5,
+    ) -> dict[UUID, list[dict]]:
+        """
+        Fetch source images linked to given document chunk IDs.
+
+        Args:
+            chunk_ids: List of document chunk UUIDs
+            session: Database session
+            max_per_chunk: Maximum images returned per chunk
+            max_total: Maximum total images across all chunks
+
+        Returns:
+            Mapping {chunk_id: [image_meta_dict, ...]}
+        """
+        if not chunk_ids:
+            return {}
+
+        result: dict[UUID, list[dict]] = {cid: [] for cid in chunk_ids}
+        total_collected = 0
+
+        rows = await session.execute(
+            select(SourceImageChunk, SourceImage)
+            .join(SourceImage, SourceImageChunk.source_image_id == SourceImage.id)
+            .where(SourceImageChunk.document_chunk_id.in_(chunk_ids))
+            .order_by(
+                SourceImageChunk.document_chunk_id,
+                (SourceImageChunk.reference_type != "explicit"),
+            )
+        )
+        pairs = rows.all()
+
+        for sic, img in pairs:
+            if total_collected >= max_total:
+                break
+            cid = sic.document_chunk_id
+            if len(result[cid]) >= max_per_chunk:
+                continue
+            result[cid].append(img.to_meta_dict())
+            total_collected += 1
+
+        logger.info(
+            "Linked images fetched",
+            chunk_count=len(chunk_ids),
+            total_images=total_collected,
+        )
+        return result
+
+    async def search_source_images(
+        self,
+        query: str,
+        top_k: int = 5,
+        source: str | None = None,
+        rag_collection_id: str | None = None,
+        min_similarity: float = 0.3,
+        session: AsyncSession | None = None,
+    ) -> list[dict]:
+        """
+        Semantic search directly on source_images.embedding.
+
+        Args:
+            query: Search query text
+            top_k: Number of results to return
+            source: Optional filter by source book name
+            rag_collection_id: Optional filter by RAG collection ID
+            min_similarity: Minimum cosine similarity threshold
+            session: Database session
+
+        Returns:
+            List of image metadata dicts (no binary data)
+        """
+        if not query.strip():
+            return []
+
+        query_embedding = await self.embedding_service.generate_embedding(query)
+
+        session_provided = session is not None
+        if not session_provided:
+            from app.infrastructure.persistence.database import async_session_factory
+
+            async with async_session_factory() as session:
+                return await self._search_source_images(
+                    query_embedding, top_k, source, rag_collection_id, min_similarity, session
+                )
+        return await self._search_source_images(
+            query_embedding, top_k, source, rag_collection_id, min_similarity, session
+        )
+
+    async def _search_source_images(
+        self,
+        query_embedding: list[float],
+        top_k: int,
+        source: str | None,
+        rag_collection_id: str | None,
+        min_similarity: float,
+        session: AsyncSession,
+    ) -> list[dict]:
+        """Execute cosine similarity search on source_images table."""
+        embedding_literal = "[" + ",".join(str(x) for x in query_embedding) + "]"
+        vec_expr = f"embedding::vector <=> '{embedding_literal}'::vector"
+
+        where_clauses = ["embedding IS NOT NULL"]
+        params: dict[str, Any] = {}
+
+        if source is not None:
+            where_clauses.append("source = :source")
+            params["source"] = source
+
+        if rag_collection_id is not None:
+            where_clauses.append("rag_collection_id = :rag_collection_id")
+            params["rag_collection_id"] = rag_collection_id
+
+        where_sql = " AND ".join(where_clauses)
+
+        query_str = f"""
+        SELECT * FROM (
+            SELECT
+                id, source, rag_collection_id, figure_number, caption, attribution,
+                image_type, page_number, chapter, section, surrounding_text,
+                storage_key, storage_url, format, width, height, file_size_bytes,
+                original_format, alt_text_fr, alt_text_en, semantic_tags, created_at,
+                1 - ({vec_expr}) as similarity
+            FROM source_images
+            WHERE {where_sql}
+        ) sub
+        WHERE similarity >= :min_similarity
+        ORDER BY similarity DESC
+        LIMIT :limit
+        """
+
+        params["min_similarity"] = min_similarity
+        params["limit"] = top_k
+
+        try:
+            query_obj = text(query_str).bindparams(**params)
+            result = await session.execute(query_obj)
+            rows = result.fetchall()
+        except Exception as e:
+            logger.error("Source image semantic search failed", error=str(e))
+            raise
+
+        image_dicts = []
+        for row in rows:
+            img = SourceImage(
+                id=row.id,
+                source=row.source,
+                rag_collection_id=row.rag_collection_id,
+                figure_number=row.figure_number,
+                caption=row.caption,
+                attribution=row.attribution,
+                image_type=row.image_type,
+                page_number=row.page_number,
+                chapter=row.chapter,
+                section=row.section,
+                surrounding_text=row.surrounding_text,
+                storage_key=row.storage_key,
+                storage_url=row.storage_url,
+                format=row.format,
+                width=row.width,
+                height=row.height,
+                file_size_bytes=row.file_size_bytes,
+                original_format=row.original_format,
+                alt_text_fr=row.alt_text_fr,
+                alt_text_en=row.alt_text_en,
+                semantic_tags=row.semantic_tags,
+                created_at=row.created_at,
+            )
+            meta = img.to_meta_dict()
+            meta["similarity"] = float(row.similarity)
+            image_dicts.append(meta)
+
+        logger.info(
+            "Source image semantic search completed",
+            results=len(image_dicts),
+            top_similarity=image_dicts[0]["similarity"] if image_dicts else 0,
+        )
+        return image_dicts
 
     async def verify_search_functionality(
         self, session: AsyncSession | None = None
