@@ -4,6 +4,7 @@ import { startTransition, useEffect, useState } from "react";
 import { useRouter } from "@/i18n/routing";
 import { useLocale } from "next-intl";
 import { usePathname } from "next/navigation";
+import { identifyUser } from "@/lib/analytics";
 
 function getStoredToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -36,6 +37,26 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       localStorage.removeItem("user");
       router.replace("/login");
       return;
+    }
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) {
+      try {
+        const user = JSON.parse(storedUser) as {
+          id?: string;
+          country?: string;
+          current_level?: number;
+          preferred_language?: string;
+        };
+        if (user.id) {
+          identifyUser(user.id, {
+            country: user.country,
+            level: user.current_level,
+            preferred_language: user.preferred_language,
+          });
+        }
+      } catch {
+        // ignore malformed user data
+      }
     }
     startTransition(() => setAuthorized(true));
   }, [locale, pathname, router]);

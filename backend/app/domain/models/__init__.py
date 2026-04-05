@@ -17,6 +17,13 @@ from app.domain.models.preassessment import CoursePreAssessment
 from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import PlacementTestAttempt, QuizAttempt, SummativeAssessmentAttempt
 from app.domain.models.source_image import ImageType, SourceImage, SourceImageChunk
+from app.domain.models.subscription import (
+    PaymentStatus,
+    PaymentType,
+    Subscription,
+    SubscriptionPayment,
+    SubscriptionStatus,
+)
 from app.domain.models.taxonomy import CourseTaxonomy, TaxonomyCategory
 from app.domain.models.user import User
 
@@ -52,6 +59,11 @@ __all__ = [
     "UserModuleProgress",
     "User",
     "ImageType",
+    "PaymentStatus",
+    "PaymentType",
     "SourceImage",
     "SourceImageChunk",
+    "Subscription",
+    "SubscriptionPayment",
+    "SubscriptionStatus",
 ]
