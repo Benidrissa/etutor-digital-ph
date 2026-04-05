@@ -13,8 +13,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "026_refactor_taxonomy_to_lookup_table"
-down_revision: str | None = "025_add_module_media"
+revision: str = "026"
+down_revision: str | None = "025c"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
