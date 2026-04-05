@@ -33,7 +33,7 @@ export function SourceImage({
     : (alt_text_en ?? caption_en ?? captionFallback ?? t('defaultAlt'));
 
   const figureLabel = figure_number
-    ? `${t('figure')} ${figure_number}${caption ? ` — ${caption}` : ''}`
+    ? `${figure_number}${caption ? ` — ${caption}` : ''}`
     : caption ?? '';
 
   return (
