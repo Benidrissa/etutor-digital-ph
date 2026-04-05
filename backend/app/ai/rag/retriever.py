@@ -27,6 +27,20 @@ class SearchResult:
         return {"chunk": self.chunk.to_dict(), "similarity_score": self.similarity_score}
 
 
+@dataclass
+class LinkedImage:
+    """Image linked to a document chunk via source_image metadata."""
+
+    id: str
+    chunk_id: str
+    figure_number: str | None
+    caption: str | None
+    image_type: str
+    storage_url: str | None
+    alt_text_fr: str | None
+    alt_text_en: str | None
+
+
 class SemanticRetriever:
     """Service for performing semantic search on document chunks."""
 
@@ -214,6 +228,77 @@ class SemanticRetriever:
             results[source] = source_results
 
         return results
+
+    async def get_linked_images(
+        self,
+        chunk_ids: list[str],
+        session: AsyncSession,
+        max_images: int = 5,
+    ) -> list[LinkedImage]:
+        """
+        Retrieve source images linked to the given document chunk IDs.
+
+        Queries the ``source_images`` table (created by the PDF image extraction
+        pipeline, issue #737) for images whose ``chunk_id`` matches one of the
+        retrieved chunks.  Returns at most ``max_images`` results so that the
+        token budget added to the prompt stays bounded.
+
+        Fails gracefully: if the table does not exist yet (pre-migration
+        environments) it logs a warning and returns an empty list.
+
+        Args:
+            chunk_ids: UUIDs of the document chunks to look up.
+            session: Active async database session.
+            max_images: Maximum number of images to return (default 5).
+
+        Returns:
+            List of LinkedImage objects, empty if none found or table missing.
+        """
+        if not chunk_ids:
+            return []
+
+        try:
+            id_list = ", ".join(f"'{cid}'" for cid in chunk_ids)
+            query_str = f"""
+            SELECT
+                id, chunk_id, figure_number, caption, image_type,
+                storage_url, alt_text_fr, alt_text_en
+            FROM source_images
+            WHERE chunk_id IN ({id_list})
+              AND storage_url IS NOT NULL
+            ORDER BY figure_number NULLS LAST
+            LIMIT :max_images
+            """
+            result = await session.execute(text(query_str).bindparams(max_images=max_images))
+            rows = result.fetchall()
+        except Exception as exc:
+            logger.warning(
+                "get_linked_images query failed (table may not exist yet)",
+                error=str(exc),
+            )
+            return []
+
+        images: list[LinkedImage] = []
+        for row in rows:
+            images.append(
+                LinkedImage(
+                    id=str(row.id),
+                    chunk_id=str(row.chunk_id),
+                    figure_number=row.figure_number,
+                    caption=row.caption,
+                    image_type=row.image_type or "unknown",
+                    storage_url=row.storage_url,
+                    alt_text_fr=row.alt_text_fr,
+                    alt_text_en=row.alt_text_en,
+                )
+            )
+
+        logger.info(
+            "Linked images retrieved",
+            chunk_count=len(chunk_ids),
+            image_count=len(images),
+        )
+        return images
 
     async def search_for_module(
         self,

@@ -29,6 +29,20 @@ class LessonGenerationRequest(BaseModel):
     }
 
 
+class SourceImageRef(BaseModel):
+    """Reference to a source image extracted from a reference PDF."""
+
+    id: str = Field(..., description="Source image UUID")
+    figure_number: str | None = Field(None, description="Figure number (e.g. '1.3')")
+    caption: str | None = Field(None, description="Figure caption")
+    image_type: str = Field(
+        ..., description="Image type (diagram, chart, photo, formula, icon, unknown)"
+    )
+    storage_url: str | None = Field(None, description="Public URL of the stored image")
+    alt_text_fr: str | None = Field(None, description="French alt text")
+    alt_text_en: str | None = Field(None, description="English alt text")
+
+
 class LessonContent(BaseModel):
     """Structured lesson content."""
 
@@ -51,6 +65,10 @@ class LessonResponse(BaseModel):
     level: int = Field(..., description="Target competency level")
     country_context: str = Field(..., description="Country context")
     content: LessonContent = Field(..., description="Structured lesson content")
+    source_image_refs: list[SourceImageRef] = Field(
+        default_factory=list,
+        description="Source images referenced in the lesson content",
+    )
     generated_at: str = Field(..., description="Generation timestamp (ISO format)")
     cached: bool = Field(default=False, description="Whether content was retrieved from cache")
 

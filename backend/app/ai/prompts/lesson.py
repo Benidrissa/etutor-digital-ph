@@ -1,8 +1,13 @@
 """System prompts for lesson generation."""
 
-from typing import Literal
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Literal
 
 from app.domain.services.platform_settings_service import SettingsCache
+
+if TYPE_CHECKING:
+    from app.ai.rag.retriever import LinkedImage
 
 # Mapping of country codes to French names for contextualization
 COUNTRY_NAMES_FR = {
@@ -227,6 +232,13 @@ EXIGENCES CRITIQUES :
 - {criteria_examples}
 - Respecte les particularités culturelles et économiques du contexte
 
+FIGURES DE RÉFÉRENCE :
+Certains extraits sont accompagnés d'annotations `[FIGURE DISPONIBLE: ...]`.
+Si une figure est directement pertinente pour illustrer un concept de la leçon,
+insère le marqueur `{{{{source_image:UUID}}}}` dans le texte à l'endroit approprié.
+N'utilise ce marqueur que pour des figures réellement utiles à la compréhension.
+Maximum 3 marqueurs par leçon.
+
 RÉPONSE ATTENDUE : Contenu de leçon directement utilisable, sans métadiscours."""
 
     else:  # English
@@ -296,22 +308,46 @@ CRITICAL REQUIREMENTS:
 - {criteria_examples}
 - Respect cultural and economic particularities of the context
 
+REFERENCE FIGURES:
+Some excerpts include `[FIGURE AVAILABLE: ...]` annotations.
+If a figure is directly relevant to illustrate a concept in the lesson,
+insert the marker `{{{{source_image:UUID}}}}` in the text at the appropriate point.
+Only use this marker for figures genuinely useful for understanding.
+Maximum 3 markers per lesson.
+
 EXPECTED RESPONSE: Directly usable lesson content, without meta-discourse."""
 
 
 def format_rag_context_for_lesson(
-    chunks: list, query: str, module_title: str, unit_id: str, language: Literal["fr", "en"]
+    chunks: list,
+    query: str,
+    module_title: str,
+    unit_id: str,
+    language: Literal["fr", "en"],
+    linked_images: list[LinkedImage] | None = None,
 ) -> str:
-    """Format RAG chunks into context for lesson generation."""
+    """Format RAG chunks into context for lesson generation.
 
+    Args:
+        chunks: RAG search results (SearchResult or DocumentChunk objects).
+        query: The lesson generation query.
+        module_title: Human-readable module title.
+        unit_id: Unit identifier.
+        language: Content language ("fr" or "en").
+        linked_images: Optional list of LinkedImage objects from retriever.get_linked_images().
+            When provided, up to 5 image annotations are appended to the relevant chunks.
+
+    Returns:
+        Formatted prompt context string.
+    """
     if language == "fr":
         context_intro = f"""DEMANDE : Génère une leçon pour le module "{module_title}",
 unité {unit_id}, sur le sujet : "{query}"
 
 DOCUMENTS DE RÉFÉRENCE :
 """
-
         sources_section = "\nSOURCES CITÉES :\n"
+        figure_label = "FIGURE DISPONIBLE"
 
     else:  # English
         context_intro = f"""REQUEST: Generate a lesson for module "{module_title}",
@@ -319,26 +355,29 @@ unit {unit_id}, on the topic: "{query}"
 
 REFERENCE DOCUMENTS:
 """
-
         sources_section = "\nCITED SOURCES:\n"
+        figure_label = "FIGURE AVAILABLE"
+
+    # Build a lookup: chunk_id -> list[LinkedImage]
+    images_by_chunk: dict[str, list] = {}
+    if linked_images:
+        for img in linked_images:
+            images_by_chunk.setdefault(img.chunk_id, []).append(img)
 
     # Format chunks
     formatted_chunks = []
     sources = set()
+    image_annotations_added = 0
+    max_image_annotations = 5
 
     for i, chunk in enumerate(chunks, 1):
-        if hasattr(chunk, "chunk"):
-            # SearchResult object
-            content = chunk.chunk.content
-            source = chunk.chunk.source
-            chapter = getattr(chunk.chunk, "chapter", None)
-            page = getattr(chunk.chunk, "page", None)
-        else:
-            # Direct chunk object
-            content = chunk.content
-            source = chunk.source
-            chapter = getattr(chunk, "chapter", None)
-            page = getattr(chunk, "page", None)
+        chunk_obj = chunk.chunk if hasattr(chunk, "chunk") else chunk
+
+        content = chunk_obj.content
+        source = chunk_obj.source
+        chapter = getattr(chunk_obj, "chapter", None)
+        page = getattr(chunk_obj, "page", None)
+        chunk_id = str(chunk_obj.id) if chunk_obj.id else None
 
         # Format source reference
         source_ref = source.title()
@@ -347,7 +386,26 @@ REFERENCE DOCUMENTS:
         if page:
             source_ref += f", p.{page}"
 
-        formatted_chunks.append(f"[Extrait {i} - {source_ref}]\n{content}\n")
+        chunk_text = f"[Extrait {i} - {source_ref}]\n{content}"
+
+        # Append image annotations for this chunk
+        if chunk_id and chunk_id in images_by_chunk:
+            for img in images_by_chunk[chunk_id]:
+                if image_annotations_added >= max_image_annotations:
+                    break
+                img_label = img.figure_number or "Figure"
+                img_caption = img.caption or ""
+                img_type = img.image_type
+                annotation = f"\n[{figure_label}: {img_label}"
+                if img_caption:
+                    annotation += f' \u2014 "{img_caption}"'
+                if img_type != "unknown":
+                    annotation += f" ({img_type})"
+                annotation += " \u2014 {{source_image:" + img.id + "}}]"
+                chunk_text += annotation
+                image_annotations_added += 1
+
+        formatted_chunks.append(chunk_text + "\n")
         sources.add(source_ref)
 
     # Build full context

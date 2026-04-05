@@ -17,12 +17,13 @@ from app.ai.prompts.case_study import (
     get_case_study_system_prompt,
 )
 from app.ai.prompts.lesson import format_rag_context_for_lesson, get_lesson_system_prompt
-from app.ai.rag.retriever import SemanticRetriever
+from app.ai.rag.retriever import LinkedImage, SemanticRetriever
 from app.api.v1.schemas.content import (
     CaseStudyContent,
     CaseStudyResponse,
     LessonContent,
     LessonResponse,
+    SourceImageRef,
     StreamingEvent,
 )
 from app.domain.models.content import GeneratedContent
@@ -198,12 +199,17 @@ class LessonGenerationService:
                     else None
                 ),
             )
+            # Retrieve images linked to the retrieved chunks
+            chunk_ids = [str(r.chunk.id) if hasattr(r, "chunk") else str(r.id) for r in rag_chunks]
+            linked_images = await self.semantic_retriever.get_linked_images(chunk_ids, session)
+
             user_message = format_rag_context_for_lesson(
                 rag_chunks,
                 query,
                 module.title_fr if language == "fr" else module.title_en,
                 unit_id,
                 language,
+                linked_images=linked_images,
             )
 
             # Stream content generation
@@ -213,6 +219,9 @@ class LessonGenerationService:
             ):
                 accumulated_content += chunk
                 yield StreamingEvent(event="chunk", data=chunk)
+
+            # Post-process: extract source_image markers and resolve refs
+            source_image_refs = self._extract_source_image_refs(accumulated_content, linked_images)
 
             # Parse and structure the generated content
             lesson_content = await self._parse_lesson_content(accumulated_content, rag_chunks)
@@ -225,6 +234,7 @@ class LessonGenerationService:
                 level=level,
                 country_context=country,
                 content=lesson_content,
+                source_image_refs=source_image_refs,
                 generated_at=datetime.utcnow().isoformat(),
                 cached=False,
             )
@@ -321,12 +331,17 @@ class LessonGenerationService:
                 else None
             ),
         )
+        # Retrieve images linked to the retrieved chunks
+        chunk_ids = [str(r.chunk.id) if hasattr(r, "chunk") else str(r.id) for r in rag_chunks]
+        linked_images = await self.semantic_retriever.get_linked_images(chunk_ids, session)
+
         user_message = format_rag_context_for_lesson(
             rag_chunks,
             query,
             module.title_fr if language == "fr" else module.title_en,
             unit_id,
             language,
+            linked_images=linked_images,
         )
 
         # Get non-streaming response for structured parsing
@@ -341,6 +356,9 @@ class LessonGenerationService:
             if hasattr(block, "text"):
                 content_text += block.text
 
+        # Post-process: extract source_image markers and resolve refs
+        source_image_refs = self._extract_source_image_refs(content_text, linked_images)
+
         # Parse structured content
         lesson_content = await self._parse_lesson_content(content_text, rag_chunks)
 
@@ -351,6 +369,7 @@ class LessonGenerationService:
             level=level,
             country_context=country,
             content=lesson_content,
+            source_image_refs=source_image_refs,
             generated_at=datetime.utcnow().isoformat(),
             cached=False,
         )
@@ -401,6 +420,44 @@ class LessonGenerationService:
             return f"{module_number}.{unit_ordinal}"
         except (ValueError, IndexError):
             return None
+
+    @staticmethod
+    def _extract_source_image_refs(
+        content_text: str,
+        linked_images: list[LinkedImage],
+    ) -> list[SourceImageRef]:
+        """Scan Claude's output for {{source_image:UUID}} markers and resolve them.
+
+        Returns a de-duplicated list of SourceImageRef objects for each UUID
+        that was both referenced in the text and present in linked_images.
+        """
+        pattern = re.compile(r"\{\{source_image:([0-9a-f\-]{36})\}\}", re.IGNORECASE)
+        referenced_ids = {m.group(1) for m in pattern.finditer(content_text)}
+
+        if not referenced_ids:
+            return []
+
+        images_by_id = {img.id: img for img in linked_images}
+        refs: list[SourceImageRef] = []
+        seen: set[str] = set()
+
+        for uid in referenced_ids:
+            if uid in images_by_id and uid not in seen:
+                img = images_by_id[uid]
+                refs.append(
+                    SourceImageRef(
+                        id=img.id,
+                        figure_number=img.figure_number,
+                        caption=img.caption,
+                        image_type=img.image_type,
+                        storage_url=img.storage_url,
+                        alt_text_fr=img.alt_text_fr,
+                        alt_text_en=img.alt_text_en,
+                    )
+                )
+                seen.add(uid)
+
+        return refs
 
     async def _parse_lesson_content(self, content_text: str, rag_chunks: list) -> LessonContent:
         """Parse generated content into structured lesson format."""
