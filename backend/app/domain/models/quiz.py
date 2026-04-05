@@ -12,6 +12,7 @@ from app.domain.models.base import Base
 
 if TYPE_CHECKING:
     from app.domain.models.content import GeneratedContent
+    from app.domain.models.course import Course
     from app.domain.models.module import Module
     from app.domain.models.user import User
 
@@ -100,5 +101,6 @@ class PlacementTestAttempt(Base):
     # Timestamps
     attempted_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
-    # Relationship
+    # Relationships
     user: Mapped[User] = relationship(back_populates="placement_attempts")
+    course: Mapped[Course | None] = relationship()

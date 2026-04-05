@@ -4,7 +4,7 @@ Handles placement test scoring, level assignment, and module unlocking for new u
 Determines appropriate starting level (1-4) based on knowledge assessment spanning all levels.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -15,7 +15,7 @@ from structlog import get_logger
 
 from ..models.course import Course
 from ..models.module import Module
-from ..models.preassessment import CoursePreassessment
+from ..models.preassessment import CoursePreAssessment
 from ..models.progress import UserModuleProgress
 from ..repositories.protocols import UserRepositoryProtocol
 from .platform_settings_service import SettingsCache
@@ -118,11 +118,14 @@ class PlacementService:
         )
 
     async def _load_course_preassessment(
-        self, course_id: UUID, db: AsyncSession
-    ) -> CoursePreassessment | None:
-        """Load course preassessment config from DB."""
+        self, course_id: UUID, language: str, db: AsyncSession
+    ) -> CoursePreAssessment | None:
+        """Load course preassessment config from DB filtered by language."""
         result = await db.execute(
-            select(CoursePreassessment).where(CoursePreassessment.course_id == course_id)
+            select(CoursePreAssessment).where(
+                CoursePreAssessment.course_id == course_id,
+                CoursePreAssessment.language == language,
+            )
         )
         return result.scalar_one_or_none()
 
@@ -134,6 +137,7 @@ class PlacementService:
         user_context: dict[str, Any],
         db: AsyncSession,
         course_id: UUID | None = None,
+        language: str = "fr",
     ) -> PlacementTestResult:
         """Score placement test, assign level, and unlock modules.
 
@@ -164,7 +168,7 @@ class PlacementService:
         question_levels: dict[str, int] = QUESTION_LEVELS
 
         if course_id is not None:
-            preassessment = await self._load_course_preassessment(course_id, db)
+            preassessment = await self._load_course_preassessment(course_id, language, db)
             if preassessment is not None:
                 answer_key = {str(k): str(v) for k, v in preassessment.answer_key.items()}
                 question_levels = {str(k): int(v) for k, v in preassessment.question_levels.items()}
@@ -199,7 +203,7 @@ class PlacementService:
         await self.user_repo.update(user)
 
         try:
-            await self._unlock_modules_after_placement(
+            await self.unlock_modules_after_placement(
                 user_id, assigned_level, db, course_id=course_id
             )
         except Exception:
@@ -228,7 +232,7 @@ class PlacementService:
 
         return result
 
-    async def _unlock_modules_after_placement(
+    async def unlock_modules_after_placement(
         self,
         user_id: UUID,
         assigned_level: int,
@@ -299,7 +303,7 @@ class PlacementService:
             if existing is not None:
                 existing.status = status
                 existing.completion_pct = completion_pct
-                existing.last_accessed = datetime.utcnow()
+                existing.last_accessed = datetime.now(UTC)
             else:
                 progress = UserModuleProgress(
                     user_id=user_id,
@@ -307,7 +311,7 @@ class PlacementService:
                     status=status,
                     completion_pct=completion_pct,
                     time_spent_minutes=0,
-                    last_accessed=datetime.utcnow(),
+                    last_accessed=datetime.now(UTC),
                 )
                 db.add(progress)
 

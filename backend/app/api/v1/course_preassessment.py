@@ -1,6 +1,6 @@
 """Per-course pre-assessment endpoints."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -12,7 +12,7 @@ from structlog import get_logger
 from app.api.deps import get_db as get_db_session
 from app.api.deps_local_auth import get_current_user
 from app.domain.models.course import Course
-from app.domain.models.preassessment import CoursePreassessment
+from app.domain.models.preassessment import CoursePreAssessment
 from app.domain.models.quiz import PlacementTestAttempt
 from app.domain.models.user import User
 from app.domain.repositories.implementations.user_repository import UserRepository
@@ -28,6 +28,9 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/courses/{course_id}/preassessment", tags=["Course Pre-Assessment"])
 
+DEFAULT_TIME_LIMIT_MINUTES = 30
+DEFAULT_RETAKE_COOLDOWN_DAYS = 90
+
 
 async def _get_course_or_404(course_id: UUID, db: AsyncSession) -> Course:
     result = await db.execute(select(Course).where(Course.id == course_id))
@@ -37,15 +40,20 @@ async def _get_course_or_404(course_id: UUID, db: AsyncSession) -> Course:
     return course
 
 
-async def _get_preassessment_or_404(course_id: UUID, db: AsyncSession) -> CoursePreassessment:
+async def _get_preassessment_or_404(
+    course_id: UUID, language: str, db: AsyncSession
+) -> CoursePreAssessment:
     result = await db.execute(
-        select(CoursePreassessment).where(CoursePreassessment.course_id == course_id)
+        select(CoursePreAssessment).where(
+            CoursePreAssessment.course_id == course_id,
+            CoursePreAssessment.language == language,
+        )
     )
     preassessment = result.scalar_one_or_none()
-    if preassessment is None or not preassessment.preassessment_enabled:
+    if preassessment is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="No pre-assessment found for this course or it is disabled",
+            detail="No pre-assessment found for this course and language",
         )
     return preassessment
 
@@ -77,10 +85,16 @@ async def get_course_preassessment_questions(
     Questions do NOT include correct_answer (stripped for security).
     """
     try:
-        await _get_course_or_404(course_id, db)
-        preassessment = await _get_preassessment_or_404(course_id, db)
+        course = await _get_course_or_404(course_id, db)
+
+        if not course.preassessment_enabled:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No pre-assessment found for this course or it is disabled",
+            )
 
         lang = language if language is not None else current_user.preferred_language
+        preassessment = await _get_preassessment_or_404(course_id, lang, db)
 
         raw_questions: list[dict[str, Any]] = preassessment.questions or []
         questions = []
@@ -90,36 +104,30 @@ async def get_course_preassessment_questions(
                     "id": str(q.get("id", "")),
                     "domain": q.get("domain", ""),
                     "level": q.get("level", 1),
-                    "question": q.get(f"question_{lang}", q.get("question", "")),
+                    "question": q.get("question", ""),
                     "options": [
                         {
                             "id": opt.get("id", ""),
-                            "text": opt.get(f"text_{lang}", opt.get("text", "")),
+                            "text": opt.get("text", ""),
                         }
                         for opt in q.get("options", [])
                     ],
                 }
             )
 
-        instructions_fr = preassessment.instructions_fr or (
-            "Répondez à toutes les questions. Votre score déterminera votre niveau de départ."
-        )
-        instructions_en = preassessment.instructions_en or (
-            "Answer all questions. Your score will determine your starting level."
-        )
-
         logger.info(
             "Course pre-assessment questions retrieved",
             user_id=str(current_user.id),
             course_id=str(course_id),
+            language=lang,
             question_count=len(questions),
         )
 
         return PlacementTestResponse(
             questions=questions,
             total_questions=len(questions),
-            time_limit_minutes=preassessment.time_limit_minutes,
-            instructions={"fr": instructions_fr, "en": instructions_en},
+            time_limit_minutes=DEFAULT_TIME_LIMIT_MINUTES,
+            instructions={},
             domains={},
         )
 
@@ -141,18 +149,39 @@ async def get_course_preassessment_questions(
 async def submit_course_preassessment(
     course_id: UUID,
     submission: PlacementTestSubmission,
+    language: str | None = Query(default=None, pattern="^(fr|en)$"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """Submit course pre-assessment and get level assignment.
 
     Scores using the stored answer key from course_preassessments.
-    Calls _unlock_modules_after_placement() filtered by course_id.
+    Calls unlock_modules_after_placement() filtered by course_id.
     Saves PlacementTestAttempt with course_id.
     """
     try:
-        await _get_course_or_404(course_id, db)
-        preassessment = await _get_preassessment_or_404(course_id, db)
+        course = await _get_course_or_404(course_id, db)
+
+        if not course.preassessment_enabled:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No pre-assessment found for this course or it is disabled",
+            )
+
+        latest_attempt = await _get_latest_attempt(current_user.id, course_id, db)
+        if latest_attempt is not None and latest_attempt.can_retake_after is not None:
+            now = datetime.now(UTC)
+            retake_at = latest_attempt.can_retake_after
+            if retake_at.tzinfo is None:
+                retake_at = retake_at.replace(tzinfo=UTC)
+            if retake_at > now:
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=f"Retake not available until {retake_at.isoformat()}",
+                )
+
+        lang = language if language is not None else current_user.preferred_language
+        await _get_preassessment_or_404(course_id, lang, db)
 
         user_repo = UserRepository(db)
         placement_service = PlacementService(user_repo)
@@ -170,10 +199,10 @@ async def submit_course_preassessment(
             user_context=user_context,
             db=db,
             course_id=course_id,
+            language=lang,
         )
 
-        cooldown_days = preassessment.retake_cooldown_days
-        can_retake_after = datetime.utcnow() + timedelta(days=cooldown_days)
+        can_retake_after = datetime.now(UTC) + timedelta(days=DEFAULT_RETAKE_COOLDOWN_DAYS)
 
         attempt = PlacementTestAttempt(
             user_id=current_user.id,
@@ -234,12 +263,18 @@ async def skip_course_preassessment(
     """Skip pre-assessment for a specific course.
 
     Assigns Level 1 and unlocks only that course's modules.
+    Returns 403 if pre-assessment is mandatory.
     """
     try:
-        await _get_course_or_404(course_id, db)
-        preassessment = await _get_preassessment_or_404(course_id, db)
+        course = await _get_course_or_404(course_id, db)
 
-        if preassessment.mandatory:
+        if not course.preassessment_enabled:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No pre-assessment found for this course or it is disabled",
+            )
+
+        if course.preassessment_mandatory:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Pre-assessment is mandatory for this course and cannot be skipped",
@@ -248,7 +283,7 @@ async def skip_course_preassessment(
         user_repo = UserRepository(db)
         placement_service = PlacementService(user_repo)
 
-        await placement_service._unlock_modules_after_placement(
+        await placement_service.unlock_modules_after_placement(
             user_id=current_user.id,
             assigned_level=1,
             db=db,
@@ -317,14 +352,9 @@ async def get_course_preassessment_status(
     Used by frontend to decide redirect logic after onboarding.
     """
     try:
-        await _get_course_or_404(course_id, db)
+        course = await _get_course_or_404(course_id, db)
 
-        result = await db.execute(
-            select(CoursePreassessment).where(CoursePreassessment.course_id == course_id)
-        )
-        preassessment = result.scalar_one_or_none()
-
-        if preassessment is None or not preassessment.preassessment_enabled:
+        if not course.preassessment_enabled:
             return CoursePreassessmentStatus(
                 course_id=course_id,
                 enabled=False,
@@ -337,7 +367,7 @@ async def get_course_preassessment_status(
 
         latest_attempt = await _get_latest_attempt(current_user.id, course_id, db)
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         completed = False
         skipped = False
         can_retake = True
@@ -346,9 +376,13 @@ async def get_course_preassessment_status(
         if latest_attempt is not None:
             skipped = bool(latest_attempt.user_context.get("skipped", False))
             completed = not skipped
-            if latest_attempt.can_retake_after and latest_attempt.can_retake_after > now:
-                can_retake = False
-                next_retake_at = latest_attempt.can_retake_after
+            if latest_attempt.can_retake_after is not None:
+                retake_at = latest_attempt.can_retake_after
+                if retake_at.tzinfo is None:
+                    retake_at = retake_at.replace(tzinfo=UTC)
+                if retake_at > now:
+                    can_retake = False
+                    next_retake_at = retake_at
 
         logger.info(
             "Course pre-assessment status retrieved",
@@ -359,8 +393,8 @@ async def get_course_preassessment_status(
 
         return CoursePreassessmentStatus(
             course_id=course_id,
-            enabled=preassessment.preassessment_enabled,
-            mandatory=preassessment.mandatory,
+            enabled=course.preassessment_enabled,
+            mandatory=course.preassessment_mandatory,
             completed=completed,
             skipped=skipped,
             can_retake=can_retake,
