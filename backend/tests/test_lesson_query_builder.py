@@ -289,3 +289,171 @@ class TestGetCachedLesson:
 
         assert result is not None
         assert result.module_id == sample_module_id
+
+
+class TestGetCachedLessonSourceImageRefs:
+    """Tests that source_image_refs are extracted from all content fields in cached lessons."""
+
+    def _make_session_with_cached(self, content: dict, module_id: uuid.UUID) -> AsyncMock:
+        session = AsyncMock(spec=AsyncSession)
+        cached = GeneratedContent(
+            id=uuid.uuid4(),
+            module_id=module_id,
+            content_type="lesson",
+            language="fr",
+            level=1,
+            content=content,
+            sources_cited=["Source 1"],
+            country_context="SN",
+            generated_at=datetime(2026, 1, 1, 0, 0, 0),
+            validated=False,
+        )
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.first.return_value = cached
+        mock_result.scalars.return_value = mock_scalars
+        session.execute = AsyncMock(return_value=mock_result)
+        return session
+
+    @pytest.mark.asyncio
+    async def test_image_marker_in_concepts_list_is_found(self, lesson_service, sample_module_id):
+        img_id = str(uuid.uuid4())
+        mock_db_img = MagicMock()
+        mock_db_img.id = uuid.UUID(img_id)
+        mock_db_img.to_meta_dict.return_value = {
+            "id": img_id,
+            "figure_number": "1.10",
+            "caption": "Diagram",
+            "image_type": "diagram",
+            "storage_url": "https://cdn.example.com/img.webp",
+            "alt_text_fr": None,
+            "alt_text_en": None,
+            "attribution": None,
+        }
+
+        content = {
+            "unit_id": "M01-U01",
+            "introduction": "Introduction text",
+            "concepts": [f"Concept with marker {{{{source_image:{img_id}}}}}"],
+            "aof_example": "Example",
+            "synthesis": "Synthesis",
+            "key_points": ["Point 1"],
+            "sources_cited": ["Source 1"],
+            "source_image_refs": [],
+        }
+
+        session = AsyncMock(spec=AsyncSession)
+        cached = GeneratedContent(
+            id=uuid.uuid4(),
+            module_id=sample_module_id,
+            content_type="lesson",
+            language="fr",
+            level=1,
+            content=content,
+            sources_cited=["Source 1"],
+            country_context="SN",
+            generated_at=datetime(2026, 1, 1, 0, 0, 0),
+            validated=False,
+        )
+
+        mock_first_result = MagicMock()
+        mock_scalars_first = MagicMock()
+        mock_scalars_first.first.return_value = cached
+        mock_first_result.scalars.return_value = mock_scalars_first
+
+        mock_db_result = MagicMock()
+        mock_db_scalars = MagicMock()
+        mock_db_scalars.all.return_value = [mock_db_img]
+        mock_db_result.scalars.return_value = mock_db_scalars
+
+        session.execute = AsyncMock(side_effect=[mock_first_result, mock_db_result])
+
+        result = await lesson_service._get_cached_lesson(
+            sample_module_id, "M01-U01", "fr", "SN", 1, session
+        )
+
+        assert result is not None
+        assert len(result.source_image_refs) == 1
+        assert result.source_image_refs[0].id == img_id
+
+    @pytest.mark.asyncio
+    async def test_image_marker_in_key_points_list_is_found(self, lesson_service, sample_module_id):
+        img_id = str(uuid.uuid4())
+        mock_db_img = MagicMock()
+        mock_db_img.id = uuid.UUID(img_id)
+        mock_db_img.to_meta_dict.return_value = {
+            "id": img_id,
+            "figure_number": "2.1",
+            "caption": "Key point figure",
+            "image_type": "chart",
+            "storage_url": "https://cdn.example.com/chart.webp",
+            "alt_text_fr": None,
+            "alt_text_en": None,
+            "attribution": None,
+        }
+
+        content = {
+            "unit_id": "M01-U01",
+            "introduction": "Introduction text",
+            "concepts": ["Normal concept"],
+            "aof_example": "Example",
+            "synthesis": "Synthesis",
+            "key_points": ["Normal point", f"Point with {{{{source_image:{img_id}}}}}"],
+            "sources_cited": ["Source 1"],
+            "source_image_refs": [],
+        }
+
+        session = AsyncMock(spec=AsyncSession)
+        cached = GeneratedContent(
+            id=uuid.uuid4(),
+            module_id=sample_module_id,
+            content_type="lesson",
+            language="fr",
+            level=1,
+            content=content,
+            sources_cited=["Source 1"],
+            country_context="SN",
+            generated_at=datetime(2026, 1, 1, 0, 0, 0),
+            validated=False,
+        )
+
+        mock_first_result = MagicMock()
+        mock_scalars_first = MagicMock()
+        mock_scalars_first.first.return_value = cached
+        mock_first_result.scalars.return_value = mock_scalars_first
+
+        mock_db_result = MagicMock()
+        mock_db_scalars = MagicMock()
+        mock_db_scalars.all.return_value = [mock_db_img]
+        mock_db_result.scalars.return_value = mock_db_scalars
+
+        session.execute = AsyncMock(side_effect=[mock_first_result, mock_db_result])
+
+        result = await lesson_service._get_cached_lesson(
+            sample_module_id, "M01-U01", "fr", "SN", 1, session
+        )
+
+        assert result is not None
+        assert len(result.source_image_refs) == 1
+        assert result.source_image_refs[0].id == img_id
+
+    @pytest.mark.asyncio
+    async def test_extract_source_image_refs_handles_dict_text_directly(self, lesson_service):
+        img_id = str(uuid.uuid4())
+        img_meta = {
+            "id": img_id,
+            "figure_number": "3.5",
+            "caption": "Concept dict figure",
+            "image_type": "diagram",
+            "storage_url": None,
+            "alt_text_fr": None,
+            "alt_text_en": None,
+            "attribution": None,
+        }
+        text = f"title Concept A body Body with {{{{source_image:{img_id}}}}}"
+        linked = {uuid.uuid4(): [img_meta]}
+
+        result = await LessonGenerationService._extract_source_image_refs(text, linked)
+
+        assert len(result) == 1
+        assert result[0].id == img_id

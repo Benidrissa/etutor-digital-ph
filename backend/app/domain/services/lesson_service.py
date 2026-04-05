@@ -297,8 +297,12 @@ class LessonGenerationService:
                 str(content_dict.get(f, "") or "")
                 for f in ("introduction", "aof_example", "synthesis")
             )
-            for concept in content_dict.get("concepts", []):
-                all_text_fields += " " + str(concept or "")
+            for field in ("concepts", "key_points"):
+                for item in content_dict.get(field, []):
+                    if isinstance(item, dict):
+                        all_text_fields += " " + " ".join(str(v or "") for v in item.values())
+                    else:
+                        all_text_fields += " " + str(item or "")
 
             existing_ids = {ref.id for ref in source_image_refs}
             if re.search(r"\{\{source_image:[0-9a-f-]{36}\}\}", all_text_fields, re.IGNORECASE):
@@ -522,6 +526,12 @@ class LessonGenerationService:
         pattern = re.compile(r"\{\{source_image:([0-9a-f-]{36})\}\}", re.IGNORECASE)
         found_ids = list(dict.fromkeys(pattern.findall(content_text)))
 
+        logger.debug(
+            "_extract_source_image_refs: scanned content",
+            content_length=len(content_text),
+            found_ids=found_ids,
+        )
+
         if not found_ids:
             return []
 
@@ -534,12 +544,22 @@ class LessonGenerationService:
 
         missing_ids = [img_id for img_id in found_ids if img_id not in all_images]
         if missing_ids and session is not None:
+            logger.debug(
+                "_extract_source_image_refs: DB fallback for missing image IDs",
+                missing_ids=missing_ids,
+            )
             try:
                 missing_uuids = [uuid.UUID(img_id) for img_id in missing_ids]
                 db_result = await session.execute(
                     select(SourceImage).where(SourceImage.id.in_(missing_uuids))
                 )
-                for db_img in db_result.scalars().all():
+                db_rows = db_result.scalars().all()
+                logger.debug(
+                    "_extract_source_image_refs: DB fallback returned rows",
+                    row_count=len(db_rows),
+                    returned_ids=[str(r.id) for r in db_rows],
+                )
+                for db_img in db_rows:
                     img_id = str(db_img.id)
                     all_images[img_id] = db_img.to_meta_dict()
             except Exception as exc:
@@ -548,6 +568,11 @@ class LessonGenerationService:
                     missing_ids=missing_ids,
                     error=str(exc),
                 )
+        elif missing_ids and session is None:
+            logger.warning(
+                "_extract_source_image_refs: session is None, cannot resolve missing image IDs",
+                missing_ids=missing_ids,
+            )
 
         refs = []
         for img_id in found_ids:
