@@ -13,6 +13,7 @@ from app.domain.models.lesson_reading import LessonReading
 from app.domain.models.module import Module
 from app.domain.models.module_media import MediaStatus, MediaType, ModuleMedia
 from app.domain.models.module_unit import ModuleUnit
+from app.domain.models.preassessment import CoursePreAssessment
 from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import QuizAttempt
 from app.domain.models.source_image import ImageType, SourceImage, SourceImageChunk
@@ -23,6 +24,7 @@ __all__ = [
     "AuditLog",
     "Base",
     "Course",
+    "CoursePreAssessment",
     "CreditAccount",
     "CreditPackage",
     "CreditTransaction",
