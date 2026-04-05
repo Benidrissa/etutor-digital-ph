@@ -5,6 +5,7 @@ from app.api.v1.admin_courses import router as admin_courses_router
 from app.api.v1.admin_settings import router as admin_settings_router
 from app.api.v1.admin_taxonomy import router as admin_taxonomy_router
 from app.api.v1.content import router as content_router
+from app.api.v1.course_preassessment import router as course_preassessment_router
 from app.api.v1.courses import router as courses_router
 from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.flashcards import router as flashcards_router
@@ -36,5 +37,6 @@ api_v1_router.include_router(admin_settings_router)
 api_v1_router.include_router(admin_courses_router)
 api_v1_router.include_router(admin_taxonomy_router)
 api_v1_router.include_router(courses_router)
+api_v1_router.include_router(course_preassessment_router)
 api_v1_router.include_router(module_media_router)
 api_v1_router.include_router(source_images_router)

@@ -73,6 +73,9 @@ class PlacementTestAttempt(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    course_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("courses.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     # Assessment results
     answers: Mapped[dict] = mapped_column(JSON)  # All answers: {"1": "a", "2": "b", ...}
