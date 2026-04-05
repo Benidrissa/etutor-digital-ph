@@ -33,6 +33,27 @@ _PLACEHOLDER_MODULES = [
 class CourseAgentService:
     """Generates course structure using Claude API, with graceful fallback."""
 
+    def _get_admin_prompt(self, **template_vars: str) -> str | None:
+        """Check if admin has customized the syllabus prompt via platform settings."""
+        try:
+            from app.domain.services.platform_settings_service import SettingsCache
+            from app.infrastructure.config.platform_defaults import DEFAULTS_BY_KEY
+
+            key = "ai-prompt-syllabus-system"
+            defn = DEFAULTS_BY_KEY.get(key)
+            if defn is None:
+                return None
+
+            current = SettingsCache.instance().get(key)
+            if current is None or current == defn.default:
+                return None
+
+            safe_vars = {k: v or "" for k, v in template_vars.items()}
+            return current.format_map(safe_vars)
+        except Exception as e:
+            logger.warning("Failed to apply admin syllabus prompt", error=str(e))
+            return None
+
     async def generate_course_structure(
         self,
         title_fr: str,
@@ -67,58 +88,82 @@ class CourseAgentService:
             levels_str = ", ".join(course_level) if course_level else "All levels"
             audience_str = ", ".join(audience_type) if audience_type else "Professionals"
 
-            resource_context = ""
+            # Build resource context block for PDF content
+            resource_block = ""
             if resource_text:
-                resource_context = (
-                    f"\n## Reference materials (full text)\n"
-                    f"The following is the complete extracted text from the course's "
-                    f"reference materials. You MUST base the syllabus on this content — "
-                    f"every module and unit should map to actual chapters, topics, and "
-                    f"concepts found in these materials. Do NOT invent topics that are "
-                    f"not covered in the references.\n\n"
-                    f"{resource_text}\n\n"
+                resource_block = (
+                    "## Reference materials (full text)\n"
+                    "The following is the complete extracted text from the course's "
+                    "reference materials. You MUST base the syllabus on this content — "
+                    "every module and unit should map to actual chapters, topics, and "
+                    "concepts found in these materials. Do NOT invent topics that are "
+                    "not covered in the references.\n\n"
+                    f"{resource_text}"
                 )
 
-            prompt = (
-                f"You are an expert instructional designer specializing in bilingual (FR/EN) "
-                f"adaptive e-learning. You design curricula using Bloom's "
-                f"taxonomy, Knowles' andragogy, the ADDIE model, and spiral learning.\n\n"
-                f"Create a complete course syllabus for:\n"
-                f"- Title FR: {title_fr}\n"
-                f"- Title EN: {title_en}\n"
-                f"- Domain(s): {domains_str}\n"
-                f"- Level(s): {levels_str}\n"
-                f"- Target audience: {audience_str}\n"
-                f"- Estimated total hours: {estimated_hours}\n\n"
-                f"{resource_context}"
-                f"## Design principles (mandatory)\n"
-                f"- Progressive complexity: start with foundational concepts (remember/understand), "
-                f"build to applied skills (apply/analyze), end with expert synthesis (evaluate/create)\n"
-                f"- Each module must be self-contained (10-25h) with clear learning objectives\n"
-                f"- Units are micro-learning (10-15 min each), 3-6 lessons per module\n"
-                f"- Every module includes: lessons, a formative quiz per lesson, a summative "
-                f"module quiz (20 questions, 80% pass), flashcards (20-40 bilingual cards), "
-                f"and a practical case study contextualized to the target audience\n"
-                f"- Bilingual: all text in both FR and EN\n\n"
-                f"## Output format\n"
-                f"Return a JSON array of modules. Each module must have:\n"
-                f"{{\n"
-                f'  "module_number": int,\n'
-                f'  "title_fr": str, "title_en": str,\n'
-                f'  "description_fr": str, "description_en": str,\n'
-                f'  "estimated_hours": int,\n'
-                f'  "bloom_level": "remember"|"understand"|"apply"|"analyze"|"evaluate"|"create",\n'
-                f'  "learning_objectives_fr": [str], "learning_objectives_en": [str],\n'
-                f'  "units": [\n'
-                f'    {{"title_fr": str, "title_en": str, "type": "lesson"|"quiz"|"case-study",\n'
-                f'     "description_fr": str, "description_en": str}}\n'
-                f"  ],\n"
-                f'  "quiz_topics_fr": [str], "quiz_topics_en": [str],\n'
-                f'  "flashcard_categories_fr": [str], "flashcard_categories_en": [str],\n'
-                f'  "case_study_fr": str, "case_study_en": str\n'
-                f"}}\n\n"
-                f"Return ONLY valid JSON, no markdown fences, no explanation."
+            # Check for admin-customized prompt
+            prompt = self._get_admin_prompt(
+                course_title=f"{title_fr} / {title_en}",
+                course_domain=domains_str,
+                level=levels_str,
+                estimated_hours=str(estimated_hours),
+                resource_text=resource_block,
             )
+
+            if not prompt:
+                # Fallback to built-in prompt
+                prompt = (
+                    "You are an expert instructional designer specializing in "
+                    "bilingual (FR/EN) adaptive e-learning. You design curricula "
+                    "using Bloom's taxonomy, Knowles' andragogy, the ADDIE model, "
+                    "and spiral learning.\n\n"
+                    f"Create a complete course syllabus for:\n"
+                    f"- Title FR: {title_fr}\n"
+                    f"- Title EN: {title_en}\n"
+                    f"- Domain(s): {domains_str}\n"
+                    f"- Level(s): {levels_str}\n"
+                    f"- Target audience: {audience_str}\n"
+                    f"- Estimated total hours: {estimated_hours}\n\n"
+                    f"{resource_block}\n\n"
+                    "## Design principles (mandatory)\n"
+                    "- Progressive complexity: start with foundational concepts "
+                    "(remember/understand), build to applied skills "
+                    "(apply/analyze), end with expert synthesis "
+                    "(evaluate/create)\n"
+                    "- Each module must be self-contained (10-25h) with clear "
+                    "learning objectives\n"
+                    "- Units are micro-learning (10-15 min each), 3-6 lessons "
+                    "per module\n"
+                    "- Every module includes: lessons, a formative quiz per "
+                    "lesson, a summative module quiz (20 questions, 80% pass), "
+                    "flashcards (20-40 bilingual cards), and a practical case "
+                    "study contextualized to the target audience\n"
+                    "- Bilingual: all text in both FR and EN\n\n"
+                    "## Output format\n"
+                    "Return a JSON array of modules. Each module must have:\n"
+                    "{\n"
+                    '  "module_number": int,\n'
+                    '  "title_fr": str, "title_en": str,\n'
+                    '  "description_fr": str, "description_en": str,\n'
+                    '  "estimated_hours": int,\n'
+                    '  "bloom_level": "remember"|"understand"|"apply"|'
+                    '"analyze"|"evaluate"|"create",\n'
+                    '  "learning_objectives_fr": [str], '
+                    '"learning_objectives_en": [str],\n'
+                    '  "units": [\n'
+                    '    {"title_fr": str, "title_en": str, '
+                    '"type": "lesson"|"quiz"|"case-study",\n'
+                    '     "description_fr": str, "description_en": str}\n'
+                    "  ],\n"
+                    '  "quiz_topics_fr": [str], '
+                    '"quiz_topics_en": [str],\n'
+                    '  "flashcard_categories_fr": [str], '
+                    '"flashcard_categories_en": [str],\n'
+                    '  "case_study_fr": str, "case_study_en": str\n'
+                    "}\n\n"
+                    "Return ONLY valid JSON, no markdown fences, "
+                    "no explanation."
+                )
 
             import json
 

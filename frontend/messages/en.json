@@ -857,7 +857,9 @@
       "varLanguage": "The content language (fr or en)",
       "varLevel": "The course level (1–4)",
       "varBloomLevel": "The Bloom's taxonomy level",
-      "varSyllabusContext": "The syllabus context injected by the system"
+      "varSyllabusContext": "The syllabus context injected by the system",
+      "varResourceText": "Full text extracted from uploaded PDF resources",
+      "varEstimatedHours": "The estimated total course hours"
     },
     "users": {
       "title": "User Management",

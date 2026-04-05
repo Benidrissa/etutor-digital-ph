@@ -857,7 +857,9 @@
       "varLanguage": "La langue du contenu (fr ou en)",
       "varLevel": "Le niveau du cours (1–4)",
       "varBloomLevel": "Le niveau de la taxonomie de Bloom",
-      "varSyllabusContext": "Le contexte du syllabus injecté par le système"
+      "varSyllabusContext": "Le contexte du syllabus injecté par le système",
+      "varResourceText": "Texte complet extrait des PDF de référence téléversés",
+      "varEstimatedHours": "La durée totale estimée du cours en heures"
     },
     "users": {
       "title": "Gestion des utilisateurs",

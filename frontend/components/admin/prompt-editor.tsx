@@ -19,6 +19,8 @@ const TEMPLATE_VARIABLES = [
   { name: "level", descKey: "varLevel" },
   { name: "bloom_level", descKey: "varBloomLevel" },
   { name: "syllabus_context", descKey: "varSyllabusContext" },
+  { name: "resource_text", descKey: "varResourceText" },
+  { name: "estimated_hours", descKey: "varEstimatedHours" },
 ] as const;
 
 interface PromptEditorProps {
