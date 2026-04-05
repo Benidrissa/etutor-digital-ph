@@ -60,9 +60,7 @@ class SubscriptionService:
                 "user_found": True,
             }
 
-        user_result = await session.execute(
-            select(User).where(User.phone_number == phone_number)
-        )
+        user_result = await session.execute(select(User).where(User.phone_number == phone_number))
         user = user_result.scalar_one_or_none()
         user_found = user is not None
 
