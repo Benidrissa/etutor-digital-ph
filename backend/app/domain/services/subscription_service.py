@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+import datetime
+from datetime import timedelta
 from uuid import UUID
 
 import structlog
@@ -25,7 +26,7 @@ class SubscriptionService:
     async def get_active_subscription(
         self, user_id: UUID, session: AsyncSession
     ) -> Subscription | None:
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.datetime.now(tz=datetime.UTC)
         result = await session.execute(
             select(Subscription).where(
                 Subscription.user_id == user_id,
@@ -73,7 +74,7 @@ class SubscriptionService:
             return {"status": "ok", "subscription_activated": False, "user_found": False}
 
         active_sub = await self.get_active_subscription(user.id, session)
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.datetime.now(tz=datetime.UTC)
 
         if active_sub is None:
             payment = SubscriptionPayment(
@@ -161,7 +162,7 @@ class SubscriptionService:
             await session.commit()
 
     async def expire_subscriptions(self, session: AsyncSession) -> int:
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.datetime.now(tz=datetime.UTC)
         result = await session.execute(
             update(Subscription)
             .where(
