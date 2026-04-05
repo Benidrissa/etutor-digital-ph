@@ -29,13 +29,30 @@ async function fetchEnrollmentStatus(moduleId: string, token: string): Promise<b
   }
 }
 
+function isAdmin(): boolean {
+  try {
+    const stored = typeof window !== "undefined" ? localStorage.getItem("user") : null;
+    if (stored) {
+      const user = JSON.parse(stored);
+      return user.role === "admin";
+    }
+  } catch {
+    // ignore parse errors
+  }
+  return false;
+}
+
 export function EnrollmentGuard({ moduleId, children }: EnrollmentGuardProps) {
   const router = useRouter();
   const locale = useLocale();
   const t = useTranslations("EnrollmentGuard");
-  const [guardStatus, setGuardStatus] = useState<"checking" | "allowed" | "denied">("checking");
+  const [guardStatus, setGuardStatus] = useState<"checking" | "allowed" | "denied">(
+    () => (isAdmin() ? "allowed" : "checking")
+  );
 
   useEffect(() => {
+    if (guardStatus === "allowed") return;
+
     const token =
       typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
@@ -44,24 +61,10 @@ export function EnrollmentGuard({ moduleId, children }: EnrollmentGuardProps) {
       return;
     }
 
-    // Admin bypasses enrollment check
-    try {
-      const stored = typeof window !== "undefined" ? localStorage.getItem("user") : null;
-      if (stored) {
-        const user = JSON.parse(stored);
-        if (user.role === "admin") {
-          setGuardStatus("allowed");
-          return;
-        }
-      }
-    } catch {
-      // ignore parse errors
-    }
-
     fetchEnrollmentStatus(moduleId, token).then((enrolled) => {
       setGuardStatus(enrolled ? "allowed" : "denied");
     });
-  }, [moduleId, router, locale]);
+  }, [moduleId, router, locale, guardStatus]);
 
   if (guardStatus === "checking") {
     return (
