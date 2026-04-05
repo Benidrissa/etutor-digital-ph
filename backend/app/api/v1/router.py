@@ -4,6 +4,7 @@ from app.api.v1.admin import router as admin_router
 from app.api.v1.admin_courses import router as admin_courses_router
 from app.api.v1.admin_settings import router as admin_settings_router
 from app.api.v1.admin_taxonomy import router as admin_taxonomy_router
+from app.api.v1.analytics import router as analytics_router
 from app.api.v1.content import router as content_router
 from app.api.v1.course_preassessment import router as course_preassessment_router
 from app.api.v1.courses import router as courses_router
@@ -22,6 +23,7 @@ from app.api.v1.users import router as users_router
 
 api_v1_router = APIRouter()
 api_v1_router.include_router(health_router)
+api_v1_router.include_router(analytics_router)
 api_v1_router.include_router(local_auth_router)
 api_v1_router.include_router(users_router)
 api_v1_router.include_router(placement_router)
