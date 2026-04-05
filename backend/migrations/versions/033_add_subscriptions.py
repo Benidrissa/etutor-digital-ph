@@ -20,9 +20,7 @@ def upgrade() -> None:
         ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number VARCHAR(20)
         """
     )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_users_phone_number ON users (phone_number)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_users_phone_number ON users (phone_number)")
 
     op.execute(
         """
@@ -80,15 +78,11 @@ def upgrade() -> None:
         )
         """
     )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_subscriptions_user_id ON subscriptions (user_id)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_subscriptions_user_id ON subscriptions (user_id)")
     op.execute(
         "CREATE INDEX IF NOT EXISTS ix_subscriptions_phone_number ON subscriptions (phone_number)"
     )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_subscriptions_status ON subscriptions (status)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_subscriptions_status ON subscriptions (status)")
 
     op.execute(
         """

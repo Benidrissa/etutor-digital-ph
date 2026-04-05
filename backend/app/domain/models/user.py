@@ -73,9 +73,5 @@ class User(Base):
     credit_account: Mapped[CreditAccount | None] = relationship(
         back_populates="user", uselist=False
     )
-    subscription: Mapped[Subscription | None] = relationship(
-        back_populates="user", uselist=False
-    )
-    subscription_payments: Mapped[list[SubscriptionPayment]] = relationship(
-        back_populates="user"
-    )
+    subscription: Mapped[Subscription | None] = relationship(back_populates="user", uselist=False)
+    subscription_payments: Mapped[list[SubscriptionPayment]] = relationship(back_populates="user")
