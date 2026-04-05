@@ -49,8 +49,7 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
     )
 
     async def _run_generation():
-        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
         from app.domain.models.course import Course
         from app.domain.models.module import Module
@@ -58,8 +57,10 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
         from app.domain.services.course_agent_service import CourseAgentService
         from app.infrastructure.config.settings import settings
 
-        engine = create_async_engine(settings.database_url, echo=False)
-        async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        engine = create_async_engine(
+            settings.database_url, echo=False, pool_size=5, max_overflow=2
+        )
+        async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
         # Phase 1: Read course metadata in its own session
         async with async_session() as session:
@@ -189,11 +190,13 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
                 module_count=len(saved_modules),
             )
 
-            return {
-                "status": "complete",
-                "modules_count": len(saved_modules),
-                "modules": saved_modules,
-            }
+        await engine.dispose()
+
+        return {
+            "status": "complete",
+            "modules_count": len(saved_modules),
+            "modules": saved_modules,
+        }
 
     try:
         result = asyncio.run(_run_generation())
