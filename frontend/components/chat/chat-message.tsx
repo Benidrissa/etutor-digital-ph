@@ -1,12 +1,14 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { cn } from '@/lib/utils';
 import { AttachedFileCard } from '@/components/chat/file-preview';
+import { SourceImage } from '@/components/learning/source-image';
+import type { SourceImageMeta } from '@/lib/api';
 
 export interface ChatSource {
   title: string;
@@ -29,15 +31,93 @@ export interface ChatMessage {
   sources?: ChatSource[];
   isStreaming?: boolean;
   attachedFiles?: AttachedFileInfo[];
+  sourceImageRefs?: SourceImageMeta[];
 }
 
 interface ChatMessageProps {
   message: ChatMessage;
 }
 
+const SOURCE_IMAGE_RE = /\{\{source_image:([0-9a-f-]{36})\}\}/g;
+
+function splitWithSourceImageMarkers(
+  text: string,
+  imageMap: Map<string, SourceImageMeta>
+): Array<{ type: 'markdown'; text: string } | { type: 'source_image'; meta: SourceImageMeta }> {
+  const parts: Array<{ type: 'markdown'; text: string } | { type: 'source_image'; meta: SourceImageMeta }> = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  SOURCE_IMAGE_RE.lastIndex = 0;
+  while ((match = SOURCE_IMAGE_RE.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ type: 'markdown', text: text.slice(lastIndex, match.index) });
+    }
+    const meta = imageMap.get(match[1]);
+    if (meta) {
+      parts.push({ type: 'source_image', meta });
+    } else {
+      parts.push({ type: 'markdown', text: text.slice(match.index, SOURCE_IMAGE_RE.lastIndex) });
+    }
+    lastIndex = SOURCE_IMAGE_RE.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    parts.push({ type: 'markdown', text: text.slice(lastIndex) });
+  }
+  return parts;
+}
+
+const mdClass =
+  'prose prose-sm max-w-none prose-p:my-1 prose-headings:mt-3 prose-headings:mb-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-blockquote:my-2 prose-pre:my-2 prose-table:text-xs [&_table]:w-full [&_table]:border-collapse [&_th]:border [&_th]:border-current/20 [&_th]:px-2 [&_th]:py-1 [&_td]:border [&_td]:border-current/20 [&_td]:px-2 [&_td]:py-1 overflow-x-auto';
+
 export function ChatMessage({ message }: ChatMessageProps) {
   const t = useTranslations('ChatTutor');
+  const locale = useLocale();
+  const language = (locale === 'fr' ? 'fr' : 'en') as 'fr' | 'en';
   const hasFiles = message.attachedFiles && message.attachedFiles.length > 0;
+
+  const imageMap = new Map<string, SourceImageMeta>(
+    (message.sourceImageRefs ?? []).map((ref) => [ref.id, ref])
+  );
+  const hasImageMarkers =
+    !message.isUser &&
+    imageMap.size > 0 &&
+    /\{\{source_image:[0-9a-f-]{36}\}\}/.test(message.content);
+
+  function renderAiContent() {
+    if (!hasImageMarkers) {
+      return (
+        <div className={mdClass}>
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+            {message.content}
+          </ReactMarkdown>
+          {message.isStreaming && (
+            <span className="inline-block w-2 h-4 ml-1 bg-current animate-pulse" />
+          )}
+        </div>
+      );
+    }
+
+    const parts = splitWithSourceImageMarkers(message.content, imageMap);
+    return (
+      <>
+        {parts.map((part, i) =>
+          part.type === 'source_image' ? (
+            <SourceImage key={i} {...part.meta} language={language} />
+          ) : (
+            <div key={i} className={mdClass}>
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                {part.text}
+              </ReactMarkdown>
+            </div>
+          )
+        )}
+        {message.isStreaming && (
+          <span className="inline-block w-2 h-4 ml-1 bg-current animate-pulse" />
+        )}
+      </>
+    );
+  }
 
   return (
     <div
@@ -90,14 +170,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
               )}
             </>
           ) : (
-            <div className="prose prose-sm max-w-none prose-p:my-1 prose-headings:mt-3 prose-headings:mb-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-blockquote:my-2 prose-pre:my-2 prose-table:text-xs [&_table]:w-full [&_table]:border-collapse [&_th]:border [&_th]:border-current/20 [&_th]:px-2 [&_th]:py-1 [&_td]:border [&_td]:border-current/20 [&_td]:px-2 [&_td]:py-1 overflow-x-auto">
-              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                {message.content}
-              </ReactMarkdown>
-              {message.isStreaming && (
-                <span className="inline-block w-2 h-4 ml-1 bg-current animate-pulse" />
-              )}
-            </div>
+            renderAiContent()
           )}
         </div>
 
