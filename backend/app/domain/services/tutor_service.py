@@ -338,6 +338,7 @@ class TutorService:
             full_response = ""
             all_tool_calls: list[dict[str, Any]] = []
             sources_cited: list[dict[str, Any]] = []
+            source_image_refs: list[dict[str, Any]] = []
             api_messages: list[MessageParam] = list(conversation_history)
 
             while tool_call_count <= MAX_TOOL_CALLS:
@@ -449,6 +450,26 @@ class TutorService:
                         except Exception:
                             pass
 
+                    elif tool_block.name == "search_source_images":
+                        try:
+                            import json as _json
+
+                            img_result = _json.loads(tool_result_str)
+                            prefix = "{{source_image:"
+                            for fig in img_result.get("figures", []):
+                                ref: str = fig.get("ref", "")
+                                if ref.startswith(prefix) and ref.endswith("}}"):
+                                    img_id = ref[len(prefix) : -2]
+                                    source_image_refs.append(
+                                        {
+                                            "id": img_id,
+                                            "figure_number": fig.get("figure_number"),
+                                            "caption": fig.get("caption"),
+                                        }
+                                    )
+                        except Exception:
+                            pass
+
                     tool_results.append(
                         {
                             "type": "tool_result",
@@ -502,6 +523,13 @@ class TutorService:
                 "data": {"sources": unique_sources},
                 "conversation_id": str(conversation.id),
             }
+
+            if source_image_refs:
+                yield {
+                    "type": "source_image_refs",
+                    "data": {"refs": source_image_refs},
+                    "conversation_id": str(conversation.id),
+                }
 
             yield {
                 "type": "activity_suggestions",
