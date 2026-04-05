@@ -17,9 +17,12 @@ from app.domain.models.subscription import (
     SubscriptionPayment,
     SubscriptionStatus,
 )
-from app.domain.models.user import User
+from app.domain.models.user import User, UserRole
 
 logger = structlog.get_logger(__name__)
+
+_ADMIN_EXPIRES = datetime.datetime(2099, 12, 31, tzinfo=datetime.UTC)
+_ADMIN_DAILY_LIMIT = 9999
 
 
 class SubscriptionService:
@@ -34,7 +37,41 @@ class SubscriptionService:
                 Subscription.expires_at > now,
             )
         )
-        return result.scalar_one_or_none()
+        sub = result.scalar_one_or_none()
+        if sub is not None:
+            return sub
+
+        # Auto-provision subscription for admin users
+        user = await session.get(User, user_id)
+        if user and user.role == UserRole.admin:
+            return await self.ensure_admin_subscription(user_id, session)
+
+        return None
+
+    async def ensure_admin_subscription(self, user_id: UUID, session: AsyncSession) -> Subscription:
+        """Auto-create non-expiring subscription for admin users."""
+        existing = await session.execute(
+            select(Subscription).where(
+                Subscription.user_id == user_id,
+                Subscription.status == SubscriptionStatus.active,
+            )
+        )
+        found = existing.scalar_one_or_none()
+        if found:
+            return found
+
+        subscription = Subscription(
+            user_id=user_id,
+            phone_number="admin",
+            status=SubscriptionStatus.active,
+            daily_message_limit=_ADMIN_DAILY_LIMIT,
+            expires_at=_ADMIN_EXPIRES,
+            activated_at=datetime.datetime.now(tz=datetime.UTC),
+        )
+        session.add(subscription)
+        await session.commit()
+        logger.info("Admin subscription auto-provisioned", user_id=str(user_id))
+        return subscription
 
     async def process_payment(
         self,
