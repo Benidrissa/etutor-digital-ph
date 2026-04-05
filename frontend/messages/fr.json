@@ -1039,6 +1039,7 @@
     "actionError": "L'action a échoué. Veuillez réessayer.",
     "confirmPublish": "Publier la formation ?",
     "confirmPublishDesc": "La formation sera visible par tous les apprenants.",
+    "imagesNotIndexedWarning": "Images non encore indexées — les leçons seront en texte uniquement",
     "confirmArchive": "Archiver la formation ?",
     "confirmArchiveDesc": "La formation ne sera plus accessible aux apprenants.",
     "confirmGenerate": "Générer la structure IA ?",

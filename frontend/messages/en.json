@@ -1039,6 +1039,7 @@
     "actionError": "Action failed. Please try again.",
     "confirmPublish": "Publish course?",
     "confirmPublishDesc": "The course will be visible to all learners.",
+    "imagesNotIndexedWarning": "Images not yet indexed — lessons will be text-only",
     "confirmArchive": "Archive course?",
     "confirmArchiveDesc": "The course will no longer be accessible to learners.",
     "confirmGenerate": "Generate AI structure?",

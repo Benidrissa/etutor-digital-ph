@@ -18,6 +18,7 @@ from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.preassessment import CoursePreAssessment
+from app.domain.models.source_image import SourceImage
 from app.domain.models.taxonomy import TaxonomyCategory
 from app.domain.models.user import UserRole
 from app.tasks.content_generation import generate_lesson_task
@@ -439,10 +440,19 @@ async def get_rag_index_status(
     )
     chunks_indexed = chunk_count.scalar_one()
 
+    # Count source images for this course
+    image_count = await db.execute(
+        select(func.count())
+        .select_from(SourceImage)
+        .where(SourceImage.rag_collection_id == course.rag_collection_id)
+    )
+    images_indexed = image_count.scalar_one()
+
     response: dict = {
         "course_id": str(course_id),
         "rag_collection_id": course.rag_collection_id,
         "chunks_indexed": chunks_indexed,
+        "images_indexed": images_indexed,
         "indexed": chunks_indexed > 0,
     }
 
@@ -640,7 +650,7 @@ async def admin_generate_module_content(
 
     dispatched = []
     for unit in units:
-        unit_id = f"M{module.module_number:02d}-U{unit.order_index + 1:02d}"
+        unit_id = unit.unit_number
         task = generate_lesson_task.delay(
             str(module_id),
             unit_id,

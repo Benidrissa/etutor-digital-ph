@@ -528,9 +528,6 @@ export function CourseWizardClient({
       setShowCloseConfirm(true);
       return;
     }
-    if (!isIndexing) {
-      clearWizardState();
-    }
     onClose();
   }, [isIndexing, onClose]);
 

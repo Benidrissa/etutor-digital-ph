@@ -14,6 +14,7 @@ import {
   AlertCircle,
   BookOpen,
   Database,
+  ImageOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -64,6 +65,13 @@ type PendingAction =
   | { type: 'archive'; course: AdminCourse }
   | { type: 'generate'; course: AdminCourse };
 
+function inferWizardStep(course: AdminCourse): WizardStep {
+  if (course.rag_collection_id) return 'publish';
+  if (course.indexation_task_id) return 'index';
+  if (course.module_count && course.module_count > 0) return 'index';
+  return 'generate';
+}
+
 function useAdminCourses() {
   return useQuery<AdminCourse[]>({
     queryKey: ['admin', 'courses'],
@@ -84,6 +92,7 @@ export function CoursesClient() {
   const [wizardResumeStep, setWizardResumeStep] = useState<WizardStep | undefined>();
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [imagesIndexed, setImagesIndexed] = useState<number | null>(null);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [generateTaskId, setGenerateTaskId] = useState<string | null>(null);
   const generatePollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -128,6 +137,26 @@ export function CoursesClient() {
       archiveMutation.mutate(pendingAction.course.id);
     }
   };
+
+  const handlePublishIntent = useCallback(
+    async (course: AdminCourse) => {
+      setImagesIndexed(null);
+      setPendingAction({ type: 'publish', course });
+      if (course.rag_collection_id) {
+        try {
+          const data = await apiFetch<{ images_indexed?: number }>(
+            `/api/v1/admin/courses/${course.id}/index-status`
+          );
+          setImagesIndexed(data.images_indexed ?? 0);
+        } catch {
+          setImagesIndexed(0);
+        }
+      } else {
+        setImagesIndexed(0);
+      }
+    },
+    []
+  );
 
   const handleGenerateStructure = useCallback(
     async (course: AdminCourse) => {
@@ -333,11 +362,19 @@ export function CoursesClient() {
                 course={course}
                 generatingId={generatingId}
                 resumeCourseId={wizardResumeCourseId}
-                onPublish={(c) => setPendingAction({ type: 'publish', course: c })}
+                onPublish={handlePublishIntent}
                 onArchive={(c) => setPendingAction({ type: 'archive', course: c })}
                 onGenerateStructure={(c) => setPendingAction({ type: 'generate', course: c })}
                 onEdit={(c) => { setEditingCourse(c); setFormOpen(true); }}
-                onResumeWizard={() => { setWizardResumeCourseId(course.id); setWizardResumeStep(wizardResumeStep); openWizardResume(); }}
+                onResumeWizard={() => {
+                  const savedState = loadWizardState();
+                  const step = savedState?.courseId === course.id
+                    ? savedState.step
+                    : inferWizardStep(course);
+                  setWizardResumeCourseId(course.id);
+                  setWizardResumeStep(step as WizardStep);
+                  openWizardResume();
+                }}
               />
             ))}
           </div>
@@ -373,6 +410,12 @@ export function CoursesClient() {
         <AlertDialogContent>
           <AlertDialogTitle>{confirmTitle}</AlertDialogTitle>
           <AlertDialogDescription>{confirmDesc}</AlertDialogDescription>
+          {pendingAction?.type === 'publish' && imagesIndexed === 0 && (
+            <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200" role="alert">
+              <ImageOff className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>{t('imagesNotIndexedWarning')}</span>
+            </div>
+          )}
           <div className="flex justify-end gap-3 mt-4">
             <AlertDialogCancel onClick={() => setPendingAction(null)}>
               {t('cancel')}
@@ -451,20 +494,21 @@ function CourseRow({
         : 'outline';
 
   const isGenerating = generatingId === course.id;
-  const isIndexingInProgress = resumeCourseId === course.id;
+  const isActiveResume = resumeCourseId === course.id;
+  const isDraft = course.status === 'draft';
 
   return (
-    <Card className={`p-4 ${isIndexingInProgress ? 'border-amber-300 dark:border-amber-700' : ''}`}>
+    <Card className={`p-4 ${isActiveResume ? 'border-amber-300 dark:border-amber-700' : ''}`}>
       <div className="flex items-start justify-between gap-3">
         <button
           className="flex flex-col gap-1 text-left min-w-0 flex-1"
-          onClick={isIndexingInProgress ? onResumeWizard : () => onEdit(course)}
-          aria-label={isIndexingInProgress ? t('wizard.resumeFrom') : t('editCourse')}
+          onClick={isDraft ? onResumeWizard : () => onEdit(course)}
+          aria-label={isDraft ? t('wizard.resumeFrom') : t('editCourse')}
         >
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-sm truncate">{title}</span>
             <Badge variant={statusVariant}>{t(`status.${course.status}`)}</Badge>
-            {isIndexingInProgress && (
+            {isActiveResume && (
               <Badge className="gap-1 bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-100 dark:bg-amber-900 dark:text-amber-200">
                 <Database className="h-3 w-3 animate-pulse" aria-hidden="true" />
                 {t('wizard.indexingBadge')}
