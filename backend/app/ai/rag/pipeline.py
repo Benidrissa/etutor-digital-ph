@@ -10,8 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.rag.chunker import TextChunker, detect_language, extract_text_from_pdf
 from app.ai.rag.embeddings import EmbeddingService
+from app.ai.rag.image_extractor import PDFImageExtractor
+from app.ai.rag.image_linker import ImageLinker
 from app.domain.models.document_chunk import DocumentChunk
+from app.domain.models.source_image import SourceImage
 from app.infrastructure.persistence.database import async_session_factory
+from app.infrastructure.storage.s3 import S3StorageService
 
 logger = structlog.get_logger()
 
@@ -248,6 +252,142 @@ class RAGPipeline:
 
         logger.info("Cleared existing chunks", source=source, count=existing_count)
         return existing_count
+
+    async def process_pdf_images(
+        self,
+        pdf_path: str | Path,
+        source: str,
+        rag_collection_id: str | None,
+        session: AsyncSession,
+        resources_path: str | Path | None = None,
+    ) -> int:
+        """
+        Extract images from a PDF, upload to MinIO, store metadata in DB, and link to chunks.
+
+        Args:
+            pdf_path: Path to the PDF file.
+            source: Source identifier (e.g. "donaldson").
+            rag_collection_id: RAG collection ID to tag images with.
+            session: Async database session.
+            resources_path: Base path for PDFImageExtractor (defaults to pdf_path parent).
+
+        Returns:
+            Number of images processed.
+        """
+        pdf_path = Path(pdf_path)
+        if not pdf_path.exists():
+            logger.warning("PDF not found for image extraction", pdf_path=str(pdf_path))
+            return 0
+
+        rp = Path(resources_path) if resources_path else pdf_path.parent
+        extractor = PDFImageExtractor(resources_path=rp)
+        storage = S3StorageService()
+        linker = ImageLinker()
+
+        try:
+            images = extractor.extract_images_from_pdf(pdf_path, source)
+        except Exception as exc:
+            logger.warning(
+                "Image extraction failed", pdf_path=str(pdf_path), source=source, error=str(exc)
+            )
+            return 0
+
+        stored_count = 0
+        for idx, img in enumerate(images):
+            key = f"source-images/{source}/p{img.page_number}_{img.figure_number or idx}.webp"
+            try:
+                url = await storage.upload_bytes(key, img.image_bytes, content_type="image/webp")
+            except Exception as exc:
+                logger.warning(
+                    "MinIO upload failed, skipping image",
+                    key=key,
+                    error=str(exc),
+                )
+                continue
+
+            caption_text = (img.caption or "") + " " + img.surrounding_text
+            try:
+                embedding = await self.embedding_service.generate_embedding(caption_text.strip())
+            except Exception as exc:
+                logger.warning("Caption embedding failed", key=key, error=str(exc))
+                embedding = None
+
+            db_image = SourceImage(
+                source=source,
+                rag_collection_id=rag_collection_id,
+                figure_number=img.figure_number,
+                caption=img.caption,
+                attribution=img.attribution,
+                image_type=img.image_type,
+                page_number=img.page_number,
+                chapter=img.chapter,
+                section=img.section,
+                surrounding_text=img.surrounding_text,
+                storage_key=key,
+                storage_url=url,
+                format="webp",
+                width=img.width,
+                height=img.height,
+                file_size_bytes=img.file_size_bytes,
+                original_format=img.original_format,
+                embedding=embedding,
+            )
+            session.add(db_image)
+            stored_count += 1
+
+        if stored_count:
+            await session.flush()
+
+        links = await linker.link_images_to_chunks(source, session)
+        await session.commit()
+
+        logger.info(
+            "process_pdf_images.complete",
+            source=source,
+            images_stored=stored_count,
+            links_created=links,
+        )
+        return stored_count
+
+    async def clear_source_images(
+        self,
+        source: str,
+        session: AsyncSession,
+    ) -> int:
+        """
+        Delete all SourceImage records for a source and their MinIO objects.
+
+        Args:
+            source: Source identifier.
+            session: Async database session.
+
+        Returns:
+            Number of images deleted.
+        """
+        result = await session.execute(select(SourceImage).where(SourceImage.source == source))
+        images = result.scalars().all()
+
+        if not images:
+            logger.info("clear_source_images.no_images", source=source)
+            return 0
+
+        storage = S3StorageService()
+        for img in images:
+            if img.storage_key:
+                try:
+                    await storage.delete_object(img.storage_key)
+                except Exception as exc:
+                    logger.warning(
+                        "MinIO delete failed",
+                        key=img.storage_key,
+                        error=str(exc),
+                    )
+
+        await session.execute(delete(SourceImage).where(SourceImage.source == source))
+        await session.commit()
+
+        logger.info("clear_source_images.done", source=source, deleted=len(images))
+        return len(images)
 
     async def get_pipeline_stats(self, session: AsyncSession | None = None) -> dict[str, Any]:
         """Get statistics about the current state of the pipeline."""

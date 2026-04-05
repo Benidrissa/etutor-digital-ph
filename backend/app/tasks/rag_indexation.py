@@ -179,7 +179,7 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
             )
             total_chunks += chunks
 
-            store_progress = 35 + int(((i + 1) / len(pdf_files)) * 55)
+            store_progress = 35 + int(((i + 1) / len(pdf_files)) * 45)
             self.update_state(
                 state="STORING",
                 meta={
@@ -194,10 +194,61 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                 },
             )
 
+            extract_img_progress = store_progress + int((1 / len(pdf_files)) * 5)
+            self.update_state(
+                state="EXTRACTING_IMAGES",
+                meta={
+                    "step": "extracting_images",
+                    "step_label": f"Extraction des illustrations: {pdf_path.name}",
+                    "progress": extract_img_progress,
+                    "files_total": len(pdf_files),
+                    "files_processed": i + 1,
+                    "current_file": pdf_path.name,
+                    "chunks_processed": total_chunks,
+                    "estimated_seconds_remaining": _remaining(extract_img_progress),
+                },
+            )
+
+            from app.infrastructure.persistence.database import async_session_factory
+
+            image_count = 0
+            try:
+                async with async_session_factory() as img_session:
+                    image_count = await pipeline.process_pdf_images(
+                        pdf_path=str(pdf_path),
+                        source=source_name,
+                        rag_collection_id=rag_collection_id,
+                        session=img_session,
+                        resources_path=pdf_path.parent,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Image extraction failed for PDF, continuing",
+                    file=pdf_path.name,
+                    error=str(exc),
+                )
+
+            link_progress = extract_img_progress + int((1 / len(pdf_files)) * 5)
+            self.update_state(
+                state="LINKING_IMAGES",
+                meta={
+                    "step": "linking_images",
+                    "step_label": f"Liaison images-texte: {image_count} liens créés",
+                    "progress": link_progress,
+                    "files_total": len(pdf_files),
+                    "files_processed": i + 1,
+                    "current_file": pdf_path.name,
+                    "chunks_processed": total_chunks,
+                    "images_processed": image_count,
+                    "estimated_seconds_remaining": _remaining(link_progress),
+                },
+            )
+
             logger.info(
                 "PDF indexed",
                 file=pdf_path.name,
                 chunks=chunks,
+                images=image_count,
                 course_id=course_id,
             )
 
