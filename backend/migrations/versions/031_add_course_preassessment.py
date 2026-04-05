@@ -711,7 +711,9 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["course_id"], ["courses.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("course_id", "language", name="uq_course_preassessments_course_language"),
+        sa.UniqueConstraint(
+            "course_id", "language", name="uq_course_preassessments_course_language"
+        ),
     )
     op.create_index("ix_course_preassessments_course_id", "course_preassessments", ["course_id"])
 
