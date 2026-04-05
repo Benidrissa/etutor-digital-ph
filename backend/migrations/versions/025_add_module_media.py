@@ -11,8 +11,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "025_add_module_media"
-down_revision: str | None = "025_marketplace_and_credits"
+revision: str = "025c"
+down_revision: str | None = "025b"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

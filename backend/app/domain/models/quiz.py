@@ -12,6 +12,7 @@ from app.domain.models.base import Base
 
 if TYPE_CHECKING:
     from app.domain.models.content import GeneratedContent
+    from app.domain.models.course import Course
     from app.domain.models.module import Module
     from app.domain.models.user import User
 
@@ -73,6 +74,9 @@ class PlacementTestAttempt(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    course_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("courses.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     # Assessment results
     answers: Mapped[dict] = mapped_column(JSON)  # All answers: {"1": "a", "2": "b", ...}
@@ -97,5 +101,6 @@ class PlacementTestAttempt(Base):
     # Timestamps
     attempted_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
-    # Relationship
+    # Relationships
     user: Mapped[User] = relationship(back_populates="placement_attempts")
+    course: Mapped[Course | None] = relationship()

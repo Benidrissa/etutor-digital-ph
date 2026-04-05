@@ -13,8 +13,9 @@ from app.domain.models.lesson_reading import LessonReading
 from app.domain.models.module import Module
 from app.domain.models.module_media import MediaStatus, MediaType, ModuleMedia
 from app.domain.models.module_unit import ModuleUnit
+from app.domain.models.preassessment import CoursePreAssessment
 from app.domain.models.progress import UserModuleProgress
-from app.domain.models.quiz import QuizAttempt
+from app.domain.models.quiz import PlacementTestAttempt, QuizAttempt, SummativeAssessmentAttempt
 from app.domain.models.source_image import ImageType, SourceImage, SourceImageChunk
 from app.domain.models.taxonomy import CourseTaxonomy, TaxonomyCategory
 from app.domain.models.user import User
@@ -36,6 +37,7 @@ __all__ = [
     "MagicLink",
     "MediaStatus",
     "MediaType",
+    "CoursePreAssessment",
     "Module",
     "ModuleMedia",
     "ModuleUnit",
@@ -45,7 +47,9 @@ __all__ = [
     "TaxonomyCategory",
     "UserCourseEnrollment",
     "UserModuleProgress",
+    "PlacementTestAttempt",
     "QuizAttempt",
+    "SummativeAssessmentAttempt",
     "User",
     "ImageType",
     "SourceImage",

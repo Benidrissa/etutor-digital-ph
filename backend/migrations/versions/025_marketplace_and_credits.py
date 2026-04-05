@@ -11,8 +11,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "025_marketplace_and_credits"
-down_revision: str | None = "025_fix_module_number_unique_per_course"
+revision: str = "025b"
+down_revision: str | None = "025a"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
