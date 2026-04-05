@@ -12,6 +12,7 @@ from app.ai.rag.retriever import SemanticRetriever
 from app.domain.models.conversation import TutorConversation
 from app.domain.models.user import User
 from app.domain.services.learner_memory_service import LearnerMemoryService
+from app.domain.services.subscription_service import SubscriptionService
 from app.domain.services.tutor_service import SessionContext, TutorService
 
 
@@ -130,6 +131,12 @@ async def test_send_message_yields_content_type_chunks(
 
     with (
         patch.object(
+            SubscriptionService,
+            "get_active_subscription",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch.object(
             tutor_service,
             "_check_daily_limit",
             new_callable=AsyncMock,
@@ -185,6 +192,12 @@ async def test_send_message_yields_sources_cited_type(
 
     with (
         patch.object(
+            SubscriptionService,
+            "get_active_subscription",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch.object(
             tutor_service,
             "_check_daily_limit",
             new_callable=AsyncMock,
@@ -228,6 +241,12 @@ async def test_send_message_error_chunk_has_code(tutor_service, sample_user):
 
     with (
         patch.object(
+            SubscriptionService,
+            "get_active_subscription",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch.object(
             tutor_service,
             "_check_daily_limit",
             new_callable=AsyncMock,
@@ -261,11 +280,19 @@ async def test_send_message_daily_limit_error_has_code(tutor_service, sample_use
     mock_session = AsyncMock(spec=AsyncSession)
     mock_session.get = AsyncMock(return_value=sample_user)
 
-    with patch.object(
-        tutor_service,
-        "_check_daily_limit",
-        new_callable=AsyncMock,
-        return_value=50,
+    with (
+        patch.object(
+            SubscriptionService,
+            "get_active_subscription",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch.object(
+            tutor_service,
+            "_check_daily_limit",
+            new_callable=AsyncMock,
+            return_value=50,
+        ),
     ):
         chunks = await collect_chunks(
             tutor_service.send_message(
@@ -295,6 +322,12 @@ async def test_send_message_never_yields_text_type(tutor_service, sample_user, s
     tutor_service.anthropic.messages.create = AsyncMock(return_value=mock_response)
 
     with (
+        patch.object(
+            SubscriptionService,
+            "get_active_subscription",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
         patch.object(
             tutor_service,
             "_check_daily_limit",
