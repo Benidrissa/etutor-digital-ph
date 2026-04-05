@@ -15,6 +15,7 @@ from app.domain.models.module_media import MediaStatus, MediaType, ModuleMedia
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import QuizAttempt
+from app.domain.models.source_image import SourceImage, SourceImageChunk
 from app.domain.models.taxonomy import CourseTaxonomy, TaxonomyCategory
 from app.domain.models.user import User
 
@@ -39,6 +40,8 @@ __all__ = [
     "ModuleMedia",
     "ModuleUnit",
     "RefreshToken",
+    "SourceImage",
+    "SourceImageChunk",
     "TOTPSecret",
     "CourseTaxonomy",
     "TaxonomyCategory",
