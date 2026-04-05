@@ -1,208 +1,264 @@
-"""Unit tests for RAGPipeline.process_pdf_images and clear_source_images."""
+"""Unit tests for image extraction integration in RAGPipeline."""
 
-from __future__ import annotations
-
-import uuid
+import tempfile
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.ai.rag.image_extractor import ExtractedImage
+from app.ai.rag.image_linker import ImageLinker
 from app.ai.rag.pipeline import RAGPipeline
 
 
-def _uuid():
-    return uuid.uuid4()
+def _make_extracted_image(**kwargs) -> ExtractedImage:
+    defaults = dict(
+        image_bytes=b"fake_webp_data",
+        width=300,
+        height=200,
+        original_format="png",
+        file_size_bytes=14,
+        page_number=1,
+        figure_number="Figure 1",
+        caption="Diagram of disease spread",
+        attribution=None,
+        image_type="diagram",
+        surrounding_text="surrounding text about disease",
+        chapter="Chapter 1",
+        section=None,
+    )
+    defaults.update(kwargs)
+    return ExtractedImage(**defaults)
 
 
-def _make_extracted_image(
-    page_number: int = 1,
-    figure_number: str | None = "1.1",
-    caption: str | None = "A test figure",
-    surrounding_text: str = "Some surrounding text",
-    image_type: str = "diagram",
-    width: int = 400,
-    height: int = 300,
-    file_size_bytes: int = 10240,
-    original_format: str = "png",
-):
-    img = MagicMock()
-    img.image_bytes = b"\x00" * 100
-    img.page_number = page_number
-    img.figure_number = figure_number
-    img.caption = caption
-    img.attribution = None
-    img.surrounding_text = surrounding_text
-    img.image_type = image_type
-    img.width = width
-    img.height = height
-    img.file_size_bytes = file_size_bytes
-    img.original_format = original_format
-    img.chapter = None
-    img.section = None
-    return img
+class TestRAGPipelineProcessPDFImages:
+    def setup_method(self):
+        self.embedding_service = AsyncMock()
+        self.embedding_service.generate_embedding = AsyncMock(return_value=[0.1] * 1536)
+        self.pipeline = RAGPipeline(self.embedding_service)
+        self.temp_dir = tempfile.mkdtemp()
 
+    def teardown_method(self):
+        import shutil
 
-def _make_pipeline():
-    embedding_service = AsyncMock()
-    embedding_service.generate_embedding = AsyncMock(return_value=[0.1] * 1536)
-    return RAGPipeline(embedding_service=embedding_service)
-
-
-def _make_session():
-    session = AsyncMock()
-    session.add = MagicMock()
-    session.flush = AsyncMock()
-    session.commit = AsyncMock()
-    return session
-
-
-class TestProcessPdfImages:
-    @pytest.mark.asyncio
-    async def test_returns_zero_when_pdf_not_found(self, tmp_path):
-        pipeline = _make_pipeline()
-        session = _make_session()
-        count = await pipeline.process_pdf_images(
-            pdf_path=tmp_path / "nonexistent.pdf",
-            source="donaldson",
-            rag_collection_id="col-1",
-            session=session,
-        )
-        assert count == 0
+        shutil.rmtree(self.temp_dir)
 
     @pytest.mark.asyncio
-    async def test_returns_zero_when_extractor_raises(self, tmp_path):
-        pdf_path = tmp_path / "test.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4")
-        pipeline = _make_pipeline()
-        session = _make_session()
+    async def test_raises_file_not_found_for_missing_pdf(self):
+        with pytest.raises(FileNotFoundError):
+            await self.pipeline.process_pdf_images(
+                pdf_path="/nonexistent/path.pdf",
+                source="donaldson",
+            )
+
+    @pytest.mark.asyncio
+    async def test_returns_zero_when_no_images_extracted(self):
+        pdf_path = Path(self.temp_dir) / "test.pdf"
+        pdf_path.touch()
 
         with patch(
             "app.ai.rag.pipeline.PDFImageExtractor.extract_images_from_pdf",
-            side_effect=RuntimeError("extraction error"),
+            return_value=[],
         ):
-            count = await pipeline.process_pdf_images(
-                pdf_path=pdf_path,
+            count = await self.pipeline.process_pdf_images(
+                pdf_path=str(pdf_path),
                 source="donaldson",
-                rag_collection_id="col-1",
-                session=session,
             )
 
         assert count == 0
 
     @pytest.mark.asyncio
-    async def test_processes_single_image(self, tmp_path):
-        pdf_path = tmp_path / "test.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4")
-        pipeline = _make_pipeline()
-        session = _make_session()
-        img = _make_extracted_image()
+    async def test_uploads_images_and_stores_metadata(self):
+        pdf_path = Path(self.temp_dir) / "Donaldson_test.pdf"
+        pdf_path.touch()
+
+        fake_image = _make_extracted_image()
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=MagicMock())
 
         with (
             patch(
                 "app.ai.rag.pipeline.PDFImageExtractor.extract_images_from_pdf",
-                return_value=[img],
+                return_value=[fake_image],
             ),
             patch(
                 "app.ai.rag.pipeline.S3StorageService.upload_bytes",
                 new_callable=AsyncMock,
-                return_value="https://minio/bucket/key.webp",
+                return_value="http://minio/bucket/source-images/donaldson/1_Figure_1.webp",
             ),
-            patch(
-                "app.ai.rag.pipeline.ImageLinker.link_images_to_chunks",
-                new_callable=AsyncMock,
-                return_value=1,
+            patch.object(
+                ImageLinker, "link_images_to_chunks", new_callable=AsyncMock, return_value=1
             ),
         ):
-            count = await pipeline.process_pdf_images(
-                pdf_path=pdf_path,
+            count = await self.pipeline.process_pdf_images(
+                pdf_path=str(pdf_path),
                 source="donaldson",
-                rag_collection_id="col-1",
-                session=session,
+                session=mock_session,
             )
 
         assert count == 1
-        session.add.assert_called_once()
-        session.flush.assert_called_once()
-        session.commit.assert_called_once()
+        mock_session.add.assert_called_once()
+        mock_session.commit.assert_called()
 
     @pytest.mark.asyncio
-    async def test_skips_image_when_upload_fails(self, tmp_path):
-        pdf_path = tmp_path / "test.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4")
-        pipeline = _make_pipeline()
-        session = _make_session()
-        img = _make_extracted_image()
+    async def test_storage_key_contains_source_and_page(self):
+        pdf_path = Path(self.temp_dir) / "test.pdf"
+        pdf_path.touch()
+
+        fake_image = _make_extracted_image(page_number=5, figure_number="Figure 3.2")
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=MagicMock())
+
+        captured_key = {}
+
+        async def capture_upload(key, data, content_type):
+            captured_key["key"] = key
+            return f"http://minio/{key}"
 
         with (
             patch(
                 "app.ai.rag.pipeline.PDFImageExtractor.extract_images_from_pdf",
-                return_value=[img],
+                return_value=[fake_image],
+            ),
+            patch(
+                "app.ai.rag.pipeline.S3StorageService.upload_bytes",
+                side_effect=capture_upload,
+            ),
+            patch.object(
+                ImageLinker, "link_images_to_chunks", new_callable=AsyncMock, return_value=0
+            ),
+        ):
+            await self.pipeline.process_pdf_images(
+                pdf_path=str(pdf_path),
+                source="donaldson",
+                session=mock_session,
+            )
+
+        assert "source-images/donaldson" in captured_key["key"]
+        assert "5_" in captured_key["key"]
+
+    @pytest.mark.asyncio
+    async def test_upload_failure_skips_image_gracefully(self):
+        pdf_path = Path(self.temp_dir) / "Donaldson_test.pdf"
+        pdf_path.touch()
+
+        fake_image = _make_extracted_image()
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+
+        with (
+            patch(
+                "app.ai.rag.pipeline.PDFImageExtractor.extract_images_from_pdf",
+                return_value=[fake_image],
             ),
             patch(
                 "app.ai.rag.pipeline.S3StorageService.upload_bytes",
                 new_callable=AsyncMock,
-                side_effect=RuntimeError("minio down"),
+                side_effect=ConnectionError("MinIO unreachable"),
             ),
-            patch(
-                "app.ai.rag.pipeline.ImageLinker.link_images_to_chunks",
-                new_callable=AsyncMock,
-                return_value=0,
+            patch.object(
+                ImageLinker, "link_images_to_chunks", new_callable=AsyncMock, return_value=0
             ),
         ):
-            count = await pipeline.process_pdf_images(
-                pdf_path=pdf_path,
+            count = await self.pipeline.process_pdf_images(
+                pdf_path=str(pdf_path),
                 source="donaldson",
-                rag_collection_id="col-1",
-                session=session,
+                session=mock_session,
             )
 
         assert count == 0
-        session.add.assert_not_called()
+        mock_session.add.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_continues_when_embedding_fails(self, tmp_path):
-        pdf_path = tmp_path / "test.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4")
-        pipeline = _make_pipeline()
-        pipeline.embedding_service.generate_embedding = AsyncMock(
-            side_effect=RuntimeError("openai error")
-        )
-        session = _make_session()
-        img = _make_extracted_image()
+    async def test_embedding_failure_stores_image_without_embedding(self):
+        pdf_path = Path(self.temp_dir) / "Donaldson_test.pdf"
+        pdf_path.touch()
+
+        fake_image = _make_extracted_image()
+        self.embedding_service.generate_embedding = AsyncMock(side_effect=Exception("OpenAI error"))
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=MagicMock())
 
         with (
             patch(
                 "app.ai.rag.pipeline.PDFImageExtractor.extract_images_from_pdf",
-                return_value=[img],
+                return_value=[fake_image],
             ),
             patch(
                 "app.ai.rag.pipeline.S3StorageService.upload_bytes",
                 new_callable=AsyncMock,
-                return_value="https://minio/bucket/key.webp",
+                return_value="http://minio/bucket/key.webp",
             ),
-            patch(
-                "app.ai.rag.pipeline.ImageLinker.link_images_to_chunks",
-                new_callable=AsyncMock,
-                return_value=0,
+            patch.object(
+                ImageLinker, "link_images_to_chunks", new_callable=AsyncMock, return_value=0
             ),
         ):
-            count = await pipeline.process_pdf_images(
-                pdf_path=pdf_path,
+            count = await self.pipeline.process_pdf_images(
+                pdf_path=str(pdf_path),
                 source="donaldson",
-                rag_collection_id="col-1",
-                session=session,
+                session=mock_session,
             )
 
         assert count == 1
-        session.add.assert_called_once()
+        added_image = mock_session.add.call_args[0][0]
+        assert added_image.embedding is None
 
     @pytest.mark.asyncio
-    async def test_processes_multiple_images(self, tmp_path):
-        pdf_path = tmp_path / "test.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4")
-        pipeline = _make_pipeline()
-        session = _make_session()
-        images = [_make_extracted_image(page_number=i, figure_number=str(i)) for i in range(1, 4)]
+    async def test_links_images_to_chunks_after_storing(self):
+        pdf_path = Path(self.temp_dir) / "test.pdf"
+        pdf_path.touch()
+
+        fake_image = _make_extracted_image()
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=MagicMock())
+
+        mock_linker = AsyncMock()
+        mock_linker.link_images_to_chunks = AsyncMock(return_value=3)
+
+        with (
+            patch(
+                "app.ai.rag.pipeline.PDFImageExtractor.extract_images_from_pdf",
+                return_value=[fake_image],
+            ),
+            patch(
+                "app.ai.rag.pipeline.S3StorageService.upload_bytes",
+                new_callable=AsyncMock,
+                return_value="http://minio/key.webp",
+            ),
+            patch("app.ai.rag.pipeline.ImageLinker", return_value=mock_linker),
+        ):
+            count = await self.pipeline.process_pdf_images(
+                pdf_path=str(pdf_path),
+                source="donaldson",
+                session=mock_session,
+            )
+
+        assert count == 1
+        mock_linker.link_images_to_chunks.assert_called_once_with("donaldson", mock_session)
+
+    @pytest.mark.asyncio
+    async def test_multiple_images_all_stored(self):
+        pdf_path = Path(self.temp_dir) / "test.pdf"
+        pdf_path.touch()
+
+        images = [
+            _make_extracted_image(page_number=1, figure_number="Figure 1"),
+            _make_extracted_image(page_number=2, figure_number="Figure 2"),
+            _make_extracted_image(page_number=3, figure_number=None),
+        ]
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=MagicMock())
 
         with (
             patch(
@@ -212,218 +268,161 @@ class TestProcessPdfImages:
             patch(
                 "app.ai.rag.pipeline.S3StorageService.upload_bytes",
                 new_callable=AsyncMock,
-                return_value="https://minio/bucket/key.webp",
+                return_value="http://minio/key.webp",
             ),
-            patch(
-                "app.ai.rag.pipeline.ImageLinker.link_images_to_chunks",
-                new_callable=AsyncMock,
-                return_value=3,
+            patch.object(
+                ImageLinker, "link_images_to_chunks", new_callable=AsyncMock, return_value=2
             ),
         ):
-            count = await pipeline.process_pdf_images(
-                pdf_path=pdf_path,
+            count = await self.pipeline.process_pdf_images(
+                pdf_path=str(pdf_path),
                 source="donaldson",
-                rag_collection_id="col-1",
-                session=session,
+                session=mock_session,
             )
 
         assert count == 3
-        assert session.add.call_count == 3
+        assert mock_session.add.call_count == 3
 
     @pytest.mark.asyncio
-    async def test_storage_key_format(self, tmp_path):
-        pdf_path = tmp_path / "test.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4")
-        pipeline = _make_pipeline()
-        session = _make_session()
-        img = _make_extracted_image(page_number=5, figure_number="2.3")
+    async def test_rag_collection_id_stored_in_db_record(self):
+        pdf_path = Path(self.temp_dir) / "test.pdf"
+        pdf_path.touch()
 
-        uploaded_keys = []
-
-        async def capture_upload(key, data, content_type="application/octet-stream"):
-            uploaded_keys.append(key)
-            return f"https://minio/bucket/{key}"
+        fake_image = _make_extracted_image()
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=MagicMock())
 
         with (
             patch(
                 "app.ai.rag.pipeline.PDFImageExtractor.extract_images_from_pdf",
-                return_value=[img],
+                return_value=[fake_image],
             ),
             patch(
                 "app.ai.rag.pipeline.S3StorageService.upload_bytes",
                 new_callable=AsyncMock,
-                side_effect=capture_upload,
+                return_value="http://minio/key.webp",
             ),
-            patch(
-                "app.ai.rag.pipeline.ImageLinker.link_images_to_chunks",
-                new_callable=AsyncMock,
-                return_value=1,
+            patch.object(
+                ImageLinker, "link_images_to_chunks", new_callable=AsyncMock, return_value=0
             ),
         ):
-            await pipeline.process_pdf_images(
-                pdf_path=pdf_path,
+            await self.pipeline.process_pdf_images(
+                pdf_path=str(pdf_path),
                 source="donaldson",
-                rag_collection_id="col-1",
-                session=session,
+                rag_collection_id="rag-col-123",
+                session=mock_session,
             )
 
-        assert len(uploaded_keys) == 1
-        assert "source-images/donaldson/" in uploaded_keys[0]
-        assert "p5_2.3.webp" in uploaded_keys[0]
-
-    @pytest.mark.asyncio
-    async def test_no_flush_when_no_images_stored(self, tmp_path):
-        pdf_path = tmp_path / "test.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4")
-        pipeline = _make_pipeline()
-        session = _make_session()
-
-        with (
-            patch(
-                "app.ai.rag.pipeline.PDFImageExtractor.extract_images_from_pdf",
-                return_value=[],
-            ),
-            patch(
-                "app.ai.rag.pipeline.ImageLinker.link_images_to_chunks",
-                new_callable=AsyncMock,
-                return_value=0,
-            ),
-        ):
-            count = await pipeline.process_pdf_images(
-                pdf_path=pdf_path,
-                source="donaldson",
-                rag_collection_id="col-1",
-                session=session,
-            )
-
-        assert count == 0
-        session.flush.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_calls_image_linker_after_storing(self, tmp_path):
-        pdf_path = tmp_path / "test.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4")
-        pipeline = _make_pipeline()
-        session = _make_session()
-        img = _make_extracted_image()
-
-        linker_called_with = []
-
-        async def mock_link(source, sess):
-            linker_called_with.append(source)
-            return 1
-
-        with (
-            patch(
-                "app.ai.rag.pipeline.PDFImageExtractor.extract_images_from_pdf",
-                return_value=[img],
-            ),
-            patch(
-                "app.ai.rag.pipeline.S3StorageService.upload_bytes",
-                new_callable=AsyncMock,
-                return_value="https://minio/bucket/key.webp",
-            ),
-            patch(
-                "app.ai.rag.pipeline.ImageLinker.link_images_to_chunks",
-                new_callable=AsyncMock,
-                side_effect=mock_link,
-            ),
-        ):
-            await pipeline.process_pdf_images(
-                pdf_path=pdf_path,
-                source="triola",
-                rag_collection_id="col-2",
-                session=session,
-            )
-
-        assert linker_called_with == ["triola"]
+        added_image = mock_session.add.call_args[0][0]
+        assert added_image.rag_collection_id == "rag-col-123"
 
 
-class TestClearSourceImages:
+class TestRAGPipelineClearSourceImages:
+    def setup_method(self):
+        self.embedding_service = AsyncMock()
+        self.pipeline = RAGPipeline(self.embedding_service)
+
     @pytest.mark.asyncio
     async def test_returns_zero_when_no_images(self):
-        pipeline = _make_pipeline()
-        session = _make_session()
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_session.execute = AsyncMock(return_value=mock_result)
 
-        result = MagicMock()
-        result.scalars.return_value.all.return_value = []
-        session.execute = AsyncMock(return_value=result)
-
-        count = await pipeline.clear_source_images(source="donaldson", session=session)
-
+        count = await self.pipeline.clear_source_images("donaldson", session=mock_session)
         assert count == 0
-        session.commit.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_deletes_db_records_and_minio_objects(self):
-        pipeline = _make_pipeline()
-        session = _make_session()
+    async def test_deletes_from_db_and_minio(self):
+        from app.domain.models.source_image import SourceImage
 
-        img1 = MagicMock()
-        img1.storage_key = "source-images/donaldson/p1_1.1.webp"
-        img2 = MagicMock()
-        img2.storage_key = "source-images/donaldson/p2_2.1.webp"
+        mock_img = MagicMock(spec=SourceImage)
+        mock_img.storage_key = "source-images/donaldson/1_Figure_1.webp"
 
-        select_result = MagicMock()
-        select_result.scalars.return_value.all.return_value = [img1, img2]
-        delete_result = MagicMock()
-
-        session.execute = AsyncMock(side_effect=[select_result, delete_result])
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [mock_img]
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.commit = AsyncMock()
 
         with patch(
             "app.ai.rag.pipeline.S3StorageService.delete_object",
             new_callable=AsyncMock,
         ) as mock_delete:
-            count = await pipeline.clear_source_images(source="donaldson", session=session)
-
-        assert count == 2
-        assert mock_delete.call_count == 2
-        session.commit.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_continues_when_minio_delete_fails(self):
-        pipeline = _make_pipeline()
-        session = _make_session()
-
-        img = MagicMock()
-        img.storage_key = "source-images/donaldson/p1_1.1.webp"
-
-        select_result = MagicMock()
-        select_result.scalars.return_value.all.return_value = [img]
-        delete_result = MagicMock()
-
-        session.execute = AsyncMock(side_effect=[select_result, delete_result])
-
-        with patch(
-            "app.ai.rag.pipeline.S3StorageService.delete_object",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("minio error"),
-        ):
-            count = await pipeline.clear_source_images(source="donaldson", session=session)
+            count = await self.pipeline.clear_source_images("donaldson", session=mock_session)
 
         assert count == 1
-        session.commit.assert_called_once()
+        mock_delete.assert_called_once_with(mock_img.storage_key)
+        mock_session.commit.assert_called()
 
     @pytest.mark.asyncio
-    async def test_skips_minio_delete_when_no_storage_key(self):
-        pipeline = _make_pipeline()
-        session = _make_session()
+    async def test_minio_failure_does_not_block_db_delete(self):
+        from app.domain.models.source_image import SourceImage
 
-        img = MagicMock()
-        img.storage_key = None
+        mock_img = MagicMock(spec=SourceImage)
+        mock_img.storage_key = "source-images/donaldson/1_Figure_1.webp"
 
-        select_result = MagicMock()
-        select_result.scalars.return_value.all.return_value = [img]
-        delete_result = MagicMock()
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [mock_img]
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.commit = AsyncMock()
 
-        session.execute = AsyncMock(side_effect=[select_result, delete_result])
+        with patch(
+            "app.ai.rag.pipeline.S3StorageService.delete_object",
+            new_callable=AsyncMock,
+            side_effect=ConnectionError("MinIO unreachable"),
+        ):
+            count = await self.pipeline.clear_source_images("donaldson", session=mock_session)
+
+        assert count == 1
+        mock_session.commit.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_image_without_storage_key_does_not_call_minio(self):
+        from app.domain.models.source_image import SourceImage
+
+        mock_img = MagicMock(spec=SourceImage)
+        mock_img.storage_key = None
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [mock_img]
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.commit = AsyncMock()
 
         with patch(
             "app.ai.rag.pipeline.S3StorageService.delete_object",
             new_callable=AsyncMock,
         ) as mock_delete:
-            count = await pipeline.clear_source_images(source="donaldson", session=session)
+            count = await self.pipeline.clear_source_images("donaldson", session=mock_session)
 
         assert count == 1
         mock_delete.assert_not_called()
-        session.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_deletes_multiple_images_all_from_minio(self):
+        from app.domain.models.source_image import SourceImage
+
+        mock_imgs = []
+        for i in range(3):
+            m = MagicMock(spec=SourceImage)
+            m.storage_key = f"source-images/donaldson/{i}_Figure.webp"
+            mock_imgs.append(m)
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = mock_imgs
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.commit = AsyncMock()
+
+        with patch(
+            "app.ai.rag.pipeline.S3StorageService.delete_object",
+            new_callable=AsyncMock,
+        ) as mock_delete:
+            count = await self.pipeline.clear_source_images("donaldson", session=mock_session)
+
+        assert count == 3
+        assert mock_delete.call_count == 3

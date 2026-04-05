@@ -126,6 +126,7 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
         pipeline = RAGPipeline(embedding_service)
 
         total_chunks = 0
+        total_images = 0
         for i, pdf_path in enumerate(pdf_files):
             extract_progress = 5 + int((i / len(pdf_files)) * 30)
             self.update_state(
@@ -171,7 +172,6 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                 },
             )
 
-            # Use PDF filename (without extension) as readable source for citations
             source_name = pdf_path.stem.replace("_", " ")
             chunks = await pipeline.process_pdf_document(
                 pdf_path=str(pdf_path),
@@ -194,41 +194,38 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                 },
             )
 
-            extract_img_progress = store_progress + int((1 / len(pdf_files)) * 5)
+            img_progress = store_progress + int((1 / len(pdf_files)) * 8)
             self.update_state(
                 state="EXTRACTING_IMAGES",
                 meta={
                     "step": "extracting_images",
                     "step_label": f"Extraction des illustrations: {pdf_path.name}",
-                    "progress": extract_img_progress,
+                    "progress": img_progress,
                     "files_total": len(pdf_files),
                     "files_processed": i + 1,
                     "current_file": pdf_path.name,
                     "chunks_processed": total_chunks,
-                    "estimated_seconds_remaining": _remaining(extract_img_progress),
+                    "estimated_seconds_remaining": _remaining(img_progress),
                 },
             )
 
-            from app.infrastructure.persistence.database import async_session_factory
-
             image_count = 0
             try:
-                async with async_session_factory() as img_session:
-                    image_count = await pipeline.process_pdf_images(
-                        pdf_path=str(pdf_path),
-                        source=source_name,
-                        rag_collection_id=rag_collection_id,
-                        session=img_session,
-                        resources_path=pdf_path.parent,
-                    )
-            except Exception as exc:
+                image_count = await pipeline.process_pdf_images(
+                    pdf_path=str(pdf_path),
+                    source=source_name,
+                    rag_collection_id=rag_collection_id,
+                )
+                total_images += image_count
+            except Exception as img_exc:
                 logger.warning(
-                    "Image extraction failed for PDF, continuing",
+                    "Image extraction failed for PDF (non-blocking)",
                     file=pdf_path.name,
-                    error=str(exc),
+                    course_id=course_id,
+                    error=str(img_exc),
                 )
 
-            link_progress = extract_img_progress + int((1 / len(pdf_files)) * 5)
+            link_progress = img_progress + int((1 / len(pdf_files)) * 7)
             self.update_state(
                 state="LINKING_IMAGES",
                 meta={
@@ -239,7 +236,7 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                     "files_processed": i + 1,
                     "current_file": pdf_path.name,
                     "chunks_processed": total_chunks,
-                    "images_processed": image_count,
+                    "images_processed": total_images,
                     "estimated_seconds_remaining": _remaining(link_progress),
                 },
             )
@@ -252,10 +249,10 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                 course_id=course_id,
             )
 
-        return total_chunks
+        return total_chunks, total_images
 
     try:
-        total_chunks = asyncio.run(_run_pipeline())
+        total_chunks, total_images = asyncio.run(_run_pipeline())
 
         self.update_state(
             state="COMPLETE",
@@ -264,6 +261,7 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                 "step_label": "Indexation terminée",
                 "progress": 100,
                 "chunks_stored": total_chunks,
+                "images_stored": total_images,
                 "files_processed": len(pdf_files),
                 "files_total": len(pdf_files),
                 "estimated_seconds_remaining": 0,
@@ -273,6 +271,7 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
         return {
             "status": "complete",
             "chunks_stored": total_chunks,
+            "images_stored": total_images,
             "files_processed": len(pdf_files),
             "rag_collection_id": rag_collection_id,
         }
