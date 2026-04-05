@@ -505,6 +505,17 @@
     "title": "Diagnostic Assessment",
     "description": "Complete this 20-question assessment to help us determine your optimal starting level.",
     "instructions": "Answer all questions to the best of your ability. This assessment will help us personalize your learning journey.",
+    "courseSpecific": {
+      "title": "Course Pre-Assessment",
+      "description": "Complete this assessment for {courseName} to determine your starting level.",
+      "mandatory": "This assessment is required to begin the course.",
+      "optional": "Take this assessment to skip to a more advanced level, or start from Level 1.",
+      "choiceTitle": "Assessment Available",
+      "choiceDescription": "You can take a short pre-assessment to determine your starting level in {courseName}.",
+      "startAssessment": "Take Assessment",
+      "skipToLevel1": "Start from Level 1",
+      "skipChoiceWarning": "Starting from Level 1 means you will begin with foundational content."
+    },
     "timeLimit": "Time limit: 20 minutes",
     "timeLimitSubtext": "Recommended completion time",
     "numberOfQuestions": "20 questions covering 4 domains",

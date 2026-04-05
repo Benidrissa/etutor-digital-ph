@@ -16,18 +16,26 @@ interface PlacementTestIntroProps {
   onStartTest: () => void;
   onSkipTest: () => void;
   locale: string;
+  courseId?: string;
+  courseName?: string;
 }
 
-export function PlacementTestIntro({ onStartTest, onSkipTest }: PlacementTestIntroProps) {
+export function PlacementTestIntro({ onStartTest, onSkipTest, courseId, courseName }: PlacementTestIntroProps) {
   const t = useTranslations('PlacementTest');
+
+  const isCourseSpecific = !!courseId;
+  const title = isCourseSpecific ? t('courseSpecific.title') : t('title');
+  const description = isCourseSpecific
+    ? t('courseSpecific.description', { courseName: courseName ?? '' })
+    : t('description');
 
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl font-bold">{t('title')}</CardTitle>
+          <CardTitle className="text-3xl font-bold">{title}</CardTitle>
           <CardDescription className="text-lg">
-            {t('description')}
+            {description}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
