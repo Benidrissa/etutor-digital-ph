@@ -100,7 +100,7 @@ export function PromptEditor({ setting, saving, onSave, onReset }: PromptEditorP
         <Textarea
           ref={textareaRef}
           value={draft}
-          onChange={(e) => { setDraft(e.target.value); setEditing(true); }}
+          onChange={(e) => { setDraft(e.target.value); }}
           rows={18}
           className="font-mono text-sm resize-y min-h-[200px]"
           spellCheck={false}
