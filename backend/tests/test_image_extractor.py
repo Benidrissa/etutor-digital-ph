@@ -18,18 +18,27 @@ from app.ai.rag.image_extractor import (
 
 
 def _make_minimal_png(width: int = 200, height: int = 200) -> bytes:
-    """Create a minimal valid PNG for testing."""
+    """Create a minimal valid PNG for testing.
+
+    Uses seeded pseudo-random pixel data so the compressed size stays above
+    MIN_SIZE_BYTES (5 KB) while remaining deterministic across test runs.
+    """
+    import random as _random
 
     def chunk(name: bytes, data: bytes) -> bytes:
         c = struct.pack(">I", len(data)) + name + data
         crc = zlib.crc32(name + data) & 0xFFFFFFFF
         return c + struct.pack(">I", crc)
 
+    rng = _random.Random(42)
     signature = b"\x89PNG\r\n\x1a\n"
     ihdr_data = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
     ihdr = chunk(b"IHDR", ihdr_data)
-    row = b"\x00" + b"\xff\x00\x00" * width
-    raw_data = row * height
+    rows = []
+    for _ in range(height):
+        row_pixels = bytes([rng.randint(0, 255) for _ in range(width * 3)])
+        rows.append(b"\x00" + row_pixels)
+    raw_data = b"".join(rows)
     idat = chunk(b"IDAT", zlib.compress(raw_data))
     iend = chunk(b"IEND", b"")
     return signature + ihdr + idat + iend
