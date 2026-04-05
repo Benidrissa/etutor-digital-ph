@@ -10,6 +10,7 @@ import {
   type SettingsByCategory,
   type PlatformSetting,
 } from "@/lib/api";
+import { PromptEditor } from "./prompt-editor";
 
 const CATEGORY_LABELS: Record<string, string> = {
   quiz: "Quiz & Assessment",
@@ -19,6 +20,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   auth: "Auth & Security",
   rate_limiting: "Rate Limiting",
   ai: "AI & Content Generation",
+  ai_prompts: "AI Prompt Templates",
   tutor: "AI Tutor",
   pagination: "Pagination",
 };
@@ -115,10 +117,15 @@ export function SettingsClient() {
             </button>
           </div>
           <div className="divide-y rounded-lg border">
-            {activeCategory.settings.map((s) => (
-              <SettingRow key={s.key} setting={s} saving={saving === s.key}
-                onSave={handleSave} onReset={handleReset} t={t} />
-            ))}
+            {activeCategory.settings.map((s) =>
+              activeCategory.category === "ai_prompts" ? (
+                <PromptEditor key={s.key} setting={s} saving={saving === s.key}
+                  onSave={handleSave} onReset={handleReset} />
+              ) : (
+                <SettingRow key={s.key} setting={s} saving={saving === s.key}
+                  onSave={handleSave} onReset={handleReset} t={t} />
+              )
+            )}
           </div>
         </div>
       )}

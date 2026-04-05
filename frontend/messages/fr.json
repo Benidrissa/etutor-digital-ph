@@ -644,6 +644,12 @@
     "imageViewFullscreen": "Voir en plein écran",
     "imageCloseFullscreen": "Fermer le plein écran"
   },
+  "SourceImage": {
+    "figure": "Figure",
+    "defaultAlt": "Image source tirée du matériel de référence",
+    "viewFullscreen": "Voir l'image en plein écran",
+    "closeFullscreen": "Fermer le plein écran"
+  },
   "ModuleMediaPlayer": {
     "listenToSummary": "Écouter le résumé",
     "watchSummary": "Regarder le résumé",
@@ -824,7 +830,21 @@
       "sensitive": "Paramètre de sécurité",
       "currentValue": "Valeur actuelle",
       "defaultValue": "Défaut",
-      "modified": "Modifié"
+      "modified": "Modifié",
+      "discardChanges": "Annuler les modifications",
+      "promptVariables": "Variables de gabarit",
+      "promptVariablesHint": "Cliquez sur une variable pour l'insérer à la position du curseur",
+      "promptShowDefault": "Afficher le prompt par défaut",
+      "varCourseTitle": "Le titre du cours",
+      "varCourseDescription": "La description du cours",
+      "varCourseDomain": "Le domaine du cours (ex. : épidémiologie)",
+      "varModuleTitle": "Le titre du module",
+      "varUnitTitle": "Le titre de l'unité",
+      "varCountry": "Le pays de l'apprenant",
+      "varLanguage": "La langue du contenu (fr ou en)",
+      "varLevel": "Le niveau du cours (1–4)",
+      "varBloomLevel": "Le niveau de la taxonomie de Bloom",
+      "varSyllabusContext": "Le contexte du syllabus injecté par le système"
     },
     "users": {
       "title": "Gestion des utilisateurs",
