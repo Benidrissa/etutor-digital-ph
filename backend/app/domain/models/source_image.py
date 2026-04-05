@@ -106,9 +106,7 @@ class SourceImage(Base):
 
 class SourceImageChunk(Base):
     __tablename__ = "source_image_chunks"
-    __table_args__ = (
-        Index("ix_source_image_chunks_document_chunk_id", "document_chunk_id"),
-    )
+    __table_args__ = (Index("ix_source_image_chunks_document_chunk_id", "document_chunk_id"),)
 
     source_image_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("source_images.id", ondelete="CASCADE"),
