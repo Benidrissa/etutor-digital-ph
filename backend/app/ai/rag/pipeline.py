@@ -181,7 +181,8 @@ class RAGPipeline:
         session: AsyncSession,
     ) -> int:
         """Internal: extract, upload, store, and link images."""
-        images = PDFImageExtractor.extract_images_from_pdf(str(pdf_path), source)
+        extractor = PDFImageExtractor(pdf_path.parent)
+        images = extractor.extract_images_from_pdf(pdf_path, source)
 
         if not images:
             logger.info("No images extracted from PDF", pdf_path=str(pdf_path), source=source)

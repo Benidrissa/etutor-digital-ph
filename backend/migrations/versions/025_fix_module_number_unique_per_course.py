@@ -9,7 +9,7 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "025_fix_module_number_unique_per_course"
+revision: str = "025a"
 down_revision: str | None = "024_add_course_taxonomy"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

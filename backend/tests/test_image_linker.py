@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.ai.rag.image_linker import _FIGURE_RE, ImageLinker
+from app.ai.rag.image_linker import _FIGURE_RE, ImageLinker, _normalize_figure_number
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -58,6 +58,37 @@ class TestFigureRegex:
         matches = _FIGURE_RE.findall("See Figure 1.1 and Figure 1.2.")
         assert matches == ["1.1", "1.2"]
 
+    def test_matches_fig_abbreviation(self):
+        matches = _FIGURE_RE.findall("See Fig. 3.2 above.")
+        assert matches == ["3.2"]
+
+    def test_matches_fig_without_dot(self):
+        matches = _FIGURE_RE.findall("See Fig 4.1 for the chart.")
+        assert matches == ["4.1"]
+
+    def test_matches_dash_figure_number(self):
+        matches = _FIGURE_RE.findall("See Figure 1-3 for details.")
+        assert matches == ["1-3"]
+
+
+# ---------------------------------------------------------------------------
+# Normalisation helper
+# ---------------------------------------------------------------------------
+
+
+class TestNormalizeFigureNumber:
+    def test_dot_unchanged(self):
+        assert _normalize_figure_number("1.3") == "1.3"
+
+    def test_dash_converted_to_dot(self):
+        assert _normalize_figure_number("1-3") == "1.3"
+
+    def test_strips_whitespace(self):
+        assert _normalize_figure_number("  2.5  ") == "2.5"
+
+    def test_integer_unchanged(self):
+        assert _normalize_figure_number("5") == "5"
+
 
 # ---------------------------------------------------------------------------
 # link_images_to_chunks — explicit linkage
@@ -76,8 +107,8 @@ class TestExplicitLinkage:
             _make_execute_result([(chunk_id, "See Figure 1.3 for the diagram.")]),
             _make_execute_result([(img_id, "1.3")]),
             _make_execute_result([]),
-            _make_execute_result([(img_id, 5)]),
-            _make_execute_result([(chunk_id, 5)]),
+            _make_execute_result([(img_id, 5, "chapter_1")]),
+            _make_execute_result([(chunk_id, 5, "chapter_1")]),
             _make_execute_result([]),
         ]
 
@@ -92,6 +123,53 @@ class TestExplicitLinkage:
         assert explicit_rows[0].document_chunk_id == chunk_id
 
     @pytest.mark.asyncio
+    async def test_explicit_link_dash_figure_number(self):
+        """DB stores '1-3', text says 'Figure 1.3' — must still match after normalisation."""
+        linker = ImageLinker()
+        session = _mock_session()
+        img_id = _uuid()
+        chunk_id = _uuid()
+
+        session.execute.side_effect = [
+            _make_execute_result([(chunk_id, "See Figure 1.3 for the diagram.")]),
+            _make_execute_result([(img_id, "1-3")]),
+            _make_execute_result([]),
+            _make_execute_result([(img_id, 5, None)]),
+            _make_execute_result([(chunk_id, 5, None)]),
+            _make_execute_result([]),
+        ]
+
+        count = await linker.link_images_to_chunks("donaldson", session)
+
+        assert count >= 1
+        added = session.add_all.call_args[0][0]
+        explicit_rows = [r for r in added if r.reference_type == "explicit"]
+        assert len(explicit_rows) == 1
+
+    @pytest.mark.asyncio
+    async def test_explicit_link_fig_abbreviation(self):
+        """'Fig. 2.1' in chunk text should match image with figure_number '2.1'."""
+        linker = ImageLinker()
+        session = _mock_session()
+        img_id = _uuid()
+        chunk_id = _uuid()
+
+        session.execute.side_effect = [
+            _make_execute_result([(chunk_id, "As shown in Fig. 2.1, the data reveals...")]),
+            _make_execute_result([(img_id, "2.1")]),
+            _make_execute_result([]),
+            _make_execute_result([(img_id, 10, None)]),
+            _make_execute_result([(chunk_id, 10, None)]),
+            _make_execute_result([]),
+        ]
+
+        await linker.link_images_to_chunks("donaldson", session)
+
+        added = session.add_all.call_args[0][0]
+        explicit_rows = [r for r in added if r.reference_type == "explicit"]
+        assert len(explicit_rows) == 1
+
+    @pytest.mark.asyncio
     async def test_no_explicit_link_when_figure_not_in_text(self):
         linker = ImageLinker()
         session = _mock_session()
@@ -102,7 +180,7 @@ class TestExplicitLinkage:
             _make_execute_result([(chunk_id, "No figures mentioned here.")]),
             _make_execute_result([(img_id, "1.3")]),
             _make_execute_result([]),
-            _make_execute_result([(img_id, 3)]),
+            _make_execute_result([(img_id, 3, None)]),
             _make_execute_result([]),
             _make_execute_result([]),
         ]
@@ -142,8 +220,8 @@ class TestExplicitLinkage:
             _make_execute_result([(img_id, "1.3")]),
             _make_execute_result([(img_id,)]),
             _make_execute_result([(img_id, chunk_id)]),
-            _make_execute_result([(img_id, 5)]),
-            _make_execute_result([(chunk_id, 5)]),
+            _make_execute_result([(img_id, 5, None)]),
+            _make_execute_result([(chunk_id, 5, None)]),
             _make_execute_result([(img_id,)]),
             _make_execute_result([(img_id, chunk_id)]),
         ]
@@ -170,8 +248,8 @@ class TestContextualLinkage:
             _make_execute_result([(chunk_id, "No figures here.")]),
             _make_execute_result([]),
             _make_execute_result([]),
-            _make_execute_result([(img_id, 7)]),
-            _make_execute_result([(chunk_id, 7)]),
+            _make_execute_result([(img_id, 7, None)]),
+            _make_execute_result([(chunk_id, 7, None)]),
             _make_execute_result([]),
         ]
 
@@ -185,6 +263,75 @@ class TestContextualLinkage:
         assert contextual_rows[0].document_chunk_id == chunk_id
 
     @pytest.mark.asyncio
+    async def test_contextual_link_adjacent_page(self):
+        """Chunk on page N-1 should be contextually linked to image on page N."""
+        linker = ImageLinker()
+        session = _mock_session()
+        img_id = _uuid()
+        chunk_id = _uuid()
+
+        session.execute.side_effect = [
+            _make_execute_result([(chunk_id, "Text on page 6.")]),
+            _make_execute_result([]),
+            _make_execute_result([]),
+            _make_execute_result([(img_id, 7, None)]),
+            _make_execute_result([(chunk_id, 6, None)]),
+            _make_execute_result([]),
+        ]
+
+        count = await linker.link_images_to_chunks("donaldson", session)
+
+        assert count == 1
+        added = session.add_all.call_args[0][0]
+        contextual_rows = [r for r in added if r.reference_type == "contextual"]
+        assert len(contextual_rows) == 1
+
+    @pytest.mark.asyncio
+    async def test_contextual_link_chapter_fallback_when_page_null(self):
+        """Chunks with NULL page should be linked via chapter matching."""
+        linker = ImageLinker()
+        session = _mock_session()
+        img_id = _uuid()
+        chunk_id = _uuid()
+
+        session.execute.side_effect = [
+            _make_execute_result([(chunk_id, "No figures mentioned here.")]),
+            _make_execute_result([]),
+            _make_execute_result([]),
+            _make_execute_result([(img_id, 5, "chapter_2")]),
+            _make_execute_result([(chunk_id, None, "chapter_2")]),
+            _make_execute_result([]),
+        ]
+
+        count = await linker.link_images_to_chunks("donaldson", session)
+
+        assert count == 1
+        added = session.add_all.call_args[0][0]
+        contextual_rows = [r for r in added if r.reference_type == "contextual"]
+        assert len(contextual_rows) == 1
+
+    @pytest.mark.asyncio
+    async def test_no_contextual_link_when_page_null_and_no_chapter(self):
+        """Chunks with NULL page and NULL chapter produce no contextual links."""
+        linker = ImageLinker()
+        session = _mock_session()
+        img_id = _uuid()
+        chunk_id = _uuid()
+
+        session.execute.side_effect = [
+            _make_execute_result([(chunk_id, "No figures mentioned here.")]),
+            _make_execute_result([]),
+            _make_execute_result([]),
+            _make_execute_result([(img_id, 5, None)]),
+            _make_execute_result([(chunk_id, None, None)]),
+            _make_execute_result([]),
+        ]
+
+        count = await linker.link_images_to_chunks("donaldson", session)
+
+        assert count == 0
+
+    @pytest.mark.asyncio
     async def test_contextual_link_skipped_when_explicit_exists(self):
         linker = ImageLinker()
         session = _mock_session()
@@ -195,8 +342,8 @@ class TestContextualLinkage:
             _make_execute_result([(chunk_id, "See Figure 2.0 here.")]),
             _make_execute_result([(img_id, "2.0")]),
             _make_execute_result([]),
-            _make_execute_result([(img_id, 10)]),
-            _make_execute_result([(chunk_id, 10)]),
+            _make_execute_result([(img_id, 10, None)]),
+            _make_execute_result([(chunk_id, 10, None)]),
             _make_execute_result([]),
         ]
 
@@ -220,8 +367,8 @@ class TestContextualLinkage:
             _make_execute_result([(chunk_id, "Text on page 3.")]),
             _make_execute_result([]),
             _make_execute_result([]),
-            _make_execute_result([(img_id, 8)]),
-            _make_execute_result([(chunk_id, 3)]),
+            _make_execute_result([(img_id, 8, None)]),
+            _make_execute_result([(chunk_id, 3, None)]),
             _make_execute_result([]),
         ]
 
@@ -240,8 +387,8 @@ class TestContextualLinkage:
             _make_execute_result([(chunk_id, "Text on page 5.")]),
             _make_execute_result([]),
             _make_execute_result([]),
-            _make_execute_result([(img_id, 5)]),
-            _make_execute_result([(chunk_id, 5)]),
+            _make_execute_result([(img_id, 5, None)]),
+            _make_execute_result([(chunk_id, 5, None)]),
             _make_execute_result([(img_id,)]),
             _make_execute_result([(img_id, chunk_id)]),
         ]
@@ -327,8 +474,8 @@ class TestEdgeCases:
             _make_execute_result([(chunk_id, "See Figure 1.1 and Figure 2.2.")]),
             _make_execute_result([(img1_id, "1.1"), (img2_id, "2.2")]),
             _make_execute_result([]),
-            _make_execute_result([(img1_id, 4), (img2_id, 9)]),
-            _make_execute_result([(chunk_id, 4)]),
+            _make_execute_result([(img1_id, 4, None), (img2_id, 9, None)]),
+            _make_execute_result([(chunk_id, 4, None)]),
             _make_execute_result([]),
         ]
 
@@ -384,8 +531,8 @@ class TestEdgeCases:
             _make_execute_result([(chunk_id, "Figure 3.0 here.")]),
             _make_execute_result([(img_id, "3.0")]),
             _make_execute_result([]),
-            _make_execute_result([(img_id, 2)]),
-            _make_execute_result([(chunk_id, 99)]),
+            _make_execute_result([(img_id, 2, None)]),
+            _make_execute_result([(chunk_id, 99, None)]),
             _make_execute_result([]),
         ]
 
