@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { track } from '@/lib/analytics';
 
 interface FlashcardData {
   id: string;
@@ -22,6 +23,13 @@ interface FlashcardData {
   difficulty: number;
 }
 
+const RATING_TO_NUMBER: Record<string, number> = {
+  again: 1,
+  hard: 2,
+  good: 3,
+  easy: 4,
+};
+
 interface FlashcardDeckProps {
   cards: FlashcardData[];
   onReview: (cardId: string, reviewId: string, rating: string) => void;
@@ -32,6 +40,7 @@ interface FlashcardDeckProps {
   }) => void;
   isLoading?: boolean;
   language: 'fr' | 'en';
+  moduleId?: string;
 }
 
 type Rating = 'again' | 'hard' | 'good' | 'easy';
@@ -41,7 +50,8 @@ export function FlashcardDeck({
   onReview, 
   onSessionComplete, 
   isLoading = false, 
-  language = 'fr' 
+  language = 'fr',
+  moduleId = '',
 }: FlashcardDeckProps) {
   const t = useTranslations('Flashcards');
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -75,6 +85,10 @@ export function FlashcardDeck({
 
     // Record the review
     onReview(currentCard.id, currentCard.review_id, rating);
+    track('flashcard_reviewed', {
+      module_id: moduleId,
+      rating: RATING_TO_NUMBER[rating] ?? 0,
+    });
     
     const newRatings = [...reviewedRatings, rating];
     setReviewedRatings(newRatings);
