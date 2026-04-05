@@ -14,6 +14,7 @@ import {
   AlertCircle,
   BookOpen,
   Database,
+  ImageOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -91,6 +92,7 @@ export function CoursesClient() {
   const [wizardResumeStep, setWizardResumeStep] = useState<WizardStep | undefined>();
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [imagesIndexed, setImagesIndexed] = useState<number | null>(null);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [generateTaskId, setGenerateTaskId] = useState<string | null>(null);
   const generatePollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -135,6 +137,26 @@ export function CoursesClient() {
       archiveMutation.mutate(pendingAction.course.id);
     }
   };
+
+  const handlePublishIntent = useCallback(
+    async (course: AdminCourse) => {
+      setImagesIndexed(null);
+      setPendingAction({ type: 'publish', course });
+      if (course.rag_collection_id) {
+        try {
+          const data = await apiFetch<{ images_indexed?: number }>(
+            `/api/v1/admin/courses/${course.id}/index-status`
+          );
+          setImagesIndexed(data.images_indexed ?? 0);
+        } catch {
+          setImagesIndexed(0);
+        }
+      } else {
+        setImagesIndexed(0);
+      }
+    },
+    []
+  );
 
   const handleGenerateStructure = useCallback(
     async (course: AdminCourse) => {
@@ -340,7 +362,7 @@ export function CoursesClient() {
                 course={course}
                 generatingId={generatingId}
                 resumeCourseId={wizardResumeCourseId}
-                onPublish={(c) => setPendingAction({ type: 'publish', course: c })}
+                onPublish={handlePublishIntent}
                 onArchive={(c) => setPendingAction({ type: 'archive', course: c })}
                 onGenerateStructure={(c) => setPendingAction({ type: 'generate', course: c })}
                 onEdit={(c) => { setEditingCourse(c); setFormOpen(true); }}
@@ -388,6 +410,12 @@ export function CoursesClient() {
         <AlertDialogContent>
           <AlertDialogTitle>{confirmTitle}</AlertDialogTitle>
           <AlertDialogDescription>{confirmDesc}</AlertDialogDescription>
+          {pendingAction?.type === 'publish' && imagesIndexed === 0 && (
+            <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200" role="alert">
+              <ImageOff className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>{t('imagesNotIndexedWarning')}</span>
+            </div>
+          )}
           <div className="flex justify-end gap-3 mt-4">
             <AlertDialogCancel onClick={() => setPendingAction(null)}>
               {t('cancel')}
