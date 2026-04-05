@@ -11,23 +11,25 @@ interface SourceImageProps extends SourceImageMeta {
 }
 
 export function SourceImage({
+  id,
   figure_number,
+  caption: captionFallback,
   caption_fr,
   caption_en,
   attribution,
-  storage_url,
   alt_text_fr,
   alt_text_en,
   language,
 }: SourceImageProps) {
+  const imageUrl = `/api/v1/source-images/${id}/data`;
   const t = useTranslations('SourceImage');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
 
-  const caption = language === 'fr' ? caption_fr : caption_en;
+  const caption = (language === 'fr' ? caption_fr : caption_en) ?? captionFallback;
   const altText = language === 'fr'
-    ? (alt_text_fr ?? caption_fr ?? t('defaultAlt'))
-    : (alt_text_en ?? caption_en ?? t('defaultAlt'));
+    ? (alt_text_fr ?? caption_fr ?? captionFallback ?? t('defaultAlt'))
+    : (alt_text_en ?? caption_en ?? captionFallback ?? t('defaultAlt'));
 
   const figureLabel = figure_number
     ? `${t('figure')} ${figure_number}${caption ? ` — ${caption}` : ''}`
@@ -43,7 +45,7 @@ export function SourceImage({
           onClick={() => setIsFullscreen(true)}
         >
           <Image
-            src={storage_url}
+            src={imageUrl}
             alt={altText}
             width={768}
             height={512}
@@ -87,7 +89,7 @@ export function SourceImage({
           </button>
 
           <Image
-            src={storage_url}
+            src={imageUrl}
             alt={altText}
             width={768}
             height={512}

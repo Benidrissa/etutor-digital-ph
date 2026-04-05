@@ -286,6 +286,8 @@ class LessonGenerationService:
         cached_content = result.scalars().first()
 
         if cached_content:
+            raw_refs = cached_content.content.get("source_image_refs", [])
+            source_image_refs = [SourceImageRef(**ref) for ref in raw_refs if isinstance(ref, dict)]
             return LessonResponse(
                 id=cached_content.id,
                 module_id=cached_content.module_id,
@@ -296,6 +298,7 @@ class LessonGenerationService:
                 content=LessonContent(**cached_content.content),
                 generated_at=cached_content.generated_at.isoformat(),
                 cached=True,
+                source_image_refs=source_image_refs,
             )
 
         return None
@@ -518,6 +521,9 @@ class LessonGenerationService:
         """Save generated lesson content to cache."""
         content_with_unit = lesson_response.content.model_dump()
         content_with_unit["unit_id"] = lesson_response.unit_id
+        content_with_unit["source_image_refs"] = [
+            ref.model_dump() for ref in lesson_response.source_image_refs
+        ]
 
         cached_content = GeneratedContent(
             id=lesson_response.id,

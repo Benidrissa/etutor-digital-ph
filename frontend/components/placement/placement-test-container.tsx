@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useTranslations } from 'next-intl';
 import { PlacementTestIntro } from './placement-test-intro';
 import { PlacementTestInterface } from './placement-test-interface';
 import { PlacementTestResults } from './placement-test-results';
@@ -10,6 +9,8 @@ type PlacementTestState = 'intro' | 'assessment' | 'results' | 'skipped';
 
 interface PlacementTestContainerProps {
   locale: string;
+  courseId?: string;
+  courseName?: string;
 }
 
 interface PlacementTestResult {
@@ -22,8 +23,7 @@ interface PlacementTestResult {
   skipped?: boolean;
 }
 
-export function PlacementTestContainer({ locale }: PlacementTestContainerProps) {
-  const t = useTranslations('PlacementTest');
+export function PlacementTestContainer({ locale, courseId, courseName }: PlacementTestContainerProps) {
   const [state, setState] = useState<PlacementTestState>('intro');
   const [result, setResult] = useState<PlacementTestResult | null>(null);
 
@@ -33,19 +33,13 @@ export function PlacementTestContainer({ locale }: PlacementTestContainerProps) 
 
   const handleSkipTest = async () => {
     try {
-      const response = await fetch('/api/v1/placement-test/skip', {
+      const skipUrl = courseId
+        ? `/api/v1/courses/${courseId}/preassessment/skip`
+        : '/api/v1/placement-test/skip';
+      const { authClient } = await import('@/lib/auth');
+      const skipResult = await authClient.authenticatedFetch<PlacementTestResult>(skipUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to skip placement test');
-      }
-
-      const skipResult = await response.json();
       setResult(skipResult);
       setState('skipped');
     } catch (error) {
@@ -65,6 +59,8 @@ export function PlacementTestContainer({ locale }: PlacementTestContainerProps) 
           onStartTest={handleStartTest}
           onSkipTest={handleSkipTest}
           locale={locale}
+          courseId={courseId}
+          courseName={courseName}
         />
       );
 
@@ -73,6 +69,7 @@ export function PlacementTestContainer({ locale }: PlacementTestContainerProps) 
         <PlacementTestInterface
           onComplete={handleTestComplete}
           locale={locale}
+          courseId={courseId}
         />
       );
 

@@ -286,7 +286,7 @@ export function LessonViewer({
   const { content } = lessonData;
 
   const sourceImageMap = new Map<string, SourceImageMeta>(
-    (lessonData.source_image_refs ?? []).map((img) => [img.image_id, img])
+    (lessonData.source_image_refs ?? []).map((img) => [img.id, img])
   );
 
   function renderContentWithImages(text: string) {

@@ -35,9 +35,10 @@ interface PlacementTestInterfaceProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onComplete: (result: any) => void;
   locale: string;
+  courseId?: string;
 }
 
-export function PlacementTestInterface({ onComplete, locale }: PlacementTestInterfaceProps) {
+export function PlacementTestInterface({ onComplete, locale, courseId }: PlacementTestInterfaceProps) {
   const t = useTranslations('PlacementTest');
   const [testData, setTestData] = useState<PlacementTestData | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -52,7 +53,10 @@ export function PlacementTestInterface({ onComplete, locale }: PlacementTestInte
   useEffect(() => {
     const loadQuestions = async () => {
       try {
-        const data = await authClient.authenticatedFetch<PlacementTestData>(`/api/v1/placement-test/questions?language=${locale}`);
+        const questionsUrl = courseId
+          ? `/api/v1/courses/${courseId}/preassessment/questions?language=${locale}`
+          : `/api/v1/placement-test/questions?language=${locale}`;
+        const data = await authClient.authenticatedFetch<PlacementTestData>(questionsUrl);
         setTestData(data);
         setTimeLeft(data.time_limit_minutes * 60);
       } catch (error) {
@@ -63,7 +67,7 @@ export function PlacementTestInterface({ onComplete, locale }: PlacementTestInte
     };
 
     loadQuestions();
-  }, []);
+  }, [courseId, locale]);
 
   // Timer countdown
   useEffect(() => {
@@ -113,8 +117,11 @@ export function PlacementTestInterface({ onComplete, locale }: PlacementTestInte
     try {
       const timeTaken = Math.floor((Date.now() - startTime) / 1000);
 
+      const submitUrl = courseId
+        ? `/api/v1/courses/${courseId}/preassessment/submit`
+        : '/api/v1/placement-test/submit';
       const result = await authClient.authenticatedFetch(
-        '/api/v1/placement-test/submit',
+        submitUrl,
         {
           method: 'POST',
           body: JSON.stringify({
