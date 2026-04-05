@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -16,10 +16,13 @@ if TYPE_CHECKING:
 
 class CoursePreAssessment(Base):
     __tablename__ = "course_preassessments"
+    __table_args__ = (
+        UniqueConstraint("course_id", "language", name="uq_course_preassessments_course_language"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     course_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("courses.id", ondelete="CASCADE"), unique=True, index=True
+        ForeignKey("courses.id", ondelete="CASCADE"), index=True
     )
     language: Mapped[str] = mapped_column(String(2))
     questions: Mapped[list] = mapped_column(JSONB)
@@ -31,4 +34,4 @@ class CoursePreAssessment(Base):
     validated: Mapped[bool] = mapped_column(Boolean, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    course: Mapped[Course] = relationship(back_populates="preassessment")
+    course: Mapped[Course] = relationship(back_populates="preassessments")

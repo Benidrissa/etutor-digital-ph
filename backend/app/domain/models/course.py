@@ -48,8 +48,8 @@ class Course(Base):
     taxonomy_categories: Mapped[list[TaxonomyCategory]] = relationship(
         secondary="course_taxonomy", lazy="selectin"
     )
-    preassessment: Mapped[CoursePreAssessment | None] = relationship(
-        back_populates="course", uselist=False
+    preassessments: Mapped[list[CoursePreAssessment]] = relationship(
+        back_populates="course"
     )
 
 

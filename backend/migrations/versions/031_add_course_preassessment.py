@@ -40,7 +40,7 @@ ANSWER_KEY = {
     "17": "c",
     "18": "b",
     "19": "b",
-    "20": "d",
+    "20": "b",
 }
 
 QUESTION_LEVELS = {
@@ -390,7 +390,7 @@ FR_QUESTIONS = [
             {"id": "c", "text": "Un vote à la majorité des États membres de l'OMS"},
             {"id": "d", "text": "Le Conseil de sécurité de l'ONU"},
         ],
-        "correct_answer": "d",
+        "correct_answer": "b",
     },
 ]
 
@@ -674,7 +674,7 @@ EN_QUESTIONS = [
             {"id": "c", "text": "A majority vote of WHO member states"},
             {"id": "d", "text": "The UN Security Council"},
         ],
-        "correct_answer": "d",
+        "correct_answer": "b",
     },
 ]
 
@@ -711,7 +711,7 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["course_id"], ["courses.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("course_id"),
+        sa.UniqueConstraint("course_id", "language", name="uq_course_preassessments_course_language"),
     )
     op.create_index("ix_course_preassessments_course_id", "course_preassessments", ["course_id"])
 
@@ -763,6 +763,27 @@ def upgrade() -> None:
                 "course_id": str(course_id),
                 "language": "fr",
                 "questions": json.dumps(FR_QUESTIONS),
+                "answer_key": json.dumps(ANSWER_KEY),
+                "question_levels": json.dumps(QUESTION_LEVELS),
+                "domains": json.dumps(DOMAINS),
+                "generated_by": "manual",
+            },
+        )
+
+        preassessment_id_en = str(uuid.uuid4())
+        bind.execute(
+            sa.text(
+                "INSERT INTO course_preassessments "
+                "(id, course_id, language, questions, answer_key, question_levels, domains, "
+                "generated_by, validated, created_at) "
+                "VALUES (:id, :course_id, :language, :questions::jsonb, :answer_key::jsonb, "
+                ":question_levels::jsonb, :domains::jsonb, :generated_by, false, now())"
+            ),
+            {
+                "id": preassessment_id_en,
+                "course_id": str(course_id),
+                "language": "en",
+                "questions": json.dumps(EN_QUESTIONS),
                 "answer_key": json.dumps(ANSWER_KEY),
                 "question_levels": json.dumps(QUESTION_LEVELS),
                 "domains": json.dumps(DOMAINS),
