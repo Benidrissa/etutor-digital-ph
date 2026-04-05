@@ -1,12 +1,12 @@
 ---
 name: testing
-description: Write tests for the SantePublique AOF learning platform. Use when creating unit tests, integration tests, or E2E tests. Enforces pytest-asyncio patterns for the FastAPI backend, React Testing Library for frontend, and Playwright for E2E.
+description: Write tests for the Sira learning platform. Use when creating unit tests, integration tests, or E2E tests. Enforces pytest-asyncio patterns for the FastAPI backend, React Testing Library for frontend, and Playwright for E2E.
 user-invocable: true
 ---
 
-# SantePublique AOF Testing Skill
+# Sira Testing Skill
 
-Write comprehensive tests for the SantePublique AOF backend (FastAPI) and frontend (Next.js/React). Tests must cover learning workflows, AI/RAG content generation, offline behavior, and **mobile-first UX** — this platform targets mid-range Android phones on 2G/3G in West Africa.
+Write comprehensive tests for the Sira backend (FastAPI) and frontend (Next.js/React). Tests must cover learning workflows, AI/RAG content generation, offline behavior, and **mobile-first UX** — this platform targets mid-range Android phones on 2G/3G in West Africa.
 
 ## Backend testing (Python/pytest)
 

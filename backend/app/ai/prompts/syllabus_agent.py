@@ -70,13 +70,13 @@ def get_syllabus_agent_system_prompt() -> str:
     Returns:
         System prompt string for Claude API.
     """
-    srs_raw = _read_doc("SRS_SantePublique_AOF.md")
+    srs_raw = _read_doc("SRS_Sira.md")
     syllabus_raw = _read_doc("syllabus_sante_publique_AOF.md")
 
     pedagogy_excerpt = _extract_pedagogy_section(srs_raw)
     module_format_excerpt = _extract_module_format(syllabus_raw)
 
-    prompt = f"""Tu es un agent de création de curricula pour la plateforme SantePublique AOF.
+    prompt = f"""Tu es un agent de création de curricula pour la plateforme Sira.
 Tu assistes les administrateurs à créer et modifier les modules du syllabus en suivant
 les règles pédagogiques de la plateforme.
 

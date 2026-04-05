@@ -1,12 +1,12 @@
 ---
 name: nextjs-app-router
-description: Build Next.js 15 App Router pages and layouts for the SantePublique AOF learning platform. Use when creating pages, layouts, route handlers, or configuring Next.js features. Enforces server/client component patterns, next-intl, Tailwind, PWA, and mobile-first design.
+description: Build Next.js 15 App Router pages and layouts for the Sira learning platform. Use when creating pages, layouts, route handlers, or configuring Next.js features. Enforces server/client component patterns, next-intl, Tailwind, PWA, and mobile-first design.
 user-invocable: true
 ---
 
-# SantePublique AOF Next.js App Router Guide
+# Sira Next.js App Router Guide
 
-Build pages and layouts for SantePublique AOF using Next.js 15 App Router conventions.
+Build pages and layouts for Sira using Next.js 15 App Router conventions.
 
 ## Application structure
 
