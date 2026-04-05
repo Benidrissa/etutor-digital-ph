@@ -176,6 +176,7 @@ class TutorToolExecutor:
         user_level: int,
         user_language: str,
         learner_memory_service: LearnerMemoryService | None = None,
+        course_filter: list[uuid.UUID] | None = None,
     ):
         self.retriever = retriever
         self.anthropic = anthropic_client
@@ -183,6 +184,7 @@ class TutorToolExecutor:
         self.user_level = user_level
         self.user_language = user_language
         self.learner_memory_service = learner_memory_service or LearnerMemoryService()
+        self.course_filter = course_filter
 
     async def execute(
         self,
@@ -233,10 +235,36 @@ class TutorToolExecutor:
             )
             return json.dumps({"error": f"Tool execution failed: {str(e)}"})
 
+    async def _aggregate_books_sources(
+        self, session: AsyncSession
+    ) -> dict[str, Any] | None:
+        """Aggregate books_sources from all modules of the filtered courses."""
+        if not self.course_filter:
+            return None
+
+        result = await session.execute(
+            select(Module).where(Module.course_id.in_(self.course_filter))
+        )
+        modules = result.scalars().all()
+
+        merged: dict[str, Any] = {}
+        for module in modules:
+            if module.books_sources:
+                for key, val in module.books_sources.items():
+                    if key not in merged:
+                        merged[key] = val
+                    elif isinstance(val, list) and isinstance(merged[key], list):
+                        existing_set = set(str(v) for v in merged[key])
+                        for item in val:
+                            if str(item) not in existing_set:
+                                merged[key].append(item)
+                                existing_set.add(str(item))
+        return merged if merged else None
+
     async def _search_knowledge_base(
         self, tool_input: dict[str, Any], session: AsyncSession
     ) -> str:
-        """Execute search_knowledge_base tool."""
+        """Execute search_knowledge_base tool with course_filter scoping."""
         query = tool_input["query"]
         module_id_str = tool_input.get("module_id")
 
@@ -250,6 +278,9 @@ class TutorToolExecutor:
             except (ValueError, TypeError):
                 pass
 
+        if books_sources is None and self.course_filter:
+            books_sources = await self._aggregate_books_sources(session)
+
         results = await self.retriever.search_for_module(
             query=query,
             user_level=self.user_level,
@@ -258,6 +289,18 @@ class TutorToolExecutor:
             top_k=5,
             session=session,
         )
+
+        out_of_scope_fallback = False
+        if not results and self.course_filter:
+            results = await self.retriever.search_for_module(
+                query=query,
+                user_level=self.user_level,
+                user_language=self.user_language,
+                books_sources=None,
+                top_k=5,
+                session=session,
+            )
+            out_of_scope_fallback = True
 
         chunks = []
         chunk_ids = []
@@ -303,16 +346,20 @@ class TutorToolExecutor:
             query=query,
             results_count=len(chunks),
             figures_count=len(available_figures),
+            out_of_scope_fallback=out_of_scope_fallback,
             user_id=str(self.user_id),
         )
-        return json.dumps(
-            {
-                "query": query,
-                "results": chunks,
-                "count": len(chunks),
-                "available_figures": available_figures,
-            }
-        )
+        payload: dict[str, Any] = {
+            "query": query,
+            "results": chunks,
+            "count": len(chunks),
+            "available_figures": available_figures,
+        }
+        if out_of_scope_fallback:
+            payload["out_of_scope_notice"] = (
+                "Ce contenu provient d'un cours auquel vous n'êtes pas inscrit."
+            )
+        return json.dumps(payload)
 
     async def _get_learner_progress(self, tool_input: dict[str, Any], session: AsyncSession) -> str:
         """Execute get_learner_progress tool."""

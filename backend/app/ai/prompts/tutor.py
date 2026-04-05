@@ -20,6 +20,7 @@ class TutorContext:
     previous_session_context: str | None = None  # Compacted context from prior session
     progress_snapshot: str | None = None  # Short learner progress summary
     tutor_mode: str = "socratic"  # "socratic" (guided questions) or "explanatory" (direct answers)
+    course_filter_names: list[str] | None = None  # Human-readable names of filtered courses
 
 
 def get_socratic_system_prompt(context: TutorContext, rag_chunks: list[dict[str, Any]]) -> str:
@@ -61,7 +62,7 @@ def get_socratic_system_prompt(context: TutorContext, rag_chunks: list[dict[str,
 - Pays: {country_context}
 - Module actuel: {_format_current_module(context)}
 - Mode: {"Socratique (guidage par questions)" if context.tutor_mode == "socratic" else "Explicatif (réponses directes)"}
-{_format_progress_section(context.progress_snapshot)}{_format_memory_section(context.learner_memory)}{_format_previous_session_section(context.previous_session_context)}
+{_format_progress_section(context.progress_snapshot)}{_format_memory_section(context.learner_memory)}{_format_previous_session_section(context.previous_session_context)}{_format_course_filter_section(context.course_filter_names)}
 
 {pedagogical_section}
 
@@ -178,6 +179,19 @@ une fois qu'on aura exploré cette idée ensemble ?"
 Réponds maintenant dans cette approche socratique stricte."""
 
     return prompt
+
+
+def _format_course_filter_section(course_filter_names: list[str] | None) -> str:
+    """Format the course filter as a PÉRIMÈTRE DE RÉPONSE section."""
+    if not course_filter_names:
+        return ""
+    course_list = ", ".join(course_filter_names)
+    return f"""
+## PÉRIMÈTRE DE RÉPONSE
+L'apprenant a limité cette conversation aux cours suivants: {course_list}
+- Réponds UNIQUEMENT avec du contenu pertinent à ces cours
+- Si la question sort du périmètre, indique poliment que le sujet sera couvert dans un autre cours
+- Cite uniquement les sources pertinentes aux cours sélectionnés"""
 
 
 def _format_memory_section(learner_memory: str | None) -> str:

@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { X, MoreVertical, Trash2, Menu, HelpCircle, BookOpen } from 'lucide-react';
+import { X, MoreVertical, Trash2, Menu, HelpCircle, BookOpen, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,6 +38,7 @@ import {
   invalidateConversationsCache,
   deleteConversation as apiDeleteConversation,
 } from '@/lib/tutor-api';
+import { getMyEnrollments, type CourseWithEnrollment } from '@/lib/api';
 
 interface ChatPanelProps {
   isOpen: boolean;
@@ -77,6 +79,9 @@ export function ChatPanel({
     }
     return 'socratic';
   });
+  const [enrolledCourses, setEnrolledCourses] = useState<CourseWithEnrollment[]>([]);
+  const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>([]);
+  const [showCourseDropdown, setShowCourseDropdown] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const isLimitReached = currentUsage >= maxDailyUsage;
@@ -91,6 +96,17 @@ export function ChatPanel({
   useEffect(() => {
     localStorage.setItem('tutorMode', tutorMode);
   }, [tutorMode]);
+
+  useEffect(() => {
+    getMyEnrollments()
+      .then((enrollments) => {
+        setEnrolledCourses(enrollments);
+        if (enrollments.length > 0) {
+          setSelectedCourseIds([enrollments[0].id]);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetchTutorStats()
@@ -197,6 +213,7 @@ export function ChatPanel({
           module_id: moduleId ?? null,
           tutor_mode: tutorMode,
           file_ids: attachedFiles.map((f) => f.fileId),
+          course_filter: selectedCourseIds.length > 0 ? selectedCourseIds : null,
         }),
       });
 
@@ -395,6 +412,90 @@ export function ChatPanel({
             </Button>
           </div>
         </div>
+
+        {/* Course Filter */}
+        {enrolledCourses.length > 0 && (
+          <div className="px-3 py-2 border-b bg-background shrink-0">
+            <div className="relative">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 w-full justify-between text-xs font-normal"
+                onClick={() => setShowCourseDropdown((v) => !v)}
+                aria-label={t('courseFilter.label')}
+              >
+                <span className="truncate text-left">
+                  {selectedCourseIds.length === 0
+                    ? t('courseFilter.allCourses')
+                    : selectedCourseIds.length === 1
+                      ? enrolledCourses.find((c) => c.id === selectedCourseIds[0])?.title_fr ?? t('courseFilter.label')
+                      : `${selectedCourseIds.length} ${t('courseFilter.label')}`}
+                </span>
+                <ChevronDown className="h-3.5 w-3.5 shrink-0 ml-1" />
+              </Button>
+              {showCourseDropdown && (
+                <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border rounded-md shadow-md">
+                  {enrolledCourses.map((course) => {
+                    const isSelected = selectedCourseIds.includes(course.id);
+                    const isDisabled = !isSelected && selectedCourseIds.length >= 2;
+                    return (
+                      <button
+                        key={course.id}
+                        className={cn(
+                          'flex items-center w-full px-3 py-2.5 text-sm text-left',
+                          'min-h-[44px]',
+                          isDisabled
+                            ? 'opacity-40 cursor-not-allowed'
+                            : 'hover:bg-muted cursor-pointer',
+                          isSelected && 'bg-muted font-medium'
+                        )}
+                        disabled={isDisabled}
+                        onClick={() => {
+                          if (isDisabled) return;
+                          setSelectedCourseIds((prev) =>
+                            isSelected
+                              ? prev.filter((id) => id !== course.id)
+                              : [...prev, course.id]
+                          );
+                          setShowCourseDropdown(false);
+                        }}
+                      >
+                        <span className="flex-1 truncate">{course.title_fr}</span>
+                        {isSelected && (
+                          <span className="ml-2 text-primary text-xs">✓</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {selectedCourseIds.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {selectedCourseIds.map((id) => {
+                  const course = enrolledCourses.find((c) => c.id === id);
+                  if (!course) return null;
+                  return (
+                    <Badge
+                      key={id}
+                      variant="secondary"
+                      className="text-xs gap-1 pr-1"
+                    >
+                      <span className="max-w-[120px] truncate">{course.title_fr}</span>
+                      <button
+                        className="ml-0.5 hover:text-destructive min-w-[16px] min-h-[16px] flex items-center justify-center"
+                        onClick={() => setSelectedCourseIds((prev) => prev.filter((i) => i !== id))}
+                        aria-label={`Remove ${course.title_fr}`}
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </Badge>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Usage Counter */}
         <UsageCounter

@@ -26,6 +26,7 @@ class TutorConversation(Base):
     compacted_context: Mapped[str | None] = mapped_column(Text, nullable=True)
     compacted_at: Mapped[datetime | None] = mapped_column(nullable=True)
     message_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    course_filter: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     user: Mapped[User] = relationship(back_populates="tutor_conversations")
     module: Mapped[Module] = relationship(back_populates="tutor_conversations")

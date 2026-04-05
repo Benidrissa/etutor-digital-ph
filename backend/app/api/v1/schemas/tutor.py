@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class FileUploadResponse(BaseModel):
@@ -44,6 +44,17 @@ class TutorChatRequest(BaseModel):
         description="Tutor mode: socratic (guided questions) or explanatory (direct answers)",
     )
     file_ids: list[str] = Field(default_factory=list, description="Uploaded file IDs to attach")
+    course_filter: list[UUID] | None = Field(
+        None,
+        description="Optional list of course IDs (max 2) to scope this conversation",
+    )
+
+    @field_validator("course_filter")
+    @classmethod
+    def validate_course_filter(cls, v: list[UUID] | None) -> list[UUID] | None:
+        if v is not None and len(v) > 2:
+            raise ValueError("course_filter may contain at most 2 course IDs")
+        return v
 
 
 class TutorChatResponse(BaseModel):

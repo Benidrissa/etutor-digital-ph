@@ -375,6 +375,13 @@
       "fileCard": "{name} ({size})",
       "captureCamera": "Take a photo",
       "acceptedTypes": "Images, PDF, CSV, XLSX, TXT, DOCX (max 10 MB)"
+    },
+    "courseFilter": {
+      "label": "Courses",
+      "placeholder": "Filter by course",
+      "noEnrollments": "No enrolled courses",
+      "maxReached": "Maximum 2 courses selected",
+      "allCourses": "All courses"
     }
   },
   "Flashcards": {
