@@ -372,7 +372,7 @@ export function LessonViewer({
           {/* West African Example */}
           <div className="mb-8 bg-teal-50 border-l-4 border-teal-400 p-6 rounded-r-lg">
             <div className="prose prose-teal max-w-none">
-              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{content.aof_example}</ReactMarkdown>
+              {renderContentWithImages(content.aof_example)}
             </div>
           </div>
 
