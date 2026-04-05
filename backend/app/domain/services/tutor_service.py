@@ -26,6 +26,7 @@ from app.domain.models.module import Module
 from app.domain.models.user import User
 from app.domain.services.learner_memory_service import LearnerMemoryService
 from app.domain.services.platform_settings_service import SettingsCache
+from app.domain.services.subscription_service import SubscriptionService
 from app.domain.services.tutor_tools import TOOL_DEFINITIONS, TutorToolExecutor
 from app.infrastructure.config.settings import get_settings
 
@@ -201,7 +202,6 @@ class TutorService:
         self.learner_memory_service = learner_memory_service or LearnerMemoryService()
         self.session_manager = SessionManager(self.learner_memory_service)
         self.settings = get_settings()
-        self.daily_message_limit = 50
 
     async def send_message(
         self,
@@ -237,8 +237,10 @@ class TutorService:
         if isinstance(user_id, str):
             user_id = uuid.UUID(user_id)
 
+        subscription = await SubscriptionService().get_active_subscription(user_id, session)
+        effective_limit = subscription.daily_message_limit if subscription else 5
         messages_used = await self._check_daily_limit(user_id, session)
-        if messages_used >= self.daily_message_limit:
+        if messages_used >= effective_limit:
             yield {
                 "type": "error",
                 "data": {
@@ -540,7 +542,7 @@ class TutorService:
             yield {
                 "type": "finished",
                 "data": {
-                    "remaining_messages": self.daily_message_limit - messages_used - 1,
+                    "remaining_messages": effective_limit - messages_used - 1,
                     "conversation_id": str(conversation.id),
                     "tool_calls_made": tool_call_count,
                 },
@@ -701,6 +703,9 @@ class TutorService:
 
         daily_messages = await self._check_daily_limit(user_id, session)
 
+        subscription = await SubscriptionService().get_active_subscription(user_id, session)
+        limit = subscription.daily_message_limit if subscription else 5
+
         count_query = select(func.count(TutorConversation.id)).where(
             TutorConversation.user_id == user_id
         )
@@ -711,7 +716,7 @@ class TutorService:
 
         return {
             "daily_messages_used": daily_messages,
-            "daily_messages_limit": self.daily_message_limit,
+            "daily_messages_limit": limit,
             "total_conversations": total_conversations,
             "most_discussed_topics": most_discussed_topics,
         }
