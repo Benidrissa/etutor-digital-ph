@@ -30,6 +30,7 @@ from app.domain.models.content import GeneratedContent
 from app.domain.models.course import Course
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
+from app.domain.models.source_image import SourceImage
 from app.domain.services.platform_settings_service import SettingsCache
 
 logger = structlog.get_logger()
@@ -232,7 +233,9 @@ class LessonGenerationService:
                 yield StreamingEvent(event="chunk", data=chunk)
 
             # Post-process to extract {{source_image:UUID}} markers
-            source_image_refs = self._extract_source_image_refs(accumulated_content, linked_images)
+            source_image_refs = await self._extract_source_image_refs(
+                accumulated_content, linked_images, session
+            )
 
             # Parse and structure the generated content
             lesson_content = await self._parse_lesson_content(accumulated_content, rag_chunks)
@@ -288,6 +291,23 @@ class LessonGenerationService:
         if cached_content:
             raw_refs = cached_content.content.get("source_image_refs", [])
             source_image_refs = [SourceImageRef(**ref) for ref in raw_refs if isinstance(ref, dict)]
+
+            content_dict = cached_content.content
+            all_text_fields = " ".join(
+                str(content_dict.get(f, "") or "")
+                for f in ("introduction", "aof_example", "synthesis")
+            )
+            for concept in content_dict.get("concepts", []):
+                all_text_fields += " " + str(concept or "")
+
+            existing_ids = {ref.id for ref in source_image_refs}
+            if re.search(r"\{\{source_image:[0-9a-f-]{36}\}\}", all_text_fields, re.IGNORECASE):
+                extra_refs = await self._extract_source_image_refs(all_text_fields, {}, session)
+                for ref in extra_refs:
+                    if ref.id not in existing_ids:
+                        source_image_refs.append(ref)
+                        existing_ids.add(ref.id)
+
             return LessonResponse(
                 id=cached_content.id,
                 module_id=cached_content.module_id,
@@ -379,7 +399,9 @@ class LessonGenerationService:
                 content_text += block.text
 
         # Post-process to extract {{source_image:UUID}} markers
-        source_image_refs = self._extract_source_image_refs(content_text, linked_images)
+        source_image_refs = await self._extract_source_image_refs(
+            content_text, linked_images, session
+        )
 
         # Parse structured content
         lesson_content = await self._parse_lesson_content(content_text, rag_chunks)
@@ -478,12 +500,21 @@ class LessonGenerationService:
         )
 
     @staticmethod
-    def _extract_source_image_refs(content_text: str, linked_images: dict) -> list[SourceImageRef]:
+    async def _extract_source_image_refs(
+        content_text: str,
+        linked_images: dict,
+        session: AsyncSession | None = None,
+    ) -> list[SourceImageRef]:
         """Extract {{source_image:UUID}} markers from Claude output and resolve to SourceImageRef.
 
+        First resolves UUIDs from the pre-loaded linked_images dict; for any UUID not found
+        there (e.g. Claude referenced an image that wasn't directly linked to a RAG chunk),
+        falls back to a DB query on the source_images table.
+
         Args:
-            content_text: Raw text output from Claude
+            content_text: Raw text output from Claude (or assembled content dict text)
             linked_images: Mapping of chunk_id -> list of image metadata dicts
+            session: Database session for fallback DB lookups
 
         Returns:
             Deduplicated list of SourceImageRef for UUIDs found in content_text
@@ -491,12 +522,32 @@ class LessonGenerationService:
         pattern = re.compile(r"\{\{source_image:([0-9a-f-]{36})\}\}", re.IGNORECASE)
         found_ids = list(dict.fromkeys(pattern.findall(content_text)))
 
+        if not found_ids:
+            return []
+
         all_images: dict[str, dict] = {}
         for img_list in linked_images.values():
             for img in img_list:
                 img_id = img.get("id", "")
                 if img_id and img_id not in all_images:
                     all_images[img_id] = img
+
+        missing_ids = [img_id for img_id in found_ids if img_id not in all_images]
+        if missing_ids and session is not None:
+            try:
+                missing_uuids = [uuid.UUID(img_id) for img_id in missing_ids]
+                db_result = await session.execute(
+                    select(SourceImage).where(SourceImage.id.in_(missing_uuids))
+                )
+                for db_img in db_result.scalars().all():
+                    img_id = str(db_img.id)
+                    all_images[img_id] = db_img.to_meta_dict()
+            except Exception as exc:
+                logger.warning(
+                    "DB fallback for source_image_refs failed",
+                    missing_ids=missing_ids,
+                    error=str(exc),
+                )
 
         refs = []
         for img_id in found_ids:
@@ -507,11 +558,19 @@ class LessonGenerationService:
                         id=img_id,
                         figure_number=img.get("figure_number"),
                         caption=img.get("caption"),
+                        caption_fr=img.get("caption"),
+                        caption_en=img.get("caption"),
+                        attribution=img.get("attribution"),
                         image_type=img.get("image_type") or "unknown",
                         storage_url=img.get("storage_url"),
                         alt_text_fr=img.get("alt_text_fr"),
                         alt_text_en=img.get("alt_text_en"),
                     )
+                )
+            else:
+                logger.warning(
+                    "source_image UUID in content not found in DB",
+                    image_id=img_id,
                 )
         return refs
 

@@ -218,32 +218,32 @@ class TestExtractSourceImageRefs:
         images = [_make_image_meta(img_id=uuid.UUID(i)) for i in img_ids]
         return {cid: images}
 
-    def test_no_markers_returns_empty(self):
-        result = LessonGenerationService._extract_source_image_refs("No markers here.", {})
+    async def test_no_markers_returns_empty(self):
+        result = await LessonGenerationService._extract_source_image_refs("No markers here.", {})
         assert result == []
 
-    def test_single_marker_resolved(self):
+    async def test_single_marker_resolved(self):
         img_id = str(uuid.uuid4())
         text = f"See figure {{{{source_image:{img_id}}}}}"
         linked = {uuid.uuid4(): [_make_image_meta(img_id=uuid.UUID(img_id))]}
-        result = LessonGenerationService._extract_source_image_refs(text, linked)
+        result = await LessonGenerationService._extract_source_image_refs(text, linked)
         assert len(result) == 1
         assert result[0].id == img_id
 
-    def test_duplicate_markers_deduplicated(self):
+    async def test_duplicate_markers_deduplicated(self):
         img_id = str(uuid.uuid4())
         text = f"Figure {{{{source_image:{img_id}}}}} and again {{{{source_image:{img_id}}}}}"
         linked = {uuid.uuid4(): [_make_image_meta(img_id=uuid.UUID(img_id))]}
-        result = LessonGenerationService._extract_source_image_refs(text, linked)
+        result = await LessonGenerationService._extract_source_image_refs(text, linked)
         assert len(result) == 1
 
-    def test_unknown_id_skipped(self):
+    async def test_unknown_id_skipped(self):
         random_id = str(uuid.uuid4())
         text = f"See {{{{source_image:{random_id}}}}}"
-        result = LessonGenerationService._extract_source_image_refs(text, {})
+        result = await LessonGenerationService._extract_source_image_refs(text, {})
         assert result == []
 
-    def test_multiple_distinct_markers(self):
+    async def test_multiple_distinct_markers(self):
         id1 = str(uuid.uuid4())
         id2 = str(uuid.uuid4())
         text = f"{{{{source_image:{id1}}}}} and {{{{source_image:{id2}}}}}"
@@ -254,10 +254,10 @@ class TestExtractSourceImageRefs:
                 _make_image_meta(img_id=uuid.UUID(id2)),
             ]
         }
-        result = LessonGenerationService._extract_source_image_refs(text, linked)
+        result = await LessonGenerationService._extract_source_image_refs(text, linked)
         assert len(result) == 2
 
-    def test_ref_fields_populated_correctly(self):
+    async def test_ref_fields_populated_correctly(self):
         img_id = str(uuid.uuid4())
         text = f"{{{{source_image:{img_id}}}}}"
         img_meta = _make_image_meta(
@@ -270,7 +270,7 @@ class TestExtractSourceImageRefs:
             alt_text_en="Diag EN",
         )
         linked = {uuid.uuid4(): [img_meta]}
-        result = LessonGenerationService._extract_source_image_refs(text, linked)
+        result = await LessonGenerationService._extract_source_image_refs(text, linked)
         assert result[0].figure_number == "3.1"
         assert result[0].caption == "A diagram"
         assert result[0].image_type == "diagram"

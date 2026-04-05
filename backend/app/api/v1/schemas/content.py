@@ -34,7 +34,10 @@ class SourceImageRef(BaseModel):
 
     id: str = Field(..., description="UUID of the source image")
     figure_number: str | None = Field(None, description="Figure number e.g. '1.3'")
-    caption: str | None = Field(None, description="Figure caption text")
+    caption: str | None = Field(None, description="Figure caption text (fallback)")
+    caption_fr: str | None = Field(None, description="French caption text")
+    caption_en: str | None = Field(None, description="English caption text")
+    attribution: str | None = Field(None, description="Source attribution text")
     image_type: str = Field(
         ..., description="Image type: diagram, photo, chart, formula, icon, unknown"
     )
