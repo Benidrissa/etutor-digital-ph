@@ -644,6 +644,12 @@
     "imageViewFullscreen": "Voir en plein écran",
     "imageCloseFullscreen": "Fermer le plein écran"
   },
+  "SourceImage": {
+    "figure": "Figure",
+    "defaultAlt": "Image source tirée du matériel de référence",
+    "viewFullscreen": "Voir l'image en plein écran",
+    "closeFullscreen": "Fermer le plein écran"
+  },
   "ModuleMediaPlayer": {
     "listenToSummary": "Écouter le résumé",
     "watchSummary": "Regarder le résumé",
