@@ -107,11 +107,10 @@ export function OnboardingFlow() {
             setShowChoice(true);
           }
         } else {
-          router.push('/dashboard');
+          router.push('/courses');
         }
       } catch {
-        // If no enrolled course or endpoint unavailable, fall back to legacy placement test
-        router.push('/placement-test');
+        router.push('/courses');
       }
     } catch (err) {
       console.error('Onboarding completion failed:', err);

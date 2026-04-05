@@ -470,7 +470,7 @@ export function ProfileClient() {
           <CardDescription>{t("placementTestDescription")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <Link href="/placement-test" className={buttonVariants({ variant: "default" })}>
+          <Link href="/courses" className={buttonVariants({ variant: "default" })}>
             {t("retakePlacementTest")}
           </Link>
         </CardContent>
