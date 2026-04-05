@@ -36,52 +36,6 @@ MODULES_BY_LEVEL: dict[int, list[int]] = {
     4: [13, 14, 15],
 }
 
-QUESTION_LEVELS: dict[str, int] = {
-    "1": 1,
-    "2": 1,
-    "3": 1,
-    "4": 1,
-    "5": 1,
-    "6": 2,
-    "7": 2,
-    "8": 2,
-    "9": 2,
-    "10": 2,
-    "11": 3,
-    "12": 3,
-    "13": 3,
-    "14": 3,
-    "15": 3,
-    "16": 4,
-    "17": 4,
-    "18": 4,
-    "19": 4,
-    "20": 4,
-}
-
-ANSWER_KEY: dict[str, str] = {
-    "1": "c",
-    "2": "a",
-    "3": "b",
-    "4": "b",
-    "5": "b",
-    "6": "b",
-    "7": "c",
-    "8": "b",
-    "9": "c",
-    "10": "b",
-    "11": "b",
-    "12": "a",
-    "13": "b",
-    "14": "d",
-    "15": "a",
-    "16": "b",
-    "17": "c",
-    "18": "b",
-    "19": "b",
-    "20": "d",
-}
-
 
 class PlacementTestResult(BaseModel):
     """Placement test scoring result."""
@@ -164,11 +118,19 @@ class PlacementService:
         if not answers:
             raise ValueError("No answers provided")
 
-        answer_key: dict[str, str] = ANSWER_KEY
-        question_levels: dict[str, int] = QUESTION_LEVELS
+        answer_key: dict[str, str] = {}
+        question_levels: dict[str, int] = {}
 
-        if course_id is not None:
-            preassessment = await self._load_course_preassessment(course_id, language, db)
+        resolved_course_id = course_id
+        if resolved_course_id is None:
+            default_slug = SettingsCache.instance().get("default-course-slug", "sante-publique-aof")
+            course_result = await db.execute(select(Course).where(Course.slug == default_slug))
+            default_course = course_result.scalar_one_or_none()
+            if default_course is not None:
+                resolved_course_id = default_course.id
+
+        if resolved_course_id is not None:
+            preassessment = await self._load_course_preassessment(resolved_course_id, language, db)
             if preassessment is not None:
                 answer_key = {str(k): str(v) for k, v in preassessment.answer_key.items()}
                 question_levels = {str(k): int(v) for k, v in preassessment.question_levels.items()}

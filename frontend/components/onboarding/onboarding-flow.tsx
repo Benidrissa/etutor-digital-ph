@@ -74,8 +74,7 @@ export function OnboardingFlow() {
         current_level: data.level,
       });
       
-      // Redirect to diagnostic assessment
-      router.push('/placement-test');
+      router.push('/courses');
     } catch (err) {
       console.error('Onboarding completion failed:', err);
     }
