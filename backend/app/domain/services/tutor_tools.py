@@ -235,9 +235,7 @@ class TutorToolExecutor:
             )
             return json.dumps({"error": f"Tool execution failed: {str(e)}"})
 
-    async def _aggregate_books_sources(
-        self, session: AsyncSession
-    ) -> dict[str, Any] | None:
+    async def _aggregate_books_sources(self, session: AsyncSession) -> dict[str, Any] | None:
         """Aggregate books_sources from all modules of the filtered courses."""
         if not self.course_filter:
             return None

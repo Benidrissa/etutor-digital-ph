@@ -755,9 +755,7 @@ class TutorService:
         """Return human-readable course names for the given filter IDs."""
         if not course_filter:
             return []
-        result = await session.execute(
-            select(Course).where(Course.id.in_(course_filter))
-        )
+        result = await session.execute(select(Course).where(Course.id.in_(course_filter)))
         courses = result.scalars().all()
         names = []
         for c in courses:
