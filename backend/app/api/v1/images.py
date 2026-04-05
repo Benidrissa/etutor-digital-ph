@@ -9,7 +9,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db_session
-from app.api.deps_local_auth import AuthenticatedUser, get_current_user
 from app.api.v1.schemas.images import (
     ImageStatus,
     ImageStatusResponse,
@@ -90,7 +89,6 @@ async def get_lesson_images(
     lesson_id: UUID,
     lang: str = "fr",
     db: AsyncSession = Depends(get_db_session),
-    _current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> LessonImagesListResponse:
     """
     Return all images for a lesson with their generation status and localized alt_text.
@@ -157,7 +155,6 @@ async def get_image_status(
     image_id: UUID,
     request: Request,
     db: AsyncSession = Depends(get_db_session),
-    _current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> ImageStatusResponse:
     """
     Lightweight polling endpoint for individual image generation status.
@@ -218,7 +215,6 @@ async def get_image_status(
 async def get_image_data(
     image_id: UUID,
     db: AsyncSession = Depends(get_db_session),
-    _current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> Response:
     """
     Serve the WebP image for a lesson illustration.
