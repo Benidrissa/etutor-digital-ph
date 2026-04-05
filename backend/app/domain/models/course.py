@@ -12,6 +12,7 @@ from app.domain.models.base import Base
 
 if TYPE_CHECKING:
     from app.domain.models.module import Module
+    from app.domain.models.preassessment import CoursePreAssessment
     from app.domain.models.taxonomy import TaxonomyCategory
 
 
@@ -37,6 +38,8 @@ class Course(Base):
     rag_collection_id: Mapped[str | None] = mapped_column(String)
     indexation_task_id: Mapped[str | None] = mapped_column(String, nullable=True)
     syllabus_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    preassessment_enabled: Mapped[bool] = mapped_column(server_default="false")
+    preassessment_mandatory: Mapped[bool] = mapped_column(server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -44,6 +47,9 @@ class Course(Base):
     enrollments: Mapped[list[UserCourseEnrollment]] = relationship(back_populates="course")
     taxonomy_categories: Mapped[list[TaxonomyCategory]] = relationship(
         secondary="course_taxonomy", lazy="selectin"
+    )
+    preassessments: Mapped[list[CoursePreAssessment]] = relationship(
+        back_populates="course"
     )
 
 
