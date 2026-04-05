@@ -5,6 +5,7 @@ import { routing } from "@/i18n/routing";
 import { QueryProvider } from "@/lib/query-provider";
 import { SettingsProvider } from "@/lib/settings-context";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
+import { PostHogProvider } from "@/lib/posthog-provider";
 
 export default async function LocaleLayout({
   children,
@@ -23,12 +24,14 @@ export default async function LocaleLayout({
 
   return (
     <NextIntlClientProvider messages={messages}>
-      <QueryProvider>
-        <SettingsProvider>
-          {children}
-          <InstallPrompt />
-        </SettingsProvider>
-      </QueryProvider>
+      <PostHogProvider>
+        <QueryProvider>
+          <SettingsProvider>
+            {children}
+            <InstallPrompt />
+          </SettingsProvider>
+        </QueryProvider>
+      </PostHogProvider>
     </NextIntlClientProvider>
   );
 }
