@@ -118,7 +118,11 @@ class ImageLinker:
         figure_map: dict[str, object] = {}
         for image_id, figure_number in images_result.all():
             if figure_number:
-                figure_map[_normalize_figure_number(figure_number)] = image_id
+                # Extract just the number from "Figure 1.2" -> "1.2"
+                num_match = _FIGURE_RE.search(figure_number)
+                raw = num_match.group(1) if num_match else figure_number
+                key = _normalize_figure_number(raw)
+                figure_map[key] = image_id
 
         existing_pairs = await self._get_existing_pairs(source, session)
 
