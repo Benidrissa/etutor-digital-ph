@@ -20,6 +20,7 @@ celery_app = Celery(
         "app.tasks.preassessment_generation",
         "app.tasks.rag_indexation",
         "app.tasks.syllabus_generation",
+        "app.tasks.subscription",
     ],
 )
 
@@ -44,6 +45,8 @@ celery_app.conf.update(
 )
 
 # Beat schedule for periodic tasks
+from celery.schedules import crontab  # noqa: E402
+
 celery_app.conf.beat_schedule = {
     "refresh-dhis2-data": {
         "task": "app.tasks.data_etl.refresh_dhis2_data",
@@ -60,6 +63,10 @@ celery_app.conf.beat_schedule = {
     "cleanup-expired-uploads": {
         "task": "app.tasks.file_cleanup.cleanup_expired_uploads",
         "schedule": 3600,  # Every hour
+    },
+    "expire-subscriptions": {
+        "task": "app.tasks.subscription.expire_subscriptions",
+        "schedule": crontab(hour=0, minute=30),
     },
 }
 
