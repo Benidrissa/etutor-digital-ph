@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
 import { X, MoreVertical, Trash2, Menu, HelpCircle, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,6 +28,7 @@ import { UsageCounter } from './usage-counter';
 import { ChatSkeleton } from './chat-skeleton';
 import { cn } from '@/lib/utils';
 import { authClient, AuthError } from '@/lib/auth';
+import { track } from '@/lib/analytics';
 import { useRouter } from 'next/navigation';
 import {
   fetchConversation,
@@ -60,6 +61,7 @@ export function ChatPanel({
   onOpenConversations,
 }: ChatPanelProps) {
   const t = useTranslations('ChatTutor');
+  const locale = useLocale();
   const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -159,6 +161,7 @@ export function ChatPanel({
 
   const handleSendMessage = async (messageContent: string, attachedFiles: import('./chat-input').AttachedFileInfo[] = []) => {
     if (isLimitReached || isLoading) return;
+    track('tutor_message_sent', { module_id: moduleId ?? '', language: locale });
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),

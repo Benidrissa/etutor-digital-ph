@@ -13,6 +13,7 @@ import type { Quiz, QuizAttemptResponse } from '@/lib/api';
 import { generateQuiz, apiFetch } from '@/lib/api';
 import { useSettings } from '@/lib/settings-context';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
+import { track } from '@/lib/analytics';
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 3 * 60 * 1000;
@@ -56,6 +57,7 @@ export function QuizContainer({
   const [error, setError] = useState<string>('');
   const [retryCount, setRetryCount] = useState(0);
   const [forceRegenerate, setForceRegenerate] = useState(false);
+  const quizStartTimeRef = useRef<number>(0);
 
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollStartRef = useRef<number>(0);
@@ -151,10 +153,19 @@ export function QuizContainer({
   }, [moduleId, unitId, language, resolvedCountry, level, retryCount, forceRegenerate]);
   
   const handleStartQuiz = () => {
+    quizStartTimeRef.current = Date.now();
+    track('quiz_started', { module_id: moduleId, level, language });
     setState('in-progress');
   };
   
   const handleQuizComplete = (quizResult: QuizAttemptResponse) => {
+    const duration = Math.round((Date.now() - quizStartTimeRef.current) / 1000);
+    track('quiz_completed', {
+      module_id: moduleId,
+      score: quizResult.score,
+      passed: quizResult.passed,
+      duration_seconds: duration,
+    });
     setResult(quizResult);
     setState('completed');
   };

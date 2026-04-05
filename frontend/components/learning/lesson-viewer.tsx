@@ -19,6 +19,7 @@ import type { SourceImageMeta } from '@/lib/api';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { useRouter } from 'next/navigation';
 import { useLocale } from 'next-intl';
+import { track } from '@/lib/analytics';
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 3 * 60 * 1000;
@@ -146,6 +147,7 @@ export function LessonViewer({
             `/api/v1/content/lessons/${moduleId}/${unitId}?language=${language}&level=${level}&country=${country}`
           );
           setLessonData(lessonRes);
+          track('lesson_viewed', { module_id: moduleId, unit_id: unitId, language });
           setIsGenerating(false);
           setIsLoading(false);
           setIsRefreshing(false);
@@ -193,6 +195,7 @@ export function LessonViewer({
           pollStatus((res as GeneratingResponse).task_id, pollStartRef.current);
         } else {
           setLessonData(res as LessonData);
+          track('lesson_viewed', { module_id: moduleId, unit_id: unitId, language });
           setIsLoading(false);
           setIsRefreshing(false);
           setForceRegenerate(false);

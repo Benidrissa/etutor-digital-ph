@@ -4,6 +4,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { track } from "@/lib/analytics";
 
 export function LocaleSwitcher() {
   const locale = useLocale();
@@ -26,7 +27,8 @@ export function LocaleSwitcher() {
     if (typeof window !== "undefined") {
       localStorage.setItem("preferred-locale", nextLocale);
     }
-    
+
+    track("language_switched", { from: locale, to: nextLocale });
     router.push(newPath);
   }
 
