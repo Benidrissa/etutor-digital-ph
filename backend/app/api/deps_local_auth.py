@@ -1,10 +1,12 @@
 """Dependencies for local JWT authentication."""
 
+import uuid
 from collections.abc import Callable
 
 import jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer
+from sqlalchemy import select
 from structlog import get_logger
 
 from ..domain.models.user import UserRole
@@ -44,32 +46,13 @@ async def verify_access_token(
     token: str = Depends(security),
     jwt_service: JWTAuthService = Depends(get_jwt_service),
 ) -> AuthenticatedUser:
-    """Verify JWT access token from Authorization header.
-
-    Args:
-        request: FastAPI request object
-        token: Bearer token from Authorization header
-        jwt_service: JWT service for token validation
-
-    Returns:
-        AuthenticatedUser instance with user claims
-
-    Raises:
-        HTTPException: 401 if token is invalid or expired
-    """
+    """Verify JWT access token from Authorization header."""
     try:
-        # Extract token from HTTPBearer
         access_token = token.credentials
-
-        # Verify and decode JWT
         payload = jwt_service.verify_access_token(access_token)
-
-        # Create authenticated user
         user = AuthenticatedUser(payload)
-
         logger.info("User authenticated via JWT", user_id=user.id, email=user.email)
         return user
-
     except jwt.ExpiredSignatureError:
         logger.warning("Expired JWT token")
         raise HTTPException(
@@ -96,31 +79,12 @@ async def verify_access_token(
 async def get_current_user(
     user: AuthenticatedUser = Depends(verify_access_token),
 ) -> AuthenticatedUser:
-    """Get current authenticated user.
-
-    This is an alias for verify_access_token for easier use in endpoints.
-
-    Args:
-        user: Authenticated user from token verification
-
-    Returns:
-        AuthenticatedUser instance
-    """
+    """Get current authenticated user."""
     return user
 
 
 def require_role(*roles: UserRole) -> Callable:
-    """Factory for role-based access control dependency.
-
-    Args:
-        *roles: Allowed roles.
-
-    Returns:
-        FastAPI dependency that validates the user's role.
-
-    Raises:
-        HTTPException: 403 if the user's role is not in the allowed list.
-    """
+    """Factory for role-based access control dependency."""
     allowed = {r.value for r in roles}
 
     async def _check_role(
@@ -145,32 +109,73 @@ def require_role(*roles: UserRole) -> Callable:
 async def get_optional_user(
     request: Request, jwt_service: JWTAuthService = Depends(get_jwt_service)
 ) -> AuthenticatedUser | None:
-    """Get current user if authenticated, None otherwise.
-
-    This dependency doesn't raise exceptions for missing/invalid tokens,
-    allowing endpoints to work for both authenticated and anonymous users.
-
-    Args:
-        request: FastAPI request object
-        jwt_service: JWT service for token validation
-
-    Returns:
-        AuthenticatedUser instance if token is valid, None otherwise
-    """
+    """Get current user if authenticated, None otherwise."""
     try:
-        # Try to get Authorization header
         auth_header = request.headers.get("authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
             return None
-
-        # Extract and verify token
-        token = auth_header[7:]  # Remove "Bearer " prefix
+        token = auth_header[7:]
         payload = jwt_service.verify_access_token(token)
-
         user = AuthenticatedUser(payload)
         logger.info("Optional user authenticated", user_id=user.id)
         return user
-
     except Exception as e:
         logger.debug("Optional authentication failed", error=str(e))
         return None
+
+
+def require_enrollment(course_id_param: str = "course_id") -> Callable:
+    """Factory for enrollment-based access control dependency.
+
+    Verifies that the authenticated user is actively enrolled in the course
+    identified by `course_id_param` in the path parameters.
+
+    Raises:
+        HTTPException: 401 if not authenticated, 403 if not enrolled.
+    """
+
+    async def _check_enrollment(
+        request: Request,
+        user: AuthenticatedUser = Depends(get_current_user),
+    ) -> AuthenticatedUser:
+        from ..domain.models.course import UserCourseEnrollment
+        from ..infrastructure.persistence.database import get_db_session
+
+        raw_id = request.path_params.get(course_id_param)
+        if not raw_id:
+            return user
+
+        try:
+            course_uuid = uuid.UUID(str(raw_id))
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid course identifier",
+            )
+
+        enrollment = None
+        async for session in get_db_session():
+            result = await session.execute(
+                select(UserCourseEnrollment).where(
+                    UserCourseEnrollment.user_id == uuid.UUID(user.id),
+                    UserCourseEnrollment.course_id == course_uuid,
+                    UserCourseEnrollment.status == "active",
+                )
+            )
+            enrollment = result.scalar_one_or_none()
+            break
+
+        if not enrollment:
+            logger.warning(
+                "Access denied - not enrolled in course",
+                user_id=user.id,
+                course_id=str(course_uuid),
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You must be enrolled in this course to access this content",
+            )
+
+        return user
+
+    return _check_enrollment

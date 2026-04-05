@@ -1218,5 +1218,13 @@
     "bloomLevel": "Niveau Bloom",
     "estimatedHours": "Durée (h)",
     "moduleNumber": "Numéro de module"
+  },
+  "AuthGuard": {
+    "loading": "Chargement..."
+  },
+  "EnrollmentGuard": {
+    "title": "Contenu non disponible",
+    "description": "Vous devez être inscrit à ce cours pour accéder à ce contenu.",
+    "cta": "Voir les cours"
   }
 }
