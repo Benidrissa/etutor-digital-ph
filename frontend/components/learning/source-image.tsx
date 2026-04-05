@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { X } from 'lucide-react';
-import Image from 'next/image';
+/* eslint-disable @next/next/no-img-element */
 import type { SourceImageMeta } from '@/lib/api';
 
 interface SourceImageProps extends SourceImageMeta {
@@ -44,13 +44,10 @@ export function SourceImage({
           aria-label={t('viewFullscreen')}
           onClick={() => setIsFullscreen(true)}
         >
-          <Image
+          <img
             src={imageUrl}
             alt={altText}
-            width={768}
-            height={512}
             loading="lazy"
-            sizes="(max-width: 640px) 100vw, (max-width: 768px) 100vw, 768px"
             className={`w-full h-auto object-contain rounded-lg transition-opacity duration-300 ${
               isVisible ? 'opacity-100' : 'opacity-0'
             }`}
@@ -88,12 +85,9 @@ export function SourceImage({
             <X className="w-5 h-5" aria-hidden="true" />
           </button>
 
-          <Image
+          <img
             src={imageUrl}
             alt={altText}
-            width={768}
-            height={512}
-            sizes="(max-width: 640px) 100vw, 768px"
             className="max-w-full max-h-[80vh] object-contain rounded-lg"
             onClick={(e) => e.stopPropagation()}
           />
