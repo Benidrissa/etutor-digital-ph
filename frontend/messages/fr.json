@@ -505,6 +505,17 @@
     "title": "Évaluation Diagnostique",
     "description": "Complétez cette évaluation de 20 questions pour nous aider à déterminer votre niveau optimal de départ.",
     "instructions": "Répondez à toutes les questions du mieux que vous pouvez. Cette évaluation nous aidera à personnaliser votre parcours d'apprentissage.",
+    "courseSpecific": {
+      "title": "Pré-Évaluation du Cours",
+      "description": "Complétez cette évaluation pour {courseName} afin de déterminer votre niveau de départ.",
+      "mandatory": "Cette évaluation est obligatoire pour commencer le cours.",
+      "optional": "Passez cette évaluation pour commencer à un niveau plus avancé, ou démarrez au Niveau 1.",
+      "choiceTitle": "Évaluation Disponible",
+      "choiceDescription": "Vous pouvez passer une pré-évaluation pour déterminer votre niveau de départ dans {courseName}.",
+      "startAssessment": "Passer l'Évaluation",
+      "skipToLevel1": "Commencer au Niveau 1",
+      "skipChoiceWarning": "Commencer au Niveau 1 signifie que vous débuterez avec le contenu fondamental."
+    },
     "timeLimit": "Limite de temps : 20 minutes",
     "timeLimitSubtext": "Temps de complétion recommandé",
     "numberOfQuestions": "20 questions couvrant 4 domaines",
