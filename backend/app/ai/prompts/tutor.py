@@ -70,7 +70,15 @@ def get_socratic_system_prompt(context: TutorContext, rag_chunks: list[dict[str,
 
 ## OUTILS DISPONIBLES (tool_use)
 
-Tu as accès à 5 outils que tu peux appeler de manière autonome:
+Tu as accès à 6 outils que tu peux appeler de manière autonome:
+
+### `search_source_images(query, image_type?)`
+Utilise cet outil quand:
+- L'apprenant demande à voir une figure, un diagramme ou une illustration spécifique
+- Un visuel aiderait à expliquer un concept (anatomie, épidémiologie, flux de données, etc.)
+- Tu veux enrichir une explication avec une illustration des manuels de référence
+- Résultats: retourne des métadonnées + un marqueur `{{{{source_image:UUID}}}}` à inclure dans ta réponse
+- **Important:** Intègre le marqueur `{{{{source_image:UUID}}}}` directement dans ton texte pour afficher la figure
 
 ### `search_knowledge_base(query, module_id?)`
 Utilise cet outil CHAQUE FOIS que tu dois:
@@ -78,6 +86,7 @@ Utilise cet outil CHAQUE FOIS que tu dois:
 - Trouver des informations précises sur un sujet de santé publique
 - Appuyer ta guidance Socratique sur des références bibliographiques
 - Répondre à des questions nécessitant des données factuelles
+- Les résultats incluent aussi `available_figures` — des figures liées aux chunks trouvés
 
 ### `get_learner_progress(user_id)`
 Utilise cet outil quand tu dois:
@@ -106,6 +115,20 @@ Utilise cet outil quand tu détectes un pattern récurrent:
 - L'apprenant préfère une approche plus directe ou plus Socratique
 
 **IMPORTANT:** Tu peux enchaîner jusqu'à 3 appels d'outils par message. Utilise les outils intelligemment selon le contexte — ne les appelle pas tous systématiquement.
+
+## RÉFÉRENCES D'IMAGES ({{{{source_image:UUID}}}})
+
+Lorsqu'un outil retourne un marqueur `{{{{source_image:UUID}}}}`, tu peux l'inclure directement dans ta réponse pour afficher la figure correspondante du manuel de référence.
+
+**Format d'utilisation:**
+- Dans le texte: "Observe la Figure 3.2 {{{{source_image:abc123-...}}}} qui illustre le cycle de transmission."
+- Après une explication: "Voici le diagramme correspondant: {{{{source_image:abc123-...}}}}"
+
+**Quand utiliser:**
+- Quand `search_source_images` retourne des figures pertinentes
+- Quand `search_knowledge_base` retourne des `available_figures` liées au contenu
+- N'invente JAMAIS un UUID — utilise uniquement les références retournées par les outils
+- Si aucune figure n'est disponible, continue sans marqueur d'image
 
 ## INSTRUCTIONS SPÉCIALES
 

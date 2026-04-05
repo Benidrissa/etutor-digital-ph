@@ -22,6 +22,29 @@ logger = structlog.get_logger()
 
 TOOL_DEFINITIONS: list[ToolParam] = [
     {
+        "name": "search_source_images",
+        "description": (
+            "Search for diagrams, charts, and illustrations from reference textbooks. "
+            "Use when the learner asks about a specific figure or when a visual would help explain a concept. "
+            "Returns matching images with metadata and {{source_image:UUID}} references you can embed in responses."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "What the image should illustrate.",
+                },
+                "image_type": {
+                    "type": "string",
+                    "enum": ["diagram", "photo", "chart", "any"],
+                    "description": "Type of image to search for. Defaults to 'any'.",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
         "name": "search_knowledge_base",
         "description": (
             "Search the knowledge base (reference textbooks on public health) for relevant information. "
@@ -196,6 +219,8 @@ class TutorToolExecutor:
                 return await self._search_flashcards(tool_input, session)
             elif tool_name == "save_learner_preference":
                 return await self._save_learner_preference(tool_input, session)
+            elif tool_name == "search_source_images":
+                return await self._search_source_images(tool_input, session)
             else:
                 logger.warning("Unknown tool called", tool_name=tool_name)
                 return json.dumps({"error": f"Unknown tool: {tool_name}"})
@@ -235,6 +260,7 @@ class TutorToolExecutor:
         )
 
         chunks = []
+        chunk_ids = []
         for result in results:
             chunks.append(
                 {
@@ -245,14 +271,48 @@ class TutorToolExecutor:
                     "similarity": round(result.similarity_score, 3),
                 }
             )
+            if result.chunk.id is not None:
+                chunk_ids.append(result.chunk.id)
+
+        available_figures: list[dict[str, Any]] = []
+        if chunk_ids:
+            try:
+                linked = await self.retriever.get_linked_images(chunk_ids, session)
+                seen: set[str] = set()
+                for img_list in linked.values():
+                    for img in img_list:
+                        img_id = str(img.get("id", ""))
+                        if img_id and img_id not in seen:
+                            seen.add(img_id)
+                            available_figures.append(
+                                {
+                                    "figure_number": img.get("figure_number"),
+                                    "caption": img.get("caption"),
+                                    "image_type": img.get("image_type"),
+                                    "ref": f"{{{{source_image:{img_id}}}}}",
+                                }
+                            )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to fetch linked images for search_knowledge_base",
+                    error=str(exc),
+                )
 
         logger.info(
             "search_knowledge_base tool completed",
             query=query,
             results_count=len(chunks),
+            figures_count=len(available_figures),
             user_id=str(self.user_id),
         )
-        return json.dumps({"query": query, "results": chunks, "count": len(chunks)})
+        return json.dumps(
+            {
+                "query": query,
+                "results": chunks,
+                "count": len(chunks),
+                "available_figures": available_figures,
+            }
+        )
 
     async def _get_learner_progress(self, tool_input: dict[str, Any], session: AsyncSession) -> str:
         """Execute get_learner_progress tool."""
@@ -498,6 +558,45 @@ Respond ONLY with valid JSON in this exact format:
             user_id=str(self.user_id),
         )
         return json.dumps({"concept": concept, "flashcards": matching, "count": len(matching)})
+
+    async def _search_source_images(self, tool_input: dict[str, Any], session: AsyncSession) -> str:
+        """Execute search_source_images tool."""
+        query = tool_input["query"]
+        image_type_filter = tool_input.get("image_type", "any")
+
+        raw_results = await self.retriever.search_source_images(
+            query=query,
+            top_k=3,
+            session=session,
+        )
+
+        figures = []
+        for img in raw_results:
+            img_type = img.get("image_type", "unknown")
+            if image_type_filter != "any" and img_type != image_type_filter:
+                continue
+            img_id = str(img.get("id", ""))
+            figures.append(
+                {
+                    "figure_number": img.get("figure_number"),
+                    "caption": img.get("caption"),
+                    "image_type": img_type,
+                    "source": img.get("source"),
+                    "chapter": img.get("chapter"),
+                    "page_number": img.get("page_number"),
+                    "similarity": round(float(img.get("similarity", 0)), 3),
+                    "ref": f"{{{{source_image:{img_id}}}}}",
+                }
+            )
+
+        logger.info(
+            "search_source_images tool completed",
+            query=query,
+            image_type=image_type_filter,
+            results_count=len(figures),
+            user_id=str(self.user_id),
+        )
+        return json.dumps({"query": query, "figures": figures, "count": len(figures)})
 
     async def _save_learner_preference(
         self, tool_input: dict[str, Any], session: AsyncSession

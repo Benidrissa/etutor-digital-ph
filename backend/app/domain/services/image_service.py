@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.models.generated_image import GeneratedImage
+from app.domain.models.source_image import SourceImage, SourceImageChunk
 from app.infrastructure.config.settings import settings
 
 logger = structlog.get_logger(__name__)
@@ -77,6 +78,31 @@ class ImageGenerationService:
                     "Reused existing image",
                     reused_from=str(reusable.id),
                     lesson_id=str(lesson_id),
+                )
+                return image_record
+
+            source_img = await self._find_source_image(lesson_id, session)
+            if source_img is not None:
+                image_record.status = "ready"
+                image_record.image_url = (
+                    source_img.storage_url or f"/api/v1/source-images/{source_img.id}/data"
+                )
+                image_record.alt_text_fr = source_img.alt_text_fr or (
+                    f"Figure {source_img.figure_number}" if source_img.figure_number else concept
+                )
+                image_record.alt_text_en = source_img.alt_text_en or (
+                    f"Figure {source_img.figure_number}" if source_img.figure_number else concept
+                )
+                image_record.width = source_img.width or 512
+                image_record.format = source_img.format or "webp"
+                image_record.file_size_bytes = source_img.file_size_bytes
+                image_record.generated_at = datetime.utcnow()
+                await session.commit()
+                logger.info(
+                    "Skipping DALL-E — source image found: Figure %s",
+                    source_img.figure_number or str(source_img.id),
+                    lesson_id=str(lesson_id),
+                    source_image_id=str(source_img.id),
                 )
                 return image_record
 
@@ -156,6 +182,38 @@ class ImageGenerationService:
 
         text = message.content[0].text if message.content else ""
         return _parse_concept_response(text)
+
+    async def _find_source_image(
+        self, lesson_id: uuid.UUID, session: AsyncSession
+    ) -> SourceImage | None:
+        """Check if any source images are explicitly linked to the lesson's document chunks.
+
+        Returns the first SourceImage with image_type in ('diagram', 'chart', 'photo')
+        that is explicitly linked to a document chunk via the lesson's generated content.
+        """
+        from app.domain.models.content import GeneratedContent
+
+        lesson = await session.get(GeneratedContent, lesson_id)
+        if lesson is None or not lesson.sources_cited:
+            return None
+
+        sources = [
+            s.get("source") for s in lesson.sources_cited if isinstance(s, dict) and s.get("source")
+        ]
+        if not sources:
+            return None
+
+        result = await session.execute(
+            select(SourceImage)
+            .join(SourceImageChunk, SourceImageChunk.source_image_id == SourceImage.id)
+            .where(
+                SourceImage.source.in_(sources),
+                SourceImage.image_type.in_(["diagram", "chart", "photo"]),
+                SourceImageChunk.reference_type == "explicit",
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
 
     async def _find_reusable_image(
         self, tags: list[str], session: AsyncSession
