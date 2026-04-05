@@ -168,6 +168,9 @@ class AuthClient {
       localStorage.setItem('access_token', authResponse.access_token);
       localStorage.setItem('refresh_token', authResponse.refresh_token);
       localStorage.setItem('user', JSON.stringify(authResponse.user));
+      // Set cookie for server-side middleware auth check
+      const maxAge = authResponse.expires_in || 900;
+      document.cookie = `access_token=${authResponse.access_token}; path=/; max-age=${maxAge}; SameSite=Strict; Secure`;
     }
   }
 
@@ -179,6 +182,8 @@ class AuthClient {
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
       localStorage.removeItem('user');
+      // Clear middleware auth cookie
+      document.cookie = 'access_token=; path=/; max-age=0; SameSite=Strict; Secure';
     }
   }
 
@@ -259,6 +264,9 @@ class AuthClient {
     this.accessToken = response.access_token;
     if (typeof window !== 'undefined') {
       localStorage.setItem('access_token', response.access_token);
+      // Update middleware auth cookie
+      const maxAge = response.expires_in || 900;
+      document.cookie = `access_token=${response.access_token}; path=/; max-age=${maxAge}; SameSite=Strict; Secure`;
     }
   }
 

@@ -25,26 +25,26 @@ export default function RegisterOptionsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-4">
-            <div className="rounded-lg border p-4 space-y-3">
+            <div className="rounded-lg border p-4 space-y-3 opacity-50">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.45a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                   </svg>
                 </div>
                 <div>
-                  <h3 className="font-semibold">{t('emailVerification')}</h3>
+                  <h3 className="font-semibold text-muted-foreground">{t('emailVerification')}</h3>
                   <p className="text-sm text-muted-foreground">{t('emailVerificationDesc')}</p>
                 </div>
               </div>
-              <Link
-                href="/register-email-otp"
-                className={cn(buttonVariants({ variant: "default" }), "w-full min-h-11")}
+              <span
+                aria-disabled="true"
+                className={cn(buttonVariants({ variant: "default" }), "w-full min-h-11 pointer-events-none bg-gray-300 hover:bg-gray-300 text-gray-500")}
               >
                 {t('continueWithEmail')}
-              </Link>
+              </span>
               <div className="text-xs text-muted-foreground">
-                {t('emailVerificationBenefits')}
+                {t('comingSoon')}
               </div>
             </div>
 
