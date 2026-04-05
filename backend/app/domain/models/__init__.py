@@ -18,6 +18,7 @@ from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import PlacementTestAttempt, QuizAttempt, SummativeAssessmentAttempt
 from app.domain.models.source_image import ImageType, SourceImage, SourceImageChunk
 from app.domain.models.taxonomy import CourseTaxonomy, TaxonomyCategory
+from app.domain.models.usage_event import UsageEvent
 from app.domain.models.user import User
 
 __all__ = [
@@ -48,6 +49,7 @@ __all__ = [
     "TOTPSecret",
     "CourseTaxonomy",
     "TaxonomyCategory",
+    "UsageEvent",
     "UserCourseEnrollment",
     "UserModuleProgress",
     "User",
