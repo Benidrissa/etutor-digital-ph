@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from app.domain.models.lesson_reading import LessonReading
     from app.domain.models.progress import UserModuleProgress
     from app.domain.models.quiz import PlacementTestAttempt, QuizAttempt, SummativeAssessmentAttempt
+    from app.domain.models.subscription import Subscription, SubscriptionPayment
 
 
 class User(Base):
@@ -44,6 +45,7 @@ class User(Base):
         Enum(UserRole, name="userrole"), server_default="user", default=UserRole.user
     )
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true", default=True)
+    phone_number: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     last_active: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -71,3 +73,5 @@ class User(Base):
     credit_account: Mapped[CreditAccount | None] = relationship(
         back_populates="user", uselist=False
     )
+    subscription: Mapped[Subscription | None] = relationship(back_populates="user", uselist=False)
+    subscription_payments: Mapped[list[SubscriptionPayment]] = relationship(back_populates="user")
