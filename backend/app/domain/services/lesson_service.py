@@ -503,7 +503,7 @@ class LessonGenerationService:
     async def _extract_source_image_refs(
         content_text: str,
         linked_images: dict,
-        session: AsyncSession,
+        session: AsyncSession | None = None,
     ) -> list[SourceImageRef]:
         """Extract {{source_image:UUID}} markers from Claude output and resolve to SourceImageRef.
 
@@ -533,7 +533,7 @@ class LessonGenerationService:
                     all_images[img_id] = img
 
         missing_ids = [img_id for img_id in found_ids if img_id not in all_images]
-        if missing_ids:
+        if missing_ids and session is not None:
             try:
                 missing_uuids = [uuid.UUID(img_id) for img_id in missing_ids]
                 db_result = await session.execute(
