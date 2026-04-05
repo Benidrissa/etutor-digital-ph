@@ -146,13 +146,9 @@ class PreAssessmentGenerationService:
 
         questions, validated_sources = self._validate_and_normalize(raw_response, sources_cited)
 
-        answer_key = {
-            str(i + 1): q.get("correct_answer", "")
-            for i, q in enumerate(questions)
-        }
+        answer_key = {str(i + 1): q.get("correct_answer", "") for i, q in enumerate(questions)}
         question_levels = {
-            str(i + 1): q.get("difficulty_level", 2)
-            for i, q in enumerate(questions)
+            str(i + 1): q.get("difficulty_level", 2) for i, q in enumerate(questions)
         }
 
         existing_result = await session.execute(
