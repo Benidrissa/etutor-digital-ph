@@ -71,34 +71,37 @@ def generate_course_preassessment(self, course_id: str, language: str = "fr") ->
         engine = create_async_engine(settings.database_url, echo=False)
         async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-        self.update_state(
-            state="GENERATING",
-            meta={"step": "retrieving_rag_context", "progress": 20, "question_count": 0},
-        )
-
-        claude_service = ClaudeService()
-        embedding_service = EmbeddingService()
-        retriever = SemanticRetriever(embedding_service)
-        service = PreAssessmentGenerationService(claude_service, retriever)
-
-        async with async_session() as session:
+        try:
             self.update_state(
                 state="GENERATING",
-                meta={"step": "calling_claude", "progress": 40, "question_count": 0},
+                meta={"step": "retrieving_rag_context", "progress": 20, "question_count": 0},
             )
 
-            preassessment = await service.generate_and_store(
-                course_id=uuid.UUID(course_id),
-                language=language,
-                session=session,
-                task_id=self.request.id,
-            )
+            claude_service = ClaudeService()
+            embedding_service = EmbeddingService()
+            retriever = SemanticRetriever(embedding_service)
+            service = PreAssessmentGenerationService(claude_service, retriever)
 
-        return {
-            "status": "complete",
-            "preassessment_id": str(preassessment.id),
-            "question_count": preassessment.question_count,
-        }
+            async with async_session() as session:
+                self.update_state(
+                    state="GENERATING",
+                    meta={"step": "calling_claude", "progress": 40, "question_count": 0},
+                )
+
+                preassessment = await service.generate_and_store(
+                    course_id=uuid.UUID(course_id),
+                    language=language,
+                    session=session,
+                    task_id=self.request.id,
+                )
+
+            return {
+                "status": "complete",
+                "preassessment_id": str(preassessment.id),
+                "question_count": preassessment.question_count,
+            }
+        finally:
+            await engine.dispose()
 
     try:
         self.update_state(

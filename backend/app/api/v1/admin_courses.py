@@ -721,6 +721,25 @@ async def trigger_preassessment_generation(
 
     language = request.language if request.language in ("fr", "en") else "fr"
 
+    in_progress_result = await db.execute(
+        select(CoursePreAssessment.generation_task_id)
+        .where(
+            CoursePreAssessment.course_id == course_id,
+            CoursePreAssessment.generation_task_id.is_not(None),
+        )
+        .order_by(CoursePreAssessment.created_at.desc())
+        .limit(1)
+    )
+    existing_task_id = in_progress_result.scalar_one_or_none()
+    if existing_task_id:
+        existing_result = AsyncResult(existing_task_id)
+        if existing_result.state in ("PENDING", "STARTED", "GENERATING"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A pre-assessment generation is already in progress (task {existing_task_id}). "
+                "Wait for it to complete before dispatching a new one.",
+            )
+
     task = generate_course_preassessment.delay(str(course_id), language)
 
     logger.info(

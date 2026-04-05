@@ -146,11 +146,22 @@ class PreAssessmentGenerationService:
 
         questions, validated_sources = self._validate_and_normalize(raw_response, sources_cited)
 
+        answer_key = {
+            str(i + 1): q.get("correct_answer", "")
+            for i, q in enumerate(questions)
+        }
+        question_levels = {
+            str(i + 1): q.get("difficulty_level", 2)
+            for i, q in enumerate(questions)
+        }
+
         preassessment = CoursePreAssessment(
             id=uuid.uuid4(),
             course_id=course_id,
             language=language,
             questions=questions,
+            answer_key=answer_key,
+            question_levels=question_levels,
             question_count=len(questions),
             sources_cited=validated_sources,
             generated_by="ai",
@@ -216,7 +227,7 @@ class PreAssessmentGenerationService:
 
         normalized = []
         for i, q in enumerate(questions_raw):
-            normalized.append(self._validate_question(q, f"question {i + 1}"))
+            normalized.append(self._validate_question(q, f"question {i + 1}", i))
 
         sources = raw_response.get("sources_cited")
         if not isinstance(sources, list):
@@ -224,7 +235,7 @@ class PreAssessmentGenerationService:
 
         return normalized, sources
 
-    def _validate_question(self, question: dict, context: str) -> dict:
+    def _validate_question(self, question: dict, context: str, index: int = 0) -> dict:
         """Validate a single pre-assessment question and return normalized dict.
 
         Raises:
@@ -261,7 +272,7 @@ class PreAssessmentGenerationService:
         else:
             raise ValueError(f"{context}: correct_answer must be str or int")
 
-        question.setdefault("id", f"q{len(question)}")
+        question.setdefault("id", f"q{index + 1}")
         question.setdefault("difficulty_level", 2)
         question.setdefault("domain_tag", "")
         question.setdefault("sources_cited", [])

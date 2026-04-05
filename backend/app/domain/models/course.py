@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -38,9 +38,8 @@ class Course(Base):
     rag_collection_id: Mapped[str | None] = mapped_column(String)
     indexation_task_id: Mapped[str | None] = mapped_column(String, nullable=True)
     syllabus_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    preassessment_enabled: Mapped[bool] = mapped_column(
-        Boolean, server_default="false", nullable=False
-    )
+    preassessment_enabled: Mapped[bool] = mapped_column(server_default="false")
+    preassessment_mandatory: Mapped[bool] = mapped_column(server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -49,9 +48,7 @@ class Course(Base):
     taxonomy_categories: Mapped[list[TaxonomyCategory]] = relationship(
         secondary="course_taxonomy", lazy="selectin"
     )
-    preassessments: Mapped[list[CoursePreAssessment]] = relationship(
-        back_populates="course", cascade="all, delete-orphan"
-    )
+    preassessments: Mapped[list[CoursePreAssessment]] = relationship(back_populates="course")
 
 
 class UserCourseEnrollment(Base):
