@@ -4,7 +4,7 @@ Handles placement test scoring, level assignment, and module unlocking for new u
 Determines appropriate starting level (1-4) based on knowledge assessment spanning all levels.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -15,6 +15,7 @@ from structlog import get_logger
 
 from ..models.course import Course
 from ..models.module import Module
+from ..models.preassessment import CoursePreAssessment
 from ..models.progress import UserModuleProgress
 from ..repositories.protocols import UserRepositoryProtocol
 from .platform_settings_service import SettingsCache
@@ -116,6 +117,18 @@ class PlacementService:
             recommendations=["Continue learning at your assigned level"],
         )
 
+    async def _load_course_preassessment(
+        self, course_id: UUID, language: str, db: AsyncSession
+    ) -> CoursePreAssessment | None:
+        """Load course preassessment config from DB filtered by language."""
+        result = await db.execute(
+            select(CoursePreAssessment).where(
+                CoursePreAssessment.course_id == course_id,
+                CoursePreAssessment.language == language,
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def score_placement_test(
         self,
         user_id: UUID,
@@ -123,6 +136,8 @@ class PlacementService:
         time_taken: int,
         user_context: dict[str, Any],
         db: AsyncSession,
+        course_id: UUID | None = None,
+        language: str = "fr",
     ) -> PlacementTestResult:
         """Score placement test, assign level, and unlock modules.
 
@@ -132,6 +147,9 @@ class PlacementService:
             time_taken: Test completion time in seconds
             user_context: User background info (role, country, etc.)
             db: Database session for module unlocking
+            course_id: Optional course UUID — when provided, reads answer key and question
+                levels from the course_preassessments table and scopes module unlocking
+                to that course.
 
         Returns:
             Placement test result with assigned level
@@ -146,15 +164,24 @@ class PlacementService:
         if not answers:
             raise ValueError("No answers provided")
 
+        answer_key: dict[str, str] = ANSWER_KEY
+        question_levels: dict[str, int] = QUESTION_LEVELS
+
+        if course_id is not None:
+            preassessment = await self._load_course_preassessment(course_id, language, db)
+            if preassessment is not None:
+                answer_key = {str(k): str(v) for k, v in preassessment.answer_key.items()}
+                question_levels = {str(k): int(v) for k, v in preassessment.question_levels.items()}
+
         level_correct: dict[int, int] = {1: 0, 2: 0, 3: 0, 4: 0}
         level_total: dict[int, int] = {1: 0, 2: 0, 3: 0, 4: 0}
 
         for q_id, selected in answers.items():
-            q_level = QUESTION_LEVELS.get(q_id)
-            if q_level is None or q_id not in ANSWER_KEY:
+            q_level = question_levels.get(q_id)
+            if q_level is None or q_id not in answer_key:
                 continue
             level_total[q_level] += 1
-            if selected == ANSWER_KEY[q_id]:
+            if selected == answer_key[q_id]:
                 level_correct[q_level] += 1
 
         level_scores: dict[str, float] = {}
@@ -176,7 +203,9 @@ class PlacementService:
         await self.user_repo.update(user)
 
         try:
-            await self._unlock_modules_after_placement(user_id, assigned_level, db)
+            await self.unlock_modules_after_placement(
+                user_id, assigned_level, db, course_id=course_id
+            )
         except Exception:
             logger.exception(
                 "Module unlock failed after placement; level still assigned",
@@ -203,8 +232,12 @@ class PlacementService:
 
         return result
 
-    async def _unlock_modules_after_placement(
-        self, user_id: UUID, assigned_level: int, db: AsyncSession
+    async def unlock_modules_after_placement(
+        self,
+        user_id: UUID,
+        assigned_level: int,
+        db: AsyncSession,
+        course_id: UUID | None = None,
     ) -> None:
         """Unlock modules based on placement result.
 
@@ -216,21 +249,28 @@ class PlacementService:
             user_id: User UUID
             assigned_level: Level assigned by placement test (1-4)
             db: Database session
+            course_id: When provided, scope module unlocking to this course only.
+                When None, falls back to the default course slug.
         """
-        default_slug = SettingsCache.instance().get("default-course-slug", "sante-publique-aof")
-        course_result = await db.execute(select(Course).where(Course.slug == default_slug))
-        default_course = course_result.scalar_one_or_none()
+        resolved_course_id: UUID | None = course_id
+        if resolved_course_id is None:
+            default_slug = SettingsCache.instance().get("default-course-slug", "sante-publique-aof")
+            course_result = await db.execute(select(Course).where(Course.slug == default_slug))
+            default_course = course_result.scalar_one_or_none()
+            if default_course is None:
+                logger.warning(
+                    "Default course not found, skipping module unlock",
+                    slug=default_slug,
+                    user_id=str(user_id),
+                )
+                return
+            resolved_course_id = default_course.id
 
-        modules_query = select(Module).order_by(Module.module_number)
-        if default_course is not None:
-            modules_query = modules_query.where(Module.course_id == default_course.id)
-        else:
-            logger.warning(
-                "Default course not found, skipping module unlock",
-                slug=default_slug,
-                user_id=str(user_id),
-            )
-            return
+        modules_query = (
+            select(Module)
+            .where(Module.course_id == resolved_course_id)
+            .order_by(Module.module_number)
+        )
 
         modules_result = await db.execute(modules_query)
         all_modules = list(modules_result.scalars().all())
@@ -263,7 +303,7 @@ class PlacementService:
             if existing is not None:
                 existing.status = status
                 existing.completion_pct = completion_pct
-                existing.last_accessed = datetime.utcnow()
+                existing.last_accessed = datetime.now(UTC)
             else:
                 progress = UserModuleProgress(
                     user_id=user_id,
@@ -271,7 +311,7 @@ class PlacementService:
                     status=status,
                     completion_pct=completion_pct,
                     time_spent_minutes=0,
-                    last_accessed=datetime.utcnow(),
+                    last_accessed=datetime.now(UTC),
                 )
                 db.add(progress)
 

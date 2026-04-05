@@ -1,6 +1,7 @@
 """Placement test API schemas."""
 
 from datetime import datetime
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -76,4 +77,16 @@ class PlacementResultsHistory(BaseModel):
     )
     total_attempts: int = Field(..., description="Total number of attempts")
     can_retake_now: bool = Field(..., description="Whether user can retake right now")
+    next_retake_at: datetime | None = Field(None, description="When user can next retake")
+
+
+class CoursePreassessmentStatus(BaseModel):
+    """Status of a course-specific pre-assessment for the current user."""
+
+    course_id: UUID = Field(..., description="Course UUID")
+    enabled: bool = Field(..., description="Whether pre-assessment is enabled for this course")
+    mandatory: bool = Field(..., description="Whether pre-assessment is mandatory")
+    completed: bool = Field(..., description="Whether user has completed the pre-assessment")
+    skipped: bool = Field(..., description="Whether user has skipped the pre-assessment")
+    can_retake: bool = Field(..., description="Whether user can retake right now")
     next_retake_at: datetime | None = Field(None, description="When user can next retake")

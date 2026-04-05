@@ -1,5 +1,3 @@
-"""SQLAlchemy model for course pre-assessments."""
-
 from __future__ import annotations
 
 import uuid
@@ -36,9 +34,7 @@ class CoursePreAssessment(Base):
     validated: Mapped[bool] = mapped_column(Boolean, server_default="false")
     question_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     sources_cited: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
-    generation_task_id: Mapped[str | None] = mapped_column(
-        String(255), nullable=True
-    )
+    generation_task_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
