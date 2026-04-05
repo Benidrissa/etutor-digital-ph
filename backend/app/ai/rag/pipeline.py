@@ -253,6 +253,7 @@ class RAGPipeline:
         logger.info("Stored source images", source=source, count=stored_count)
 
         links = await linker.link_images_to_chunks(source, session)
+        await session.commit()
         logger.info("Linked images to chunks", source=source, links=links)
 
         return stored_count
