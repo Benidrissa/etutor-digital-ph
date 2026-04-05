@@ -19,7 +19,7 @@ class RateLimitMiddleware:
 
     Implements:
     - 100 requests per minute per IP (global limit)
-    - 50 tutor messages per day per user (endpoint-specific)
+    - 500 tutor messages per day per IP (DDoS guard — real per-user limit is in TutorService)
     """
 
     def __init__(self, app: ASGIApp, global_rate_limit: int = 100) -> None:
@@ -115,7 +115,7 @@ class RateLimitMiddleware:
             await self._check_tutor_rate_limit(client_ip)
 
     async def _check_tutor_rate_limit(self, client_ip: str) -> None:
-        """Check tutor message rate limit (200/day/user)."""
+        """Check IP-based tutor rate limit (500/day — DDoS guard only)."""
         user_identifier = client_ip
         cache_key = f"rate_limit:tutor:{user_identifier}"
         current_time = int(time.time())
@@ -124,7 +124,7 @@ class RateLimitMiddleware:
         try:
             message_count = await redis_client.zcount(cache_key, day_start, current_time)
 
-            if message_count >= 200:
+            if message_count >= 500:
                 logger.warning(
                     "Tutor rate limit exceeded",
                     user_identifier=user_identifier,
@@ -133,7 +133,7 @@ class RateLimitMiddleware:
                 raise _RateLimitExceeded(
                     {
                         "error": "Daily tutor message limit exceeded",
-                        "limit": 200,
+                        "limit": 500,
                         "window_hours": 24,
                         "retry_after": 86400 - (current_time % 86400),
                     }
@@ -198,9 +198,9 @@ async def get_rate_limit_status(client_ip: str, user_id: str = None) -> dict:
 
             result["tutor"] = {
                 "messages_today": tutor_count,
-                "limit": 200,
+                "limit": 500,
                 "window_hours": 24,
-                "remaining": max(0, 50 - tutor_count),
+                "remaining": max(0, 500 - tutor_count),
             }
 
         return result
