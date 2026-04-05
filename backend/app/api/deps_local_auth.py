@@ -165,7 +165,7 @@ def require_enrollment(course_id_param: str = "course_id") -> Callable:
             enrollment = result.scalar_one_or_none()
             break
 
-        if not enrollment:
+        if not enrollment and user.role not in ("admin", "expert"):
             logger.warning(
                 "Access denied - not enrolled in course",
                 user_id=user.id,
