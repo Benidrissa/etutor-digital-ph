@@ -141,7 +141,7 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
                     # Truncate: TOC + chapter intros per PDF
                     chars_per_pdf = MAX_CHARS_TOTAL // len(pdf_full_texts)
                     pdf_texts = []
-                    for name, text, toc in pdf_full_texts:
+                    for name, text, _toc in pdf_full_texts:
                         if len(text) <= chars_per_pdf:
                             pdf_texts.append(f"### {name}\n{text}")
                         else:
