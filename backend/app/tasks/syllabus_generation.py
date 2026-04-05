@@ -57,9 +57,7 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
         from app.domain.services.course_agent_service import CourseAgentService
         from app.infrastructure.config.settings import settings
 
-        engine = create_async_engine(
-            settings.database_url, echo=False, pool_size=5, max_overflow=2
-        )
+        engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
         async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
         # Phase 1: Read course metadata in its own session
