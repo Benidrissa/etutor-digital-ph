@@ -99,6 +99,15 @@ def mock_learner_memory_service():
     return service
 
 
+@pytest.fixture(autouse=True)
+def mock_subscription_service():
+    sub = MagicMock()
+    sub.daily_message_limit = 20
+    with patch("app.domain.services.tutor_service.SubscriptionService") as MockSubSvc:
+        MockSubSvc.return_value.get_active_subscription = AsyncMock(return_value=sub)
+        yield MockSubSvc
+
+
 @pytest.fixture
 def tutor_service(mock_retriever, mock_anthropic, mock_learner_memory_service):
     from app.ai.rag.embeddings import EmbeddingService
