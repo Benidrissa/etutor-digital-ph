@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
     api_v1_prefix: str = "/api/v1"
 
+    # Subscription webhook
+    subscription_webhook_secret: str = ""
+
     # Admin seeding
     admin_email: str = ""
 
