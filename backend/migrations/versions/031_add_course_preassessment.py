@@ -703,6 +703,10 @@ def upgrade() -> None:
         sa.Column("generated_by", sa.String(10), nullable=False, server_default="manual"),
         sa.Column("generated_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("validated", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column("question_count", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("sources_cited", JSONB, nullable=False, server_default="[]"),
+        sa.Column("generation_task_id", sa.String(255), nullable=True),
+        sa.Column("notes", sa.Text(), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -757,8 +761,9 @@ def upgrade() -> None:
                 "INSERT INTO course_preassessments "
                 "(id, course_id, language, questions, answer_key, question_levels, domains, "
                 "generated_by, validated, created_at) "
-                "VALUES (:id, :course_id, :language, :questions::jsonb, :answer_key::jsonb, "
-                ":question_levels::jsonb, :domains::jsonb, :generated_by, false, now())"
+                "VALUES (:id, :course_id, :language, CAST(:questions AS jsonb), "
+                "CAST(:answer_key AS jsonb), CAST(:question_levels AS jsonb), "
+                "CAST(:domains AS jsonb), :generated_by, false, now())"
             ),
             {
                 "id": preassessment_id_fr,
@@ -778,8 +783,9 @@ def upgrade() -> None:
                 "INSERT INTO course_preassessments "
                 "(id, course_id, language, questions, answer_key, question_levels, domains, "
                 "generated_by, validated, created_at) "
-                "VALUES (:id, :course_id, :language, :questions::jsonb, :answer_key::jsonb, "
-                ":question_levels::jsonb, :domains::jsonb, :generated_by, false, now())"
+                "VALUES (:id, :course_id, :language, CAST(:questions AS jsonb), "
+                "CAST(:answer_key AS jsonb), CAST(:question_levels AS jsonb), "
+                "CAST(:domains AS jsonb), :generated_by, false, now())"
             ),
             {
                 "id": preassessment_id_en,
