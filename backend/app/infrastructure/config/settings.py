@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     # Admin seeding
     admin_email: str = ""
 
+    # Subscription webhook
+    subscription_webhook_secret: str = ""
+
     # File upload settings
     upload_temp_dir: str = "/tmp/santepublique_uploads"
     upload_max_size_bytes: int = 10 * 1024 * 1024  # 10MB
