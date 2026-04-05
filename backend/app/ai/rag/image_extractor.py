@@ -262,9 +262,13 @@ class PDFImageExtractor:
             if m:
                 figure_number = m.group(0).strip()
                 caption_start = m.end()
-                rest = combined_nearby[caption_start:].strip()
+                rest = combined_nearby[caption_start:].lstrip(" .:–—-").strip()
                 if rest:
-                    caption = rest[:300].strip()
+                    sentence_match = re.search(r"[.!?]", rest)
+                    if sentence_match and sentence_match.start() > 0:
+                        caption = rest[: sentence_match.start() + 1].strip()
+                    else:
+                        caption = rest[:150].strip()
                 break
 
         for attr_pattern in _ATTRIBUTION_PATTERNS:

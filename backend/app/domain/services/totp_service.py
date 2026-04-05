@@ -18,7 +18,7 @@ class TOTPService:
     def __init__(self):
         from app.domain.services.platform_settings_service import SettingsCache
 
-        self.issuer_name = "SantePublique AOF"
+        self.issuer_name = "Sira"
         self.backup_codes_count = SettingsCache.instance().get("auth-backup-codes-count", 8)
 
     def generate_secret(self) -> str:

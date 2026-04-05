@@ -71,7 +71,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="SantePublique AOF API",
+    title="Sira API",
     description="Adaptive bilingual learning platform for public health in West Africa",
     version="0.1.0",
     lifespan=lifespan,

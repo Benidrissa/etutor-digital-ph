@@ -1,12 +1,12 @@
 ---
 name: ui-design
-description: Design and review UI layouts for the SantePublique AOF learning platform. Use when planning page layouts, reviewing designs, or making visual decisions. Enforces the health/education design system with green/gold palette, mobile-first, offline indicators, and learning UX patterns.
+description: Design and review UI layouts for the Sira learning platform. Use when planning page layouts, reviewing designs, or making visual decisions. Enforces the health/education design system with green/gold palette, mobile-first, offline indicators, and learning UX patterns.
 user-invocable: true
 ---
 
-# SantePublique AOF UI Design System
+# Sira UI Design System
 
-Design interfaces for SantePublique AOF — a mobile-first, bilingual learning platform for public health professionals across 15 ECOWAS West African countries.
+Design interfaces for Sira — a mobile-first, bilingual learning platform for public health professionals across 15 ECOWAS West African countries.
 
 ## Design philosophy
 
