@@ -824,7 +824,21 @@
       "sensitive": "Security setting",
       "currentValue": "Current value",
       "defaultValue": "Default",
-      "modified": "Modified"
+      "modified": "Modified",
+      "discardChanges": "Discard changes",
+      "promptVariables": "Template variables",
+      "promptVariablesHint": "Click a variable to insert it at the cursor position",
+      "promptShowDefault": "Show default prompt",
+      "varCourseTitle": "The course title",
+      "varCourseDescription": "The course description",
+      "varCourseDomain": "The course domain (e.g. epidemiology)",
+      "varModuleTitle": "The module title",
+      "varUnitTitle": "The unit title",
+      "varCountry": "The learner's country",
+      "varLanguage": "The content language (fr or en)",
+      "varLevel": "The course level (1–4)",
+      "varBloomLevel": "The Bloom's taxonomy level",
+      "varSyllabusContext": "The syllabus context injected by the system"
     },
     "users": {
       "title": "User Management",
