@@ -1154,6 +1154,32 @@
       "archive": "Impossible d'archiver le cours.",
       "delete": "Impossible de supprimer le cours.",
       "create": "Impossible de créer le cours."
+    },
+    "preassessment": {
+      "sectionTitle": "Pré-évaluation",
+      "sectionLabel": "Afficher/masquer les paramètres de pré-évaluation",
+      "loading": "Chargement des paramètres...",
+      "enableToggle": "Activer la pré-évaluation",
+      "mandatoryToggle": "Obligatoire avant l'accès au cours",
+      "statusNotGenerated": "Non générée",
+      "statusGenerating": "Génération en cours…",
+      "statusReady": "Prête ({count} questions)",
+      "statusValidated": "Validée",
+      "generateButton": "Générer la pré-évaluation",
+      "regenerateButton": "Régénérer",
+      "showPreview": "Voir les questions",
+      "hidePreview": "Masquer les questions",
+      "validateButton": "Valider",
+      "ragNotIndexedTooltip": "Indexez d'abord les ressources du cours",
+      "previewTitle": "{count} questions générées",
+      "generateError": "La génération a échoué. Veuillez réessayer.",
+      "validateError": "La validation a échoué. Veuillez réessayer.",
+      "saveError": "Erreur lors de la sauvegarde. Veuillez réessayer.",
+      "difficulty": {
+        "easy": "Facile",
+        "medium": "Moyen",
+        "hard": "Difficile"
+      }
     }
   },
   "AdminSyllabus": {

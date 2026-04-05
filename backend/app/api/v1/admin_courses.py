@@ -42,6 +42,7 @@ class CreateCourseRequest(BaseModel):
     cover_image_url: str | None = None
     rag_collection_id: str | None = None
     preassessment_enabled: bool = False
+    preassessment_mandatory: bool = False
 
 
 class CourseResponse(BaseModel):
@@ -63,6 +64,7 @@ class CourseResponse(BaseModel):
     rag_collection_id: str | None
     indexation_task_id: str | None
     preassessment_enabled: bool
+    preassessment_mandatory: bool
     created_at: str
     published_at: str | None
 
@@ -88,6 +90,7 @@ def _course_to_response(course: Course) -> CourseResponse:
         rag_collection_id=course.rag_collection_id,
         indexation_task_id=course.indexation_task_id,
         preassessment_enabled=course.preassessment_enabled,
+        preassessment_mandatory=course.preassessment_mandatory,
         created_at=course.created_at.isoformat(),
         published_at=course.published_at.isoformat() if course.published_at else None,
     )
@@ -751,6 +754,41 @@ async def trigger_preassessment_generation(
     )
 
     return {"task_id": task.id, "status": "started"}
+
+
+@router.post("/{course_id}/validate-preassessment")
+async def validate_preassessment(
+    course_id: uuid.UUID,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    db=Depends(get_db_session),
+) -> dict:
+    """Mark all pre-assessments for a course as validated. Admin only."""
+    result = await db.execute(select(Course).where(Course.id == course_id))
+    course = result.scalar_one_or_none()
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    preassessment_result = await db.execute(
+        select(CoursePreAssessment).where(CoursePreAssessment.course_id == course_id)
+    )
+    preassessments = preassessment_result.scalars().all()
+    if not preassessments:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No pre-assessment found for this course",
+        )
+
+    for pa in preassessments:
+        pa.validated = True
+
+    await db.commit()
+    logger.info(
+        "Pre-assessment validated",
+        course_id=str(course_id),
+        admin_id=current_user.id,
+        count=len(preassessments),
+    )
+    return {"course_id": str(course_id), "validated": True, "count": len(preassessments)}
 
 
 @router.get("/{course_id}/preassessment-status")
