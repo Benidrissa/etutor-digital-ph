@@ -1044,6 +1044,9 @@
     "confirmArchiveDesc": "The course will no longer be accessible to learners.",
     "confirmGenerate": "Generate AI structure?",
     "confirmGenerateDesc": "The AI will automatically create a module outline for this course. This may take a few seconds.",
+    "deleteCourse": "Delete",
+    "confirmDelete": "Delete course?",
+    "confirmDeleteDesc": "This action cannot be undone. The course and all its content will be permanently deleted.",
     "newCourse": "New course",
     "noCoursesDesc": "Create your first course to get started.",
     "table": {
