@@ -266,6 +266,14 @@ export function ChatPanel({
                       : m
                   )
                 );
+              } else if (chunk.type === 'source_image_refs' && chunk.data?.refs) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === aiMessageId
+                      ? { ...m, sourceImageRefs: chunk.data.refs }
+                      : m
+                  )
+                );
               } else if (chunk.type === 'finished' && chunk.data?.conversation_id) {
                 const finishedConvId = chunk.data.conversation_id as string;
                 invalidateConversationCache(finishedConvId);
