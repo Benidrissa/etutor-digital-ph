@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
+import { track } from '@/lib/analytics';
 import { X, MoreVertical, Trash2, Menu, HelpCircle, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -60,6 +61,7 @@ export function ChatPanel({
   onOpenConversations,
 }: ChatPanelProps) {
   const t = useTranslations('ChatTutor');
+  const locale = useLocale();
   const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -172,6 +174,10 @@ export function ChatPanel({
     setCurrentUsage((prev) => prev + 1);
     setIsLoading(true);
     setIsTyping(true);
+    track('tutor_message_sent', {
+      module_id: moduleId ?? '',
+      language: locale,
+    });
 
     try {
       const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';

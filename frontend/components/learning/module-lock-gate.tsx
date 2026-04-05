@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/routing';
 import { ChevronLeft, Lock, BookOpen, CheckCircle, Clock } from 'lucide-react';
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { getModuleDetailWithProgress, getModuleUnits, type ModuleDetailWithProgressResponse } from '@/lib/api';
+import { track } from '@/lib/analytics';
 import { ModuleProgressOverlay } from '@/components/learning/module-progress-overlay';
 import { ModuleMediaPlayer } from '@/components/learning/module-media-player';
 
@@ -22,6 +23,7 @@ export function ModuleLockGate({ moduleId, language }: ModuleLockGateProps) {
   const tCard = useTranslations('ModuleCard');
   const [moduleData, setModuleData] = useState<ModuleDetailWithProgressResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const unlockedTracked = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -32,6 +34,13 @@ export function ModuleLockGate({ moduleId, language }: ModuleLockGateProps) {
         if (!cancelled) {
           setModuleData(data);
           setLoading(false);
+          if (data.status !== 'locked' && !unlockedTracked.current) {
+            unlockedTracked.current = true;
+            track('module_unlocked', {
+              module_id: data.id,
+              level: data.level,
+            });
+          }
         }
       } catch {
         try {

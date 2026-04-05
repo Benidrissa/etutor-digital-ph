@@ -19,6 +19,7 @@ import type { SourceImageMeta } from '@/lib/api';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { useRouter } from 'next/navigation';
 import { useLocale } from 'next-intl';
+import { track } from '@/lib/analytics';
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 3 * 60 * 1000;
@@ -192,10 +193,16 @@ export function LessonViewer({
           pollStartRef.current = Date.now();
           pollStatus((res as GeneratingResponse).task_id, pollStartRef.current);
         } else {
-          setLessonData(res as LessonData);
+          const lesson = res as LessonData;
+          setLessonData(lesson);
           setIsLoading(false);
           setIsRefreshing(false);
           setForceRegenerate(false);
+          track('lesson_viewed', {
+            module_id: lesson.module_id,
+            unit_id: lesson.unit_id,
+            language: lesson.language,
+          });
         }
       } catch (err) {
         console.error('Error loading lesson:', err);
