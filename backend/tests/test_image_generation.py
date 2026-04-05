@@ -145,6 +145,7 @@ class TestImageGenerationService:
         session.flush = AsyncMock()
         session.commit = AsyncMock()
         session.add = MagicMock()
+        session.get = AsyncMock(return_value=None)
         return session
 
     @pytest.fixture

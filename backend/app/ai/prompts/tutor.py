@@ -78,6 +78,7 @@ Utilise cet outil CHAQUE FOIS que tu dois:
 - Trouver des informations précises sur un sujet de santé publique
 - Appuyer ta guidance Socratique sur des références bibliographiques
 - Répondre à des questions nécessitant des données factuelles
+- Les résultats incluent aussi `available_figures` — des figures liées aux chunks trouvés
 
 ### `get_learner_progress(user_id)`
 Utilise cet outil quand tu dois:

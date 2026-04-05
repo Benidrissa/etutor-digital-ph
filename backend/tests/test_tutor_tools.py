@@ -71,6 +71,8 @@ def sample_conversation(sample_user):
 def mock_retriever():
     retriever = AsyncMock(spec=SemanticRetriever)
     retriever.search_for_module = AsyncMock(return_value=[])
+    retriever.get_linked_images = AsyncMock(return_value={})
+    retriever.search_source_images = AsyncMock(return_value=[])
     return retriever
 
 
@@ -120,12 +122,13 @@ def tutor_service(mock_retriever, mock_anthropic, mock_learner_memory_service):
 
 
 def test_tool_definitions_count():
-    assert len(TOOL_DEFINITIONS) == 5
+    assert len(TOOL_DEFINITIONS) == 6
 
 
 def test_tool_names():
     names = {t["name"] for t in TOOL_DEFINITIONS}
     assert names == {
+        "search_source_images",
         "search_knowledge_base",
         "get_learner_progress",
         "generate_mini_quiz",

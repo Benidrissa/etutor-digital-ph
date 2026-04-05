@@ -22,6 +22,29 @@ logger = structlog.get_logger()
 
 TOOL_DEFINITIONS: list[ToolParam] = [
     {
+        "name": "search_source_images",
+        "description": (
+            "Search for diagrams, charts, and illustrations from reference textbooks. "
+            "Use when the learner asks about a specific figure or when a visual would help explain a concept. "
+            "Returns matching images with metadata and {{source_image:UUID}} references you can embed in responses."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "What the image should illustrate.",
+                },
+                "image_type": {
+                    "type": "string",
+                    "enum": ["diagram", "photo", "chart", "any"],
+                    "description": "Type of image to search for. Defaults to 'any'.",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
         "name": "search_knowledge_base",
         "description": (
             "Search the knowledge base (reference textbooks on public health) for relevant information. "
@@ -137,28 +160,6 @@ TOOL_DEFINITIONS: list[ToolParam] = [
                 },
             },
             "required": ["preference_type", "value"],
-        },
-    },
-    {
-        "name": "search_source_images",
-        "description": (
-            "Search for diagrams, charts, and illustrations from reference textbooks. "
-            "Use when the learner asks about a specific figure or when a visual would help explain a concept."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "What the image should illustrate.",
-                },
-                "image_type": {
-                    "type": "string",
-                    "enum": ["diagram", "photo", "chart", "any"],
-                    "description": "Filter by image type. Use 'any' to search all types.",
-                },
-            },
-            "required": ["query"],
         },
     },
 ]
@@ -553,6 +554,45 @@ Respond ONLY with valid JSON in this exact format:
         )
         return json.dumps({"concept": concept, "flashcards": matching, "count": len(matching)})
 
+    async def _search_source_images(self, tool_input: dict[str, Any], session: AsyncSession) -> str:
+        """Execute search_source_images tool."""
+        query = tool_input["query"]
+        image_type_filter = tool_input.get("image_type", "any")
+
+        raw_results = await self.retriever.search_source_images(
+            query=query,
+            top_k=3,
+            session=session,
+        )
+
+        figures = []
+        for img in raw_results:
+            img_type = img.get("image_type", "unknown")
+            if image_type_filter != "any" and img_type != image_type_filter:
+                continue
+            img_id = str(img.get("id", ""))
+            figures.append(
+                {
+                    "figure_number": img.get("figure_number"),
+                    "caption": img.get("caption"),
+                    "image_type": img_type,
+                    "source": img.get("source"),
+                    "chapter": img.get("chapter"),
+                    "page_number": img.get("page_number"),
+                    "similarity": round(float(img.get("similarity", 0)), 3),
+                    "ref": f"{{{{source_image:{img_id}}}}}",
+                }
+            )
+
+        logger.info(
+            "search_source_images tool completed",
+            query=query,
+            image_type=image_type_filter,
+            results_count=len(figures),
+            user_id=str(self.user_id),
+        )
+        return json.dumps({"query": query, "figures": figures, "count": len(figures)})
+
     async def _save_learner_preference(
         self, tool_input: dict[str, Any], session: AsyncSession
     ) -> str:
@@ -581,41 +621,3 @@ Respond ONLY with valid JSON in this exact format:
                 "updated": was_existing,
             }
         )
-
-    async def _search_source_images(self, tool_input: dict[str, Any], session: AsyncSession) -> str:
-        """Execute search_source_images tool."""
-        query = tool_input["query"]
-        image_type = tool_input.get("image_type", "any")
-
-        results = await self.retriever.search_source_images(
-            query=query,
-            top_k=3,
-            session=session,
-        )
-
-        if image_type and image_type != "any":
-            results = [r for r in results if r.get("image_type") == image_type]
-
-        figures = []
-        for img_meta in results:
-            img_id = img_meta.get("id")
-            figures.append(
-                {
-                    "figure_number": img_meta.get("figure_number"),
-                    "caption": img_meta.get("caption"),
-                    "image_type": img_meta.get("image_type"),
-                    "source": img_meta.get("source"),
-                    "chapter": img_meta.get("chapter"),
-                    "similarity": img_meta.get("similarity"),
-                    "ref": f"{{{{source_image:{img_id}}}}}",
-                }
-            )
-
-        logger.info(
-            "search_source_images tool completed",
-            query=query,
-            image_type=image_type,
-            results_count=len(figures),
-            user_id=str(self.user_id),
-        )
-        return json.dumps({"query": query, "figures": figures, "count": len(figures)})

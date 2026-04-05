@@ -102,6 +102,31 @@ class ImageGenerationService:
                 )
                 return image_record
 
+            source_img = await self._find_source_image(lesson_id, session)
+            if source_img is not None:
+                image_record.status = "ready"
+                image_record.image_url = (
+                    source_img.storage_url or f"/api/v1/source-images/{source_img.id}/data"
+                )
+                image_record.alt_text_fr = source_img.alt_text_fr or (
+                    f"Figure {source_img.figure_number}" if source_img.figure_number else concept
+                )
+                image_record.alt_text_en = source_img.alt_text_en or (
+                    f"Figure {source_img.figure_number}" if source_img.figure_number else concept
+                )
+                image_record.width = source_img.width or 512
+                image_record.format = source_img.format or "webp"
+                image_record.file_size_bytes = source_img.file_size_bytes
+                image_record.generated_at = datetime.utcnow()
+                await session.commit()
+                logger.info(
+                    "Skipping DALL-E — source image found: Figure %s",
+                    source_img.figure_number or str(source_img.id),
+                    lesson_id=str(lesson_id),
+                    source_image_id=str(source_img.id),
+                )
+                return image_record
+
             image_record.status = "generating"
             await session.flush()
 
