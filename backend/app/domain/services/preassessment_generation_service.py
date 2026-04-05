@@ -155,19 +155,37 @@ class PreAssessmentGenerationService:
             for i, q in enumerate(questions)
         }
 
-        preassessment = CoursePreAssessment(
-            id=uuid.uuid4(),
-            course_id=course_id,
-            language=language,
-            questions=questions,
-            answer_key=answer_key,
-            question_levels=question_levels,
-            question_count=len(questions),
-            sources_cited=validated_sources,
-            generated_by="ai",
-            generation_task_id=task_id,
+        existing_result = await session.execute(
+            select(CoursePreAssessment).where(
+                CoursePreAssessment.course_id == course_id,
+                CoursePreAssessment.language == language,
+            )
         )
-        session.add(preassessment)
+        preassessment = existing_result.scalar_one_or_none()
+
+        if preassessment is not None:
+            preassessment.questions = questions
+            preassessment.answer_key = answer_key
+            preassessment.question_levels = question_levels
+            preassessment.question_count = len(questions)
+            preassessment.sources_cited = validated_sources
+            preassessment.generated_by = "ai"
+            preassessment.generation_task_id = task_id
+        else:
+            preassessment = CoursePreAssessment(
+                id=uuid.uuid4(),
+                course_id=course_id,
+                language=language,
+                questions=questions,
+                answer_key=answer_key,
+                question_levels=question_levels,
+                question_count=len(questions),
+                sources_cited=validated_sources,
+                generated_by="ai",
+                generation_task_id=task_id,
+            )
+            session.add(preassessment)
+
         await session.commit()
         await session.refresh(preassessment)
 
