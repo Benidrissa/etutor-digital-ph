@@ -640,7 +640,7 @@ async def admin_generate_module_content(
 
     dispatched = []
     for unit in units:
-        unit_id = f"M{module.module_number:02d}-U{unit.order_index + 1:02d}"
+        unit_id = unit.unit_number
         task = generate_lesson_task.delay(
             str(module_id),
             unit_id,
