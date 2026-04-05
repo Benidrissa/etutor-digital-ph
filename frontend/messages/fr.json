@@ -123,6 +123,7 @@
     "emailVerification": "Vérification par Email",
     "emailVerificationDesc": "Recevez un code à 6 chiffres par email",
     "emailVerificationBenefits": "✓ Simple et pratique ✓ Fonctionne sur tous les appareils ✓ Parfait pour les utilisateurs mobiles",
+    "comingSoon": "Bientôt disponible",
     "authenticatorApp": "Application d'Authentification",
     "authenticatorAppDesc": "Utilisez Google Authenticator ou Microsoft Authenticator",
     "authenticatorAppBenefits": "✓ Plus sécurisé ✓ Fonctionne hors ligne ✓ Standard de l'industrie pour 2FA",
