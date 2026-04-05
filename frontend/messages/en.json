@@ -644,6 +644,12 @@
     "imageViewFullscreen": "View fullscreen",
     "imageCloseFullscreen": "Close fullscreen"
   },
+  "SourceImage": {
+    "figure": "Figure",
+    "defaultAlt": "Source image from reference material",
+    "viewFullscreen": "View image fullscreen",
+    "closeFullscreen": "Close fullscreen"
+  },
   "ModuleMediaPlayer": {
     "listenToSummary": "Listen to summary",
     "watchSummary": "Watch summary",

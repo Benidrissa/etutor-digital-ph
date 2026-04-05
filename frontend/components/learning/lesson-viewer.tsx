@@ -12,8 +12,10 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { LessonSkeleton } from './lesson-skeleton';
 import { LessonImage } from './lesson-image';
+import { SourceImage } from './source-image';
 import { SourceCitations } from './source-citations';
 import { apiFetch, checkUnitQuizPassed } from '@/lib/api';
+import type { SourceImageMeta } from '@/lib/api';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { useRouter } from 'next/navigation';
 import { useLocale } from 'next-intl';
@@ -39,6 +41,34 @@ interface LessonData {
   country_context: string;
   content: LessonContent;
   cached: boolean;
+  source_image_refs?: SourceImageMeta[];
+}
+
+const SOURCE_IMAGE_RE = /\{\{source_image:([0-9a-f-]{36})\}\}/g;
+
+function splitWithSourceImageMarkers(
+  text: string,
+  imageMap: Map<string, SourceImageMeta>
+): Array<{ type: 'markdown'; text: string } | { type: 'source_image'; meta: SourceImageMeta }> {
+  const parts: Array<{ type: 'markdown'; text: string } | { type: 'source_image'; meta: SourceImageMeta }> = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  SOURCE_IMAGE_RE.lastIndex = 0;
+  while ((match = SOURCE_IMAGE_RE.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ type: 'markdown', text: text.slice(lastIndex, match.index) });
+    }
+    const meta = imageMap.get(match[1]);
+    if (meta) {
+      parts.push({ type: 'source_image', meta });
+    }
+    lastIndex = SOURCE_IMAGE_RE.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    parts.push({ type: 'markdown', text: text.slice(lastIndex) });
+  }
+  return parts;
 }
 
 interface GeneratingResponse {
@@ -255,6 +285,36 @@ export function LessonViewer({
 
   const { content } = lessonData;
 
+  const sourceImageMap = new Map<string, SourceImageMeta>(
+    (lessonData.source_image_refs ?? []).map((img) => [img.image_id, img])
+  );
+
+  function renderContentWithImages(text: string) {
+    if (sourceImageMap.size === 0 || !SOURCE_IMAGE_RE.test(text)) {
+      SOURCE_IMAGE_RE.lastIndex = 0;
+      return (
+        <div className={mdClass}>
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{text}</ReactMarkdown>
+        </div>
+      );
+    }
+    SOURCE_IMAGE_RE.lastIndex = 0;
+    const parts = splitWithSourceImageMarkers(text, sourceImageMap);
+    return (
+      <>
+        {parts.map((part, i) =>
+          part.type === 'source_image' ? (
+            <SourceImage key={i} {...part.meta} language={lessonData?.language ?? "fr"} />
+          ) : (
+            <div key={i} className={mdClass}>
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{part.text}</ReactMarkdown>
+            </div>
+          )
+        )}
+      </>
+    );
+  }
+
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6">
       {/* Header */}
@@ -292,9 +352,7 @@ export function LessonViewer({
         <CardContent className="p-6 md:p-8">
           {/* Introduction */}
           <div className="mb-8">
-            <div className={mdClass}>
-              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{content.introduction}</ReactMarkdown>
-            </div>
+            {renderContentWithImages(content.introduction)}
           </div>
 
           {/* Lesson Illustration */}
@@ -304,8 +362,8 @@ export function LessonViewer({
           <div className="mb-8">
             <div className="space-y-6">
               {content.concepts.map((concept, index) => (
-                <div key={index} className={mdClass}>
-                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{concept}</ReactMarkdown>
+                <div key={index}>
+                  {renderContentWithImages(concept)}
                 </div>
               ))}
             </div>
@@ -320,10 +378,9 @@ export function LessonViewer({
 
           {/* Synthesis */}
           <div className="mb-8">
-            <div className={mdClass}>
-              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{content.synthesis}</ReactMarkdown>
-            </div>
+            {renderContentWithImages(content.synthesis)}
           </div>
+
 
           {/* Key Points */}
           <div className="mb-8">

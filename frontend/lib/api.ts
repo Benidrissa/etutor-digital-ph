@@ -580,6 +580,38 @@ export async function submitSummativeAssessmentAttempt(
   });
 }
 
+// ── Source Image (PDF extraction) API ─────────────────────────
+
+export interface SourceImageMeta {
+  image_id: string;
+  figure_number?: string;
+  caption_fr?: string;
+  caption_en?: string;
+  attribution?: string;
+  storage_url: string;
+  alt_text_fr?: string;
+  alt_text_en?: string;
+}
+
+export interface LessonResponse {
+  id: string;
+  module_id: string;
+  unit_id: string;
+  language: 'fr' | 'en';
+  level: number;
+  country_context: string;
+  content: {
+    introduction: string;
+    concepts: string[];
+    aof_example: string;
+    synthesis: string;
+    key_points: string[];
+    sources_cited: string[];
+  };
+  cached: boolean;
+  source_image_refs?: SourceImageMeta[];
+}
+
 // ── Module Media API ──────────────────────────────────────────
 
 export type MediaType = 'audio' | 'video';
