@@ -6,11 +6,55 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.domain.services.placement_service import (
-    ANSWER_KEY,
-    QUESTION_LEVELS,
     PlacementService,
     PlacementTestResult,
 )
+
+_ANSWER_KEY: dict[str, str] = {
+    "1": "c",
+    "2": "a",
+    "3": "b",
+    "4": "b",
+    "5": "b",
+    "6": "b",
+    "7": "c",
+    "8": "b",
+    "9": "c",
+    "10": "b",
+    "11": "b",
+    "12": "a",
+    "13": "b",
+    "14": "d",
+    "15": "a",
+    "16": "b",
+    "17": "c",
+    "18": "b",
+    "19": "b",
+    "20": "d",
+}
+
+_QUESTION_LEVELS: dict[str, int] = {
+    "1": 1,
+    "2": 1,
+    "3": 1,
+    "4": 1,
+    "5": 1,
+    "6": 2,
+    "7": 2,
+    "8": 2,
+    "9": 2,
+    "10": 2,
+    "11": 3,
+    "12": 3,
+    "13": 3,
+    "14": 3,
+    "15": 3,
+    "16": 4,
+    "17": 4,
+    "18": 4,
+    "19": 4,
+    "20": 4,
+}
 
 
 def _make_user(level: int = 1) -> MagicMock:
@@ -28,24 +72,52 @@ def _make_user_repo(user: MagicMock | None = None) -> AsyncMock:
 
 
 def _all_correct_answers() -> dict[str, str]:
-    return dict(ANSWER_KEY)
+    return dict(_ANSWER_KEY)
 
 
 def _answers_for_levels(*levels: int) -> dict[str, str]:
     """Return correct answers only for questions belonging to given levels."""
     return {
-        q_id: ANSWER_KEY[q_id] for q_id, q_level in QUESTION_LEVELS.items() if q_level in levels
+        q_id: _ANSWER_KEY[q_id] for q_id, q_level in _QUESTION_LEVELS.items() if q_level in levels
     }
 
 
 def _wrong_answers_for_levels(*levels: int) -> dict[str, str]:
     """Return wrong answers for questions belonging to given levels."""
     wrong: dict[str, str] = {}
-    for q_id, q_level in QUESTION_LEVELS.items():
+    for q_id, q_level in _QUESTION_LEVELS.items():
         if q_level in levels:
-            correct = ANSWER_KEY[q_id]
+            correct = _ANSWER_KEY[q_id]
             wrong[q_id] = "a" if correct != "a" else "b"
     return wrong
+
+
+def _make_db_mock_with_preassessment() -> AsyncMock:
+    """Return a mock DB that returns a preassessment with the test answer key."""
+    preassessment = MagicMock()
+    preassessment.answer_key = _ANSWER_KEY
+    preassessment.question_levels = _QUESTION_LEVELS
+
+    scalar_one_or_none_results = [
+        MagicMock(id=uuid.uuid4()),
+        preassessment,
+    ]
+    call_count = 0
+
+    async def execute_side_effect(*args, **kwargs):
+        nonlocal call_count
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = scalar_one_or_none_results[
+            min(call_count, len(scalar_one_or_none_results) - 1)
+        ]
+        result.scalars.return_value.all.return_value = []
+        call_count += 1
+        return result
+
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=execute_side_effect)
+    db.commit = AsyncMock()
+    return db
 
 
 class TestLevelThresholds:
@@ -174,13 +246,7 @@ class TestScorePlacementTest:
         user = _make_user()
         repo = _make_user_repo(user)
         service = PlacementService(repo)
-        db = AsyncMock()
-        db.execute = AsyncMock(
-            return_value=MagicMock(
-                scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
-            )
-        )
-        db.commit = AsyncMock()
+        db = _make_db_mock_with_preassessment()
 
         answers = _all_correct_answers()
         result = await service.score_placement_test(
@@ -198,15 +264,9 @@ class TestScorePlacementTest:
         user = _make_user()
         repo = _make_user_repo(user)
         service = PlacementService(repo)
-        db = AsyncMock()
-        db.execute = AsyncMock(
-            return_value=MagicMock(
-                scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
-            )
-        )
-        db.commit = AsyncMock()
+        db = _make_db_mock_with_preassessment()
 
-        answers = {q_id: ("a" if ANSWER_KEY[q_id] != "a" else "b") for q_id in ANSWER_KEY}
+        answers = {q_id: ("a" if _ANSWER_KEY[q_id] != "a" else "b") for q_id in _ANSWER_KEY}
         result = await service.score_placement_test(
             user_id=user.id,
             answers=answers,
@@ -221,13 +281,7 @@ class TestScorePlacementTest:
         user = _make_user()
         repo = _make_user_repo(user)
         service = PlacementService(repo)
-        db = AsyncMock()
-        db.execute = AsyncMock(
-            return_value=MagicMock(
-                scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
-            )
-        )
-        db.commit = AsyncMock()
+        db = _make_db_mock_with_preassessment()
 
         answers = _answers_for_levels(1)
         answers.update(_wrong_answers_for_levels(2, 3, 4))
@@ -277,13 +331,7 @@ class TestScorePlacementTest:
         user = _make_user(level=1)
         repo = _make_user_repo(user)
         service = PlacementService(repo)
-        db = AsyncMock()
-        db.execute = AsyncMock(
-            return_value=MagicMock(
-                scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
-            )
-        )
-        db.commit = AsyncMock()
+        db = _make_db_mock_with_preassessment()
 
         answers = _all_correct_answers()
         await service.score_placement_test(
@@ -301,13 +349,7 @@ class TestScorePlacementTest:
         user = _make_user()
         repo = _make_user_repo(user)
         service = PlacementService(repo)
-        db = AsyncMock()
-        db.execute = AsyncMock(
-            return_value=MagicMock(
-                scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
-            )
-        )
-        db.commit = AsyncMock()
+        db = _make_db_mock_with_preassessment()
 
         result = await service.score_placement_test(
             user_id=user.id,
