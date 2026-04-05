@@ -1,13 +1,19 @@
 """Domain model for document chunks in the RAG pipeline."""
 
+from __future__ import annotations
+
 from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from sqlalchemy import ARRAY, Float, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from .base import Base
+
+if TYPE_CHECKING:
+    from app.domain.models.source_image import SourceImage
 
 
 class DocumentChunk(Base):
@@ -40,6 +46,13 @@ class DocumentChunk(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(default=func.now())
+
+    images: Mapped[list[SourceImage]] = relationship(
+        "SourceImage",
+        secondary="source_image_chunks",
+        back_populates="chunks",
+        lazy="select",
+    )
 
     def __repr__(self) -> str:
         return (
