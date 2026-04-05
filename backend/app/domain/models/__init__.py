@@ -25,6 +25,7 @@ from app.domain.models.subscription import (
     SubscriptionStatus,
 )
 from app.domain.models.taxonomy import CourseTaxonomy, TaxonomyCategory
+from app.domain.models.usage_event import UsageEvent
 from app.domain.models.user import User
 
 __all__ = [
@@ -55,6 +56,7 @@ __all__ = [
     "TOTPSecret",
     "CourseTaxonomy",
     "TaxonomyCategory",
+    "UsageEvent",
     "UserCourseEnrollment",
     "UserModuleProgress",
     "User",
