@@ -629,6 +629,29 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         ),
     ),
     SettingDef(
+        "ai-prompt-preassessment-system",
+        "ai_prompts",
+        (
+            "You are an expert in pedagogical assessment"
+            " for West African public health professionals. "
+            "You generate a 20-question diagnostic pre-assessment"
+            " for the course: {course_title}.\n\n"
+            "Domain: {course_domain}\n"
+            "Language: {language}\n\n"
+            "CRITICAL: Generate exactly 20 MCQ (5 per difficulty level 1-4)"
+            " covering course modules. "
+            "Respond with valid JSON ONLY"
+            " — a single object starting with {{ and ending with }}. "
+            "Keys: title, language, questions (array of 20), sources_cited."
+        ),
+        "string",
+        "System prompt — pre-assessment generation",
+        (
+            "Template vars: {course_title}, {course_description}, {course_domain},"
+            " {language}, {level}, {bloom_level}, {country}, {syllabus_context}"
+        ),
+    ),
+    SettingDef(
         "ai-prompt-flashcard-system",
         "ai_prompts",
         (

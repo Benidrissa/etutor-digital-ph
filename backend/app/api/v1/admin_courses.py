@@ -17,9 +17,11 @@ from app.domain.models.course import Course, UserCourseEnrollment
 from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
+from app.domain.models.preassessment import CoursePreAssessment
 from app.domain.models.taxonomy import TaxonomyCategory
 from app.domain.models.user import UserRole
 from app.tasks.content_generation import generate_lesson_task
+from app.tasks.preassessment_generation import generate_course_preassessment
 from app.tasks.rag_indexation import UPLOAD_DIR, index_course_resources
 from app.tasks.syllabus_generation import generate_course_syllabus
 
@@ -39,6 +41,7 @@ class CreateCourseRequest(BaseModel):
     estimated_hours: int = 20
     cover_image_url: str | None = None
     rag_collection_id: str | None = None
+    preassessment_enabled: bool = False
 
 
 class CourseResponse(BaseModel):
@@ -59,6 +62,7 @@ class CourseResponse(BaseModel):
     created_by: str | None
     rag_collection_id: str | None
     indexation_task_id: str | None
+    preassessment_enabled: bool
     created_at: str
     published_at: str | None
 
@@ -83,6 +87,7 @@ def _course_to_response(course: Course) -> CourseResponse:
         created_by=str(course.created_by) if course.created_by else None,
         rag_collection_id=course.rag_collection_id,
         indexation_task_id=course.indexation_task_id,
+        preassessment_enabled=course.preassessment_enabled,
         created_at=course.created_at.isoformat(),
         published_at=course.published_at.isoformat() if course.published_at else None,
     )
@@ -151,6 +156,7 @@ async def create_course(
         created_by=uuid.UUID(current_user.id),
         status="draft",
         taxonomy_categories=tax_cats,
+        preassessment_enabled=request.preassessment_enabled,
     )
     db.add(course)
     await db.commit()
@@ -656,3 +662,147 @@ async def admin_generate_module_content(
         "units_dispatched": len(dispatched),
         "tasks": dispatched,
     }
+
+
+# ---------------------------------------------------------------------------
+# Pre-Assessment Generation
+# ---------------------------------------------------------------------------
+
+
+class GeneratePreAssessmentRequest(BaseModel):
+    language: str = "fr"
+
+
+@router.post("/{course_id}/generate-preassessment")
+async def trigger_preassessment_generation(
+    course_id: uuid.UUID,
+    request: GeneratePreAssessmentRequest,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    db=Depends(get_db_session),
+) -> dict:
+    """Dispatch a Celery task to generate a 20-question pre-assessment via Claude + RAG.
+
+    Requires:
+    - Course must exist
+    - preassessment_enabled=true on the course
+    - RAG indexation must be complete (chunks > 0)
+
+    Returns task_id for status polling. Admin only.
+    """
+    result = await db.execute(select(Course).where(Course.id == course_id))
+    course = result.scalar_one_or_none()
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    if not course.preassessment_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pre-assessment is not enabled for this course. "
+            "Set preassessment_enabled=true first.",
+        )
+
+    if not course.rag_collection_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Course has no rag_collection_id. Upload and index resources first.",
+        )
+
+    chunk_count_result = await db.execute(
+        select(func.count())
+        .select_from(DocumentChunk)
+        .where(DocumentChunk.source == course.rag_collection_id)
+    )
+    if chunk_count_result.scalar_one() == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No RAG content indexed for this course. "
+            "Upload resources and run indexation first.",
+        )
+
+    language = request.language if request.language in ("fr", "en") else "fr"
+
+    in_progress_result = await db.execute(
+        select(CoursePreAssessment.generation_task_id)
+        .where(
+            CoursePreAssessment.course_id == course_id,
+            CoursePreAssessment.generation_task_id.is_not(None),
+        )
+        .order_by(CoursePreAssessment.created_at.desc())
+        .limit(1)
+    )
+    existing_task_id = in_progress_result.scalar_one_or_none()
+    if existing_task_id:
+        existing_result = AsyncResult(existing_task_id)
+        if existing_result.state in ("PENDING", "STARTED", "GENERATING"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A pre-assessment generation is already in progress (task {existing_task_id}). "
+                "Wait for it to complete before dispatching a new one.",
+            )
+
+    task = generate_course_preassessment.delay(str(course_id), language)
+
+    logger.info(
+        "Pre-assessment generation triggered",
+        course_id=str(course_id),
+        language=language,
+        task_id=task.id,
+        admin_id=current_user.id,
+    )
+
+    return {"task_id": task.id, "status": "started"}
+
+
+@router.get("/{course_id}/preassessment-status")
+async def get_preassessment_status(
+    course_id: uuid.UUID,
+    task_id: str | None = None,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    db=Depends(get_db_session),
+) -> dict:
+    """Get pre-assessment generation status and existing pre-assessment metadata.
+
+    Returns:
+    - task status if task_id provided
+    - existing pre-assessment metadata if already generated
+    """
+    result = await db.execute(select(Course).where(Course.id == course_id))
+    course = result.scalar_one_or_none()
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    preassessment_result = await db.execute(
+        select(CoursePreAssessment)
+        .where(CoursePreAssessment.course_id == course_id)
+        .order_by(CoursePreAssessment.created_at.desc())
+    )
+    preassessments = preassessment_result.scalars().all()
+
+    response: dict = {
+        "course_id": str(course_id),
+        "preassessment_enabled": course.preassessment_enabled,
+        "preassessments": [
+            {
+                "id": str(pa.id),
+                "language": pa.language,
+                "question_count": pa.question_count,
+                "generated_by": pa.generated_by,
+                "created_at": pa.created_at.isoformat(),
+            }
+            for pa in preassessments
+        ],
+    }
+
+    if task_id:
+        task_result = AsyncResult(task_id)
+        meta = task_result.info if isinstance(task_result.info, dict) else {}
+        response["task"] = {
+            "id": task_id,
+            "state": task_result.state,
+            "step": meta.get("step"),
+            "progress": meta.get("progress", 0),
+            "question_count": meta.get("question_count", 0),
+            "preassessment_id": meta.get("preassessment_id"),
+        }
+
+    return response
