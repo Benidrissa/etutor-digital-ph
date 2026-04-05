@@ -16,7 +16,7 @@ from app.ai.claude_service import ClaudeService
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.api.deps import get_db
-from app.api.deps_local_auth import get_optional_user
+from app.api.deps_local_auth import get_current_user
 from app.api.v1.schemas.content import (
     CaseStudyResponse,
     ErrorResponse,
@@ -180,6 +180,7 @@ async def generate_lesson(
     request: LessonGenerationRequest,
     lesson_service: LessonGenerationService = Depends(get_lesson_service),
     session: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
 ) -> LessonResponse:
     """
     Generate or retrieve cached lesson content.
@@ -266,6 +267,7 @@ async def stream_lesson_generation(
     request: LessonGenerationRequest,
     lesson_service: LessonGenerationService = Depends(get_lesson_service),
     session: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
 ) -> StreamingResponse:
     """
     Stream lesson generation in real-time using Server-Sent Events (SSE).
@@ -365,7 +367,7 @@ async def get_or_generate_lesson_by_module_and_unit(
     force_regenerate: bool = False,
     lesson_service: LessonGenerationService = Depends(get_lesson_service),
     session: AsyncSession = Depends(get_db),
-    current_user=Depends(get_optional_user),
+    current_user=Depends(get_current_user),
 ) -> JSONResponse:
     """
     Get or generate lesson content by module and unit ID.
@@ -534,6 +536,7 @@ async def stream_lesson_by_module_and_unit(
     country: str = "SN",
     lesson_service: LessonGenerationService = Depends(get_lesson_service),
     session: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
 ) -> StreamingResponse:
     """
     Stream lesson generation by module and unit ID in real-time using Server-Sent Events (SSE).
@@ -611,6 +614,7 @@ async def stream_lesson_by_module_and_unit(
 async def get_lesson(
     lesson_id: UUID,
     session: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
 ) -> LessonResponse:
     """
     Retrieve a previously generated lesson by ID.
@@ -681,6 +685,7 @@ async def generate_flashcards(
     request: FlashcardGenerationRequest,
     flashcard_service: FlashcardGenerationService = Depends(get_flashcard_service),
     session: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
 ) -> FlashcardSetResponse:
     """
     Generate or retrieve cached bilingual flashcard set.
@@ -778,6 +783,7 @@ async def generate_quiz(
     request: QuizGenerationRequest,
     quiz_service: QuizService = Depends(get_quiz_service),
     session: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
 ) -> QuizResponse:
     """
     Generate formative quiz with 10 multiple-choice questions.
@@ -865,6 +871,7 @@ async def generate_quiz(
 async def get_quiz(
     quiz_id: UUID,
     session: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
 ) -> QuizResponse:
     """
     Retrieve a previously generated quiz by ID.
@@ -956,7 +963,7 @@ async def get_or_generate_case_study(
     force_regenerate: bool = False,
     case_study_service: CaseStudyGenerationService = Depends(get_case_study_service),
     session: AsyncSession = Depends(get_db),
-    current_user=Depends(get_optional_user),
+    current_user=Depends(get_current_user),
 ) -> JSONResponse:
     """
     Get or generate case study content by module and unit ID.
@@ -1109,6 +1116,7 @@ async def stream_case_study_by_module_and_unit(
     country: str = "SN",
     case_study_service: CaseStudyGenerationService = Depends(get_case_study_service),
     session: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
 ) -> StreamingResponse:
     """
     Stream case study generation by module and unit ID using Server-Sent Events (SSE).
