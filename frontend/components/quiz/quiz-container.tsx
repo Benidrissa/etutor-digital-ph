@@ -12,6 +12,7 @@ import { QuizResults } from './quiz-results';
 import type { Quiz, QuizAttemptResponse } from '@/lib/api';
 import { generateQuiz, apiFetch } from '@/lib/api';
 import { useSettings } from '@/lib/settings-context';
+import { track } from '@/lib/analytics';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
 
 const POLL_INTERVAL_MS = 3000;
@@ -152,11 +153,22 @@ export function QuizContainer({
   
   const handleStartQuiz = () => {
     setState('in-progress');
+    track('quiz_started', {
+      module_id: moduleId,
+      level,
+      language,
+    });
   };
   
   const handleQuizComplete = (quizResult: QuizAttemptResponse) => {
     setResult(quizResult);
     setState('completed');
+    track('quiz_completed', {
+      module_id: moduleId,
+      score: quizResult.score,
+      passed: quizResult.passed,
+      duration_seconds: quizResult.total_time_seconds,
+    });
   };
   
   const handleQuizError = (errorMessage: string) => {
