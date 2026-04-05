@@ -304,7 +304,7 @@ export function LessonViewer({
       <>
         {parts.map((part, i) =>
           part.type === 'source_image' ? (
-            <SourceImage key={i} {...part.meta} language={lessonData.language} />
+            <SourceImage key={i} {...part.meta} language={lessonData?.language} />
           ) : (
             <div key={i} className={mdClass}>
               <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{part.text}</ReactMarkdown>
