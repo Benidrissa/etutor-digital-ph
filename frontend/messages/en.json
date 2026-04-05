@@ -1143,6 +1143,32 @@
       "archive": "Failed to archive course.",
       "delete": "Failed to delete course.",
       "create": "Failed to create course."
+    },
+    "preassessment": {
+      "sectionTitle": "Pre-Assessment",
+      "sectionLabel": "Toggle pre-assessment settings",
+      "loading": "Loading settings...",
+      "enableToggle": "Enable Pre-Assessment",
+      "mandatoryToggle": "Require before course access",
+      "statusNotGenerated": "Not generated",
+      "statusGenerating": "Generating…",
+      "statusReady": "Ready ({count} questions)",
+      "statusValidated": "Validated",
+      "generateButton": "Generate Pre-Assessment",
+      "regenerateButton": "Regenerate",
+      "showPreview": "Show questions",
+      "hidePreview": "Hide questions",
+      "validateButton": "Validate",
+      "ragNotIndexedTooltip": "Index course resources first",
+      "previewTitle": "{count} generated questions",
+      "generateError": "Generation failed. Please try again.",
+      "validateError": "Validation failed. Please try again.",
+      "saveError": "Failed to save settings. Please try again.",
+      "difficulty": {
+        "easy": "Easy",
+        "medium": "Medium",
+        "hard": "Hard"
+      }
     }
   },
   "AdminSyllabus": {
