@@ -1,7 +1,7 @@
 """add usage_events table
 
 Revision ID: 034
-Revises: 032
+Revises: 033
 Create Date: 2026-04-05
 
 """
@@ -13,7 +13,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 revision = "034"
-down_revision = "032"
+down_revision = "033"
 branch_labels = None
 depends_on = None
 
