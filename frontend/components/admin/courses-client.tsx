@@ -14,6 +14,7 @@ import {
   AlertCircle,
   BookOpen,
   Database,
+  Image,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -51,6 +52,7 @@ export interface AdminCourse {
   created_at: string;
   updated_at?: string;
   module_count?: number;
+  image_count?: number;
   indexation_task_id?: string | null;
   rag_collection_id?: string | null;
   preassessment_enabled?: boolean;
@@ -492,6 +494,12 @@ function CourseRow({
             {course.module_count !== undefined && (
               <span className="text-xs text-muted-foreground">
                 {t('moduleCount', { count: course.module_count })}
+              </span>
+            )}
+            {course.image_count !== undefined && course.image_count > 0 && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <Image className="h-3 w-3" aria-hidden="true" />
+                {t('imageCount', { count: course.image_count })}
               </span>
             )}
           </div>

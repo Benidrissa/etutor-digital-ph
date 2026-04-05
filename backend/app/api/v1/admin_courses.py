@@ -18,6 +18,7 @@ from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.preassessment import CoursePreAssessment
+from app.domain.models.source_image import SourceImage
 from app.domain.models.taxonomy import TaxonomyCategory
 from app.domain.models.user import UserRole
 from app.tasks.content_generation import generate_lesson_task
@@ -58,6 +59,7 @@ class CourseResponse(BaseModel):
     languages: str
     estimated_hours: int
     module_count: int
+    image_count: int
     status: str
     cover_image_url: str | None
     created_by: str | None
@@ -69,7 +71,7 @@ class CourseResponse(BaseModel):
     published_at: str | None
 
 
-def _course_to_response(course: Course) -> CourseResponse:
+def _course_to_response(course: Course, image_count: int = 0) -> CourseResponse:
     cats = course.taxonomy_categories or []
     return CourseResponse(
         id=str(course.id),
@@ -84,6 +86,7 @@ def _course_to_response(course: Course) -> CourseResponse:
         languages=course.languages,
         estimated_hours=course.estimated_hours,
         module_count=course.module_count,
+        image_count=image_count,
         status=course.status,
         cover_image_url=course.cover_image_url,
         created_by=str(course.created_by) if course.created_by else None,
@@ -112,7 +115,22 @@ async def list_courses_admin(
     """List all courses (any status). Admin only."""
     result = await db.execute(select(Course).order_by(Course.created_at.desc()))
     courses = result.scalars().all()
-    return [_course_to_response(c) for c in courses]
+
+    # Fetch image counts for all courses in a single query
+    rag_ids = [c.rag_collection_id for c in courses if c.rag_collection_id]
+    image_counts: dict[str, int] = {}
+    if rag_ids:
+        img_result = await db.execute(
+            select(SourceImage.rag_collection_id, func.count().label("cnt"))
+            .where(SourceImage.rag_collection_id.in_(rag_ids))
+            .group_by(SourceImage.rag_collection_id)
+        )
+        image_counts = {row.rag_collection_id: row.cnt for row in img_result}
+
+    return [
+        _course_to_response(c, image_count=image_counts.get(c.rag_collection_id or "", 0))
+        for c in courses
+    ]
 
 
 @router.post("", response_model=CourseResponse, status_code=status.HTTP_201_CREATED)
@@ -180,7 +198,15 @@ async def get_course_admin(
     course = result.scalar_one_or_none()
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
-    return _course_to_response(course)
+    img_count = 0
+    if course.rag_collection_id:
+        img_result = await db.execute(
+            select(func.count())
+            .select_from(SourceImage)
+            .where(SourceImage.rag_collection_id == course.rag_collection_id)
+        )
+        img_count = img_result.scalar_one()
+    return _course_to_response(course, image_count=img_count)
 
 
 @router.patch("/{course_id}", response_model=CourseResponse)
@@ -219,7 +245,15 @@ async def update_course(
 
     await db.commit()
     await db.refresh(course)
-    return _course_to_response(course)
+    img_count = 0
+    if course.rag_collection_id:
+        img_result = await db.execute(
+            select(func.count())
+            .select_from(SourceImage)
+            .where(SourceImage.rag_collection_id == course.rag_collection_id)
+        )
+        img_count = img_result.scalar_one()
+    return _course_to_response(course, image_count=img_count)
 
 
 @router.post("/{course_id}/publish", response_model=CourseResponse)
@@ -258,7 +292,15 @@ async def publish_course(
     await db.commit()
     await db.refresh(course)
     logger.info("Course published", course_id=str(course_id), admin_id=current_user.id)
-    return _course_to_response(course)
+    img_count = 0
+    if course.rag_collection_id:
+        img_result = await db.execute(
+            select(func.count())
+            .select_from(SourceImage)
+            .where(SourceImage.rag_collection_id == course.rag_collection_id)
+        )
+        img_count = img_result.scalar_one()
+    return _course_to_response(course, image_count=img_count)
 
 
 @router.post("/{course_id}/archive", response_model=CourseResponse)
@@ -277,7 +319,15 @@ async def archive_course(
     await db.commit()
     await db.refresh(course)
     logger.info("Course archived", course_id=str(course_id), admin_id=current_user.id)
-    return _course_to_response(course)
+    img_count = 0
+    if course.rag_collection_id:
+        img_result = await db.execute(
+            select(func.count())
+            .select_from(SourceImage)
+            .where(SourceImage.rag_collection_id == course.rag_collection_id)
+        )
+        img_count = img_result.scalar_one()
+    return _course_to_response(course, image_count=img_count)
 
 
 class GenerateStructureRequest(BaseModel):
@@ -439,11 +489,32 @@ async def get_rag_index_status(
     )
     chunks_indexed = chunk_count.scalar_one()
 
+    # Count source images extracted for this course
+    images_extracted_result = await db.execute(
+        select(func.count())
+        .select_from(SourceImage)
+        .where(SourceImage.rag_collection_id == course.rag_collection_id)
+    )
+    images_extracted = images_extracted_result.scalar_one()
+
+    # Count images successfully stored in MinIO (have a storage_key)
+    images_stored_result = await db.execute(
+        select(func.count())
+        .select_from(SourceImage)
+        .where(
+            SourceImage.rag_collection_id == course.rag_collection_id,
+            SourceImage.storage_key.isnot(None),
+        )
+    )
+    images_stored = images_stored_result.scalar_one()
+
     response: dict = {
         "course_id": str(course_id),
         "rag_collection_id": course.rag_collection_id,
         "chunks_indexed": chunks_indexed,
         "indexed": chunks_indexed > 0,
+        "images_extracted": images_extracted,
+        "images_stored": images_stored,
     }
 
     effective_task_id = task_id or course.indexation_task_id
@@ -460,6 +531,7 @@ async def get_rag_index_status(
             "files_processed": meta.get("files_processed", 0),
             "current_file": meta.get("current_file"),
             "chunks_processed": meta.get("chunks_processed", 0),
+            "images_processed": meta.get("images_processed", 0),
             "estimated_seconds_remaining": meta.get("estimated_seconds_remaining"),
         }
 
