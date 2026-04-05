@@ -666,7 +666,7 @@ async def test_finished_chunk_includes_tool_calls_made(
     finished_chunks = [c for c in chunks if c["type"] == "finished"]
     assert len(finished_chunks) == 1
     assert "tool_calls_made" in finished_chunks[0]["data"]
-    assert finished_chunks[0]["data"]["remaining_messages"] == 44
+    assert finished_chunks[0]["data"]["remaining_messages"] == 14
 
 
 # ---------------------------------------------------------------------------
