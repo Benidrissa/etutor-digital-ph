@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { X } from 'lucide-react';
 /* eslint-disable @next/next/no-img-element */
+import { API_BASE } from '@/lib/api';
 import type { SourceImageMeta } from '@/lib/api';
 
 interface SourceImageProps extends SourceImageMeta {
@@ -21,7 +22,7 @@ export function SourceImage({
   alt_text_en,
   language,
 }: SourceImageProps) {
-  const imageUrl = `/api/v1/source-images/${id}/data`;
+  const imageUrl = `${API_BASE}/api/v1/source-images/${id}/data`;
   const t = useTranslations('SourceImage');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
