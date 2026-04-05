@@ -1,5 +1,4 @@
 from app.domain.models.audit_log import AuditLog
-from app.domain.models.source_image import ImageType, SourceImage, SourceImageChunk
 from app.domain.models.auth import MagicLink, RefreshToken, TOTPSecret
 from app.domain.models.base import Base
 from app.domain.models.content import GeneratedContent
@@ -16,6 +15,7 @@ from app.domain.models.module_media import MediaStatus, MediaType, ModuleMedia
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import QuizAttempt
+from app.domain.models.source_image import ImageType, SourceImage, SourceImageChunk
 from app.domain.models.taxonomy import CourseTaxonomy, TaxonomyCategory
 from app.domain.models.user import User
 
