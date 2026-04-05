@@ -5,8 +5,6 @@ from uuid import UUID
 
 from app.domain.services.platform_settings_service import SettingsCache
 
-from app.domain.services.platform_settings_service import SettingsCache
-
 # Mapping of country codes to French names for contextualization
 COUNTRY_NAMES_FR = {
     "SN": "Sénégal",
