@@ -31,10 +31,10 @@ async function fetchEnrollmentStatus(moduleId: string, token: string): Promise<b
 
 function isAdmin(): boolean {
   try {
-    const stored = typeof window !== "undefined" ? localStorage.getItem("user") : null;
-    if (stored) {
-      const user = JSON.parse(stored);
-      return user.role === "admin";
+    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    if (token) {
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      return payload.role === "admin";
     }
   } catch {
     // ignore parse errors
