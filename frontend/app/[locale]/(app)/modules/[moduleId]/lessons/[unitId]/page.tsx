@@ -36,7 +36,7 @@ export default async function LessonPage({ params }: LessonPageProps) {
   const moduleTitle = language === 'fr' ? (moduleData?.title_fr || moduleId) : (moduleData?.title_en || moduleId);
   const unitTitle = language === 'fr' ? (unit?.title_fr || unitId) : (unit?.title_en || unitId);
   const moduleLevel = moduleData?.level || 1;
-  const isCaseStudy = unitId.toLowerCase().includes('u05');
+  const isCaseStudy = unitId.toLowerCase().includes('u05') || (unit !== undefined && unit.order_index === 4);
 
   return (
     <EnrollmentGuard moduleId={moduleId}>

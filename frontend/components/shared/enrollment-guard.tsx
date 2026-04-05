@@ -13,7 +13,7 @@ interface EnrollmentGuardProps {
 async function fetchEnrollmentStatus(moduleId: string, token: string): Promise<boolean> {
   try {
     const res = await fetch(
-      `${API_BASE}/api/v1/progress/modules?module_id=${encodeURIComponent(moduleId)}`,
+      `${API_BASE}/api/v1/progress/modules/${encodeURIComponent(moduleId)}`,
       {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
