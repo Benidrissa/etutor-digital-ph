@@ -95,24 +95,45 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
         if course_dir.exists():
             import fitz  # PyMuPDF
 
+            # Budget: ~150K tokens (~400K chars) total across all PDFs
+            MAX_CHARS_TOTAL = 400_000
+            pdf_files = sorted(course_dir.glob("*.pdf"))
+            chars_per_pdf = MAX_CHARS_TOTAL // max(len(pdf_files), 1)
+
             pdf_texts = []
-            for pdf_path in sorted(course_dir.glob("*.pdf")):
+            for pdf_path in pdf_files:
                 try:
                     doc = fitz.open(str(pdf_path))
                     book_name = pdf_path.stem.replace("_", " ")
+                    toc = doc.get_toc()
+
+                    # Always extract text, but limit per PDF
                     pages_text = []
+                    total_chars = 0
                     for page in doc:
                         text = page.get_text().strip()
                         if text:
                             pages_text.append(text)
+                            total_chars += len(text)
+                            if total_chars >= chars_per_pdf:
+                                break
+
                     doc.close()
                     full_text = "\n\n".join(pages_text)
+
+                    # Prepend TOC if available for better structure
+                    if toc:
+                        toc_lines = [f"{'  ' * (lvl - 1)}{title}" for lvl, title, _ in toc]
+                        toc_str = "\n".join(toc_lines[:100])
+                        full_text = f"TABLE OF CONTENTS:\n{toc_str}\n\nCONTENT:\n{full_text}"
+
                     pdf_texts.append(f"### {book_name}\n{full_text}")
                     logger.info(
                         "Extracted PDF text",
                         pdf=book_name,
                         pages=len(pages_text),
                         chars=len(full_text),
+                        has_toc=bool(toc),
                     )
                 except Exception as e:
                     logger.warning(
@@ -124,7 +145,7 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
             if pdf_texts:
                 resource_text = "\n\n---\n\n".join(pdf_texts)
                 logger.info(
-                    "Full PDF text extracted for syllabus context",
+                    "PDF text extracted for syllabus context",
                     course_id=course_id,
                     pdf_count=len(pdf_texts),
                     total_chars=len(resource_text),
