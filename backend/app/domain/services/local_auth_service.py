@@ -108,6 +108,12 @@ class LocalAuthService:
 
             await self.db.commit()
 
+            # Auto-provision subscription for admin users
+            if initial_role == UserRole.admin:
+                from app.domain.services.subscription_service import SubscriptionService
+
+                await SubscriptionService().ensure_admin_subscription(user.id, self.db)
+
             logger.info("User registered successfully", user_id=str(user.id), email=email)
 
             return {
@@ -631,6 +637,12 @@ class LocalAuthService:
             )
             self.db.add(user)
             await self.db.commit()
+
+            # Auto-provision subscription for admin users
+            if initial_role == UserRole.admin:
+                from app.domain.services.subscription_service import SubscriptionService
+
+                await SubscriptionService().ensure_admin_subscription(user.id, self.db)
 
             # Send email OTP
             otp_result = await self.email_otp_service.send_registration_otp(
