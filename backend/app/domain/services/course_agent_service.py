@@ -41,6 +41,7 @@ class CourseAgentService:
         course_level: list[str] | None = None,
         audience_type: list[str] | None = None,
         estimated_hours: int = 20,
+        resource_text: str | None = None,
     ) -> list[dict[str, Any]]:
         """
         Generate a course module outline using Claude API.
@@ -66,6 +67,18 @@ class CourseAgentService:
             levels_str = ", ".join(course_level) if course_level else "All levels"
             audience_str = ", ".join(audience_type) if audience_type else "Professionals"
 
+            resource_context = ""
+            if resource_text:
+                resource_context = (
+                    f"\n## Reference materials (full text)\n"
+                    f"The following is the complete extracted text from the course's "
+                    f"reference materials. You MUST base the syllabus on this content — "
+                    f"every module and unit should map to actual chapters, topics, and "
+                    f"concepts found in these materials. Do NOT invent topics that are "
+                    f"not covered in the references.\n\n"
+                    f"{resource_text}\n\n"
+                )
+
             prompt = (
                 f"You are an expert instructional designer specializing in bilingual (FR/EN) "
                 f"adaptive e-learning. You design curricula using Bloom's "
@@ -77,6 +90,7 @@ class CourseAgentService:
                 f"- Level(s): {levels_str}\n"
                 f"- Target audience: {audience_str}\n"
                 f"- Estimated total hours: {estimated_hours}\n\n"
+                f"{resource_context}"
                 f"## Design principles (mandatory)\n"
                 f"- Progressive complexity: start with foundational concepts (remember/understand), "
                 f"build to applied skills (apply/analyze), end with expert synthesis (evaluate/create)\n"

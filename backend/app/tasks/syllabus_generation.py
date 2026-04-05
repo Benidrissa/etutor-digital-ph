@@ -82,10 +82,58 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
             level_slugs = [tc.slug for tc in cats if tc.type == "level"]
             audience_slugs = [tc.slug for tc in cats if tc.type == "audience"]
 
-        # Phase 2: Call Claude API (no DB session needed)
+        # Phase 1.5: Extract text from uploaded PDFs for context
         self.update_state(
             state="GENERATING",
-            meta={"step": "calling_claude", "progress": 20, "modules_count": 0},
+            meta={"step": "extracting_pdf_text", "progress": 15, "modules_count": 0},
+        )
+
+        resource_text = None
+        from pathlib import Path
+
+        course_dir = Path("uploads/course_resources") / course_id
+        if course_dir.exists():
+            import fitz  # PyMuPDF
+
+            pdf_texts = []
+            for pdf_path in sorted(course_dir.glob("*.pdf")):
+                try:
+                    doc = fitz.open(str(pdf_path))
+                    book_name = pdf_path.stem.replace("_", " ")
+                    pages_text = []
+                    for page in doc:
+                        text = page.get_text().strip()
+                        if text:
+                            pages_text.append(text)
+                    doc.close()
+                    full_text = "\n\n".join(pages_text)
+                    pdf_texts.append(f"### {book_name}\n{full_text}")
+                    logger.info(
+                        "Extracted PDF text",
+                        pdf=book_name,
+                        pages=len(pages_text),
+                        chars=len(full_text),
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to extract PDF text",
+                        pdf=str(pdf_path),
+                        error=str(e),
+                    )
+
+            if pdf_texts:
+                resource_text = "\n\n---\n\n".join(pdf_texts)
+                logger.info(
+                    "Full PDF text extracted for syllabus context",
+                    course_id=course_id,
+                    pdf_count=len(pdf_texts),
+                    total_chars=len(resource_text),
+                )
+
+        # Phase 2: Call Claude API
+        self.update_state(
+            state="GENERATING",
+            meta={"step": "calling_claude", "progress": 25, "modules_count": 0},
         )
 
         agent = CourseAgentService()
@@ -96,6 +144,7 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
             course_level=level_slugs,
             audience_type=audience_slugs,
             estimated_hours=estimated_hours or course_hours,
+            resource_text=resource_text,
         )
 
         self.update_state(
