@@ -172,10 +172,10 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                 },
             )
 
-            source_name = pdf_path.stem.replace("_", " ")
+            book_name = pdf_path.stem.replace("_", " ")
             chunks = await pipeline.process_pdf_document(
                 pdf_path=str(pdf_path),
-                source=source_name,
+                source=rag_collection_id,
             )
             total_chunks += chunks
 
@@ -213,7 +213,7 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
             try:
                 image_count = await pipeline.process_pdf_images(
                     pdf_path=str(pdf_path),
-                    source=source_name,
+                    source=book_name,
                     rag_collection_id=rag_collection_id,
                 )
                 total_images += image_count
