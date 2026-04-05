@@ -417,6 +417,20 @@ async def get_or_generate_lesson_by_module_and_unit(
                 from app.api.v1.schemas.content import LessonContent as _LessonContent
 
                 content_dict = {k: v for k, v in cached.content.items() if k != "unit_id"}
+
+                # Extract source_image_refs from cached content
+                source_image_refs = await lesson_service._extract_source_image_refs(
+                    " ".join(str(v or "") for v in cached.content.values() if isinstance(v, str))
+                    + " ".join(
+                        str(item or "")
+                        for field in ("concepts", "key_points")
+                        for item in (cached.content.get(field) or [])
+                        if isinstance(item, str)
+                    ),
+                    {},
+                    session,
+                )
+
                 lesson_response = LessonResponse(
                     id=cached.id,
                     module_id=cached.module_id,
@@ -427,6 +441,7 @@ async def get_or_generate_lesson_by_module_and_unit(
                     content=_LessonContent(**content_dict),
                     generated_at=cached.generated_at.isoformat(),
                     cached=True,
+                    source_image_refs=source_image_refs,
                 )
 
                 if current_user is not None:
