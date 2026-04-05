@@ -1,4 +1,5 @@
 from app.domain.models.audit_log import AuditLog
+from app.domain.models.source_image import ImageType, SourceImage, SourceImageChunk
 from app.domain.models.auth import MagicLink, RefreshToken, TOTPSecret
 from app.domain.models.base import Base
 from app.domain.models.content import GeneratedContent
@@ -46,4 +47,7 @@ __all__ = [
     "UserModuleProgress",
     "QuizAttempt",
     "User",
+    "ImageType",
+    "SourceImage",
+    "SourceImageChunk",
 ]
