@@ -3,6 +3,7 @@
 import re
 from dataclasses import dataclass
 from typing import Any
+from uuid import UUID
 
 import structlog
 from sqlalchemy import select, text
@@ -269,6 +270,211 @@ class SemanticRetriever:
                     filters["source"] = named_keys
 
         return await self.search(query=query, top_k=top_k, filters=filters, session=session)
+
+    async def get_linked_images(
+        self,
+        chunk_ids: list[UUID],
+        session: AsyncSession,
+    ) -> dict[UUID, list[dict[str, Any]]]:
+        """Return images linked to the given chunk IDs via source_image_chunks.
+
+        Args:
+            chunk_ids: List of document chunk UUIDs to look up.
+            session: Database session.
+
+        Returns:
+            Mapping of chunk_id → list of image metadata dicts (to_meta_dict()).
+            Prioritises ``explicit`` references over ``contextual``.
+            At most 3 images per chunk and 5 images total are returned.
+        """
+        if not chunk_ids:
+            return {}
+
+        chunk_id_literals = ", ".join(f"'{cid}'::uuid" for cid in chunk_ids)
+
+        query_str = f"""
+        SELECT
+            sic.chunk_id,
+            sic.reference_type,
+            si.id,
+            si.source,
+            si.rag_collection_id,
+            si.figure_number,
+            si.caption,
+            si.attribution,
+            si.image_type,
+            si.page_number,
+            si.chapter,
+            si.width,
+            si.height,
+            si.file_size_bytes,
+            si.storage_url,
+            si.alt_text_fr,
+            si.alt_text_en
+        FROM source_image_chunks sic
+        JOIN source_images si ON si.id = sic.image_id
+        WHERE sic.chunk_id IN ({chunk_id_literals})
+        ORDER BY
+            sic.chunk_id,
+            CASE sic.reference_type WHEN 'explicit' THEN 0 ELSE 1 END,
+            si.created_at
+        """
+
+        try:
+            result = await session.execute(text(query_str))
+            rows = result.fetchall()
+        except Exception as exc:
+            logger.error("get_linked_images query failed", error=str(exc))
+            raise
+
+        per_chunk: dict[UUID, list[dict[str, Any]]] = {cid: [] for cid in chunk_ids}
+        total_added = 0
+
+        for row in rows:
+            if total_added >= 5:
+                break
+            chunk_id = row.chunk_id
+            if len(per_chunk[chunk_id]) >= 3:
+                continue
+            per_chunk[chunk_id].append(
+                {
+                    "id": str(row.id),
+                    "source": row.source,
+                    "rag_collection_id": row.rag_collection_id,
+                    "figure_number": row.figure_number,
+                    "caption": row.caption,
+                    "attribution": row.attribution,
+                    "image_type": row.image_type,
+                    "page_number": row.page_number,
+                    "chapter": row.chapter,
+                    "width": row.width,
+                    "height": row.height,
+                    "file_size_bytes": row.file_size_bytes,
+                    "storage_url": row.storage_url,
+                    "alt_text_fr": row.alt_text_fr,
+                    "alt_text_en": row.alt_text_en,
+                    "reference_type": row.reference_type,
+                }
+            )
+            total_added += 1
+
+        logger.info(
+            "get_linked_images completed",
+            chunk_count=len(chunk_ids),
+            total_images=total_added,
+        )
+        return per_chunk
+
+    async def search_source_images(
+        self,
+        query: str,
+        source: str | None = None,
+        rag_collection_id: str | None = None,
+        top_k: int = 5,
+        session: AsyncSession | None = None,
+    ) -> list[dict[str, Any]]:
+        """Semantic search on source_images.embedding (cosine similarity).
+
+        Args:
+            query: Natural-language query.
+            source: Filter by source book (e.g. "donaldson").
+            rag_collection_id: Filter by RAG collection UUID string.
+            top_k: Maximum number of results.
+            session: Database session.
+
+        Returns:
+            List of image metadata dicts ordered by similarity (no binary data).
+        """
+        if not query.strip():
+            return []
+
+        query_embedding = await self.embedding_service.generate_embedding(query)
+
+        session_provided = session is not None
+        if not session_provided:
+            from app.infrastructure.persistence.database import async_session_factory
+
+            async with async_session_factory() as _session:
+                return await self._search_source_images(
+                    query_embedding, source, rag_collection_id, top_k, _session
+                )
+        else:
+            return await self._search_source_images(
+                query_embedding, source, rag_collection_id, top_k, session
+            )
+
+    async def _search_source_images(
+        self,
+        query_embedding: list[float],
+        source: str | None,
+        rag_collection_id: str | None,
+        top_k: int,
+        session: AsyncSession,
+    ) -> list[dict[str, Any]]:
+        """Execute cosine-similarity search on source_images table."""
+        embedding_literal = "[" + ",".join(str(x) for x in query_embedding) + "]"
+        vec_expr = f"embedding::vector <=> '{embedding_literal}'::vector"
+
+        where_clauses = ["embedding IS NOT NULL"]
+        params: dict[str, Any] = {}
+
+        if source is not None:
+            where_clauses.append("source = :source")
+            params["source"] = source
+        if rag_collection_id is not None:
+            where_clauses.append("rag_collection_id = :rag_collection_id")
+            params["rag_collection_id"] = rag_collection_id
+
+        where_sql = " AND ".join(where_clauses)
+        params["limit"] = top_k
+
+        query_str = f"""
+        SELECT
+            id, source, rag_collection_id, figure_number, caption, attribution,
+            image_type, page_number, chapter, width, height,
+            file_size_bytes, storage_url, alt_text_fr, alt_text_en,
+            1 - ({vec_expr}) AS similarity
+        FROM source_images
+        WHERE {where_sql}
+        ORDER BY similarity DESC
+        LIMIT :limit
+        """
+
+        try:
+            result = await session.execute(text(query_str).bindparams(**params))
+            rows = result.fetchall()
+        except Exception as exc:
+            logger.error("search_source_images query failed", error=str(exc))
+            raise
+
+        images = [
+            {
+                "id": str(row.id),
+                "source": row.source,
+                "rag_collection_id": row.rag_collection_id,
+                "figure_number": row.figure_number,
+                "caption": row.caption,
+                "attribution": row.attribution,
+                "image_type": row.image_type,
+                "page_number": row.page_number,
+                "chapter": row.chapter,
+                "width": row.width,
+                "height": row.height,
+                "file_size_bytes": row.file_size_bytes,
+                "storage_url": row.storage_url,
+                "alt_text_fr": row.alt_text_fr,
+                "alt_text_en": row.alt_text_en,
+                "similarity": float(row.similarity),
+            }
+            for row in rows
+        ]
+
+        logger.info(
+            "search_source_images completed",
+            results=len(images),
+            top_similarity=images[0]["similarity"] if images else 0,
+        )
+        return images
 
     async def verify_search_functionality(
         self, session: AsyncSession | None = None
