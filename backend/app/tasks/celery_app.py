@@ -2,6 +2,7 @@
 
 import structlog
 from celery import Celery
+from celery.schedules import crontab
 
 import app.domain.models  # noqa: F401 — register all SQLAlchemy models with the mapper
 from app.infrastructure.config.settings import settings
@@ -20,6 +21,7 @@ celery_app = Celery(
         "app.tasks.preassessment_generation",
         "app.tasks.rag_indexation",
         "app.tasks.syllabus_generation",
+        "app.tasks.subscription",
     ],
 )
 
@@ -60,6 +62,10 @@ celery_app.conf.beat_schedule = {
     "cleanup-expired-uploads": {
         "task": "app.tasks.file_cleanup.cleanup_expired_uploads",
         "schedule": 3600,  # Every hour
+    },
+    "expire-subscriptions": {
+        "task": "app.tasks.subscription.expire_subscriptions",
+        "schedule": crontab(hour=0, minute=30),
     },
 }
 
