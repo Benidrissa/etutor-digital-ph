@@ -139,6 +139,28 @@ TOOL_DEFINITIONS: list[ToolParam] = [
             "required": ["preference_type", "value"],
         },
     },
+    {
+        "name": "search_source_images",
+        "description": (
+            "Search for diagrams, charts, and illustrations from reference textbooks. "
+            "Use when the learner asks about a specific figure or when a visual would help explain a concept."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "What the image should illustrate.",
+                },
+                "image_type": {
+                    "type": "string",
+                    "enum": ["diagram", "photo", "chart", "any"],
+                    "description": "Filter by image type. Use 'any' to search all types.",
+                },
+            },
+            "required": ["query"],
+        },
+    },
 ]
 
 
@@ -196,6 +218,8 @@ class TutorToolExecutor:
                 return await self._search_flashcards(tool_input, session)
             elif tool_name == "save_learner_preference":
                 return await self._save_learner_preference(tool_input, session)
+            elif tool_name == "search_source_images":
+                return await self._search_source_images(tool_input, session)
             else:
                 logger.warning("Unknown tool called", tool_name=tool_name)
                 return json.dumps({"error": f"Unknown tool: {tool_name}"})
@@ -234,6 +258,11 @@ class TutorToolExecutor:
             session=session,
         )
 
+        chunk_ids = [result.chunk.id for result in results if result.chunk.id]
+        linked_images_by_chunk = await self.retriever.get_linked_images(
+            chunk_ids=chunk_ids, session=session
+        )
+
         chunks = []
         for result in results:
             chunks.append(
@@ -246,13 +275,38 @@ class TutorToolExecutor:
                 }
             )
 
+        seen_ids: set[str] = set()
+        available_figures = []
+        for chunk_result in results:
+            chunk_id = chunk_result.chunk.id
+            for img_meta in linked_images_by_chunk.get(chunk_id, []):
+                img_id = img_meta.get("id")
+                if img_id and img_id not in seen_ids:
+                    seen_ids.add(img_id)
+                    available_figures.append(
+                        {
+                            "figure_number": img_meta.get("figure_number"),
+                            "caption": img_meta.get("caption"),
+                            "image_type": img_meta.get("image_type"),
+                            "ref": f"{{{{source_image:{img_id}}}}}",
+                        }
+                    )
+
         logger.info(
             "search_knowledge_base tool completed",
             query=query,
             results_count=len(chunks),
+            figures_count=len(available_figures),
             user_id=str(self.user_id),
         )
-        return json.dumps({"query": query, "results": chunks, "count": len(chunks)})
+        return json.dumps(
+            {
+                "query": query,
+                "results": chunks,
+                "count": len(chunks),
+                "available_figures": available_figures,
+            }
+        )
 
     async def _get_learner_progress(self, tool_input: dict[str, Any], session: AsyncSession) -> str:
         """Execute get_learner_progress tool."""
@@ -527,3 +581,41 @@ Respond ONLY with valid JSON in this exact format:
                 "updated": was_existing,
             }
         )
+
+    async def _search_source_images(self, tool_input: dict[str, Any], session: AsyncSession) -> str:
+        """Execute search_source_images tool."""
+        query = tool_input["query"]
+        image_type = tool_input.get("image_type", "any")
+
+        results = await self.retriever.search_source_images(
+            query=query,
+            top_k=3,
+            session=session,
+        )
+
+        if image_type and image_type != "any":
+            results = [r for r in results if r.get("image_type") == image_type]
+
+        figures = []
+        for img_meta in results:
+            img_id = img_meta.get("id")
+            figures.append(
+                {
+                    "figure_number": img_meta.get("figure_number"),
+                    "caption": img_meta.get("caption"),
+                    "image_type": img_meta.get("image_type"),
+                    "source": img_meta.get("source"),
+                    "chapter": img_meta.get("chapter"),
+                    "similarity": img_meta.get("similarity"),
+                    "ref": f"{{{{source_image:{img_id}}}}}",
+                }
+            )
+
+        logger.info(
+            "search_source_images tool completed",
+            query=query,
+            image_type=image_type,
+            results_count=len(figures),
+            user_id=str(self.user_id),
+        )
+        return json.dumps({"query": query, "figures": figures, "count": len(figures)})

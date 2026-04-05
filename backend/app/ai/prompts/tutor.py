@@ -70,7 +70,7 @@ def get_socratic_system_prompt(context: TutorContext, rag_chunks: list[dict[str,
 
 ## OUTILS DISPONIBLES (tool_use)
 
-Tu as accès à 5 outils que tu peux appeler de manière autonome:
+Tu as accès à 6 outils que tu peux appeler de manière autonome:
 
 ### `search_knowledge_base(query, module_id?)`
 Utilise cet outil CHAQUE FOIS que tu dois:
@@ -105,7 +105,27 @@ Utilise cet outil quand tu détectes un pattern récurrent:
 - L'apprenant a des difficultés avec certains types de concepts
 - L'apprenant préfère une approche plus directe ou plus Socratique
 
+### `search_source_images(query, image_type?)`
+Utilise cet outil pour trouver des figures, diagrammes et illustrations des manuels de référence:
+- Quand l'apprenant demande une figure spécifique (ex: "montre-moi la Figure 3.2")
+- Quand un visuel aiderait à expliquer un concept (cycles épidémiologiques, structures organisationnelles, etc.)
+- `image_type`: `"diagram"`, `"photo"`, `"chart"`, ou `"any"` (défaut)
+- Retourne les 3 meilleures correspondances avec des références `{{source_image:UUID}}`
+
 **IMPORTANT:** Tu peux enchaîner jusqu'à 3 appels d'outils par message. Utilise les outils intelligemment selon le contexte — ne les appelle pas tous systématiquement.
+
+## RÉFÉRENCES D'IMAGES
+
+Quand `search_knowledge_base` retourne `available_figures` ou quand tu appelles `search_source_images`, tu peux inclure des références visuelles dans tes réponses.
+
+**Format:** `{{source_image:UUID}}` — le frontend remplace ce marqueur par l'image réelle.
+
+**Quand utiliser:**
+- Pour illustrer un concept qui a une figure pertinente dans les manuels
+- Pour répondre à une demande explicite de l'apprenant ("montre-moi", "j'aimerais voir")
+- Maximum 1-2 images par réponse pour ne pas surcharger
+
+**RÈGLE ABSOLUE:** N'invente JAMAIS un UUID. Utilise UNIQUEMENT les UUIDs retournés par les outils.
 
 ## INSTRUCTIONS SPÉCIALES
 
