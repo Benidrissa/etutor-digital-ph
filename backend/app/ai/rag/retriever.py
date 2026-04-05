@@ -1,6 +1,7 @@
 """Semantic retrieval service for the RAG pipeline."""
 
 import re
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -25,6 +26,20 @@ class SearchResult:
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API responses."""
         return {"chunk": self.chunk.to_dict(), "similarity_score": self.similarity_score}
+
+
+@dataclass
+class LinkedImage:
+    """Source image linked to a document chunk."""
+
+    id: uuid.UUID
+    chunk_id: uuid.UUID
+    figure_number: str | None
+    caption: str | None
+    image_type: str | None
+    storage_url: str | None
+    alt_text_fr: str | None
+    alt_text_en: str | None
 
 
 class SemanticRetriever:
@@ -269,6 +284,65 @@ class SemanticRetriever:
                     filters["source"] = named_keys
 
         return await self.search(query=query, top_k=top_k, filters=filters, session=session)
+
+    async def get_linked_images(
+        self,
+        chunk_ids: list[uuid.UUID],
+        session: AsyncSession,
+    ) -> list[LinkedImage]:
+        """Return source images linked to the given chunk IDs.
+
+        Queries the ``source_images`` table joined through ``chunk_source_images``.
+        Fails gracefully if the table does not yet exist (pre-migration environments).
+
+        Args:
+            chunk_ids: List of document chunk UUIDs to look up.
+            session: Database session.
+
+        Returns:
+            List of LinkedImage objects (may be empty).
+        """
+        if not chunk_ids:
+            return []
+
+        try:
+            id_list = ", ".join(f"'{cid}'" for cid in chunk_ids)
+            query_str = f"""
+            SELECT
+                si.id,
+                csi.chunk_id,
+                si.figure_number,
+                si.caption,
+                si.image_type,
+                si.storage_url,
+                si.alt_text_fr,
+                si.alt_text_en
+            FROM source_images si
+            JOIN chunk_source_images csi ON csi.source_image_id = si.id
+            WHERE csi.chunk_id IN ({id_list})
+            ORDER BY si.figure_number NULLS LAST
+            """
+            result = await session.execute(text(query_str))
+            rows = result.fetchall()
+            return [
+                LinkedImage(
+                    id=row.id,
+                    chunk_id=row.chunk_id,
+                    figure_number=row.figure_number,
+                    caption=row.caption,
+                    image_type=row.image_type,
+                    storage_url=row.storage_url,
+                    alt_text_fr=row.alt_text_fr,
+                    alt_text_en=row.alt_text_en,
+                )
+                for row in rows
+            ]
+        except Exception as exc:
+            logger.warning(
+                "get_linked_images failed (source_images table may not exist yet)",
+                error=str(exc),
+            )
+            return []
 
     async def verify_search_functionality(
         self, session: AsyncSession | None = None
