@@ -286,6 +286,14 @@ class LessonGenerationService:
         cached_content = result.scalars().first()
 
         if cached_content:
+            raw = cached_content.content
+            source_image_refs_raw = raw.get("source_image_refs", [])
+            source_image_refs = [
+                SourceImageRef(**ref) for ref in source_image_refs_raw if isinstance(ref, dict)
+            ]
+            content_fields = {
+                k: v for k, v in raw.items() if k not in {"unit_id", "source_image_refs"}
+            }
             return LessonResponse(
                 id=cached_content.id,
                 module_id=cached_content.module_id,
@@ -293,9 +301,10 @@ class LessonGenerationService:
                 language=cached_content.language,
                 level=cached_content.level,
                 country_context=cached_content.country_context,
-                content=LessonContent(**cached_content.content),
+                content=LessonContent(**content_fields),
                 generated_at=cached_content.generated_at.isoformat(),
                 cached=True,
+                source_image_refs=source_image_refs,
             )
 
         return None
@@ -505,7 +514,7 @@ class LessonGenerationService:
                         figure_number=img.get("figure_number"),
                         caption=img.get("caption"),
                         image_type=img.get("image_type") or "unknown",
-                        storage_url=img.get("storage_url"),
+                        storage_url=f"/api/v1/source-images/{img_id}/data",
                         alt_text_fr=img.get("alt_text_fr"),
                         alt_text_en=img.get("alt_text_en"),
                     )
@@ -518,6 +527,9 @@ class LessonGenerationService:
         """Save generated lesson content to cache."""
         content_with_unit = lesson_response.content.model_dump()
         content_with_unit["unit_id"] = lesson_response.unit_id
+        content_with_unit["source_image_refs"] = [
+            ref.model_dump() for ref in lesson_response.source_image_refs
+        ]
 
         cached_content = GeneratedContent(
             id=lesson_response.id,

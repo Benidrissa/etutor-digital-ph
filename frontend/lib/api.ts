@@ -583,12 +583,13 @@ export async function submitSummativeAssessmentAttempt(
 // ── Source Image (PDF extraction) API ─────────────────────────
 
 export interface SourceImageMeta {
-  image_id: string;
+  id: string;
   figure_number?: string;
+  caption?: string;
   caption_fr?: string;
   caption_en?: string;
   attribution?: string;
-  storage_url: string;
+  image_type?: string;
   alt_text_fr?: string;
   alt_text_en?: string;
 }

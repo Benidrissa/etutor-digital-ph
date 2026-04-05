@@ -11,11 +11,12 @@ interface SourceImageProps extends SourceImageMeta {
 }
 
 export function SourceImage({
+  id,
   figure_number,
+  caption,
   caption_fr,
   caption_en,
   attribution,
-  storage_url,
   alt_text_fr,
   alt_text_en,
   language,
@@ -24,14 +25,15 @@ export function SourceImage({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
 
-  const caption = language === 'fr' ? caption_fr : caption_en;
+  const imageSrc = `/api/v1/source-images/${id}/data`;
+  const captionText = language === 'fr' ? (caption_fr ?? caption) : (caption_en ?? caption);
   const altText = language === 'fr'
-    ? (alt_text_fr ?? caption_fr ?? t('defaultAlt'))
-    : (alt_text_en ?? caption_en ?? t('defaultAlt'));
+    ? (alt_text_fr ?? caption_fr ?? caption ?? t('defaultAlt'))
+    : (alt_text_en ?? caption_en ?? caption ?? t('defaultAlt'));
 
   const figureLabel = figure_number
-    ? `${t('figure')} ${figure_number}${caption ? ` — ${caption}` : ''}`
-    : caption ?? '';
+    ? `${t('figure')} ${figure_number}${captionText ? ` — ${captionText}` : ''}`
+    : captionText ?? '';
 
   return (
     <>
@@ -43,7 +45,7 @@ export function SourceImage({
           onClick={() => setIsFullscreen(true)}
         >
           <Image
-            src={storage_url}
+            src={imageSrc}
             alt={altText}
             width={768}
             height={512}
@@ -87,7 +89,7 @@ export function SourceImage({
           </button>
 
           <Image
-            src={storage_url}
+            src={imageSrc}
             alt={altText}
             width={768}
             height={512}
