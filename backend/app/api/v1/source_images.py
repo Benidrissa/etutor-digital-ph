@@ -2,9 +2,10 @@
 
 import uuid
 
+import httpx
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -72,8 +73,8 @@ async def get_image_metadata(
 async def get_image_data(
     image_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-) -> RedirectResponse:
-    """Serve image binary — redirects to MinIO/storage URL with long-lived cache headers."""
+) -> StreamingResponse:
+    """Proxy image binary from internal MinIO storage to the browser."""
     result = await db.execute(select(SourceImage).where(SourceImage.id == image_id))
     img = result.scalar_one_or_none()
     if img is None:
@@ -84,9 +85,20 @@ async def get_image_data(
             status_code=status.HTTP_404_NOT_FOUND, detail="Image binary not available"
         )
 
-    logger.info("Source image data redirect", image_id=str(image_id))
-    return RedirectResponse(
-        url=img.storage_url,
-        status_code=status.HTTP_301_MOVED_PERMANENTLY,
+    logger.info("Source image data proxy", image_id=str(image_id))
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            upstream = await client.get(img.storage_url)
+        upstream.raise_for_status()
+    except httpx.HTTPError as exc:
+        logger.error("Failed to fetch image from storage", image_id=str(image_id), error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="Image not available from storage"
+        ) from exc
+
+    content_type = upstream.headers.get("content-type", "image/webp")
+    return StreamingResponse(
+        content=iter([upstream.content]),
+        media_type=content_type,
         headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )

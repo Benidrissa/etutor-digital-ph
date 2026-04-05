@@ -36,6 +36,7 @@ import { apiFetch } from '@/lib/api';
 import { authClient, AuthError } from '@/lib/auth';
 import { CourseForm } from '@/components/admin/course-form';
 import { CourseWizardClient, loadWizardState } from '@/components/admin/course-wizard-client';
+import { CoursePreassessmentSettings } from '@/components/admin/course-preassessment-settings';
 
 export interface AdminCourse {
   id: string;
@@ -48,9 +49,12 @@ export interface AdminCourse {
   cover_image_url: string | null;
   status: 'draft' | 'published' | 'archived';
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
   module_count?: number;
   indexation_task_id?: string | null;
+  rag_collection_id?: string | null;
+  preassessment_enabled?: boolean;
+  preassessment_mandatory?: boolean;
 }
 
 type WizardStep = 'upload' | 'info' | 'generate' | 'index' | 'publish';
@@ -555,6 +559,14 @@ function CourseRow({
           </DropdownMenu>
         </div>
       </div>
+      <CoursePreassessmentSettings
+        courseId={course.id}
+        ragIndexed={!!course.rag_collection_id}
+        preassessmentEnabled={!!course.preassessment_enabled}
+        preassessmentMandatory={!!course.preassessment_mandatory}
+        courseTitleFr={course.title_fr}
+        courseTitleEn={course.title_en}
+      />
     </Card>
   );
 }
