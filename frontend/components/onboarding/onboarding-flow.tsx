@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
 import { useRouter } from '@/i18n/routing';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -27,6 +27,8 @@ interface PreassessmentStatus {
   completed: boolean;
   course_id: string;
   course_slug: string;
+  course_title_fr?: string;
+  course_title_en?: string;
 }
 
 const TOTAL_STEPS = 4;
@@ -46,6 +48,7 @@ export function OnboardingFlow() {
   const [pendingCourseSlug, setPendingCourseSlug] = useState<string | null>(null);
   const [pendingCourseName, setPendingCourseName] = useState<string | null>(null);
 
+  const locale = useLocale();
   const { completeOnboarding, isLoading, error } = useOnboarding();
 
   const updateData = (key: keyof OnboardingData, value: string | number) => {
@@ -97,7 +100,10 @@ export function OnboardingFlow() {
             router.push(`/courses/${status.course_slug}/placement-test`);
           } else {
             setPendingCourseSlug(status.course_slug);
-            setPendingCourseName(status.course_slug);
+            const title = locale === 'fr'
+              ? (status.course_title_fr ?? status.course_slug)
+              : (status.course_title_en ?? status.course_slug);
+            setPendingCourseName(title);
             setShowChoice(true);
           }
         } else {

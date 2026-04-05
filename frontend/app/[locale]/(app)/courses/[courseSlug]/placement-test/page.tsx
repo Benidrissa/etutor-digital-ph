@@ -1,3 +1,7 @@
+'use client';
+
+import { use, useEffect, useState } from 'react';
+import { useLocale } from 'next-intl';
 import { PlacementTestContainer } from '@/components/placement/placement-test-container';
 import { apiFetch } from '@/lib/api';
 
@@ -12,23 +16,41 @@ interface CourseDetail {
   title_en: string;
 }
 
-export default async function CoursePreassessmentPage({ params }: CoursePreassessmentPageProps) {
-  const { locale, courseSlug } = await params;
+export default function CoursePreassessmentPage({ params }: CoursePreassessmentPageProps) {
+  const { courseSlug } = use(params);
+  const locale = useLocale();
+  const [course, setCourse] = useState<CourseDetail | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  let course: CourseDetail | null = null;
-  try {
-    course = await apiFetch<CourseDetail>(`/api/v1/courses/${courseSlug}`);
-  } catch {
-    // Proceed without course name if fetch fails
+  useEffect(() => {
+    apiFetch<CourseDetail>(`/api/v1/courses/${courseSlug}`)
+      .then(setCourse)
+      .catch(() => {
+        // Proceed without course details if fetch fails
+      })
+      .finally(() => setIsLoading(false));
+  }, [courseSlug]);
+
+  const courseName = locale === 'fr'
+    ? (course?.title_fr ?? courseSlug)
+    : (course?.title_en ?? courseSlug);
+
+  if (isLoading) {
+    return (
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-muted rounded w-1/2" />
+          <div className="h-4 bg-muted rounded w-3/4" />
+        </div>
+      </div>
+    );
   }
-
-  const courseName = locale === 'fr' ? (course?.title_fr ?? courseSlug) : (course?.title_en ?? courseSlug);
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
       <PlacementTestContainer
         locale={locale}
-        courseId={course?.id ?? courseSlug}
+        courseId={course?.id}
         courseName={courseName}
       />
     </div>
