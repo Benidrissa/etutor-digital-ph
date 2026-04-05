@@ -2,8 +2,6 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
-import { useRouter } from 'next/navigation';
-import { useLocale } from 'next-intl';
 import {
   ChevronDown,
   ChevronUp,
@@ -16,52 +14,88 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { authClient, AuthError } from '@/lib/auth';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { authClient } from '@/lib/auth';
 
 interface PreassessmentQuestion {
   id: string;
-  question_text: string;
-  options: string[];
-  correct_index: number;
+  question: string;
+  options: Array<{ id: string; text: string }>;
   domain: string;
-  difficulty: 'easy' | 'medium' | 'hard';
-  explanation?: string;
+  level: number;
+  correct_index?: number;
+  difficulty?: 'easy' | 'medium' | 'hard';
 }
 
-interface PreassessmentStatus {
+interface BackendPreassessmentEntry {
+  id: string;
+  language: string;
+  question_count: number;
+  generated_by: string;
+  created_at: string;
+  validated?: boolean;
+  questions?: PreassessmentQuestion[];
+}
+
+interface BackendStatusResponse {
+  course_id: string;
+  preassessment_enabled: boolean;
+  preassessments: BackendPreassessmentEntry[];
+  task?: {
+    id: string;
+    state: string;
+    step?: string;
+    progress?: number;
+    question_count?: number;
+    preassessment_id?: string;
+  };
+}
+
+type GenerationStatus = 'not_generated' | 'generating' | 'ready' | 'validated';
+
+interface LocalState {
   enabled: boolean;
   mandatory: boolean;
-  status: 'not_generated' | 'generating' | 'ready' | 'validated';
-  question_count?: number;
-  task_id?: string | null;
-  questions?: PreassessmentQuestion[];
+  status: GenerationStatus;
+  questionCount: number;
+  taskId: string | null;
+  questions: PreassessmentQuestion[];
+  validated: boolean;
 }
 
 interface CoursePreassessmentSettingsProps {
   courseId: string;
   ragIndexed: boolean;
+  preassessmentEnabled: boolean;
+  preassessmentMandatory: boolean;
+  courseTitleFr: string;
+  courseTitleEn: string;
 }
 
-async function getToken(router: ReturnType<typeof useRouter>, locale: string): Promise<string | null> {
-  try {
-    return await authClient.getValidToken();
-  } catch (err) {
-    if (err instanceof AuthError && err.status === 401) {
-      router.push(`/${locale}/login`);
-    }
-    return null;
+function deriveStatus(
+  response: BackendStatusResponse,
+  localTaskId: string | null,
+  localGenerating: boolean,
+): GenerationStatus {
+  if (localGenerating) return 'generating';
+  if (response.task && ['PENDING', 'STARTED', 'GENERATING'].includes(response.task.state)) {
+    return 'generating';
   }
+  if (response.preassessments.length === 0) return 'not_generated';
+  const latest = response.preassessments[0];
+  if (latest.validated) return 'validated';
+  if (latest.question_count > 0) return 'ready';
+  return 'not_generated';
 }
 
 export function CoursePreassessmentSettings({
   courseId,
   ragIndexed,
+  preassessmentEnabled,
+  preassessmentMandatory,
+  courseTitleFr,
+  courseTitleEn,
 }: CoursePreassessmentSettingsProps) {
   const t = useTranslations('AdminCourses');
-  const router = useRouter();
-  const locale = useLocale();
 
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -69,47 +103,90 @@ export function CoursePreassessmentSettings({
   const [error, setError] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
-  const [status, setStatus] = useState<PreassessmentStatus>({
-    enabled: false,
-    mandatory: false,
+  const [local, setLocal] = useState<LocalState>({
+    enabled: preassessmentEnabled,
+    mandatory: preassessmentMandatory,
     status: 'not_generated',
+    questionCount: 0,
+    taskId: null,
+    questions: [],
+    validated: false,
   });
 
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const generatingRef = useRef(false);
 
-  const fetchStatus = useCallback(async () => {
-    const token = await getToken(router, locale);
-    if (!token) return;
-    try {
-      const res = await fetch(
-        `${API_BASE}/api/v1/admin/courses/${courseId}/preassessment-status`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      if (!res.ok) return;
-      const data = (await res.json()) as PreassessmentStatus;
-      setStatus(data);
-      return data;
-    } catch {
-      // silently ignore fetch errors for status polling
-    }
-  }, [courseId, router, locale]);
+  const fetchStatus = useCallback(
+    async (taskId?: string | null): Promise<BackendStatusResponse | null> => {
+      try {
+        const params = taskId ? `?task_id=${encodeURIComponent(taskId)}` : '';
+        const data = await authClient.authenticatedFetch<BackendStatusResponse>(
+          `/api/v1/admin/courses/${courseId}/preassessment-status${params}`,
+        );
+        return data;
+      } catch {
+        return null;
+      }
+    },
+    [courseId],
+  );
+
+  const applyResponse = useCallback(
+    (data: BackendStatusResponse, currentTaskId: string | null, isGenerating: boolean) => {
+      const status = deriveStatus(data, currentTaskId, isGenerating);
+      const latest = data.preassessments[0] ?? null;
+      setLocal((prev) => ({
+        ...prev,
+        enabled: data.preassessment_enabled,
+        status,
+        questionCount: latest?.question_count ?? 0,
+        validated: latest?.validated ?? false,
+        questions: (latest?.questions as PreassessmentQuestion[] | undefined) ?? [],
+      }));
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!expanded) return;
     setLoading(true);
-    fetchStatus().finally(() => setLoading(false));
-  }, [expanded, fetchStatus]);
+    fetchStatus(null).then((data) => {
+      if (data) applyResponse(data, null, false);
+      setLoading(false);
+    });
+  }, [expanded, fetchStatus, applyResponse]);
 
   useEffect(() => {
-    if (status.status !== 'generating') {
+    if (local.status !== 'generating') {
       if (pollRef.current) clearTimeout(pollRef.current);
+      generatingRef.current = false;
       return;
     }
 
+    generatingRef.current = true;
+
     const poll = async () => {
-      const data = await fetchStatus();
-      if (data?.status === 'generating') {
-        pollRef.current = setTimeout(poll, 3000);
+      const data = await fetchStatus(local.taskId);
+      if (!data) {
+        if (generatingRef.current) {
+          pollRef.current = setTimeout(poll, 3000);
+        }
+        return;
+      }
+      const taskDone =
+        !data.task ||
+        !['PENDING', 'STARTED', 'GENERATING'].includes(data.task.state);
+      const hasResults = data.preassessments.length > 0;
+
+      if (taskDone && (hasResults || data.task?.state === 'FAILURE')) {
+        applyResponse(data, local.taskId, false);
+        generatingRef.current = false;
+        setLocal((prev) => ({ ...prev, taskId: null }));
+      } else {
+        applyResponse(data, local.taskId, true);
+        if (generatingRef.current) {
+          pollRef.current = setTimeout(poll, 3000);
+        }
       }
     };
 
@@ -117,24 +194,31 @@ export function CoursePreassessmentSettings({
     return () => {
       if (pollRef.current) clearTimeout(pollRef.current);
     };
-  }, [status.status, fetchStatus]);
+  }, [local.status, local.taskId, fetchStatus, applyResponse]);
 
-  const updateSettings = async (patch: Partial<Pick<PreassessmentStatus, 'enabled' | 'mandatory'>>) => {
+  const updateSettings = async (patch: { enabled?: boolean; mandatory?: boolean }) => {
     setSaving(true);
     setError(null);
-    const token = await getToken(router, locale);
-    if (!token) { setSaving(false); return; }
     try {
-      const res = await fetch(
-        `${API_BASE}/api/v1/admin/courses/${courseId}/preassessment-settings`,
+      const body: Record<string, unknown> = {
+        title_fr: courseTitleFr,
+        title_en: courseTitleEn,
+      };
+      if (patch.enabled !== undefined) body.preassessment_enabled = patch.enabled;
+      if (patch.mandatory !== undefined) body.preassessment_mandatory = patch.mandatory;
+
+      await authClient.authenticatedFetch(
+        `/api/v1/admin/courses/${courseId}`,
         {
           method: 'PATCH',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify(patch),
-        }
+          body: JSON.stringify(body),
+        },
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setStatus((prev) => ({ ...prev, ...patch }));
+      setLocal((prev) => ({
+        ...prev,
+        ...(patch.enabled !== undefined ? { enabled: patch.enabled! } : {}),
+        ...(patch.mandatory !== undefined ? { mandatory: patch.mandatory! } : {}),
+      }));
     } catch {
       setError(t('preassessment.saveError'));
     } finally {
@@ -144,23 +228,19 @@ export function CoursePreassessmentSettings({
 
   const handleGenerate = async () => {
     setError(null);
-    const token = await getToken(router, locale);
-    if (!token) return;
     try {
-      const res = await fetch(
-        `${API_BASE}/api/v1/admin/courses/${courseId}/generate-preassessment`,
+      const data = await authClient.authenticatedFetch<{ task_id?: string; status?: string }>(
+        `/api/v1/admin/courses/${courseId}/generate-preassessment`,
         {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        }
+          body: JSON.stringify({ language: 'fr' }),
+        },
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as { task_id?: string };
-      setStatus((prev) => ({
+      setLocal((prev) => ({
         ...prev,
         status: 'generating',
-        task_id: data.task_id ?? null,
-        questions: undefined,
+        taskId: data.task_id ?? null,
+        questions: [],
       }));
     } catch {
       setError(t('preassessment.generateError'));
@@ -170,18 +250,12 @@ export function CoursePreassessmentSettings({
   const handleValidate = async () => {
     setSaving(true);
     setError(null);
-    const token = await getToken(router, locale);
-    if (!token) { setSaving(false); return; }
     try {
-      const res = await fetch(
-        `${API_BASE}/api/v1/admin/courses/${courseId}/validate-preassessment`,
-        {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        }
+      await authClient.authenticatedFetch(
+        `/api/v1/admin/courses/${courseId}/validate-preassessment`,
+        { method: 'POST' },
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setStatus((prev) => ({ ...prev, status: 'validated' }));
+      setLocal((prev) => ({ ...prev, status: 'validated', validated: true }));
     } catch {
       setError(t('preassessment.validateError'));
     } finally {
@@ -190,20 +264,20 @@ export function CoursePreassessmentSettings({
   };
 
   const statusLabel = () => {
-    switch (status.status) {
+    switch (local.status) {
       case 'not_generated':
         return t('preassessment.statusNotGenerated');
       case 'generating':
         return t('preassessment.statusGenerating');
       case 'ready':
-        return t('preassessment.statusReady', { count: status.question_count ?? 0 });
+        return t('preassessment.statusReady', { count: local.questionCount });
       case 'validated':
         return t('preassessment.statusValidated');
     }
   };
 
   const statusColor = () => {
-    switch (status.status) {
+    switch (local.status) {
       case 'not_generated':
         return 'text-muted-foreground';
       case 'generating':
@@ -215,12 +289,16 @@ export function CoursePreassessmentSettings({
     }
   };
 
-  const difficultyColor = (difficulty: string) => {
+  const difficultyColor = (difficulty?: string) => {
     switch (difficulty) {
-      case 'easy': return 'bg-green-100 text-green-800 border-green-200';
-      case 'medium': return 'bg-amber-100 text-amber-800 border-amber-200';
-      case 'hard': return 'bg-red-100 text-red-800 border-red-200';
-      default: return 'bg-stone-100 text-stone-700 border-stone-200';
+      case 'easy':
+        return 'bg-green-100 text-green-800 border-green-200';
+      case 'medium':
+        return 'bg-amber-100 text-amber-800 border-amber-200';
+      case 'hard':
+        return 'bg-red-100 text-red-800 border-red-200';
+      default:
+        return 'bg-stone-100 text-stone-700 border-stone-200';
     }
   };
 
@@ -256,48 +334,48 @@ export function CoursePreassessmentSettings({
                 <label className="flex items-center gap-2 cursor-pointer select-none min-h-[44px]">
                   <div
                     role="switch"
-                    aria-checked={status.enabled}
+                    aria-checked={local.enabled}
                     tabIndex={0}
                     className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background cursor-pointer ${
-                      status.enabled ? 'bg-teal-600' : 'bg-input'
+                      local.enabled ? 'bg-teal-600' : 'bg-input'
                     } ${saving ? 'opacity-50 pointer-events-none' : ''}`}
-                    onClick={() => !saving && updateSettings({ enabled: !status.enabled })}
+                    onClick={() => !saving && updateSettings({ enabled: !local.enabled })}
                     onKeyDown={(e) => {
                       if ((e.key === 'Enter' || e.key === ' ') && !saving) {
                         e.preventDefault();
-                        updateSettings({ enabled: !status.enabled });
+                        updateSettings({ enabled: !local.enabled });
                       }
                     }}
                   >
                     <span
                       className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform ${
-                        status.enabled ? 'translate-x-4' : 'translate-x-0'
+                        local.enabled ? 'translate-x-4' : 'translate-x-0'
                       }`}
                     />
                   </div>
                   <span className="text-sm">{t('preassessment.enableToggle')}</span>
                 </label>
 
-                {status.enabled && (
+                {local.enabled && (
                   <label className="flex items-center gap-2 cursor-pointer select-none min-h-[44px]">
                     <div
                       role="switch"
-                      aria-checked={status.mandatory}
+                      aria-checked={local.mandatory}
                       tabIndex={0}
                       className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background cursor-pointer ${
-                        status.mandatory ? 'bg-teal-600' : 'bg-input'
+                        local.mandatory ? 'bg-teal-600' : 'bg-input'
                       } ${saving ? 'opacity-50 pointer-events-none' : ''}`}
-                      onClick={() => !saving && updateSettings({ mandatory: !status.mandatory })}
+                      onClick={() => !saving && updateSettings({ mandatory: !local.mandatory })}
                       onKeyDown={(e) => {
                         if ((e.key === 'Enter' || e.key === ' ') && !saving) {
                           e.preventDefault();
-                          updateSettings({ mandatory: !status.mandatory });
+                          updateSettings({ mandatory: !local.mandatory });
                         }
                       }}
                     >
                       <span
                         className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform ${
-                          status.mandatory ? 'translate-x-4' : 'translate-x-0'
+                          local.mandatory ? 'translate-x-4' : 'translate-x-0'
                         }`}
                       />
                     </div>
@@ -308,10 +386,10 @@ export function CoursePreassessmentSettings({
 
               <div className="flex flex-wrap items-center gap-3">
                 <span className={`flex items-center gap-1.5 text-sm font-medium ${statusColor()}`}>
-                  {status.status === 'generating' && (
+                  {local.status === 'generating' && (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
                   )}
-                  {status.status === 'validated' && (
+                  {local.status === 'validated' && (
                     <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
                   )}
                   {statusLabel()}
@@ -324,23 +402,23 @@ export function CoursePreassessmentSettings({
                   variant="outline"
                   className="gap-1.5 min-h-11"
                   onClick={handleGenerate}
-                  disabled={!ragIndexed || status.status === 'generating'}
+                  disabled={!ragIndexed || local.status === 'generating'}
                   title={!ragIndexed ? t('preassessment.ragNotIndexedTooltip') : undefined}
                   aria-label={t('preassessment.generateButton')}
                 >
-                  {status.status === 'generating' ? (
+                  {local.status === 'generating' ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-                  ) : status.status === 'not_generated' ? (
+                  ) : local.status === 'not_generated' ? (
                     <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
                   ) : (
                     <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
                   )}
-                  {status.status === 'not_generated'
+                  {local.status === 'not_generated'
                     ? t('preassessment.generateButton')
                     : t('preassessment.regenerateButton')}
                 </Button>
 
-                {(status.status === 'ready' || status.status === 'validated') && (
+                {(local.status === 'ready' || local.status === 'validated') && (
                   <>
                     <Button
                       size="sm"
@@ -354,7 +432,7 @@ export function CoursePreassessmentSettings({
                         : t('preassessment.showPreview')}
                     </Button>
 
-                    {status.status === 'ready' && (
+                    {local.status === 'ready' && (
                       <Button
                         size="sm"
                         className="gap-1.5 min-h-11 bg-teal-600 hover:bg-teal-700"
@@ -380,23 +458,27 @@ export function CoursePreassessmentSettings({
                 </div>
               )}
 
-              {previewOpen && status.questions && status.questions.length > 0 && (
+              {previewOpen && local.questions.length > 0 && (
                 <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    {t('preassessment.previewTitle', { count: status.questions.length })}
+                    {t('preassessment.previewTitle', { count: local.questions.length })}
                   </p>
                   <ol className="space-y-4">
-                    {status.questions.map((q, idx) => (
+                    {local.questions.map((q, idx) => (
                       <li key={q.id} className="space-y-2">
                         <div className="flex items-start gap-2 flex-wrap">
                           <span className="text-xs font-semibold text-muted-foreground shrink-0 mt-0.5">
                             {idx + 1}.
                           </span>
-                          <p className="text-sm font-medium flex-1">{q.question_text}</p>
+                          <p className="text-sm font-medium flex-1">{q.question}</p>
                           <div className="flex gap-1 flex-wrap shrink-0">
-                            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${difficultyColor(q.difficulty)}`}>
-                              {t(`preassessment.difficulty.${q.difficulty}`)}
-                            </span>
+                            {q.difficulty && (
+                              <span
+                                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${difficultyColor(q.difficulty)}`}
+                              >
+                                {t(`preassessment.difficulty.${q.difficulty}`)}
+                              </span>
+                            )}
                             {q.domain && (
                               <Badge variant="outline" className="text-[10px] px-2 py-0.5">
                                 {q.domain.replace(/_/g, ' ')}
@@ -407,14 +489,14 @@ export function CoursePreassessmentSettings({
                         <ol className="ml-5 space-y-1" type="A">
                           {q.options.map((opt, oIdx) => (
                             <li
-                              key={oIdx}
+                              key={opt.id || oIdx}
                               className={`text-sm rounded px-2 py-1 ${
                                 oIdx === q.correct_index
                                   ? 'bg-teal-50 text-teal-800 font-medium border border-teal-200'
                                   : 'text-muted-foreground'
                               }`}
                             >
-                              {String.fromCharCode(65 + oIdx)}. {opt}
+                              {String.fromCharCode(65 + oIdx)}. {opt.text}
                             </li>
                           ))}
                         </ol>
