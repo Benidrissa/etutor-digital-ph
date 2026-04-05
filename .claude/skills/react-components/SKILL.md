@@ -1,12 +1,12 @@
 ---
 name: react-components
-description: Build React components for the SantePublique AOF learning platform. Use when creating or modifying React/TypeScript components. Enforces Tailwind CSS + shadcn/ui, mobile-first responsive design, offline-ready PWA patterns, accessibility, and FR/EN i18n.
+description: Build React components for the Sira learning platform. Use when creating or modifying React/TypeScript components. Enforces Tailwind CSS + shadcn/ui, mobile-first responsive design, offline-ready PWA patterns, accessibility, and FR/EN i18n.
 user-invocable: true
 ---
 
-# SantePublique AOF React Component Builder
+# Sira React Component Builder
 
-Build production-grade React 19 components for SantePublique AOF — a mobile-first, bilingual (FR/EN) learning platform for public health professionals in West Africa.
+Build production-grade React 19 components for Sira — a mobile-first, bilingual (FR/EN) learning platform for public health professionals in West Africa.
 
 ## Before writing any component
 

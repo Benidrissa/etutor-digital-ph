@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**SantePublique AOF** — an adaptive, bilingual (FR/EN), mobile-first learning platform for public health professionals in West Africa. Uses AI (Claude API + RAG) to generate personalized content from 3 reference textbooks and real African health data (DHIS2, DHS, WHO AFRO).
+**Sira** (from Bambara *Donniya Sira* — "the path to knowledge") — an adaptive, bilingual (FR/EN), mobile-first learning platform for public health professionals in West Africa. Uses AI (Claude API + RAG) to generate personalized content from 3 reference textbooks and real African health data (DHIS2, DHS, WHO AFRO).
 
 **Current status:** Phase 0 scaffolding complete. Monorepo with `backend/` (FastAPI) and `frontend/` (Next.js 15) fully initialized. Backend has health endpoints with tests passing. Frontend has App Router with FR/EN i18n, Tailwind + shadcn/ui, and mobile-first navigation. Docker Compose, CI/CD, and Alembic are configured. Next: DB schema migrations, RAG pipeline.
 

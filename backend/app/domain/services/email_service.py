@@ -31,21 +31,21 @@ class EmailService:
             magic_url = f"{self.frontend_url}/auth/magic-link?token={magic_token}"
 
             if language == "en":
-                subject = "Reset your SantePublique AOF account access"
+                subject = "Reset your Sira account access"
                 html_content = f"""
                 <h2>Reset Your Account Access</h2>
-                <p>You requested to reset access to your SantePublique AOF account.</p>
+                <p>You requested to reset access to your Sira account.</p>
                 <p>Click the link below to continue:</p>
                 <p><a href="{magic_url}" style="background-color: #0066cc; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">Reset Account Access</a></p>
                 <p>This link will expire in 1 hour.</p>
                 <p>If you didn't request this, you can safely ignore this email.</p>
                 <hr>
-                <p style="color: #666; font-size: 12px;">SantePublique AOF - Advancing Public Health in West Africa</p>
+                <p style="color: #666; font-size: 12px;">Sira - Advancing Public Health in West Africa</p>
                 """
                 text_content = f"""
                 Reset Your Account Access
 
-                You requested to reset access to your SantePublique AOF account.
+                You requested to reset access to your Sira account.
 
                 Click the link below to continue:
                 {magic_url}
@@ -55,24 +55,24 @@ class EmailService:
                 If you didn't request this, you can safely ignore this email.
 
                 ---
-                SantePublique AOF - Advancing Public Health in West Africa
+                Sira - Advancing Public Health in West Africa
                 """
             else:  # French
-                subject = "Réinitialiser l'accès à votre compte SantePublique AOF"
+                subject = "Réinitialiser l'accès à votre compte Sira"
                 html_content = f"""
                 <h2>Réinitialiser l'accès à votre compte</h2>
-                <p>Vous avez demandé à réinitialiser l'accès à votre compte SantePublique AOF.</p>
+                <p>Vous avez demandé à réinitialiser l'accès à votre compte Sira.</p>
                 <p>Cliquez sur le lien ci-dessous pour continuer :</p>
                 <p><a href="{magic_url}" style="background-color: #0066cc; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">Réinitialiser l'accès au compte</a></p>
                 <p>Ce lien expirera dans 1 heure.</p>
                 <p>Si vous n'avez pas fait cette demande, vous pouvez ignorer cet email en toute sécurité.</p>
                 <hr>
-                <p style="color: #666; font-size: 12px;">SantePublique AOF - Faire progresser la santé publique en Afrique de l'Ouest</p>
+                <p style="color: #666; font-size: 12px;">Sira - Faire progresser la santé publique en Afrique de l'Ouest</p>
                 """
                 text_content = f"""
                 Réinitialiser l'accès à votre compte
 
-                Vous avez demandé à réinitialiser l'accès à votre compte SantePublique AOF.
+                Vous avez demandé à réinitialiser l'accès à votre compte Sira.
 
                 Cliquez sur le lien ci-dessous pour continuer :
                 {magic_url}
@@ -82,7 +82,7 @@ class EmailService:
                 Si vous n'avez pas fait cette demande, vous pouvez ignorer cet email en toute sécurité.
 
                 ---
-                SantePublique AOF - Faire progresser la santé publique en Afrique de l'Ouest
+                Sira - Faire progresser la santé publique en Afrique de l'Ouest
                 """
 
             # Send email using Resend
@@ -123,9 +123,9 @@ class EmailService:
             dashboard_url = f"{self.frontend_url}/dashboard"
 
             if language == "en":
-                subject = f"Welcome to SantePublique AOF, {name}!"
+                subject = f"Welcome to Sira, {name}!"
                 html_content = f"""
-                <h2>Welcome to SantePublique AOF!</h2>
+                <h2>Welcome to Sira!</h2>
                 <p>Hello {name},</p>
                 <p>Your account has been successfully created. You're now ready to begin your public health learning journey in West Africa.</p>
                 <p>What's next:</p>
@@ -136,12 +136,12 @@ class EmailService:
                 </ul>
                 <p><a href="{dashboard_url}" style="background-color: #0066cc; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">Start Learning</a></p>
                 <hr>
-                <p style="color: #666; font-size: 12px;">SantePublique AOF - Advancing Public Health in West Africa</p>
+                <p style="color: #666; font-size: 12px;">Sira - Advancing Public Health in West Africa</p>
                 """
             else:  # French
-                subject = f"Bienvenue sur SantePublique AOF, {name} !"
+                subject = f"Bienvenue sur Sira, {name} !"
                 html_content = f"""
-                <h2>Bienvenue sur SantePublique AOF !</h2>
+                <h2>Bienvenue sur Sira !</h2>
                 <p>Bonjour {name},</p>
                 <p>Votre compte a été créé avec succès. Vous êtes maintenant prêt(e) à commencer votre parcours d'apprentissage en santé publique en Afrique de l'Ouest.</p>
                 <p>Prochaines étapes :</p>
@@ -152,7 +152,7 @@ class EmailService:
                 </ul>
                 <p><a href="{dashboard_url}" style="background-color: #0066cc; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">Commencer l'apprentissage</a></p>
                 <hr>
-                <p style="color: #666; font-size: 12px;">SantePublique AOF - Faire progresser la santé publique en Afrique de l'Ouest</p>
+                <p style="color: #666; font-size: 12px;">Sira - Faire progresser la santé publique en Afrique de l'Ouest</p>
                 """
 
             # Send email using Resend
@@ -191,10 +191,10 @@ class EmailService:
         try:
             if language == "en":
                 if purpose == "registration":
-                    subject = "Your SantePublique AOF verification code"
+                    subject = "Your Sira verification code"
                     html_content = f"""
                     <h2>Verification Code</h2>
-                    <p>Thank you for registering with SantePublique AOF.</p>
+                    <p>Thank you for registering with Sira.</p>
                     <p>Your verification code is:</p>
                     <div style="background-color: #f5f5f5; padding: 20px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 8px; border-radius: 8px; margin: 20px 0;">
                         {otp_code}
@@ -203,10 +203,10 @@ class EmailService:
                     <p style="color: #666;">This code will expire in 10 minutes.</p>
                     <p style="color: #666;">If you didn't request this code, please ignore this email.</p>
                     <hr>
-                    <p style="color: #666; font-size: 12px;">SantePublique AOF - Advancing Public Health in West Africa</p>
+                    <p style="color: #666; font-size: 12px;">Sira - Advancing Public Health in West Africa</p>
                     """
                 else:
-                    subject = "Your SantePublique AOF login code"
+                    subject = "Your Sira login code"
                     html_content = f"""
                     <h2>Login Verification</h2>
                     <p>Your login verification code is:</p>
@@ -216,14 +216,14 @@ class EmailService:
                     <p>Enter this code in the app to complete your login.</p>
                     <p style="color: #666;">This code will expire in 10 minutes.</p>
                     <hr>
-                    <p style="color: #666; font-size: 12px;">SantePublique AOF - Advancing Public Health in West Africa</p>
+                    <p style="color: #666; font-size: 12px;">Sira - Advancing Public Health in West Africa</p>
                     """
             else:  # French
                 if purpose == "registration":
-                    subject = "Votre code de vérification SantePublique AOF"
+                    subject = "Votre code de vérification Sira"
                     html_content = f"""
                     <h2>Code de vérification</h2>
-                    <p>Merci de vous être inscrit(e) sur SantePublique AOF.</p>
+                    <p>Merci de vous être inscrit(e) sur Sira.</p>
                     <p>Votre code de vérification est :</p>
                     <div style="background-color: #f5f5f5; padding: 20px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 8px; border-radius: 8px; margin: 20px 0;">
                         {otp_code}
@@ -232,10 +232,10 @@ class EmailService:
                     <p style="color: #666;">Ce code expirera dans 10 minutes.</p>
                     <p style="color: #666;">Si vous n'avez pas demandé ce code, ignorez cet email.</p>
                     <hr>
-                    <p style="color: #666; font-size: 12px;">SantePublique AOF - Faire progresser la santé publique en Afrique de l'Ouest</p>
+                    <p style="color: #666; font-size: 12px;">Sira - Faire progresser la santé publique en Afrique de l'Ouest</p>
                     """
                 else:
-                    subject = "Votre code de connexion SantePublique AOF"
+                    subject = "Votre code de connexion Sira"
                     html_content = f"""
                     <h2>Vérification de connexion</h2>
                     <p>Votre code de vérification de connexion est :</p>
@@ -245,7 +245,7 @@ class EmailService:
                     <p>Saisissez ce code dans l'application pour terminer votre connexion.</p>
                     <p style="color: #666;">Ce code expirera dans 10 minutes.</p>
                     <hr>
-                    <p style="color: #666; font-size: 12px;">SantePublique AOF - Faire progresser la santé publique en Afrique de l'Ouest</p>
+                    <p style="color: #666; font-size: 12px;">Sira - Faire progresser la santé publique en Afrique de l'Ouest</p>
                     """
 
             # Send email using Resend

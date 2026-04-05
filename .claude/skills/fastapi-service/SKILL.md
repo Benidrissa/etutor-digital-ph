@@ -1,12 +1,12 @@
 ---
 name: fastapi-service
-description: Build and modify FastAPI backend for the SantePublique AOF learning platform. Use when creating endpoints, domain models, services, RAG pipelines, or Celery tasks. Enforces the 4-layer architecture (Backend → AI/RAG → External Data), async SQLAlchemy, Pydantic V2, Local Auth (TOTP MFA), mobile-first API design, and the exact data model from the SRS.
+description: Build and modify FastAPI backend for the Sira learning platform. Use when creating endpoints, domain models, services, RAG pipelines, or Celery tasks. Enforces the 4-layer architecture (Backend → AI/RAG → External Data), async SQLAlchemy, Pydantic V2, Local Auth (TOTP MFA), mobile-first API design, and the exact data model from the SRS.
 user-invocable: true
 ---
 
-# SantePublique AOF FastAPI Backend Builder
+# Sira FastAPI Backend Builder
 
-Build the production-grade FastAPI backend for SantePublique AOF — an adaptive, bilingual (FR/EN), mobile-first learning platform for public health professionals in West Africa. This backend sits in the second layer of a 4-layer architecture:
+Build the production-grade FastAPI backend for Sira — an adaptive, bilingual (FR/EN), mobile-first learning platform for public health professionals in West Africa. This backend sits in the second layer of a 4-layer architecture:
 
 ```
 Frontend (Next.js 15 PWA) → [THIS] Backend (FastAPI + PostgreSQL) → AI/RAG (Claude + pgvector) → External Data (DHIS2, DHS, WHO, PubMed)
@@ -14,7 +14,7 @@ Frontend (Next.js 15 PWA) → [THIS] Backend (FastAPI + PostgreSQL) → AI/RAG (
 
 ## Before writing any backend code
 
-1. Read the SRS requirement in `docs/SRS_SantePublique_AOF.md` — match functional requirement IDs (FR-01 through FR-06)
+1. Read the SRS requirement in `docs/SRS_Sira.md` — match functional requirement IDs (FR-01 through FR-06)
 2. Read the syllabus in `docs/syllabus_sante_publique_AOF.md` — understand the 4 levels, 15 modules, ~320 hours curriculum
 3. Check the data model (SRS Section 9) — use the exact table schemas defined there
 4. Check if similar functionality already exists in the codebase

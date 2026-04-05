@@ -1,5 +1,5 @@
 # Software Requirements Specification
-## SantePublique AOF Learning Platform
+## Sira Learning Platform
 
 > **Application Web Mobile-First Bilingue pour la Formation en Sante Publique — Afrique de l'Ouest**  
 > Version : 1.0-draft | Statut : Draft pour validation | Audience : Développeurs, Product Owner, Parties prenantes
@@ -26,7 +26,7 @@
 
 ## 1. Introduction et Portée
 
-Ce document définit les exigences fonctionnelles et non-fonctionnelles pour le développement de **SantePublique AOF**, une plateforme d'apprentissage en ligne adaptative, bilingue (FR/EN) et mobile-first, destinée aux professionnels de santé et étudiants en Afrique de l'Ouest.
+Ce document définit les exigences fonctionnelles et non-fonctionnelles pour le développement de **Sira**, une plateforme d'apprentissage en ligne adaptative, bilingue (FR/EN) et mobile-first, destinée aux professionnels de santé et étudiants en Afrique de l'Ouest.
 
 La plateforme génère dynamiquement du contenu pédagogique à partir de 3 ouvrages de référence en santé publique, contextualise chaque leçon dans le contexte de l'Afrique de l'Ouest, et adapte l'expérience au niveau de progression de chaque utilisateur.
 
@@ -1107,4 +1107,4 @@ user_course_enrollment {
 
 ---
 
-*SantePublique AOF Platform · SRS v1.0 · 2025 · Basé sur : Donaldson's Essential Public Health · Principles of Public Health Practice (Scutchfield & Keck) · Biostatistics for the Biological and Health Sciences (Triola) · Sources de données : WHO AFRO · ECOWAS/CEDEAO · DHIS2 · DHS Program · World Bank*
+*Sira Platform · SRS v1.0 · 2025 · Basé sur : Donaldson's Essential Public Health · Principles of Public Health Practice (Scutchfield & Keck) · Biostatistics for the Biological and Health Sciences (Triola) · Sources de données : WHO AFRO · ECOWAS/CEDEAO · DHIS2 · DHS Program · World Bank*
