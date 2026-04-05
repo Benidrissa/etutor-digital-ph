@@ -44,6 +44,20 @@ export function EnrollmentGuard({ moduleId, children }: EnrollmentGuardProps) {
       return;
     }
 
+    // Admin bypasses enrollment check
+    try {
+      const stored = typeof window !== "undefined" ? localStorage.getItem("user") : null;
+      if (stored) {
+        const user = JSON.parse(stored);
+        if (user.role === "admin") {
+          setGuardStatus("allowed");
+          return;
+        }
+      }
+    } catch {
+      // ignore parse errors
+    }
+
     fetchEnrollmentStatus(moduleId, token).then((enrolled) => {
       setGuardStatus(enrolled ? "allowed" : "denied");
     });
