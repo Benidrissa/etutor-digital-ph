@@ -23,6 +23,7 @@ from app.api.v1.schemas.content import (
     CaseStudyResponse,
     LessonContent,
     LessonResponse,
+    SourceImageRef,
     StreamingEvent,
 )
 from app.domain.models.content import GeneratedContent
@@ -182,6 +183,18 @@ class LessonGenerationService:
 
             yield StreamingEvent(event="chunk", data="Documents trouvés, génération en cours...")
 
+            # Fetch images linked to retrieved chunks
+            chunk_ids = [
+                chunk.chunk.id if hasattr(chunk, "chunk") else chunk.id for chunk in rag_chunks
+            ]
+            try:
+                linked_images = await self.semantic_retriever.get_linked_images(
+                    chunk_ids, session, max_total=5
+                )
+            except Exception as exc:
+                logger.warning("Failed to fetch linked images, continuing without", error=str(exc))
+                linked_images = {}
+
             # Generate lesson using Claude API with streaming
             course: Course | None = module.course
             system_prompt = get_lesson_system_prompt(
@@ -204,6 +217,7 @@ class LessonGenerationService:
                 module.title_fr if language == "fr" else module.title_en,
                 unit_id,
                 language,
+                linked_images=linked_images,
             )
 
             # Stream content generation
@@ -217,6 +231,12 @@ class LessonGenerationService:
             # Parse and structure the generated content
             lesson_content = await self._parse_lesson_content(accumulated_content, rag_chunks)
 
+            # Post-process: extract {{source_image:UUID}} markers from generated text
+            all_images: list[dict] = []
+            for imgs in linked_images.values():
+                all_images.extend(imgs)
+            source_image_refs = self._extract_source_image_refs(accumulated_content, all_images)
+
             # Create response object
             lesson_response = LessonResponse(
                 module_id=module_id,
@@ -227,6 +247,7 @@ class LessonGenerationService:
                 content=lesson_content,
                 generated_at=datetime.utcnow().isoformat(),
                 cached=False,
+                source_image_refs=source_image_refs,
             )
 
             # Cache the result
@@ -305,6 +326,18 @@ class LessonGenerationService:
         if not rag_chunks:
             raise ValueError(f"No relevant content found for module {module.id}, unit {unit_id}")
 
+        # Fetch images linked to retrieved chunks
+        chunk_ids = [
+            chunk.chunk.id if hasattr(chunk, "chunk") else chunk.id for chunk in rag_chunks
+        ]
+        try:
+            linked_images = await self.semantic_retriever.get_linked_images(
+                chunk_ids, session, max_total=5
+            )
+        except Exception as exc:
+            logger.warning("Failed to fetch linked images, continuing without", error=str(exc))
+            linked_images = {}
+
         # Generate content with Claude
         course: Course | None = module.course
         system_prompt = get_lesson_system_prompt(
@@ -327,6 +360,7 @@ class LessonGenerationService:
             module.title_fr if language == "fr" else module.title_en,
             unit_id,
             language,
+            linked_images=linked_images,
         )
 
         # Get non-streaming response for structured parsing
@@ -344,6 +378,12 @@ class LessonGenerationService:
         # Parse structured content
         lesson_content = await self._parse_lesson_content(content_text, rag_chunks)
 
+        # Post-process: extract {{source_image:UUID}} markers from generated text
+        all_images: list[dict] = []
+        for imgs in linked_images.values():
+            all_images.extend(imgs)
+        source_image_refs = self._extract_source_image_refs(content_text, all_images)
+
         return LessonResponse(
             module_id=module.id,
             unit_id=unit_id,
@@ -353,6 +393,7 @@ class LessonGenerationService:
             content=lesson_content,
             generated_at=datetime.utcnow().isoformat(),
             cached=False,
+            source_image_refs=source_image_refs,
         )
 
     async def _build_lesson_query(
@@ -435,6 +476,41 @@ class LessonGenerationService:
             key_points=["Point clé 1", "Point clé 2", "Point clé 3"],  # Would be parsed
             sources_cited=sources_cited,
         )
+
+    @staticmethod
+    def _extract_source_image_refs(
+        content_text: str, available_images: list[dict]
+    ) -> list[SourceImageRef]:
+        """Extract {{source_image:UUID}} markers from generated text and resolve to SourceImageRef.
+
+        Args:
+            content_text: Generated lesson text possibly containing {{source_image:UUID}} markers
+            available_images: List of image metadata dicts from get_linked_images
+
+        Returns:
+            Deduplicated list of SourceImageRef objects for images referenced in the text
+        """
+        pattern = re.compile(r"\{\{source_image:([0-9a-f-]{36})\}\}", re.IGNORECASE)
+        found_ids = list(dict.fromkeys(m.group(1) for m in pattern.finditer(content_text)))
+
+        image_lookup = {img["id"]: img for img in available_images if "id" in img}
+
+        refs: list[SourceImageRef] = []
+        for img_id in found_ids:
+            meta = image_lookup.get(img_id)
+            if meta:
+                refs.append(
+                    SourceImageRef(
+                        id=meta["id"],
+                        figure_number=meta.get("figure_number"),
+                        caption=meta.get("caption"),
+                        image_type=meta.get("image_type", "unknown"),
+                        storage_url=meta.get("storage_url"),
+                        alt_text_fr=meta.get("alt_text_fr"),
+                        alt_text_en=meta.get("alt_text_en"),
+                    )
+                )
+        return refs
 
     async def _cache_lesson_content(
         self, lesson_response: LessonResponse, session: AsyncSession
