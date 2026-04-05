@@ -64,6 +64,13 @@ type PendingAction =
   | { type: 'archive'; course: AdminCourse }
   | { type: 'generate'; course: AdminCourse };
 
+function inferWizardStep(course: AdminCourse): WizardStep {
+  if (course.rag_collection_id) return 'publish';
+  if (course.indexation_task_id) return 'index';
+  if (course.module_count && course.module_count > 0) return 'index';
+  return 'generate';
+}
+
 function useAdminCourses() {
   return useQuery<AdminCourse[]>({
     queryKey: ['admin', 'courses'],
@@ -337,7 +344,15 @@ export function CoursesClient() {
                 onArchive={(c) => setPendingAction({ type: 'archive', course: c })}
                 onGenerateStructure={(c) => setPendingAction({ type: 'generate', course: c })}
                 onEdit={(c) => { setEditingCourse(c); setFormOpen(true); }}
-                onResumeWizard={() => { setWizardResumeCourseId(course.id); setWizardResumeStep(wizardResumeStep); openWizardResume(); }}
+                onResumeWizard={() => {
+                  const savedState = loadWizardState();
+                  const step = savedState?.courseId === course.id
+                    ? savedState.step
+                    : inferWizardStep(course);
+                  setWizardResumeCourseId(course.id);
+                  setWizardResumeStep(step as WizardStep);
+                  openWizardResume();
+                }}
               />
             ))}
           </div>
@@ -451,20 +466,21 @@ function CourseRow({
         : 'outline';
 
   const isGenerating = generatingId === course.id;
-  const isIndexingInProgress = resumeCourseId === course.id;
+  const isActiveResume = resumeCourseId === course.id;
+  const isDraft = course.status === 'draft';
 
   return (
-    <Card className={`p-4 ${isIndexingInProgress ? 'border-amber-300 dark:border-amber-700' : ''}`}>
+    <Card className={`p-4 ${isActiveResume ? 'border-amber-300 dark:border-amber-700' : ''}`}>
       <div className="flex items-start justify-between gap-3">
         <button
           className="flex flex-col gap-1 text-left min-w-0 flex-1"
-          onClick={isIndexingInProgress ? onResumeWizard : () => onEdit(course)}
-          aria-label={isIndexingInProgress ? t('wizard.resumeFrom') : t('editCourse')}
+          onClick={isDraft ? onResumeWizard : () => onEdit(course)}
+          aria-label={isDraft ? t('wizard.resumeFrom') : t('editCourse')}
         >
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-sm truncate">{title}</span>
             <Badge variant={statusVariant}>{t(`status.${course.status}`)}</Badge>
-            {isIndexingInProgress && (
+            {isActiveResume && (
               <Badge className="gap-1 bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-100 dark:bg-amber-900 dark:text-amber-200">
                 <Database className="h-3 w-3 animate-pulse" aria-hidden="true" />
                 {t('wizard.indexingBadge')}
