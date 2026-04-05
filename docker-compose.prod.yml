@@ -30,7 +30,7 @@ services:
       retries: 5
 
   backend:
-    image: etutor-backend:latest
+    image: ghcr.io/benidrissa/etutor-digital-ph/backend:latest
     container_name: etutor-backend
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/santepublique_aof
@@ -73,7 +73,7 @@ services:
       retries: 3
 
   frontend:
-    image: etutor-frontend:latest
+    image: ghcr.io/benidrissa/etutor-digital-ph/frontend:latest
     container_name: etutor-frontend
     environment:
       HOSTNAME: "0.0.0.0"
@@ -101,7 +101,7 @@ services:
       retries: 3
 
   celery-worker:
-    image: etutor-backend:latest
+    image: ghcr.io/benidrissa/etutor-digital-ph/backend:latest
     container_name: etutor-celery-worker
     command: uv run celery -A app.tasks.celery_app worker --loglevel=info
     environment:
