@@ -23,6 +23,17 @@ from app.domain.services.tutor_service import (
 )
 from app.domain.services.tutor_tools import TOOL_DEFINITIONS, TutorToolExecutor
 
+
+@pytest.fixture(autouse=True)
+def _mock_subscription_service():
+    with patch(
+        "app.domain.services.tutor_service.SubscriptionService.get_active_subscription",
+        new_callable=AsyncMock,
+        return_value=None,
+    ):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

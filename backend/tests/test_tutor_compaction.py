@@ -18,6 +18,16 @@ from app.domain.services.tutor_service import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _mock_subscription_service():
+    with patch(
+        "app.domain.services.tutor_service.SubscriptionService.get_active_subscription",
+        new_callable=AsyncMock,
+        return_value=None,
+    ):
+        yield
+
+
 @pytest.fixture
 def mock_anthropic_client():
     client = MagicMock()
