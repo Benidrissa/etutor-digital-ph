@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Enum, String, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.models.base import Base
@@ -18,7 +18,13 @@ class UserRole(enum.StrEnum):
 
 
 if TYPE_CHECKING:
-    from app.domain.models.auth import EmailOTP, MagicLink, RefreshToken, TOTPSecret
+    from app.domain.models.auth import (
+        EmailOTP,
+        MagicLink,
+        PasswordResetToken,
+        RefreshToken,
+        TOTPSecret,
+    )
     from app.domain.models.conversation import TutorConversation
     from app.domain.models.credit import CreditAccount
     from app.domain.models.flashcard import FlashcardReview
@@ -31,9 +37,15 @@ if TYPE_CHECKING:
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint(
+            "email IS NOT NULL OR phone_number IS NOT NULL",
+            name="ck_users_email_or_phone",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    email: Mapped[str] = mapped_column(String, unique=True, index=True)
+    email: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     name: Mapped[str] = mapped_column(String)
     preferred_language: Mapped[str] = mapped_column(String(2), server_default="fr")
     country: Mapped[str | None] = mapped_column(String)
@@ -47,6 +59,11 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true", default=True)
     phone_number: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     analytics_opt_out: Mapped[bool] = mapped_column(Boolean, server_default="false", default=False)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    failed_password_attempts: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
+    password_locked_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     last_active: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -57,6 +74,7 @@ class User(Base):
     refresh_tokens: Mapped[list[RefreshToken]] = relationship(back_populates="user")
     magic_links: Mapped[list[MagicLink]] = relationship(back_populates="user")
     email_otps: Mapped[list[EmailOTP]] = relationship(back_populates="user")
+    password_reset_tokens: Mapped[list[PasswordResetToken]] = relationship(back_populates="user")
 
     # Learning relationships
     module_progress: Mapped[list[UserModuleProgress]] = relationship(back_populates="user")

@@ -4,15 +4,16 @@ from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, delete, select
+from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
-from app.domain.models.auth import MagicLink, RefreshToken, TOTPSecret
+from app.domain.models.auth import MagicLink, PasswordResetToken, RefreshToken, TOTPSecret
 from app.domain.models.user import User, UserRole
 from app.domain.services.email_otp_service import EmailOTPService
 from app.domain.services.email_service import EmailService
 from app.domain.services.jwt_auth_service import JWTAuthService
+from app.domain.services.password_service import PasswordService
 from app.domain.services.platform_settings_service import SettingsCache
 from app.domain.services.totp_service import TOTPService
 from app.infrastructure.config.settings import settings
@@ -35,6 +36,7 @@ class LocalAuthService:
         self.totp_service = TOTPService()
         self.email_service = EmailService()
         self.email_otp_service = EmailOTPService(db)
+        self.password_service = PasswordService()
 
     async def register_user(
         self,
@@ -883,3 +885,408 @@ class LocalAuthService:
             await self.db.rollback()
             logger.error("Login OTP verification failed", otp_id=otp_id, error=str(e))
             raise AuthenticationError(f"Login verification failed: {e}")
+
+    async def register_user_with_password(
+        self,
+        identifier: str,
+        password: str,
+        name: str,
+        preferred_language: str = "fr",
+        country: str | None = None,
+        professional_role: str | None = None,
+    ) -> dict[str, Any]:
+        """Register a new user with email or phone + password.
+
+        Args:
+            identifier: Email address or phone number
+            password: Plain-text password (min 6 characters)
+            name: User full name
+            preferred_language: User preferred language (fr/en)
+            country: User's country (ECOWAS code)
+            professional_role: Professional role
+
+        Returns:
+            TokenResponse dict with access token and user info
+
+        Raises:
+            AuthenticationError: If user already exists or password invalid
+        """
+        try:
+            email: str | None = None
+            phone_number: str | None = None
+            if "@" in identifier:
+                email = identifier
+            else:
+                phone_number = identifier
+
+            existing_user = await self.db.scalar(
+                select(User).where(
+                    or_(
+                        User.email == email if email else False,
+                        User.phone_number == phone_number if phone_number else False,
+                    )
+                )
+            )
+            if existing_user:
+                raise AuthenticationError("User already exists")
+
+            try:
+                self.password_service.validate_password(password)
+            except ValueError as e:
+                raise AuthenticationError(str(e))
+
+            hashed = self.password_service.hash_password(password)
+
+            initial_role = (
+                UserRole.admin
+                if email and settings.admin_email and email.lower() == settings.admin_email.lower()
+                else UserRole.user
+            )
+
+            user = User(
+                id=uuid4(),
+                email=email,
+                phone_number=phone_number,
+                name=name,
+                preferred_language=preferred_language,
+                country=country,
+                professional_role=professional_role,
+                password_hash=hashed,
+                current_level=1,
+                streak_days=0,
+                role=initial_role,
+                last_active=datetime.utcnow(),
+                created_at=datetime.utcnow(),
+            )
+            self.db.add(user)
+
+            access_token = self.jwt_service.create_access_token(
+                user_id=str(user.id),
+                email=email or "",
+                preferred_language=user.preferred_language,
+                country=user.country,
+                current_level=user.current_level,
+                role=initial_role.value,
+            )
+
+            refresh_token = self.jwt_service.create_refresh_token()
+            refresh_record = RefreshToken(
+                id=uuid4(),
+                user_id=user.id,
+                token_hash=self.jwt_service.hash_token(refresh_token),
+                expires_at=self.jwt_service.get_token_expiry("refresh"),
+                created_at=datetime.utcnow(),
+            )
+            self.db.add(refresh_record)
+
+            await self.db.commit()
+
+            if initial_role == UserRole.admin:
+                from app.domain.services.subscription_service import SubscriptionService
+
+                await SubscriptionService().ensure_admin_subscription(user.id, self.db)
+
+            if email:
+                await self.email_service.send_welcome_email(email, name, preferred_language)
+
+            try:
+                from app.tasks.content_generation import prefetch_next_lessons_task
+
+                prefetch_next_lessons_task.delay(
+                    user_id=str(user.id),
+                    module_id="",
+                    current_unit_id="",
+                    language=preferred_language,
+                    country=country or "SN",
+                    level=1,
+                    module_number=1,
+                )
+            except Exception as prefetch_exc:
+                logger.warning(
+                    "Failed to dispatch prefetch task on password registration",
+                    user_id=str(user.id),
+                    error=str(prefetch_exc),
+                )
+
+            logger.info(
+                "User registered with password",
+                user_id=str(user.id),
+                identifier=identifier,
+            )
+
+            return {
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "token_type": "bearer",
+                "expires_in": self.jwt_service.access_token_expire_minutes * 60,
+                "user": {
+                    "id": str(user.id),
+                    "email": email,
+                    "name": name,
+                    "preferred_language": preferred_language,
+                    "country": country,
+                    "current_level": 1,
+                },
+            }
+
+        except AuthenticationError:
+            await self.db.rollback()
+            raise
+        except Exception as e:
+            await self.db.rollback()
+            logger.error("Password registration failed", identifier=identifier, error=str(e))
+            raise AuthenticationError(f"Registration failed: {e}")
+
+    async def login_with_password(
+        self,
+        identifier: str,
+        password: str,
+    ) -> dict[str, Any]:
+        """Login with email or phone + password.
+
+        Args:
+            identifier: Email address or phone number
+            password: Plain-text password
+
+        Returns:
+            TokenResponse dict with access token and user info
+
+        Raises:
+            AuthenticationError: If credentials invalid or account locked
+        """
+        try:
+            email: str | None = None
+            phone_number: str | None = None
+            if "@" in identifier:
+                email = identifier
+            else:
+                phone_number = identifier
+
+            user = await self.db.scalar(
+                select(User).where(
+                    or_(
+                        User.email == email if email else False,
+                        User.phone_number == phone_number if phone_number else False,
+                    )
+                )
+            )
+            if not user:
+                raise AuthenticationError("Invalid credentials")
+
+            if user.password_hash is None:
+                raise AuthenticationError("Invalid credentials")
+
+            _cache = SettingsCache.instance()
+            _MAX_FAILED = _cache.get("auth-max-failed-password-attempts", 10)
+            _LOCKOUT_MINUTES = _cache.get("auth-password-lockout-minutes", 15)
+
+            if (
+                user.password_locked_until is not None
+                and user.password_locked_until > datetime.utcnow()
+            ):
+                remaining = int(
+                    (user.password_locked_until - datetime.utcnow()).total_seconds() / 60
+                )
+                raise AuthenticationError(
+                    f"Account temporarily locked due to too many failed attempts. "
+                    f"Try again in {remaining} minute(s)."
+                )
+
+            is_valid = self.password_service.verify_password(password, user.password_hash)
+
+            if not is_valid:
+                user.failed_password_attempts = (user.failed_password_attempts or 0) + 1
+                if user.failed_password_attempts >= _MAX_FAILED:
+                    user.password_locked_until = datetime.utcnow() + timedelta(
+                        minutes=_LOCKOUT_MINUTES
+                    )
+                    user.failed_password_attempts = 0
+                    await self.db.commit()
+                    raise AuthenticationError(
+                        f"Account locked for {_LOCKOUT_MINUTES} minutes after too many failed attempts."
+                    )
+                await self.db.commit()
+                raise AuthenticationError("Invalid credentials")
+
+            user.failed_password_attempts = 0
+            user.password_locked_until = None
+            user.last_active = datetime.utcnow()
+
+            access_token = self.jwt_service.create_access_token(
+                user_id=str(user.id),
+                email=user.email or "",
+                preferred_language=user.preferred_language,
+                country=user.country,
+                current_level=user.current_level,
+                role=user.role.value,
+            )
+
+            refresh_token = self.jwt_service.create_refresh_token()
+            refresh_record = RefreshToken(
+                id=uuid4(),
+                user_id=user.id,
+                token_hash=self.jwt_service.hash_token(refresh_token),
+                expires_at=self.jwt_service.get_token_expiry("refresh"),
+                created_at=datetime.utcnow(),
+                last_used_at=datetime.utcnow(),
+            )
+            self.db.add(refresh_record)
+
+            await self.db.commit()
+
+            logger.info("User logged in with password", user_id=str(user.id))
+
+            return {
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "token_type": "bearer",
+                "expires_in": self.jwt_service.access_token_expire_minutes * 60,
+                "user": {
+                    "id": str(user.id),
+                    "email": user.email,
+                    "name": user.name,
+                    "preferred_language": user.preferred_language,
+                    "country": user.country,
+                    "current_level": user.current_level,
+                },
+            }
+
+        except AuthenticationError:
+            await self.db.rollback()
+            raise
+        except Exception as e:
+            await self.db.rollback()
+            logger.error("Password login failed", identifier=identifier, error=str(e))
+            raise AuthenticationError(f"Login failed: {e}")
+
+    async def request_password_reset(
+        self,
+        identifier: str,
+        ip_address: str | None = None,
+    ) -> bool:
+        """Request a password reset for email or phone identifier.
+
+        Args:
+            identifier: Email address or phone number
+            ip_address: Client IP address
+
+        Returns:
+            True always (never reveals user existence)
+        """
+        try:
+            email: str | None = None
+            phone_number: str | None = None
+            if "@" in identifier:
+                email = identifier
+            else:
+                phone_number = identifier
+
+            user = await self.db.scalar(
+                select(User).where(
+                    or_(
+                        User.email == email if email else False,
+                        User.phone_number == phone_number if phone_number else False,
+                    )
+                )
+            )
+            if not user:
+                logger.warning(
+                    "Password reset requested for non-existent identifier",
+                    identifier=identifier,
+                )
+                return True
+
+            reset_token = self.jwt_service.generate_magic_link_token()
+
+            token_record = PasswordResetToken(
+                id=uuid4(),
+                user_id=user.id,
+                token_hash=self.jwt_service.hash_token(reset_token),
+                expires_at=datetime.utcnow() + timedelta(hours=1),
+                created_at=datetime.utcnow(),
+                ip_address=ip_address,
+            )
+            self.db.add(token_record)
+
+            await self.db.execute(
+                delete(PasswordResetToken).where(
+                    and_(
+                        PasswordResetToken.user_id == user.id,
+                        PasswordResetToken.expires_at < datetime.utcnow(),
+                    )
+                )
+            )
+
+            await self.db.commit()
+
+            if user.email:
+                await self.email_service.send_magic_link(
+                    user.email, reset_token, user.preferred_language
+                )
+
+            logger.info("Password reset requested", user_id=str(user.id))
+            return True
+
+        except Exception as e:
+            await self.db.rollback()
+            logger.error("Password reset request failed", identifier=identifier, error=str(e))
+            return True
+
+    async def complete_password_reset(
+        self,
+        token: str,
+        new_password: str,
+    ) -> bool:
+        """Complete password reset using the token.
+
+        Args:
+            token: Password reset token
+            new_password: New plain-text password
+
+        Returns:
+            True if reset succeeded
+
+        Raises:
+            AuthenticationError: If token invalid or password too short
+        """
+        try:
+            token_hash = self.jwt_service.hash_token(token)
+            token_record = await self.db.scalar(
+                select(PasswordResetToken).where(
+                    and_(
+                        PasswordResetToken.token_hash == token_hash,
+                        PasswordResetToken.expires_at > datetime.utcnow(),
+                        PasswordResetToken.used_at.is_(None),
+                    )
+                )
+            )
+
+            if not token_record:
+                raise AuthenticationError("Invalid or expired password reset token")
+
+            user = await self.db.scalar(select(User).where(User.id == token_record.user_id))
+            if not user:
+                raise AuthenticationError("User not found")
+
+            try:
+                self.password_service.validate_password(new_password)
+            except ValueError as e:
+                raise AuthenticationError(str(e))
+
+            user.password_hash = self.password_service.hash_password(new_password)
+            user.failed_password_attempts = 0
+            user.password_locked_until = None
+            token_record.used_at = datetime.utcnow()
+
+            await self.db.commit()
+
+            logger.info("Password reset completed", user_id=str(user.id))
+            return True
+
+        except AuthenticationError:
+            await self.db.rollback()
+            raise
+        except Exception as e:
+            await self.db.rollback()
+            logger.error("Password reset completion failed", error=str(e))
+            raise AuthenticationError("Password reset failed")
