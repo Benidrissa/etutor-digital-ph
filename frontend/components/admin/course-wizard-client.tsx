@@ -83,6 +83,7 @@ interface TaskProgress {
 interface IndexStatus {
   indexed: boolean;
   chunks_indexed: number;
+  images_indexed?: number;
   task?: TaskProgress;
 }
 
@@ -166,6 +167,13 @@ export function CourseWizardClient({
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [generateTaskId, setGenerateTaskId] = useState<string | null>(null);
   const [generateTaskState, setGenerateTaskState] = useState<string | null>(null);
+  const [generationProgress, setGenerationProgress] = useState(0);
+  const [generationStep, setGenerationStep] = useState<string | undefined>(undefined);
+  const [generationStartTime, setGenerationStartTime] = useState<number | null>(null);
+  const [generationElapsed, setGenerationElapsed] = useState(0);
+  const [showTimeoutWarning, setShowTimeoutWarning] = useState(false);
+  const lastProgressValueRef = useRef(0);
+  const lastProgressTimeRef = useRef<number | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [indexStatus, setIndexStatus] = useState<IndexStatus | null>(null);
   const [isIndexing, setIsIndexing] = useState(false);
@@ -173,6 +181,10 @@ export function CourseWizardClient({
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishSuccess, setPublishSuccess] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [publishSummaryTitle, setPublishSummaryTitle] = useState<{ title_fr: string; title_en: string } | null>(null);
+  const [publishSummaryIndexStatus, setPublishSummaryIndexStatus] = useState<IndexStatus | null>(null);
+  const [publishSummaryResources, setPublishSummaryResources] = useState<Array<{ name: string }>>([]);
+  const [isFetchingPublishSummary, setIsFetchingPublishSummary] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -362,6 +374,13 @@ export function CourseWizardClient({
     setGenerateError(null);
     setGenerateTaskId(null);
     setGenerateTaskState(null);
+    setGenerationProgress(0);
+    setGenerationStep(undefined);
+    setGenerationStartTime(Date.now());
+    setGenerationElapsed(0);
+    lastProgressValueRef.current = 0;
+    lastProgressTimeRef.current = Date.now();
+    setShowTimeoutWarning(false);
 
     try {
       const controller = new AbortController();
@@ -402,6 +421,24 @@ export function CourseWizardClient({
 
         setGenerateTaskState(status.task?.state ?? null);
 
+        const meta = status.task?.meta ?? {};
+        const newProgress = typeof meta.progress === "number" ? meta.progress : 0;
+        const newStep = typeof meta.step === "string" ? meta.step : undefined;
+
+        setGenerationProgress(newProgress);
+        setGenerationStep(newStep);
+
+        if (newProgress !== lastProgressValueRef.current) {
+          lastProgressValueRef.current = newProgress;
+          lastProgressTimeRef.current = Date.now();
+          setShowTimeoutWarning(false);
+        } else if (lastProgressTimeRef.current !== null) {
+          const staleSince = Date.now() - lastProgressTimeRef.current;
+          if (staleSince > 2 * 60 * 1000) {
+            setShowTimeoutWarning(true);
+          }
+        }
+
         if (
           status.task?.state === "FAILURE" ||
           status.task?.state === "REVOKED"
@@ -412,7 +449,6 @@ export function CourseWizardClient({
         }
 
         if (status.task?.state === "SUCCESS") {
-          const meta = status.task.meta ?? {};
           const modules = meta.modules;
           if (Array.isArray(modules)) {
             setGeneratedModules(modules as GeneratedModule[]);
@@ -432,6 +468,14 @@ export function CourseWizardClient({
       if (generatePollRef.current) clearTimeout(generatePollRef.current);
     };
   }, [courseId, isGenerating, generateTaskId, t]);
+
+  useEffect(() => {
+    if (!isGenerating || generationStartTime === null) return;
+    const interval = setInterval(() => {
+      setGenerationElapsed(Math.floor((Date.now() - generationStartTime) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isGenerating, generationStartTime]);
 
   const startIndexation = useCallback(async () => {
     if (!courseId) return;
@@ -459,6 +503,7 @@ export function CourseWizardClient({
         const status = await apiFetch<{
           indexed: boolean;
           chunks_indexed: number;
+          images_indexed?: number;
           task?: {
             state: string;
             step?: string;
@@ -475,10 +520,11 @@ export function CourseWizardClient({
         setIndexStatus({
           indexed: status.indexed,
           chunks_indexed: status.chunks_indexed,
+          images_indexed: status.images_indexed,
           task: status.task,
         });
 
-        if (status.indexed && status.chunks_indexed > 0) {
+        if (status.task?.state === "SUCCESS") {
           setIsIndexing(false);
           clearWizardState();
           return;
@@ -504,6 +550,29 @@ export function CourseWizardClient({
       if (pollRef.current) clearTimeout(pollRef.current);
     };
   }, [courseId, isIndexing, taskId, t]);
+
+  useEffect(() => {
+    if (step !== "publish" || !courseId) return;
+
+    const fetchPublishSummary = async () => {
+      setIsFetchingPublishSummary(true);
+      try {
+        const [courseData, statusData, resourcesData] = await Promise.all([
+          apiFetch<{ title_fr: string; title_en: string }>(`/api/v1/admin/courses/${courseId}`),
+          apiFetch<{ indexed: boolean; chunks_indexed: number; images_indexed?: number }>(`/api/v1/admin/courses/${courseId}/index-status`),
+          apiFetch<{ files: Array<{ name: string }> }>(`/api/v1/admin/courses/${courseId}/resources`),
+        ]);
+        setPublishSummaryTitle({ title_fr: courseData.title_fr, title_en: courseData.title_en });
+        setPublishSummaryIndexStatus(statusData);
+        setPublishSummaryResources(resourcesData.files ?? []);
+      } catch {
+      } finally {
+        setIsFetchingPublishSummary(false);
+      }
+    };
+
+    fetchPublishSummary();
+  }, [step, courseId]);
 
   const publishCourse = useCallback(async () => {
     if (!courseId) return;
@@ -540,7 +609,7 @@ export function CourseWizardClient({
     if (step === "upload") return files.filter((f) => f.status === "uploaded").length > 0;
     if (step === "info") return courseInfo.title_fr.trim().length > 0 && courseInfo.title_en.trim().length > 0;
     if (step === "generate") return generatedModules.length > 0;
-    if (step === "index") return !!(indexStatus?.indexed && indexStatus.chunks_indexed > 0);
+    if (step === "index") return !!(indexStatus?.indexed && indexStatus.chunks_indexed > 0 && !isIndexing);
     return false;
   };
 
@@ -562,6 +631,22 @@ export function CourseWizardClient({
     if (idx > 0) setStep(STEPS[idx - 1]);
   };
 
+  const getGenerateStepLabel = (s: string | undefined): string => {
+    switch (s) {
+      case "extracting_text": return t("generate.stepExtractingText");
+      case "calling_claude": return t("generate.stepCallingClaude");
+      case "parsing_response": return t("generate.stepParsingResponse");
+      case "saving_modules": return t("generate.stepSavingModules");
+      default: return t("generate.taskRunning");
+    }
+  };
+
+  const formatElapsed = (seconds: number): string => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return m > 0 ? `${m}m ${s}s` : `${s}s`;
+  };
+
   const getStepLabel = (s: string | undefined): string => {
     switch (s) {
       case "extracting": return t("index.stepExtracting");
@@ -569,6 +654,8 @@ export function CourseWizardClient({
       case "embedding": return t("index.stepEmbedding");
       case "storing": return t("index.stepStoring");
       case "complete": return t("index.stepComplete");
+      case "extracting_images": return t("index.stepExtractingImages");
+      case "EXTRACTING_IMAGES": return t("index.stepExtractingImages");
       default: return t("index.taskPending");
     }
   };
@@ -813,15 +900,35 @@ export function CourseWizardClient({
                 )}
 
                 {isGenerating && (
-                  <div className="flex flex-col items-center gap-3 py-8">
-                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-                    <p className="text-sm text-muted-foreground">
-                      {generateTaskState === "GENERATING" || generateTaskState === "SAVING"
-                        ? t("generate.taskRunning")
-                        : generateTaskState
-                        ? t("generate.taskRunning")
-                        : t("generate.taskPending")}
-                    </p>
+                  <div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent shrink-0" />
+                        <p className="text-sm font-medium">
+                          {generationStep
+                            ? getGenerateStepLabel(generationStep)
+                            : generateTaskState
+                            ? t("generate.taskRunning")
+                            : t("generate.taskPending")}
+                        </p>
+                      </div>
+                      {generationStartTime !== null && (
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+                          <Clock className="h-3 w-3" />
+                          <span>{t("generate.elapsed", { time: formatElapsed(generationElapsed) })}</span>
+                        </div>
+                      )}
+                    </div>
+                    <Progress value={generationProgress} className="h-2" />
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>{generationProgress}%</span>
+                    </div>
+                    {showTimeoutWarning && (
+                      <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-400">
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                        {t("generate.timeoutWarning")}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -882,7 +989,11 @@ export function CourseWizardClient({
                         <div className="flex items-center gap-2">
                           <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent shrink-0" />
                           <p className="text-sm font-medium">
-                            {taskProg ? getStepLabel(taskProg.step) : t("index.taskPending")}
+                            {taskProg
+                              ? (taskProg.state === "EXTRACTING_IMAGES"
+                                ? t("index.stepExtractingImages")
+                                : getStepLabel(taskProg.step))
+                              : t("index.taskPending")}
                           </p>
                         </div>
                         {taskProg?.estimated_seconds_remaining !== undefined && taskProg.estimated_seconds_remaining > 0 && (
@@ -918,6 +1029,12 @@ export function CourseWizardClient({
                           {t("index.chunksProgress", { count: taskProg.chunks_processed })}
                         </p>
                       )}
+
+                      {taskProg?.state === "EXTRACTING_IMAGES" && indexStatus?.images_indexed !== undefined && indexStatus.images_indexed > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          {t("index.imagesProgress", { count: indexStatus.images_indexed })}
+                        </p>
+                      )}
                     </div>
 
                     <p className="text-xs text-muted-foreground text-center">
@@ -933,7 +1050,7 @@ export function CourseWizardClient({
                   </div>
                 )}
 
-                {indexStatus?.indexed && (
+                {indexStatus?.indexed && !isIndexing && (
                   <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-900 dark:bg-green-950">
                     <CheckCircle2 className="h-5 w-5 text-green-600" />
                     <div>
@@ -941,7 +1058,12 @@ export function CourseWizardClient({
                         {t("index.indexed")}
                       </p>
                       <p className="text-xs text-green-600 dark:text-green-500">
-                        {t("index.chunksIndexed", { count: indexStatus.chunks_indexed })}
+                        {indexStatus.images_indexed && indexStatus.images_indexed > 0
+                          ? t("index.chunksAndImagesIndexed", {
+                              chunks: indexStatus.chunks_indexed,
+                              images: indexStatus.images_indexed,
+                            })
+                          : t("index.chunksIndexed", { count: indexStatus.chunks_indexed })}
                       </p>
                     </div>
                   </div>
@@ -961,20 +1083,54 @@ export function CourseWizardClient({
                     <CardTitle className="text-base">{t("publish.summary.title")}</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t("publish.summary.modules")}</span>
-                      <span className="font-medium">{generatedModules.length}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t("publish.summary.chunks")}</span>
-                      <span className="font-medium">{indexStatus?.chunks_indexed ?? 0}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t("publish.summary.status")}</span>
-                      <Badge variant="outline" className="text-amber-600 border-amber-300">
-                        draft
-                      </Badge>
-                    </div>
+                    {isFetchingPublishSummary ? (
+                      <div className="flex items-center justify-center py-4">
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                      </div>
+                    ) : (
+                      <>
+                        {publishSummaryTitle && (
+                          <>
+                            <div className="flex justify-between gap-4">
+                              <span className="text-muted-foreground shrink-0">{t("publish.summary.titleFr")}</span>
+                              <span className="font-medium text-right truncate">{publishSummaryTitle.title_fr}</span>
+                            </div>
+                            <div className="flex justify-between gap-4">
+                              <span className="text-muted-foreground shrink-0">{t("publish.summary.titleEn")}</span>
+                              <span className="font-medium text-right truncate">{publishSummaryTitle.title_en}</span>
+                            </div>
+                          </>
+                        )}
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">{t("publish.summary.modules")}</span>
+                          <span className="font-medium">{generatedModules.length}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">{t("publish.summary.chunks")}</span>
+                          <span className="font-medium">{publishSummaryIndexStatus?.chunks_indexed ?? indexStatus?.chunks_indexed ?? 0}</span>
+                        </div>
+                        {(publishSummaryIndexStatus?.images_indexed ?? indexStatus?.images_indexed ?? 0) > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">{t("publish.summary.images")}</span>
+                            <span className="font-medium">{publishSummaryIndexStatus?.images_indexed ?? indexStatus?.images_indexed}</span>
+                          </div>
+                        )}
+                        {publishSummaryResources.length > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground shrink-0">{t("publish.summary.resources")}</span>
+                            <span className="font-medium text-right">
+                              {t("publish.summary.resourcesCount", { count: publishSummaryResources.length })}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">{t("publish.summary.status")}</span>
+                          <Badge variant="outline" className="text-amber-600 border-amber-300">
+                            draft
+                          </Badge>
+                        </div>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
 

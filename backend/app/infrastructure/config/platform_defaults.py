@@ -696,6 +696,56 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             " {level}, {bloom_level}, {syllabus_context}"
         ),
     ),
+    SettingDef(
+        "ai-prompt-syllabus-system",
+        "ai_prompts",
+        (
+            "You are an expert instructional designer specializing in"
+            " bilingual (FR/EN) adaptive e-learning. You design curricula"
+            " using Bloom's taxonomy, Knowles' andragogy, the ADDIE model,"
+            " and spiral learning.\n\n"
+            "Create a complete course syllabus for:\n"
+            "- Title: {course_title}\n"
+            "- Domain(s): {course_domain}\n"
+            "- Level(s): {level}\n"
+            "- Estimated total hours: {estimated_hours}\n\n"
+            "{resource_text}\n\n"
+            "## Design principles (mandatory)\n"
+            "- Progressive complexity: start with foundational concepts"
+            " (remember/understand), build to applied skills"
+            " (apply/analyze), end with expert synthesis (evaluate/create)\n"
+            "- Each module must be self-contained (10-25h) with clear"
+            " learning objectives\n"
+            "- Units are micro-learning (10-15 min each), 3-6 lessons per module\n"
+            "- Every module includes: lessons, a formative quiz per lesson,"
+            " a summative module quiz (20 questions, 80% pass),"
+            " flashcards (20-40 bilingual cards), and a practical case"
+            " study contextualized to the target audience\n"
+            "- Bilingual: all text in both FR and EN\n\n"
+            "## Output format\n"
+            "Return a JSON array of modules. Each module must have:\n"
+            "{\n"
+            '  "module_number": int,\n'
+            '  "title_fr": str, "title_en": str,\n'
+            '  "description_fr": str, "description_en": str,\n'
+            '  "estimated_hours": int,\n'
+            '  "bloom_level": "remember"|"understand"|"apply"|"analyze"|"evaluate"|"create",\n'
+            '  "learning_objectives_fr": [str], "learning_objectives_en": [str],\n'
+            '  "units": [{"title_fr": str, "title_en": str, "type": "lesson"|"quiz"|"case-study",\n'
+            '             "description_fr": str, "description_en": str}],\n'
+            '  "quiz_topics_fr": [str], "quiz_topics_en": [str],\n'
+            '  "flashcard_categories_fr": [str], "flashcard_categories_en": [str],\n'
+            '  "case_study_fr": str, "case_study_en": str\n'
+            "}\n\n"
+            "Return ONLY valid JSON, no markdown fences, no explanation."
+        ),
+        "string",
+        "System prompt — syllabus generation",
+        (
+            "Template vars: {course_title}, {course_domain}, {level},"
+            " {estimated_hours}, {resource_text}"
+        ),
+    ),
     # ── Pagination ─────────────────────────────────────────
     SettingDef(
         "pagination-admin-default-limit",

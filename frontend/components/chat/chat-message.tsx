@@ -68,7 +68,7 @@ function splitWithSourceImageMarkers(
 }
 
 const mdClass =
-  'prose prose-sm max-w-none prose-p:my-1 prose-headings:mt-3 prose-headings:mb-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-blockquote:my-2 prose-pre:my-2 prose-table:text-xs [&_table]:w-full [&_table]:border-collapse [&_th]:border [&_th]:border-current/20 [&_th]:px-2 [&_th]:py-1 [&_td]:border [&_td]:border-current/20 [&_td]:px-2 [&_td]:py-1 overflow-x-auto';
+  'prose prose-sm max-w-none prose-p:my-0.5 prose-p:leading-snug prose-headings:mt-2 prose-headings:mb-1 prose-ul:my-0.5 prose-ol:my-0.5 prose-li:my-0 prose-blockquote:my-1 prose-pre:my-1 prose-table:text-xs [&_table]:w-full [&_table]:border-collapse [&_th]:border [&_th]:border-current/20 [&_th]:px-2 [&_th]:py-1 [&_td]:border [&_td]:border-current/20 [&_td]:px-2 [&_td]:py-1 overflow-x-auto';
 
 export function ChatMessage({ message }: ChatMessageProps) {
   const t = useTranslations('ChatTutor');
