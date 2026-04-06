@@ -243,9 +243,7 @@ async def get_course_detail(
         pass
 
     if not course:
-        result = await db.execute(
-            select(Course).where(Course.slug == course_id_or_slug)
-        )
+        result = await db.execute(select(Course).where(Course.slug == course_id_or_slug))
         course = result.scalar_one_or_none()
 
     if not course:
