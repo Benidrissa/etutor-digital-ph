@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -103,6 +103,22 @@ export default function PaymentsPage() {
   const [dateTo, setDateTo] = useState("");
   const [offset, setOffset] = useState(0);
 
+  // Debounced versions of text filters
+  const [debouncedPhone, setDebouncedPhone] = useState("");
+  const [debouncedReference, setDebouncedReference] = useState("");
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedPhone(phoneSearch.trim());
+      setDebouncedReference(referenceSearch.trim());
+    }, 400);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [phoneSearch, referenceSearch]);
+
   // Pre-fetch statuses map once to avoid t.raw() in render loop
   let statusesMap: Record<string, string> | null = null;
   try {
@@ -114,62 +130,62 @@ export default function PaymentsPage() {
     statusesMap = null;
   }
 
-  const buildQueryString = useCallback(
-    (currentOffset: number) => {
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    try {
       const params = new URLSearchParams();
       if (statusFilter) params.set("status_filter", statusFilter);
-      if (phoneSearch.trim()) params.set("phone", phoneSearch.trim());
-      if (referenceSearch.trim())
-        params.set("reference", referenceSearch.trim());
+      if (debouncedPhone) params.set("phone", debouncedPhone);
+      if (debouncedReference) params.set("reference", debouncedReference);
       if (dateFrom) params.set("date_from", dateFrom);
       if (dateTo) params.set("date_to", dateTo);
-      params.set("offset", String(currentOffset));
+      params.set("offset", String(offset));
       params.set("limit", String(PAGE_SIZE));
-      return params.toString();
-    },
-    [statusFilter, phoneSearch, referenceSearch, dateFrom, dateTo]
-  );
 
-  const fetchData = useCallback(
-    async (currentOffset: number) => {
-      setLoading(true);
-      setError(false);
-      try {
-        const qs = buildQueryString(currentOffset);
-        const [status, smsResponse] = await Promise.all([
-          apiFetch<RelayStatus>("/api/v1/admin/relay/status"),
-          apiFetch<SmsListResponse>(`/api/v1/admin/relay/sms?${qs}`),
-        ]);
-        setRelayStatus(status);
-        setSmsRecords(smsResponse.items);
-        setTotal(smsResponse.total);
-      } catch {
-        setRelayStatus(null);
-        setSmsRecords([]);
-        setTotal(0);
-        setError(true);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [buildQueryString]
-  );
+      const [status, smsResponse] = await Promise.all([
+        apiFetch<RelayStatus>("/api/v1/admin/relay/status"),
+        apiFetch<SmsListResponse>(
+          `/api/v1/admin/relay/sms?${params.toString()}`
+        ),
+      ]);
+      setRelayStatus(status);
+      setSmsRecords(smsResponse.items);
+      setTotal(smsResponse.total);
+    } catch {
+      setRelayStatus(null);
+      setSmsRecords([]);
+      setTotal(0);
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [statusFilter, debouncedPhone, debouncedReference, dateFrom, dateTo, offset]);
 
+  // Single effect: fetch when any filter or offset changes
   useEffect(() => {
-    fetchData(offset);
-  }, [offset, fetchData]);
+    fetchData();
+  }, [fetchData]);
 
-  // Reset to page 0 when filters change
+  // Reset to page 0 when filters change (not offset itself)
+  const prevFiltersRef = useRef({ statusFilter, debouncedPhone, debouncedReference, dateFrom, dateTo });
   useEffect(() => {
-    setOffset(0);
-  }, [statusFilter, phoneSearch, referenceSearch, dateFrom, dateTo]);
+    const prev = prevFiltersRef.current;
+    const changed =
+      prev.statusFilter !== statusFilter ||
+      prev.debouncedPhone !== debouncedPhone ||
+      prev.debouncedReference !== debouncedReference ||
+      prev.dateFrom !== dateFrom ||
+      prev.dateTo !== dateTo;
+    prevFiltersRef.current = { statusFilter, debouncedPhone, debouncedReference, dateFrom, dateTo };
+    if (changed && offset !== 0) setOffset(0);
+  }, [statusFilter, debouncedPhone, debouncedReference, dateFrom, dateTo, offset]);
 
   const handleExportCsv = async () => {
     const params = new URLSearchParams();
     if (statusFilter) params.set("status_filter", statusFilter);
-    if (phoneSearch.trim()) params.set("phone", phoneSearch.trim());
-    if (referenceSearch.trim())
-      params.set("reference", referenceSearch.trim());
+    if (debouncedPhone) params.set("phone", debouncedPhone);
+    if (debouncedReference) params.set("reference", debouncedReference);
     if (dateFrom) params.set("date_from", dateFrom);
     if (dateTo) params.set("date_to", dateTo);
 
