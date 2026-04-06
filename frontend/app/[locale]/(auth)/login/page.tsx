@@ -1,9 +1,43 @@
+'use client';
+
+import { useState } from 'react';
+import { useTranslations } from 'next-intl';
+import { PasswordLoginForm } from '@/components/auth/password-login-form';
 import { TOTPLoginForm } from '@/components/auth/totp-login-form';
 
 export default function LoginPage() {
+  const [useAuthenticator, setUseAuthenticator] = useState(false);
+  const t = useTranslations('Auth');
+
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
-      <TOTPLoginForm />
+      <div className="w-full max-w-md space-y-3">
+        {useAuthenticator ? (
+          <>
+            <TOTPLoginForm />
+            <div className="text-center">
+              <button
+                onClick={() => setUseAuthenticator(false)}
+                className="text-sm text-muted-foreground hover:text-foreground hover:underline min-h-[44px] px-4"
+              >
+                {t('usePasswordLogin')}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <PasswordLoginForm />
+            <div className="text-center">
+              <button
+                onClick={() => setUseAuthenticator(true)}
+                className="text-sm text-muted-foreground hover:text-foreground hover:underline min-h-[44px] px-4"
+              >
+                {t('useAuthenticatorLogin')}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
