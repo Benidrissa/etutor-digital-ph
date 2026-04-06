@@ -63,7 +63,7 @@ class CourseModuleDetail(BaseModel):
 
 
 class CourseDetailResponse(CourseListItem):
-    syllabus_json: dict | None
+    syllabus_json: dict | list | None
     modules: list[CourseModuleDetail]
 
 
