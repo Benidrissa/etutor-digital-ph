@@ -10,7 +10,11 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/santepublique_aof"
-    database_url_sync: str = "postgresql://postgres:postgres@localhost:5432/santepublique_aof"
+
+    @property
+    def database_url_sync(self) -> str:
+        """Derive sync URL from async URL by stripping the +asyncpg dialect."""
+        return self.database_url.replace("+asyncpg", "")
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
