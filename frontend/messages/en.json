@@ -1139,6 +1139,9 @@
         "etaLessThan": "Less than a minute",
         "filesProgress": "File {current}/{total}",
         "chunksProgress": "{count} chunks processed",
+        "imagesProgress": "{count} images extracted",
+        "stepExtractingImages": "Extracting images from PDFs",
+        "chunksAndImagesIndexed": "{chunks} chunks and {images} images indexed",
         "resumeHint": "You can close and come back later. The task continues in the background.",
         "inProgress": "Indexation in progress"
       },
@@ -1162,6 +1165,7 @@
           "title": "Course summary",
           "modules": "Modules",
           "chunks": "RAG chunks",
+          "images": "Images indexed",
           "status": "Status"
         }
       }
