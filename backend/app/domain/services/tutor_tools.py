@@ -248,7 +248,9 @@ class TutorToolExecutor:
                 from sqlalchemy.orm import selectinload
 
                 result = await session.execute(
-                    sa_select(Module).where(Module.id == module_id).options(selectinload(Module.course))
+                    sa_select(Module)
+                    .where(Module.id == module_id)
+                    .options(selectinload(Module.course))
                 )
                 module = result.scalar_one_or_none()
                 if module:
