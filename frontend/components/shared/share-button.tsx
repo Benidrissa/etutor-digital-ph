@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useTranslations } from "next-intl";
-import { Share2, Copy, Check, MessageCircle, Send, Facebook } from "lucide-react";
+import { Share2, Copy, Check, MessageCircle, Send, Globe } from "lucide-react";
 
 interface ShareButtonProps {
   url: string;
@@ -123,7 +123,7 @@ export function ShareButton({
             onClick={handleFacebook}
             className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors"
           >
-            <Facebook className="h-4 w-4 text-blue-600" />
+            <Globe className="h-4 w-4 text-blue-600" />
             Facebook
           </button>
           <div className="border-t border-stone-100 my-1" />
