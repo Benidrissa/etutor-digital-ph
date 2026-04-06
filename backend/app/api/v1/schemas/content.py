@@ -209,31 +209,6 @@ class FlashcardSetResponse(BaseModel):
     }
 
 
-# Quiz Generation Schemas
-
-
-class QuizGenerationRequest(BaseModel):
-    """Request schema for quiz generation."""
-
-    module_id: UUID = Field(..., description="UUID of the target module")
-    unit_id: str = Field(..., description="Unit identifier within the module")
-    language: Literal["fr", "en"] = Field(..., description="Content language")
-    difficulty_level: Literal["easy", "medium", "hard"] = Field(
-        ..., description="Overall difficulty level"
-    )
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "module_id": "550e8400-e29b-41d4-a716-446655440000",
-                "unit_id": "1.1",
-                "language": "fr",
-                "difficulty_level": "medium",
-            }
-        }
-    }
-
-
 class CaseStudyContent(BaseModel):
     """Structured case study content — AOF context → Data → Guided questions → Annotated correction."""
 

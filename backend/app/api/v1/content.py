@@ -30,10 +30,13 @@ from app.api.v1.schemas.content import (
     LessonResponse,
     ModuleUnitsResponse,
     PublicUnitDetail,
-    QuizGenerationRequest,
     StreamingEvent,
 )
-from app.api.v1.schemas.quiz import QuizContent, QuizResponse
+from app.api.v1.schemas.quiz import (
+    QuizContent,
+    QuizGenerationRequest,
+    QuizResponse,
+)
 from app.domain.models.content import GeneratedContent
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
@@ -821,14 +824,17 @@ async def generate_quiz(
             module_id=str(request.module_id),
             unit_id=request.unit_id,
             language=request.language,
-            difficulty_level=request.difficulty_level,
+            country=request.country,
+            level=request.level,
         )
 
         quiz_response = await quiz_service.get_or_generate_quiz(
             module_id=request.module_id,
             unit_id=request.unit_id,
             language=request.language,
-            difficulty_level=request.difficulty_level,
+            country=request.country,
+            level=request.level,
+            num_questions=request.num_questions,
             session=session,
         )
 
