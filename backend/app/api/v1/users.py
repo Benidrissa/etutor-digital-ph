@@ -55,6 +55,8 @@ async def get_current_user_profile(
             last_active=user.last_active.isoformat(),
             created_at=user.created_at.isoformat(),
             role=user.role,
+            phone_number=user.phone_number,
+            analytics_opt_out=user.analytics_opt_out,
         )
     except HTTPException:
         raise
@@ -101,6 +103,8 @@ async def update_user_profile(
             updates["country"] = request.country
         if request.professional_role is not None:
             updates["professional_role"] = request.professional_role
+        if request.analytics_opt_out is not None:
+            updates["analytics_opt_out"] = request.analytics_opt_out
 
         await auth_service.update_user_profile(current_user.id, updates)
         updated_user = await user_repo.get_by_id(current_user.id)
@@ -120,6 +124,8 @@ async def update_user_profile(
             last_active=updated_user.last_active.isoformat(),
             created_at=updated_user.created_at.isoformat(),
             role=updated_user.role,
+            phone_number=updated_user.phone_number,
+            analytics_opt_out=updated_user.analytics_opt_out,
         )
 
         return ProfileUpdateResponse(

@@ -32,6 +32,8 @@ class UserProfileResponse(BaseModel):
     created_at: str
     role: UserRole = UserRole.user
     is_active: bool = True
+    phone_number: str | None = None
+    analytics_opt_out: bool = False
 
 
 class UpdateProfileRequest(BaseModel):
@@ -41,6 +43,7 @@ class UpdateProfileRequest(BaseModel):
     preferred_language: str | None = Field(None, pattern="^(fr|en)$")
     country: str | None = None
     professional_role: str | None = None
+    analytics_opt_out: bool | None = None
 
 
 class ProfileUpdateResponse(BaseModel):

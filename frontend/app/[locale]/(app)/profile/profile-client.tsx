@@ -108,6 +108,7 @@ const PROFESSIONAL_ROLES = [
 
 export function ProfileClient() {
   const t = useTranslations("Profile");
+  const tPrivacy = useTranslations("Privacy");
   const [isEditing, setIsEditing] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [showRecontextAlert, setShowRecontextAlert] = useState(false);
@@ -478,6 +479,64 @@ export function ProfileClient() {
 
       {/* Placement Results History */}
       <PlacementResultsHistory compact />
+
+      {/* Privacy & Analytics */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">{tPrivacy("title")}</CardTitle>
+          <CardDescription>{tPrivacy("description")}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">{tPrivacy("optOutLabel")}</p>
+              <p className="text-xs text-muted-foreground">{tPrivacy("optOutDescription")}</p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={profile?.analytics_opt_out ?? false}
+              onClick={async () => {
+                const newValue = !(profile?.analytics_opt_out ?? false);
+                try {
+                  await updateProfile({ analytics_opt_out: newValue });
+                  queryClient.invalidateQueries({ queryKey: ["userProfile"] });
+                  if (newValue) {
+                    localStorage.setItem("analytics_opt_out", "1");
+                  } else {
+                    localStorage.removeItem("analytics_opt_out");
+                  }
+                } catch {
+                  // ignore
+                }
+              }}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                profile?.analytics_opt_out ? "bg-primary" : "bg-stone-200"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+                  profile?.analytics_opt_out ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </div>
+
+          <Separator />
+
+          <details className="group">
+            <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+              {tPrivacy("noticeTitle")}
+            </summary>
+            <div className="mt-3 space-y-2 text-xs text-muted-foreground leading-relaxed">
+              <p>{tPrivacy("whatWeTrack")}</p>
+              <p>{tPrivacy("whatWeDoNotTrack")}</p>
+              <p>{tPrivacy("howStored")}</p>
+              <p>{tPrivacy("yourRights")}</p>
+            </div>
+          </details>
+        </CardContent>
+      </Card>
 
       {/* Logout */}
       <Card className="border-destructive/50">

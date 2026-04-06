@@ -821,6 +821,17 @@
       "other": "Autre"
     }
   },
+  "Privacy": {
+    "title": "Confidentialité et analytique",
+    "description": "Gérez la collecte de vos données d'utilisation",
+    "optOutLabel": "Désactiver le suivi analytique",
+    "optOutDescription": "Arrêter toute collecte de données d'utilisation. Vos données existantes sont conservées.",
+    "noticeTitle": "Quelles données collectons-nous ?",
+    "whatWeTrack": "Nous suivons : les pages visitées, l'utilisation des fonctionnalités (leçons consultées, quiz passés, flashcards révisées, messages tuteur). Toutes les données sont pseudonymisées, sans identifiants personnels.",
+    "whatWeDoNotTrack": "Nous NE suivons PAS : le contenu des messages, les réponses aux quiz, les données personnelles (nom, email), les enregistrements de session, ni les cookies.",
+    "howStored": "Les données sont stockées sur des serveurs européens (PostHog UE) en utilisant uniquement le localStorage. Aucun cookie n'est utilisé. Votre adresse IP n'est pas capturée. Les en-têtes DNT sont respectés.",
+    "yourRights": "Vous pouvez vous désinscrire à tout moment en utilisant le bouton ci-dessus. Lors de la suppression du compte, toutes les données analytiques liées à votre identifiant pseudonymisé sont supprimées."
+  },
   "Roles": {
     "user": "Utilisateur",
     "expert": "Expert",
