@@ -29,6 +29,7 @@ dependencies = [
     "structlog>=25.5.0",
     "tiktoken>=0.8.0",
     "uvicorn[standard]>=0.42.0",
+    "bcrypt>=4.0.0",
     "pyotp>=2.9.0",
     "qrcode[pil]>=8.2",
     "resend>=2.26.0",
