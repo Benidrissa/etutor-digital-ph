@@ -45,6 +45,8 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://minio:9000}
       MINIO_BUCKET_MEDIA: ${MINIO_BUCKET_MEDIA:-santepublique-media}
+      SMS_RELAY_API_KEY: ${SMS_RELAY_API_KEY}
+      SMS_RELAY_TRUSTED_SENDERS: ${SMS_RELAY_TRUSTED_SENDERS}
     volumes:
       - ./resources:/app/resources
       - uploads:/app/uploads
@@ -117,6 +119,8 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://minio:9000}
       MINIO_BUCKET_MEDIA: ${MINIO_BUCKET_MEDIA:-santepublique-media}
+      SMS_RELAY_API_KEY: ${SMS_RELAY_API_KEY}
+      SMS_RELAY_TRUSTED_SENDERS: ${SMS_RELAY_TRUSTED_SENDERS}
     volumes:
       - ./resources:/app/resources
       - uploads:/app/uploads
