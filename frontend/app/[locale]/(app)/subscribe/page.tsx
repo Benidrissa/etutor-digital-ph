@@ -111,9 +111,9 @@ export default function SubscribePage() {
               </span>
             </div>
             <div className="space-y-1 text-sm text-green-700">
-              <p>{t("daysRemaining", { days: status.days_remaining })}</p>
+              <p>{t("daysRemaining", { days: status.days_remaining ?? 0 })}</p>
               <p>
-                {t("messageLimit", { count: status.daily_message_limit })}
+                {t("messageLimit", { count: status.daily_message_limit ?? 0 })}
               </p>
               {status.expires_at && (
                 <p>
