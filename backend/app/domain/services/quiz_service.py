@@ -383,8 +383,7 @@ class QuizService:
         else:
             system_prompt = (
                 "You are an expert educator creating adaptive quiz "
-                f"content for West African professionals in {domain}."
-                + json_schema_block
+                f"content for West African professionals in {domain}." + json_schema_block
             )
 
         audience = (
