@@ -23,6 +23,7 @@ import { track } from '@/lib/analytics';
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 3 * 60 * 1000;
+const UX_SLOW_WARNING_MS = 30 * 1000;
 
 interface LessonContent {
   introduction: string;
@@ -97,7 +98,9 @@ export function LessonViewer({
   const [lessonData, setLessonData] = useState<LessonData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSlowGeneration, setIsSlowGeneration] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorType, setErrorType] = useState<'load' | 'generation' | 'timeout' | 'no_content' | null>(null);
   const [isQuizPassed, setIsQuizPassed] = useState(false);
   const [isCheckingQuiz, setIsCheckingQuiz] = useState(false);
   const [forceRegenerate, setForceRegenerate] = useState(false);
@@ -105,6 +108,7 @@ export function LessonViewer({
 
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollStartRef = useRef<number>(0);
+  const slowWarningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentUser = useCurrentUser();
   const country = countryContext || currentUser?.country || 'SN';
@@ -127,12 +131,22 @@ export function LessonViewer({
     checkQuizStatus();
   }, [moduleId, unitId]);
 
+  const stopGenerating = (errMsg: string, type: 'load' | 'generation' | 'timeout' | 'no_content') => {
+    if (slowWarningTimerRef.current) {
+      clearTimeout(slowWarningTimerRef.current);
+      slowWarningTimerRef.current = null;
+    }
+    setIsSlowGeneration(false);
+    setIsGenerating(false);
+    setIsLoading(false);
+    setIsRefreshing(false);
+    setError(errMsg);
+    setErrorType(type);
+  };
+
   const pollStatus = (taskId: string, startTime: number) => {
     if (Date.now() - startTime > POLL_TIMEOUT_MS) {
-      setIsGenerating(false);
-      setIsLoading(false);
-      setIsRefreshing(false);
-      setError(t('generationTimeout'));
+      stopGenerating(t('generationTimeout'), 'timeout');
       return;
     }
 
@@ -143,6 +157,11 @@ export function LessonViewer({
         );
 
         if (statusRes.status === 'complete') {
+          if (slowWarningTimerRef.current) {
+            clearTimeout(slowWarningTimerRef.current);
+            slowWarningTimerRef.current = null;
+          }
+          setIsSlowGeneration(false);
           const lessonRes = await apiFetch<LessonData>(
             `/api/v1/content/lessons/${moduleId}/${unitId}?language=${language}&level=${level}&country=${country}`
           );
@@ -152,18 +171,19 @@ export function LessonViewer({
           setIsRefreshing(false);
           setForceRegenerate(false);
         } else if (statusRes.status === 'failed') {
-          setError(t('generationFailed'));
-          setIsGenerating(false);
-          setIsLoading(false);
-          setIsRefreshing(false);
+          const isNoContent = statusRes.error?.toLowerCase().includes('no relevant') ||
+            statusRes.error?.toLowerCase().includes('rag') ||
+            statusRes.error?.toLowerCase().includes('no results') ||
+            statusRes.error?.toLowerCase().includes('0 results');
+          stopGenerating(
+            isNoContent ? t('noContentFound') : t('generationFailed'),
+            isNoContent ? 'no_content' : 'generation'
+          );
         } else {
           pollStatus(taskId, startTime);
         }
       } catch {
-        setError(t('loadError'));
-        setIsGenerating(false);
-        setIsLoading(false);
-        setIsRefreshing(false);
+        stopGenerating(t('loadError'), 'load');
       }
     }, POLL_INTERVAL_MS);
   };
@@ -171,6 +191,7 @@ export function LessonViewer({
   useEffect(() => {
     return () => {
       if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+      if (slowWarningTimerRef.current) clearTimeout(slowWarningTimerRef.current);
     };
   }, []);
 
@@ -190,7 +211,11 @@ export function LessonViewer({
         if ('status' in res && res.status === 'generating') {
           setIsLoading(false);
           setIsGenerating(true);
+          setIsSlowGeneration(false);
           pollStartRef.current = Date.now();
+          slowWarningTimerRef.current = setTimeout(() => {
+            setIsSlowGeneration(true);
+          }, UX_SLOW_WARNING_MS);
           pollStatus((res as GeneratingResponse).task_id, pollStartRef.current);
         } else {
           const lesson = res as LessonData;
@@ -207,6 +232,7 @@ export function LessonViewer({
       } catch (err) {
         console.error('Error loading lesson:', err);
         setError(t('loadError'));
+        setErrorType('load');
         setIsLoading(false);
         setIsRefreshing(false);
       }
@@ -215,6 +241,19 @@ export function LessonViewer({
     load();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moduleId, unitId, language, level, country, forceRegenerate]);
+
+  const handleRetry = () => {
+    if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    if (slowWarningTimerRef.current) clearTimeout(slowWarningTimerRef.current);
+    setError(null);
+    setErrorType(null);
+    setLessonData(null);
+    setIsLoading(false);
+    setIsGenerating(false);
+    setIsSlowGeneration(false);
+    setForceRegenerate(false);
+    setIsRefreshing(false);
+  };
 
   const handleRefresh = () => {
     setLessonData(null);
@@ -254,9 +293,12 @@ export function LessonViewer({
             <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-3" />
             <div className="text-red-600 font-medium mb-2">{t('error')}</div>
             <p className="text-gray-600 mb-4">{error}</p>
+            {errorType === 'no_content' && (
+              <p className="text-gray-500 text-sm mb-4">{t('noContentFallback')}</p>
+            )}
             <Button
               variant="outline"
-              onClick={() => { setError(null); setLessonData(null); setForceRegenerate(false); setIsLoading(false); setIsGenerating(false); }}
+              onClick={handleRetry}
               className="min-h-11"
             >
               <RefreshCw className="w-4 h-4 mr-2" />
@@ -276,6 +318,20 @@ export function LessonViewer({
             <Loader2 className="w-10 h-10 animate-spin text-teal-600 mb-4" />
             <h2 className="text-lg font-semibold text-gray-900 mb-2">{t('generatingContent')}</h2>
             <p className="text-gray-600 text-center max-w-md">{t('generatingDescription')}</p>
+            {isSlowGeneration && (
+              <div className="mt-6 flex flex-col items-center gap-3">
+                <p className="text-amber-600 text-sm text-center max-w-xs">{t('generatingSlowWarning')}</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRetry}
+                  className="min-h-11 text-amber-700 border-amber-300 hover:bg-amber-50"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  {t('cancelAndRetry')}
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -287,7 +343,25 @@ export function LessonViewer({
   }
 
   if (!lessonData) {
-    return <LessonSkeleton />;
+    return (
+      <div className="container mx-auto max-w-4xl px-4 py-6">
+        <Card className="border-red-200">
+          <CardContent className="p-6 text-center">
+            <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-3" />
+            <div className="text-red-600 font-medium mb-2">{t('error')}</div>
+            <p className="text-gray-600 mb-4">{t('noContentFallback')}</p>
+            <Button
+              variant="outline"
+              onClick={handleRetry}
+              className="min-h-11"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              {t('retry')}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   const { content } = lessonData;
