@@ -444,11 +444,8 @@ class SyllabusAgentService:
         )
 
         if user_id:
-            stmt = stmt.outerjoin(
-                Course, Module.course_id == Course.id
-            ).where(
-                (Course.created_by == uuid.UUID(user_id))
-                | (Module.course_id.is_(None))
+            stmt = stmt.outerjoin(Course, Module.course_id == Course.id).where(
+                (Course.created_by == uuid.UUID(user_id)) | (Module.course_id.is_(None))
             )
 
         result = await session.execute(stmt)

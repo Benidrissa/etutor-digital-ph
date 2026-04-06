@@ -110,9 +110,7 @@ async def get_module(
     session: AsyncSession = Depends(get_db_session),
 ) -> dict:
     """Get a single module's full data for editing, including units."""
-    result = await session.execute(
-        select(Module).where(Module.id == module_id)
-    )
+    result = await session.execute(select(Module).where(Module.id == module_id))
     module = result.scalar_one_or_none()
     if not module:
         raise HTTPException(
@@ -122,9 +120,7 @@ async def get_module(
 
     # Fetch units for this module
     units_result = await session.execute(
-        select(ModuleUnit)
-        .where(ModuleUnit.module_id == module_id)
-        .order_by(ModuleUnit.order_index)
+        select(ModuleUnit).where(ModuleUnit.module_id == module_id).order_by(ModuleUnit.order_index)
     )
     units = units_result.scalars().all()
 
@@ -139,9 +135,7 @@ async def get_module(
         "description_en": module.description_en,
         "estimated_hours": module.estimated_hours,
         "bloom_level": module.bloom_level,
-        "prereq_modules": [
-            str(p) for p in (module.prereq_modules or [])
-        ],
+        "prereq_modules": [str(p) for p in (module.prereq_modules or [])],
         "objectives_fr": books.get("objectives_fr", []),
         "objectives_en": books.get("objectives_en", []),
         "key_contents_fr": books.get("key_contents_fr", []),
