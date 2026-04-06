@@ -244,9 +244,21 @@ class TutorToolExecutor:
         if module_id_str:
             try:
                 module_id = uuid.UUID(module_id_str)
-                module = await session.get(Module, module_id)
+                from sqlalchemy import select as sa_select
+                from sqlalchemy.orm import selectinload
+
+                result = await session.execute(
+                    sa_select(Module)
+                    .where(Module.id == module_id)
+                    .options(selectinload(Module.course))
+                )
+                module = result.scalar_one_or_none()
                 if module:
-                    books_sources = module.books_sources
+                    course = module.course
+                    if course and course.rag_collection_id:
+                        books_sources = {course.rag_collection_id: []}
+                    elif module.books_sources:
+                        books_sources = module.books_sources
             except (ValueError, TypeError):
                 pass
 

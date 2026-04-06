@@ -781,9 +781,18 @@ class TutorService:
         """Retrieve relevant context using RAG (kept for backward compatibility)."""
         books_sources = None
         if module_id:
-            module = await session.get(Module, module_id)
+            from sqlalchemy.orm import selectinload
+
+            result = await session.execute(
+                select(Module).where(Module.id == module_id).options(selectinload(Module.course))
+            )
+            module = result.scalar_one_or_none()
             if module:
-                books_sources = module.books_sources
+                course = module.course
+                if course and course.rag_collection_id:
+                    books_sources = {course.rag_collection_id: []}
+                elif module.books_sources:
+                    books_sources = module.books_sources
 
         search_results = await self.retriever.search_for_module(
             query=query,
