@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import contextlib
+import csv
 import datetime
+import io
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from structlog import get_logger
 
@@ -105,6 +108,13 @@ class SmsRecordResponse(BaseModel):
     created_at: str
 
 
+class SmsListResponse(BaseModel):
+    items: list[SmsRecordResponse]
+    total: int
+    offset: int
+    limit: int
+
+
 class RelayStatusResponse(BaseModel):
     devices: list[DeviceStatusResponse]
     recent_sms_count: int
@@ -164,7 +174,9 @@ async def receive_heartbeat(
 
     settings = get_settings()
     trusted = (
-        settings.sms_relay_trusted_senders_list if settings.sms_relay_trusted_senders else None
+        settings.sms_relay_trusted_senders_list
+        if settings.sms_relay_trusted_senders
+        else None
     )
 
     return HeartbeatResponse(
@@ -206,8 +218,12 @@ async def get_relay_status(
         for d in devices
     ]
 
-    recent_count = await service.count_by_status(SmsProcessingStatus.payment_processed, db)
-    failed_count = await service.count_by_status(SmsProcessingStatus.parse_failed, db)
+    recent_count = await service.count_by_status(
+        SmsProcessingStatus.payment_processed, db,
+    )
+    failed_count = await service.count_by_status(
+        SmsProcessingStatus.parse_failed, db,
+    )
 
     return RelayStatusResponse(
         devices=device_list,
@@ -216,44 +232,162 @@ async def get_relay_status(
     )
 
 
-@router.get(
-    "/admin/relay/sms",
-    response_model=list[SmsRecordResponse],
-    status_code=status.HTTP_200_OK,
-)
-async def get_relay_sms(
-    status_filter: str | None = None,
-    limit: int = 50,
-    current_user=Depends(require_role(UserRole.admin)),
-    db=Depends(get_db_session),
-) -> list[SmsRecordResponse]:
-    service = SmsRelayService()
+def _parse_filter_params(
+    status_filter: str | None,
+    phone: str | None,
+    reference: str | None,
+    date_from: str | None,
+    date_to: str | None,
+) -> dict:
+    """Parse common filter query params into kwargs for the service layer."""
     filter_val = None
     if status_filter:
         with contextlib.suppress(ValueError):
             filter_val = SmsProcessingStatus(status_filter)
 
-    records = await service.get_recent_sms(
-        limit=min(limit, 200),
-        session=db,
-        status_filter=filter_val,
+    df = None
+    if date_from:
+        with contextlib.suppress(ValueError):
+            df = datetime.datetime.fromisoformat(date_from).replace(
+                tzinfo=datetime.UTC
+            ) if "T" in date_from else datetime.datetime.combine(
+                datetime.date.fromisoformat(date_from),
+                datetime.time.min,
+                tzinfo=datetime.UTC,
+            )
+
+    dt = None
+    if date_to:
+        with contextlib.suppress(ValueError):
+            dt = datetime.datetime.fromisoformat(date_to).replace(
+                tzinfo=datetime.UTC
+            ) if "T" in date_to else datetime.datetime.combine(
+                datetime.date.fromisoformat(date_to),
+                datetime.time.max,
+                tzinfo=datetime.UTC,
+            )
+
+    return {
+        "status_filter": filter_val,
+        "phone": phone or None,
+        "reference": reference or None,
+        "date_from": df,
+        "date_to": dt,
+    }
+
+
+def _sms_to_response(r) -> SmsRecordResponse:
+    return SmsRecordResponse(
+        id=str(r.id),
+        sms_id=r.sms_id,
+        device_id=r.device_id,
+        sender=r.sender,
+        body=r.body,
+        sms_received_at=r.sms_received_at.isoformat(),
+        processing_status=r.processing_status,
+        parsed_amount=r.parsed_amount,
+        parsed_phone=r.parsed_phone,
+        parsed_reference=r.parsed_reference,
+        parsed_provider=r.parsed_provider,
+        error_message=r.error_message,
+        created_at=r.created_at.isoformat(),
     )
 
-    return [
-        SmsRecordResponse(
-            id=str(r.id),
-            sms_id=r.sms_id,
-            device_id=r.device_id,
-            sender=r.sender,
-            body=r.body,
-            sms_received_at=r.sms_received_at.isoformat(),
-            processing_status=r.processing_status,
-            parsed_amount=r.parsed_amount,
-            parsed_phone=r.parsed_phone,
-            parsed_reference=r.parsed_reference,
-            parsed_provider=r.parsed_provider,
-            error_message=r.error_message,
-            created_at=r.created_at.isoformat(),
-        )
-        for r in records
-    ]
+
+@router.get(
+    "/admin/relay/sms/export/csv",
+    status_code=status.HTTP_200_OK,
+)
+async def export_relay_sms_csv(
+    status_filter: str | None = Query(None),
+    phone: str | None = Query(None),
+    reference: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    current_user=Depends(require_role(UserRole.admin)),
+    db=Depends(get_db_session),
+) -> StreamingResponse:
+    """Export filtered SMS records as CSV. Admin only."""
+    service = SmsRelayService()
+    filters = _parse_filter_params(
+        status_filter, phone, reference,
+        date_from, date_to,
+    )
+
+    records = await service.get_all_sms_for_export(
+        session=db, **filters,
+    )
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "date", "sender", "amount", "phone",
+        "reference", "status", "device",
+        "provider", "error",
+    ])
+    for r in records:
+        writer.writerow([
+            r.sms_received_at.isoformat(),
+            r.sender,
+            r.parsed_amount or "",
+            r.parsed_phone or "",
+            r.parsed_reference or "",
+            r.processing_status,
+            r.device_id,
+            r.parsed_provider or "",
+            r.error_message or "",
+        ])
+
+    output.seek(0)
+    logger.info(
+        "Admin exported SMS CSV",
+        admin_id=current_user.id,
+        count=len(records),
+    )
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition":
+                "attachment; filename=sms_export.csv",
+        },
+    )
+
+
+@router.get(
+    "/admin/relay/sms",
+    response_model=SmsListResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_relay_sms(
+    status_filter: str | None = Query(None),
+    phone: str | None = Query(None),
+    reference: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    current_user=Depends(require_role(UserRole.admin)),
+    db=Depends(get_db_session),
+) -> SmsListResponse:
+    service = SmsRelayService()
+    filters = _parse_filter_params(
+        status_filter, phone, reference,
+        date_from, date_to,
+    )
+
+    records = await service.get_recent_sms(
+        limit=limit, session=db,
+        offset=offset, **filters,
+    )
+    total = await service.count_sms(
+        session=db, **filters,
+    )
+
+    return SmsListResponse(
+        items=[_sms_to_response(r) for r in records],
+        total=total,
+        offset=offset,
+        limit=limit,
+    )

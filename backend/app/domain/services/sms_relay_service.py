@@ -6,7 +6,7 @@ import datetime
 from datetime import timedelta
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -184,16 +184,69 @@ class SmsRelayService:
         )
         return list(result.scalars().all())
 
+    def _apply_sms_filters(
+        self,
+        q,
+        status_filter: SmsProcessingStatus | None = None,
+        phone: str | None = None,
+        reference: str | None = None,
+        date_from: datetime.datetime | None = None,
+        date_to: datetime.datetime | None = None,
+    ):
+        if status_filter is not None:
+            q = q.where(InboundSms.processing_status == status_filter)
+        if phone:
+            q = q.where(InboundSms.parsed_phone.ilike(f"%{phone}%"))
+        if reference:
+            q = q.where(InboundSms.parsed_reference.ilike(f"%{reference}%"))
+        if date_from is not None:
+            q = q.where(InboundSms.sms_received_at >= date_from)
+        if date_to is not None:
+            q = q.where(InboundSms.sms_received_at <= date_to)
+        return q
+
     async def get_recent_sms(
         self,
         limit: int,
         session: AsyncSession,
         status_filter: SmsProcessingStatus | None = None,
+        phone: str | None = None,
+        reference: str | None = None,
+        date_from: datetime.datetime | None = None,
+        date_to: datetime.datetime | None = None,
+        offset: int = 0,
     ) -> list[InboundSms]:
         q = select(InboundSms).order_by(InboundSms.created_at.desc())
-        if status_filter is not None:
-            q = q.where(InboundSms.processing_status == status_filter)
-        q = q.limit(limit)
+        q = self._apply_sms_filters(q, status_filter, phone, reference, date_from, date_to)
+        q = q.offset(offset).limit(limit)
+        result = await session.execute(q)
+        return list(result.scalars().all())
+
+    async def count_sms(
+        self,
+        session: AsyncSession,
+        status_filter: SmsProcessingStatus | None = None,
+        phone: str | None = None,
+        reference: str | None = None,
+        date_from: datetime.datetime | None = None,
+        date_to: datetime.datetime | None = None,
+    ) -> int:
+        q = select(func.count()).select_from(InboundSms)
+        q = self._apply_sms_filters(q, status_filter, phone, reference, date_from, date_to)
+        result = await session.execute(q)
+        return result.scalar() or 0
+
+    async def get_all_sms_for_export(
+        self,
+        session: AsyncSession,
+        status_filter: SmsProcessingStatus | None = None,
+        phone: str | None = None,
+        reference: str | None = None,
+        date_from: datetime.datetime | None = None,
+        date_to: datetime.datetime | None = None,
+    ) -> list[InboundSms]:
+        q = select(InboundSms).order_by(InboundSms.created_at.desc())
+        q = self._apply_sms_filters(q, status_filter, phone, reference, date_from, date_to)
         result = await session.execute(q)
         return list(result.scalars().all())
 
@@ -202,9 +255,9 @@ class SmsRelayService:
         status: SmsProcessingStatus,
         session: AsyncSession,
     ) -> int:
-        from sqlalchemy import func
-
         result = await session.execute(
-            select(func.count()).where(InboundSms.processing_status == status)
+            select(func.count()).select_from(InboundSms).where(
+                InboundSms.processing_status == status
+            )
         )
         return result.scalar() or 0
