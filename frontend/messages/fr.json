@@ -1013,6 +1013,7 @@
     },
     "estimatedHours": "{hours} h estimées",
     "moduleCount": "{count, plural, one {# module} other {# modules}}",
+    "imageCount": "{count, plural, one {# image} other {# images}}",
     "generateStructure": "Générer la structure",
     "generateError": "La génération a échoué. Veuillez réessayer.",
     "publish": "Publier",
@@ -1047,6 +1048,10 @@
     "deleteCourse": "Supprimer",
     "confirmDelete": "Supprimer la formation ?",
     "confirmDeleteDesc": "Cette action est irréversible. La formation et tout son contenu seront définitivement supprimés.",
+    "indexResources": "Indexer les ressources",
+    "confirmIndex": "Indexer les ressources du cours ?",
+    "confirmIndexDesc": "Cela indexera tous les PDFs téléversés dans la base vectorielle pour permettre la génération de contenu IA.",
+    "indexError": "L'indexation a échoué. Veuillez réessayer.",
     "newCourse": "Nouveau cours",
     "noCoursesDesc": "Créez votre premier cours pour commencer.",
     "table": {

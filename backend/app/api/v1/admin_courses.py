@@ -59,6 +59,7 @@ class CourseResponse(BaseModel):
     languages: str
     estimated_hours: int
     module_count: int
+    image_count: int
     status: str
     cover_image_url: str | None
     created_by: str | None
@@ -70,7 +71,7 @@ class CourseResponse(BaseModel):
     published_at: str | None
 
 
-def _course_to_response(course: Course) -> CourseResponse:
+def _course_to_response(course: Course, image_count: int = 0) -> CourseResponse:
     cats = course.taxonomy_categories or []
     return CourseResponse(
         id=str(course.id),
@@ -85,6 +86,7 @@ def _course_to_response(course: Course) -> CourseResponse:
         languages=course.languages,
         estimated_hours=course.estimated_hours,
         module_count=course.module_count,
+        image_count=image_count,
         status=course.status,
         cover_image_url=course.cover_image_url,
         created_by=str(course.created_by) if course.created_by else None,
@@ -95,6 +97,17 @@ def _course_to_response(course: Course) -> CourseResponse:
         created_at=course.created_at.isoformat(),
         published_at=course.published_at.isoformat() if course.published_at else None,
     )
+
+
+async def _fetch_image_count(db, rag_collection_id: str | None) -> int:
+    if not rag_collection_id:
+        return 0
+    result = await db.execute(
+        select(func.count())
+        .select_from(SourceImage)
+        .where(SourceImage.rag_collection_id == rag_collection_id)
+    )
+    return result.scalar_one()
 
 
 def _slugify(text: str) -> str:
@@ -113,7 +126,21 @@ async def list_courses_admin(
     """List all courses (any status). Admin only."""
     result = await db.execute(select(Course).order_by(Course.created_at.desc()))
     courses = result.scalars().all()
-    return [_course_to_response(c) for c in courses]
+
+    rag_ids = [c.rag_collection_id for c in courses if c.rag_collection_id]
+    image_counts: dict[str, int] = {}
+    if rag_ids:
+        rows = await db.execute(
+            select(SourceImage.rag_collection_id, func.count().label("cnt"))
+            .where(SourceImage.rag_collection_id.in_(rag_ids))
+            .group_by(SourceImage.rag_collection_id)
+        )
+        image_counts = {row.rag_collection_id: row.cnt for row in rows}
+
+    return [
+        _course_to_response(c, image_count=image_counts.get(c.rag_collection_id or "", 0))
+        for c in courses
+    ]
 
 
 @router.post("", response_model=CourseResponse, status_code=status.HTTP_201_CREATED)
@@ -181,7 +208,8 @@ async def get_course_admin(
     course = result.scalar_one_or_none()
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
-    return _course_to_response(course)
+    img_count = await _fetch_image_count(db, course.rag_collection_id)
+    return _course_to_response(course, image_count=img_count)
 
 
 @router.patch("/{course_id}", response_model=CourseResponse)
@@ -220,7 +248,8 @@ async def update_course(
 
     await db.commit()
     await db.refresh(course)
-    return _course_to_response(course)
+    img_count = await _fetch_image_count(db, course.rag_collection_id)
+    return _course_to_response(course, image_count=img_count)
 
 
 @router.post("/{course_id}/publish", response_model=CourseResponse)
@@ -258,8 +287,9 @@ async def publish_course(
 
     await db.commit()
     await db.refresh(course)
+    img_count = await _fetch_image_count(db, course.rag_collection_id)
     logger.info("Course published", course_id=str(course_id), admin_id=current_user.id)
-    return _course_to_response(course)
+    return _course_to_response(course, image_count=img_count)
 
 
 @router.post("/{course_id}/archive", response_model=CourseResponse)
@@ -277,8 +307,9 @@ async def archive_course(
     course.status = "archived"
     await db.commit()
     await db.refresh(course)
+    img_count = await _fetch_image_count(db, course.rag_collection_id)
     logger.info("Course archived", course_id=str(course_id), admin_id=current_user.id)
-    return _course_to_response(course)
+    return _course_to_response(course, image_count=img_count)
 
 
 class GenerateStructureRequest(BaseModel):
