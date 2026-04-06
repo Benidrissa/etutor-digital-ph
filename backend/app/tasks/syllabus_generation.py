@@ -5,7 +5,7 @@ import uuid
 
 import structlog
 from celery import Task
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 
 from app.tasks.celery_app import celery_app
 
@@ -33,9 +33,15 @@ class SyllabusTask(Task):
 def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict:
     """Generate course module structure using Claude API and save to DB.
 
-    This runs synchronously in a Celery worker. We use asyncio.run()
-    to call the async service and DB operations from the sync Celery context.
+    Fix for SoftTimeLimitExceeded (issue #876):
+    - Phase 1 (read course) and Phase 2 (Claude API) use asyncio.run() with a
+      fresh async engine — this is safe because the engine is created inside
+      the coroutine, after the fork, so no stale asyncpg pool is inherited.
+    - Phase 3 (DB save) uses the sync SQLAlchemy engine obtained from
+      engine.sync_engine to avoid any asyncio event loop conflict during commit.
     """
+    from app.infrastructure.config.settings import settings
+
     logger.info(
         "Starting syllabus generation",
         task_id=self.request.id,
@@ -48,129 +54,139 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
         meta={"step": "generating", "progress": 10, "modules_count": 0},
     )
 
-    async def _run_generation():
+    # ── Phase 1: Read course metadata via async engine ─────────────────────
+    async def _fetch_course():
         from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-        from app.domain.models.course import Course
-        from app.domain.models.module import Module
-        from app.domain.models.module_unit import ModuleUnit
-        from app.domain.services.course_agent_service import CourseAgentService
-        from app.infrastructure.config.settings import settings
-
-        engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
-        async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-
-        # Phase 1: Read course metadata in its own session
-        async with async_session() as session:
-            result = await session.execute(select(Course).where(Course.id == uuid.UUID(course_id)))
-            course = result.scalar_one_or_none()
-            if not course:
+        engine = create_async_engine(settings.database_url, echo=False, pool_size=2, max_overflow=0)
+        try:
+            async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+            async with async_session() as session:
+                result = await session.execute(
+                    select(Course).where(Course.id == uuid.UUID(course_id))
+                )
+                course = result.scalar_one_or_none()
+                if not course:
+                    return None
+                cats = list(course.taxonomy_categories or [])
                 return {
-                    "status": "failed",
-                    "error": f"Course not found: {course_id}",
-                    "modules_count": 0,
-                    "modules": [],
+                    "title_fr": course.title_fr,
+                    "title_en": course.title_en,
+                    "course_hours": course.estimated_hours,
+                    "rag_collection_id": course.rag_collection_id,
+                    "domain_slugs": [tc.slug for tc in cats if tc.type == "domain"],
+                    "level_slugs": [tc.slug for tc in cats if tc.type == "level"],
+                    "audience_slugs": [tc.slug for tc in cats if tc.type == "audience"],
                 }
+        finally:
+            await engine.dispose()
 
-            # Cache values before closing session
-            title_fr = course.title_fr
-            title_en = course.title_en
-            course_hours = course.estimated_hours
-            rag_collection_id = course.rag_collection_id
-            cats = list(course.taxonomy_categories or [])
-            domain_slugs = [tc.slug for tc in cats if tc.type == "domain"]
-            level_slugs = [tc.slug for tc in cats if tc.type == "level"]
-            audience_slugs = [tc.slug for tc in cats if tc.type == "audience"]
+    course_data = asyncio.run(_fetch_course())
+    if not course_data:
+        return {
+            "status": "failed",
+            "error": f"Course not found: {course_id}",
+            "modules_count": 0,
+            "modules": [],
+        }
 
-        # Phase 1.5: Extract text from uploaded PDFs for context
-        self.update_state(
-            state="GENERATING",
-            meta={"step": "extracting_pdf_text", "progress": 15, "modules_count": 0},
-        )
+    title_fr = course_data["title_fr"]
+    title_en = course_data["title_en"]
+    course_hours = course_data["course_hours"]
+    rag_collection_id = course_data["rag_collection_id"]
+    domain_slugs = course_data["domain_slugs"]
+    level_slugs = course_data["level_slugs"]
+    audience_slugs = course_data["audience_slugs"]
 
-        resource_text = None
-        from pathlib import Path
+    # ── Phase 1.5: Extract text from uploaded PDFs ──────────────────────────
+    self.update_state(
+        state="GENERATING",
+        meta={"step": "extracting_pdf_text", "progress": 15, "modules_count": 0},
+    )
 
-        course_dir = Path("uploads/course_resources") / course_id
-        if course_dir.exists():
-            import fitz  # PyMuPDF
+    resource_text = None
+    from pathlib import Path
 
-            # Extract full text first, then truncate only if needed
-            MAX_CHARS_TOTAL = 400_000  # ~150K tokens, fits Claude context
-            pdf_files = sorted(course_dir.glob("*.pdf"))
+    course_dir = Path("uploads/course_resources") / course_id
+    if course_dir.exists():
+        import fitz  # PyMuPDF
 
-            pdf_full_texts = []
-            total_all_chars = 0
-            for pdf_path in pdf_files:
-                try:
-                    doc = fitz.open(str(pdf_path))
-                    book_name = pdf_path.stem.replace("_", " ")
-                    toc = doc.get_toc()
-                    pages_text = []
-                    for page in doc:
-                        text = page.get_text().strip()
-                        if text:
-                            pages_text.append(text)
-                    doc.close()
-                    full_text = "\n\n".join(pages_text)
-                    if toc:
-                        toc_lines = [f"{'  ' * (lvl - 1)}{title}" for lvl, title, _ in toc]
-                        toc_str = "\n".join(toc_lines[:100])
-                        full_text = f"TABLE OF CONTENTS:\n{toc_str}\n\nCONTENT:\n{full_text}"
-                    total_all_chars += len(full_text)
-                    pdf_full_texts.append((book_name, full_text, toc))
-                    logger.info(
-                        "Extracted PDF text",
-                        pdf=book_name,
-                        pages=len(pages_text),
-                        chars=len(full_text),
-                        has_toc=bool(toc),
-                    )
-                except Exception as e:
-                    logger.warning(
-                        "Failed to extract PDF text",
-                        pdf=str(pdf_path),
-                        error=str(e),
-                    )
+        MAX_CHARS_TOTAL = 400_000
+        pdf_files = sorted(course_dir.glob("*.pdf"))
 
-            if pdf_full_texts:
-                if total_all_chars <= MAX_CHARS_TOTAL:
-                    # Full text fits — send everything
-                    pdf_texts = [f"### {name}\n{text}" for name, text, _ in pdf_full_texts]
-                else:
-                    # Truncate: TOC + chapter intros per PDF
-                    chars_per_pdf = MAX_CHARS_TOTAL // len(pdf_full_texts)
-                    pdf_texts = []
-                    for name, text, _toc in pdf_full_texts:
-                        if len(text) <= chars_per_pdf:
-                            pdf_texts.append(f"### {name}\n{text}")
-                        else:
-                            truncated = text[:chars_per_pdf]
-                            pdf_texts.append(
-                                f"### {name} (truncated to {chars_per_pdf} chars)\n{truncated}"
-                            )
-                    logger.info(
-                        "PDF text truncated to fit context",
-                        original_chars=total_all_chars,
-                        truncated_chars=MAX_CHARS_TOTAL,
-                    )
-
-                resource_text = "\n\n---\n\n".join(pdf_texts)
+        pdf_full_texts = []
+        total_all_chars = 0
+        for pdf_path in pdf_files:
+            try:
+                doc = fitz.open(str(pdf_path))
+                book_name = pdf_path.stem.replace("_", " ")
+                toc = doc.get_toc()
+                pages_text = []
+                for page in doc:
+                    page_text = page.get_text().strip()
+                    if page_text:
+                        pages_text.append(page_text)
+                doc.close()
+                full_text = "\n\n".join(pages_text)
+                if toc:
+                    toc_lines = [f"{'  ' * (lvl - 1)}{title}" for lvl, title, _ in toc]
+                    toc_str = "\n".join(toc_lines[:100])
+                    full_text = f"TABLE OF CONTENTS:\n{toc_str}\n\nCONTENT:\n{full_text}"
+                total_all_chars += len(full_text)
+                pdf_full_texts.append((book_name, full_text, toc))
                 logger.info(
-                    "PDF text prepared for syllabus context",
-                    course_id=course_id,
-                    pdf_count=len(pdf_texts),
-                    total_chars=len(resource_text),
+                    "Extracted PDF text",
+                    pdf=book_name,
+                    pages=len(pages_text),
+                    chars=len(full_text),
+                    has_toc=bool(toc),
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to extract PDF text",
+                    pdf=str(pdf_path),
+                    error=str(e),
                 )
 
-        # Phase 2: Call Claude API
-        self.update_state(
-            state="GENERATING",
-            meta={"step": "calling_claude", "progress": 25, "modules_count": 0},
-        )
+        if pdf_full_texts:
+            if total_all_chars <= MAX_CHARS_TOTAL:
+                pdf_texts = [f"### {name}\n{txt}" for name, txt, _ in pdf_full_texts]
+            else:
+                chars_per_pdf = MAX_CHARS_TOTAL // len(pdf_full_texts)
+                pdf_texts = []
+                for name, txt, _toc in pdf_full_texts:
+                    if len(txt) <= chars_per_pdf:
+                        pdf_texts.append(f"### {name}\n{txt}")
+                    else:
+                        truncated = txt[:chars_per_pdf]
+                        pdf_texts.append(
+                            f"### {name} (truncated to {chars_per_pdf} chars)\n{truncated}"
+                        )
+                logger.info(
+                    "PDF text truncated to fit context",
+                    original_chars=total_all_chars,
+                    truncated_chars=MAX_CHARS_TOTAL,
+                )
+
+            resource_text = "\n\n---\n\n".join(pdf_texts)
+            logger.info(
+                "PDF text prepared for syllabus context",
+                course_id=course_id,
+                pdf_count=len(pdf_texts),
+                total_chars=len(resource_text),
+            )
+
+    # ── Phase 2: Call Claude API (async, fresh event loop) ──────────────────
+    self.update_state(
+        state="GENERATING",
+        meta={"step": "calling_claude", "progress": 25, "modules_count": 0},
+    )
+
+    async def _call_claude():
+        from app.domain.services.course_agent_service import CourseAgentService
 
         agent = CourseAgentService()
-        module_dicts = await agent.generate_course_structure(
+        return await agent.generate_course_structure(
             title_fr=title_fr,
             title_en=title_en,
             course_domain=domain_slugs,
@@ -180,30 +196,45 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
             resource_text=resource_text,
         )
 
-        self.update_state(
-            state="SAVING",
-            meta={
-                "step": "saving",
-                "progress": 80,
-                "modules_count": len(module_dicts),
-            },
-        )
+    module_dicts = asyncio.run(_call_claude())
 
-        # Build books_sources from uploaded PDF filenames
-        from pathlib import Path
+    self.update_state(
+        state="SAVING",
+        meta={
+            "step": "saving",
+            "progress": 80,
+            "modules_count": len(module_dicts),
+        },
+    )
 
-        course_dir = Path("uploads/course_resources") / course_id
-        if course_dir.exists():
-            pdf_names = [f.stem.replace("_", " ") for f in course_dir.glob("*.pdf")]
-            books_sources = {name: [] for name in pdf_names}
-        elif rag_collection_id:
-            books_sources = {rag_collection_id: []}
-        else:
-            books_sources = None
+    # ── Phase 3: Save modules + units using SYNC SQLAlchemy ────────────────
+    # We avoid asyncio.run() here entirely to prevent fork-inherited asyncpg
+    # connection pool conflicts that cause session.commit() to deadlock.
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
 
-        # Phase 3: Save modules + units in a clean session
-        async with async_session() as session:
-            await session.execute(delete(Module).where(Module.course_id == uuid.UUID(course_id)))
+    from app.domain.models.course import Course  # noqa: F401 — needed for FK resolution
+    from app.domain.models.module import Module
+    from app.domain.models.module_unit import ModuleUnit
+
+    books_sources: dict | None
+    if course_dir.exists():
+        pdf_names = [f.stem.replace("_", " ") for f in course_dir.glob("*.pdf")]
+        books_sources = {name: [] for name in pdf_names}
+    elif rag_collection_id:
+        books_sources = {rag_collection_id: []}
+    else:
+        books_sources = None
+
+    sync_engine = create_engine(
+        settings.database_url_sync,
+        pool_pre_ping=True,
+        pool_size=2,
+        max_overflow=0,
+    )
+    try:
+        with Session(sync_engine) as session:
+            session.execute(delete(Module).where(Module.course_id == uuid.UUID(course_id)))
 
             saved_modules = []
             for i, m in enumerate(module_dicts):
@@ -223,7 +254,6 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
                 )
                 session.add(module)
 
-                # Save units from AI response
                 for j, u in enumerate(m.get("units", [])):
                     unit = ModuleUnit(
                         id=uuid.uuid4(),
@@ -248,12 +278,9 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
                     }
                 )
 
-            # Update course metadata via raw SQL to avoid selectin loading
             import json
 
-            from sqlalchemy import text
-
-            await session.execute(
+            session.execute(
                 text("UPDATE courses SET module_count = :mc, syllabus_json = :sj WHERE id = :cid"),
                 {
                     "mc": len(module_dicts),
@@ -262,40 +289,27 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
                 },
             )
 
-            await session.commit()
+            session.commit()
 
             logger.info(
                 "Syllabus generated and saved",
                 course_id=course_id,
                 module_count=len(saved_modules),
             )
+    finally:
+        sync_engine.dispose()
 
-        await engine.dispose()
-
-        return {
-            "status": "complete",
+    self.update_state(
+        state="COMPLETE",
+        meta={
+            "step": "complete",
+            "progress": 100,
             "modules_count": len(saved_modules),
-            "modules": saved_modules,
-        }
+        },
+    )
 
-    try:
-        result = asyncio.run(_run_generation())
-
-        self.update_state(
-            state="COMPLETE",
-            meta={
-                "step": "complete",
-                "progress": 100,
-                "modules_count": result.get("modules_count", 0),
-            },
-        )
-
-        return result
-
-    except Exception as exc:
-        logger.error(
-            "Syllabus generation failed",
-            course_id=course_id,
-            error=str(exc),
-        )
-        raise
+    return {
+        "status": "complete",
+        "modules_count": len(saved_modules),
+        "modules": saved_modules,
+    }
