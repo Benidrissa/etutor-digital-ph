@@ -44,6 +44,7 @@ interface ChatPanelProps {
   isOpen: boolean;
   onClose: () => void;
   moduleId?: string;
+  courseId?: string;
   conversationId?: string | null;
   className?: string;
   embedded?: boolean;
@@ -55,6 +56,7 @@ export function ChatPanel({
   isOpen,
   onClose,
   moduleId,
+  courseId,
   conversationId,
   className,
   embedded = false,
@@ -202,6 +204,7 @@ export function ChatPanel({
         body: JSON.stringify({
           message: messageContent,
           conversation_id: activeConversationId ?? null,
+          course_id: courseId ?? null,
           module_id: moduleId ?? null,
           tutor_mode: tutorMode,
           file_ids: attachedFiles.map((f) => f.fileId),
