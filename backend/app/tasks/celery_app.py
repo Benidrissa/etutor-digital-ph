@@ -22,6 +22,7 @@ celery_app = Celery(
         "app.tasks.rag_indexation",
         "app.tasks.syllabus_generation",
         "app.tasks.subscription",
+        "app.tasks.sms_relay",
     ],
 )
 
@@ -66,6 +67,10 @@ celery_app.conf.beat_schedule = {
     "expire-subscriptions": {
         "task": "app.tasks.subscription.expire_subscriptions",
         "schedule": crontab(hour=0, minute=30),
+    },
+    "check-relay-heartbeat": {
+        "task": "app.tasks.sms_relay.check_relay_heartbeat",
+        "schedule": crontab(minute="*/15"),
     },
 }
 
