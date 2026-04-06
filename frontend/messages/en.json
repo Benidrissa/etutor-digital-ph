@@ -825,6 +825,17 @@
       "other": "Other"
     }
   },
+  "Privacy": {
+    "title": "Privacy & Analytics",
+    "description": "Manage how your usage data is collected",
+    "optOutLabel": "Disable analytics tracking",
+    "optOutDescription": "Stop all usage tracking. Your existing data is retained.",
+    "noticeTitle": "What data do we collect?",
+    "whatWeTrack": "We track: page views, feature usage (lessons viewed, quizzes taken, flashcards reviewed, tutor messages). All data is pseudonymized with no personal identifiers.",
+    "whatWeDoNotTrack": "We do NOT track: message content, quiz answers, personal data (name, email), session recordings, or cookies.",
+    "howStored": "Data is stored on EU servers (PostHog EU) using localStorage only. No cookies are used. Your IP address is not captured. DNT headers are respected.",
+    "yourRights": "You can opt out at any time using the toggle above. On account deletion, all analytics data linked to your pseudonymized ID is removed."
+  },
   "Roles": {
     "user": "User",
     "expert": "Expert",
@@ -930,6 +941,23 @@
       "quizScore": "Score",
       "moduleProgress": "Progress",
       "completionPct": "{pct}% complete"
+    },
+    "analytics": {
+      "title": "Analytics",
+      "subtitle": "Platform usage and learner activity",
+      "period7d": "Last 7 days",
+      "period30d": "Last 30 days",
+      "period90d": "Last 90 days",
+      "totalEvents": "Total events",
+      "uniqueUsers": "Unique users",
+      "quizCompletionRate": "Quiz completion rate",
+      "dailyActiveUsers": "Daily active users",
+      "topModules": "Top modules",
+      "eventsByType": "Events by type",
+      "moduleName": "Module",
+      "eventCount": "Events",
+      "noData": "No analytics data for this period.",
+      "loading": "Loading analytics..."
     },
     "auditLog": {
       "title": "Audit Log",

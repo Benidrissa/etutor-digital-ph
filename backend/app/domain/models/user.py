@@ -46,6 +46,7 @@ class User(Base):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true", default=True)
     phone_number: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+    analytics_opt_out: Mapped[bool] = mapped_column(Boolean, server_default="false", default=False)
     last_active: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

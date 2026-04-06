@@ -16,6 +16,7 @@ export function AdminNav() {
     { href: `/${locale}/admin/taxonomy`, label: t("taxonomy.title") },
     { href: `/${locale}/admin/syllabus`, label: t("syllabus.title") },
     { href: `/${locale}/admin/settings`, label: t("settings.title") },
+    { href: `/${locale}/admin/analytics`, label: t("analytics.title") },
     { href: `/${locale}/admin/audit-logs`, label: t("auditLog.title") },
   ];
 

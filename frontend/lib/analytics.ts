@@ -35,11 +35,15 @@ type AnalyticsEvent =
       properties: { module_id: string; level: number };
     };
 
+function isOptedOut(): boolean {
+  return typeof window !== "undefined" && localStorage.getItem("analytics_opt_out") === "1";
+}
+
 export function track<E extends AnalyticsEvent>(
   event: E["event"],
   properties: E["properties"]
 ) {
-  if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_POSTHOG_KEY) {
+  if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_POSTHOG_KEY && !isOptedOut()) {
     posthog.capture(event, properties);
   }
 }

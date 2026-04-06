@@ -6,7 +6,11 @@ import { useEffect, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
 if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_POSTHOG_KEY) {
+  // Respect user opt-out preference
+  const optedOut = localStorage.getItem("analytics_opt_out") === "1";
+
   posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY, {
+    opt_out_capturing_by_default: optedOut,
     api_host:
       process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://eu.i.posthog.com",
 
