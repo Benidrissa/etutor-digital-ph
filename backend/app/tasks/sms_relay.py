@@ -33,9 +33,7 @@ def check_relay_heartbeat(self) -> dict:
             async with async_session_factory() as session:
                 service = SmsRelayService()
                 stale = await service.get_stale_devices(
-                    timeout_minutes=(
-                        settings.sms_relay_heartbeat_timeout_minutes
-                    ),
+                    timeout_minutes=(settings.sms_relay_heartbeat_timeout_minutes),
                     session=session,
                 )
 
@@ -45,9 +43,7 @@ def check_relay_heartbeat(self) -> dict:
                 email_service = EmailService()
                 alerted = 0
                 for device in stale:
-                    key = ALERT_COOLDOWN_KEY.format(
-                        device_id=device.device_id
-                    )
+                    key = ALERT_COOLDOWN_KEY.format(device_id=device.device_id)
                     if redis_client.get(key):
                         continue
 
@@ -58,9 +54,7 @@ def check_relay_heartbeat(self) -> dict:
                         battery=device.battery,
                     )
                     if sent:
-                        redis_client.set(
-                            key, "1", ex=ALERT_COOLDOWN_TTL
-                        )
+                        redis_client.set(key, "1", ex=ALERT_COOLDOWN_TTL)
                         alerted += 1
 
                 return alerted

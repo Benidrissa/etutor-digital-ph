@@ -183,12 +183,8 @@ class EmailService:
     ) -> bool:
         """Send alert when SMS relay device goes silent."""
         try:
-            subject = (
-                f"[SIRA] SMS relay {device_id} offline"
-            )
-            battery_info = (
-                f"{battery}%" if battery is not None else "unknown"
-            )
+            subject = f"[SIRA] SMS relay {device_id} offline"
+            battery_info = f"{battery}%" if battery is not None else "unknown"
             html_content = f"""
             <h2>SMS Relay Device Alert</h2>
             <p>The SMS relay device <strong>{device_id}</strong>

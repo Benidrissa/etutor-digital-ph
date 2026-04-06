@@ -23,6 +23,7 @@ router = APIRouter(tags=["SMS Relay"])
 
 # ---------- Auth dependency ----------
 
+
 async def verify_relay_api_key(
     authorization: str = Header(...),
 ) -> str:
@@ -42,6 +43,7 @@ async def verify_relay_api_key(
 
 
 # ---------- Schemas ----------
+
 
 class SmsPayload(BaseModel):
     id: str
@@ -94,6 +96,7 @@ class RelayStatusResponse(BaseModel):
 
 # ---------- Endpoints ----------
 
+
 @router.post(
     "/sms",
     response_model=SmsResponse,
@@ -144,9 +147,7 @@ async def receive_heartbeat(
 
     settings = get_settings()
     trusted = (
-        settings.sms_relay_trusted_senders_list
-        if settings.sms_relay_trusted_senders
-        else None
+        settings.sms_relay_trusted_senders_list if settings.sms_relay_trusted_senders else None
     )
 
     return HeartbeatResponse(
@@ -161,18 +162,14 @@ async def receive_heartbeat(
     status_code=status.HTTP_200_OK,
 )
 async def get_relay_status(
-    current_user=Depends(
-        require_role(UserRole.admin)
-    ),
+    current_user=Depends(require_role(UserRole.admin)),
     db=Depends(get_db_session),
 ) -> RelayStatusResponse:
     settings = get_settings()
     service = SmsRelayService()
 
     devices = await service.get_all_devices(db)
-    cutoff = datetime.datetime.now(
-        tz=datetime.UTC
-    ) - timedelta(
+    cutoff = datetime.datetime.now(tz=datetime.UTC) - timedelta(
         minutes=settings.sms_relay_heartbeat_timeout_minutes
     )
 
@@ -184,11 +181,7 @@ async def get_relay_status(
             signal=d.signal,
             pending=d.pending,
             failed=d.failed,
-            last_sms_at=(
-                d.last_sms_at.isoformat()
-                if d.last_sms_at
-                else None
-            ),
+            last_sms_at=(d.last_sms_at.isoformat() if d.last_sms_at else None),
             last_heartbeat_at=d.last_heartbeat_at.isoformat(),
             app_version=d.app_version,
             is_stale=d.last_heartbeat_at < cutoff,
@@ -196,12 +189,8 @@ async def get_relay_status(
         for d in devices
     ]
 
-    recent_count = await service.count_by_status(
-        SmsProcessingStatus.payment_processed, db
-    )
-    failed_count = await service.count_by_status(
-        SmsProcessingStatus.parse_failed, db
-    )
+    recent_count = await service.count_by_status(SmsProcessingStatus.payment_processed, db)
+    failed_count = await service.count_by_status(SmsProcessingStatus.parse_failed, db)
 
     return RelayStatusResponse(
         devices=device_list,

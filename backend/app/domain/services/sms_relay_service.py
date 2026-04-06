@@ -26,7 +26,6 @@ _parser = SmsParser()
 
 
 class SmsRelayService:
-
     async def upsert_heartbeat(
         self,
         device_id: str,
@@ -41,9 +40,7 @@ class SmsRelayService:
     ) -> RelayDevice:
         now = datetime.datetime.now(tz=datetime.UTC)
         result = await session.execute(
-            select(RelayDevice).where(
-                RelayDevice.device_id == device_id
-            )
+            select(RelayDevice).where(RelayDevice.device_id == device_id)
         )
         device = result.scalar_one_or_none()
 
@@ -91,11 +88,7 @@ class SmsRelayService:
         session: AsyncSession,
     ) -> InboundSms:
         # Dedup check
-        existing = await session.execute(
-            select(InboundSms).where(
-                InboundSms.sms_id == sms_id
-            )
-        )
+        existing = await session.execute(select(InboundSms).where(InboundSms.sms_id == sms_id))
         found = existing.scalar_one_or_none()
         if found is not None:
             logger.info(
@@ -120,11 +113,7 @@ class SmsRelayService:
             await session.flush()
         except IntegrityError:
             await session.rollback()
-            result = await session.execute(
-                select(InboundSms).where(
-                    InboundSms.sms_id == sms_id
-                )
-            )
+            result = await session.execute(select(InboundSms).where(InboundSms.sms_id == sms_id))
             return result.scalar_one()
 
         # Parse SMS body
@@ -132,12 +121,8 @@ class SmsRelayService:
         parsed = _parser.parse(body, sender, fallback_ref)
 
         if parsed is None:
-            sms.processing_status = (
-                SmsProcessingStatus.parse_failed
-            )
-            sms.error_message = (
-                "No parser matched the SMS body"
-            )
+            sms.processing_status = SmsProcessingStatus.parse_failed
+            sms.error_message = "No parser matched the SMS body"
             await session.commit()
             logger.warning(
                 "SMS parse failed",
@@ -161,9 +146,7 @@ class SmsRelayService:
                 external_reference=parsed.reference,
                 session=session,
             )
-            sms.processing_status = (
-                SmsProcessingStatus.payment_processed
-            )
+            sms.processing_status = SmsProcessingStatus.payment_processed
             logger.info(
                 "SMS payment processed",
                 sms_id=sms_id,
@@ -173,12 +156,8 @@ class SmsRelayService:
                 result=result,
             )
         except Exception as exc:
-            sms.processing_status = (
-                SmsProcessingStatus.parse_failed
-            )
-            sms.error_message = (
-                f"Payment processing error: {exc}"
-            )
+            sms.processing_status = SmsProcessingStatus.parse_failed
+            sms.error_message = f"Payment processing error: {exc}"
             logger.error(
                 "SMS payment processing failed",
                 sms_id=sms_id,
@@ -193,23 +172,15 @@ class SmsRelayService:
         timeout_minutes: int,
         session: AsyncSession,
     ) -> list[RelayDevice]:
-        cutoff = datetime.datetime.now(
-            tz=datetime.UTC
-        ) - timedelta(minutes=timeout_minutes)
+        cutoff = datetime.datetime.now(tz=datetime.UTC) - timedelta(minutes=timeout_minutes)
         result = await session.execute(
-            select(RelayDevice).where(
-                RelayDevice.last_heartbeat_at < cutoff
-            )
+            select(RelayDevice).where(RelayDevice.last_heartbeat_at < cutoff)
         )
         return list(result.scalars().all())
 
-    async def get_all_devices(
-        self, session: AsyncSession
-    ) -> list[RelayDevice]:
+    async def get_all_devices(self, session: AsyncSession) -> list[RelayDevice]:
         result = await session.execute(
-            select(RelayDevice).order_by(
-                RelayDevice.last_heartbeat_at.desc()
-            )
+            select(RelayDevice).order_by(RelayDevice.last_heartbeat_at.desc())
         )
         return list(result.scalars().all())
 
@@ -219,14 +190,9 @@ class SmsRelayService:
         session: AsyncSession,
         status_filter: SmsProcessingStatus | None = None,
     ) -> list[InboundSms]:
-        q = select(InboundSms).order_by(
-            InboundSms.created_at.desc()
-        )
+        q = select(InboundSms).order_by(InboundSms.created_at.desc())
         if status_filter is not None:
-            q = q.where(
-                InboundSms.processing_status
-                == status_filter
-            )
+            q = q.where(InboundSms.processing_status == status_filter)
         q = q.limit(limit)
         result = await session.execute(q)
         return list(result.scalars().all())
@@ -239,8 +205,6 @@ class SmsRelayService:
         from sqlalchemy import func
 
         result = await session.execute(
-            select(func.count()).where(
-                InboundSms.processing_status == status
-            )
+            select(func.count()).where(InboundSms.processing_status == status)
         )
         return result.scalar() or 0

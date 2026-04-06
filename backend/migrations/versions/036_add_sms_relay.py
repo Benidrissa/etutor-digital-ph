@@ -48,9 +48,7 @@ def upgrade() -> None:
             sa.DateTime(timezone=True),
             nullable=True,
         ),
-        sa.Column(
-            "app_version", sa.String(20), nullable=True
-        ),
+        sa.Column("app_version", sa.String(20), nullable=True),
         sa.Column(
             "last_heartbeat_at",
             sa.DateTime(timezone=True),
@@ -90,18 +88,14 @@ def upgrade() -> None:
             nullable=False,
             index=True,
         ),
-        sa.Column(
-            "sender", sa.String(50), nullable=False
-        ),
+        sa.Column("sender", sa.String(50), nullable=False),
         sa.Column("body", sa.Text(), nullable=False),
         sa.Column(
             "sms_received_at",
             sa.DateTime(timezone=True),
             nullable=False,
         ),
-        sa.Column(
-            "app_version", sa.String(20), nullable=True
-        ),
+        sa.Column("app_version", sa.String(20), nullable=True),
         sa.Column(
             "processing_status",
             sa.Enum(
@@ -117,12 +111,8 @@ def upgrade() -> None:
             nullable=False,
             server_default="pending",
         ),
-        sa.Column(
-            "parsed_amount", sa.Integer(), nullable=True
-        ),
-        sa.Column(
-            "parsed_phone", sa.String(20), nullable=True
-        ),
+        sa.Column("parsed_amount", sa.Integer(), nullable=True),
+        sa.Column("parsed_phone", sa.String(20), nullable=True),
         sa.Column(
             "parsed_reference",
             sa.String(255),
@@ -133,9 +123,7 @@ def upgrade() -> None:
             sa.String(50),
             nullable=True,
         ),
-        sa.Column(
-            "error_message", sa.Text(), nullable=True
-        ),
+        sa.Column("error_message", sa.Text(), nullable=True),
         sa.Column(
             "payment_id",
             sa.UUID(),
