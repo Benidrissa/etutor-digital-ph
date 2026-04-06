@@ -55,6 +55,8 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
     )
 
     # ── Phase 1: Read course metadata via async engine ─────────────────────
+    from app.domain.models.course import Course
+
     async def _fetch_course():
         from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -213,7 +215,6 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
 
-    from app.domain.models.course import Course  # noqa: F401 — needed for FK resolution
     from app.domain.models.module import Module
     from app.domain.models.module_unit import ModuleUnit
 
