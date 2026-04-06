@@ -106,7 +106,8 @@ async def get_course_preassessment_questions(
             else:
                 options = [
                     {"id": opt.get("id", ""), "text": opt.get("text", "")}
-                    if isinstance(opt, dict) else {"id": "", "text": str(opt)}
+                    if isinstance(opt, dict)
+                    else {"id": "", "text": str(opt)}
                     for opt in raw_options
                 ]
             questions.append(

@@ -106,7 +106,7 @@ async def get_placement_test_questions(
         )
         # Normalize options to [{id, text}] for legacy dict format compat
         normalized_questions = []
-        for q in (preassessment.questions or []):
+        for q in preassessment.questions or []:
             raw_opts = q.get("options", [])
             if isinstance(raw_opts, dict):
                 opts = [{"id": k, "text": v} for k, v in raw_opts.items()]

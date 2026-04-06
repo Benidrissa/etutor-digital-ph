@@ -268,9 +268,7 @@ class PreAssessmentGenerationService:
             if not all(k in options for k in ("a", "b", "c", "d")):
                 raise ValueError(f"{context}: options dict must have keys a, b, c, d")
             # Convert dict to [{id, text}] list for API/frontend compatibility
-            question["options"] = [
-                {"id": k, "text": v} for k, v in options.items()
-            ]
+            question["options"] = [{"id": k, "text": v} for k, v in options.items()]
         elif isinstance(options, list):
             if len(options) != 4:
                 raise ValueError(f"{context}: options list must have exactly 4 items")
