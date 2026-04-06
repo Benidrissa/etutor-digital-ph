@@ -801,12 +801,30 @@ class TutorService:
         user_id: uuid.UUID,
         session: AsyncSession,
     ) -> Course | None:
-        """Resolve course: explicit course_id > module's course > active enrollment."""
-        # 1. Explicit course_id
+        """Resolve course: explicit course_id > module's course > active enrollment.
+
+        When course_id is explicit, verifies the user is enrolled (active)
+        to prevent access to paid content. Falls back to enrollment if not.
+        """
+        # 1. Explicit course_id — verify enrollment
         if course_id:
-            course = await session.get(Course, course_id)
-            if course:
-                return course
+            enrolled = await session.execute(
+                select(UserCourseEnrollment).where(
+                    UserCourseEnrollment.user_id == user_id,
+                    UserCourseEnrollment.course_id == course_id,
+                    UserCourseEnrollment.status == "active",
+                )
+            )
+            if enrolled.scalar_one_or_none():
+                course = await session.get(Course, course_id)
+                if course:
+                    return course
+            else:
+                logger.warning(
+                    "Tutor course_id not enrolled, falling back",
+                    user_id=str(user_id),
+                    course_id=str(course_id),
+                )
 
         # 2. From module's course_id
         if module_obj and module_obj.course_id:
