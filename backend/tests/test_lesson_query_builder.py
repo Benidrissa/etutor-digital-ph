@@ -10,9 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.claude_service import ClaudeService
 from app.ai.rag.retriever import SemanticRetriever
 from app.domain.models.content import GeneratedContent
+from app.domain.models.course import Course
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
-from app.domain.services.lesson_service import LessonGenerationService
+from app.domain.services.lesson_service import CaseStudyGenerationService, LessonGenerationService
 
 
 @pytest.fixture
@@ -457,3 +458,78 @@ class TestGetCachedLessonSourceImageRefs:
 
         assert len(result) == 1
         assert result[0].id == img_id
+
+
+class TestResolveBooksSourcesLesson:
+    """Tests for LessonGenerationService._resolve_books_sources."""
+
+    def _make_module(self, books_sources, rag_collection_id=None):
+        course = None
+        if rag_collection_id is not None:
+            course = MagicMock(spec=Course)
+            course.rag_collection_id = rag_collection_id
+        module = MagicMock(spec=Module)
+        module.books_sources = books_sources
+        module.course = course
+        return module
+
+    def test_returns_books_sources_when_present(self):
+        module = self._make_module({"donaldson": ["ch1"]})
+        result = LessonGenerationService._resolve_books_sources(module)
+        assert result == {"donaldson": ["ch1"]}
+
+    def test_uses_rag_collection_id_when_books_sources_none(self):
+        rag_id = "5256b204-aaaa-bbbb-cccc-000000000001"
+        module = self._make_module(None, rag_collection_id=rag_id)
+        result = LessonGenerationService._resolve_books_sources(module)
+        assert result == {rag_id: []}
+
+    def test_uses_rag_collection_id_when_books_sources_empty(self):
+        rag_id = "5256b204-aaaa-bbbb-cccc-000000000002"
+        module = self._make_module({}, rag_collection_id=rag_id)
+        result = LessonGenerationService._resolve_books_sources(module)
+        assert result == {rag_id: []}
+
+    def test_returns_none_when_no_books_sources_and_no_rag_id(self):
+        module = self._make_module(None, rag_collection_id=None)
+        result = LessonGenerationService._resolve_books_sources(module)
+        assert result is None
+
+    def test_returns_none_when_no_course(self):
+        module = MagicMock(spec=Module)
+        module.books_sources = None
+        module.course = None
+        result = LessonGenerationService._resolve_books_sources(module)
+        assert result is None
+
+    def test_books_sources_takes_precedence_over_rag_collection_id(self):
+        rag_id = "5256b204-aaaa-bbbb-cccc-000000000003"
+        module = self._make_module({"donaldson": []}, rag_collection_id=rag_id)
+        result = LessonGenerationService._resolve_books_sources(module)
+        assert result == {"donaldson": []}
+        assert rag_id not in result
+
+
+class TestResolveBooksSourcesCaseStudy:
+    """Tests for CaseStudyGenerationService._resolve_books_sources."""
+
+    def _make_module(self, books_sources, rag_collection_id=None):
+        course = None
+        if rag_collection_id is not None:
+            course = MagicMock(spec=Course)
+            course.rag_collection_id = rag_collection_id
+        module = MagicMock(spec=Module)
+        module.books_sources = books_sources
+        module.course = course
+        return module
+
+    def test_uses_rag_collection_id_when_books_sources_none(self):
+        rag_id = "5256b204-aaaa-bbbb-cccc-000000000004"
+        module = self._make_module(None, rag_collection_id=rag_id)
+        result = CaseStudyGenerationService._resolve_books_sources(module)
+        assert result == {rag_id: []}
+
+    def test_returns_books_sources_when_present(self):
+        module = self._make_module({"triola": ["ch3"]})
+        result = CaseStudyGenerationService._resolve_books_sources(module)
+        assert result == {"triola": ["ch3"]}

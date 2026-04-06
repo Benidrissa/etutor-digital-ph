@@ -170,7 +170,7 @@ class LessonGenerationService:
                 query=query,
                 user_level=level,
                 user_language=language,
-                books_sources=module.books_sources,
+                books_sources=self._resolve_books_sources(module),
                 top_k=SettingsCache.instance().get("ai-rag-default-top-k", 8),
                 session=session,
             )
@@ -345,7 +345,7 @@ class LessonGenerationService:
             query=query,
             user_level=level,
             user_language=language,
-            books_sources=module.books_sources,
+            books_sources=self._resolve_books_sources(module),
             top_k=8,
             session=session,
         )
@@ -421,6 +421,27 @@ class LessonGenerationService:
             cached=False,
             source_image_refs=source_image_refs,
         )
+
+    @staticmethod
+    def _resolve_books_sources(module: Module) -> dict | None:
+        """Return the books_sources mapping to pass to the semantic retriever.
+
+        For admin/expert-created courses the module's books_sources field is
+        typically None or empty (no named textbooks), but the parent course
+        carries a rag_collection_id that identifies the indexed PDF collection.
+        In that case we synthesise a single-entry dict so the retriever's
+        UUID-detection branch can apply the correct source filter.
+
+        For legacy public-health modules the books_sources field already
+        contains named keys like ``{"donaldson": [...], "triola": [...]}``
+        and is returned as-is.
+        """
+        if module.books_sources:
+            return module.books_sources
+        course = module.course
+        if course and course.rag_collection_id:
+            return {course.rag_collection_id: []}
+        return module.books_sources
 
     async def _build_lesson_query(
         self, module: Module, unit_id: str, language: str, session: AsyncSession
@@ -789,7 +810,7 @@ class CaseStudyGenerationService:
                 query=query,
                 user_level=level,
                 user_language=language,
-                books_sources=module.books_sources,
+                books_sources=self._resolve_books_sources(module),
                 top_k=SettingsCache.instance().get("ai-rag-default-top-k", 8),
                 session=session,
             )
@@ -916,7 +937,7 @@ class CaseStudyGenerationService:
             query=query,
             user_level=level,
             user_language=language,
-            books_sources=module.books_sources,
+            books_sources=self._resolve_books_sources(module),
             top_k=8,
             session=session,
         )
@@ -972,6 +993,22 @@ class CaseStudyGenerationService:
             generated_at=datetime.utcnow().isoformat(),
             cached=False,
         )
+
+    @staticmethod
+    def _resolve_books_sources(module: Module) -> dict | None:
+        """Return the books_sources mapping to pass to the semantic retriever.
+
+        For admin/expert-created courses the module's books_sources field is
+        typically None or empty, but the parent course carries a
+        rag_collection_id. We synthesise a single-entry dict so the
+        retriever's UUID-detection branch applies the correct source filter.
+        """
+        if module.books_sources:
+            return module.books_sources
+        course = module.course
+        if course and course.rag_collection_id:
+            return {course.rag_collection_id: []}
+        return module.books_sources
 
     async def _build_case_study_query(
         self, module: Module, unit_id: str, language: str, session: AsyncSession
