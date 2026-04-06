@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Send, Save, Download, Loader2, X, Bot, User } from 'lucide-react';
@@ -21,6 +20,16 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   toolCalls?: { tool: string; result_summary: string }[];
+}
+
+interface ModuleUnit {
+  id: string;
+  unit_number: string;
+  title_fr: string | null;
+  title_en: string | null;
+  description_fr: string | null;
+  description_en: string | null;
+  order_index: number;
 }
 
 interface ModuleDraft {
@@ -44,6 +53,7 @@ interface ModuleDraft {
   source_references: string[];
   estimated_hours: number;
   bloom_level?: string;
+  units?: ModuleUnit[];
 }
 
 interface SyllabusEditorProps {
@@ -61,6 +71,7 @@ export function SyllabusEditor({ editingModule, onClose, onSaved }: SyllabusEdit
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoadingModule, setIsLoadingModule] = useState(false);
   const [draft, setDraft] = useState<ModuleDraft | null>(null);
   const [conversationHistory, setConversationHistory] = useState<
     { role: string; content: string }[]
@@ -69,14 +80,60 @@ export function SyllabusEditor({ editingModule, onClose, onSaved }: SyllabusEdit
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  // Fetch actual module data when editing an existing module
   useEffect(() => {
     const welcome = editingModule
       ? `${t('welcomeEdit')} **M${String(editingModule.module_number).padStart(2, '0')} — ${locale === 'fr' ? editingModule.title_fr : editingModule.title_en}**. ${t('welcomeEditHint')}`
       : t('welcomeCreate');
 
     setMessages([{ id: 'welcome', role: 'assistant', content: welcome }]);
-    setDraft(null);
     setConversationHistory([]);
+
+    if (editingModule) {
+      setIsLoadingModule(true);
+      (async () => {
+        try {
+          const token = await authClient.getValidToken();
+          const res = await fetch(
+            `${API_BASE}/api/v1/admin/syllabus/${editingModule.id}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          if (res.ok) {
+            const data = await res.json();
+            const activities = data.activities || {};
+            setDraft({
+              module_number: data.module_number,
+              level: data.level,
+              title_fr: data.title_fr,
+              title_en: data.title_en,
+              description_fr: data.description_fr || '',
+              description_en: data.description_en || '',
+              objectives_fr: data.objectives_fr || [],
+              objectives_en: data.objectives_en || [],
+              key_contents_fr: data.key_contents_fr || [],
+              key_contents_en: data.key_contents_en || [],
+              aof_context_fr: data.aof_context_fr || '',
+              aof_context_en: data.aof_context_en || '',
+              activities: {
+                quiz_topics: activities.quiz_topics || [],
+                flashcard_count: activities.flashcard_count ?? 20,
+                case_study_scenario: activities.case_study_scenario || '',
+              },
+              source_references: data.source_references || [],
+              estimated_hours: data.estimated_hours,
+              bloom_level: data.bloom_level,
+              units: data.units || [],
+            });
+          }
+        } catch {
+          // Non-fatal — editor still usable without pre-loaded data
+        } finally {
+          setIsLoadingModule(false);
+        }
+      })();
+    } else {
+      setDraft(null);
+    }
   }, [editingModule, t, locale]);
 
   useEffect(() => {
@@ -238,25 +295,27 @@ export function SyllabusEditor({ editingModule, onClose, onSaved }: SyllabusEdit
 
     const caseStudyMatch = content.match(/Étude de cas\s*:\s*([^\n]+)/i);
 
-    setDraft({
-      level: levelMatch ? parseInt(levelMatch[1]) : 1,
+    setDraft((prev) => ({
+      ...(prev ?? {}),
+      level: levelMatch ? parseInt(levelMatch[1]) : (prev?.level ?? 1),
       title_fr: titleFrMatch[1].trim(),
       title_en: titleFrMatch[2].trim(),
       objectives_fr: objectivesFr,
       objectives_en: objectivesEn,
       key_contents_fr: keyContentsFr,
       key_contents_en: keyContentsEn,
-      aof_context_fr: aofFrMatch?.[1]?.trim() ?? '',
-      aof_context_en: aofEnMatch?.[1]?.trim() ?? '',
+      aof_context_fr: aofFrMatch?.[1]?.trim() ?? (prev?.aof_context_fr ?? ''),
+      aof_context_en: aofEnMatch?.[1]?.trim() ?? (prev?.aof_context_en ?? ''),
       activities: {
-        quiz_topics: [],
-        flashcard_count: 20,
-        case_study_scenario: caseStudyMatch?.[1]?.trim() ?? '',
+        quiz_topics: prev?.activities?.quiz_topics ?? [],
+        flashcard_count: prev?.activities?.flashcard_count ?? 20,
+        case_study_scenario: caseStudyMatch?.[1]?.trim() ?? (prev?.activities?.case_study_scenario ?? ''),
       },
-      source_references: [],
-      estimated_hours: durationMatch ? parseInt(durationMatch[1]) : 20,
-      bloom_level: bloomMatch?.[1]?.toLowerCase() ?? undefined,
-    });
+      source_references: prev?.source_references ?? [],
+      estimated_hours: durationMatch ? parseInt(durationMatch[1]) : (prev?.estimated_hours ?? 20),
+      bloom_level: bloomMatch?.[1]?.toLowerCase() ?? prev?.bloom_level,
+      units: prev?.units,
+    }));
   };
 
   const handleSave = async () => {
@@ -341,6 +400,7 @@ export function SyllabusEditor({ editingModule, onClose, onSaved }: SyllabusEdit
 
   return (
     <div className="fixed inset-0 z-50 bg-background flex flex-col md:flex-row">
+      {/* Mobile header */}
       <div className="flex items-center justify-between p-4 border-b md:hidden">
         <h2 className="font-semibold">
           {editingModule ? t('editModule') : t('createModule')}
@@ -350,8 +410,10 @@ export function SyllabusEditor({ editingModule, onClose, onSaved }: SyllabusEdit
         </Button>
       </div>
 
+      {/* Left panel — AI Chat */}
       <div className="flex flex-col flex-1 min-h-0 md:w-1/2 md:border-r">
-        <div className="hidden md:flex items-center justify-between p-4 border-b">
+        {/* Desktop header */}
+        <div className="hidden md:flex items-center justify-between p-4 border-b shrink-0">
           <h2 className="font-semibold">
             {editingModule ? t('editModule') : t('createModule')}
           </h2>
@@ -360,7 +422,8 @@ export function SyllabusEditor({ editingModule, onClose, onSaved }: SyllabusEdit
           </Button>
         </div>
 
-        <ScrollArea className="flex-1 p-4">
+        {/* Chat messages — scrollable */}
+        <div className="flex-1 overflow-y-auto p-4">
           <div className="space-y-4">
             {messages.map((msg) => (
               <div
@@ -408,9 +471,10 @@ export function SyllabusEditor({ editingModule, onClose, onSaved }: SyllabusEdit
             ))}
             <div ref={messagesEndRef} />
           </div>
-        </ScrollArea>
+        </div>
 
-        <div className="p-4 border-t flex gap-2">
+        {/* Chat input — pinned at bottom */}
+        <div className="shrink-0 p-4 border-t bg-background flex gap-2">
           <Textarea
             ref={inputRef}
             value={input}
@@ -442,8 +506,10 @@ export function SyllabusEditor({ editingModule, onClose, onSaved }: SyllabusEdit
         </div>
       </div>
 
+      {/* Right panel — Structured preview */}
       <div className="flex flex-col flex-1 min-h-0 md:w-1/2">
-        <div className="flex items-center justify-between p-4 border-b">
+        {/* Preview header — pinned */}
+        <div className="flex items-center justify-between p-4 border-b shrink-0 bg-background">
           <h3 className="font-semibold text-sm">{t('previewTitle')}</h3>
           <div className="flex gap-2">
             {editingModule && (
@@ -473,11 +539,17 @@ export function SyllabusEditor({ editingModule, onClose, onSaved }: SyllabusEdit
           </div>
         </div>
 
-        <ScrollArea className="flex-1 p-4">
-          {draft ? (
+        {/* Preview content — scrollable */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {isLoadingModule ? (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : draft ? (
             <ModuleDraftPreview
               draft={draft}
               onChange={setDraft}
+              locale={locale}
               t={t}
             />
           ) : (
@@ -486,7 +558,7 @@ export function SyllabusEditor({ editingModule, onClose, onSaved }: SyllabusEdit
               <p>{t('previewEmpty')}</p>
             </div>
           )}
-        </ScrollArea>
+        </div>
       </div>
     </div>
   );
@@ -495,10 +567,11 @@ export function SyllabusEditor({ editingModule, onClose, onSaved }: SyllabusEdit
 interface ModuleDraftPreviewProps {
   draft: ModuleDraft;
   onChange: (draft: ModuleDraft) => void;
+  locale: 'fr' | 'en';
   t: ReturnType<typeof useTranslations<'AdminSyllabus'>>;
 }
 
-function ModuleDraftPreview({ draft, onChange, t }: ModuleDraftPreviewProps) {
+function ModuleDraftPreview({ draft, onChange, locale, t }: ModuleDraftPreviewProps) {
   const update = (key: keyof ModuleDraft, value: unknown) =>
     onChange({ ...draft, [key]: value });
 
@@ -677,6 +750,34 @@ function ModuleDraftPreview({ draft, onChange, t }: ModuleDraftPreviewProps) {
                   {ref}
                 </Badge>
               ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Module units read-only display */}
+      {draft.units && draft.units.length > 0 && (
+        <>
+          <Separator />
+          <div>
+            <Label className="text-xs">{t('units')} ({draft.units.length})</Label>
+            <div className="mt-2 space-y-1.5">
+              {draft.units.map((unit) => {
+                const unitTitle = locale === 'fr'
+                  ? (unit.title_fr || unit.title_en)
+                  : (unit.title_en || unit.title_fr);
+                return (
+                  <div
+                    key={unit.id}
+                    className="flex items-center gap-2 text-sm text-muted-foreground py-1 px-2 rounded bg-muted/50"
+                  >
+                    <span className="font-mono text-xs text-muted-foreground/70 shrink-0">
+                      {unit.unit_number}
+                    </span>
+                    <span className="truncate">{unitTitle}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </>

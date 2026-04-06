@@ -851,7 +851,8 @@
     "syllabus": "Programme",
     "units": "unités",
     "backToCatalog": "Retour au catalogue",
-    "notFound": "Cours non trouvé."
+    "notFound": "Cours non trouvé.",
+    "serverError": "Impossible de charger ce cours. Veuillez réessayer."
   },
   "Privacy": {
     "title": "Confidentialité et analytique",
@@ -1341,7 +1342,10 @@
     "flashcardCount": "Nombre de flashcards",
     "bloomLevel": "Niveau Bloom",
     "estimatedHours": "Durée (h)",
-    "moduleNumber": "Numéro de module"
+    "moduleNumber": "Numéro de module",
+    "untitledCourse": "Cours sans titre",
+    "unlinkedModules": "Modules non rattachés",
+    "noModules": "Aucun module trouvé. Créez un cours d'abord."
   },
   "AuthGuard": {
     "loading": "Chargement..."
