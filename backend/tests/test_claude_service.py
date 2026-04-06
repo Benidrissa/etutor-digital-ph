@@ -49,9 +49,7 @@ async def test_normal_response_parses_correctly(claude_service):
         return_value=_make_response(valid_json, "end_turn")
     )
 
-    result = await claude_service.generate_structured_content(
-        "system", "user", "quiz"
-    )
+    result = await claude_service.generate_structured_content("system", "user", "quiz")
 
     assert result == {"title": "Quiz", "questions": []}
 
@@ -63,9 +61,7 @@ async def test_malformed_json_returns_raw_response(claude_service):
         return_value=_make_response('{"title": broken json here}', "end_turn")
     )
 
-    result = await claude_service.generate_structured_content(
-        "system", "user", "quiz"
-    )
+    result = await claude_service.generate_structured_content("system", "user", "quiz")
 
     assert result["raw_response"] is True
     assert result["type"] == "quiz"
@@ -80,9 +76,7 @@ async def test_truncated_unparseable_raises_valueerror(claude_service):
     )
 
     with pytest.raises(ValueError, match="truncated"):
-        await claude_service.generate_structured_content(
-            "system", "user", "quiz"
-        )
+        await claude_service.generate_structured_content("system", "user", "quiz")
 
 
 @pytest.mark.asyncio
@@ -93,9 +87,7 @@ async def test_truncated_parseable_returns_data_with_warning(claude_service):
         return_value=_make_response(valid_json, "max_tokens")
     )
 
-    result = await claude_service.generate_structured_content(
-        "system", "user", "quiz"
-    )
+    result = await claude_service.generate_structured_content("system", "user", "quiz")
 
     # Should still return the parsed data
     assert result == {"title": "Quiz", "questions": []}
@@ -109,9 +101,7 @@ async def test_json_in_markdown_fences_parsed(claude_service):
         return_value=_make_response(fenced, "end_turn")
     )
 
-    result = await claude_service.generate_structured_content(
-        "system", "user", "quiz"
-    )
+    result = await claude_service.generate_structured_content("system", "user", "quiz")
 
     assert result == {"title": "Quiz", "questions": []}
 
@@ -124,8 +114,6 @@ async def test_trailing_comma_fixed(claude_service):
         return_value=_make_response(bad_json, "end_turn")
     )
 
-    result = await claude_service.generate_structured_content(
-        "system", "user", "quiz"
-    )
+    result = await claude_service.generate_structured_content("system", "user", "quiz")
 
     assert result == {"title": "Quiz", "questions": []}
