@@ -49,6 +49,12 @@ class Settings(BaseSettings):
     # Subscription webhook
     subscription_webhook_secret: str = ""
 
+    # SMS Relay
+    sms_relay_api_key: str = ""
+    sms_relay_alert_email: str = ""
+    sms_relay_heartbeat_timeout_minutes: int = 60
+    sms_relay_trusted_senders: str = ""
+
     # Admin seeding
     admin_email: str = ""
 
@@ -81,6 +87,10 @@ class Settings(BaseSettings):
     @property
     def upload_allowed_types_list(self) -> list[str]:
         return [t.strip() for t in self.upload_allowed_types.split(",") if t.strip()]
+
+    @property
+    def sms_relay_trusted_senders_list(self) -> list[str]:
+        return [s.strip() for s in self.sms_relay_trusted_senders.split(",") if s.strip()]
 
 
 settings = Settings()

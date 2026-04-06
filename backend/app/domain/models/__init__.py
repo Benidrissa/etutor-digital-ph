@@ -16,6 +16,11 @@ from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.preassessment import CoursePreAssessment
 from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import PlacementTestAttempt, QuizAttempt, SummativeAssessmentAttempt
+from app.domain.models.sms_relay import (
+    InboundSms,
+    RelayDevice,
+    SmsProcessingStatus,
+)
 from app.domain.models.source_image import ImageType, SourceImage, SourceImageChunk
 from app.domain.models.subscription import (
     PaymentStatus,
@@ -52,6 +57,7 @@ __all__ = [
     "PlacementTestAttempt",
     "QuizAttempt",
     "RefreshToken",
+    "RelayDevice",
     "SummativeAssessmentAttempt",
     "TOTPSecret",
     "CourseTaxonomy",
@@ -61,11 +67,13 @@ __all__ = [
     "UserModuleProgress",
     "User",
     "ImageType",
+    "InboundSms",
     "PaymentStatus",
     "PaymentType",
     "SourceImage",
     "SourceImageChunk",
     "Subscription",
     "SubscriptionPayment",
+    "SmsProcessingStatus",
     "SubscriptionStatus",
 ]

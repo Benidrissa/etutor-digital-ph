@@ -174,6 +174,58 @@ class EmailService:
             logger.error("Failed to send welcome email", email=email, error=str(e))
             return False
 
+    async def send_relay_alert(
+        self,
+        to_email: str,
+        device_id: str,
+        last_seen: str,
+        battery: int | None,
+    ) -> bool:
+        """Send alert when SMS relay device goes silent."""
+        try:
+            subject = (
+                f"[SIRA] SMS relay {device_id} offline"
+            )
+            battery_info = (
+                f"{battery}%" if battery is not None else "unknown"
+            )
+            html_content = f"""
+            <h2>SMS Relay Device Alert</h2>
+            <p>The SMS relay device <strong>{device_id}</strong>
+            has not sent a heartbeat since
+            <strong>{last_seen}</strong>.</p>
+            <p>Last known battery: {battery_info}</p>
+            <p>Please check the physical device.</p>
+            <hr>
+            <p style="color: #666; font-size: 12px;">
+            Sira - Advancing Public Health in West Africa
+            </p>
+            """
+
+            resend.Emails.send(
+                {
+                    "from": self.from_email,
+                    "to": [to_email],
+                    "subject": subject,
+                    "html": html_content,
+                }
+            )
+
+            logger.info(
+                "Relay alert email sent",
+                to=to_email,
+                device_id=device_id,
+            )
+            return True
+
+        except Exception as e:
+            logger.error(
+                "Failed to send relay alert",
+                device_id=device_id,
+                error=str(e),
+            )
+            return False
+
     async def send_otp_email(
         self, email: str, otp_code: str, purpose: str, language: str = "fr"
     ) -> bool:
