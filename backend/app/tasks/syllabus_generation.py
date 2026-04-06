@@ -58,6 +58,8 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
     async def _fetch_course():
         from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+        from app.domain.models.course import Course
+
         engine = create_async_engine(settings.database_url, echo=False, pool_size=2, max_overflow=0)
         try:
             async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
