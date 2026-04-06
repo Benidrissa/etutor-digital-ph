@@ -1110,7 +1110,13 @@
         "error": "Erreur lors de la génération du syllabus.",
         "noModules": "Aucun module généré. Réessayez.",
         "taskPending": "En attente de démarrage...",
-        "taskRunning": "Génération des modules..."
+        "taskRunning": "Génération des modules...",
+        "stepExtractingText": "Extraction du texte des PDF...",
+        "stepCallingClaude": "L'IA analyse le contenu...",
+        "stepParsingResponse": "Traitement de la réponse IA...",
+        "stepSavingModules": "Sauvegarde de la structure du cours...",
+        "elapsed": "Écoulé : {time}",
+        "timeoutWarning": "Cela prend plus de temps que prévu. Vous pouvez attendre ou réessayer."
       },
       "index": {
         "title": "Indexation RAG",

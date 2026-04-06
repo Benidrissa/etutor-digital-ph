@@ -166,6 +166,13 @@ export function CourseWizardClient({
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [generateTaskId, setGenerateTaskId] = useState<string | null>(null);
   const [generateTaskState, setGenerateTaskState] = useState<string | null>(null);
+  const [generationProgress, setGenerationProgress] = useState(0);
+  const [generationStep, setGenerationStep] = useState<string | undefined>(undefined);
+  const [generationStartTime, setGenerationStartTime] = useState<number | null>(null);
+  const [generationElapsed, setGenerationElapsed] = useState(0);
+  const [showTimeoutWarning, setShowTimeoutWarning] = useState(false);
+  const lastProgressValueRef = useRef(0);
+  const lastProgressTimeRef = useRef<number | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [indexStatus, setIndexStatus] = useState<IndexStatus | null>(null);
   const [isIndexing, setIsIndexing] = useState(false);
@@ -362,6 +369,13 @@ export function CourseWizardClient({
     setGenerateError(null);
     setGenerateTaskId(null);
     setGenerateTaskState(null);
+    setGenerationProgress(0);
+    setGenerationStep(undefined);
+    setGenerationStartTime(Date.now());
+    setGenerationElapsed(0);
+    lastProgressValueRef.current = 0;
+    lastProgressTimeRef.current = Date.now();
+    setShowTimeoutWarning(false);
 
     try {
       const controller = new AbortController();
@@ -402,6 +416,24 @@ export function CourseWizardClient({
 
         setGenerateTaskState(status.task?.state ?? null);
 
+        const meta = status.task?.meta ?? {};
+        const newProgress = typeof meta.progress === "number" ? meta.progress : 0;
+        const newStep = typeof meta.step === "string" ? meta.step : undefined;
+
+        setGenerationProgress(newProgress);
+        setGenerationStep(newStep);
+
+        if (newProgress !== lastProgressValueRef.current) {
+          lastProgressValueRef.current = newProgress;
+          lastProgressTimeRef.current = Date.now();
+          setShowTimeoutWarning(false);
+        } else if (lastProgressTimeRef.current !== null) {
+          const staleSince = Date.now() - lastProgressTimeRef.current;
+          if (staleSince > 2 * 60 * 1000) {
+            setShowTimeoutWarning(true);
+          }
+        }
+
         if (
           status.task?.state === "FAILURE" ||
           status.task?.state === "REVOKED"
@@ -412,7 +444,6 @@ export function CourseWizardClient({
         }
 
         if (status.task?.state === "SUCCESS") {
-          const meta = status.task.meta ?? {};
           const modules = meta.modules;
           if (Array.isArray(modules)) {
             setGeneratedModules(modules as GeneratedModule[]);
@@ -432,6 +463,14 @@ export function CourseWizardClient({
       if (generatePollRef.current) clearTimeout(generatePollRef.current);
     };
   }, [courseId, isGenerating, generateTaskId, t]);
+
+  useEffect(() => {
+    if (!isGenerating || generationStartTime === null) return;
+    const interval = setInterval(() => {
+      setGenerationElapsed(Math.floor((Date.now() - generationStartTime) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isGenerating, generationStartTime]);
 
   const startIndexation = useCallback(async () => {
     if (!courseId) return;
@@ -560,6 +599,22 @@ export function CourseWizardClient({
   const handleBack = () => {
     const idx = STEPS.indexOf(step);
     if (idx > 0) setStep(STEPS[idx - 1]);
+  };
+
+  const getGenerateStepLabel = (s: string | undefined): string => {
+    switch (s) {
+      case "extracting_text": return t("generate.stepExtractingText");
+      case "calling_claude": return t("generate.stepCallingClaude");
+      case "parsing_response": return t("generate.stepParsingResponse");
+      case "saving_modules": return t("generate.stepSavingModules");
+      default: return t("generate.taskRunning");
+    }
+  };
+
+  const formatElapsed = (seconds: number): string => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return m > 0 ? `${m}m ${s}s` : `${s}s`;
   };
 
   const getStepLabel = (s: string | undefined): string => {
@@ -813,15 +868,35 @@ export function CourseWizardClient({
                 )}
 
                 {isGenerating && (
-                  <div className="flex flex-col items-center gap-3 py-8">
-                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-                    <p className="text-sm text-muted-foreground">
-                      {generateTaskState === "GENERATING" || generateTaskState === "SAVING"
-                        ? t("generate.taskRunning")
-                        : generateTaskState
-                        ? t("generate.taskRunning")
-                        : t("generate.taskPending")}
-                    </p>
+                  <div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent shrink-0" />
+                        <p className="text-sm font-medium">
+                          {generationStep
+                            ? getGenerateStepLabel(generationStep)
+                            : generateTaskState
+                            ? t("generate.taskRunning")
+                            : t("generate.taskPending")}
+                        </p>
+                      </div>
+                      {generationStartTime !== null && (
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+                          <Clock className="h-3 w-3" />
+                          <span>{t("generate.elapsed", { time: formatElapsed(generationElapsed) })}</span>
+                        </div>
+                      )}
+                    </div>
+                    <Progress value={generationProgress} className="h-2" />
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>{generationProgress}%</span>
+                    </div>
+                    {showTimeoutWarning && (
+                      <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-400">
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                        {t("generate.timeoutWarning")}
+                      </div>
+                    )}
                   </div>
                 )}
 
