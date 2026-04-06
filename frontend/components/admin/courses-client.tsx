@@ -118,7 +118,7 @@ export function CoursesClient() {
       setPendingAction(null);
       setActionError(null);
     },
-    onError: () => setActionError(t('actionError')),
+    onError: (err: Error) => setActionError(err.message || t('actionError')),
   });
 
   const indexMutation = useMutation({
@@ -129,7 +129,7 @@ export function CoursesClient() {
       setPendingAction(null);
       setActionError(null);
     },
-    onError: () => setActionError(t('indexError')),
+    onError: (err: Error) => setActionError(err.message || t('indexError')),
   });
 
   const archiveMutation = useMutation({
@@ -140,7 +140,7 @@ export function CoursesClient() {
       setPendingAction(null);
       setActionError(null);
     },
-    onError: () => setActionError(t('actionError')),
+    onError: (err: Error) => setActionError(err.message || t('actionError')),
   });
 
   const handleConfirmAction = () => {
