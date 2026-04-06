@@ -1044,6 +1044,9 @@
     "confirmArchiveDesc": "La formation ne sera plus accessible aux apprenants.",
     "confirmGenerate": "Générer la structure IA ?",
     "confirmGenerateDesc": "L'IA va créer automatiquement un plan de modules pour cette formation. Cela peut prendre quelques secondes.",
+    "deleteCourse": "Supprimer",
+    "confirmDelete": "Supprimer la formation ?",
+    "confirmDeleteDesc": "Cette action est irréversible. La formation et tout son contenu seront définitivement supprimés.",
     "newCourse": "Nouveau cours",
     "noCoursesDesc": "Créez votre premier cours pour commencer.",
     "table": {

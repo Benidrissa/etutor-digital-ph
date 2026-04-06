@@ -15,6 +15,7 @@ import {
   BookOpen,
   Database,
   ImageOff,
+  Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -63,7 +64,8 @@ type WizardStep = 'upload' | 'info' | 'generate' | 'index' | 'publish';
 type PendingAction =
   | { type: 'publish'; course: AdminCourse }
   | { type: 'archive'; course: AdminCourse }
-  | { type: 'generate'; course: AdminCourse };
+  | { type: 'generate'; course: AdminCourse }
+  | { type: 'delete'; course: AdminCourse };
 
 function inferWizardStep(course: AdminCourse): WizardStep {
   if (course.rag_collection_id) return 'publish';
@@ -129,12 +131,25 @@ export function CoursesClient() {
     onError: () => setActionError(t('actionError')),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (courseId: string) =>
+      apiFetch(`/api/v1/admin/courses/${courseId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'courses'] });
+      setPendingAction(null);
+      setActionError(null);
+    },
+    onError: () => setActionError(t('actionError')),
+  });
+
   const handleConfirmAction = () => {
     if (!pendingAction) return;
     if (pendingAction.type === 'publish') {
       publishMutation.mutate(pendingAction.course.id);
     } else if (pendingAction.type === 'archive') {
       archiveMutation.mutate(pendingAction.course.id);
+    } else if (pendingAction.type === 'delete') {
+      deleteMutation.mutate(pendingAction.course.id);
     }
   };
 
@@ -287,14 +302,18 @@ export function CoursesClient() {
       ? t('confirmPublish')
       : pendingAction?.type === 'archive'
         ? t('confirmArchive')
-        : t('confirmGenerate');
+        : pendingAction?.type === 'delete'
+          ? t('confirmDelete')
+          : t('confirmGenerate');
 
   const confirmDesc =
     pendingAction?.type === 'publish'
       ? t('confirmPublishDesc')
       : pendingAction?.type === 'archive'
         ? t('confirmArchiveDesc')
-        : t('confirmGenerateDesc');
+        : pendingAction?.type === 'delete'
+          ? t('confirmDeleteDesc')
+          : t('confirmGenerateDesc');
 
   if (isLoading) {
     return (
@@ -364,6 +383,7 @@ export function CoursesClient() {
                 resumeCourseId={wizardResumeCourseId}
                 onPublish={handlePublishIntent}
                 onArchive={(c) => setPendingAction({ type: 'archive', course: c })}
+                onDelete={(c) => setPendingAction({ type: 'delete', course: c })}
                 onGenerateStructure={(c) => setPendingAction({ type: 'generate', course: c })}
                 onEdit={(c) => { setEditingCourse(c); setFormOpen(true); }}
                 onResumeWizard={() => {
@@ -422,7 +442,8 @@ export function CoursesClient() {
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmAction}
-              disabled={publishMutation.isPending || archiveMutation.isPending}
+              disabled={publishMutation.isPending || archiveMutation.isPending || deleteMutation.isPending}
+              className={pendingAction?.type === 'delete' ? 'bg-destructive hover:bg-destructive/90' : ''}
             >
               {t('confirm')}
             </AlertDialogAction>
@@ -468,6 +489,7 @@ function CourseRow({
   resumeCourseId,
   onPublish,
   onArchive,
+  onDelete,
   onGenerateStructure,
   onEdit,
   onResumeWizard,
@@ -477,6 +499,7 @@ function CourseRow({
   resumeCourseId?: string;
   onPublish: (c: AdminCourse) => void;
   onArchive: (c: AdminCourse) => void;
+  onDelete: (c: AdminCourse) => void;
   onGenerateStructure: (c: AdminCourse) => void;
   onEdit: (c: AdminCourse) => void;
   onResumeWizard: () => void;
@@ -597,6 +620,15 @@ function CourseRow({
                 >
                   <Archive className="mr-2 h-4 w-4" />
                   {t('archive')}
+                </DropdownMenuItem>
+              )}
+              {course.status === 'draft' && (
+                <DropdownMenuItem
+                  onClick={() => onDelete(course)}
+                  className="text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {t('deleteCourse')}
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>

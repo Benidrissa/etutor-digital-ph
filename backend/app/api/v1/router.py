@@ -18,6 +18,7 @@ from app.api.v1.placement import router as placement_router
 from app.api.v1.progress import router as progress_router
 from app.api.v1.quiz import router as quiz_router
 from app.api.v1.source_images import router as source_images_router
+from app.api.v1.subscriptions import router as subscriptions_router
 from app.api.v1.tutor import router as tutor_router
 from app.api.v1.users import router as users_router
 
@@ -42,3 +43,4 @@ api_v1_router.include_router(courses_router)
 api_v1_router.include_router(course_preassessment_router)
 api_v1_router.include_router(module_media_router)
 api_v1_router.include_router(source_images_router)
+api_v1_router.include_router(subscriptions_router)
