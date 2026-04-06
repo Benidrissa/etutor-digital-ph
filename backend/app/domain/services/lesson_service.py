@@ -170,7 +170,7 @@ class LessonGenerationService:
                 query=query,
                 user_level=level,
                 user_language=language,
-                books_sources=module.books_sources,
+                books_sources=self._resolve_books_sources(module),
                 top_k=SettingsCache.instance().get("ai-rag-default-top-k", 8),
                 session=session,
             )
@@ -345,7 +345,7 @@ class LessonGenerationService:
             query=query,
             user_level=level,
             user_language=language,
-            books_sources=module.books_sources,
+            books_sources=self._resolve_books_sources(module),
             top_k=8,
             session=session,
         )
@@ -421,6 +421,21 @@ class LessonGenerationService:
             cached=False,
             source_image_refs=source_image_refs,
         )
+
+    @staticmethod
+    def _resolve_books_sources(module: Module) -> dict | None:
+        """Return books_sources for the semantic retriever.
+
+        For admin-created courses, books_sources is empty but the course
+        has a rag_collection_id. Synthesise a dict so the retriever filters
+        by the correct source. Legacy courses return books_sources as-is.
+        """
+        if module.books_sources:
+            return module.books_sources
+        course = module.course
+        if course and course.rag_collection_id:
+            return {course.rag_collection_id: []}
+        return module.books_sources
 
     async def _build_lesson_query(
         self, module: Module, unit_id: str, language: str, session: AsyncSession
@@ -789,7 +804,7 @@ class CaseStudyGenerationService:
                 query=query,
                 user_level=level,
                 user_language=language,
-                books_sources=module.books_sources,
+                books_sources=self._resolve_books_sources(module),
                 top_k=SettingsCache.instance().get("ai-rag-default-top-k", 8),
                 session=session,
             )
@@ -916,7 +931,7 @@ class CaseStudyGenerationService:
             query=query,
             user_level=level,
             user_language=language,
-            books_sources=module.books_sources,
+            books_sources=self._resolve_books_sources(module),
             top_k=8,
             session=session,
         )
@@ -972,6 +987,16 @@ class CaseStudyGenerationService:
             generated_at=datetime.utcnow().isoformat(),
             cached=False,
         )
+
+    @staticmethod
+    def _resolve_books_sources(module: Module) -> dict | None:
+        """Resolve books_sources — same logic as LessonGenerationService."""
+        if module.books_sources:
+            return module.books_sources
+        course = module.course
+        if course and course.rag_collection_id:
+            return {course.rag_collection_id: []}
+        return module.books_sources
 
     async def _build_case_study_query(
         self, module: Module, unit_id: str, language: str, session: AsyncSession
