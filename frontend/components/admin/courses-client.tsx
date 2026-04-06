@@ -15,7 +15,7 @@ import {
   BookOpen,
   Database,
   ImageOff,
-  Image as ImageIcon,
+  Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -55,7 +55,6 @@ export interface AdminCourse {
   module_count?: number;
   indexation_task_id?: string | null;
   rag_collection_id?: string | null;
-  image_count?: number;
   preassessment_enabled?: boolean;
   preassessment_mandatory?: boolean;
 }
@@ -66,7 +65,7 @@ type PendingAction =
   | { type: 'publish'; course: AdminCourse }
   | { type: 'archive'; course: AdminCourse }
   | { type: 'generate'; course: AdminCourse }
-  | { type: 'index'; course: AdminCourse };
+  | { type: 'delete'; course: AdminCourse };
 
 function inferWizardStep(course: AdminCourse): WizardStep {
   if (course.rag_collection_id) return 'publish';
@@ -118,18 +117,7 @@ export function CoursesClient() {
       setPendingAction(null);
       setActionError(null);
     },
-    onError: (err: Error) => setActionError(err.message || t('actionError')),
-  });
-
-  const indexMutation = useMutation({
-    mutationFn: (courseId: string) =>
-      apiFetch(`/api/v1/admin/courses/${courseId}/index-resources`, { method: 'POST' }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'courses'] });
-      setPendingAction(null);
-      setActionError(null);
-    },
-    onError: (err: Error) => setActionError(err.message || t('indexError')),
+    onError: () => setActionError(t('actionError')),
   });
 
   const archiveMutation = useMutation({
@@ -140,7 +128,18 @@ export function CoursesClient() {
       setPendingAction(null);
       setActionError(null);
     },
-    onError: (err: Error) => setActionError(err.message || t('actionError')),
+    onError: () => setActionError(t('actionError')),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (courseId: string) =>
+      apiFetch(`/api/v1/admin/courses/${courseId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'courses'] });
+      setPendingAction(null);
+      setActionError(null);
+    },
+    onError: () => setActionError(t('actionError')),
   });
 
   const handleConfirmAction = () => {
@@ -149,8 +148,8 @@ export function CoursesClient() {
       publishMutation.mutate(pendingAction.course.id);
     } else if (pendingAction.type === 'archive') {
       archiveMutation.mutate(pendingAction.course.id);
-    } else if (pendingAction.type === 'index') {
-      indexMutation.mutate(pendingAction.course.id);
+    } else if (pendingAction.type === 'delete') {
+      deleteMutation.mutate(pendingAction.course.id);
     }
   };
 
@@ -303,8 +302,8 @@ export function CoursesClient() {
       ? t('confirmPublish')
       : pendingAction?.type === 'archive'
         ? t('confirmArchive')
-        : pendingAction?.type === 'index'
-          ? t('confirmIndex')
+        : pendingAction?.type === 'delete'
+          ? t('confirmDelete')
           : t('confirmGenerate');
 
   const confirmDesc =
@@ -312,8 +311,8 @@ export function CoursesClient() {
       ? t('confirmPublishDesc')
       : pendingAction?.type === 'archive'
         ? t('confirmArchiveDesc')
-        : pendingAction?.type === 'index'
-          ? t('confirmIndexDesc')
+        : pendingAction?.type === 'delete'
+          ? t('confirmDeleteDesc')
           : t('confirmGenerateDesc');
 
   if (isLoading) {
@@ -384,8 +383,8 @@ export function CoursesClient() {
                 resumeCourseId={wizardResumeCourseId}
                 onPublish={handlePublishIntent}
                 onArchive={(c) => setPendingAction({ type: 'archive', course: c })}
+                onDelete={(c) => setPendingAction({ type: 'delete', course: c })}
                 onGenerateStructure={(c) => setPendingAction({ type: 'generate', course: c })}
-                onIndexResources={(c) => setPendingAction({ type: 'index', course: c })}
                 onEdit={(c) => { setEditingCourse(c); setFormOpen(true); }}
                 onResumeWizard={() => {
                   const savedState = loadWizardState();
@@ -425,7 +424,7 @@ export function CoursesClient() {
       )}
 
       <AlertDialog
-        open={pendingAction !== null && pendingAction.type !== 'generate' && pendingAction.type !== 'index'}
+        open={pendingAction !== null && pendingAction.type !== 'generate'}
         onOpenChange={(open) => !open && setPendingAction(null)}
       >
         <AlertDialogContent>
@@ -443,34 +442,10 @@ export function CoursesClient() {
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmAction}
-              disabled={publishMutation.isPending || archiveMutation.isPending}
+              disabled={publishMutation.isPending || archiveMutation.isPending || deleteMutation.isPending}
+              className={pendingAction?.type === 'delete' ? 'bg-destructive hover:bg-destructive/90' : ''}
             >
               {t('confirm')}
-            </AlertDialogAction>
-          </div>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog
-        open={pendingAction?.type === 'index'}
-        onOpenChange={(open) => !open && setPendingAction(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogTitle>{confirmTitle}</AlertDialogTitle>
-          <AlertDialogDescription>{confirmDesc}</AlertDialogDescription>
-          <div className="flex justify-end gap-3 mt-4">
-            <AlertDialogCancel onClick={() => setPendingAction(null)}>
-              {t('cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmAction}
-              disabled={indexMutation.isPending}
-            >
-              {indexMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              ) : (
-                t('confirm')
-              )}
             </AlertDialogAction>
           </div>
         </AlertDialogContent>
@@ -514,8 +489,8 @@ function CourseRow({
   resumeCourseId,
   onPublish,
   onArchive,
+  onDelete,
   onGenerateStructure,
-  onIndexResources,
   onEdit,
   onResumeWizard,
 }: {
@@ -524,8 +499,8 @@ function CourseRow({
   resumeCourseId?: string;
   onPublish: (c: AdminCourse) => void;
   onArchive: (c: AdminCourse) => void;
+  onDelete: (c: AdminCourse) => void;
   onGenerateStructure: (c: AdminCourse) => void;
-  onIndexResources: (c: AdminCourse) => void;
   onEdit: (c: AdminCourse) => void;
   onResumeWizard: () => void;
 }) {
@@ -586,12 +561,6 @@ function CourseRow({
                 {t('moduleCount', { count: course.module_count })}
               </span>
             )}
-            {course.image_count !== undefined && course.image_count > 0 && (
-              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                <ImageIcon className="h-3 w-3" aria-hidden="true" />
-                {t('imageCount', { count: course.image_count })}
-              </span>
-            )}
           </div>
         </button>
 
@@ -638,12 +607,6 @@ function CourseRow({
                 <Sparkles className="mr-2 h-4 w-4" />
                 {t('generateStructure')}
               </DropdownMenuItem>
-              {course.rag_collection_id && course.status !== 'archived' && (
-                <DropdownMenuItem onClick={() => onIndexResources(course)}>
-                  <Database className="mr-2 h-4 w-4" />
-                  {t('indexResources')}
-                </DropdownMenuItem>
-              )}
               {course.status !== 'published' && (
                 <DropdownMenuItem onClick={() => onPublish(course)}>
                   <Globe className="mr-2 h-4 w-4" />
@@ -657,6 +620,15 @@ function CourseRow({
                 >
                   <Archive className="mr-2 h-4 w-4" />
                   {t('archive')}
+                </DropdownMenuItem>
+              )}
+              {course.status === 'draft' && (
+                <DropdownMenuItem
+                  onClick={() => onDelete(course)}
+                  className="text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {t('deleteCourse')}
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
