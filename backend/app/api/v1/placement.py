@@ -104,8 +104,18 @@ async def get_placement_test_questions(
             "Placement test questions retrieved via deprecated endpoint",
             user_id=str(current_user.id),
         )
+        # Normalize options to [{id, text}] for legacy dict format compat
+        normalized_questions = []
+        for q in preassessment.questions:
+            raw_opts = q.get("options", [])
+            if isinstance(raw_opts, dict):
+                opts = [{"id": k, "text": v} for k, v in raw_opts.items()]
+            else:
+                opts = raw_opts
+            normalized_questions.append({**q, "options": opts})
+
         return PlacementTestResponse(
-            questions=preassessment.questions,
+            questions=normalized_questions,
             total_questions=preassessment.question_count or len(preassessment.questions),
             time_limit_minutes=30,
             instructions={
