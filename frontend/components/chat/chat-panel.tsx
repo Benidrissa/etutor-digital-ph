@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { track } from '@/lib/analytics';
+import { Link } from '@/i18n/routing';
 import { X, MoreVertical, Trash2, Menu, HelpCircle, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -70,6 +71,7 @@ export function ChatPanel({
   const [showClearDialog, setShowClearDialog] = useState(false);
   const [currentUsage, setCurrentUsage] = useState(0);
   const [maxDailyUsage, setMaxDailyUsage] = useState(200);
+  const [limitReached, setLimitReached] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
     conversationId ?? null
   );
@@ -292,6 +294,9 @@ export function ChatPanel({
                 const errorCode = chunk.data?.code;
                 fullContent =
                   errorCode === 'limit_reached' ? t('errorLimitReached') : t('error');
+                if (errorCode === 'limit_reached') {
+                  setLimitReached(true);
+                }
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === aiMessageId ? { ...m, content: fullContent } : m
@@ -439,13 +444,27 @@ export function ChatPanel({
             )}
           </div>
 
-          {!isLimitReached && (
+          {!isLimitReached && !limitReached && (
             <ChatSuggestions onSuggestionClick={handleSuggestionClick} disabled={isLoading} />
+          )}
+
+          {(isLimitReached || limitReached) && (
+            <div className="mx-3 mb-2 rounded-lg bg-primary/10 border border-primary/20 p-3 text-center">
+              <p className="text-sm text-primary font-medium mb-2">
+                {t('errorLimitReached')}
+              </p>
+              <Link
+                href="/subscribe"
+                className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-xs font-medium text-white hover:bg-primary/90 transition-colors"
+              >
+                {t('upgradePrompt')}
+              </Link>
+            </div>
           )}
 
           <ChatInput
             onSendMessage={handleSendMessage}
-            disabled={isLimitReached || isLoading}
+            disabled={isLimitReached || limitReached || isLoading}
           />
         </div>
       </div>

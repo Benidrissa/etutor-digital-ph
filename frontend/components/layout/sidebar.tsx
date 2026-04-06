@@ -17,6 +17,7 @@ import {
   Menu,
   LogOut,
   ShieldCheck,
+  Wallet,
 } from "lucide-react";
 import { LocaleSwitcher } from "@/components/shared/locale-switcher";
 import { Button } from "@/components/ui/button";
@@ -107,6 +108,12 @@ export function Sidebar() {
       label: t("settings"),
       icon: Settings,
       description: t("settingsDescription")
+    },
+    {
+      href: `/${locale}/subscribe`,
+      label: t("subscribe"),
+      icon: Wallet,
+      description: t("subscribeDescription")
     },
     ...(userRole === "admin" || userRole === "expert"
       ? [
