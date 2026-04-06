@@ -352,18 +352,39 @@ class QuizService:
             syllabus_context,
             course_domain,
         )
-        if admin_system is not None:
-            system_prompt = (
-                admin_system
-                + "\n\nCRITICAL: You MUST respond with valid JSON ONLY. No preamble, no explanation, "
-                "no markdown code fences. Your entire response must be a single JSON object starting "
-                'with { and ending with }. The JSON must have exactly these top-level keys: "title", '
-                '"description", "questions", "time_limit_minutes", "passing_score".'
-            )
-        else:
-            system_prompt = f"""You are an expert educator creating adaptive quiz content for West African professionals in {domain}.
+        json_schema_block = (
+            "\n\nCRITICAL: You MUST respond with valid JSON ONLY. "
+            "No preamble, no explanation, no markdown code fences.\n\n"
+            "Required JSON structure:\n"
+            "{\n"
+            '  "title": string,\n'
+            '  "description": string,\n'
+            '  "questions": [\n'
+            "    {\n"
+            '      "id": string (e.g. "q1"),\n'
+            '      "question": string,\n'
+            '      "options": [string, string, string, string],\n'
+            '      "correct_answer": integer 0-3,\n'
+            '      "explanation": string,\n'
+            '      "sources_cited": [string],\n'
+            '      "difficulty": "easy"|"medium"|"hard"\n'
+            "    }\n"
+            "  ],\n"
+            '  "time_limit_minutes": number,\n'
+            '  "passing_score": number,\n'
+            '  "__complete": true\n'
+            "}\n"
+            'IMPORTANT: "__complete": true MUST be the last field '
+            "in your JSON response."
+        )
 
-CRITICAL: You MUST respond with valid JSON ONLY. No preamble, no explanation, no markdown code fences. Your entire response must be a single JSON object starting with {{ and ending with }}. The JSON must have exactly these top-level keys: "title", "description", "questions", "time_limit_minutes", "passing_score"."""
+        if admin_system is not None:
+            system_prompt = admin_system + json_schema_block
+        else:
+            system_prompt = (
+                "You are an expert educator creating adaptive quiz "
+                f"content for West African professionals in {domain}." + json_schema_block
+            )
 
         audience = (
             f"professionals in {domain} in {country}"
@@ -432,7 +453,8 @@ RESPONSE FORMAT (JSON):
     }}
   ],
   "time_limit_minutes": {max(SettingsCache.instance().get("quiz-time-limit-min-minutes", 10), num_questions * SettingsCache.instance().get("quiz-time-limit-per-question-minutes", 1.5))},
-  "passing_score": {SettingsCache.instance().get("quiz-passing-score", 80.0)}
+  "passing_score": {SettingsCache.instance().get("quiz-passing-score", 80.0)},
+  "__complete": true
 }}
 
 {closing_note}"""

@@ -125,7 +125,10 @@ class TestFlashcardGenerationService:
         session.refresh = AsyncMock(side_effect=mock_refresh)
 
         mock_semantic_retriever.search.return_value = sample_search_results
-        mock_claude_service.generate_structured_content.return_value = sample_flashcard_data
+        mock_claude_service.generate_structured_content.return_value = {
+            "flashcards": sample_flashcard_data,
+            "__complete": True,
+        }
 
         result = await flashcard_service.get_or_generate_flashcard_set(
             module_id=module_id,
@@ -397,7 +400,10 @@ class TestFlashcardGenerationService:
 
         session.refresh = AsyncMock(side_effect=mock_refresh)
         mock_semantic_retriever.search.return_value = sample_search_results
-        mock_claude_service.generate_structured_content.return_value = sample_flashcard_data
+        mock_claude_service.generate_structured_content.return_value = {
+            "flashcards": sample_flashcard_data,
+            "__complete": True,
+        }
 
         await flashcard_service.get_or_generate_flashcard_set(
             module_id=module_id,

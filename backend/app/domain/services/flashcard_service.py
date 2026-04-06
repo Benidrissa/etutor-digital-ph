@@ -211,8 +211,11 @@ class FlashcardGenerationService:
 
             # response is already a parsed dict from generate_structured_content
             if isinstance(response, list):
+                logger.warning("Flashcard response is bare array — missing __complete sentinel")
                 flashcard_data = response
             elif isinstance(response, dict):
+                if not response.get("__complete"):
+                    logger.warning("Flashcard response missing __complete sentinel")
                 flashcard_data = response.get("flashcards", response.get("cards", [response]))
                 if not isinstance(flashcard_data, list):
                     flashcard_data = [response]

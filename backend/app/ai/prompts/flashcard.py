@@ -113,7 +113,23 @@ EXIGENCES QUALITÉ :
 - Cohérence terminologique français/anglais
 - Base-toi UNIQUEMENT sur les documents fournis
 
-RÉPONSE ATTENDUE : Liste JSON de flashcards directement utilisables."""
+CRITICAL: Répondre avec du JSON UNIQUEMENT. Pas de préambule, pas de blocs markdown.
+
+Format JSON requis :
+{{
+  "flashcards": [
+    {{
+      "term": "Terme clé",
+      "definition_fr": "Définition en français (50-100 mots)",
+      "definition_en": "English definition (50-100 words)",
+      "example_aof": "Exemple concret d'Afrique de l'Ouest",
+      "formula": "$\\\\frac{{a}}{{b}}$" ou null,
+      "sources_cited": ["Donaldson Ch.3, p.45"]
+    }}
+  ],
+  "__complete": true
+}}
+IMPORTANT: "__complete": true DOIT être le dernier champ."""
 
     else:  # English
         return f"""You are a public health education expert specializing in West Africa.
@@ -151,7 +167,23 @@ QUALITY REQUIREMENTS:
 - French/English terminological consistency
 - Base content ONLY on provided documents
 
-EXPECTED RESPONSE: JSON list of directly usable flashcards."""
+CRITICAL: Respond with valid JSON ONLY. No preamble, no markdown fences.
+
+Required JSON structure:
+{{
+  "flashcards": [
+    {{
+      "term": "Key term",
+      "definition_fr": "French definition (50-100 words)",
+      "definition_en": "English definition (50-100 words)",
+      "example_aof": "West African example (1-2 sentences)",
+      "formula": "$\\\\frac{{a}}{{b}}$" or null,
+      "sources_cited": ["Donaldson Ch.3, p.45"]
+    }}
+  ],
+  "__complete": true
+}}
+IMPORTANT: "__complete": true MUST be the last field."""
 
 
 def format_rag_context_for_flashcards(
