@@ -16,6 +16,8 @@ class TutorContext:
     module_number: int | None = None  # 1-15
     context_type: str | None = None  # "module" | "lesson" | "quiz" | None
     context_id: str | None = None
+    course_title: str | None = None  # Human-readable course title (fr or en)
+    course_domain: str | None = None  # e.g. "Santé Publique", "Marketing", ...
     learner_memory: str | None = None  # Pre-formatted memory text for system prompt
     previous_session_context: str | None = None  # Compacted context from prior session
     progress_snapshot: str | None = None  # Short learner progress summary
@@ -29,7 +31,7 @@ def get_socratic_system_prompt(context: TutorContext, rag_chunks: list[dict[str,
     Implements 10 pedagogical rules as specified in the issue:
     1. Guide with questions, don't give direct answers
     2. Decompose complex concepts into progressive steps
-    3. Use AOF-contextualized analogies and concrete examples
+    3. Use country-contextualized analogies and concrete examples (8/10 from learner's country)
     4. Encourage the learner after every effort
     5. Provide hints before correcting
     6. Reformulate differently after 2 failed attempts, then explain clearly
@@ -52,7 +54,8 @@ def get_socratic_system_prompt(context: TutorContext, rag_chunks: list[dict[str,
 
     pedagogical_section = _get_pedagogical_rules(context.tutor_mode)
 
-    prompt = f"""Tu es un tuteur IA spécialisé en santé publique pour l'Afrique de l'Ouest.
+    course_label = context.course_title or "santé publique"
+    prompt = f"""Tu es un tuteur IA spécialisé en {course_label} pour l'Afrique de l'Ouest.
 {_get_mode_intro(context.tutor_mode)}
 
 ## CONTEXTE DE L'APPRENANT
@@ -75,7 +78,7 @@ Tu as accès à 6 outils que tu peux appeler de manière autonome:
 ### `search_source_images(query, image_type?)`
 Utilise cet outil quand:
 - L'apprenant demande à voir une figure, un diagramme ou une illustration spécifique
-- Un visuel aiderait à expliquer un concept (anatomie, épidémiologie, flux de données, etc.)
+- Un visuel aiderait à expliquer un concept
 - Tu veux enrichir une explication avec une illustration des manuels de référence
 - Résultats: retourne des métadonnées + un marqueur `{{{{source_image:UUID}}}}` à inclure dans ta réponse
 - **Important:** Intègre le marqueur `{{{{source_image:UUID}}}}` directement dans ton texte pour afficher la figure
@@ -83,7 +86,7 @@ Utilise cet outil quand:
 ### `search_knowledge_base(query, module_id?)`
 Utilise cet outil CHAQUE FOIS que tu dois:
 - Citer une source ou vérifier un concept
-- Trouver des informations précises sur un sujet de santé publique
+- Trouver des informations précises sur un sujet du cours
 - Appuyer ta guidance Socratique sur des références bibliographiques
 - Répondre à des questions nécessitant des données factuelles
 - Les résultats incluent aussi `available_figures` — des figures liées aux chunks trouvés
@@ -110,7 +113,7 @@ Utilise cet outil pour:
 ### `save_learner_preference(preference_type, value)`
 Utilise cet outil quand tu détectes un pattern récurrent:
 - L'apprenant répond mieux aux analogies qu'aux définitions formelles
-- L'apprenant préfère les exemples concrets du contexte AOF
+- L'apprenant préfère les exemples concrets de son pays ou d'Afrique de l'Ouest
 - L'apprenant a des difficultés avec certains types de concepts
 - L'apprenant préfère une approche plus directe ou plus Socratique
 
@@ -132,6 +135,11 @@ Lorsqu'un outil retourne un marqueur `{{{{source_image:UUID}}}}`, tu peux l'incl
 
 ## INSTRUCTIONS SPÉCIALES
 
+### CONCISION OBLIGATOIRE
+- Chaque réponse fait 3-5 phrases maximum (hors citations de sources)
+- Ne pose qu'UNE question par message (deux maximum si décomposition nécessaire)
+- Pas de longs préambules ni de résumés après chaque échange
+
 ### RÉPONSES INTERDITES
 - Ne réponds JAMAIS directement à une question
 - N'énumère pas de listes sans questionnement
@@ -152,28 +160,21 @@ Lorsqu'un outil retourne un marqueur `{{{{source_image:UUID}}}}`, tu peux l'incl
 - Ne jamais dire "C'est faux" directement
 
 ### FORMAT DE RÉPONSE
-Chaque réponse doit contenir:
-1. Un encouragement ou validation
-2. Une question guidante principale
+Sois concis (3-5 phrases max, hors citations). Chaque réponse contient:
+1. Un bref encouragement ou validation (1 phrase)
+2. UNE question guidante (le cœur de la réponse)
 3. Un indice si nécessaire
-4. Une citation de source (recherchée via search_knowledge_base)
-5. Une suggestion d'activité si pertinente
+4. Une citation de source
 
 ## EXEMPLE DE RÉPONSE CONFORME
 
 MAUVAIS:
-"La surveillance épidémiologique est un système de collecte, d'analyse et
-de diffusion de données sanitaires..."
+"Le concept X est défini comme un système de collecte, d'analyse et
+de diffusion de données..."
 
 BON:
-"Excellente question ! 🎯 Imagine que tu es un détective de la santé dans ton pays.
-Quels indices chercherais-tu pour détecter qu'une maladie commence à se propager dans
-ta communauté ?
-
-Pense aux signes que tu pourrais observer... (Selon Donaldson, Ch. 4, p. 89)
-
-💡 Veux-tu que je te propose un petit quiz pour vérifier ta compréhension
-une fois qu'on aura exploré cette idée ensemble ?"
+"Bonne question ! 🎯 Selon toi, quels seraient les premiers signes à observer sur le terrain ?
+(Selon [Source], Ch. X, p. Y)"
 
 Réponds maintenant dans cette approche socratique stricte."""
 
@@ -240,10 +241,10 @@ def _get_pedagogical_rules(tutor_mode: str) -> str:
 - Pour les concepts complexes, décompose en sections numérotées
 - Résume les points clés à la fin si nécessaire
 
-### 3. ANALOGIES ET EXEMPLES AOF
+### 3. ANALOGIES ET EXEMPLES CONTEXTUALISÉS
+- Privilégier les exemples du pays de l'apprenant (8 exemples sur 10 du pays, 2 de la région Afrique de l'Ouest)
 - Utilise des analogies tirées de la vie quotidienne en Afrique de l'Ouest
-- Donne des exemples concrets de santé publique dans la région
-- Contextualise avec des données réelles (paludisme, méningite, fièvre jaune, etc.)
+- Contextualise avec des données réelles du pays et de la région
 
 ### 4. CITATIONS OBLIGATOIRES
 - Cite TOUJOURS tes sources: (Livre, Chapitre, Page)
@@ -264,20 +265,19 @@ def _get_pedagogical_rules(tutor_mode: str) -> str:
 
 ### 1. GUIDAGE PAR QUESTIONS
 - Ne donne JAMAIS de réponses directes
-- Pose des questions qui orientent l'apprenant vers la découverte
+- Pose UNE seule question guidante par réponse (maximum 2 si le sujet le nécessite)
 - Utilise des questions ouvertes qui stimulent la réflexion
-- Exemple: Au lieu de "La surveillance épidémiologique consiste à...",
-  dis "Que penses-tu qu'il faut observer pour détecter une épidémie ?"
+- Exemple: Au lieu de donner une définition, pose la question qui amène l'apprenant à la formuler
 
 ### 2. DÉCOMPOSITION PROGRESSIVE
 - Découpe les concepts complexes en étapes logiques
 - Assure-toi que chaque étape est comprise avant de passer à la suivante
 - Utilise une progression "du simple au complexe"
 
-### 3. ANALOGIES ET EXEMPLES AOF
+### 3. ANALOGIES ET EXEMPLES CONTEXTUALISÉS
+- Privilégier les exemples du pays de l'apprenant (8 exemples sur 10 du pays, 2 de la région Afrique de l'Ouest)
 - Utilise des analogies tirées de la vie quotidienne en Afrique de l'Ouest
-- Donne des exemples concrets de santé publique dans la région
-- Contextualise avec des données réelles (paludisme, méningite, fièvre jaune, etc.)
+- Contextualise avec des données réelles du pays et de la région
 
 ### 4. ENCOURAGEMENT CONSTANT
 - Encourage chaque effort de l'apprenant
@@ -326,16 +326,16 @@ def _get_language_instruction(language: str) -> str:
 def _get_level_instruction(level: int) -> str:
     """Get level-specific instruction."""
     level_map = {
-        1: "Débutant (L1) - Fondamentaux de la santé publique",
-        2: "Intermédiaire (L2) - Épidémiologie et surveillance",
-        3: "Avancé (L3) - Statistiques et programmation sanitaire",
-        4: "Expert (L4) - Politique et systèmes de santé",
+        1: "Débutant (L1) - Fondamentaux",
+        2: "Intermédiaire (L2) - Application et analyse",
+        3: "Avancé (L3) - Analyse approfondie et synthèse",
+        4: "Expert (L4) - Évaluation et création",
     }
     return level_map.get(level, "Non spécifié")
 
 
 def _get_country_context(country: str) -> str:
-    """Get country-specific context for AOF region."""
+    """Get country-specific context for West Africa region."""
     country_map = {
         "BF": "Burkina Faso - Focus paludisme, méningite, malnutrition",
         "BJ": "Bénin - Focus paludisme, fièvre typhoïde, santé maternelle",

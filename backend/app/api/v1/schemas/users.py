@@ -20,7 +20,7 @@ class UserProfileResponse(BaseModel):
     """User profile response."""
 
     id: str
-    email: str
+    email: str | None
     name: str
     preferred_language: str
     country: str | None
