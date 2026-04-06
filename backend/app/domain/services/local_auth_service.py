@@ -818,6 +818,7 @@ class LocalAuthService:
         preferred_language: str = "fr",
         country: str | None = None,
         professional_role: str | None = None,
+        ip_address: str | None = None,
     ) -> dict[str, Any]:
         """Register a new user with email or phone + password.
 
@@ -957,7 +958,7 @@ class LocalAuthService:
             logger.error("Password registration failed", identifier=identifier, error=str(e))
             raise AuthenticationError(f"Registration failed: {e}")
 
-    async def login_with_password(self, identifier: str, password: str) -> dict[str, Any]:
+    async def login_with_password(self, identifier: str, password: str, ip_address: str | None = None) -> dict[str, Any]:
         """Login with email or phone + password.
 
         Args:
