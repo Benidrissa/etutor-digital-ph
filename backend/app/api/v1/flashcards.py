@@ -14,7 +14,7 @@ from app.ai.claude_service import ClaudeService
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.api.deps import get_db
-from app.api.deps_local_auth import get_current_user
+from app.api.deps_local_auth import require_active_subscription
 from app.api.v1.schemas.content import FlashcardSetResponse
 from app.api.v1.schemas.flashcards import (
     FlashcardDueResponse,
@@ -79,7 +79,7 @@ async def _resolve_module_id(module_id: str, session: AsyncSession) -> uuid.UUID
     },
 )
 async def get_due_flashcards(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_active_subscription),
     session: AsyncSession = Depends(get_db),
 ) -> FlashcardDueResponse:
     """
@@ -227,7 +227,7 @@ async def get_due_flashcards(
 )
 async def submit_flashcard_review(
     review_request: FlashcardReviewRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_active_subscription),
     session: AsyncSession = Depends(get_db),
 ) -> FlashcardReviewResponse:
     """
@@ -377,7 +377,7 @@ async def submit_flashcard_review(
 )
 async def complete_flashcard_session(
     session_request: FlashcardSessionRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_active_subscription),
     session: AsyncSession = Depends(get_db),
 ) -> FlashcardSessionResponse:
     """
@@ -482,7 +482,7 @@ async def complete_flashcard_session(
     },
 )
 async def get_upcoming_reviews(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_active_subscription),
     session: AsyncSession = Depends(get_db),
 ) -> UpcomingReviewsResponse:
     """
@@ -628,7 +628,7 @@ async def get_module_flashcards(
     language: str = "fr",
     country: str = "SN",
     level: int = 1,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_active_subscription),
     flashcard_service: FlashcardGenerationService = Depends(_get_flashcard_generation_service),
     session: AsyncSession = Depends(get_db),
 ) -> FlashcardSetResponse:

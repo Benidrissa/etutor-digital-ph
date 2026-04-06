@@ -14,7 +14,7 @@ from app.ai.claude_service import ClaudeService
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.api.deps import get_db
-from app.api.deps_local_auth import get_current_user
+from app.api.deps_local_auth import require_active_subscription
 from app.api.v1.schemas.quiz import (
     ErrorResponse,
     QuizAttemptRequest,
@@ -293,7 +293,7 @@ async def get_quiz(
 async def submit_quiz_attempt(
     request: QuizAttemptRequest,
     session: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_active_subscription),
 ) -> QuizAttemptResponse:
     """
     Submit a completed quiz attempt and get immediate feedback.
@@ -574,7 +574,7 @@ async def generate_summative_assessment(
 async def can_attempt_summative_assessment(
     module_id: UUID,
     session: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_active_subscription),
 ) -> SummativeAssessmentAttemptCheck:
     """
     Check if user can attempt summative assessment for a module.
@@ -679,7 +679,7 @@ async def can_attempt_summative_assessment(
 async def submit_summative_assessment_attempt(
     request: QuizAttemptRequest,
     session: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_active_subscription),
 ) -> SummativeAssessmentResponse:
     """
     Submit a completed summative assessment attempt.
