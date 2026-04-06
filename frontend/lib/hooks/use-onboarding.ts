@@ -12,7 +12,7 @@ interface OnboardingData {
 
 interface UserProfile {
   id: string;
-  email: string;
+  email: string | null;
   name: string;
   preferred_language: string;
   country: string | null;
