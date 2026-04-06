@@ -83,6 +83,7 @@ interface TaskProgress {
 interface IndexStatus {
   indexed: boolean;
   chunks_indexed: number;
+  images_indexed?: number;
   task?: TaskProgress;
 }
 
@@ -498,6 +499,7 @@ export function CourseWizardClient({
         const status = await apiFetch<{
           indexed: boolean;
           chunks_indexed: number;
+          images_indexed?: number;
           task?: {
             state: string;
             step?: string;
@@ -514,10 +516,11 @@ export function CourseWizardClient({
         setIndexStatus({
           indexed: status.indexed,
           chunks_indexed: status.chunks_indexed,
+          images_indexed: status.images_indexed,
           task: status.task,
         });
 
-        if (status.indexed && status.chunks_indexed > 0) {
+        if (status.task?.state === "SUCCESS") {
           setIsIndexing(false);
           clearWizardState();
           return;
@@ -579,7 +582,7 @@ export function CourseWizardClient({
     if (step === "upload") return files.filter((f) => f.status === "uploaded").length > 0;
     if (step === "info") return courseInfo.title_fr.trim().length > 0 && courseInfo.title_en.trim().length > 0;
     if (step === "generate") return generatedModules.length > 0;
-    if (step === "index") return !!(indexStatus?.indexed && indexStatus.chunks_indexed > 0);
+    if (step === "index") return !!(indexStatus?.indexed && indexStatus.chunks_indexed > 0 && !isIndexing);
     return false;
   };
 
@@ -624,6 +627,8 @@ export function CourseWizardClient({
       case "embedding": return t("index.stepEmbedding");
       case "storing": return t("index.stepStoring");
       case "complete": return t("index.stepComplete");
+      case "extracting_images": return t("index.stepExtractingImages");
+      case "EXTRACTING_IMAGES": return t("index.stepExtractingImages");
       default: return t("index.taskPending");
     }
   };
@@ -957,7 +962,11 @@ export function CourseWizardClient({
                         <div className="flex items-center gap-2">
                           <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent shrink-0" />
                           <p className="text-sm font-medium">
-                            {taskProg ? getStepLabel(taskProg.step) : t("index.taskPending")}
+                            {taskProg
+                              ? (taskProg.state === "EXTRACTING_IMAGES"
+                                ? t("index.stepExtractingImages")
+                                : getStepLabel(taskProg.step))
+                              : t("index.taskPending")}
                           </p>
                         </div>
                         {taskProg?.estimated_seconds_remaining !== undefined && taskProg.estimated_seconds_remaining > 0 && (
@@ -993,6 +1002,12 @@ export function CourseWizardClient({
                           {t("index.chunksProgress", { count: taskProg.chunks_processed })}
                         </p>
                       )}
+
+                      {taskProg?.state === "EXTRACTING_IMAGES" && indexStatus?.images_indexed !== undefined && indexStatus.images_indexed > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          {t("index.imagesProgress", { count: indexStatus.images_indexed })}
+                        </p>
+                      )}
                     </div>
 
                     <p className="text-xs text-muted-foreground text-center">
@@ -1008,7 +1023,7 @@ export function CourseWizardClient({
                   </div>
                 )}
 
-                {indexStatus?.indexed && (
+                {indexStatus?.indexed && !isIndexing && (
                   <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-900 dark:bg-green-950">
                     <CheckCircle2 className="h-5 w-5 text-green-600" />
                     <div>
@@ -1016,7 +1031,12 @@ export function CourseWizardClient({
                         {t("index.indexed")}
                       </p>
                       <p className="text-xs text-green-600 dark:text-green-500">
-                        {t("index.chunksIndexed", { count: indexStatus.chunks_indexed })}
+                        {indexStatus.images_indexed && indexStatus.images_indexed > 0
+                          ? t("index.chunksAndImagesIndexed", {
+                              chunks: indexStatus.chunks_indexed,
+                              images: indexStatus.images_indexed,
+                            })
+                          : t("index.chunksIndexed", { count: indexStatus.chunks_indexed })}
                       </p>
                     </div>
                   </div>
@@ -1044,6 +1064,12 @@ export function CourseWizardClient({
                       <span className="text-muted-foreground">{t("publish.summary.chunks")}</span>
                       <span className="font-medium">{indexStatus?.chunks_indexed ?? 0}</span>
                     </div>
+                    {indexStatus?.images_indexed !== undefined && indexStatus.images_indexed > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">{t("publish.summary.images")}</span>
+                        <span className="font-medium">{indexStatus.images_indexed}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t("publish.summary.status")}</span>
                       <Badge variant="outline" className="text-amber-600 border-amber-300">
