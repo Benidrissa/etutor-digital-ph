@@ -174,9 +174,7 @@ async def receive_heartbeat(
 
     settings = get_settings()
     trusted = (
-        settings.sms_relay_trusted_senders_list
-        if settings.sms_relay_trusted_senders
-        else None
+        settings.sms_relay_trusted_senders_list if settings.sms_relay_trusted_senders else None
     )
 
     return HeartbeatResponse(
@@ -219,10 +217,12 @@ async def get_relay_status(
     ]
 
     recent_count = await service.count_by_status(
-        SmsProcessingStatus.payment_processed, db,
+        SmsProcessingStatus.payment_processed,
+        db,
     )
     failed_count = await service.count_by_status(
-        SmsProcessingStatus.parse_failed, db,
+        SmsProcessingStatus.parse_failed,
+        db,
     )
 
     return RelayStatusResponse(
@@ -248,23 +248,27 @@ def _parse_filter_params(
     df = None
     if date_from:
         with contextlib.suppress(ValueError):
-            df = datetime.datetime.fromisoformat(date_from).replace(
-                tzinfo=datetime.UTC
-            ) if "T" in date_from else datetime.datetime.combine(
-                datetime.date.fromisoformat(date_from),
-                datetime.time.min,
-                tzinfo=datetime.UTC,
+            df = (
+                datetime.datetime.fromisoformat(date_from).replace(tzinfo=datetime.UTC)
+                if "T" in date_from
+                else datetime.datetime.combine(
+                    datetime.date.fromisoformat(date_from),
+                    datetime.time.min,
+                    tzinfo=datetime.UTC,
+                )
             )
 
     dt = None
     if date_to:
         with contextlib.suppress(ValueError):
-            dt = datetime.datetime.fromisoformat(date_to).replace(
-                tzinfo=datetime.UTC
-            ) if "T" in date_to else datetime.datetime.combine(
-                datetime.date.fromisoformat(date_to),
-                datetime.time.max,
-                tzinfo=datetime.UTC,
+            dt = (
+                datetime.datetime.fromisoformat(date_to).replace(tzinfo=datetime.UTC)
+                if "T" in date_to
+                else datetime.datetime.combine(
+                    datetime.date.fromisoformat(date_to),
+                    datetime.time.max,
+                    tzinfo=datetime.UTC,
+                )
             )
 
     return {
@@ -310,33 +314,47 @@ async def export_relay_sms_csv(
     """Export filtered SMS records as CSV. Admin only."""
     service = SmsRelayService()
     filters = _parse_filter_params(
-        status_filter, phone, reference,
-        date_from, date_to,
+        status_filter,
+        phone,
+        reference,
+        date_from,
+        date_to,
     )
 
     records = await service.get_all_sms_for_export(
-        session=db, **filters,
+        session=db,
+        **filters,
     )
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow([
-        "date", "sender", "amount", "phone",
-        "reference", "status", "device",
-        "provider", "error",
-    ])
+    writer.writerow(
+        [
+            "date",
+            "sender",
+            "amount",
+            "phone",
+            "reference",
+            "status",
+            "device",
+            "provider",
+            "error",
+        ]
+    )
     for r in records:
-        writer.writerow([
-            r.sms_received_at.isoformat(),
-            r.sender,
-            r.parsed_amount or "",
-            r.parsed_phone or "",
-            r.parsed_reference or "",
-            r.processing_status,
-            r.device_id,
-            r.parsed_provider or "",
-            r.error_message or "",
-        ])
+        writer.writerow(
+            [
+                r.sms_received_at.isoformat(),
+                r.sender,
+                r.parsed_amount or "",
+                r.parsed_phone or "",
+                r.parsed_reference or "",
+                r.processing_status,
+                r.device_id,
+                r.parsed_provider or "",
+                r.error_message or "",
+            ]
+        )
 
     output.seek(0)
     logger.info(
@@ -349,8 +367,7 @@ async def export_relay_sms_csv(
         iter([output.getvalue()]),
         media_type="text/csv",
         headers={
-            "Content-Disposition":
-                "attachment; filename=sms_export.csv",
+            "Content-Disposition": "attachment; filename=sms_export.csv",
         },
     )
 
@@ -373,16 +390,22 @@ async def get_relay_sms(
 ) -> SmsListResponse:
     service = SmsRelayService()
     filters = _parse_filter_params(
-        status_filter, phone, reference,
-        date_from, date_to,
+        status_filter,
+        phone,
+        reference,
+        date_from,
+        date_to,
     )
 
     records = await service.get_recent_sms(
-        limit=limit, session=db,
-        offset=offset, **filters,
+        limit=limit,
+        session=db,
+        offset=offset,
+        **filters,
     )
     total = await service.count_sms(
-        session=db, **filters,
+        session=db,
+        **filters,
     )
 
     return SmsListResponse(

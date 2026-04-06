@@ -256,8 +256,8 @@ class SmsRelayService:
         session: AsyncSession,
     ) -> int:
         result = await session.execute(
-            select(func.count()).select_from(InboundSms).where(
-                InboundSms.processing_status == status
-            )
+            select(func.count())
+            .select_from(InboundSms)
+            .where(InboundSms.processing_status == status)
         )
         return result.scalar() or 0
