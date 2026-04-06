@@ -181,6 +181,10 @@ export function CourseWizardClient({
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishSuccess, setPublishSuccess] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [publishSummaryTitle, setPublishSummaryTitle] = useState<{ title_fr: string; title_en: string } | null>(null);
+  const [publishSummaryIndexStatus, setPublishSummaryIndexStatus] = useState<IndexStatus | null>(null);
+  const [publishSummaryResources, setPublishSummaryResources] = useState<Array<{ name: string }>>([]);
+  const [isFetchingPublishSummary, setIsFetchingPublishSummary] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -546,6 +550,29 @@ export function CourseWizardClient({
       if (pollRef.current) clearTimeout(pollRef.current);
     };
   }, [courseId, isIndexing, taskId, t]);
+
+  useEffect(() => {
+    if (step !== "publish" || !courseId) return;
+
+    const fetchPublishSummary = async () => {
+      setIsFetchingPublishSummary(true);
+      try {
+        const [courseData, statusData, resourcesData] = await Promise.all([
+          apiFetch<{ title_fr: string; title_en: string }>(`/api/v1/admin/courses/${courseId}`),
+          apiFetch<{ indexed: boolean; chunks_indexed: number; images_indexed?: number }>(`/api/v1/admin/courses/${courseId}/index-status`),
+          apiFetch<{ files: Array<{ name: string }> }>(`/api/v1/admin/courses/${courseId}/resources`),
+        ]);
+        setPublishSummaryTitle({ title_fr: courseData.title_fr, title_en: courseData.title_en });
+        setPublishSummaryIndexStatus(statusData);
+        setPublishSummaryResources(resourcesData.files ?? []);
+      } catch {
+      } finally {
+        setIsFetchingPublishSummary(false);
+      }
+    };
+
+    fetchPublishSummary();
+  }, [step, courseId]);
 
   const publishCourse = useCallback(async () => {
     if (!courseId) return;
@@ -1056,26 +1083,54 @@ export function CourseWizardClient({
                     <CardTitle className="text-base">{t("publish.summary.title")}</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t("publish.summary.modules")}</span>
-                      <span className="font-medium">{generatedModules.length}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t("publish.summary.chunks")}</span>
-                      <span className="font-medium">{indexStatus?.chunks_indexed ?? 0}</span>
-                    </div>
-                    {indexStatus?.images_indexed !== undefined && indexStatus.images_indexed > 0 && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">{t("publish.summary.images")}</span>
-                        <span className="font-medium">{indexStatus.images_indexed}</span>
+                    {isFetchingPublishSummary ? (
+                      <div className="flex items-center justify-center py-4">
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                       </div>
+                    ) : (
+                      <>
+                        {publishSummaryTitle && (
+                          <>
+                            <div className="flex justify-between gap-4">
+                              <span className="text-muted-foreground shrink-0">{t("publish.summary.titleFr")}</span>
+                              <span className="font-medium text-right truncate">{publishSummaryTitle.title_fr}</span>
+                            </div>
+                            <div className="flex justify-between gap-4">
+                              <span className="text-muted-foreground shrink-0">{t("publish.summary.titleEn")}</span>
+                              <span className="font-medium text-right truncate">{publishSummaryTitle.title_en}</span>
+                            </div>
+                          </>
+                        )}
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">{t("publish.summary.modules")}</span>
+                          <span className="font-medium">{generatedModules.length}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">{t("publish.summary.chunks")}</span>
+                          <span className="font-medium">{publishSummaryIndexStatus?.chunks_indexed ?? indexStatus?.chunks_indexed ?? 0}</span>
+                        </div>
+                        {(publishSummaryIndexStatus?.images_indexed ?? indexStatus?.images_indexed ?? 0) > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">{t("publish.summary.images")}</span>
+                            <span className="font-medium">{publishSummaryIndexStatus?.images_indexed ?? indexStatus?.images_indexed}</span>
+                          </div>
+                        )}
+                        {publishSummaryResources.length > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground shrink-0">{t("publish.summary.resources")}</span>
+                            <span className="font-medium text-right">
+                              {t("publish.summary.resourcesCount", { count: publishSummaryResources.length })}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">{t("publish.summary.status")}</span>
+                          <Badge variant="outline" className="text-amber-600 border-amber-300">
+                            draft
+                          </Badge>
+                        </div>
+                      </>
                     )}
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t("publish.summary.status")}</span>
-                      <Badge variant="outline" className="text-amber-600 border-amber-300">
-                        draft
-                      </Badge>
-                    </div>
                   </CardContent>
                 </Card>
 

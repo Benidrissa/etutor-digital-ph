@@ -1163,9 +1163,13 @@
         "error": "Failed to publish course. Make sure indexation is complete.",
         "summary": {
           "title": "Course summary",
+          "titleFr": "Title (FR)",
+          "titleEn": "Title (EN)",
           "modules": "Modules",
           "chunks": "RAG chunks",
           "images": "Images indexed",
+          "resources": "Resources",
+          "resourcesCount": "{count, plural, one {# PDF} other {# PDFs}}",
           "status": "Status"
         }
       }
