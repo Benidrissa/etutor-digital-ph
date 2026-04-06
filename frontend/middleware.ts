@@ -7,7 +7,7 @@ const intlMiddleware = createMiddleware(routing);
 const PUBLIC_PATTERNS = [
   /^\/$/,
   /^\/(fr|en)$/,
-  /^\/(fr|en)\/(login|register|register-options|register-totp|register-email-otp|magic-link)(\/.*)*/,
+  /^\/(fr|en)\/(login|register|register-options|register-totp|register-email-otp|register-password|magic-link|forgot-password)(\/.*)*/,
   /^\/(fr|en)\/courses(\/[^/]+)?$/,
   /^\/api\//,
   /^\/_next\//,
