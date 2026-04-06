@@ -262,13 +262,23 @@ class PreAssessmentGenerationService:
 
         options = question["options"]
         if isinstance(options, dict):
+            # Check if already in [{id, text}] format (from a re-validation)
+            if not all(isinstance(v, str) for v in options.values()):
+                raise ValueError(f"{context}: options dict values must be strings")
             if not all(k in options for k in ("a", "b", "c", "d")):
                 raise ValueError(f"{context}: options dict must have keys a, b, c, d")
+            # Convert dict to [{id, text}] list for API/frontend compatibility
+            question["options"] = [{"id": k, "text": v} for k, v in options.items()]
         elif isinstance(options, list):
             if len(options) != 4:
                 raise ValueError(f"{context}: options list must have exactly 4 items")
-            options = {"a": options[0], "b": options[1], "c": options[2], "d": options[3]}
-            question["options"] = options
+            # Handle both plain strings and {id, text} objects
+            if options and isinstance(options[0], str):
+                letters = ["a", "b", "c", "d"]
+                question["options"] = [
+                    {"id": letters[i], "text": opt} for i, opt in enumerate(options)
+                ]
+            # else: already [{id, text}] — leave as-is
         else:
             raise ValueError(f"{context}: 'options' must be dict or list")
 

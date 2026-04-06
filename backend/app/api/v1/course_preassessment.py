@@ -99,19 +99,24 @@ async def get_course_preassessment_questions(
         raw_questions: list[dict[str, Any]] = preassessment.questions or []
         questions = []
         for q in raw_questions:
+            # Handle both legacy dict {"a": "..."} and new [{id, text}] formats
+            raw_options = q.get("options", [])
+            if isinstance(raw_options, dict):
+                options = [{"id": k, "text": v} for k, v in raw_options.items()]
+            else:
+                options = [
+                    {"id": opt.get("id", ""), "text": opt.get("text", "")}
+                    if isinstance(opt, dict)
+                    else {"id": "", "text": str(opt)}
+                    for opt in raw_options
+                ]
             questions.append(
                 {
                     "id": str(q.get("id", "")),
                     "domain": q.get("domain", ""),
                     "level": q.get("level", 1),
                     "question": q.get("question", ""),
-                    "options": [
-                        {
-                            "id": opt.get("id", ""),
-                            "text": opt.get("text", ""),
-                        }
-                        for opt in q.get("options", [])
-                    ],
+                    "options": options,
                 }
             )
 
