@@ -263,6 +263,7 @@ async def test_message_count_updated_on_send(tutor_service, sample_user):
         patch.object(
             tutor_service, "_get_previous_compact", new_callable=AsyncMock, return_value=None
         ),
+        patch.object(tutor_service, "_resolve_course", new_callable=AsyncMock, return_value=None),
     ):
         chunks = []
         async for chunk in tutor_service.send_message(

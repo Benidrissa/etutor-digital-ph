@@ -25,6 +25,7 @@ from app.api.v1.schemas.admin_syllabus import (
     SyllabusAgentRequest,
 )
 from app.domain.models.module import Module
+from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.user import UserRole
 from app.domain.services.syllabus_agent_service import SyllabusAgentService
 from app.infrastructure.config.settings import get_settings
@@ -56,8 +57,11 @@ async def list_modules(
     session: AsyncSession = Depends(get_db_session),
     agent_service: SyllabusAgentService = Depends(get_syllabus_agent_service),
 ) -> ModuleListResponse:
-    """Return structured view of all modules for the admin syllabus page."""
-    modules = await agent_service.get_modules_list(session)
+    """Return modules for the admin syllabus page, filtered by owner."""
+    modules = await agent_service.get_modules_list(
+        session,
+        user_id=str(current_user.id),
+    )
     return ModuleListResponse(modules=modules, total=len(modules))
 
 
@@ -105,11 +109,20 @@ async def get_module(
     current_user: AuthenticatedUser = Depends(_require_admin),
     session: AsyncSession = Depends(get_db_session),
 ) -> dict:
-    """Get a single module's full data for editing."""
+    """Get a single module's full data for editing, including units."""
     result = await session.execute(select(Module).where(Module.id == module_id))
     module = result.scalar_one_or_none()
     if not module:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Module not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Module not found",
+        )
+
+    # Fetch units for this module
+    units_result = await session.execute(
+        select(ModuleUnit).where(ModuleUnit.module_id == module_id).order_by(ModuleUnit.order_index)
+    )
+    units = units_result.scalars().all()
 
     books = module.books_sources or {}
     return {
@@ -131,6 +144,18 @@ async def get_module(
         "aof_context_en": books.get("aof_context_en", ""),
         "activities": books.get("activities", {}),
         "source_references": books.get("source_references", []),
+        "units": [
+            {
+                "id": str(u.id),
+                "unit_number": u.unit_number,
+                "title_fr": u.title_fr,
+                "title_en": u.title_en,
+                "description_fr": u.description_fr,
+                "description_en": u.description_en,
+                "order_index": u.order_index,
+            }
+            for u in units
+        ],
     }
 
 
@@ -141,7 +166,13 @@ async def update_module(
     current_user: AuthenticatedUser = Depends(_require_admin),
     session: AsyncSession = Depends(get_db_session),
 ) -> ModuleSaveResponse:
-    """Update a module directly (inline edit from preview panel)."""
+    """Update a module directly (inline edit from preview panel).
+
+    NOTE: This updates the module record in-place. Already-generated
+    lessons/quizzes are NOT automatically regenerated. To apply
+    syllabus changes to learner-facing content, re-trigger content
+    generation for the affected module units.
+    """
     result = await session.execute(select(Module).where(Module.id == module_id))
     module = result.scalar_one_or_none()
     if not module:

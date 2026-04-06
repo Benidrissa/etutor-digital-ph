@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { track } from '@/lib/analytics';
 import { Link } from '@/i18n/routing';
-import { X, MoreVertical, Trash2, Menu, HelpCircle, BookOpen } from 'lucide-react';
+import { X, MoreVertical, Trash2, Menu, HelpCircle, BookOpen, GraduationCap, ChevronDown } from 'lucide-react';
+import { getMyEnrollments, type CourseWithEnrollment } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -44,6 +45,7 @@ interface ChatPanelProps {
   isOpen: boolean;
   onClose: () => void;
   moduleId?: string;
+  courseId?: string;
   conversationId?: string | null;
   className?: string;
   embedded?: boolean;
@@ -55,6 +57,7 @@ export function ChatPanel({
   isOpen,
   onClose,
   moduleId,
+  courseId,
   conversationId,
   className,
   embedded = false,
@@ -82,8 +85,15 @@ export function ChatPanel({
     return 'socratic';
   });
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const [enrolledCourses, setEnrolledCourses] = useState<CourseWithEnrollment[]>([]);
+  const [activeCourseId, setActiveCourseId] = useState<string | null>(courseId ?? null);
 
   const isLimitReached = currentUsage >= maxDailyUsage;
+
+  const activeCourse = enrolledCourses.find((c) => c.id === activeCourseId);
+  const activeCourseLabel = activeCourse
+    ? (locale === 'fr' ? activeCourse.title_fr : activeCourse.title_en)
+    : null;
 
   const welcomeMessage: ChatMessage = {
     id: 'welcome',
@@ -95,6 +105,19 @@ export function ChatPanel({
   useEffect(() => {
     localStorage.setItem('tutorMode', tutorMode);
   }, [tutorMode]);
+
+  // Fetch enrolled courses for course selector
+  useEffect(() => {
+    getMyEnrollments()
+      .then((courses) => {
+        setEnrolledCourses(courses);
+        // Auto-select first course if none set
+        if (!activeCourseId && courses.length > 0) {
+          setActiveCourseId(courses[0].id);
+        }
+      })
+      .catch(() => {});
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchTutorStats()
@@ -202,6 +225,7 @@ export function ChatPanel({
         body: JSON.stringify({
           message: messageContent,
           conversation_id: activeConversationId ?? null,
+          course_id: activeCourseId ?? null,
           module_id: moduleId ?? null,
           tutor_mode: tutorMode,
           file_ids: attachedFiles.map((f) => f.fileId),
@@ -378,6 +402,33 @@ export function ChatPanel({
             <h2 className="text-base font-semibold">{t('title')}</h2>
           </div>
           <div className="flex items-center gap-1">
+            {enrolledCourses.length > 1 ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger>
+                  <Button variant="outline" size="sm" className="h-9 max-w-[160px] gap-1 text-xs">
+                    <GraduationCap className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{activeCourseLabel || t('title')}</span>
+                    <ChevronDown className="h-3 w-3 shrink-0" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {enrolledCourses.map((course) => (
+                    <DropdownMenuItem
+                      key={course.id}
+                      onClick={() => setActiveCourseId(course.id)}
+                      className={course.id === activeCourseId ? 'bg-accent' : ''}
+                    >
+                      {locale === 'fr' ? course.title_fr : course.title_en}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : activeCourseLabel ? (
+              <span className="text-xs text-muted-foreground truncate max-w-[160px] flex items-center gap-1">
+                <GraduationCap className="h-3.5 w-3.5 shrink-0" />
+                {activeCourseLabel}
+              </span>
+            ) : null}
             <Button
               variant={tutorMode === 'socratic' ? 'default' : 'outline'}
               size="sm"

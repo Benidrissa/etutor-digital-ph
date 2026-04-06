@@ -851,7 +851,8 @@
     "syllabus": "Syllabus",
     "units": "units",
     "backToCatalog": "Back to catalog",
-    "notFound": "Course not found."
+    "notFound": "Course not found.",
+    "serverError": "Unable to load this course. Please try again."
   },
   "Privacy": {
     "title": "Privacy & Analytics",
@@ -1057,6 +1058,15 @@
       "processed": "Processed",
       "parseFailed": "Failed",
       "pending": "Pending",
+      "searchPhone": "Filter by phone...",
+      "searchReference": "Filter by reference...",
+      "dateFrom": "From",
+      "dateTo": "To",
+      "exportCsv": "Export CSV",
+      "previous": "Previous",
+      "next": "Next",
+      "showing": "Showing {from}\u2013{to} of {total}",
+      "clearFilters": "Clear filters",
       "statuses": {
         "payment_processed": "Processed",
         "parse_failed": "Failed",
@@ -1341,7 +1351,10 @@
     "flashcardCount": "Flashcard count",
     "bloomLevel": "Bloom level",
     "estimatedHours": "Duration (h)",
-    "moduleNumber": "Module number"
+    "moduleNumber": "Module number",
+    "untitledCourse": "Untitled course",
+    "unlinkedModules": "Unlinked modules",
+    "noModules": "No modules found. Create a course first."
   },
   "AuthGuard": {
     "loading": "Loading..."

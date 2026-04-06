@@ -1,5 +1,7 @@
 """User profile management endpoints."""
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from structlog import get_logger
 
@@ -20,6 +22,31 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/users", tags=["Users"])
 
 
+def _to_uuid(raw_id: str | UUID) -> UUID:
+    """Convert a string or UUID to UUID."""
+    return UUID(raw_id) if isinstance(raw_id, str) else raw_id
+
+
+def _build_profile_response(user: User) -> UserProfileResponse:
+    """Build UserProfileResponse from a User model instance."""
+    return UserProfileResponse(
+        id=str(user.id),
+        email=user.email,
+        name=user.name,
+        preferred_language=user.preferred_language,
+        country=user.country,
+        professional_role=user.professional_role,
+        current_level=user.current_level,
+        streak_days=user.streak_days,
+        avatar_url=user.avatar_url,
+        last_active=user.last_active.isoformat(),
+        created_at=user.created_at.isoformat(),
+        role=user.role,
+        phone_number=user.phone_number,
+        analytics_opt_out=user.analytics_opt_out,
+    )
+
+
 @router.get("/me", response_model=UserProfileResponse)
 async def get_current_user_profile(
     current_user=Depends(get_current_user),
@@ -32,32 +59,13 @@ async def get_current_user_profile(
     """
     try:
         user_repo = UserRepository(db)
-
-        from uuid import UUID
-
-        user_id = UUID(current_user.id) if isinstance(current_user.id, str) else current_user.id
-
+        user_id = _to_uuid(current_user.id)
         user = await user_repo.get_by_id(user_id)
 
         if not user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-        return UserProfileResponse(
-            id=str(user.id),
-            email=user.email,
-            name=user.name,
-            preferred_language=user.preferred_language,
-            country=user.country,
-            professional_role=user.professional_role,
-            current_level=user.current_level,
-            streak_days=user.streak_days,
-            avatar_url=user.avatar_url,
-            last_active=user.last_active.isoformat(),
-            created_at=user.created_at.isoformat(),
-            role=user.role,
-            phone_number=user.phone_number,
-            analytics_opt_out=user.analytics_opt_out,
-        )
+        return _build_profile_response(user)
     except HTTPException:
         raise
     except Exception as e:
@@ -106,30 +114,18 @@ async def update_user_profile(
         if request.analytics_opt_out is not None:
             updates["analytics_opt_out"] = request.analytics_opt_out
 
-        await auth_service.update_user_profile(current_user.id, updates)
-        updated_user = await user_repo.get_by_id(current_user.id)
+        user_id = _to_uuid(current_user.id)
+        await auth_service.update_user_profile(user_id, updates)
+        updated_user = await user_repo.get_by_id(user_id)
+
+        if not updated_user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
         logger.info("User profile updated", user_id=str(current_user.id))
 
-        profile_response = UserProfileResponse(
-            id=str(updated_user.id),
-            email=updated_user.email,
-            name=updated_user.name,
-            preferred_language=updated_user.preferred_language,
-            country=updated_user.country,
-            professional_role=updated_user.professional_role,
-            current_level=updated_user.current_level,
-            streak_days=updated_user.streak_days,
-            avatar_url=updated_user.avatar_url,
-            last_active=updated_user.last_active.isoformat(),
-            created_at=updated_user.created_at.isoformat(),
-            role=updated_user.role,
-            phone_number=updated_user.phone_number,
-            analytics_opt_out=updated_user.analytics_opt_out,
-        )
-
         return ProfileUpdateResponse(
-            profile=profile_response, content_recontextualization_required=country_changed
+            profile=_build_profile_response(updated_user),
+            content_recontextualization_required=country_changed,
         )
 
     except Exception as e:
@@ -165,6 +161,7 @@ async def complete_onboarding(
     try:
         user_repo = UserRepository(db)
         auth_service = AuthService(user_repo)
+        user_id = _to_uuid(current_user.id)
 
         updates = {
             "preferred_language": request.preferred_language,
@@ -173,8 +170,11 @@ async def complete_onboarding(
             "current_level": request.current_level,
         }
 
-        await auth_service.update_user_profile(current_user.id, updates)
-        updated_user = await user_repo.get_by_id(current_user.id)
+        await auth_service.update_user_profile(user_id, updates)
+        updated_user = await user_repo.get_by_id(user_id)
+
+        if not updated_user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
         logger.info(
             "User onboarding completed",
@@ -184,20 +184,7 @@ async def complete_onboarding(
             level=request.current_level,
         )
 
-        return UserProfileResponse(
-            id=str(updated_user.id),
-            email=updated_user.email,
-            name=updated_user.name,
-            preferred_language=updated_user.preferred_language,
-            country=updated_user.country,
-            professional_role=updated_user.professional_role,
-            current_level=updated_user.current_level,
-            streak_days=updated_user.streak_days,
-            avatar_url=updated_user.avatar_url,
-            last_active=updated_user.last_active.isoformat(),
-            created_at=updated_user.created_at.isoformat(),
-            role=updated_user.role,
-        )
+        return _build_profile_response(updated_user)
 
     except Exception as e:
         logger.error("Onboarding completion failed", user_id=str(current_user.id), error=str(e))
@@ -259,24 +246,15 @@ async def upload_avatar(
         avatar_url = f"data:{file.content_type};base64,{encoded_content}"
 
         # Update user profile with avatar URL
-        await auth_service.update_user_profile(current_user.id, {"avatar_url": avatar_url})
-        updated_user = await user_repo.get_by_id(current_user.id)
+        user_id = _to_uuid(current_user.id)
+        await auth_service.update_user_profile(user_id, {"avatar_url": avatar_url})
+        updated_user = await user_repo.get_by_id(user_id)
+
+        if not updated_user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
         logger.info("Avatar uploaded successfully", user_id=str(current_user.id))
-        return UserProfileResponse(
-            id=str(updated_user.id),
-            email=updated_user.email,
-            name=updated_user.name,
-            preferred_language=updated_user.preferred_language,
-            country=updated_user.country,
-            professional_role=updated_user.professional_role,
-            current_level=updated_user.current_level,
-            streak_days=updated_user.streak_days,
-            avatar_url=updated_user.avatar_url,
-            last_active=updated_user.last_active.isoformat(),
-            created_at=updated_user.created_at.isoformat(),
-            role=updated_user.role,
-        )
+        return _build_profile_response(updated_user)
 
     except Exception as e:
         logger.error("Avatar upload failed", user_id=str(current_user.id), error=str(e))
