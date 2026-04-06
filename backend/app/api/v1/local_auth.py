@@ -102,6 +102,37 @@ class LogoutRequest(BaseModel):
     refresh_token: str
 
 
+class RegisterPasswordRequest(BaseModel):
+    """Password registration request."""
+
+    identifier: str = Field(..., min_length=3, description="Email or phone number")
+    password: str = Field(..., min_length=6, max_length=128)
+    name: str = Field(..., min_length=2, max_length=100)
+    preferred_language: str = Field(default="fr", pattern="^(fr|en)$")
+    country: str | None = None
+    professional_role: str | None = None
+
+
+class LoginPasswordRequest(BaseModel):
+    """Password login request."""
+
+    identifier: str = Field(..., min_length=3)
+    password: str = Field(..., min_length=1)
+
+
+class RequestPasswordResetRequest(BaseModel):
+    """Request password reset."""
+
+    identifier: str = Field(..., min_length=3)
+
+
+class ResetPasswordRequest(BaseModel):
+    """Reset password with token."""
+
+    token: str
+    new_password: str = Field(..., min_length=6, max_length=128)
+
+
 class RegisterEmailOTPRequest(BaseModel):
     """Email OTP registration request."""
 
@@ -426,6 +457,157 @@ async def logout(
         # Don't raise error for logout, just clear cookie
         response.delete_cookie(key="refresh_token", httponly=True, secure=True, samesite="strict")
         return {"message": "Logged out"}
+
+
+# =============================================================================
+# PASSWORD AUTH ENDPOINTS
+# =============================================================================
+
+
+@router.post("/register-password", response_model=TokenResponse)
+async def register_with_password(
+    request: RegisterPasswordRequest, request_obj: Request, db=Depends(get_db_session)
+) -> TokenResponse:
+    """Register a new user with email or phone + password.
+
+    Returns:
+        Access token and refresh token
+
+    Raises:
+        400: User already exists or invalid data
+        500: Registration failed
+    """
+    try:
+        ip_address = getattr(request_obj.client, "host", None) if request_obj.client else None
+
+        auth_service = LocalAuthService(db)
+        result = await auth_service.register_user_with_password(
+            identifier=request.identifier,
+            password=request.password,
+            name=request.name,
+            preferred_language=request.preferred_language,
+            country=request.country,
+            professional_role=request.professional_role,
+            ip_address=ip_address,
+        )
+
+        logger.info("Password registration successful", identifier=request.identifier)
+        return TokenResponse(**result)
+
+    except AuthenticationError as e:
+        logger.warning("Password registration failed", identifier=request.identifier, error=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error("Password registration error", identifier=request.identifier, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Registration failed"
+        )
+
+
+@router.post("/login-password", response_model=TokenResponse)
+async def login_with_password(
+    request: LoginPasswordRequest,
+    response: Response,
+    request_obj: Request,
+    db=Depends(get_db_session),
+) -> TokenResponse:
+    """Login with email or phone + password.
+
+    Returns:
+        Access token and refresh token
+
+    Raises:
+        401: Invalid credentials
+        500: Login failed
+    """
+    try:
+        ip_address = getattr(request_obj.client, "host", None) if request_obj.client else None
+
+        auth_service = LocalAuthService(db)
+        result = await auth_service.login_with_password(
+            identifier=request.identifier,
+            password=request.password,
+            ip_address=ip_address,
+        )
+
+        response.set_cookie(
+            key="refresh_token",
+            value=result["refresh_token"],
+            httponly=True,
+            secure=True,
+            samesite="strict",
+            max_age=30 * 24 * 60 * 60,
+        )
+
+        logger.info("Password login successful", identifier=request.identifier)
+        return TokenResponse(**result)
+
+    except AuthenticationError as e:
+        logger.warning("Password login failed", identifier=request.identifier, error=str(e))
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+    except Exception as e:
+        logger.error("Password login error", identifier=request.identifier, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Login failed"
+        )
+
+
+@router.post("/request-password-reset")
+async def request_password_reset(
+    request: RequestPasswordResetRequest, request_obj: Request, db=Depends(get_db_session)
+) -> dict[str, str]:
+    """Request a password reset link.
+
+    Always returns 200 to avoid user enumeration.
+
+    Returns:
+        Confirmation message
+    """
+    try:
+        ip_address = getattr(request_obj.client, "host", None) if request_obj.client else None
+
+        auth_service = LocalAuthService(db)
+        await auth_service.request_password_reset(
+            identifier=request.identifier, ip_address=ip_address
+        )
+
+        logger.info("Password reset requested", identifier=request.identifier)
+    except Exception as e:
+        logger.error("Password reset request error", identifier=request.identifier, error=str(e))
+
+    return {"message": "If an account exists, a reset link has been sent."}
+
+
+@router.post("/reset-password")
+async def reset_password(
+    request: ResetPasswordRequest, db=Depends(get_db_session)
+) -> dict[str, str]:
+    """Complete a password reset using a reset token.
+
+    Returns:
+        Confirmation message
+
+    Raises:
+        400: Invalid or expired token
+        500: Reset failed
+    """
+    try:
+        auth_service = LocalAuthService(db)
+        await auth_service.complete_password_reset(
+            token=request.token, new_password=request.new_password
+        )
+
+        logger.info("Password reset completed")
+        return {"message": "Password reset successful."}
+
+    except AuthenticationError as e:
+        logger.warning("Password reset failed", error=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error("Password reset error", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Password reset failed"
+        )
 
 
 # =============================================================================
