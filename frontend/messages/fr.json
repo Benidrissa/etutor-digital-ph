@@ -825,6 +825,11 @@
       "other": "Autre"
     }
   },
+  "Share": {
+    "share": "Partager",
+    "copyLink": "Copier le lien",
+    "copied": "Lien copié !"
+  },
   "CourseDetail": {
     "syllabus": "Programme",
     "units": "unités",

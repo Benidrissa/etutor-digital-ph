@@ -825,6 +825,11 @@
       "other": "Other"
     }
   },
+  "Share": {
+    "share": "Share",
+    "copyLink": "Copy link",
+    "copied": "Copied!"
+  },
   "CourseDetail": {
     "syllabus": "Syllabus",
     "units": "units",
