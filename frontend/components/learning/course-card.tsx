@@ -51,7 +51,7 @@ export function CourseCard({ course }: CourseCardProps) {
   };
 
   const handleViewDetail = () => {
-    router.push(`/courses/${course.id}`);
+    router.push(`/courses/${course.slug || course.id}`);
   };
 
   return (
@@ -84,7 +84,7 @@ export function CourseCard({ course }: CourseCardProps) {
               <CheckCircle className="h-5 w-5 text-teal-600 mt-0.5" aria-hidden="true" />
             )}
             <ShareButton
-              url={`/${locale}/courses/${course.id}`}
+              url={`/${locale}/courses/${course.slug || course.id}`}
               title={title}
               description={description || undefined}
             />

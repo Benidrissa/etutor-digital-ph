@@ -851,7 +851,8 @@
     "syllabus": "Syllabus",
     "units": "units",
     "backToCatalog": "Back to catalog",
-    "notFound": "Course not found."
+    "notFound": "Course not found.",
+    "serverError": "Unable to load this course. Please try again."
   },
   "Privacy": {
     "title": "Privacy & Analytics",
@@ -1341,7 +1342,10 @@
     "flashcardCount": "Flashcard count",
     "bloomLevel": "Bloom level",
     "estimatedHours": "Duration (h)",
-    "moduleNumber": "Module number"
+    "moduleNumber": "Module number",
+    "untitledCourse": "Untitled course",
+    "unlinkedModules": "Unlinked modules",
+    "noModules": "No modules found. Create a course first."
   },
   "AuthGuard": {
     "loading": "Loading..."
