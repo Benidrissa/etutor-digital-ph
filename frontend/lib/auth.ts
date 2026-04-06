@@ -59,6 +59,20 @@ export interface RegisterEmailOTPRequest {
   professional_role?: string;
 }
 
+export interface RegisterPasswordRequest {
+  identifier: string;
+  password: string;
+  name: string;
+  preferred_language: string;
+  country?: string;
+  professional_role?: string;
+}
+
+export interface LoginPasswordRequest {
+  identifier: string;
+  password: string;
+}
+
 export interface RegisterEmailOTPResponse {
   user_id: string;
   email: string;
@@ -469,6 +483,52 @@ class AuthClient {
 
     this.setTokens(response);
     return response;
+  }
+
+  /**
+   * Register a new user with email/phone + password
+   */
+  async registerPassword(request: RegisterPasswordRequest): Promise<AuthResponse> {
+    const response = await this.apiCall<AuthResponse>('/register-password', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+
+    this.setTokens(response);
+    return response;
+  }
+
+  /**
+   * Login with email/phone + password
+   */
+  async loginPassword(request: LoginPasswordRequest): Promise<AuthResponse> {
+    const response = await this.apiCall<AuthResponse>('/login-password', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+
+    this.setTokens(response);
+    return response;
+  }
+
+  /**
+   * Request a password reset link
+   */
+  async requestPasswordReset(identifier: string): Promise<{ message: string }> {
+    return this.apiCall<{ message: string }>('/request-password-reset', {
+      method: 'POST',
+      body: JSON.stringify({ identifier }),
+    });
+  }
+
+  /**
+   * Reset password using token from reset link
+   */
+  async resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
+    return this.apiCall<{ message: string }>('/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, new_password: newPassword }),
+    });
   }
 }
 
