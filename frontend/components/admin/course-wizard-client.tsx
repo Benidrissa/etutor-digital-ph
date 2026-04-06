@@ -209,9 +209,8 @@ export function CourseWizardClient({
   }, [courseId, step]);
 
   useEffect(() => {
-    if (resumeCourseId && (resumeStep === "index" || resumeStep === "publish")) {
-      setIsIndexing(true);
-    }
+    // Only resume indexing state if there is an actual task to poll
+    // Otherwise the "Start indexation" button gets hidden with no way to trigger it
   }, [resumeCourseId, resumeStep]);
 
   const getAuthHeaders = useCallback(async (): Promise<Record<string, string>> => {
