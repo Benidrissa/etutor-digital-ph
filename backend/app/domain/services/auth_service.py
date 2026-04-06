@@ -131,6 +131,8 @@ class AuthService:
             "country",
             "professional_role",
             "current_level",
+            "analytics_opt_out",
+            "avatar_url",
         }
         invalid_fields = set(updates.keys()) - allowed_fields
         if invalid_fields:
