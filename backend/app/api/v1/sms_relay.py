@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 from datetime import timedelta
 
@@ -86,6 +87,22 @@ class DeviceStatusResponse(BaseModel):
     last_heartbeat_at: str
     app_version: str | None
     is_stale: bool
+
+
+class SmsRecordResponse(BaseModel):
+    id: str
+    sms_id: str
+    device_id: str
+    sender: str
+    body: str
+    sms_received_at: str
+    processing_status: str
+    parsed_amount: int | None
+    parsed_phone: str | None
+    parsed_reference: str | None
+    parsed_provider: str | None
+    error_message: str | None
+    created_at: str
 
 
 class RelayStatusResponse(BaseModel):
@@ -197,3 +214,46 @@ async def get_relay_status(
         recent_sms_count=recent_count,
         failed_parse_count=failed_count,
     )
+
+
+@router.get(
+    "/admin/relay/sms",
+    response_model=list[SmsRecordResponse],
+    status_code=status.HTTP_200_OK,
+)
+async def get_relay_sms(
+    status_filter: str | None = None,
+    limit: int = 50,
+    current_user=Depends(require_role(UserRole.admin)),
+    db=Depends(get_db_session),
+) -> list[SmsRecordResponse]:
+    service = SmsRelayService()
+    filter_val = None
+    if status_filter:
+        with contextlib.suppress(ValueError):
+            filter_val = SmsProcessingStatus(status_filter)
+
+    records = await service.get_recent_sms(
+        limit=min(limit, 200),
+        session=db,
+        status_filter=filter_val,
+    )
+
+    return [
+        SmsRecordResponse(
+            id=str(r.id),
+            sms_id=r.sms_id,
+            device_id=r.device_id,
+            sender=r.sender,
+            body=r.body,
+            sms_received_at=r.sms_received_at.isoformat(),
+            processing_status=r.processing_status,
+            parsed_amount=r.parsed_amount,
+            parsed_phone=r.parsed_phone,
+            parsed_reference=r.parsed_reference,
+            parsed_provider=r.parsed_provider,
+            error_message=r.error_message,
+            created_at=r.created_at.isoformat(),
+        )
+        for r in records
+    ]

@@ -18,6 +18,7 @@ export function AdminNav() {
     { href: `/${locale}/admin/settings`, label: t("settings.title") },
     { href: `/${locale}/admin/analytics`, label: t("analytics.title") },
     { href: `/${locale}/admin/audit-logs`, label: t("auditLog.title") },
+    { href: `/${locale}/admin/payments`, label: t("payments.title") },
   ];
 
   return (
