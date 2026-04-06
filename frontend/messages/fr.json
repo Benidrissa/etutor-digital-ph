@@ -1163,9 +1163,13 @@
         "error": "Impossible de publier le cours. Vérifiez que l'indexation est terminée.",
         "summary": {
           "title": "Résumé du cours",
+          "titleFr": "Titre (FR)",
+          "titleEn": "Titre (EN)",
           "modules": "Modules",
           "chunks": "Fragments RAG",
           "images": "Images indexées",
+          "resources": "Ressources",
+          "resourcesCount": "{count, plural, one {# PDF} other {# PDFs}}",
           "status": "Statut"
         }
       }
