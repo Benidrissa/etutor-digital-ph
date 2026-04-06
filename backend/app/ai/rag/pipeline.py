@@ -195,7 +195,9 @@ class RAGPipeline:
         for idx, img in enumerate(images):
             figure_label = img.figure_number or str(idx)
             safe_label = figure_label.replace(" ", "_").replace(".", "_")
-            key = f"source-images/{source}/{img.page_number}_{safe_label}.webp"
+            readable_name = pdf_path.stem.replace("_", " ")
+            prefix = rag_collection_id or source
+            key = f"source-images/{prefix}/{readable_name}/{img.page_number}_{safe_label}.webp"
 
             try:
                 storage_url = await storage.upload_bytes(
