@@ -228,6 +228,9 @@ class PreAssessmentGenerationService:
                 f"Claude returned non-JSON text (JSON parsing failed). Preview: {preview!r}"
             )
 
+        if not raw_response.get("__complete"):
+            logger.warning("Pre-assessment response missing __complete sentinel")
+
         questions_raw = raw_response.get("questions")
         if not isinstance(questions_raw, list) or len(questions_raw) == 0:
             raise ValueError("Pre-assessment response missing 'questions' list")

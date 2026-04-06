@@ -91,8 +91,10 @@ FORMAT DE RÉPONSE JSON :
       "sources_cited": ["Référence source"]
     }}
   ],
-  "sources_cited": ["Liste de toutes les sources utilisées"]
-}}"""
+  "sources_cited": ["Liste de toutes les sources utilisées"],
+  "__complete": true
+}}
+IMPORTANT: "__complete": true DOIT être le dernier champ de votre réponse JSON."""
 
     else:
         return f"""You are an expert in pedagogical assessment specializing in West African public health.
@@ -145,8 +147,10 @@ JSON RESPONSE FORMAT:
       "sources_cited": ["Source reference"]
     }}
   ],
-  "sources_cited": ["List of all sources used"]
-}}"""
+  "sources_cited": ["List of all sources used"],
+  "__complete": true
+}}
+IMPORTANT: "__complete": true MUST be the last field in your JSON response."""
 
 
 def get_preassessment_user_message(
