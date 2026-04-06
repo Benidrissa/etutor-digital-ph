@@ -825,6 +825,12 @@
       "other": "Autre"
     }
   },
+  "CourseDetail": {
+    "syllabus": "Programme",
+    "units": "unités",
+    "backToCatalog": "Retour au catalogue",
+    "notFound": "Cours non trouvé."
+  },
   "Privacy": {
     "title": "Confidentialité et analytique",
     "description": "Gérez la collecte de vos données d'utilisation",

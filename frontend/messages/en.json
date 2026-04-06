@@ -825,6 +825,12 @@
       "other": "Other"
     }
   },
+  "CourseDetail": {
+    "syllabus": "Syllabus",
+    "units": "units",
+    "backToCatalog": "Back to catalog",
+    "notFound": "Course not found."
+  },
   "Privacy": {
     "title": "Privacy & Analytics",
     "description": "Manage how your usage data is collected",
