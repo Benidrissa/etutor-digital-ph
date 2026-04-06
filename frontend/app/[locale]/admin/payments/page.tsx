@@ -60,6 +60,19 @@ const FILTERS = [
   { value: "pending", key: "pending" },
 ] as const;
 
+function signalBars(signal: number | null): string {
+  if (signal == null) return "—";
+  const clamped = Math.max(0, Math.min(signal, 4));
+  return "▪".repeat(clamped) + "▫".repeat(4 - clamped);
+}
+
+function statusLabel(
+  statuses: Record<string, string> | null,
+  key: string
+): string {
+  return statuses?.[key] ?? key;
+}
+
 export default function PaymentsPage() {
   const t = useTranslations("Admin.payments");
   const locale = useLocale();
@@ -67,28 +80,39 @@ export default function PaymentsPage() {
   const [relayStatus, setRelayStatus] = useState<RelayStatus | null>(null);
   const [smsRecords, setSmsRecords] = useState<SmsRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [statusFilter, setStatusFilter] = useState("");
 
-  const fetchData = useCallback(
-    async (filter: string) => {
-      setLoading(true);
-      try {
-        const qs = filter ? `?status_filter=${filter}` : "";
-        const [status, sms] = await Promise.all([
-          apiFetch<RelayStatus>("/api/v1/admin/relay/status"),
-          apiFetch<SmsRecord[]>(`/api/v1/admin/relay/sms${qs}`),
-        ]);
-        setRelayStatus(status);
-        setSmsRecords(sms);
-      } catch {
-        setRelayStatus(null);
-        setSmsRecords([]);
-      } finally {
-        setLoading(false);
-      }
-    },
-    []
-  );
+  // Pre-fetch statuses map once to avoid t.raw() in render loop
+  let statusesMap: Record<string, string> | null = null;
+  try {
+    const raw = t.raw("statuses");
+    if (raw && typeof raw === "object") {
+      statusesMap = raw as Record<string, string>;
+    }
+  } catch {
+    statusesMap = null;
+  }
+
+  const fetchData = useCallback(async (filter: string) => {
+    setLoading(true);
+    setError(false);
+    try {
+      const qs = filter ? `?status_filter=${filter}` : "";
+      const [status, sms] = await Promise.all([
+        apiFetch<RelayStatus>("/api/v1/admin/relay/status"),
+        apiFetch<SmsRecord[]>(`/api/v1/admin/relay/sms${qs}`),
+      ]);
+      setRelayStatus(status);
+      setSmsRecords(sms);
+    } catch {
+      setRelayStatus(null);
+      setSmsRecords([]);
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchData(statusFilter);
@@ -101,6 +125,15 @@ export default function PaymentsPage() {
         <div className="flex min-h-[40vh] items-center justify-center">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
         </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="container mx-auto max-w-5xl px-4 py-6">
+        <h1 className="text-2xl font-bold mb-1">{t("title")}</h1>
+        <p className="py-8 text-center text-destructive">{t("error")}</p>
       </div>
     );
   }
@@ -168,11 +201,7 @@ export default function PaymentsPage() {
                         {d.battery != null ? `${d.battery}%` : "—"}
                         {d.charging && " ⚡"}
                       </td>
-                      <td className="py-2 pr-4">
-                        {d.signal != null
-                          ? "▪".repeat(d.signal) + "▫".repeat(4 - d.signal)
-                          : "—"}
-                      </td>
+                      <td className="py-2 pr-4">{signalBars(d.signal)}</td>
                       <td className="py-2 pr-4 whitespace-nowrap text-muted-foreground">
                         {new Date(d.last_heartbeat_at).toLocaleDateString(
                           locale,
@@ -241,51 +270,45 @@ export default function PaymentsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {smsRecords.map((r) => {
-                    const statusLabel =
-                      (
-                        t.raw("statuses") as Record<string, string> | undefined
-                      )?.[r.processing_status] ?? r.processing_status;
-                    return (
-                      <tr
-                        key={r.id}
-                        className="border-b last:border-0 align-top"
-                      >
-                        <td className="py-2 pr-4 whitespace-nowrap text-muted-foreground">
-                          {new Date(r.sms_received_at).toLocaleDateString(
-                            locale,
-                            {
-                              day: "2-digit",
-                              month: "2-digit",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            }
-                          )}
-                        </td>
-                        <td className="py-2 pr-4">{r.sender}</td>
-                        <td className="py-2 pr-4 font-medium">
-                          {r.parsed_amount != null
-                            ? `${r.parsed_amount.toLocaleString()} FCFA`
-                            : "—"}
-                        </td>
-                        <td className="py-2 pr-4 font-mono text-xs">
-                          {r.parsed_phone ?? "—"}
-                        </td>
-                        <td className="py-2 pr-4 font-mono text-xs truncate max-w-[120px]">
-                          {r.parsed_reference ?? "—"}
-                        </td>
-                        <td className="py-2">
-                          <Badge
-                            variant={
-                              STATUS_VARIANT[r.processing_status] ?? "outline"
-                            }
-                          >
-                            {statusLabel}
-                          </Badge>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {smsRecords.map((r) => (
+                    <tr
+                      key={r.id}
+                      className="border-b last:border-0 align-top"
+                    >
+                      <td className="py-2 pr-4 whitespace-nowrap text-muted-foreground">
+                        {new Date(r.sms_received_at).toLocaleDateString(
+                          locale,
+                          {
+                            day: "2-digit",
+                            month: "2-digit",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          }
+                        )}
+                      </td>
+                      <td className="py-2 pr-4">{r.sender}</td>
+                      <td className="py-2 pr-4 font-medium">
+                        {r.parsed_amount != null
+                          ? `${r.parsed_amount.toLocaleString()} FCFA`
+                          : "—"}
+                      </td>
+                      <td className="py-2 pr-4 font-mono text-xs">
+                        {r.parsed_phone ?? "—"}
+                      </td>
+                      <td className="py-2 pr-4 font-mono text-xs truncate max-w-[120px]">
+                        {r.parsed_reference ?? "—"}
+                      </td>
+                      <td className="py-2">
+                        <Badge
+                          variant={
+                            STATUS_VARIANT[r.processing_status] ?? "outline"
+                          }
+                        >
+                          {statusLabel(statusesMap, r.processing_status)}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
