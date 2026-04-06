@@ -1110,7 +1110,13 @@
         "error": "Failed to generate syllabus.",
         "noModules": "No modules generated. Please try again.",
         "taskPending": "Waiting to start...",
-        "taskRunning": "Generating modules..."
+        "taskRunning": "Generating modules...",
+        "stepExtractingText": "Extracting text from PDFs...",
+        "stepCallingClaude": "AI is analyzing content...",
+        "stepParsingResponse": "Processing AI response...",
+        "stepSavingModules": "Saving course structure...",
+        "elapsed": "Elapsed: {time}",
+        "timeoutWarning": "This is taking longer than expected. You can wait or try again."
       },
       "index": {
         "title": "RAG Indexation",
