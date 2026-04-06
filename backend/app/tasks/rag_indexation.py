@@ -172,7 +172,6 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                 },
             )
 
-            book_name = pdf_path.stem.replace("_", " ")
             chunks = await pipeline.process_pdf_document(
                 pdf_path=str(pdf_path),
                 source=rag_collection_id,
