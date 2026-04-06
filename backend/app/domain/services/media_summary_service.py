@@ -8,6 +8,7 @@ from datetime import datetime
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.ai.claude_service import ClaudeService
 from app.ai.rag.embeddings import EmbeddingService
@@ -133,7 +134,7 @@ class MediaSummaryService:
                 query=query,
                 user_level=module.level,
                 user_language=language,
-                books_sources=module.books_sources or {},
+                books_sources=self._resolve_books_sources(module),
                 session=session,
             )
 
@@ -224,8 +225,20 @@ class MediaSummaryService:
         return result.scalar_one_or_none()
 
     async def _fetch_module(self, module_id: uuid.UUID, session: AsyncSession) -> Module | None:
-        result = await session.execute(select(Module).where(Module.id == module_id))
+        result = await session.execute(
+            select(Module).where(Module.id == module_id).options(selectinload(Module.course))
+        )
         return result.scalar_one_or_none()
+
+    @staticmethod
+    def _resolve_books_sources(module: Module) -> dict | None:
+        """Prefer course rag_collection_id over module.books_sources."""
+        course = module.course
+        if course and course.rag_collection_id:
+            return {course.rag_collection_id: []}
+        if module.books_sources:
+            return module.books_sources
+        return None
 
     async def _fetch_unit_titles(self, module_id: uuid.UUID, session: AsyncSession) -> list[str]:
         result = await session.execute(

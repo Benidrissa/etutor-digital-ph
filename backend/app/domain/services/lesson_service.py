@@ -426,16 +426,17 @@ class LessonGenerationService:
     def _resolve_books_sources(module: Module) -> dict | None:
         """Return books_sources for the semantic retriever.
 
-        For admin-created courses, books_sources is empty but the course
-        has a rag_collection_id. Synthesise a dict so the retriever filters
-        by the correct source. Legacy courses return books_sources as-is.
+        Admin-created courses index chunks with source=rag_collection_id,
+        so always prefer that over books_sources (which may contain PDF
+        filenames that don't match the stored chunk source).
+        Legacy courses (no rag_collection_id) use books_sources as-is.
         """
-        if module.books_sources:
-            return module.books_sources
         course = module.course
         if course and course.rag_collection_id:
             return {course.rag_collection_id: []}
-        return module.books_sources
+        if module.books_sources:
+            return module.books_sources
+        return None
 
     async def _build_lesson_query(
         self, module: Module, unit_id: str, language: str, session: AsyncSession
@@ -991,12 +992,12 @@ class CaseStudyGenerationService:
     @staticmethod
     def _resolve_books_sources(module: Module) -> dict | None:
         """Resolve books_sources — same logic as LessonGenerationService."""
-        if module.books_sources:
-            return module.books_sources
         course = module.course
         if course and course.rag_collection_id:
             return {course.rag_collection_id: []}
-        return module.books_sources
+        if module.books_sources:
+            return module.books_sources
+        return None
 
     async def _build_case_study_query(
         self, module: Module, unit_id: str, language: str, session: AsyncSession

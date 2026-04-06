@@ -236,7 +236,7 @@ class QuizService:
                 query=search_query,
                 user_level=level,
                 user_language=language,
-                books_sources=module.books_sources if module else None,
+                books_sources=self._resolve_books_sources(module) if module else None,
                 top_k=SettingsCache.instance().get("ai-rag-default-top-k", 8),
                 session=session,
             )
@@ -283,6 +283,16 @@ class QuizService:
         except Exception as e:
             logger.error("Quiz content generation failed", error=str(e))
             raise
+
+    @staticmethod
+    def _resolve_books_sources(module: "Module") -> dict | None:
+        """Prefer course rag_collection_id over module.books_sources."""
+        course = module.course
+        if course and course.rag_collection_id:
+            return {course.rag_collection_id: []}
+        if module.books_sources:
+            return module.books_sources
+        return None
 
     def _build_quiz_search_query(
         self,
