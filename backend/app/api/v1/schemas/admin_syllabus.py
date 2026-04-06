@@ -52,6 +52,10 @@ class ModuleCardResponse(BaseModel):
     bloom_level: str | None = None
     unit_count: int = 0
     source_references: list[str] = Field(default_factory=list)
+    course_id: UUID | None = None
+    course_title_fr: str | None = None
+    course_title_en: str | None = None
+    course_slug: str | None = None
 
 
 class ModuleListResponse(BaseModel):

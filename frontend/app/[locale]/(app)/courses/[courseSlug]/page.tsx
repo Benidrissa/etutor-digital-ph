@@ -75,7 +75,7 @@ export default function CourseDetailPage() {
 
   const [course, setCourse] = useState<CourseDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [enrolling, setEnrolling] = useState(false);
   const [enrolled, setEnrolled] = useState(false);
   const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
@@ -87,8 +87,9 @@ export default function CourseDetailPage() {
         setEnrolled(data.enrolled);
         setLoading(false);
       })
-      .catch(() => {
-        setError(true);
+      .catch((err: Error) => {
+        const is404 = err.message?.includes("404") || err.message?.includes("not found");
+        setError(is404 ? "notFound" : "serverError");
         setLoading(false);
       });
   }, [courseSlug]);
@@ -129,7 +130,9 @@ export default function CourseDetailPage() {
   if (error || !course) {
     return (
       <div className="container mx-auto max-w-3xl px-4 py-12 text-center">
-        <p className="text-muted-foreground">{tDetail("notFound")}</p>
+        <p className="text-muted-foreground">
+          {error === "serverError" ? tDetail("serverError") : tDetail("notFound")}
+        </p>
         <Button variant="outline" className="mt-4" onClick={() => router.push("/courses")}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           {tDetail("backToCatalog")}
@@ -168,7 +171,7 @@ export default function CourseDetailPage() {
         <div className="flex items-start justify-between gap-2">
           <h1 className="text-2xl sm:text-3xl font-bold text-stone-900">{title}</h1>
           <ShareButton
-            url={`/${locale}/courses/${course.id}`}
+            url={`/${locale}/courses/${course.slug || course.id}`}
             title={title}
             description={description || undefined}
             variant="button"

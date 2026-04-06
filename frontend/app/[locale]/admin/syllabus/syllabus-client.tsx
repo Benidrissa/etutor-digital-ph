@@ -1,25 +1,26 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useTranslations } from 'next-intl';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTranslations, useLocale } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle, ChevronDown, ChevronRight, BookOpen } from 'lucide-react';
 import { AdminModuleCard, NewModuleCard, type AdminModuleCardData } from '@/components/admin/module-card';
 import { SyllabusEditor } from '@/components/admin/syllabus-editor';
 import { authClient, AuthError } from '@/lib/auth';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-const LEVEL_GROUPS: Record<number, { titleFr: string; titleEn: string }> = {
-  1: { titleFr: 'Niveau 1 — Fondements (60h)', titleEn: 'Level 1 — Foundations (60h)' },
-  2: { titleFr: 'Niveau 2 — Intermédiaire (90h)', titleEn: 'Level 2 — Intermediate (90h)' },
-  3: { titleFr: 'Niveau 3 — Avancé (100h)', titleEn: 'Level 3 — Advanced (100h)' },
-  4: { titleFr: 'Niveau 4 — Expert (70h)', titleEn: 'Level 4 — Expert (70h)' },
-};
+interface CourseGroup {
+  course_id: string | null;
+  course_title: string;
+  course_slug: string | null;
+  modules: AdminModuleCardData[];
+}
 
 export function SyllabusPageClient() {
   const t = useTranslations('AdminSyllabus');
+  const locale = useLocale() as 'fr' | 'en';
   const router = useRouter();
 
   const [modules, setModules] = useState<AdminModuleCardData[]>([]);
@@ -27,6 +28,7 @@ export function SyllabusPageClient() {
   const [error, setError] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingModule, setEditingModule] = useState<AdminModuleCardData | null>(null);
+  const [collapsedCourses, setCollapsedCourses] = useState<Set<string>>(new Set());
 
   const fetchModules = useCallback(async () => {
     setIsLoading(true);
@@ -67,6 +69,46 @@ export function SyllabusPageClient() {
   useEffect(() => {
     fetchModules();
   }, [fetchModules]);
+
+  const courseGroups: CourseGroup[] = useMemo(() => {
+    const grouped = new Map<string, CourseGroup>();
+
+    for (const mod of modules) {
+      const key = mod.course_id ?? '__unlinked__';
+      if (!grouped.has(key)) {
+        const title = mod.course_id
+          ? (locale === 'fr' ? mod.course_title_fr : mod.course_title_en) || mod.course_title_fr || t('untitledCourse')
+          : t('unlinkedModules');
+        grouped.set(key, {
+          course_id: mod.course_id ?? null,
+          course_title: title,
+          course_slug: mod.course_slug ?? null,
+          modules: [],
+        });
+      }
+      grouped.get(key)!.modules.push(mod);
+    }
+
+    // Sort: courses with modules first, unlinked last
+    const entries = Array.from(grouped.values());
+    return entries.sort((a, b) => {
+      if (!a.course_id) return 1;
+      if (!b.course_id) return -1;
+      return a.course_title.localeCompare(b.course_title);
+    });
+  }, [modules, locale, t]);
+
+  const toggleCourse = (key: string) => {
+    setCollapsedCourses((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
 
   const handleEdit = (module: AdminModuleCardData) => {
     setEditingModule(module);
@@ -109,33 +151,57 @@ export function SyllabusPageClient() {
     );
   }
 
-  const grouped: Record<number, AdminModuleCardData[]> = { 1: [], 2: [], 3: [], 4: [] };
-  for (const mod of modules) {
-    const lvl = mod.level as 1 | 2 | 3 | 4;
-    if (grouped[lvl]) grouped[lvl].push(mod);
-  }
-
   return (
     <>
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-8">
-        {([1, 2, 3, 4] as const).map((level) => (
-          <section key={level}>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold">
-                {t('level')} {level}
-                <span className="ml-2 text-sm font-normal text-muted-foreground">
-                  ({grouped[level].length} {t('modules')})
-                </span>
-              </h2>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {grouped[level].map((mod) => (
-                <AdminModuleCard key={mod.id} module={mod} onEdit={handleEdit} />
-              ))}
-              {level === 4 && <NewModuleCard onCreate={handleCreate} />}
-            </div>
-          </section>
-        ))}
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
+        {courseGroups.map((group) => {
+          const key = group.course_id ?? '__unlinked__';
+          const isCollapsed = collapsedCourses.has(key);
+          const totalHours = group.modules.reduce((sum, m) => sum + m.estimated_hours, 0);
+          const totalUnits = group.modules.reduce((sum, m) => sum + m.unit_count, 0);
+
+          return (
+            <section key={key} className="border rounded-lg bg-card">
+              <button
+                type="button"
+                onClick={() => toggleCourse(key)}
+                className="w-full flex items-center gap-3 p-4 hover:bg-muted/50 transition-colors text-left"
+              >
+                {isCollapsed ? (
+                  <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />
+                ) : (
+                  <ChevronDown className="h-5 w-5 text-muted-foreground shrink-0" />
+                )}
+                <BookOpen className="h-5 w-5 text-primary shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-base font-semibold truncate">
+                    {group.course_title}
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {group.modules.length} {t('modules')} &middot; {totalUnits} {t('units')} &middot; {totalHours}h
+                  </p>
+                </div>
+              </button>
+
+              {!isCollapsed && (
+                <div className="px-4 pb-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {group.modules.map((mod) => (
+                      <AdminModuleCard key={mod.id} module={mod} onEdit={handleEdit} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+          );
+        })}
+
+        {courseGroups.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <BookOpen className="h-12 w-12 text-muted-foreground/30 mb-3" />
+            <p className="text-sm text-muted-foreground">{t('noModules')}</p>
+          </div>
+        )}
 
         <div className="flex justify-center pt-4 pb-8">
           <Button onClick={handleCreate} size="lg" className="gap-2">

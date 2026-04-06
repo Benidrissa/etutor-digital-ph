@@ -223,17 +223,35 @@ async def my_enrollments(
     return [_course_to_list_item(c, enrolled=True) for c in courses]
 
 
-@router.get("/{course_id}", response_model=CourseDetailResponse)
+@router.get("/{course_id_or_slug}", response_model=CourseDetailResponse)
 async def get_course_detail(
-    course_id: uuid.UUID,
+    course_id_or_slug: str,
     current_user=Depends(get_optional_user),
     db=Depends(get_db_session),
 ) -> CourseDetailResponse:
-    """Get course detail with syllabus and modules. No auth required (public catalog)."""
-    result = await db.execute(select(Course).where(Course.id == course_id))
-    course = result.scalar_one_or_none()
+    """Get course detail with syllabus and modules. No auth required (public catalog).
+
+    Accepts either a UUID or a slug as the path parameter.
+    """
+    # Try UUID lookup first, fall back to slug
+    course: Course | None = None
+    try:
+        cid = uuid.UUID(course_id_or_slug)
+        result = await db.execute(select(Course).where(Course.id == cid))
+        course = result.scalar_one_or_none()
+    except ValueError:
+        pass
+
+    if not course:
+        result = await db.execute(
+            select(Course).where(Course.slug == course_id_or_slug)
+        )
+        course = result.scalar_one_or_none()
+
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
+
+    course_id = course.id
 
     # Fetch modules with units
     modules_result = await db.execute(

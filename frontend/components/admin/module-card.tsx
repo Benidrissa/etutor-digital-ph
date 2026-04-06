@@ -18,6 +18,10 @@ export interface AdminModuleCardData {
   bloom_level?: string | null;
   unit_count: number;
   source_references: string[];
+  course_id?: string | null;
+  course_title_fr?: string | null;
+  course_title_en?: string | null;
+  course_slug?: string | null;
 }
 
 interface AdminModuleCardProps {

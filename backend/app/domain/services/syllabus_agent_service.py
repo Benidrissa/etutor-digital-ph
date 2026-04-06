@@ -25,6 +25,7 @@ from sqlalchemy.orm import selectinload
 from app.ai.prompts.syllabus_agent import get_syllabus_agent_system_prompt, get_tool_definitions
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
+from app.domain.models.course import Course
 from app.domain.models.module import Module
 
 logger = structlog.get_logger()
@@ -423,17 +424,41 @@ class SyllabusAgentService:
         except Exception as e:
             logger.warning("Audit log write failed (non-fatal)", error=str(e))
 
-    async def get_modules_list(self, session: AsyncSession) -> list[dict]:
-        """Return module list for the admin syllabus view."""
-        result = await session.execute(
-            select(Module).options(selectinload(Module.units)).order_by(Module.module_number)
+    async def get_modules_list(
+        self,
+        session: AsyncSession,
+        user_id: str | None = None,
+    ) -> list[dict]:
+        """Return module list for the admin syllabus view.
+
+        Filters modules to only those belonging to courses created by
+        the given user_id. Unlinked modules (no course) are included.
+        """
+        stmt = (
+            select(Module)
+            .options(
+                selectinload(Module.units),
+                selectinload(Module.course),
+            )
+            .order_by(Module.module_number)
         )
-        modules = result.scalars().all()
+
+        if user_id:
+            stmt = stmt.outerjoin(
+                Course, Module.course_id == Course.id
+            ).where(
+                (Course.created_by == uuid.UUID(user_id))
+                | (Module.course_id.is_(None))
+            )
+
+        result = await session.execute(stmt)
+        modules = result.scalars().unique().all()
         out = []
         for m in modules:
             books = m.books_sources or {}
             sources = books.get("source_references", [])
             unit_count = len(m.units)
+            course = m.course
             out.append(
                 {
                     "id": str(m.id),
@@ -447,6 +472,10 @@ class SyllabusAgentService:
                     "bloom_level": m.bloom_level,
                     "unit_count": unit_count,
                     "source_references": sources,
+                    "course_id": str(course.id) if course else None,
+                    "course_title_fr": course.title_fr if course else None,
+                    "course_title_en": course.title_en if course else None,
+                    "course_slug": course.slug if course else None,
                 }
             )
         return out
