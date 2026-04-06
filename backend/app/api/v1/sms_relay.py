@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from structlog import get_logger
 
 from app.api.deps import get_db as get_db_session
-from app.api.deps_local_auth import get_current_user, require_role
+from app.api.deps_local_auth import require_role
 from app.domain.models.sms_relay import SmsProcessingStatus
 from app.domain.models.user import UserRole
 from app.domain.services.sms_relay_service import SmsRelayService
