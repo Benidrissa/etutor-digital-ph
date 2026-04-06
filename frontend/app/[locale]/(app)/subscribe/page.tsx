@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, getPublicSettings } from "@/lib/api";
 import {
   Phone,
   CheckCircle,
@@ -36,6 +36,7 @@ export default function SubscribePage() {
     text: string;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [orangeMoneyNumber, setOrangeMoneyNumber] = useState<string | null>(null);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -57,6 +58,13 @@ export default function SubscribePage() {
           setCurrentPhone(user.phone_number);
           setPhone(user.phone_number);
         }
+      })
+      .catch(() => {});
+    // Fetch Orange Money number from platform settings
+    getPublicSettings()
+      .then((settings) => {
+        const num = settings["payments-orange-money-number"];
+        if (typeof num === "string" && num) setOrangeMoneyNumber(num);
       })
       .catch(() => {});
   }, [fetchStatus]);
@@ -190,7 +198,7 @@ export default function SubscribePage() {
                 {t("orangeMoneyLabel")}
               </p>
               <p className="text-2xl font-bold text-orange-700 tracking-wider">
-                {t("orangeMoneyNumber")}
+                {orangeMoneyNumber ?? t("orangeMoneyNumber")}
               </p>
               <p className="text-sm font-medium text-orange-600 mt-1">
                 {t("amount")}
