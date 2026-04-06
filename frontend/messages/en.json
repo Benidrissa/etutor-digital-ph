@@ -1013,6 +1013,7 @@
     },
     "estimatedHours": "{hours} h estimated",
     "moduleCount": "{count, plural, one {# module} other {# modules}}",
+    "imageCount": "{count, plural, one {# image} other {# images}}",
     "generateStructure": "Generate structure",
     "generateError": "Generation failed. Please try again.",
     "publish": "Publish",

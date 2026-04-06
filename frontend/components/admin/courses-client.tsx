@@ -15,6 +15,7 @@ import {
   BookOpen,
   Database,
   ImageOff,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -54,6 +55,7 @@ export interface AdminCourse {
   module_count?: number;
   indexation_task_id?: string | null;
   rag_collection_id?: string | null;
+  image_count?: number;
   preassessment_enabled?: boolean;
   preassessment_mandatory?: boolean;
 }
@@ -536,6 +538,12 @@ function CourseRow({
             {course.module_count !== undefined && (
               <span className="text-xs text-muted-foreground">
                 {t('moduleCount', { count: course.module_count })}
+              </span>
+            )}
+            {course.image_count !== undefined && course.image_count > 0 && (
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <ImageIcon className="h-3 w-3" aria-hidden="true" />
+                {t('imageCount', { count: course.image_count })}
               </span>
             )}
           </div>
