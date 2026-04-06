@@ -546,6 +546,33 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "Credits charged per module offline download.",
         {"min": 0, "max": 100000},
     ),
+    # ── Payments ───────────────────────────────────────────
+    SettingDef(
+        "payments-orange-money-number",
+        "payments",
+        "+221 77 000 0000",
+        "string",
+        "Orange Money payment number",
+        "Phone number displayed to users for Orange Money transfers.",
+    ),
+    SettingDef(
+        "payments-subscription-price-xof",
+        "payments",
+        2000,
+        "integer",
+        "Subscription price (FCFA)",
+        "Monthly subscription price displayed on the subscribe page.",
+        {"min": 0, "max": 100000},
+    ),
+    SettingDef(
+        "payments-subscription-duration-days",
+        "payments",
+        28,
+        "integer",
+        "Subscription duration (days)",
+        "Days of access per payment.",
+        {"min": 1, "max": 365},
+    ),
     # ── AI Prompts ─────────────────────────────────────────
     SettingDef(
         "ai-prompt-lesson-system",

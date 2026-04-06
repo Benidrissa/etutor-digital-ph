@@ -23,6 +23,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   ai_prompts: "AI Prompt Templates",
   tutor: "AI Tutor",
   pagination: "Pagination",
+  payments: "Payments & Billing",
 };
 
 export function SettingsClient() {
