@@ -16,13 +16,6 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Create enum type
-    op.execute(
-        "CREATE TYPE smsprocessingstatus AS ENUM "
-        "('pending','parsed','payment_processed',"
-        "'parse_failed','duplicate','ignored')"
-    )
-
     # relay_devices table
     op.create_table(
         "relay_devices",
@@ -98,16 +91,7 @@ def upgrade() -> None:
         sa.Column("app_version", sa.String(20), nullable=True),
         sa.Column(
             "processing_status",
-            sa.Enum(
-                "pending",
-                "parsed",
-                "payment_processed",
-                "parse_failed",
-                "duplicate",
-                "ignored",
-                name="smsprocessingstatus",
-                create_type=False,
-            ),
+            sa.VARCHAR(50),
             nullable=False,
             server_default="pending",
         ),
@@ -156,4 +140,3 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_table("inbound_sms")
     op.drop_table("relay_devices")
-    op.execute("DROP TYPE IF EXISTS smsprocessingstatus")
