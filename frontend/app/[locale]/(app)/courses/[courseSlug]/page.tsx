@@ -17,6 +17,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { apiFetch, enrollInCourse } from "@/lib/api";
+import { ShareButton } from "@/components/shared/share-button";
 
 interface ModuleUnit {
   id: string;
@@ -164,7 +165,15 @@ export default function CourseDetailPage() {
 
       {/* Header */}
       <div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-stone-900">{title}</h1>
+        <div className="flex items-start justify-between gap-2">
+          <h1 className="text-2xl sm:text-3xl font-bold text-stone-900">{title}</h1>
+          <ShareButton
+            url={`/${locale}/courses/${course.id}`}
+            title={title}
+            description={description || undefined}
+            variant="button"
+          />
+        </div>
         {description && <p className="text-stone-600 mt-2">{description}</p>}
 
         {/* Taxonomy badges */}

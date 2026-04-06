@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, Clock, BookOpen, GraduationCap } from 'lucide-react';
 import { enrollInCourse, type CourseResponse } from '@/lib/api';
+import { ShareButton } from '@/components/shared/share-button';
 
 const LEVEL_COLORS: Record<string, string> = {
   beginner: 'bg-green-50 text-green-700 border-green-200',
@@ -78,9 +79,16 @@ export function CourseCard({ course }: CourseCardProps) {
           <CardTitle className="text-base leading-tight text-stone-900 line-clamp-2">
             {title}
           </CardTitle>
-          {isEnrolled && (
-            <CheckCircle className="h-5 w-5 text-teal-600 shrink-0 mt-0.5" aria-hidden="true" />
-          )}
+          <div className="flex items-center gap-1 shrink-0">
+            {isEnrolled && (
+              <CheckCircle className="h-5 w-5 text-teal-600 mt-0.5" aria-hidden="true" />
+            )}
+            <ShareButton
+              url={`/${locale}/courses/${course.id}`}
+              title={title}
+              description={description || undefined}
+            />
+          </div>
         </div>
 
         {/* Taxonomy badges — labels come from API, no i18n lookup */}
