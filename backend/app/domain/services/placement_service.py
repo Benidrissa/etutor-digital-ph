@@ -320,20 +320,20 @@ class PlacementService:
         time_adj = SettingsCache.instance().get(
             "placement-time-adjustments",
             {
-                "too_fast_threshold": 600,
-                "too_fast_penalty": -10,
-                "too_slow_threshold": 2400,
-                "too_slow_penalty": -5,
-                "optimal_min": 900,
-                "optimal_max": 1800,
+                "fast_threshold_sec": 600,
+                "fast_penalty": -10,
+                "slow_threshold_sec": 2400,
+                "slow_penalty": -5,
+                "optimal_range_sec": [900, 1800],
                 "optimal_bonus": 2,
             },
         )
-        if time_taken < time_adj["too_fast_threshold"]:
-            adjusted += time_adj["too_fast_penalty"]
-        elif time_taken > time_adj["too_slow_threshold"]:
-            adjusted += time_adj["too_slow_penalty"]
-        elif time_adj["optimal_min"] <= time_taken <= time_adj["optimal_max"]:
+        optimal_range = time_adj.get("optimal_range_sec", [900, 1800])
+        if time_taken < time_adj["fast_threshold_sec"]:
+            adjusted += time_adj["fast_penalty"]
+        elif time_taken > time_adj["slow_threshold_sec"]:
+            adjusted += time_adj["slow_penalty"]
+        elif optimal_range[0] <= time_taken <= optimal_range[1]:
             adjusted += time_adj["optimal_bonus"]
 
         return max(0.0, min(100.0, adjusted))
