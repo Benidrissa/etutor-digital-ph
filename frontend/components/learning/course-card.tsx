@@ -30,7 +30,8 @@ export function CourseCard({ course }: CourseCardProps) {
   const title = locale === 'fr' ? course.title_fr : course.title_en;
   const description = locale === 'fr' ? course.description_fr : course.description_en;
 
-  const handleEnroll = async () => {
+  const handleEnroll = async (e: React.MouseEvent) => {
+    e.stopPropagation();
     setEnrolling(true);
     setError(null);
     try {
@@ -43,12 +44,20 @@ export function CourseCard({ course }: CourseCardProps) {
     }
   };
 
-  const handleViewModules = () => {
+  const handleViewModules = (e: React.MouseEvent) => {
+    e.stopPropagation();
     router.push(`/modules?course_id=${course.id}`);
   };
 
+  const handleViewDetail = () => {
+    router.push(`/courses/${course.id}`);
+  };
+
   return (
-    <Card className="flex flex-col h-full border border-stone-200 hover:shadow-md transition-shadow duration-200">
+    <Card
+      className="flex flex-col h-full border border-stone-200 hover:shadow-md transition-shadow duration-200 cursor-pointer"
+      onClick={handleViewDetail}
+    >
       {course.cover_image_url && (
         <div className="relative h-40 overflow-hidden rounded-t-lg bg-teal-50">
           <img
