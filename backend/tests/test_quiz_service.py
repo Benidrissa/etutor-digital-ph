@@ -418,7 +418,10 @@ class TestGenerateQuizContentPassesBooksSources:
         mock_module.description_fr = None
         mock_module.description_en = None
         rag_collection_id = "a1b2c3d4-1234-5678-abcd-ef0123456789"
-        mock_module.books_sources = {rag_collection_id: []}
+        mock_module.books_sources = {"some-pdf-filename": []}
+        mock_course = MagicMock()
+        mock_course.rag_collection_id = rag_collection_id
+        mock_module.course = mock_course
 
         mock_result = MagicMock()
         mock_result.scalar_one_or_none = MagicMock(return_value=mock_module)
