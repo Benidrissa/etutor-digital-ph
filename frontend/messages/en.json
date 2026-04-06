@@ -1030,6 +1030,41 @@
         "level": "Levels",
         "audience": "Audiences"
       }
+    },
+    "payments": {
+      "title": "Payments",
+      "subtitle": "SMS relay devices and received payments",
+      "loading": "Loading...",
+      "error": "Failed to load data.",
+      "devices": "Relay Devices",
+      "noDevices": "No relay devices registered.",
+      "deviceId": "Device",
+      "battery": "Battery",
+      "signal": "Signal",
+      "lastSeen": "Last Seen",
+      "status": "Status",
+      "online": "Online",
+      "offline": "Offline",
+      "smsRecords": "Received SMS",
+      "noSms": "No SMS received yet.",
+      "date": "Date",
+      "sender": "Sender",
+      "amount": "Amount",
+      "phone": "Phone",
+      "reference": "Reference",
+      "processingStatus": "Status",
+      "allStatuses": "All",
+      "processed": "Processed",
+      "parseFailed": "Failed",
+      "pending": "Pending",
+      "statuses": {
+        "payment_processed": "Processed",
+        "parse_failed": "Failed",
+        "pending": "Pending",
+        "parsed": "Parsed",
+        "duplicate": "Duplicate",
+        "ignored": "Ignored"
+      }
     }
   },
   "Courses": {

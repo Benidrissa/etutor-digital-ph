@@ -1030,6 +1030,41 @@
         "level": "Niveaux",
         "audience": "Publics"
       }
+    },
+    "payments": {
+      "title": "Paiements",
+      "subtitle": "Appareils relais SMS et paiements reçus",
+      "loading": "Chargement...",
+      "error": "Erreur de chargement.",
+      "devices": "Appareils Relais",
+      "noDevices": "Aucun appareil relais enregistré.",
+      "deviceId": "Appareil",
+      "battery": "Batterie",
+      "signal": "Signal",
+      "lastSeen": "Vu",
+      "status": "État",
+      "online": "En ligne",
+      "offline": "Hors ligne",
+      "smsRecords": "SMS Reçus",
+      "noSms": "Aucun SMS reçu.",
+      "date": "Date",
+      "sender": "Expéditeur",
+      "amount": "Montant",
+      "phone": "Téléphone",
+      "reference": "Référence",
+      "processingStatus": "État",
+      "allStatuses": "Tous",
+      "processed": "Traité",
+      "parseFailed": "Échoué",
+      "pending": "En attente",
+      "statuses": {
+        "payment_processed": "Traité",
+        "parse_failed": "Échoué",
+        "pending": "En attente",
+        "parsed": "Analysé",
+        "duplicate": "Doublon",
+        "ignored": "Ignoré"
+      }
     }
   },
   "Courses": {
