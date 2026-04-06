@@ -479,6 +479,12 @@ async def test_tool_use_loop_executes_tool_and_gets_final_response(
             new_callable=AsyncMock,
             return_value=None,
         ),
+        patch.object(
+            tutor_service,
+            "_resolve_course",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
         patch("app.domain.services.tutor_service.TutorToolExecutor") as mock_executor_cls,
     ):
         mock_executor = AsyncMock()
@@ -544,6 +550,12 @@ async def test_max_tool_calls_enforced(
             new_callable=AsyncMock,
             return_value=None,
         ),
+        patch.object(
+            tutor_service,
+            "_resolve_course",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
         patch("app.domain.services.tutor_service.TutorToolExecutor") as mock_executor_cls,
     ):
         mock_executor = AsyncMock()
@@ -605,6 +617,12 @@ async def test_no_tool_use_yields_content_chunks(
             new_callable=AsyncMock,
             return_value=None,
         ),
+        patch.object(
+            tutor_service,
+            "_resolve_course",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
     ):
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
@@ -658,6 +676,12 @@ async def test_finished_chunk_includes_tool_calls_made(
         patch.object(
             tutor_service,
             "_get_previous_compact",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch.object(
+            tutor_service,
+            "_resolve_course",
             new_callable=AsyncMock,
             return_value=None,
         ),

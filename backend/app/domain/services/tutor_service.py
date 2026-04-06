@@ -22,6 +22,7 @@ from app.ai.prompts.tutor import (
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.domain.models.conversation import TutorConversation
+from app.domain.models.course import Course, UserCourseEnrollment
 from app.domain.models.module import Module
 from app.domain.models.user import User
 from app.domain.services.learner_memory_service import LearnerMemoryService
@@ -214,6 +215,7 @@ class TutorService:
         conversation_id: uuid.UUID | None = None,
         tutor_mode: str = "socratic",
         file_content_blocks: list[dict[str, Any]] | None = None,
+        course_id: uuid.UUID | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """
         Send a message to the AI tutor and stream the response using agentic tool_use.
@@ -230,6 +232,7 @@ class TutorService:
             context_id: Optional context-specific ID
             conversation_id: Optional existing conversation ID
             file_content_blocks: Optional list of Claude API content blocks (images/text) from uploads
+            course_id: Optional course ID (derived from enrollment if absent)
 
         Yields:
             Stream chunks with tutor response data
@@ -286,6 +289,7 @@ class TutorService:
             # Resolve module title for human-readable system prompt
             module_title = None
             module_number = None
+            module_obj = None
             if module_id:
                 module_obj = await session.get(Module, module_id)
                 if module_obj:
@@ -295,6 +299,17 @@ class TutorService:
                         else module_obj.title_en
                     )
                     module_number = module_obj.module_number
+
+            # Resolve course context: explicit > from module > from enrollment
+            course = await self._resolve_course(course_id, module_id, module_obj, user_id, session)
+            course_title = None
+            course_domain = None
+            rag_collection_id = None
+            if course:
+                lang = user.preferred_language
+                course_title = course.title_fr if lang == "fr" else course.title_en
+                course_domain = course_domain or course_title
+                rag_collection_id = course.rag_collection_id
 
             context = TutorContext(
                 user_level=user.current_level,
@@ -306,6 +321,8 @@ class TutorService:
                 context_type=context_type,
                 tutor_mode=tutor_mode,
                 context_id=str(context_id) if context_id else None,
+                course_title=course_title,
+                course_domain=course_domain,
                 learner_memory=session_ctx.learner_memory,
                 previous_session_context=session_ctx.previous_compact,
                 progress_snapshot=session_ctx.progress_snapshot,
@@ -334,6 +351,7 @@ class TutorService:
                 user_id=user_id,
                 user_level=user.current_level,
                 user_language=user.preferred_language,
+                rag_collection_id=rag_collection_id,
             )
 
             tool_call_count = 0
@@ -774,6 +792,43 @@ class TutorService:
         await session.flush()
 
         return conversation
+
+    async def _resolve_course(
+        self,
+        course_id: uuid.UUID | None,
+        module_id: uuid.UUID | None,
+        module_obj: Module | None,
+        user_id: uuid.UUID,
+        session: AsyncSession,
+    ) -> Course | None:
+        """Resolve course: explicit course_id > module's course > active enrollment."""
+        # 1. Explicit course_id
+        if course_id:
+            course = await session.get(Course, course_id)
+            if course:
+                return course
+
+        # 2. From module's course_id
+        if module_obj and module_obj.course_id:
+            course = await session.get(Course, module_obj.course_id)
+            if course:
+                return course
+
+        # 3. Fallback: most recent active enrollment
+        result = await session.execute(
+            select(UserCourseEnrollment)
+            .where(
+                UserCourseEnrollment.user_id == user_id,
+                UserCourseEnrollment.status == "active",
+            )
+            .order_by(UserCourseEnrollment.enrolled_at.desc())
+            .limit(1)
+        )
+        enrollment = result.scalar_one_or_none()
+        if enrollment:
+            return await session.get(Course, enrollment.course_id)
+
+        return None
 
     async def _retrieve_relevant_context(
         self, query: str, user: User, module_id: uuid.UUID | None, session: AsyncSession

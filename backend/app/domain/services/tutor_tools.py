@@ -176,6 +176,7 @@ class TutorToolExecutor:
         user_level: int,
         user_language: str,
         learner_memory_service: LearnerMemoryService | None = None,
+        rag_collection_id: str | None = None,
     ):
         self.retriever = retriever
         self.anthropic = anthropic_client
@@ -183,6 +184,7 @@ class TutorToolExecutor:
         self.user_level = user_level
         self.user_language = user_language
         self.learner_memory_service = learner_memory_service or LearnerMemoryService()
+        self.rag_collection_id = rag_collection_id
 
     async def execute(
         self,
@@ -261,6 +263,10 @@ class TutorToolExecutor:
                         books_sources = module.books_sources
             except (ValueError, TypeError):
                 pass
+
+        # Fallback: if no module scoping, use course-level rag_collection_id
+        if not books_sources and self.rag_collection_id:
+            books_sources = {self.rag_collection_id: []}
 
         results = await self.retriever.search_for_module(
             query=query,

@@ -33,6 +33,9 @@ class TutorChatRequest(BaseModel):
     """Request schema for tutor chat."""
 
     message: str = Field(..., min_length=1, max_length=2000, description="User message")
+    course_id: UUID | None = Field(
+        None, description="Course ID for context (derived from enrollment if absent)"
+    )
     module_id: UUID | None = Field(None, description="Current module ID for context")
     context_type: str | None = Field(
         None, description="Context type: 'module', 'lesson', 'quiz', or None"

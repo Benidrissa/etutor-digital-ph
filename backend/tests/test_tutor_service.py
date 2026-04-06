@@ -154,6 +154,12 @@ async def test_send_message_yields_content_type_chunks(
             new_callable=AsyncMock,
             return_value=None,
         ),
+        patch.object(
+            tutor_service,
+            "_resolve_course",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
     ):
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
@@ -212,6 +218,12 @@ async def test_send_message_yields_sources_cited_type(
         patch.object(
             tutor_service,
             "_get_previous_compact",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch.object(
+            tutor_service,
+            "_resolve_course",
             new_callable=AsyncMock,
             return_value=None,
         ),
@@ -343,6 +355,12 @@ async def test_send_message_never_yields_text_type(tutor_service, sample_user, s
         patch.object(
             tutor_service,
             "_get_previous_compact",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch.object(
+            tutor_service,
+            "_resolve_course",
             new_callable=AsyncMock,
             return_value=None,
         ),
