@@ -65,7 +65,8 @@ type WizardStep = 'upload' | 'info' | 'generate' | 'index' | 'publish';
 type PendingAction =
   | { type: 'publish'; course: AdminCourse }
   | { type: 'archive'; course: AdminCourse }
-  | { type: 'generate'; course: AdminCourse };
+  | { type: 'generate'; course: AdminCourse }
+  | { type: 'index'; course: AdminCourse };
 
 function inferWizardStep(course: AdminCourse): WizardStep {
   if (course.rag_collection_id) return 'publish';
@@ -120,6 +121,17 @@ export function CoursesClient() {
     onError: () => setActionError(t('actionError')),
   });
 
+  const indexMutation = useMutation({
+    mutationFn: (courseId: string) =>
+      apiFetch(`/api/v1/admin/courses/${courseId}/index-resources`, { method: 'POST' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'courses'] });
+      setPendingAction(null);
+      setActionError(null);
+    },
+    onError: () => setActionError(t('indexError')),
+  });
+
   const archiveMutation = useMutation({
     mutationFn: (courseId: string) =>
       apiFetch(`/api/v1/admin/courses/${courseId}/archive`, { method: 'POST' }),
@@ -137,6 +149,8 @@ export function CoursesClient() {
       publishMutation.mutate(pendingAction.course.id);
     } else if (pendingAction.type === 'archive') {
       archiveMutation.mutate(pendingAction.course.id);
+    } else if (pendingAction.type === 'index') {
+      indexMutation.mutate(pendingAction.course.id);
     }
   };
 
@@ -289,14 +303,18 @@ export function CoursesClient() {
       ? t('confirmPublish')
       : pendingAction?.type === 'archive'
         ? t('confirmArchive')
-        : t('confirmGenerate');
+        : pendingAction?.type === 'index'
+          ? t('confirmIndex')
+          : t('confirmGenerate');
 
   const confirmDesc =
     pendingAction?.type === 'publish'
       ? t('confirmPublishDesc')
       : pendingAction?.type === 'archive'
         ? t('confirmArchiveDesc')
-        : t('confirmGenerateDesc');
+        : pendingAction?.type === 'index'
+          ? t('confirmIndexDesc')
+          : t('confirmGenerateDesc');
 
   if (isLoading) {
     return (
@@ -367,6 +385,7 @@ export function CoursesClient() {
                 onPublish={handlePublishIntent}
                 onArchive={(c) => setPendingAction({ type: 'archive', course: c })}
                 onGenerateStructure={(c) => setPendingAction({ type: 'generate', course: c })}
+                onIndexResources={(c) => setPendingAction({ type: 'index', course: c })}
                 onEdit={(c) => { setEditingCourse(c); setFormOpen(true); }}
                 onResumeWizard={() => {
                   const savedState = loadWizardState();
@@ -406,7 +425,7 @@ export function CoursesClient() {
       )}
 
       <AlertDialog
-        open={pendingAction !== null && pendingAction.type !== 'generate'}
+        open={pendingAction !== null && pendingAction.type !== 'generate' && pendingAction.type !== 'index'}
         onOpenChange={(open) => !open && setPendingAction(null)}
       >
         <AlertDialogContent>
@@ -427,6 +446,31 @@ export function CoursesClient() {
               disabled={publishMutation.isPending || archiveMutation.isPending}
             >
               {t('confirm')}
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={pendingAction?.type === 'index'}
+        onOpenChange={(open) => !open && setPendingAction(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogTitle>{confirmTitle}</AlertDialogTitle>
+          <AlertDialogDescription>{confirmDesc}</AlertDialogDescription>
+          <div className="flex justify-end gap-3 mt-4">
+            <AlertDialogCancel onClick={() => setPendingAction(null)}>
+              {t('cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmAction}
+              disabled={indexMutation.isPending}
+            >
+              {indexMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                t('confirm')
+              )}
             </AlertDialogAction>
           </div>
         </AlertDialogContent>
@@ -471,6 +515,7 @@ function CourseRow({
   onPublish,
   onArchive,
   onGenerateStructure,
+  onIndexResources,
   onEdit,
   onResumeWizard,
 }: {
@@ -480,6 +525,7 @@ function CourseRow({
   onPublish: (c: AdminCourse) => void;
   onArchive: (c: AdminCourse) => void;
   onGenerateStructure: (c: AdminCourse) => void;
+  onIndexResources: (c: AdminCourse) => void;
   onEdit: (c: AdminCourse) => void;
   onResumeWizard: () => void;
 }) {
@@ -592,6 +638,12 @@ function CourseRow({
                 <Sparkles className="mr-2 h-4 w-4" />
                 {t('generateStructure')}
               </DropdownMenuItem>
+              {course.rag_collection_id && course.status !== 'archived' && (
+                <DropdownMenuItem onClick={() => onIndexResources(course)}>
+                  <Database className="mr-2 h-4 w-4" />
+                  {t('indexResources')}
+                </DropdownMenuItem>
+              )}
               {course.status !== 'published' && (
                 <DropdownMenuItem onClick={() => onPublish(course)}>
                   <Globe className="mr-2 h-4 w-4" />

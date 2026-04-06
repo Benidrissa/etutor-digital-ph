@@ -1045,6 +1045,10 @@
     "confirmArchiveDesc": "La formation ne sera plus accessible aux apprenants.",
     "confirmGenerate": "Générer la structure IA ?",
     "confirmGenerateDesc": "L'IA va créer automatiquement un plan de modules pour cette formation. Cela peut prendre quelques secondes.",
+    "indexResources": "Indexer les ressources",
+    "confirmIndex": "Indexer les ressources du cours ?",
+    "confirmIndexDesc": "Cela indexera tous les PDFs téléversés dans la base vectorielle pour permettre la génération de contenu IA.",
+    "indexError": "L'indexation a échoué. Veuillez réessayer.",
     "newCourse": "Nouveau cours",
     "noCoursesDesc": "Créez votre premier cours pour commencer.",
     "table": {

@@ -1045,6 +1045,10 @@
     "confirmArchiveDesc": "The course will no longer be accessible to learners.",
     "confirmGenerate": "Generate AI structure?",
     "confirmGenerateDesc": "The AI will automatically create a module outline for this course. This may take a few seconds.",
+    "indexResources": "Index Resources",
+    "confirmIndex": "Index course resources?",
+    "confirmIndexDesc": "This will index all uploaded PDFs into the vector database to enable AI content generation.",
+    "indexError": "Indexation failed. Please try again.",
     "newCourse": "New course",
     "noCoursesDesc": "Create your first course to get started.",
     "table": {
