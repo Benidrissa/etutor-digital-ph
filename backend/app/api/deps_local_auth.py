@@ -124,6 +124,81 @@ async def get_optional_user(
         return None
 
 
+async def require_active_subscription(
+    request: Request,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthenticatedUser:
+    """Require an active subscription to access content.
+
+    Admin users bypass this check (they have auto-provisioned subscriptions).
+    First unit of each module is free — caller must check separately if needed.
+
+    Raises:
+        HTTPException: 403 if no active subscription.
+    """
+    from ..domain.services.subscription_service import SubscriptionService
+    from ..infrastructure.persistence.database import get_db_session
+
+    async for session in get_db_session():
+        sub = await SubscriptionService().get_active_subscription(uuid.UUID(user.id), session)
+        if sub is not None:
+            return user
+        break
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={
+            "code": "subscription_required",
+            "message": "An active subscription is required to access this content.",
+        },
+    )
+
+
+async def require_subscription_or_first_unit(
+    request: Request,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthenticatedUser:
+    """Allow first unit of a module for free; require subscription for others.
+
+    Reads `unit_id` from path params (e.g. 'M01-U01'). If unit ends with
+    '-U01' or order_index == 0 in DB, access is free. Otherwise requires
+    an active subscription.
+    """
+    from ..domain.models.module_unit import ModuleUnit
+    from ..domain.services.subscription_service import SubscriptionService
+    from ..infrastructure.persistence.database import get_db_session
+
+    unit_id = request.path_params.get("unit_id") or request.path_params.get("unitId")
+
+    # Quick check: if unit_id looks like first unit (M01-U01, U01, etc.)
+    if unit_id and unit_id.upper().endswith("-U01"):
+        return user
+
+    # Check subscription
+    async for session in get_db_session():
+        sub = await SubscriptionService().get_active_subscription(uuid.UUID(user.id), session)
+        if sub is not None:
+            return user
+
+        # No subscription — check if this is order_index 0 in DB
+        if unit_id:
+            result = await session.execute(
+                select(ModuleUnit.order_index).where(ModuleUnit.unit_number == unit_id)
+            )
+            order = result.scalar_one_or_none()
+            if order is not None and order == 0:
+                return user
+        break
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={
+            "code": "subscription_required",
+            "message": "An active subscription is required to access this content. The first lesson of each module is free.",
+        },
+    )
+
+
 def require_enrollment(course_id_param: str = "course_id") -> Callable:
     """Factory for enrollment-based access control dependency.
 
