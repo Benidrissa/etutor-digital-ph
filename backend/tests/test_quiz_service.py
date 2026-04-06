@@ -24,6 +24,7 @@ SAMPLE_QUIZ_DICT = {
     ],
     "time_limit_minutes": 15,
     "passing_score": 80.0,
+    "__complete": True,
 }
 
 

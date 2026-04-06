@@ -120,6 +120,15 @@ class ClaudeService:
             if not response.content or len(response.content) == 0:
                 raise ValueError("Empty response from Claude API")
 
+            # Check for truncation
+            is_truncated = response.stop_reason == "max_tokens"
+            if is_truncated:
+                logger.warning(
+                    "Claude response truncated at max_tokens",
+                    content_type=content_type,
+                    usage_output=getattr(response.usage, "output_tokens", None),
+                )
+
             # Extract text from response
             content_text = ""
             for block in response.content:
@@ -161,6 +170,12 @@ class ClaudeService:
 
                     parsed_content = json.loads(json_text)
 
+                    if is_truncated:
+                        logger.warning(
+                            "JSON parsed but response was truncated — content may be incomplete",
+                            content_type=content_type,
+                        )
+
                     logger.info(
                         "Successfully generated structured content",
                         content_type=content_type,
@@ -169,9 +184,24 @@ class ClaudeService:
 
                     return parsed_content
                 else:
+                    if is_truncated:
+                        raise ValueError(
+                            f"Response truncated (stop_reason=max_tokens) "
+                            f"for {content_type}. No JSON found."
+                        )
                     raise ValueError("No JSON structure found in response")
 
             except json.JSONDecodeError as e:
+                if is_truncated:
+                    logger.error(
+                        "Truncated JSON could not be parsed",
+                        content_type=content_type,
+                        error=str(e),
+                    )
+                    raise ValueError(
+                        f"Response truncated (stop_reason=max_tokens) "
+                        f"for {content_type}. JSON is incomplete."
+                    )
                 logger.error(
                     "Failed to parse JSON from Claude response",
                     content_type=content_type,

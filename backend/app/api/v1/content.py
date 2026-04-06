@@ -30,9 +30,12 @@ from app.api.v1.schemas.content import (
     LessonResponse,
     ModuleUnitsResponse,
     PublicUnitDetail,
+    StreamingEvent,
+)
+from app.api.v1.schemas.quiz import (
+    QuizContent,
     QuizGenerationRequest,
     QuizResponse,
-    StreamingEvent,
 )
 from app.domain.models.content import GeneratedContent
 from app.domain.models.module import Module
@@ -821,14 +824,17 @@ async def generate_quiz(
             module_id=str(request.module_id),
             unit_id=request.unit_id,
             language=request.language,
-            difficulty_level=request.difficulty_level,
+            country=request.country,
+            level=request.level,
         )
 
         quiz_response = await quiz_service.get_or_generate_quiz(
             module_id=request.module_id,
             unit_id=request.unit_id,
             language=request.language,
-            difficulty_level=request.difficulty_level,
+            country=request.country,
+            level=request.level,
+            num_questions=request.num_questions,
             session=session,
         )
 
@@ -908,28 +914,18 @@ async def get_quiz(
                 detail={"error": "quiz_not_found", "message": f"Quiz {quiz_id} not found"},
             )
 
-        from app.api.v1.schemas.content import QuizContent
-
         # Extract metadata
         unit_id = quiz_content.content.get("unit_id", "")
-        difficulty_level = quiz_content.content.get("difficulty_level", "medium")
+        content_dict = {k: v for k, v in quiz_content.content.items() if k != "unit_id"}
 
         return QuizResponse(
             id=quiz_content.id,
             module_id=quiz_content.module_id,
             unit_id=unit_id,
             language=quiz_content.language,
-            difficulty_level=difficulty_level,
-            content=QuizContent(
-                **{
-                    "title": quiz_content.content.get("title", "Quiz"),
-                    "questions": quiz_content.content.get("questions", []),
-                    "estimated_duration_minutes": quiz_content.content.get(
-                        "estimated_duration_minutes", 15
-                    ),
-                    "sources_cited": quiz_content.content.get("sources_cited", []),
-                }
-            ),
+            level=quiz_content.level,
+            country_context=quiz_content.country_context or "",
+            content=QuizContent(**content_dict),
             generated_at=quiz_content.generated_at.isoformat(),
             cached=True,
         )
