@@ -7,7 +7,6 @@ from datetime import datetime
 from sqlalchemy import (
     Boolean,
     DateTime,
-    Enum,
     ForeignKey,
     Index,
     Integer,
@@ -62,8 +61,8 @@ class InboundSms(Base):
     body: Mapped[str] = mapped_column(Text, nullable=False)
     sms_received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     app_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    processing_status: Mapped[SmsProcessingStatus] = mapped_column(
-        Enum(SmsProcessingStatus, name="smsprocessingstatus"),
+    processing_status: Mapped[str] = mapped_column(
+        String(50),
         nullable=False,
         server_default="pending",
         default=SmsProcessingStatus.pending,
