@@ -21,9 +21,7 @@ async function fetchEnrollmentStatus(moduleId: string, token: string): Promise<b
     );
     if (res.status === 401 || res.status === 403) return false;
     if (!res.ok) return false;
-    const data = await res.json();
-    const moduleStatus = data?.status ?? data?.progress?.status ?? null;
-    return moduleStatus !== null && moduleStatus !== "locked";
+    return true;
   } catch {
     return false;
   }
