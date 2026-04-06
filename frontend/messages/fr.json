@@ -927,6 +927,23 @@
       "moduleProgress": "Progression",
       "completionPct": "{pct}% complété"
     },
+    "analytics": {
+      "title": "Analytique",
+      "subtitle": "Utilisation de la plateforme et activité des apprenants",
+      "period7d": "7 derniers jours",
+      "period30d": "30 derniers jours",
+      "period90d": "90 derniers jours",
+      "totalEvents": "Total événements",
+      "uniqueUsers": "Utilisateurs uniques",
+      "quizCompletionRate": "Taux de complétion des quiz",
+      "dailyActiveUsers": "Utilisateurs actifs par jour",
+      "topModules": "Modules les plus consultés",
+      "eventsByType": "Événements par type",
+      "moduleName": "Module",
+      "eventCount": "Événements",
+      "noData": "Aucune donnée analytique pour cette période.",
+      "loading": "Chargement des analytiques..."
+    },
     "auditLog": {
       "title": "Journal d'audit",
       "subtitle": "Historique de toutes les actions d'administration",

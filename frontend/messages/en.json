@@ -927,6 +927,23 @@
       "moduleProgress": "Progress",
       "completionPct": "{pct}% complete"
     },
+    "analytics": {
+      "title": "Analytics",
+      "subtitle": "Platform usage and learner activity",
+      "period7d": "Last 7 days",
+      "period30d": "Last 30 days",
+      "period90d": "Last 90 days",
+      "totalEvents": "Total events",
+      "uniqueUsers": "Unique users",
+      "quizCompletionRate": "Quiz completion rate",
+      "dailyActiveUsers": "Daily active users",
+      "topModules": "Top modules",
+      "eventsByType": "Events by type",
+      "moduleName": "Module",
+      "eventCount": "Events",
+      "noData": "No analytics data for this period.",
+      "loading": "Loading analytics..."
+    },
     "auditLog": {
       "title": "Audit Log",
       "subtitle": "History of all admin actions",
