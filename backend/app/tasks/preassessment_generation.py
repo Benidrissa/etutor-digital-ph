@@ -77,7 +77,7 @@ def generate_course_preassessment(self, course_id: str, language: str = "fr") ->
             )
 
             claude_service = ClaudeService()
-            embedding_service = EmbeddingService()
+            embedding_service = EmbeddingService(api_key=settings.openai_api_key)
             retriever = SemanticRetriever(embedding_service)
             service = PreAssessmentGenerationService(claude_service, retriever)
 
