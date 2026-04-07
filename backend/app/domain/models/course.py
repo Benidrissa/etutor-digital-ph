@@ -37,6 +37,7 @@ class Course(Base):
     )
     rag_collection_id: Mapped[str | None] = mapped_column(String)
     indexation_task_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    syllabus_task_id: Mapped[str | None] = mapped_column(String, nullable=True)
     syllabus_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     creation_step: Mapped[str] = mapped_column(String(20), server_default="upload", nullable=False)
     preassessment_enabled: Mapped[bool] = mapped_column(server_default="false")
