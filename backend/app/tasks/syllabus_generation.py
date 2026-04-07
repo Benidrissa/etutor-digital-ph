@@ -52,7 +52,9 @@ class SyllabusTask(Task):
     time_limit=3600,  # 60 min hard limit
     soft_time_limit=2700,  # 45 min soft limit
 )
-def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict:
+def generate_course_syllabus(
+    self, course_id: str, estimated_hours: int, cached_resource_text: str | None = None
+) -> dict:
     """Generate course module structure using Claude API and save to DB.
 
     Fix for SoftTimeLimitExceeded (issue #876):
@@ -131,17 +133,26 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
     level_slugs = course_data["level_slugs"]
     audience_slugs = course_data["audience_slugs"]
 
-    # ── Phase 1.5: Extract text from uploaded PDFs ──────────────────────────
-    self.update_state(
-        state="GENERATING",
-        meta={"step": "extracting_pdf_text", "progress": 15, "modules_count": 0},
-    )
-
-    resource_text = None
+    # ── Phase 1.5: Extract text from uploaded PDFs (skipped if cached) ────────
     from pathlib import Path
 
     course_dir = Path("uploads/course_resources") / course_id
-    if course_dir.exists():
+
+    if cached_resource_text is not None:
+        resource_text = cached_resource_text
+        logger.info(
+            "Using cached syllabus_context — skipping PDF extraction",
+            course_id=course_id,
+            chars=len(resource_text),
+        )
+    else:
+        self.update_state(
+            state="GENERATING",
+            meta={"step": "extracting_pdf_text", "progress": 15, "modules_count": 0},
+        )
+        resource_text = None
+
+    if cached_resource_text is None and course_dir.exists():
         import fitz  # PyMuPDF
 
         pdf_files = sorted(course_dir.glob("*.pdf"))
@@ -284,6 +295,13 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
     )
     try:
         with Session(sync_engine) as session:
+            session.execute(
+                delete(ModuleUnit).where(
+                    ModuleUnit.module_id.in_(
+                        select(Module.id).where(Module.course_id == uuid.UUID(course_id))
+                    )
+                )
+            )
             session.execute(delete(Module).where(Module.course_id == uuid.UUID(course_id)))
 
             saved_modules = []
@@ -330,17 +348,20 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
 
             import json
 
-            session.execute(
-                text(
-                    "UPDATE courses SET module_count = :mc, syllabus_json = :sj,"
-                    " creation_step = 'generated' WHERE id = :cid"
-                ),
-                {
-                    "mc": len(module_dicts),
-                    "sj": json.dumps(module_dicts),
-                    "cid": course_id,
-                },
+            update_sql = (
+                "UPDATE courses SET module_count = :mc, syllabus_json = :sj,"
+                " creation_step = 'generated'"
             )
+            params: dict = {
+                "mc": len(module_dicts),
+                "sj": json.dumps(module_dicts),
+                "cid": course_id,
+            }
+            if cached_resource_text is None and resource_text is not None:
+                update_sql += ", syllabus_context = :ctx"
+                params["ctx"] = resource_text
+            update_sql += " WHERE id = :cid"
+            session.execute(text(update_sql), params)
 
             session.commit()
 
