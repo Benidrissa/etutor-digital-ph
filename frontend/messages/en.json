@@ -202,7 +202,9 @@
     "loading": "Loading...",
     "noEnrollments": "You are not enrolled in any courses yet.",
     "browseCourses": "Browse available courses",
-    "browseMoreCourses": "Browse more courses"
+    "browseMoreCourses": "Browse more courses",
+    "browseCurricula": "Browse Curricula",
+    "browseCurriculaDesc": "Explore curated course collections"
   },
   "ModuleCard": {
     "locked": "Locked",
@@ -1016,6 +1018,38 @@
         "update_role": "Updated role"
       }
     },
+    "curricula": {
+      "title": "Curricula",
+      "subtitle": "Create and manage curated course collections with shareable URLs",
+      "create": "New Curriculum",
+      "edit": "Edit",
+      "delete": "Delete",
+      "publish": "Publish",
+      "archive": "Archive",
+      "save": "Save",
+      "cancel": "Cancel",
+      "titleFr": "Title (FR)",
+      "titleEn": "Title (EN)",
+      "descriptionFr": "Description (FR)",
+      "descriptionEn": "Description (EN)",
+      "coverImageUrl": "Cover image URL",
+      "slug": "URL slug",
+      "status": "Status",
+      "courseCount": "{count, plural, one {# course} other {# courses}}",
+      "noCurricula": "No curricula yet",
+      "noCurriculaDescription": "Create your first curriculum to group courses together.",
+      "assignCourses": "Assign Courses",
+      "assignCoursesDesc": "Select courses to include in this curriculum",
+      "confirmDelete": "Delete this curriculum?",
+      "confirmDeleteDesc": "This cannot be undone.",
+      "deleteBlocked": "Archive the curriculum before deleting.",
+      "statusBadge": {
+        "draft": "Draft",
+        "published": "Published",
+        "archived": "Archived"
+      },
+      "viewPublicPage": "View public page"
+    },
     "taxonomy": {
       "title": "Taxonomy",
       "subtitle": "Manage course domains, levels and audience types",
@@ -1426,5 +1460,28 @@
     "bannerCTA": "Subscribe",
     "upgradePrompt": "Subscribe to continue — 1,000 XOF/month",
     "navLabel": "Subscription"
+  },
+  "AdminCurricula": {
+    "pageTitle": "Curriculum Management",
+    "pageDescription": "Create and manage curated course collections with shareable URLs"
+  },
+  "Curricula": {
+    "pageTitle": "Browse Curricula",
+    "pageDescription": "Explore curated course collections",
+    "browseCurricula": "Browse Curricula",
+    "courseCount": "{count, plural, one {# course} other {# courses}}",
+    "noCurricula": "No curricula available",
+    "viewCurriculum": "View",
+    "backToCatalog": "Back to full catalog",
+    "share": "Share",
+    "shareViaWhatsApp": "Share on WhatsApp",
+    "shareViaTelegram": "Share on Telegram",
+    "shareViaFacebook": "Share on Facebook",
+    "copyLink": "Copy link",
+    "linkCopied": "Link copied!",
+    "filteredCourses": "Courses in this curriculum",
+    "loading": "Loading...",
+    "error": "Failed to load curriculum",
+    "curriculumScope": "You are viewing a curated curriculum"
   }
 }

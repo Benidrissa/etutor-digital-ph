@@ -2,6 +2,7 @@ import { getTranslations } from "next-intl/server";
 import { DashboardClient } from "./dashboard-client";
 import { DashboardStats } from "@/components/dashboard/dashboard-stats";
 import { UpcomingReviews } from "@/components/dashboard/upcoming-reviews";
+import { CurriculaSection } from "@/components/shared/curricula-section";
 
 export default async function DashboardPage() {
   const t = await getTranslations("Dashboard");
@@ -22,6 +23,8 @@ export default async function DashboardPage() {
       <div className="mt-8">
         <DashboardClient />
       </div>
+
+      <CurriculaSection />
     </div>
   );
 }

@@ -202,7 +202,9 @@
     "loading": "Chargement...",
     "noEnrollments": "Vous n'êtes inscrit à aucune formation pour l'instant.",
     "browseCourses": "Parcourir les formations disponibles",
-    "browseMoreCourses": "Parcourir d'autres formations"
+    "browseMoreCourses": "Parcourir d'autres formations",
+    "browseCurricula": "Explorer les curricula",
+    "browseCurriculaDesc": "Découvrez des collections de formations curatées"
   },
   "ModuleCard": {
     "locked": "Verrouillé",
@@ -1016,6 +1018,38 @@
         "update_role": "Rôle mis à jour"
       }
     },
+    "curricula": {
+      "title": "Curricula",
+      "subtitle": "Créer et gérer des collections de cours curatées avec des URL partageables",
+      "create": "Nouveau Curriculum",
+      "edit": "Modifier",
+      "delete": "Supprimer",
+      "publish": "Publier",
+      "archive": "Archiver",
+      "save": "Enregistrer",
+      "cancel": "Annuler",
+      "titleFr": "Titre (FR)",
+      "titleEn": "Titre (EN)",
+      "descriptionFr": "Description (FR)",
+      "descriptionEn": "Description (EN)",
+      "coverImageUrl": "URL de l'image de couverture",
+      "slug": "Identifiant URL",
+      "status": "Statut",
+      "courseCount": "{count, plural, one {# formation} other {# formations}}",
+      "noCurricula": "Aucun curriculum pour l'instant",
+      "noCurriculaDescription": "Créez votre premier curriculum pour regrouper des formations.",
+      "assignCourses": "Assigner des formations",
+      "assignCoursesDesc": "Sélectionnez les formations à inclure dans ce curriculum",
+      "confirmDelete": "Supprimer ce curriculum ?",
+      "confirmDeleteDesc": "Cette action est irréversible.",
+      "deleteBlocked": "Archivez le curriculum avant de le supprimer.",
+      "statusBadge": {
+        "draft": "Brouillon",
+        "published": "Publié",
+        "archived": "Archivé"
+      },
+      "viewPublicPage": "Voir la page publique"
+    },
     "taxonomy": {
       "title": "Taxonomie",
       "subtitle": "Gérer les domaines, niveaux et types de public des cours",
@@ -1426,5 +1460,28 @@
     "bannerCTA": "S'abonner",
     "upgradePrompt": "Abonnez-vous pour continuer — 1 000 FCFA/mois",
     "navLabel": "Abonnement"
+  },
+  "AdminCurricula": {
+    "pageTitle": "Gestion des Curricula",
+    "pageDescription": "Créer et gérer des collections de cours curatées avec des URL partageables"
+  },
+  "Curricula": {
+    "pageTitle": "Explorer les Curricula",
+    "pageDescription": "Découvrez des collections de formations curatées",
+    "browseCurricula": "Parcourir les curricula",
+    "courseCount": "{count, plural, one {# formation} other {# formations}}",
+    "noCurricula": "Aucun curriculum disponible",
+    "viewCurriculum": "Voir",
+    "backToCatalog": "Retour au catalogue complet",
+    "share": "Partager",
+    "shareViaWhatsApp": "Partager sur WhatsApp",
+    "shareViaTelegram": "Partager sur Telegram",
+    "shareViaFacebook": "Partager sur Facebook",
+    "copyLink": "Copier le lien",
+    "linkCopied": "Lien copié !",
+    "filteredCourses": "Formations dans ce curriculum",
+    "loading": "Chargement...",
+    "error": "Impossible de charger le curriculum",
+    "curriculumScope": "Vous consultez un curriculum curaté"
   }
 }

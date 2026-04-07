@@ -10,6 +10,7 @@ from structlog import get_logger
 from app.api.deps import get_db as get_db_session
 from app.api.deps_local_auth import get_current_user, get_optional_user
 from app.domain.models.course import Course, UserCourseEnrollment
+from app.domain.models.curriculum import Curriculum, CurriculumCourse
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.progress import UserModuleProgress
@@ -143,11 +144,45 @@ async def list_published_courses(
     course_level: str | None = Query(None, description="Filter by level slug"),
     audience_type: str | None = Query(None, description="Filter by audience slug"),
     search: str | None = Query(None, description="Search in title FR/EN"),
+    curriculum: str | None = Query(None, description="Filter by curriculum slug or ID"),
     current_user=Depends(get_optional_user),
     db=Depends(get_db_session),
 ) -> list[CourseListItem]:
-    """Browse published courses. No auth required."""
+    """Browse published courses. No auth required. Use ?curriculum= to scope to a curriculum."""
     stmt = select(Course).where(Course.status == "published").order_by(Course.published_at.desc())
+
+    if curriculum:
+        curriculum_obj: Curriculum | None = None
+        try:
+            cid = uuid.UUID(curriculum)
+            result_c = await db.execute(
+                select(Curriculum).where(
+                    Curriculum.id == cid, Curriculum.status == "published"
+                )
+            )
+            curriculum_obj = result_c.scalar_one_or_none()
+        except ValueError:
+            pass
+
+        if not curriculum_obj:
+            result_c = await db.execute(
+                select(Curriculum).where(
+                    Curriculum.slug == curriculum, Curriculum.status == "published"
+                )
+            )
+            curriculum_obj = result_c.scalar_one_or_none()
+
+        if curriculum_obj:
+            stmt = stmt.where(
+                exists(
+                    select(CurriculumCourse.course_id).where(
+                        CurriculumCourse.course_id == Course.id,
+                        CurriculumCourse.curriculum_id == curriculum_obj.id,
+                    )
+                )
+            )
+        else:
+            return []
 
     if course_domain:
         stmt = stmt.where(
