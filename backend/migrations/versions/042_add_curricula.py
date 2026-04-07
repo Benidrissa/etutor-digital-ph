@@ -16,7 +16,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE TYPE curriculumstatus AS ENUM ('draft', 'published', 'archived')")
+    curriculumstatus = sa.Enum("draft", "published", "archived", name="curriculumstatus")
+    curriculumstatus.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
         "curricula",
