@@ -18,6 +18,8 @@ import {
   AlertCircle,
   Clock,
   ChevronDown,
+  StopCircle,
+  RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -219,6 +221,11 @@ export function CourseWizardClient({
   const [indexError, setIndexError] = useState<string | null>(null);
   const [isReindexingImages, setIsReindexingImages] = useState(false);
   const [reindexImagesError, setReindexImagesError] = useState<string | null>(null);
+  const [isCancellingIndexation, setIsCancellingIndexation] = useState(false);
+  const [cancelIndexationError, setCancelIndexationError] = useState<string | null>(null);
+  const [indexStaleWarning, setIndexStaleWarning] = useState(false);
+  const lastIndexProgressValueRef = useRef(0);
+  const lastIndexProgressTimeRef = useRef<number | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishSuccess, setPublishSuccess] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
@@ -693,10 +700,35 @@ export function CourseWizardClient({
     }
   }, [courseId, t]);
 
+  const cancelIndexation = useCallback(async () => {
+    if (!courseId) return;
+    setIsCancellingIndexation(true);
+    setCancelIndexationError(null);
+    if (pollRef.current) clearTimeout(pollRef.current);
+
+    try {
+      await apiFetch(`/api/v1/admin/courses/${courseId}/cancel-indexation`, { method: "POST" });
+      setIsIndexing(false);
+      setIndexStaleWarning(false);
+      setTaskId(null);
+      setIndexStatus(null);
+      lastIndexProgressValueRef.current = 0;
+      lastIndexProgressTimeRef.current = null;
+    } catch {
+      setCancelIndexationError(t("index.cancelError"));
+    } finally {
+      setIsCancellingIndexation(false);
+    }
+  }, [courseId, t]);
+
   const startIndexation = useCallback(async () => {
     if (!courseId) return;
     setIsIndexing(true);
     setIndexError(null);
+    setIndexStaleWarning(false);
+    setCancelIndexationError(null);
+    lastIndexProgressValueRef.current = 0;
+    lastIndexProgressTimeRef.current = Date.now();
 
     try {
       const result = await apiFetch<{ task_id: string; status: string }>(
@@ -740,8 +772,21 @@ export function CourseWizardClient({
           task: status.task,
         });
 
+        const newProgress = status.task?.progress ?? 0;
+        if (newProgress !== lastIndexProgressValueRef.current) {
+          lastIndexProgressValueRef.current = newProgress;
+          lastIndexProgressTimeRef.current = Date.now();
+          setIndexStaleWarning(false);
+        } else if (lastIndexProgressTimeRef.current !== null) {
+          const staleSince = Date.now() - lastIndexProgressTimeRef.current;
+          if (staleSince > 60 * 1000) {
+            setIndexStaleWarning(true);
+          }
+        }
+
         if (status.task?.state === "SUCCESS") {
           setIsIndexing(false);
+          setIndexStaleWarning(false);
           queryClient.invalidateQueries({ queryKey: ["admin-courses"] });
           return;
         }
@@ -752,6 +797,7 @@ export function CourseWizardClient({
         ) {
           setIndexError(t("index.error"));
           setIsIndexing(false);
+          setIndexStaleWarning(false);
           return;
         }
 
@@ -760,6 +806,10 @@ export function CourseWizardClient({
         pollRef.current = setTimeout(poll, 5000);
       }
     };
+
+    if (lastIndexProgressTimeRef.current === null) {
+      lastIndexProgressTimeRef.current = Date.now();
+    }
 
     pollRef.current = setTimeout(poll, 2000);
     return () => {
@@ -1317,6 +1367,35 @@ export function CourseWizardClient({
                           {t("index.imagesProgress", { count: indexStatus.images_indexed })}
                         </p>
                       )}
+
+                      {indexStaleWarning && (
+                        <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-400">
+                          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                          {t("index.staleWarning")}
+                        </div>
+                      )}
+
+                      {cancelIndexationError && (
+                        <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
+                          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                          {cancelIndexationError}
+                        </div>
+                      )}
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={cancelIndexation}
+                        disabled={isCancellingIndexation}
+                        className="w-full min-h-[44px] border-destructive/50 text-destructive hover:bg-destructive/5 hover:text-destructive"
+                      >
+                        {isCancellingIndexation ? (
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
+                        ) : (
+                          <StopCircle className="mr-2 h-4 w-4" />
+                        )}
+                        {t("index.cancelIndexation")}
+                      </Button>
                     </div>
 
                     <p className="text-xs text-muted-foreground text-center">
@@ -1325,10 +1404,24 @@ export function CourseWizardClient({
                   </div>
                 )}
 
+                {!isIndexing && indexError && (
+                  <Button
+                    onClick={startIndexation}
+                    variant="outline"
+                    size="sm"
+                    className="w-full min-h-[44px]"
+                  >
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    {t("index.retryIndexation")}
+                  </Button>
+                )}
+
                 {indexError && (
-                  <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
-                    {indexError}
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      {indexError}
+                    </div>
                   </div>
                 )}
 
