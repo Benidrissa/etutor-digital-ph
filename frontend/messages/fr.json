@@ -1214,6 +1214,12 @@
         "titleFrRequired": "Le titre en français est requis",
         "titleEnRequired": "Le titre en anglais est requis"
       },
+      "attachedResources": {
+        "title": "Ressources jointes",
+        "show": "Afficher les fichiers joints",
+        "hide": "Masquer les fichiers joints",
+        "noFiles": "Aucune ressource jointe"
+      },
       "generate": {
         "title": "Générer le syllabus",
         "description": "L'agent IA va analyser vos ressources et générer la structure du cours.",
