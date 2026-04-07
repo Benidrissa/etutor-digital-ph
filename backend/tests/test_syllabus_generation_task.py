@@ -195,7 +195,10 @@ class TestSyllabusGenerationTaskUnit:
         with (
             patch("asyncio.run", side_effect=mock_run),
             patch("pathlib.Path.exists", return_value=True),
-            patch("pathlib.Path.glob", return_value=[MagicMock(stem="test_pdf", __str__=lambda s: "test.pdf")]),
+            patch(
+                "pathlib.Path.glob",
+                return_value=[MagicMock(stem="test_pdf", __str__=lambda s: "test.pdf")],
+            ),
             patch("fitz.open", return_value=mock_fitz_doc),
             patch("app.ai.pdf_summarizer.summarize_pdfs_sync") as mock_summarize,
             patch("sqlalchemy.create_engine", return_value=mock_sync_engine),
@@ -244,9 +247,14 @@ class TestSyllabusGenerationTaskUnit:
         with (
             patch("asyncio.run", side_effect=mock_run),
             patch("pathlib.Path.exists", return_value=True),
-            patch("pathlib.Path.glob", return_value=[MagicMock(stem="large_pdf", __str__=lambda s: "large.pdf")]),
+            patch(
+                "pathlib.Path.glob",
+                return_value=[MagicMock(stem="large_pdf", __str__=lambda s: "large.pdf")],
+            ),
             patch("fitz.open", return_value=mock_fitz_doc),
-            patch("app.ai.pdf_summarizer.summarize_pdfs_sync", return_value=["summary text"]) as mock_summarize,
+            patch(
+                "app.ai.pdf_summarizer.summarize_pdfs_sync", return_value=["summary text"]
+            ) as mock_summarize,
             patch("sqlalchemy.create_engine", return_value=mock_sync_engine),
             patch("sqlalchemy.orm.Session", return_value=mock_session),
         ):

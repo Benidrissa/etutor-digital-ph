@@ -181,9 +181,7 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
                     total_chars=total_chars,
                     budget=_CONTEXT_BUDGET_CHARS,
                 )
-                pdf_sections = [
-                    f"### {name}\n{txt}" for name, txt, _toc in pdf_full_texts
-                ]
+                pdf_sections = [f"### {name}\n{txt}" for name, txt, _toc in pdf_full_texts]
                 resource_text = "\n\n---\n\n".join(pdf_sections)
             else:
                 logger.info(
