@@ -7,6 +7,7 @@ import structlog
 from celery import Task
 from sqlalchemy import delete, select, text
 
+from app.ai.pdf_summarizer import summarize_pdfs_sync
 from app.tasks.celery_app import celery_app
 
 logger = structlog.get_logger(__name__)
@@ -113,11 +114,9 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
     if course_dir.exists():
         import fitz  # PyMuPDF
 
-        MAX_CHARS_TOTAL = 400_000
         pdf_files = sorted(course_dir.glob("*.pdf"))
 
         pdf_full_texts = []
-        total_all_chars = 0
         for pdf_path in pdf_files:
             try:
                 doc = fitz.open(str(pdf_path))
@@ -130,11 +129,6 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
                         pages_text.append(page_text)
                 doc.close()
                 full_text = "\n\n".join(pages_text)
-                if toc:
-                    toc_lines = [f"{'  ' * (lvl - 1)}{title}" for lvl, title, _ in toc]
-                    toc_str = "\n".join(toc_lines[:100])
-                    full_text = f"TABLE OF CONTENTS:\n{toc_str}\n\nCONTENT:\n{full_text}"
-                total_all_chars += len(full_text)
                 pdf_full_texts.append((book_name, full_text, toc))
                 logger.info(
                     "Extracted PDF text",
@@ -151,30 +145,22 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
                 )
 
         if pdf_full_texts:
-            if total_all_chars <= MAX_CHARS_TOTAL:
-                pdf_texts = [f"### {name}\n{txt}" for name, txt, _ in pdf_full_texts]
-            else:
-                chars_per_pdf = MAX_CHARS_TOTAL // len(pdf_full_texts)
-                pdf_texts = []
-                for name, txt, _toc in pdf_full_texts:
-                    if len(txt) <= chars_per_pdf:
-                        pdf_texts.append(f"### {name}\n{txt}")
-                    else:
-                        truncated = txt[:chars_per_pdf]
-                        pdf_texts.append(
-                            f"### {name} (truncated to {chars_per_pdf} chars)\n{truncated}"
-                        )
-                logger.info(
-                    "PDF text truncated to fit context",
-                    original_chars=total_all_chars,
-                    truncated_chars=MAX_CHARS_TOTAL,
-                )
+            self.update_state(
+                state="GENERATING",
+                meta={"step": "summarizing_pdfs", "progress": 20, "modules_count": 0},
+            )
 
-            resource_text = "\n\n---\n\n".join(pdf_texts)
+            pdf_summaries = summarize_pdfs_sync(pdf_full_texts)
+
+            pdf_sections = [
+                f"### {name}\n{summary}"
+                for (name, _text, _toc), summary in zip(pdf_full_texts, pdf_summaries, strict=True)
+            ]
+            resource_text = "\n\n---\n\n".join(pdf_sections)
             logger.info(
-                "PDF text prepared for syllabus context",
+                "PDF summaries prepared for syllabus context",
                 course_id=course_id,
-                pdf_count=len(pdf_texts),
+                pdf_count=len(pdf_sections),
                 total_chars=len(resource_text),
             )
 
