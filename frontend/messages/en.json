@@ -1266,7 +1266,10 @@
         "stepExtractingImages": "Extracting images from PDFs",
         "chunksAndImagesIndexed": "{chunks} chunks and {images} images indexed",
         "resumeHint": "You can close and come back later. The task continues in the background.",
-        "inProgress": "Indexation in progress"
+        "inProgress": "Indexation in progress",
+        "noImagesIndexed": "No images were indexed. You can re-index images separately without re-running the full pipeline (no extra OpenAI cost).",
+        "reindexImages": "Re-index images",
+        "reindexImagesError": "Image re-indexation failed."
       },
       "closeWhileRunning": {
         "title": "Indexation still running",
