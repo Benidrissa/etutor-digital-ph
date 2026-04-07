@@ -37,7 +37,7 @@ import {
 import { apiFetch } from '@/lib/api';
 import { authClient, AuthError } from '@/lib/auth';
 import { CourseForm } from '@/components/admin/course-form';
-import { CourseWizardClient, loadWizardState } from '@/components/admin/course-wizard-client';
+import { CourseWizardClient } from '@/components/admin/course-wizard-client';
 import { CoursePreassessmentSettings } from '@/components/admin/course-preassessment-settings';
 
 export interface AdminCourse {
@@ -50,6 +50,7 @@ export interface AdminCourse {
   estimated_hours: number;
   cover_image_url: string | null;
   status: 'draft' | 'published' | 'archived';
+  creation_step: string;
   created_at: string;
   updated_at?: string;
   module_count?: number;
@@ -59,20 +60,11 @@ export interface AdminCourse {
   preassessment_mandatory?: boolean;
 }
 
-type WizardStep = 'upload' | 'info' | 'generate' | 'index' | 'publish';
-
 type PendingAction =
   | { type: 'publish'; course: AdminCourse }
   | { type: 'archive'; course: AdminCourse }
   | { type: 'generate'; course: AdminCourse }
   | { type: 'delete'; course: AdminCourse };
-
-function inferWizardStep(course: AdminCourse): WizardStep {
-  if (course.rag_collection_id) return 'publish';
-  if (course.indexation_task_id) return 'index';
-  if (course.module_count && course.module_count > 0) return 'index';
-  return 'generate';
-}
 
 function useAdminCourses() {
   return useQuery<AdminCourse[]>({
@@ -90,22 +82,13 @@ export function CoursesClient() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<AdminCourse | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
-  const [wizardResumeCourseId, setWizardResumeCourseId] = useState<string | undefined>();
-  const [wizardResumeStep, setWizardResumeStep] = useState<WizardStep | undefined>();
+  const [wizardResumeCourse, setWizardResumeCourse] = useState<AdminCourse | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [imagesIndexed, setImagesIndexed] = useState<number | null>(null);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [generateTaskId, setGenerateTaskId] = useState<string | null>(null);
   const generatePollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    const saved = loadWizardState();
-    if (saved) {
-      setWizardResumeCourseId(saved.courseId);
-      setWizardResumeStep(saved.step as WizardStep);
-    }
-  }, []);
 
   const { data: courses, isLoading, error, refetch } = useAdminCourses();
 
@@ -276,25 +259,18 @@ export function CoursesClient() {
   };
 
   const openWizardFresh = () => {
-    setWizardResumeCourseId(undefined);
-    setWizardResumeStep(undefined);
+    setWizardResumeCourse(null);
     setWizardOpen(true);
   };
 
-  const openWizardResume = () => {
+  const openWizardResume = (course: AdminCourse) => {
+    setWizardResumeCourse(course);
     setWizardOpen(true);
   };
 
   const handleWizardClose = () => {
     setWizardOpen(false);
-    const saved = loadWizardState();
-    if (saved) {
-      setWizardResumeCourseId(saved.courseId);
-      setWizardResumeStep(saved.step as WizardStep);
-    } else {
-      setWizardResumeCourseId(undefined);
-      setWizardResumeStep(undefined);
-    }
+    setWizardResumeCourse(null);
   };
 
   const confirmTitle =
@@ -343,16 +319,6 @@ export function CoursesClient() {
             {t('courseCount', { count: courses?.length ?? 0 })}
           </p>
           <div className="flex items-center gap-2">
-            {wizardResumeCourseId && (
-              <Button
-                variant="outline"
-                onClick={openWizardResume}
-                className="gap-2 min-h-11 text-amber-700 border-amber-300 hover:bg-amber-50"
-              >
-                <Database className="h-4 w-4 animate-pulse" aria-hidden="true" />
-                {t('wizard.resumeFrom')}
-              </Button>
-            )}
             <Button
               onClick={openWizardFresh}
               className="gap-2 min-h-11"
@@ -380,21 +346,12 @@ export function CoursesClient() {
                 key={course.id}
                 course={course}
                 generatingId={generatingId}
-                resumeCourseId={wizardResumeCourseId}
                 onPublish={handlePublishIntent}
                 onArchive={(c) => setPendingAction({ type: 'archive', course: c })}
                 onDelete={(c) => setPendingAction({ type: 'delete', course: c })}
                 onGenerateStructure={(c) => setPendingAction({ type: 'generate', course: c })}
                 onEdit={(c) => { setEditingCourse(c); setFormOpen(true); }}
-                onResumeWizard={() => {
-                  const savedState = loadWizardState();
-                  const step = savedState?.courseId === course.id
-                    ? savedState.step
-                    : inferWizardStep(course);
-                  setWizardResumeCourseId(course.id);
-                  setWizardResumeStep(step as WizardStep);
-                  openWizardResume();
-                }}
+                onResumeWizard={() => openWizardResume(course)}
               />
             ))}
           </div>
@@ -414,12 +371,11 @@ export function CoursesClient() {
           onClose={handleWizardClose}
           onCourseCreated={() => {
             setWizardOpen(false);
-            setWizardResumeCourseId(undefined);
-            setWizardResumeStep(undefined);
+            setWizardResumeCourse(null);
             queryClient.invalidateQueries({ queryKey: ['admin', 'courses'] });
           }}
-          resumeCourseId={wizardResumeCourseId}
-          resumeStep={wizardResumeStep}
+          resumeCourseId={wizardResumeCourse?.id}
+          resumeCreationStep={wizardResumeCourse?.creation_step}
         />
       )}
 
@@ -486,7 +442,6 @@ export function CoursesClient() {
 function CourseRow({
   course,
   generatingId,
-  resumeCourseId,
   onPublish,
   onArchive,
   onDelete,
@@ -496,7 +451,6 @@ function CourseRow({
 }: {
   course: AdminCourse;
   generatingId: string | null;
-  resumeCourseId?: string;
   onPublish: (c: AdminCourse) => void;
   onArchive: (c: AdminCourse) => void;
   onDelete: (c: AdminCourse) => void;
@@ -517,11 +471,11 @@ function CourseRow({
         : 'outline';
 
   const isGenerating = generatingId === course.id;
-  const isActiveResume = resumeCourseId === course.id;
+  const isIndexing = course.creation_step === 'indexing';
   const isDraft = course.status === 'draft';
 
   return (
-    <Card className={`p-4 ${isActiveResume ? 'border-amber-300 dark:border-amber-700' : ''}`}>
+    <Card className={`p-4 ${isIndexing ? 'border-amber-300 dark:border-amber-700' : ''}`}>
       <div className="flex items-start justify-between gap-3">
         <button
           className="flex flex-col gap-1 text-left min-w-0 flex-1"
@@ -531,7 +485,7 @@ function CourseRow({
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-sm truncate">{title}</span>
             <Badge variant={statusVariant}>{t(`status.${course.status}`)}</Badge>
-            {isActiveResume && (
+            {isIndexing && (
               <Badge className="gap-1 bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-100 dark:bg-amber-900 dark:text-amber-200">
                 <Database className="h-3 w-3 animate-pulse" aria-hidden="true" />
                 {t('wizard.indexingBadge')}

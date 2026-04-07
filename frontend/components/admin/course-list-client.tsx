@@ -34,6 +34,7 @@ interface Course {
   audience_type: string[];
   module_count: number;
   status: "draft" | "published" | "archived";
+  creation_step: string;
   created_at: string;
   published_at: string | null;
   rag_collection_id: string | null;
@@ -76,6 +77,7 @@ export function CourseListClient() {
   const { data: courses, isLoading, isError } = useAdminCourses();
 
   const [showWizard, setShowWizard] = useState(false);
+  const [resumeCourse, setResumeCourse] = useState<Course | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
   const publishMutation = useMutation({
@@ -125,10 +127,12 @@ export function CourseListClient() {
 
   return (
     <>
-      {showWizard && (
+      {(showWizard || resumeCourse) && (
         <CourseWizardClient
-          onClose={() => setShowWizard(false)}
-          onCourseCreated={() => setShowWizard(false)}
+          onClose={() => { setShowWizard(false); setResumeCourse(null); }}
+          onCourseCreated={() => { setShowWizard(false); setResumeCourse(null); }}
+          resumeCourseId={resumeCourse?.id}
+          resumeCreationStep={resumeCourse?.creation_step}
         />
       )}
 
@@ -187,6 +191,13 @@ export function CourseListClient() {
                       <span className="sr-only">{t("table.actions")}</span>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      {course.status === "draft" && course.creation_step !== "published" && (
+                        <DropdownMenuItem
+                          onClick={() => setResumeCourse(course)}
+                        >
+                          {t("actions.resumeCreation")}
+                        </DropdownMenuItem>
+                      )}
                       {course.status === "draft" && (
                         <DropdownMenuItem
                           onClick={() => setPendingAction({ type: "publish", course })}
