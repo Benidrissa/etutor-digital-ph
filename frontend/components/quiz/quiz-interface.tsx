@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import type { Quiz, QuizAnswerSubmission, QuizAttemptResponse } from '@/lib/api';
-import { submitQuizAttempt } from '@/lib/api';
+import { ApiError, submitQuizAttempt } from '@/lib/api';
 
 interface QuizInterfaceProps {
   quiz: Quiz;
@@ -118,7 +118,17 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
       onComplete(result);
     } catch (error) {
       console.error('Quiz submission failed:', error);
-      onError(t('failedToSubmit'));
+      if (error instanceof ApiError) {
+        if (error.code === 'subscription_required' || error.status === 403) {
+          onError(t('subscriptionRequired'));
+        } else if (error.status === 401) {
+          onError(t('authRequired'));
+        } else {
+          onError(t('failedToSubmit'));
+        }
+      } else {
+        onError(t('failedToSubmit'));
+      }
     } finally {
       setIsSubmitting(false);
     }

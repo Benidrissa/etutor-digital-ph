@@ -314,7 +314,9 @@
     "lessonCompletedDesc": "You scored ≥80%. This lesson is now marked as complete in your progress.",
     "lessonNotValidated": "Lesson not validated",
     "lessonNotValidatedDesc": "You need at least {score}% to validate this lesson. Try again!",
-    "refreshContent": "Refresh content"
+    "refreshContent": "Refresh content",
+    "subscriptionRequired": "A subscription is required to access this content. The first unit of each module is free.",
+    "authRequired": "Please sign in to continue."
   },
   "ChatTutor": {
     "title": "AI Tutor",

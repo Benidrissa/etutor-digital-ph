@@ -14,7 +14,7 @@ from app.ai.claude_service import ClaudeService
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.api.deps import get_db
-from app.api.deps_local_auth import require_active_subscription
+from app.api.deps_local_auth import AuthenticatedUser, get_current_user, require_active_subscription
 from app.api.v1.schemas.quiz import (
     ErrorResponse,
     QuizAttemptRequest,
@@ -30,7 +30,6 @@ from app.domain.models.content import GeneratedContent
 from app.domain.models.module import Module
 from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import QuizAttempt, SummativeAssessmentAttempt
-from app.domain.models.user import User
 from app.domain.services.platform_settings_service import SettingsCache
 from app.domain.services.progress_service import ProgressService
 from app.domain.services.quiz_service import QuizService
@@ -39,6 +38,51 @@ from app.tasks.content_generation import generate_quiz_task
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/quiz", tags=["quiz"])
+
+
+async def _check_subscription_or_first_unit(user: AuthenticatedUser, unit_id: str) -> None:
+    """Allow first unit of a module for free; require subscription for others.
+
+    If unit_id ends with '-U01' or user is admin → allow.
+    Otherwise checks subscription via SubscriptionService.
+    Falls back to DB ModuleUnit.order_index == 0 check.
+    Raises 403 with code 'subscription_required' if no subscription.
+    """
+    import uuid as _uuid
+
+    from app.domain.models.module_unit import ModuleUnit
+    from app.domain.services.subscription_service import SubscriptionService
+    from app.infrastructure.persistence.database import get_db_session
+
+    if user.role == "admin":
+        return
+
+    if unit_id and unit_id.upper().endswith("-U01"):
+        return
+
+    async for session in get_db_session():
+        sub = await SubscriptionService().get_active_subscription(
+            _uuid.UUID(user.id), session
+        )
+        if sub is not None:
+            return
+
+        if unit_id:
+            result = await session.execute(
+                select(ModuleUnit.order_index).where(ModuleUnit.unit_number == unit_id)
+            )
+            order = result.scalar_one_or_none()
+            if order is not None and order == 0:
+                return
+        break
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={
+            "code": "subscription_required",
+            "message": "An active subscription is required to access this content. The first lesson of each module is free.",
+        },
+    )
 
 
 async def _resolve_module_uuid(module_id_str: str, session: AsyncSession) -> UUID:
@@ -106,6 +150,7 @@ async def generate_quiz(
     request: QuizGenerationRequest,
     quiz_service: QuizService = Depends(get_quiz_service),
     session: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> JSONResponse:
     """
     Generate or retrieve cached quiz content.
@@ -127,6 +172,8 @@ async def generate_quiz(
     - Country-contextualized examples
     """
     try:
+        await _check_subscription_or_first_unit(current_user, request.unit_id)
+
         module_uuid = await _resolve_module_uuid(request.module_id, session)
 
         logger.info(
@@ -293,7 +340,7 @@ async def get_quiz(
 async def submit_quiz_attempt(
     request: QuizAttemptRequest,
     session: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_active_subscription),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> QuizAttemptResponse:
     """
     Submit a completed quiz attempt and get immediate feedback.
@@ -335,6 +382,10 @@ async def submit_quiz_attempt(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail={"error": "quiz_not_found", "message": f"Quiz {request.quiz_id} not found"},
             )
+
+        await _check_subscription_or_first_unit(
+            current_user, quiz_content.content.get("unit_id", "")
+        )
 
         quiz_data = quiz_content.content
         questions = quiz_data["questions"]
@@ -574,7 +625,7 @@ async def generate_summative_assessment(
 async def can_attempt_summative_assessment(
     module_id: UUID,
     session: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_active_subscription),
+    current_user: AuthenticatedUser = Depends(require_active_subscription),
 ) -> SummativeAssessmentAttemptCheck:
     """
     Check if user can attempt summative assessment for a module.
@@ -679,7 +730,7 @@ async def can_attempt_summative_assessment(
 async def submit_summative_assessment_attempt(
     request: QuizAttemptRequest,
     session: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_active_subscription),
+    current_user: AuthenticatedUser = Depends(require_active_subscription),
 ) -> SummativeAssessmentResponse:
     """
     Submit a completed summative assessment attempt.
