@@ -4,7 +4,7 @@ import uuid
 from uuid import UUID
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -16,6 +16,7 @@ from app.api.v1.schemas.quiz import QuizContent, QuizResponse
 from app.domain.models.content import GeneratedContent
 from app.domain.models.course import Course
 from app.domain.models.module import Module
+from app.domain.models.module_unit import ModuleUnit
 from app.domain.services.platform_settings_service import SettingsCache
 
 logger = structlog.get_logger()
@@ -221,6 +222,8 @@ class QuizService:
         try:
             module: Module | None = None
             course: Course | None = None
+            unit_obj: ModuleUnit | None = None
+            all_units: list[ModuleUnit] | None = None
             if session is not None:
                 module_result = await session.execute(
                     select(Module)
@@ -230,8 +233,29 @@ class QuizService:
                 module = module_result.scalar_one_or_none()
                 if module:
                     course = module.course
+                    if unit_id == "summative":
+                        all_units_result = await session.execute(
+                            select(ModuleUnit)
+                            .where(ModuleUnit.module_id == module.id)
+                            .order_by(ModuleUnit.order_index)
+                        )
+                        all_units = list(all_units_result.scalars().all())
+                    else:
+                        unit_number = self._unit_id_to_unit_number(unit_id, module.module_number)
+                        if unit_number:
+                            unit_result = await session.execute(
+                                select(ModuleUnit).where(
+                                    and_(
+                                        ModuleUnit.module_id == module.id,
+                                        ModuleUnit.unit_number == unit_number,
+                                    )
+                                )
+                            )
+                            unit_obj = unit_result.scalar_one_or_none()
 
-            search_query = self._build_quiz_search_query(module, unit_id, language)
+            search_query = self._build_quiz_search_query(
+                module, unit_id, language, unit=unit_obj, all_units=all_units
+            )
             search_results = await self.semantic_retriever.search_for_module(
                 query=search_query,
                 user_level=level,
@@ -248,6 +272,22 @@ class QuizService:
                     for result in search_results
                 ]
             )
+
+            unit_title: str | None = None
+            unit_description: str | None = None
+            all_units_summary: str | None = None
+            if unit_obj is not None:
+                unit_title = unit_obj.title_fr if language == "fr" else unit_obj.title_en
+                unit_description = (
+                    unit_obj.description_fr if language == "fr" else unit_obj.description_en
+                )
+            elif all_units:
+                lines = []
+                for u in all_units:
+                    t = u.title_fr if language == "fr" else u.title_en
+                    d = (u.description_fr if language == "fr" else u.description_en) or ""
+                    lines.append(f"- {t}: {d}".strip(": "))
+                all_units_summary = "\n".join(lines)
 
             # Generate quiz using Claude API with structured prompt
             system_prompt, user_message = self._build_quiz_prompt(
@@ -269,6 +309,9 @@ class QuizService:
                     (module.title_fr if language == "fr" else module.title_en) if module else ""
                 ),
                 bloom_level=module.bloom_level if module else "",
+                unit_title=unit_title,
+                unit_description=unit_description,
+                all_units_summary=all_units_summary,
             )
 
             response = await self.claude_service.generate_structured_content(
@@ -285,6 +328,18 @@ class QuizService:
             raise
 
     @staticmethod
+    def _unit_id_to_unit_number(unit_id: str, module_number: int) -> str | None:
+        """Convert unit_id like 'M01-U02' to unit_number like '1.2'."""
+        try:
+            parts = unit_id.upper().split("-U")
+            if len(parts) != 2:
+                return None
+            unit_ordinal = int(parts[1])
+            return f"{module_number}.{unit_ordinal}"
+        except (ValueError, IndexError):
+            return None
+
+    @staticmethod
     def _resolve_books_sources(module: "Module") -> dict | None:
         """Prefer course rag_collection_id over module.books_sources."""
         course = module.course
@@ -299,10 +354,27 @@ class QuizService:
         module: "Module | None",
         unit_id: str,
         language: str,
+        unit: "ModuleUnit | None" = None,
+        all_units: "list[ModuleUnit] | None" = None,
     ) -> str:
         """Build a context-aware RAG search query from module/unit metadata."""
         if module is None:
             return f"unit {unit_id}"
+
+        if unit is not None:
+            unit_title = unit.title_fr if language == "fr" else unit.title_en
+            unit_description = unit.description_fr if language == "fr" else unit.description_en
+            parts = [unit_title]
+            if unit_description:
+                parts.append(unit_description[:200])
+            return " ".join(parts)
+
+        if all_units:
+            module_title = module.title_fr if language == "fr" else module.title_en
+            unit_titles = [
+                (u.title_fr if language == "fr" else u.title_en) for u in all_units
+            ]
+            return " ".join([module_title] + unit_titles)
 
         title = module.title_fr if language == "fr" else module.title_en
         description = module.description_fr if language == "fr" else module.description_en
@@ -327,6 +399,9 @@ class QuizService:
         bloom_level: str = "",
         syllabus_context: str = "",
         course_domain: str = "",
+        unit_title: str | None = None,
+        unit_description: str | None = None,
+        all_units_summary: str | None = None,
     ) -> tuple[str, str]:
         """Build the system and user prompts for Claude API to generate quiz questions."""
 
@@ -340,6 +415,7 @@ class QuizService:
 
         domain = course_title or "public health"
 
+        effective_unit_title = unit_title or unit_id
         admin_system = get_quiz_system_prompt(
             language,
             country,
@@ -348,7 +424,7 @@ class QuizService:
             course_title,
             course_description,
             module_title,
-            unit_id,
+            effective_unit_title,
             syllabus_context,
             course_domain,
         )
@@ -407,6 +483,21 @@ class QuizService:
             else "Generate the quiz now, ensuring all questions are relevant to public health practice in West Africa."
         )
 
+        if unit_title is not None:
+            topic_constraint = (
+                f"IMPORTANT: All questions MUST be specifically about {unit_title!r}. "
+                "Do NOT include questions about other topics in this module."
+            )
+            if unit_description:
+                topic_constraint += f" Topic scope: {unit_description}"
+        elif all_units_summary is not None:
+            topic_constraint = (
+                f"IMPORTANT: This is a summative quiz. Questions MUST cover ALL of the following units. "
+                f"Distribute questions evenly across all units:\n{all_units_summary}"
+            )
+        else:
+            topic_constraint = ""
+
         user_message = f"""Create a multiple-choice quiz for {audience}.
 
 CONTEXT MATERIAL:
@@ -417,10 +508,11 @@ QUIZ REQUIREMENTS:
 - Domain: {domain}
 - Language: {lang_instruction}
 - Level: {level_desc.get(level, "intermediate")}
-- Unit: {unit_id}
+- Unit: {effective_unit_title}
 - Number of questions: {num_questions}
 - Format: Multiple choice with exactly 4 options each
 - Include explanations and source citations
+{('- ' + topic_constraint) if topic_constraint else ''}
 
 INSTRUCTIONS:
 1. Create {num_questions} multiple-choice questions based on the provided context
