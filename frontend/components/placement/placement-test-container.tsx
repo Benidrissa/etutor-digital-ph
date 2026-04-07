@@ -16,10 +16,11 @@ interface PlacementTestContainerProps {
 interface PlacementTestResult {
   assigned_level: number;
   score_percentage: number;
+  level_scores: Record<string, number>;
   competency_areas: string[];
   recommendations: string[];
-  level_description: { en: string; fr: string };
   can_retake_after?: string;
+  course_id?: string;
   skipped?: boolean;
 }
 
@@ -79,6 +80,7 @@ export function PlacementTestContainer({ locale, courseId, courseName }: Placeme
         <PlacementTestResults
           result={result!}
           locale={locale}
+          courseId={courseId}
           isSkipped={state === 'skipped'}
         />
       );
