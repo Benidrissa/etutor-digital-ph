@@ -17,6 +17,7 @@ import {
   BookOpen,
   AlertCircle,
   Clock,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -103,6 +104,52 @@ interface CourseWizardClientProps {
   onCourseCreated: () => void;
   resumeCourseId?: string;
   resumeCreationStep?: string;
+}
+
+function AttachedResources({
+  files,
+  t,
+}: {
+  files: UploadedFile[];
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const [open, setOpen] = useState(true);
+  const uploaded = files.filter((f) => f.status === "uploaded");
+  if (uploaded.length === 0) return null;
+  return (
+    <div className="rounded-lg border bg-muted/30">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-medium min-h-[44px]"
+        aria-expanded={open}
+      >
+        <div className="flex items-center gap-2">
+          <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span>{t("attachedResources.title")}</span>
+          <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-semibold text-primary">
+            {uploaded.length}
+          </span>
+        </div>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open && (
+        <div className="border-t px-3 pb-3 pt-2 space-y-1.5">
+          {uploaded.map((f) => (
+            <div key={f.name} className="flex items-center gap-2.5">
+              <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-medium">{f.name}</p>
+                <p className="text-xs text-muted-foreground">{formatBytes(f.size_bytes)}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function formatBytes(bytes: number): string {
@@ -192,6 +239,21 @@ export function CourseWizardClient({
       setAudienceOptions(tax.audience_types);
     }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!courseId || files.length > 0) return;
+    apiFetch<{ files: Array<{ name: string; size_bytes: number }> }>(
+      `/api/v1/admin/courses/${courseId}/resources`
+    )
+      .then((data) => {
+        if (data.files?.length) {
+          setFiles(
+            data.files.map((f) => ({ name: f.name, size_bytes: f.size_bytes, status: "uploaded" as const }))
+          );
+        }
+      })
+      .catch(() => {});
+  }, [courseId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getAuthHeaders = useCallback(async (): Promise<Record<string, string>> => {
     const token = await authClient.getValidToken();
@@ -776,6 +838,8 @@ export function CourseWizardClient({
                   <p className="mt-1 text-sm text-muted-foreground">{t("info.description")}</p>
                 </div>
 
+                <AttachedResources files={files} t={t} />
+
                 <div className="space-y-4">
                   <div className="space-y-1.5">
                     <Label htmlFor="title_fr">{t("info.titleFr")} *</Label>
@@ -868,6 +932,8 @@ export function CourseWizardClient({
                   <p className="mt-1 text-sm text-muted-foreground">{t("generate.description")}</p>
                 </div>
 
+                <AttachedResources files={files} t={t} />
+
                 {generatedModules.length === 0 && !isGenerating && (
                   <Button
                     onClick={generateSyllabus}
@@ -954,6 +1020,8 @@ export function CourseWizardClient({
                   <h3 className="text-xl font-semibold">{t("index.title")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">{t("index.description")}</p>
                 </div>
+
+                <AttachedResources files={files} t={t} />
 
                 {!isIndexing && !indexStatus?.indexed && (
                   <Button onClick={startIndexation} className="w-full min-h-11" disabled={isIndexing}>

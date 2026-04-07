@@ -1214,6 +1214,12 @@
         "titleFrRequired": "French title is required",
         "titleEnRequired": "English title is required"
       },
+      "attachedResources": {
+        "title": "Attached resources",
+        "show": "Show attached files",
+        "hide": "Hide attached files",
+        "noFiles": "No resources attached"
+      },
       "generate": {
         "title": "Generate syllabus",
         "description": "The AI agent will analyze your resources and generate the course structure.",
