@@ -22,6 +22,7 @@ from app.domain.models.source_image import SourceImage
 from app.domain.models.taxonomy import TaxonomyCategory
 from app.domain.models.user import UserRole
 from app.tasks.content_generation import generate_lesson_task
+from app.tasks.image_indexation import reindex_course_images
 from app.tasks.preassessment_generation import generate_course_preassessment
 from app.tasks.rag_indexation import UPLOAD_DIR, index_course_resources
 from app.tasks.syllabus_generation import generate_course_syllabus
@@ -539,6 +540,43 @@ async def get_rag_index_status(
         }
 
     return response
+
+
+@router.post("/{course_id}/reindex-images")
+async def trigger_image_reindexation(
+    course_id: uuid.UUID,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    db=Depends(get_db_session),
+) -> dict:
+    """Trigger image-only re-indexation for course resources.
+
+    Allowed at any creation_step (indexed, published, etc.) since it only touches images.
+    Does not re-embed text — no OpenAI cost. Only needs MinIO credentials.
+    Returns task_id for polling via the existing index-status endpoint.
+    """
+    result = await db.execute(select(Course).where(Course.id == course_id))
+    course = result.scalar_one_or_none()
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    if not course.rag_collection_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Course has no rag_collection_id",
+        )
+
+    task = reindex_course_images.delay(str(course_id), course.rag_collection_id)
+
+    course.indexation_task_id = task.id
+    await db.commit()
+
+    logger.info(
+        "Image re-indexation triggered",
+        course_id=str(course_id),
+        task_id=task.id,
+        admin_id=current_user.id,
+    )
+    return {"task_id": task.id, "status": "started"}
 
 
 # ---------------------------------------------------------------------------
