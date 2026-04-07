@@ -67,6 +67,7 @@ CONSIGNES STRICTES :
 5. Tags de domaine thématique pour chaque question
 6. Contexte Afrique de l'Ouest intégré dans les exemples
 7. Langue de sortie : Français
+8. TOUTES les options de réponse (a, b, c, d) DOIVENT être rédigées intégralement en français. Si le contenu source est en anglais, tu DOIS traduire les options en français. Les acronymes internationaux (DIIG, OMS, etc.) peuvent rester en anglais mais leur description doit être en français.
 
 CRITICAL: You MUST respond with valid JSON ONLY. No preamble, no explanation, no markdown code fences. Your entire response must be a single JSON object starting with {{ and ending with }}.
 
@@ -79,10 +80,10 @@ FORMAT DE RÉPONSE JSON :
       "id": "q1",
       "question": "Texte de la question ?",
       "options": {{
-        "a": "Option A",
-        "b": "Option B",
-        "c": "Option C",
-        "d": "Option D"
+        "a": "Première option en français",
+        "b": "Deuxième option en français",
+        "c": "Troisième option en français",
+        "d": "Quatrième option en français"
       }},
       "correct_answer": "b",
       "explanation": "Explication détaillée de la réponse correcte.",
