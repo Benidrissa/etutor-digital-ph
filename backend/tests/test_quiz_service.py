@@ -361,6 +361,60 @@ class TestBuildQuizPrompt:
         assert "JSON" in system_prompt
         assert "title" in system_prompt
 
+    def test_unit_title_injects_topic_constraint(self, quiz_service):
+        _system_prompt, user_message = quiz_service._build_quiz_prompt(
+            context="context",
+            unit_id="M01-U01",
+            language="fr",
+            country="senegal",
+            level=1,
+            num_questions=5,
+            unit_title="Introduction à l'épidémiologie",
+        )
+        assert "Introduction à l'épidémiologie" in user_message
+        assert "MUST be specifically about" in user_message
+        assert "Do NOT include questions about other topics" in user_message
+
+    def test_unit_description_appended_to_topic_constraint(self, quiz_service):
+        _system_prompt, user_message = quiz_service._build_quiz_prompt(
+            context="context",
+            unit_id="M01-U01",
+            language="fr",
+            country="senegal",
+            level=1,
+            num_questions=5,
+            unit_title="Épidémiologie",
+            unit_description="Étude de la distribution des maladies",
+        )
+        assert "Étude de la distribution des maladies" in user_message
+
+    def test_summative_injects_all_units_summary(self, quiz_service):
+        _system_prompt, user_message = quiz_service._build_quiz_prompt(
+            context="context",
+            unit_id="summative",
+            language="fr",
+            country="senegal",
+            level=1,
+            num_questions=10,
+            all_units_summary="- Unit 1: Intro\n- Unit 2: Stats",
+        )
+        assert "summative quiz" in user_message
+        assert "Unit 1: Intro" in user_message
+        assert "Distribute questions evenly" in user_message
+
+    def test_uses_unit_title_in_requirements_section(self, quiz_service):
+        _system_prompt, user_message = quiz_service._build_quiz_prompt(
+            context="context",
+            unit_id="M01-U01",
+            language="fr",
+            country="senegal",
+            level=1,
+            num_questions=5,
+            unit_title="Épidémiologie descriptive",
+        )
+        assert "Épidémiologie descriptive" in user_message
+        assert "M01-U01" not in user_message
+
 
 class TestBuildQuizSearchQuery:
     def test_returns_unit_id_when_module_is_none(self, quiz_service):
@@ -404,6 +458,74 @@ class TestBuildQuizSearchQuery:
         module.description_en = None
         result = quiz_service._build_quiz_search_query(module, "M01-U01", "fr")
         assert "public health epidemiology" not in result.lower()
+
+    def test_uses_unit_title_when_unit_provided(self, quiz_service):
+        module = MagicMock()
+        module.title_fr = "Module Santé"
+        module.title_en = "Health Module"
+        module.description_fr = None
+        module.description_en = None
+        unit = MagicMock()
+        unit.title_fr = "Introduction à l'épidémiologie"
+        unit.title_en = "Introduction to Epidemiology"
+        unit.description_fr = "Bases de l'épidémiologie"
+        unit.description_en = "Epidemiology basics"
+        result = quiz_service._build_quiz_search_query(module, "M01-U01", "fr", unit=unit)
+        assert "Introduction à l'épidémiologie" in result
+        assert "Bases de l'épidémiologie" in result
+        assert "Module Santé" not in result
+
+    def test_unit_query_uses_english_when_language_en(self, quiz_service):
+        module = MagicMock()
+        module.title_fr = "Module Santé"
+        module.title_en = "Health Module"
+        module.description_fr = None
+        module.description_en = None
+        unit = MagicMock()
+        unit.title_fr = "Introduction à l'épidémiologie"
+        unit.title_en = "Introduction to Epidemiology"
+        unit.description_fr = None
+        unit.description_en = "Epidemiology basics"
+        result = quiz_service._build_quiz_search_query(module, "M01-U01", "en", unit=unit)
+        assert "Introduction to Epidemiology" in result
+        assert "Epidemiology basics" in result
+
+    def test_summative_uses_all_unit_titles(self, quiz_service):
+        module = MagicMock()
+        module.title_fr = "Module Santé"
+        module.title_en = "Health Module"
+        module.description_fr = None
+        module.description_en = None
+        unit1 = MagicMock()
+        unit1.title_fr = "Unité 1"
+        unit1.title_en = "Unit 1"
+        unit2 = MagicMock()
+        unit2.title_fr = "Unité 2"
+        unit2.title_en = "Unit 2"
+        result = quiz_service._build_quiz_search_query(
+            module, "summative", "fr", all_units=[unit1, unit2]
+        )
+        assert "Module Santé" in result
+        assert "Unité 1" in result
+        assert "Unité 2" in result
+
+
+class TestUnitIdToUnitNumber:
+    def test_converts_m01_u02_to_1_2(self, quiz_service):
+        result = QuizService._unit_id_to_unit_number("M01-U02", 1)
+        assert result == "1.2"
+
+    def test_converts_m03_u05_to_3_5(self, quiz_service):
+        result = QuizService._unit_id_to_unit_number("M03-U05", 3)
+        assert result == "3.5"
+
+    def test_returns_none_for_summative(self, quiz_service):
+        result = QuizService._unit_id_to_unit_number("summative", 1)
+        assert result is None
+
+    def test_returns_none_for_invalid_format(self, quiz_service):
+        result = QuizService._unit_id_to_unit_number("invalid", 1)
+        assert result is None
 
 
 class TestGenerateQuizContentPassesBooksSources:
