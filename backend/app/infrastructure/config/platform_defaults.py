@@ -564,6 +564,16 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "Credits charged per module offline download.",
         {"min": 0, "max": 100000},
     ),
+    # ── Subscription & Access ──────────────────────────────
+    SettingDef(
+        "subscription-free-units-count",
+        "subscription",
+        2,
+        "integer",
+        "Free units per module",
+        "Number of free units per module before subscription required.",
+        {"min": 1, "max": 10},
+    ),
     # ── Payments ───────────────────────────────────────────
     SettingDef(
         "payments-orange-money-number",
