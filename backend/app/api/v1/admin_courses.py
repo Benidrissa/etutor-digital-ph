@@ -324,19 +324,21 @@ class GenerateStructureRequest(BaseModel):
 async def generate_course_structure(
     course_id: uuid.UUID,
     request: GenerateStructureRequest,
+    force: bool = False,
     current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
     db=Depends(get_db_session),
 ) -> dict:
     """
     Dispatch a Celery task to generate module outline for a course via Claude API.
     Returns immediately with task_id for polling. Admin only.
+    Use force=true to override a stuck 'generating' state (e.g. after worker crash).
     """
     result = await db.execute(select(Course).where(Course.id == course_id))
     course = result.scalar_one_or_none()
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
 
-    if course.creation_step == "generating":
+    if course.creation_step == "generating" and not force:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"A task is already in progress (step: {course.creation_step})",
@@ -355,6 +357,7 @@ async def generate_course_structure(
     )
 
     course.creation_step = "generating"
+    course.syllabus_task_id = task.id
     await db.commit()
 
     logger.info(
@@ -384,16 +387,19 @@ async def get_generate_status(
     )
     modules_count = module_count_result.scalar_one()
 
+    resolved_task_id = task_id or course.syllabus_task_id
+
     response: dict = {
         "course_id": str(course_id),
         "modules_count": modules_count,
         "has_modules": modules_count > 0,
+        "creation_step": course.creation_step,
     }
 
-    if task_id:
-        task_result = AsyncResult(task_id)
+    if resolved_task_id:
+        task_result = AsyncResult(resolved_task_id)
         response["task"] = {
-            "id": task_id,
+            "id": resolved_task_id,
             "state": task_result.state,
             "meta": task_result.info if isinstance(task_result.info, dict) else {},
         }

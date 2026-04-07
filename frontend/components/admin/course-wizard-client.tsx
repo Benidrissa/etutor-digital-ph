@@ -201,6 +201,7 @@ export function CourseWizardClient({
     resumeCreationStep === "generating"
   );
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [shouldForceGenerate, setShouldForceGenerate] = useState(false);
   const [generateTaskId, setGenerateTaskId] = useState<string | null>(null);
   const [generateTaskState, setGenerateTaskState] = useState<string | null>(null);
   const [generationProgress, setGenerationProgress] = useState(0);
@@ -286,11 +287,24 @@ export function CourseWizardClient({
 
     const checkOnResume = async () => {
       try {
-        const data = await apiFetch<{ has_modules: boolean; modules_count: number }>(
-          `/api/v1/admin/courses/${resumeCourseId}/generate-status`
-        );
+        const data = await apiFetch<{
+          has_modules: boolean;
+          modules_count: number;
+          creation_step: string;
+          task?: { id: string; state: string; meta?: Record<string, unknown> };
+        }>(`/api/v1/admin/courses/${resumeCourseId}/generate-status`);
+
         if (data.has_modules) {
           setGeneratedModules([{ id: "resumed", module_number: 1, title_fr: "", title_en: "" }]);
+        }
+
+        const activeStates = ["PENDING", "STARTED", "RETRY"];
+        if (data.task && activeStates.includes(data.task.state)) {
+          setIsGenerating(true);
+          setGenerateTaskId(data.task.id);
+          setGenerationStartTime(Date.now());
+        } else if (data.creation_step === "generating") {
+          setShouldForceGenerate(true);
         }
       } catch {
       } finally {
@@ -522,8 +536,9 @@ export function CourseWizardClient({
     }
   }, [courseInfo, courseId, getAuthHeaders, t, pendingFiles]);
 
-  const generateSyllabus = useCallback(async () => {
+  const generateSyllabus = useCallback(async (force?: boolean) => {
     if (!courseId || isGenerating) return;
+    const useForce = force ?? shouldForceGenerate;
     setIsGenerating(true);
     setGenerateError(null);
     setGenerateTaskId(null);
@@ -535,10 +550,12 @@ export function CourseWizardClient({
     lastProgressValueRef.current = 0;
     lastProgressTimeRef.current = Date.now();
     setShowTimeoutWarning(false);
+    setShouldForceGenerate(false);
 
     try {
+      const url = `/api/v1/admin/courses/${courseId}/generate-structure${useForce ? "?force=true" : ""}`;
       const result = await apiFetch<{ task_id: string; status: string }>(
-        `/api/v1/admin/courses/${courseId}/generate-structure`,
+        url,
         {
           method: "POST",
           body: JSON.stringify({
@@ -551,7 +568,7 @@ export function CourseWizardClient({
       setGenerateError(t("generate.error"));
       setIsGenerating(false);
     }
-  }, [courseId, courseInfo, isGenerating, t]);
+  }, [courseId, courseInfo, isGenerating, shouldForceGenerate, t]);
 
   useEffect(() => {
     if (!courseId || !isGenerating || !generateTaskId) return;
@@ -1053,7 +1070,7 @@ export function CourseWizardClient({
 
                 {generatedModules.length === 0 && !isGenerating && !isCheckingGenerateStatus && (
                   <Button
-                    onClick={generateSyllabus}
+                    onClick={() => generateSyllabus()}
                     className="w-full min-h-11"
                     disabled={isGenerating}
                   >
@@ -1104,7 +1121,7 @@ export function CourseWizardClient({
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={generateSyllabus}
+                      onClick={() => generateSyllabus()}
                       className="self-start min-h-[44px]"
                     >
                       <Sparkles className="mr-2 h-4 w-4" />
