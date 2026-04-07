@@ -65,6 +65,8 @@ class CourseModuleDetail(BaseModel):
 class CourseDetailResponse(CourseListItem):
     syllabus_json: dict | list | None
     modules: list[CourseModuleDetail]
+    preassessment_enabled: bool = False
+    preassessment_mandatory: bool = False
 
 
 class EnrollmentResponse(BaseModel):
@@ -305,6 +307,8 @@ async def get_course_detail(
         **base.model_dump(),
         syllabus_json=course.syllabus_json,
         modules=module_details,
+        preassessment_enabled=course.preassessment_enabled,
+        preassessment_mandatory=course.preassessment_mandatory,
     )
 
 
