@@ -71,16 +71,22 @@ def generate_course_syllabus(
     cache = SettingsCache.instance()
     context_budget = cache.get("syllabus-context-budget-chars", 3_500_000)
     pdf_chunk_size = cache.get("syllabus-pdf-chunk-size-chars") or None
-    combine_chunk_size = cache.get("syllabus-combine-chunk-size-chars") or cache.get(
-        "syllabus-combine-chunk-size"
-    ) or None
+    combine_chunk_size = (
+        cache.get("syllabus-combine-chunk-size-chars")
+        or cache.get("syllabus-combine-chunk-size")
+        or None
+    )
     summarizer_model = cache.get("syllabus-summarizer-model", "claude-sonnet-4-6")
-    chunk_max_tokens = cache.get("syllabus-chunk-max-output-tokens") or cache.get(
-        "syllabus-chunk-max-tokens"
-    ) or None
-    combine_max_tokens = cache.get("syllabus-combine-max-output-tokens") or cache.get(
-        "syllabus-combine-max-tokens"
-    ) or None
+    chunk_max_tokens = (
+        cache.get("syllabus-chunk-max-output-tokens")
+        or cache.get("syllabus-chunk-max-tokens")
+        or None
+    )
+    combine_max_tokens = (
+        cache.get("syllabus-combine-max-output-tokens")
+        or cache.get("syllabus-combine-max-tokens")
+        or None
+    )
     max_concurrent = cache.get("syllabus-max-concurrent-api-calls", 5)
 
     logger.info(

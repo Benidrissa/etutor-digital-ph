@@ -147,7 +147,9 @@ class TestComputeChunkPlan:
                 context_budget_chars=budget,
                 model="claude-sonnet-4-6",
             )
-            assert plan.chunk_count == 1, f"Expected 1 chunk for {pdf_chars} chars, got {plan.chunk_count}"
+            assert plan.chunk_count == 1, (
+                f"Expected 1 chunk for {pdf_chars} chars, got {plan.chunk_count}"
+            )
 
     def test_all_values_are_positive(self):
         plan = compute_chunk_plan(
