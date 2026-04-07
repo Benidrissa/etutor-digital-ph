@@ -621,6 +621,59 @@ async def get_rag_index_status(
     return response
 
 
+@router.post("/{course_id}/cancel-indexation", response_model=CourseResponse)
+async def cancel_indexation(
+    course_id: uuid.UUID,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    db=Depends(get_db_session),
+) -> CourseResponse:
+    """Revoke a running RAG indexation task and reset the course back to 'generated'.
+
+    Safe to call even when the task has already failed or is stale — idempotent.
+    After this call the admin can re-trigger indexation via POST /index-resources.
+    """
+    result = await db.execute(select(Course).where(Course.id == course_id))
+    course = result.scalar_one_or_none()
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    if course.creation_step not in ("indexing", "generated"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot cancel: course is at step '{course.creation_step}', not in an indexing state.",
+        )
+
+    if course.indexation_task_id:
+        try:
+            task_result = AsyncResult(course.indexation_task_id)
+            task_result.revoke(terminate=True, signal="SIGTERM")
+            logger.info(
+                "Celery task revoked",
+                task_id=course.indexation_task_id,
+                course_id=str(course_id),
+                admin_id=current_user.id,
+            )
+        except Exception as revoke_exc:
+            logger.warning(
+                "Could not revoke Celery task (may have already finished)",
+                task_id=course.indexation_task_id,
+                error=str(revoke_exc),
+            )
+
+    course.creation_step = "generated"
+    course.indexation_task_id = None
+    await db.commit()
+    await db.refresh(course)
+    img_count = await _fetch_image_count(db, course.rag_collection_id)
+
+    logger.info(
+        "Indexation cancelled, creation_step reset to 'generated'",
+        course_id=str(course_id),
+        admin_id=current_user.id,
+    )
+    return _course_to_response(course, image_count=img_count)
+
+
 @router.post("/{course_id}/reindex-images")
 async def trigger_image_reindexation(
     course_id: uuid.UUID,

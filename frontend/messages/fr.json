@@ -1080,7 +1080,7 @@
       "exportCsv": "Exporter CSV",
       "previous": "Précédent",
       "next": "Suivant",
-      "showing": "Affichage {from}\u2013{to} sur {total}",
+      "showing": "Affichage {from}–{to} sur {total}",
       "clearFilters": "Effacer les filtres",
       "statuses": {
         "payment_processed": "Traité",
@@ -1283,7 +1283,12 @@
         "inProgress": "Indexation en cours",
         "noImagesIndexed": "Aucune image indexée. Vous pouvez ré-indexer les images séparément sans relancer le pipeline complet (sans coût OpenAI supplémentaire).",
         "reindexImages": "Ré-indexer les images",
-        "reindexImagesError": "La ré-indexation des images a échoué."
+        "reindexImagesError": "La ré-indexation des images a échoué.",
+        "cancelIndexation": "Annuler l'indexation",
+        "retryIndexation": "Relancer l'indexation",
+        "staleWarning": "Aucune progression détectée depuis plus de 60 secondes. La tâche est peut-être bloquée.",
+        "cancelError": "Impossible d'annuler l'indexation.",
+        "cancelSuccess": "Indexation annulée. Vous pouvez la relancer."
       },
       "closeWhileRunning": {
         "title": "Indexation en cours",

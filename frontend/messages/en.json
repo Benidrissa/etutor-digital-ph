@@ -1080,7 +1080,7 @@
       "exportCsv": "Export CSV",
       "previous": "Previous",
       "next": "Next",
-      "showing": "Showing {from}\u2013{to} of {total}",
+      "showing": "Showing {from}–{to} of {total}",
       "clearFilters": "Clear filters",
       "statuses": {
         "payment_processed": "Processed",
@@ -1283,7 +1283,12 @@
         "inProgress": "Indexation in progress",
         "noImagesIndexed": "No images were indexed. You can re-index images separately without re-running the full pipeline (no extra OpenAI cost).",
         "reindexImages": "Re-index images",
-        "reindexImagesError": "Image re-indexation failed."
+        "reindexImagesError": "Image re-indexation failed.",
+        "cancelIndexation": "Cancel indexation",
+        "retryIndexation": "Retry indexation",
+        "staleWarning": "No progress detected for over 60 seconds. The task may be stuck.",
+        "cancelError": "Failed to cancel indexation.",
+        "cancelSuccess": "Indexation cancelled. You can restart it."
       },
       "closeWhileRunning": {
         "title": "Indexation still running",
