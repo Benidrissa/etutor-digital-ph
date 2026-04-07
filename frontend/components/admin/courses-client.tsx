@@ -34,7 +34,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, ApiError } from '@/lib/api';
 import { authClient, AuthError } from '@/lib/auth';
 import { CourseForm } from '@/components/admin/course-form';
 import { CourseWizardClient } from '@/components/admin/course-wizard-client';
@@ -122,7 +122,8 @@ export function CoursesClient() {
       setPendingAction(null);
       setActionError(null);
     },
-    onError: () => setActionError(t('actionError')),
+    onError: (err: unknown) =>
+      setActionError(err instanceof ApiError ? err.message : t('actionError')),
   });
 
   const handleConfirmAction = () => {
