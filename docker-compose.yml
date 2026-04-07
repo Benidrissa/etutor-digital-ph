@@ -42,6 +42,8 @@ services:
       CORS_ORIGINS: http://localhost:3000
     ports:
       - "8000:8000"
+    volumes:
+      - uploads_data:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -57,3 +59,4 @@ services:
 volumes:
   pgdata:
   redisdata:
+  uploads_data:

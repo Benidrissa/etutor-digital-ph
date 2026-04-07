@@ -4,6 +4,7 @@ from app.domain.models.base import Base
 from app.domain.models.content import GeneratedContent
 from app.domain.models.conversation import TutorConversation
 from app.domain.models.course import Course, UserCourseEnrollment
+from app.domain.models.course_resource import CourseResource
 from app.domain.models.credit import CreditAccount, CreditPackage, CreditTransaction
 from app.domain.models.curriculum import Curriculum, CurriculumCourse
 from app.domain.models.document_chunk import DocumentChunk
@@ -39,6 +40,7 @@ __all__ = [
     "Base",
     "Course",
     "CoursePreAssessment",
+    "CourseResource",
     "Curriculum",
     "CurriculumCourse",
     "CreditAccount",

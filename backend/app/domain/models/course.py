@@ -11,6 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.domain.models.base import Base
 
 if TYPE_CHECKING:
+    from app.domain.models.course_resource import CourseResource
     from app.domain.models.module import Module
     from app.domain.models.preassessment import CoursePreAssessment
     from app.domain.models.taxonomy import TaxonomyCategory
@@ -48,6 +49,7 @@ class Course(Base):
 
     modules: Mapped[list[Module]] = relationship(back_populates="course")
     enrollments: Mapped[list[UserCourseEnrollment]] = relationship(back_populates="course")
+    resources: Mapped[list[CourseResource]] = relationship(back_populates="course")
     taxonomy_categories: Mapped[list[TaxonomyCategory]] = relationship(
         secondary="course_taxonomy", lazy="selectin"
     )
