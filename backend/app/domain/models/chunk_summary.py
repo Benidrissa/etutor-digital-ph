@@ -30,3 +30,4 @@ class ChunkSummary(Base):
     summary_text: Mapped[str] = mapped_column(Text, nullable=False)
     model: Mapped[str] = mapped_column(String(128), nullable=False)
     created_at: Mapped[datetime] = mapped_column(default=func.now())
+
