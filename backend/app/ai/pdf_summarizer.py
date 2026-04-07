@@ -307,13 +307,24 @@ async def summarize_single_pdf(
         max_output_tokens=max_output_tokens,
     )
 
-    response = await client.messages.create(
+    token_count = 0
+    async with client.messages.stream(
         model=model,
         max_tokens=max_output_tokens,
         system=_SYLLABUS_SUMMARY_SYSTEM,
         messages=[{"role": "user", "content": prompt}],
-    )
-    result = response.content[0].text.strip()
+    ) as stream:
+        async for event in stream:
+            if hasattr(event, "type") and event.type == "content_block_delta":
+                token_count += 1
+                if token_count % 5000 == 0:
+                    logger.info(
+                        "Streaming progress",
+                        book=book_name,
+                        tokens_so_far=token_count,
+                    )
+        message = await stream.get_final_message()
+    result = message.content[0].text.strip()
     logger.info(
         "PDF summarized",
         book=book_name,
@@ -331,7 +342,7 @@ async def _combine_summaries(
     max_tokens: int = 64_000,
     target_words: int | None = None,
     max_concurrent: int = 5,
-    _shared_semaphore: asyncio.Semaphore | None = None,
+    _shared_semaphore: asyncio.Semaphore | None = None,  # kept for backward compat, unused
 ) -> str:
     """Combine per-resource summaries into one unified summary.
 
@@ -360,43 +371,37 @@ async def _combine_summaries(
             analyses=batches[0],
             word_limit_instruction=word_limit_instruction,
         )
-        response = await client.messages.create(
+        async with client.messages.stream(
             model=model,
             max_tokens=adjusted_max_tokens,
             system=_COMBINE_SYSTEM,
             messages=[{"role": "user", "content": prompt}],
+        ) as stream:
+            message = await stream.get_final_message()
+        return message.content[0].text.strip()
+
+    intermediate: list[str] = []
+    for i, batch in enumerate(batches):
+        prompt = _COMBINE_PROMPT.format(
+            book_name=book_name,
+            analyses=batch,
+            word_limit_instruction=word_limit_instruction,
         )
-        return response.content[0].text.strip()
-
-    semaphore = (
-        _shared_semaphore if _shared_semaphore is not None else asyncio.Semaphore(max_concurrent)
-    )
-
-    async def _bounded_combine(i: int, batch: str) -> str:
-        async with semaphore:
-            prompt = _COMBINE_PROMPT.format(
-                book_name=book_name,
-                analyses=batch,
-                word_limit_instruction=word_limit_instruction,
-            )
-            response = await client.messages.create(
-                model=model,
-                max_tokens=adjusted_max_tokens,
-                system=_COMBINE_SYSTEM,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            result = response.content[0].text.strip()
-            logger.debug(
-                "Intermediate combine done",
-                book=book_name,
-                batch=i + 1,
-                total_batches=len(batches),
-            )
-            return result
-
-    intermediate: list[str] = list(
-        await asyncio.gather(*[_bounded_combine(i, b) for i, b in enumerate(batches)])
-    )
+        async with client.messages.stream(
+            model=model,
+            max_tokens=adjusted_max_tokens,
+            system=_COMBINE_SYSTEM,
+            messages=[{"role": "user", "content": prompt}],
+        ) as stream:
+            msg = await stream.get_final_message()
+        result = msg.content[0].text.strip()
+        logger.debug(
+            "Intermediate combine done",
+            book=book_name,
+            batch=i + 1,
+            total_batches=len(batches),
+        )
+        intermediate.append(result)
 
     final_joined = "\n\n---\n\n".join(f"[Group {i + 1}]\n{s}" for i, s in enumerate(intermediate))
     prompt = _COMBINE_PROMPT.format(
@@ -404,13 +409,14 @@ async def _combine_summaries(
         analyses=final_joined,
         word_limit_instruction=word_limit_instruction,
     )
-    response = await client.messages.create(
+    async with client.messages.stream(
         model=model,
         max_tokens=adjusted_max_tokens,
         system=_COMBINE_SYSTEM,
         messages=[{"role": "user", "content": prompt}],
-    )
-    return response.content[0].text.strip()
+    ) as stream:
+        message = await stream.get_final_message()
+    return message.content[0].text.strip()
 
 
 async def _summarize_chunk(
@@ -440,13 +446,14 @@ async def _summarize_chunk(
         excerpt=excerpt,
         word_limit_instruction=word_limit_instruction,
     )
-    response = await client.messages.create(
+    async with client.messages.stream(
         model=model,
         max_tokens=adjusted_max_tokens,
         system=_CHUNK_SUMMARY_SYSTEM,
         messages=[{"role": "user", "content": prompt}],
-    )
-    return response.content[0].text.strip()
+    ) as stream:
+        message = await stream.get_final_message()
+    return message.content[0].text.strip()
 
 
 async def summarize_pdf_for_syllabus(
@@ -484,7 +491,7 @@ async def summarize_pdf_for_syllabus(
 
     import anthropic
 
-    client = anthropic.AsyncAnthropic(api_key=api_key, timeout=300.0)
+    client = anthropic.AsyncAnthropic(api_key=api_key, timeout=600.0)
 
     use_single_call = chunk_size_chars is None and chunk_max_output_tokens is None
 
@@ -590,34 +597,26 @@ async def summarize_pdf_for_syllabus(
         )
         return summary
 
-    semaphore = (
-        _shared_semaphore if _shared_semaphore is not None else asyncio.Semaphore(max_concurrent)
-    )
-
-    async def _bounded_chunk(i: int, chunk: str) -> str:
-        async with semaphore:
-            result = await _summarize_chunk(
-                client,
-                book_name,
-                chunk,
-                i + 1,
-                total,
-                model=model,
-                max_tokens=chunk_max_tokens,
-                target_words=target_per_chunk_words,
-            )
-            logger.info(
-                "Chunk summarized",
-                book=book_name,
-                chunk=i + 1,
-                total=total,
-                summary_chars=len(result),
-            )
-            return result
-
-    summaries: list[str] = list(
-        await asyncio.gather(*[_bounded_chunk(i, c) for i, c in enumerate(chunks)])
-    )
+    summaries: list[str] = []
+    for i, chunk in enumerate(chunks):
+        result = await _summarize_chunk(
+            client,
+            book_name,
+            chunk,
+            i + 1,
+            total,
+            model=model,
+            max_tokens=chunk_max_tokens,
+            target_words=target_per_chunk_words,
+        )
+        logger.info(
+            "Chunk summarized",
+            book=book_name,
+            chunk=i + 1,
+            total=total,
+            summary_chars=len(result),
+        )
+        summaries.append(result)
 
     combined = await _combine_summaries(
         client,
@@ -627,8 +626,6 @@ async def summarize_pdf_for_syllabus(
         model=model,
         max_tokens=combine_max_tokens,
         target_words=target_words,
-        max_concurrent=max_concurrent,
-        _shared_semaphore=semaphore,
     )
     logger.info(
         "Multi-pass summarization complete",
@@ -683,9 +680,9 @@ def summarize_pdfs_sync(
         )
 
     async def _run_all():
-        shared_semaphore = asyncio.Semaphore(max_concurrent)
-        tasks = [
-            summarize_pdf_for_syllabus(
+        results = []
+        for (name, text, toc), budget in zip(pdf_texts, per_pdf_budgets, strict=True):
+            summary = await summarize_pdf_for_syllabus(
                 name,
                 text,
                 toc,
@@ -695,15 +692,13 @@ def summarize_pdfs_sync(
                 chunk_max_output_tokens=chunk_max_output_tokens,
                 combine_max_output_tokens=combine_max_output_tokens,
                 target_chars=budget,
-                max_concurrent=max_concurrent,
-                _shared_semaphore=shared_semaphore,
                 num_pdfs=len(pdf_texts) if use_dynamic_plan else None,
                 total_pdf_chars=total_chars if use_dynamic_plan else None,
                 context_budget_chars=effective_budget if use_dynamic_plan else None,
             )
-            for (name, text, toc), budget in zip(pdf_texts, per_pdf_budgets, strict=True)
-        ]
-        return await asyncio.gather(*tasks)
+            logger.info("PDF summarized", book=name, summary_chars=len(summary))
+            results.append(summary)
+        return results
 
     return list(asyncio.run(_run_all()))
 
