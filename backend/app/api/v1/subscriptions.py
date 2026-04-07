@@ -41,6 +41,7 @@ class SubscriptionStatusResponse(BaseModel):
     subscription_status: str | None = None
     days_remaining: int | None = None
     daily_message_limit: int | None = None
+    message_credits: int = 0
     expires_at: str | None = None
     free_tier: FreeTierInfo | None = None
 
@@ -129,6 +130,7 @@ async def get_my_subscription(
         subscription_status=subscription.status,
         days_remaining=days_remaining,
         daily_message_limit=subscription.daily_message_limit,
+        message_credits=subscription.message_credits,
         expires_at=subscription.expires_at.isoformat(),
     )
 

@@ -301,6 +301,7 @@ async def get_remaining_messages(
         "remaining_messages": max(0, remaining),
         "daily_limit": stats["daily_messages_limit"],
         "messages_used": stats["daily_messages_used"],
+        "message_credits": stats.get("message_credits", 0),
     }
 
 
