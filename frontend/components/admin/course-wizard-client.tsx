@@ -234,6 +234,53 @@ export function CourseWizardClient({
   const stepIndex = STEPS.indexOf(step);
 
   useEffect(() => {
+    if (!resumeCourseId) return;
+
+    const hydrateFromBackend = async () => {
+      setIsFetchingExistingFiles(true);
+      try {
+        const courseData = await apiFetch<{
+          title_fr: string;
+          title_en: string;
+          course_domain: string[];
+          course_level: string[];
+          audience_type: string[];
+          estimated_hours: number;
+        }>(`/api/v1/admin/courses/${resumeCourseId}`);
+        setCourseInfo({
+          title_fr: courseData.title_fr,
+          title_en: courseData.title_en,
+          course_domain: courseData.course_domain,
+          course_level: courseData.course_level,
+          audience_type: courseData.audience_type,
+          estimated_hours: courseData.estimated_hours,
+        });
+      } catch {
+      } finally {
+        setIsFetchingExistingFiles(false);
+      }
+    };
+
+    hydrateFromBackend();
+  }, [resumeCourseId]);
+
+  useEffect(() => {
+    if (!resumeCourseId) return;
+    const stepsMayHaveModules = ["generated", "indexing", "indexed", "published"];
+    if (!resumeCreationStep || !stepsMayHaveModules.includes(resumeCreationStep)) return;
+
+    apiFetch<{ has_modules: boolean; modules_count: number }>(
+      `/api/v1/admin/courses/${resumeCourseId}/generate-status`
+    )
+      .then((data) => {
+        if (data.has_modules) {
+          setGeneratedModules([{ id: "resumed", module_number: 1, title_fr: "", title_en: "" }]);
+        }
+      })
+      .catch(() => {});
+  }, [resumeCourseId, resumeCreationStep]);
+
+  useEffect(() => {
     if (step !== "upload" || !courseId) return;
 
     const fetchExistingFiles = async () => {
@@ -399,6 +446,22 @@ export function CourseWizardClient({
     setIsCreatingCourse(true);
 
     try {
+      if (courseId) {
+        await apiFetch(`/api/v1/admin/courses/${courseId}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            title_fr: courseInfo.title_fr,
+            title_en: courseInfo.title_en,
+            course_domain: courseInfo.course_domain,
+            course_level: courseInfo.course_level,
+            audience_type: courseInfo.audience_type,
+            estimated_hours: courseInfo.estimated_hours,
+          }),
+        });
+        setStep("generate");
+        return;
+      }
+
       const course = await apiFetch<{ id: string; creation_step: string }>("/api/v1/admin/courses", {
         method: "POST",
         body: JSON.stringify({
@@ -436,7 +499,7 @@ export function CourseWizardClient({
     } finally {
       setIsCreatingCourse(false);
     }
-  }, [courseInfo, getAuthHeaders, t, pendingFiles]);
+  }, [courseInfo, courseId, getAuthHeaders, t, pendingFiles]);
 
   const generateSyllabus = useCallback(async () => {
     if (!courseId) return;
