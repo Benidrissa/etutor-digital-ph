@@ -9,7 +9,7 @@ from sqlalchemy import delete, select, text
 
 from app.tasks.celery_app import celery_app
 
-_CONTEXT_BUDGET_CHARS = 200_000
+_CONTEXT_BUDGET_CHARS = 400_000
 
 logger = structlog.get_logger(__name__)
 
@@ -160,7 +160,7 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
                     budget=_CONTEXT_BUDGET_CHARS,
                 )
                 pdf_sections = [
-                    f"### {name}\n{txt[:50000]}" for name, txt, _toc in pdf_full_texts
+                    f"### {name}\n{txt}" for name, txt, _toc in pdf_full_texts
                 ]
                 resource_text = "\n\n---\n\n".join(pdf_sections)
             else:
