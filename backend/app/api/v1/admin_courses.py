@@ -342,9 +342,16 @@ async def generate_course_structure(
             detail=f"A task is already in progress (step: {course.creation_step})",
         )
 
-    task = generate_course_syllabus.delay(
-        str(course_id),
-        request.estimated_hours or course.estimated_hours,
+    from app.domain.services.platform_settings_service import SettingsCache
+
+    cache = SettingsCache.instance()
+    hard = int(cache.get("ai-syllabus-hard-time-limit-seconds") or 3600)
+    soft = int(cache.get("ai-syllabus-soft-time-limit-seconds") or 2700)
+
+    task = generate_course_syllabus.apply_async(
+        args=[str(course_id), request.estimated_hours or course.estimated_hours],
+        time_limit=hard,
+        soft_time_limit=soft,
     )
 
     course.creation_step = "generating"
