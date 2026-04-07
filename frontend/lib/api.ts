@@ -74,12 +74,14 @@ export async function getCourses(filters?: {
   course_level?: string;
   audience_type?: string;
   search?: string;
+  curriculum?: string;
 }): Promise<CourseResponse[]> {
   const params = new URLSearchParams();
   if (filters?.course_domain) params.set("course_domain", filters.course_domain);
   if (filters?.course_level) params.set("course_level", filters.course_level);
   if (filters?.audience_type) params.set("audience_type", filters.audience_type);
   if (filters?.search) params.set("search", filters.search);
+  if (filters?.curriculum) params.set("curriculum", filters.curriculum);
   const qs = params.toString();
   return apiFetch<CourseResponse[]>(`/api/v1/courses${qs ? `?${qs}` : ""}`);
 }
@@ -710,4 +712,132 @@ export async function resetSettingCategory(
   category: string
 ): Promise<{ category: string; reset_count: number }> {
   return apiFetch(`/api/v1/admin/settings/reset-category/${category}`, { method: "POST" });
+}
+
+// ── Curricula API ─────────────────────────────────────────────
+
+export interface CurriculumPublicResponse {
+  id: string;
+  slug: string;
+  title_fr: string;
+  title_en: string;
+  description_fr?: string;
+  description_en?: string;
+  cover_image_url?: string;
+  course_count: number;
+  published_at?: string;
+}
+
+export interface CurriculumPublicDetailResponse extends CurriculumPublicResponse {
+  course_ids: string[];
+}
+
+export interface CurriculumAdminResponse {
+  id: string;
+  slug: string;
+  title_fr: string;
+  title_en: string;
+  description_fr?: string;
+  description_en?: string;
+  cover_image_url?: string;
+  status: "draft" | "published" | "archived";
+  created_by?: string;
+  course_count: number;
+  created_at: string;
+  published_at?: string;
+}
+
+export interface CurriculumAdminDetailResponse extends CurriculumAdminResponse {
+  courses: {
+    id: string;
+    slug: string;
+    title_fr: string;
+    title_en: string;
+    status: string;
+    module_count: number;
+    estimated_hours: number;
+  }[];
+}
+
+export async function getCurricula(): Promise<CurriculumPublicResponse[]> {
+  return apiFetch<CurriculumPublicResponse[]>("/api/v1/curricula");
+}
+
+export async function getCurriculumBySlug(slug: string): Promise<CurriculumPublicDetailResponse> {
+  return apiFetch<CurriculumPublicDetailResponse>(`/api/v1/curricula/${slug}`);
+}
+
+export async function getCoursesByCurriculum(curriculumSlug: string): Promise<CourseResponse[]> {
+  return apiFetch<CourseResponse[]>(`/api/v1/courses?curriculum=${encodeURIComponent(curriculumSlug)}`);
+}
+
+export async function getAdminCurricula(): Promise<CurriculumAdminResponse[]> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<CurriculumAdminResponse[]>("/api/v1/admin/curricula");
+}
+
+export async function getAdminCurriculum(id: string): Promise<CurriculumAdminDetailResponse> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<CurriculumAdminDetailResponse>(`/api/v1/admin/curricula/${id}`);
+}
+
+export async function createAdminCurriculum(data: {
+  title_fr: string;
+  title_en: string;
+  description_fr?: string;
+  description_en?: string;
+  cover_image_url?: string;
+}): Promise<CurriculumAdminDetailResponse> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<CurriculumAdminDetailResponse>("/api/v1/admin/curricula", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateAdminCurriculum(
+  id: string,
+  data: Partial<{
+    title_fr: string;
+    title_en: string;
+    description_fr: string;
+    description_en: string;
+    cover_image_url: string;
+  }>
+): Promise<CurriculumAdminDetailResponse> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<CurriculumAdminDetailResponse>(`/api/v1/admin/curricula/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function publishAdminCurriculum(id: string): Promise<CurriculumAdminDetailResponse> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<CurriculumAdminDetailResponse>(`/api/v1/admin/curricula/${id}/publish`, {
+    method: "POST",
+  });
+}
+
+export async function archiveAdminCurriculum(id: string): Promise<CurriculumAdminDetailResponse> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<CurriculumAdminDetailResponse>(`/api/v1/admin/curricula/${id}/archive`, {
+    method: "POST",
+  });
+}
+
+export async function deleteAdminCurriculum(id: string): Promise<void> {
+  const { authClient } = await import("./auth");
+  await authClient.authenticatedFetch(`/api/v1/admin/curricula/${id}`, { method: "DELETE" });
+}
+
+export async function assignCurriculumCourses(
+  curriculumId: string,
+  courseIds: string[]
+): Promise<CurriculumAdminDetailResponse> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<CurriculumAdminDetailResponse>(
+    `/api/v1/admin/curricula/${curriculumId}/courses`,
+    { method: "PUT", body: JSON.stringify({ course_ids: courseIds }) }
+  );
 }
