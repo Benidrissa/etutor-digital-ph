@@ -556,9 +556,7 @@ async def delete_course(
             )
 
     if rag_collection_id:
-        await db.execute(
-            sa_delete(DocumentChunk).where(DocumentChunk.source == rag_collection_id)
-        )
+        await db.execute(sa_delete(DocumentChunk).where(DocumentChunk.source == rag_collection_id))
 
     try:
         await db.delete(course)
