@@ -159,6 +159,102 @@ class TestSyllabusGenerationTaskUnit:
         assert result["modules"][0]["title_en"] == sample_module_dicts[0]["title_en"]
         assert result["modules"][0]["units_count"] == len(sample_module_dicts[0]["units"])
 
+    def test_small_pdfs_bypass_summarization(self, sample_module_dicts):
+        """PDFs under _CONTEXT_BUDGET_CHARS use raw text — summarize_pdfs_sync is NOT called."""
+        course_id = str(uuid.uuid4())
+        course_data = {
+            "title_fr": "Test",
+            "title_en": "Test",
+            "course_hours": 10,
+            "rag_collection_id": None,
+            "domain_slugs": [],
+            "level_slugs": [],
+            "audience_slugs": [],
+        }
+
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_sync_engine = MagicMock()
+
+        small_pdf_text = "x" * 1000
+        mock_fitz_doc = MagicMock()
+        mock_fitz_doc.get_toc.return_value = []
+        mock_fitz_doc.__iter__ = MagicMock(
+            return_value=iter([MagicMock(get_text=MagicMock(return_value=small_pdf_text))])
+        )
+        mock_fitz_doc.close = MagicMock()
+
+        call_count = 0
+
+        def mock_run(coro):
+            nonlocal call_count
+            call_count += 1
+            return course_data if call_count == 1 else sample_module_dicts
+
+        with (
+            patch("asyncio.run", side_effect=mock_run),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.glob", return_value=[MagicMock(stem="test_pdf", __str__=lambda s: "test.pdf")]),
+            patch("fitz.open", return_value=mock_fitz_doc),
+            patch("app.ai.pdf_summarizer.summarize_pdfs_sync") as mock_summarize,
+            patch("sqlalchemy.create_engine", return_value=mock_sync_engine),
+            patch("sqlalchemy.orm.Session", return_value=mock_session),
+        ):
+            result = self._run(course_id, 10)
+
+        mock_summarize.assert_not_called()
+        assert result["status"] == "complete"
+
+    def test_large_pdfs_use_summarization(self, sample_module_dicts):
+        """PDFs over _CONTEXT_BUDGET_CHARS trigger summarize_pdfs_sync."""
+        from app.tasks.syllabus_generation import _CONTEXT_BUDGET_CHARS
+
+        course_id = str(uuid.uuid4())
+        course_data = {
+            "title_fr": "Test",
+            "title_en": "Test",
+            "course_hours": 10,
+            "rag_collection_id": None,
+            "domain_slugs": [],
+            "level_slugs": [],
+            "audience_slugs": [],
+        }
+
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_sync_engine = MagicMock()
+
+        large_pdf_text = "x" * (_CONTEXT_BUDGET_CHARS + 1)
+        mock_fitz_doc = MagicMock()
+        mock_fitz_doc.get_toc.return_value = []
+        mock_fitz_doc.__iter__ = MagicMock(
+            return_value=iter([MagicMock(get_text=MagicMock(return_value=large_pdf_text))])
+        )
+        mock_fitz_doc.close = MagicMock()
+
+        call_count = 0
+
+        def mock_run(coro):
+            nonlocal call_count
+            call_count += 1
+            return course_data if call_count == 1 else sample_module_dicts
+
+        with (
+            patch("asyncio.run", side_effect=mock_run),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.glob", return_value=[MagicMock(stem="large_pdf", __str__=lambda s: "large.pdf")]),
+            patch("fitz.open", return_value=mock_fitz_doc),
+            patch("app.ai.pdf_summarizer.summarize_pdfs_sync", return_value=["summary text"]) as mock_summarize,
+            patch("sqlalchemy.create_engine", return_value=mock_sync_engine),
+            patch("sqlalchemy.orm.Session", return_value=mock_session),
+        ):
+            result = self._run(course_id, 10)
+
+        mock_summarize.assert_called_once()
+        assert result["status"] == "complete"
+
     def test_sync_engine_disposed_on_db_error(self, sample_module_dicts):
         """sync_engine.dispose() must be called even if session.commit() raises."""
         course_id = str(uuid.uuid4())
