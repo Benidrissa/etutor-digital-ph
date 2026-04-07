@@ -269,7 +269,10 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
             import json
 
             session.execute(
-                text("UPDATE courses SET module_count = :mc, syllabus_json = :sj WHERE id = :cid"),
+                text(
+                    "UPDATE courses SET module_count = :mc, syllabus_json = :sj,"
+                    " creation_step = 'generated' WHERE id = :cid"
+                ),
                 {
                     "mc": len(module_dicts),
                     "sj": json.dumps(module_dicts),

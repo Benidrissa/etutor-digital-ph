@@ -267,6 +267,29 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
             },
         )
 
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import Session
+
+        from app.infrastructure.config.settings import settings
+
+        sync_engine = create_engine(
+            settings.database_url_sync,
+            pool_pre_ping=True,
+            pool_size=2,
+            max_overflow=0,
+        )
+        try:
+            from sqlalchemy import text
+
+            with Session(sync_engine) as session:
+                session.execute(
+                    text("UPDATE courses SET creation_step = 'indexed' WHERE id = :cid"),
+                    {"cid": course_id},
+                )
+                session.commit()
+        finally:
+            sync_engine.dispose()
+
         return {
             "status": "complete",
             "chunks_stored": total_chunks,
