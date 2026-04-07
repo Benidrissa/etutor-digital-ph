@@ -229,6 +229,7 @@ export function ChatPanel({
           module_id: moduleId ?? null,
           tutor_mode: tutorMode,
           file_ids: attachedFiles.map((f) => f.fileId),
+          locale: locale,
         }),
       });
 

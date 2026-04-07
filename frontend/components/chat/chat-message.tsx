@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { AttachedFileCard } from '@/components/chat/file-preview';
 import { SourceImage } from '@/components/learning/source-image';
 import type { SourceImageMeta } from '@/lib/api';
+import { splitWithSourceImageMarkers } from '@/lib/source-image-utils';
 
 export interface ChatSource {
   title: string;
@@ -36,35 +37,6 @@ export interface ChatMessage {
 
 interface ChatMessageProps {
   message: ChatMessage;
-}
-
-const SOURCE_IMAGE_RE = /\{\{source_image:([0-9a-f-]{36})\}\}/g;
-
-function splitWithSourceImageMarkers(
-  text: string,
-  imageMap: Map<string, SourceImageMeta>
-): Array<{ type: 'markdown'; text: string } | { type: 'source_image'; meta: SourceImageMeta }> {
-  const parts: Array<{ type: 'markdown'; text: string } | { type: 'source_image'; meta: SourceImageMeta }> = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  SOURCE_IMAGE_RE.lastIndex = 0;
-  while ((match = SOURCE_IMAGE_RE.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push({ type: 'markdown', text: text.slice(lastIndex, match.index) });
-    }
-    const meta = imageMap.get(match[1]);
-    if (meta) {
-      parts.push({ type: 'source_image', meta });
-    } else {
-      parts.push({ type: 'markdown', text: text.slice(match.index, SOURCE_IMAGE_RE.lastIndex) });
-    }
-    lastIndex = SOURCE_IMAGE_RE.lastIndex;
-  }
-  if (lastIndex < text.length) {
-    parts.push({ type: 'markdown', text: text.slice(lastIndex) });
-  }
-  return parts;
 }
 
 const mdClass =
