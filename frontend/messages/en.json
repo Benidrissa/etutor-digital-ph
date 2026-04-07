@@ -1073,7 +1073,7 @@
       "exportCsv": "Export CSV",
       "previous": "Previous",
       "next": "Next",
-      "showing": "Showing {from}\u2013{to} of {total}",
+      "showing": "Showing {from}–{to} of {total}",
       "clearFilters": "Clear filters",
       "statuses": {
         "payment_processed": "Processed",
@@ -1239,7 +1239,10 @@
         "stepParsingResponse": "Processing AI response...",
         "stepSavingModules": "Saving course structure...",
         "elapsed": "Elapsed: {time}",
-        "timeoutWarning": "This is taking longer than expected. You can wait or try again."
+        "timeoutWarning": "This is taking longer than expected. You can wait or try again.",
+        "imageExtractionRunning": "Extracting images from PDFs...",
+        "imageExtractionDone": "Images extracted",
+        "imageExtractionBadge": "Parallel"
       },
       "index": {
         "title": "RAG Indexation",

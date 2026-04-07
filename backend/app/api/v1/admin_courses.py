@@ -22,6 +22,7 @@ from app.domain.models.source_image import SourceImage
 from app.domain.models.taxonomy import TaxonomyCategory
 from app.domain.models.user import UserRole
 from app.tasks.content_generation import generate_lesson_task
+from app.tasks.image_extraction import extract_course_images
 from app.tasks.preassessment_generation import generate_course_preassessment
 from app.tasks.rag_indexation import UPLOAD_DIR, index_course_resources
 from app.tasks.syllabus_generation import generate_course_syllabus
@@ -65,6 +66,7 @@ class CourseResponse(BaseModel):
     created_by: str | None
     rag_collection_id: str | None
     indexation_task_id: str | None
+    image_extraction_task_id: str | None
     creation_step: str
     preassessment_enabled: bool
     preassessment_mandatory: bool
@@ -93,6 +95,7 @@ def _course_to_response(course: Course, image_count: int = 0) -> CourseResponse:
         created_by=str(course.created_by) if course.created_by else None,
         rag_collection_id=course.rag_collection_id,
         indexation_task_id=course.indexation_task_id,
+        image_extraction_task_id=course.image_extraction_task_id,
         creation_step=course.creation_step,
         preassessment_enabled=course.preassessment_enabled,
         preassessment_mandatory=course.preassessment_mandatory,
@@ -350,23 +353,36 @@ async def generate_course_structure(
     hard = int(cache.get("ai-syllabus-hard-time-limit-seconds") or 3600)
     soft = int(cache.get("ai-syllabus-soft-time-limit-seconds") or 2700)
 
-    task = generate_course_syllabus.apply_async(
+    syllabus_task = generate_course_syllabus.apply_async(
         args=[str(course_id), request.estimated_hours or course.estimated_hours],
         time_limit=hard,
         soft_time_limit=soft,
     )
 
+    image_task = None
+    if course.rag_collection_id:
+        image_task = extract_course_images.apply_async(
+            args=[str(course_id), course.rag_collection_id],
+        )
+
     course.creation_step = "generating"
-    course.syllabus_task_id = task.id
+    course.syllabus_task_id = syllabus_task.id
+    if image_task:
+        course.image_extraction_task_id = image_task.id
     await db.commit()
 
     logger.info(
-        "Syllabus generation triggered",
+        "Syllabus generation and image extraction triggered",
         course_id=str(course_id),
-        task_id=task.id,
+        syllabus_task_id=syllabus_task.id,
+        image_task_id=image_task.id if image_task else None,
         admin_id=current_user.id,
     )
-    return {"task_id": task.id, "status": "started"}
+    return {
+        "task_id": syllabus_task.id,
+        "image_extraction_task_id": image_task.id if image_task else None,
+        "status": "started",
+    }
 
 
 @router.get("/{course_id}/generate-status")
@@ -403,6 +419,51 @@ async def get_generate_status(
             "state": task_result.state,
             "meta": task_result.info if isinstance(task_result.info, dict) else {},
         }
+
+    return response
+
+
+@router.get("/{course_id}/image-extraction-status")
+async def get_image_extraction_status(
+    course_id: uuid.UUID,
+    task_id: str | None = None,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    db=Depends(get_db_session),
+) -> dict:
+    """Get image extraction status for a course."""
+    result = await db.execute(select(Course).where(Course.id == course_id))
+    course = result.scalar_one_or_none()
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    image_count = await _fetch_image_count(db, course.rag_collection_id)
+
+    response: dict = {
+        "course_id": str(course_id),
+        "rag_collection_id": course.rag_collection_id,
+        "images_extracted": image_count,
+        "done": False,
+    }
+
+    effective_task_id = task_id or course.image_extraction_task_id
+    if effective_task_id:
+        task_result = AsyncResult(effective_task_id)
+        meta = task_result.info if isinstance(task_result.info, dict) else {}
+        response["task"] = {
+            "id": effective_task_id,
+            "state": task_result.state,
+            "step": meta.get("step"),
+            "step_label": meta.get("step_label"),
+            "progress": meta.get("progress", 0),
+            "files_total": meta.get("files_total", 0),
+            "files_processed": meta.get("files_processed", 0),
+            "current_file": meta.get("current_file"),
+            "images_processed": meta.get("images_processed", 0),
+            "estimated_seconds_remaining": meta.get("estimated_seconds_remaining"),
+        }
+        response["done"] = task_result.state in ("SUCCESS", "COMPLETE", "FAILURE", "REVOKED")
+    elif image_count > 0:
+        response["done"] = True
 
     return response
 

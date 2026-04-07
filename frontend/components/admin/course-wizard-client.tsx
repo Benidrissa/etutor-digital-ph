@@ -211,6 +211,11 @@ export function CourseWizardClient({
   const [showTimeoutWarning, setShowTimeoutWarning] = useState(false);
   const lastProgressValueRef = useRef(0);
   const lastProgressTimeRef = useRef<number | null>(null);
+  const [imageExtractionTaskId, setImageExtractionTaskId] = useState<string | null>(null);
+  const [imageExtractionProgress, setImageExtractionProgress] = useState(0);
+  const [imageExtractionStep, setImageExtractionStep] = useState<string | undefined>(undefined);
+  const [imageExtractionDone, setImageExtractionDone] = useState(false);
+  const imageExtractionPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [indexStatus, setIndexStatus] = useState<IndexStatus | null>(null);
   const [isIndexing, setIsIndexing] = useState(
@@ -232,6 +237,7 @@ export function CourseWizardClient({
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const generatePollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const imgPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stepIndex = STEPS.indexOf(step);
 
@@ -547,6 +553,10 @@ export function CourseWizardClient({
     setGenerationStep(undefined);
     setGenerationStartTime(Date.now());
     setGenerationElapsed(0);
+    setImageExtractionTaskId(null);
+    setImageExtractionProgress(0);
+    setImageExtractionStep(undefined);
+    setImageExtractionDone(false);
     lastProgressValueRef.current = 0;
     lastProgressTimeRef.current = Date.now();
     setShowTimeoutWarning(false);
@@ -554,7 +564,7 @@ export function CourseWizardClient({
 
     try {
       const url = `/api/v1/admin/courses/${courseId}/generate-structure${useForce ? "?force=true" : ""}`;
-      const result = await apiFetch<{ task_id: string; status: string }>(
+      const result = await apiFetch<{ task_id: string; image_extraction_task_id?: string; status: string }>(
         url,
         {
           method: "POST",
@@ -564,11 +574,51 @@ export function CourseWizardClient({
         }
       );
       setGenerateTaskId(result.task_id);
+      if (result.image_extraction_task_id) {
+        setImageExtractionTaskId(result.image_extraction_task_id);
+      }
     } catch {
       setGenerateError(t("generate.error"));
       setIsGenerating(false);
     }
   }, [courseId, courseInfo, isGenerating, shouldForceGenerate, t]);
+
+  useEffect(() => {
+    if (!courseId || !isGenerating || !imageExtractionTaskId) return;
+
+    const poll = async () => {
+      try {
+        const status = await apiFetch<{
+          images_extracted: number;
+          done: boolean;
+          task?: { state: string; step?: string; step_label?: string; progress: number; images_processed?: number };
+        }>(`/api/v1/admin/courses/${courseId}/image-extraction-status?task_id=${imageExtractionTaskId}`);
+
+        const meta = status.task ?? {};
+        setImageExtractionProgress(typeof meta.progress === "number" ? meta.progress : (status.done ? 100 : 0));
+        setImageExtractionStep(meta.step_label ?? meta.step);
+
+        if (status.done || status.task?.state === "SUCCESS") {
+          setImageExtractionDone(true);
+          return;
+        }
+
+        if (status.task?.state === "FAILURE" || status.task?.state === "REVOKED") {
+          setImageExtractionDone(true);
+          return;
+        }
+
+        imgPollRef.current = setTimeout(poll, 3000);
+      } catch {
+        imgPollRef.current = setTimeout(poll, 5000);
+      }
+    };
+
+    imgPollRef.current = setTimeout(poll, 2000);
+    return () => {
+      if (imgPollRef.current) clearTimeout(imgPollRef.current);
+    };
+  }, [courseId, isGenerating, imageExtractionTaskId]);
 
   useEffect(() => {
     if (!courseId || !isGenerating || !generateTaskId) return;
@@ -1080,33 +1130,63 @@ export function CourseWizardClient({
                 )}
 
                 {isGenerating && (
-                  <div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent shrink-0" />
-                        <p className="text-sm font-medium">
-                          {generationStep
-                            ? getGenerateStepLabel(generationStep)
-                            : generateTaskState
-                            ? t("generate.taskRunning")
-                            : t("generate.taskPending")}
-                        </p>
+                  <div className="flex flex-col gap-3">
+                    <div className="rounded-lg border bg-card p-4 space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent shrink-0" />
+                          <p className="text-sm font-medium">
+                            {generationStep
+                              ? getGenerateStepLabel(generationStep)
+                              : generateTaskState
+                              ? t("generate.taskRunning")
+                              : t("generate.taskPending")}
+                          </p>
+                        </div>
+                        {generationStartTime !== null && (
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+                            <Clock className="h-3 w-3" />
+                            <span>{t("generate.elapsed", { time: formatElapsed(generationElapsed) })}</span>
+                          </div>
+                        )}
                       </div>
-                      {generationStartTime !== null && (
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
-                          <Clock className="h-3 w-3" />
-                          <span>{t("generate.elapsed", { time: formatElapsed(generationElapsed) })}</span>
+                      <Progress value={generationProgress} className="h-2" />
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{generationProgress}%</span>
+                      </div>
+                      {showTimeoutWarning && (
+                        <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-400">
+                          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                          {t("generate.timeoutWarning")}
                         </div>
                       )}
                     </div>
-                    <Progress value={generationProgress} className="h-2" />
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>{generationProgress}%</span>
-                    </div>
-                    {showTimeoutWarning && (
-                      <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-400">
-                        <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                        {t("generate.timeoutWarning")}
+
+                    {imageExtractionTaskId && (
+                      <div className="rounded-lg border bg-card p-4 space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            {imageExtractionDone ? (
+                              <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                            ) : (
+                              <div className="h-4 w-4 animate-spin rounded-full border-2 border-teal-600 border-t-transparent shrink-0" />
+                            )}
+                            <p className="text-sm font-medium">
+                              {imageExtractionDone
+                                ? t("generate.imageExtractionDone")
+                                : imageExtractionStep
+                                ? imageExtractionStep
+                                : t("generate.imageExtractionRunning")}
+                            </p>
+                          </div>
+                          <Badge variant="outline" className="text-teal-700 border-teal-300 text-xs shrink-0">
+                            {t("generate.imageExtractionBadge")}
+                          </Badge>
+                        </div>
+                        <Progress value={imageExtractionProgress} className="h-1.5 [&>div]:bg-teal-600" />
+                        <div className="text-xs text-muted-foreground">
+                          <span>{imageExtractionProgress}%</span>
+                        </div>
                       </div>
                     )}
                   </div>

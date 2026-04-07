@@ -1073,7 +1073,7 @@
       "exportCsv": "Exporter CSV",
       "previous": "Précédent",
       "next": "Suivant",
-      "showing": "Affichage {from}\u2013{to} sur {total}",
+      "showing": "Affichage {from}–{to} sur {total}",
       "clearFilters": "Effacer les filtres",
       "statuses": {
         "payment_processed": "Traité",
@@ -1239,7 +1239,10 @@
         "stepParsingResponse": "Traitement de la réponse IA...",
         "stepSavingModules": "Sauvegarde de la structure du cours...",
         "elapsed": "Écoulé : {time}",
-        "timeoutWarning": "Cela prend plus de temps que prévu. Vous pouvez attendre ou réessayer."
+        "timeoutWarning": "Cela prend plus de temps que prévu. Vous pouvez attendre ou réessayer.",
+        "imageExtractionRunning": "Extraction des images des PDFs...",
+        "imageExtractionDone": "Images extraites",
+        "imageExtractionBadge": "Parallèle"
       },
       "index": {
         "title": "Indexation RAG",
