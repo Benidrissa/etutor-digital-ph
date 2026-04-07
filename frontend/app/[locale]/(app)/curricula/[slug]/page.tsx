@@ -15,6 +15,7 @@ import {
   type CourseResponse,
   type TaxonomyItem,
 } from '@/lib/api';
+import { setCurriculumContext } from '@/lib/curriculum-context';
 
 interface FilterSection {
   key: string;
@@ -80,6 +81,11 @@ export default function CurriculumPage() {
   const pathname = usePathname();
 
   const slug = params.slug as string;
+
+  // Set curriculum context cookie so sidebar/nav stays scoped
+  useEffect(() => {
+    setCurriculumContext(slug);
+  }, [slug]);
 
   const [curriculum, setCurriculum] = useState<CurriculumPublicDetailResponse | null>(null);
   const [courses, setCourses] = useState<CourseResponse[]>([]);

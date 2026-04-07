@@ -4,8 +4,13 @@ import { DashboardStats } from "@/components/dashboard/dashboard-stats";
 import { UpcomingReviews } from "@/components/dashboard/upcoming-reviews";
 import { CurriculaSection } from "@/components/shared/curricula-section";
 
-export default async function DashboardPage() {
+interface DashboardPageProps {
+  searchParams: Promise<{ curriculum?: string }>;
+}
+
+export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const t = await getTranslations("Dashboard");
+  const { curriculum } = await searchParams;
 
   return (
     <div className="p-4 md:p-6">
@@ -21,10 +26,10 @@ export default async function DashboardPage() {
       </div>
 
       <div className="mt-8">
-        <DashboardClient />
+        <DashboardClient curriculumSlug={curriculum} />
       </div>
 
-      <CurriculaSection />
+      {!curriculum && <CurriculaSection />}
     </div>
   );
 }
