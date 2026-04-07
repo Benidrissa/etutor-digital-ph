@@ -196,7 +196,8 @@ export function CourseWizardClient({
   const [audienceOptions, setAudienceOptions] = useState<TaxonomyItem[]>([]);
   const [isCreatingCourse, setIsCreatingCourse] = useState(false);
   const [generatedModules, setGeneratedModules] = useState<GeneratedModule[]>([]);
-  const [isGenerating, setIsGenerating] = useState(
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isCheckingGenerateStatus, setIsCheckingGenerateStatus] = useState(
     resumeCreationStep === "generating"
   );
   const [generateError, setGenerateError] = useState<string | null>(null);
@@ -278,6 +279,26 @@ export function CourseWizardClient({
         }
       })
       .catch(() => {});
+  }, [resumeCourseId, resumeCreationStep]);
+
+  useEffect(() => {
+    if (resumeCreationStep !== "generating" || !resumeCourseId) return;
+
+    const checkOnResume = async () => {
+      try {
+        const data = await apiFetch<{ has_modules: boolean; modules_count: number }>(
+          `/api/v1/admin/courses/${resumeCourseId}/generate-status`
+        );
+        if (data.has_modules) {
+          setGeneratedModules([{ id: "resumed", module_number: 1, title_fr: "", title_en: "" }]);
+        }
+      } catch {
+      } finally {
+        setIsCheckingGenerateStatus(false);
+      }
+    };
+
+    checkOnResume();
   }, [resumeCourseId, resumeCreationStep]);
 
   useEffect(() => {
@@ -1032,7 +1053,13 @@ export function CourseWizardClient({
 
                 <AttachedResources files={files} t={t} />
 
-                {generatedModules.length === 0 && !isGenerating && (
+                {isCheckingGenerateStatus && (
+                  <div className="flex items-center justify-center py-6">
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  </div>
+                )}
+
+                {generatedModules.length === 0 && !isGenerating && !isCheckingGenerateStatus && (
                   <Button
                     onClick={generateSyllabus}
                     className="w-full min-h-11"
