@@ -362,7 +362,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         2700,
         "integer",
         "Syllabus generation — soft time limit (seconds)",
-        "Soft time limit for syllabus generation Celery task. Task receives a warning after this duration.",
+        "Soft time limit for syllabus Celery task; raises SoftTimeLimitExceeded.",
         {"min": 300, "max": 7200},
     ),
     SettingDef(
@@ -371,7 +371,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         3600,
         "integer",
         "Syllabus generation — hard time limit (seconds)",
-        "Hard time limit for syllabus generation Celery task. Task is killed after this duration.",
+        "Hard time limit for syllabus Celery task; worker is killed after this.",
         {"min": 600, "max": 7200},
     ),
     # ── Tutor ──────────────────────────────────────────────
