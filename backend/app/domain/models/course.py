@@ -42,6 +42,7 @@ class Course(Base):
     creation_step: Mapped[str] = mapped_column(String(20), server_default="upload", nullable=False)
     preassessment_enabled: Mapped[bool] = mapped_column(server_default="false")
     preassessment_mandatory: Mapped[bool] = mapped_column(server_default="false")
+    syllabus_context: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

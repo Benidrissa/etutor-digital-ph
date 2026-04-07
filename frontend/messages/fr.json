@@ -1239,7 +1239,14 @@
         "stepParsingResponse": "Traitement de la réponse IA...",
         "stepSavingModules": "Sauvegarde de la structure du cours...",
         "elapsed": "Écoulé : {time}",
-        "timeoutWarning": "Cela prend plus de temps que prévu. Vous pouvez attendre ou réessayer."
+        "timeoutWarning": "Cela prend plus de temps que prévu. Vous pouvez attendre ou réessayer.",
+        "regenerate": "Regénérer le syllabus",
+        "regenerateFresh": "Vider le cache et regénérer",
+        "regenerateFreshConfirmTitle": "Vider le cache et regénérer ?",
+        "regenerateFreshConfirmDescription": "Cela va ré-analyser tous les PDFs depuis le début. La structure des modules actuels sera remplacée.",
+        "regenerateFreshConfirmAction": "Vider et regénérer",
+        "regenerateFreshConfirmCancel": "Annuler",
+        "regenerateError": "Erreur lors de la regénération du syllabus."
       },
       "index": {
         "title": "Indexation RAG",
