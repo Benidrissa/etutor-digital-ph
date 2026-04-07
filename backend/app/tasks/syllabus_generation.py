@@ -210,6 +210,7 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
                     model=summarizer_model,
                     chunk_max_tokens=chunk_max_tokens,
                     combine_max_tokens=combine_max_tokens,
+                    total_budget_chars=context_budget,
                 )
                 pdf_sections = [
                     f"### {name}\n{summary}"

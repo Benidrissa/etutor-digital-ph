@@ -116,6 +116,58 @@ class TestSummarizePdfForSyllabus:
         assert call_count >= 2, "Should call Claude at least once per chunk plus once to combine"
         assert "Summary call" in result
 
+    def test_target_chars_injects_word_limit_into_prompt(self):
+        from app.ai.pdf_summarizer import summarize_pdf_for_syllabus
+
+        captured_prompts = []
+
+        async def mock_create(**kwargs):
+            captured_prompts.append(kwargs.get("messages", [{}])[0].get("content", ""))
+            resp = MagicMock()
+            resp.content = [MagicMock(text="ok")]
+            return resp
+
+        mock_client = MagicMock()
+        mock_client.messages.create = mock_create
+
+        with (
+            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
+            patch("anthropic.AsyncAnthropic", return_value=mock_client),
+        ):
+            asyncio.run(
+                summarize_pdf_for_syllabus(
+                    "Book", "short text", toc=None, chunk_size=100_000, target_chars=5_000
+                )
+            )
+
+        assert any("1000" in p for p in captured_prompts), "Word limit should appear in prompt"
+
+    def test_target_chars_caps_max_tokens(self):
+        from app.ai.pdf_summarizer import summarize_pdf_for_syllabus
+
+        captured_max_tokens = []
+
+        async def mock_create(**kwargs):
+            captured_max_tokens.append(kwargs.get("max_tokens"))
+            resp = MagicMock()
+            resp.content = [MagicMock(text="ok")]
+            return resp
+
+        mock_client = MagicMock()
+        mock_client.messages.create = mock_create
+
+        with (
+            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
+            patch("anthropic.AsyncAnthropic", return_value=mock_client),
+        ):
+            asyncio.run(
+                summarize_pdf_for_syllabus(
+                    "Book", "short text", toc=None, chunk_size=100_000, target_chars=5_000
+                )
+            )
+
+        assert captured_max_tokens[0] < 4096, "max_tokens should be capped below default"
+
     def test_toc_prepended_to_text(self):
         from app.ai.pdf_summarizer import summarize_pdf_for_syllabus
 
@@ -175,6 +227,45 @@ class TestSummarizePdfsSync:
         assert result[0] == "summary:First"
         assert result[1] == "summary:Second"
         assert result[2] == "summary:Third"
+
+    def test_budget_splits_evenly_across_pdfs(self):
+        received_targets = []
+
+        async def fake_summarize(name, text, toc=None, **kwargs):
+            received_targets.append(kwargs.get("target_chars"))
+            return f"summary:{name}"
+
+        pdf_texts = [
+            ("A", "aaa", []),
+            ("B", "bbb", []),
+            ("C", "ccc", []),
+        ]
+
+        with (
+            patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}),
+            patch("app.ai.pdf_summarizer.summarize_pdf_for_syllabus", side_effect=fake_summarize),
+        ):
+            result = summarize_pdfs_sync(pdf_texts, total_budget_chars=300_000)
+
+        assert len(result) == 3
+        assert all(t == 100_000 for t in received_targets)
+
+    def test_no_budget_passes_none_target(self):
+        received_targets = []
+
+        async def fake_summarize(name, text, toc=None, **kwargs):
+            received_targets.append(kwargs.get("target_chars"))
+            return f"summary:{name}"
+
+        pdf_texts = [("A", "aaa", [])]
+
+        with (
+            patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}),
+            patch("app.ai.pdf_summarizer.summarize_pdf_for_syllabus", side_effect=fake_summarize),
+        ):
+            summarize_pdfs_sync(pdf_texts)
+
+        assert received_targets == [None]
 
 
 class TestSyllabusTaskWithSummarization:
