@@ -52,15 +52,30 @@ interface BackendStatusResponse {
 
 type GenerationStatus = 'not_generated' | 'generating' | 'ready' | 'validated';
 
+type Language = 'fr' | 'en';
+
+interface LangTaskState {
+  taskId: string | null;
+  status: GenerationStatus;
+  questionCount: number;
+  validated: boolean;
+  questions: PreassessmentQuestion[];
+}
+
 interface LocalState {
   enabled: boolean;
   mandatory: boolean;
-  status: GenerationStatus;
-  questionCount: number;
-  taskId: string | null;
-  questions: PreassessmentQuestion[];
-  validated: boolean;
+  fr: LangTaskState;
+  en: LangTaskState;
 }
+
+const defaultLangState = (): LangTaskState => ({
+  taskId: null,
+  status: 'not_generated',
+  questionCount: 0,
+  validated: false,
+  questions: [],
+});
 
 interface CoursePreassessmentSettingsProps {
   courseId: string;
@@ -71,19 +86,17 @@ interface CoursePreassessmentSettingsProps {
   courseTitleEn: string;
 }
 
-function deriveStatus(
-  response: BackendStatusResponse,
-  localTaskId: string | null,
-  localGenerating: boolean,
+function deriveLangStatus(
+  entry: BackendPreassessmentEntry | null,
+  taskId: string | null,
+  isGenerating: boolean,
+  taskState?: string,
 ): GenerationStatus {
-  if (localGenerating) return 'generating';
-  if (response.task && ['PENDING', 'STARTED', 'GENERATING'].includes(response.task.state)) {
-    return 'generating';
-  }
-  if (response.preassessments.length === 0) return 'not_generated';
-  const latest = response.preassessments[0];
-  if (latest.validated) return 'validated';
-  if (latest.question_count > 0) return 'ready';
+  if (isGenerating) return 'generating';
+  if (taskState && ['PENDING', 'STARTED', 'GENERATING'].includes(taskState)) return 'generating';
+  if (!entry) return 'not_generated';
+  if (entry.validated) return 'validated';
+  if (entry.question_count > 0) return 'ready';
   return 'not_generated';
 }
 
@@ -101,20 +114,20 @@ export function CoursePreassessmentSettings({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewLang, setPreviewLang] = useState<Language | null>(null);
 
   const [local, setLocal] = useState<LocalState>({
     enabled: preassessmentEnabled,
     mandatory: preassessmentMandatory,
-    status: 'not_generated',
-    questionCount: 0,
-    taskId: null,
-    questions: [],
-    validated: false,
+    fr: defaultLangState(),
+    en: defaultLangState(),
   });
 
-  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const generatingRef = useRef(false);
+  const pollRef = useRef<Record<Language, ReturnType<typeof setTimeout> | null>>({
+    fr: null,
+    en: null,
+  });
+  const generatingRef = useRef<Record<Language, boolean>>({ fr: false, en: false });
 
   const fetchStatus = useCallback(
     async (taskId?: string | null): Promise<BackendStatusResponse | null> => {
@@ -132,16 +145,32 @@ export function CoursePreassessmentSettings({
   );
 
   const applyResponse = useCallback(
-    (data: BackendStatusResponse, currentTaskId: string | null, isGenerating: boolean) => {
-      const status = deriveStatus(data, currentTaskId, isGenerating);
-      const latest = data.preassessments[0] ?? null;
+    (
+      data: BackendStatusResponse,
+      taskIds: Record<Language, string | null>,
+      generatingFlags: Record<Language, boolean>,
+    ) => {
+      const frEntry = data.preassessments.find((p) => p.language === 'fr') ?? null;
+      const enEntry = data.preassessments.find((p) => p.language === 'en') ?? null;
+      const taskState = data.task?.state;
+
       setLocal((prev) => ({
         ...prev,
         enabled: data.preassessment_enabled,
-        status,
-        questionCount: latest?.question_count ?? 0,
-        validated: latest?.validated ?? false,
-        questions: (latest?.questions as PreassessmentQuestion[] | undefined) ?? [],
+        fr: {
+          taskId: taskIds.fr,
+          status: deriveLangStatus(frEntry, taskIds.fr, generatingFlags.fr, taskState),
+          questionCount: frEntry?.question_count ?? 0,
+          validated: frEntry?.validated ?? false,
+          questions: (frEntry?.questions as PreassessmentQuestion[] | undefined) ?? [],
+        },
+        en: {
+          taskId: taskIds.en,
+          status: deriveLangStatus(enEntry, taskIds.en, generatingFlags.en, taskState),
+          questionCount: enEntry?.question_count ?? 0,
+          validated: enEntry?.validated ?? false,
+          questions: (enEntry?.questions as PreassessmentQuestion[] | undefined) ?? [],
+        },
       }));
     },
     [],
@@ -151,50 +180,72 @@ export function CoursePreassessmentSettings({
     if (!expanded) return;
     setLoading(true);
     fetchStatus(null).then((data) => {
-      if (data) applyResponse(data, null, false);
+      if (data) applyResponse(data, { fr: null, en: null }, { fr: false, en: false });
       setLoading(false);
     });
   }, [expanded, fetchStatus, applyResponse]);
 
+  const startPolling = useCallback(
+    (lang: Language, taskId: string | null) => {
+      if (pollRef.current[lang]) clearTimeout(pollRef.current[lang]!);
+      generatingRef.current[lang] = true;
+
+      const poll = async () => {
+        const data = await fetchStatus(taskId);
+        if (!data) {
+          if (generatingRef.current[lang]) {
+            pollRef.current[lang] = setTimeout(poll, 3000);
+          }
+          return;
+        }
+        const taskDone =
+          !data.task || !['PENDING', 'STARTED', 'GENERATING'].includes(data.task.state);
+        const entry = data.preassessments.find((p) => p.language === lang) ?? null;
+        const hasResult = !!entry && entry.question_count > 0;
+
+        if (taskDone && (hasResult || data.task?.state === 'FAILURE')) {
+          generatingRef.current[lang] = false;
+          setLocal((prev) => {
+            const langEntry = data.preassessments.find((p) => p.language === lang) ?? null;
+            const status = deriveLangStatus(langEntry, null, false, data.task?.state);
+            return {
+              ...prev,
+              [lang]: {
+                taskId: null,
+                status,
+                questionCount: langEntry?.question_count ?? 0,
+                validated: langEntry?.validated ?? false,
+                questions:
+                  (langEntry?.questions as PreassessmentQuestion[] | undefined) ?? [],
+              },
+            };
+          });
+        } else {
+          setLocal((prev) => ({
+            ...prev,
+            [lang]: {
+              ...prev[lang],
+              status: 'generating',
+            },
+          }));
+          if (generatingRef.current[lang]) {
+            pollRef.current[lang] = setTimeout(poll, 3000);
+          }
+        }
+      };
+
+      pollRef.current[lang] = setTimeout(poll, 3000);
+    },
+    [fetchStatus],
+  );
+
   useEffect(() => {
-    if (local.status !== 'generating') {
-      if (pollRef.current) clearTimeout(pollRef.current);
-      generatingRef.current = false;
-      return;
-    }
-
-    generatingRef.current = true;
-
-    const poll = async () => {
-      const data = await fetchStatus(local.taskId);
-      if (!data) {
-        if (generatingRef.current) {
-          pollRef.current = setTimeout(poll, 3000);
-        }
-        return;
-      }
-      const taskDone =
-        !data.task ||
-        !['PENDING', 'STARTED', 'GENERATING'].includes(data.task.state);
-      const hasResults = data.preassessments.length > 0;
-
-      if (taskDone && (hasResults || data.task?.state === 'FAILURE')) {
-        applyResponse(data, local.taskId, false);
-        generatingRef.current = false;
-        setLocal((prev) => ({ ...prev, taskId: null }));
-      } else {
-        applyResponse(data, local.taskId, true);
-        if (generatingRef.current) {
-          pollRef.current = setTimeout(poll, 3000);
-        }
-      }
-    };
-
-    pollRef.current = setTimeout(poll, 3000);
+    const polls = pollRef.current;
     return () => {
-      if (pollRef.current) clearTimeout(pollRef.current);
+      if (polls.fr) clearTimeout(polls.fr);
+      if (polls.en) clearTimeout(polls.en);
     };
-  }, [local.status, local.taskId, fetchStatus, applyResponse]);
+  }, []);
 
   const updateSettings = async (patch: { enabled?: boolean; mandatory?: boolean }) => {
     setSaving(true);
@@ -226,24 +277,43 @@ export function CoursePreassessmentSettings({
     }
   };
 
+  const generateForLang = async (lang: Language): Promise<string | null> => {
+    const data = await authClient.authenticatedFetch<{ task_id?: string; status?: string }>(
+      `/api/v1/admin/courses/${courseId}/generate-preassessment`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ language: lang }),
+      },
+    );
+    return data.task_id ?? null;
+  };
+
   const handleGenerate = async () => {
     setError(null);
+    setLocal((prev) => ({
+      ...prev,
+      fr: { ...prev.fr, status: 'generating', questions: [] },
+      en: { ...prev.en, status: 'generating', questions: [] },
+    }));
     try {
-      const data = await authClient.authenticatedFetch<{ task_id?: string; status?: string }>(
-        `/api/v1/admin/courses/${courseId}/generate-preassessment`,
-        {
-          method: 'POST',
-          body: JSON.stringify({ language: 'fr' }),
-        },
-      );
+      const [frTaskId, enTaskId] = await Promise.all([
+        generateForLang('fr'),
+        generateForLang('en'),
+      ]);
       setLocal((prev) => ({
         ...prev,
-        status: 'generating',
-        taskId: data.task_id ?? null,
-        questions: [],
+        fr: { ...prev.fr, taskId: frTaskId },
+        en: { ...prev.en, taskId: enTaskId },
       }));
+      startPolling('fr', frTaskId);
+      startPolling('en', enTaskId);
     } catch {
       setError(t('preassessment.generateError'));
+      setLocal((prev) => ({
+        ...prev,
+        fr: { ...prev.fr, status: prev.fr.questionCount > 0 ? 'ready' : 'not_generated' },
+        en: { ...prev.en, status: prev.en.questionCount > 0 ? 'ready' : 'not_generated' },
+      }));
     }
   };
 
@@ -255,7 +325,11 @@ export function CoursePreassessmentSettings({
         `/api/v1/admin/courses/${courseId}/validate-preassessment`,
         { method: 'POST' },
       );
-      setLocal((prev) => ({ ...prev, status: 'validated', validated: true }));
+      setLocal((prev) => ({
+        ...prev,
+        fr: { ...prev.fr, status: 'validated', validated: true },
+        en: { ...prev.en, status: 'validated', validated: true },
+      }));
     } catch {
       setError(t('preassessment.validateError'));
     } finally {
@@ -263,30 +337,39 @@ export function CoursePreassessmentSettings({
     }
   };
 
-  const statusLabel = () => {
-    switch (local.status) {
-      case 'not_generated':
-        return t('preassessment.statusNotGenerated');
-      case 'generating':
-        return t('preassessment.statusGenerating');
-      case 'ready':
-        return t('preassessment.statusReady', { count: local.questionCount });
-      case 'validated':
-        return t('preassessment.statusValidated');
+  const isGenerating = local.fr.status === 'generating' || local.en.status === 'generating';
+  const bothReady =
+    (local.fr.status === 'ready' || local.fr.status === 'validated') &&
+    (local.en.status === 'ready' || local.en.status === 'validated');
+  const anyReady = local.fr.status === 'ready' || local.en.status === 'ready';
+  const neitherGenerated =
+    local.fr.status === 'not_generated' && local.en.status === 'not_generated';
+
+  const overallStatusLabel = () => {
+    if (isGenerating) return t('preassessment.statusGenerating');
+    if (neitherGenerated) return t('preassessment.statusNotGenerated');
+    const parts: string[] = [];
+    if (local.fr.status === 'validated' || local.fr.status === 'ready') {
+      parts.push(
+        t('preassessment.statusLangReady', { lang: 'FR', count: local.fr.questionCount }),
+      );
     }
+    if (local.en.status === 'validated' || local.en.status === 'ready') {
+      parts.push(
+        t('preassessment.statusLangReady', { lang: 'EN', count: local.en.questionCount }),
+      );
+    }
+    if (parts.length === 0) return t('preassessment.statusNotGenerated');
+    if (bothReady && local.fr.validated && local.en.validated)
+      return t('preassessment.statusValidated');
+    return parts.join(' · ');
   };
 
-  const statusColor = () => {
-    switch (local.status) {
-      case 'not_generated':
-        return 'text-muted-foreground';
-      case 'generating':
-        return 'text-amber-600';
-      case 'ready':
-        return 'text-teal-700';
-      case 'validated':
-        return 'text-green-700';
-    }
+  const overallStatusColor = () => {
+    if (isGenerating) return 'text-amber-600';
+    if (local.fr.validated && local.en.validated) return 'text-green-700';
+    if (anyReady) return 'text-teal-700';
+    return 'text-muted-foreground';
   };
 
   const difficultyColor = (difficulty?: string) => {
@@ -301,6 +384,49 @@ export function CoursePreassessmentSettings({
         return 'bg-stone-100 text-stone-700 border-stone-200';
     }
   };
+
+  const renderQuestions = (questions: PreassessmentQuestion[]) => (
+    <ol className="space-y-4">
+      {questions.map((q, idx) => (
+        <li key={q.id} className="space-y-2">
+          <div className="flex items-start gap-2 flex-wrap">
+            <span className="text-xs font-semibold text-muted-foreground shrink-0 mt-0.5">
+              {idx + 1}.
+            </span>
+            <p className="text-sm font-medium flex-1">{q.question}</p>
+            <div className="flex gap-1 flex-wrap shrink-0">
+              {q.difficulty && (
+                <span
+                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${difficultyColor(q.difficulty)}`}
+                >
+                  {t(`preassessment.difficulty.${q.difficulty}`)}
+                </span>
+              )}
+              {q.domain && (
+                <Badge variant="outline" className="text-[10px] px-2 py-0.5">
+                  {q.domain.replace(/_/g, ' ')}
+                </Badge>
+              )}
+            </div>
+          </div>
+          <ol className="ml-5 space-y-1" type="A">
+            {q.options.map((opt, oIdx) => (
+              <li
+                key={opt.id || oIdx}
+                className={`text-sm rounded px-2 py-1 ${
+                  oIdx === q.correct_index
+                    ? 'bg-teal-50 text-teal-800 font-medium border border-teal-200'
+                    : 'text-muted-foreground'
+                }`}
+              >
+                {String.fromCharCode(65 + oIdx)}. {opt.text}
+              </li>
+            ))}
+          </ol>
+        </li>
+      ))}
+    </ol>
+  );
 
   return (
     <div className="border-t mt-3 pt-3">
@@ -385,16 +511,29 @@ export function CoursePreassessmentSettings({
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                <span className={`flex items-center gap-1.5 text-sm font-medium ${statusColor()}`}>
-                  {local.status === 'generating' && (
+                <span className={`flex items-center gap-1.5 text-sm font-medium ${overallStatusColor()}`}>
+                  {isGenerating && (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
                   )}
-                  {local.status === 'validated' && (
+                  {!isGenerating && (local.fr.validated || local.en.validated) && (
                     <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
                   )}
-                  {statusLabel()}
+                  {overallStatusLabel()}
                 </span>
               </div>
+
+              {isGenerating && (
+                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                  {(['fr', 'en'] as Language[]).map((lang) => (
+                    local[lang].status === 'generating' && (
+                      <span key={lang} className="flex items-center gap-1 text-amber-600">
+                        <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                        {t('preassessment.generatingLang', { lang: lang.toUpperCase() })}
+                      </span>
+                    )
+                  ))}
+                </div>
+              )}
 
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -402,52 +541,64 @@ export function CoursePreassessmentSettings({
                   variant="outline"
                   className="gap-1.5 min-h-11"
                   onClick={handleGenerate}
-                  disabled={!ragIndexed || local.status === 'generating'}
+                  disabled={!ragIndexed || isGenerating}
                   title={!ragIndexed ? t('preassessment.ragNotIndexedTooltip') : undefined}
                   aria-label={t('preassessment.generateButton')}
                 >
-                  {local.status === 'generating' ? (
+                  {isGenerating ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-                  ) : local.status === 'not_generated' ? (
+                  ) : neitherGenerated ? (
                     <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
                   ) : (
                     <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
                   )}
-                  {local.status === 'not_generated'
+                  {neitherGenerated
                     ? t('preassessment.generateButton')
                     : t('preassessment.regenerateButton')}
                 </Button>
 
-                {(local.status === 'ready' || local.status === 'validated') && (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="gap-1.5 min-h-11"
-                      onClick={() => setPreviewOpen((v) => !v)}
-                      aria-expanded={previewOpen}
-                    >
-                      {previewOpen
-                        ? t('preassessment.hidePreview')
-                        : t('preassessment.showPreview')}
-                    </Button>
+                {(local.fr.status === 'ready' || local.fr.status === 'validated') && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="gap-1.5 min-h-11"
+                    onClick={() => setPreviewLang((v) => (v === 'fr' ? null : 'fr'))}
+                    aria-expanded={previewLang === 'fr'}
+                  >
+                    {previewLang === 'fr'
+                      ? t('preassessment.hidePreviewLang', { lang: 'FR' })
+                      : t('preassessment.showPreviewLang', { lang: 'FR' })}
+                  </Button>
+                )}
 
-                    {local.status === 'ready' && (
-                      <Button
-                        size="sm"
-                        className="gap-1.5 min-h-11 bg-teal-600 hover:bg-teal-700"
-                        onClick={handleValidate}
-                        disabled={saving}
-                      >
-                        {saving ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-                        ) : (
-                          <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-                        )}
-                        {t('preassessment.validateButton')}
-                      </Button>
+                {(local.en.status === 'ready' || local.en.status === 'validated') && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="gap-1.5 min-h-11"
+                    onClick={() => setPreviewLang((v) => (v === 'en' ? null : 'en'))}
+                    aria-expanded={previewLang === 'en'}
+                  >
+                    {previewLang === 'en'
+                      ? t('preassessment.hidePreviewLang', { lang: 'EN' })
+                      : t('preassessment.showPreviewLang', { lang: 'EN' })}
+                  </Button>
+                )}
+
+                {anyReady && (
+                  <Button
+                    size="sm"
+                    className="gap-1.5 min-h-11 bg-teal-600 hover:bg-teal-700"
+                    onClick={handleValidate}
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
                     )}
-                  </>
+                    {t('preassessment.validateButton')}
+                  </Button>
                 )}
               </div>
 
@@ -458,51 +609,15 @@ export function CoursePreassessmentSettings({
                 </div>
               )}
 
-              {previewOpen && local.questions.length > 0 && (
+              {previewLang && local[previewLang].questions.length > 0 && (
                 <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    {t('preassessment.previewTitle', { count: local.questions.length })}
+                    {t('preassessment.previewTitleLang', {
+                      lang: previewLang.toUpperCase(),
+                      count: local[previewLang].questions.length,
+                    })}
                   </p>
-                  <ol className="space-y-4">
-                    {local.questions.map((q, idx) => (
-                      <li key={q.id} className="space-y-2">
-                        <div className="flex items-start gap-2 flex-wrap">
-                          <span className="text-xs font-semibold text-muted-foreground shrink-0 mt-0.5">
-                            {idx + 1}.
-                          </span>
-                          <p className="text-sm font-medium flex-1">{q.question}</p>
-                          <div className="flex gap-1 flex-wrap shrink-0">
-                            {q.difficulty && (
-                              <span
-                                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${difficultyColor(q.difficulty)}`}
-                              >
-                                {t(`preassessment.difficulty.${q.difficulty}`)}
-                              </span>
-                            )}
-                            {q.domain && (
-                              <Badge variant="outline" className="text-[10px] px-2 py-0.5">
-                                {q.domain.replace(/_/g, ' ')}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                        <ol className="ml-5 space-y-1" type="A">
-                          {q.options.map((opt, oIdx) => (
-                            <li
-                              key={opt.id || oIdx}
-                              className={`text-sm rounded px-2 py-1 ${
-                                oIdx === q.correct_index
-                                  ? 'bg-teal-50 text-teal-800 font-medium border border-teal-200'
-                                  : 'text-muted-foreground'
-                              }`}
-                            >
-                              {String.fromCharCode(65 + oIdx)}. {opt.text}
-                            </li>
-                          ))}
-                        </ol>
-                      </li>
-                    ))}
-                  </ol>
+                  {renderQuestions(local[previewLang].questions)}
                 </div>
               )}
             </>
