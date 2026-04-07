@@ -49,8 +49,8 @@ class SyllabusTask(Task):
     base=SyllabusTask,
     autoretry_for=(Exception,),
     retry_kwargs={"max_retries": 1, "countdown": 30},
-    time_limit=600,
-    soft_time_limit=540,
+    time_limit=3600,  # 60 min hard limit
+    soft_time_limit=2700,  # 45 min soft limit
 )
 def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict:
     """Generate course module structure using Claude API and save to DB.
