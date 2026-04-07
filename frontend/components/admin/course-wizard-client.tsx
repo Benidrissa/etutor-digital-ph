@@ -283,11 +283,13 @@ export function CourseWizardClient({
     const stepsMayHaveModules = ["generated", "indexing", "indexed", "published"];
     if (!resumeCreationStep || !stepsMayHaveModules.includes(resumeCreationStep)) return;
 
-    apiFetch<{ has_modules: boolean; modules_count: number }>(
+    apiFetch<{ has_modules: boolean; modules_count: number; modules?: GeneratedModule[] }>(
       `/api/v1/admin/courses/${resumeCourseId}/generate-status`
     )
       .then((data) => {
-        if (data.has_modules) {
+        if (data.modules && data.modules.length > 0) {
+          setGeneratedModules(data.modules);
+        } else if (data.has_modules) {
           setGeneratedModules([{ id: "resumed", module_number: 1, title_fr: "", title_en: "" }]);
         }
       })
@@ -303,10 +305,13 @@ export function CourseWizardClient({
           has_modules: boolean;
           modules_count: number;
           creation_step: string;
+          modules?: GeneratedModule[];
           task?: { id: string; state: string; meta?: Record<string, unknown> };
         }>(`/api/v1/admin/courses/${resumeCourseId}/generate-status`);
 
-        if (data.has_modules) {
+        if (data.modules && data.modules.length > 0) {
+          setGeneratedModules(data.modules);
+        } else if (data.has_modules) {
           setGeneratedModules([{ id: "resumed", module_number: 1, title_fr: "", title_en: "" }]);
         }
 
