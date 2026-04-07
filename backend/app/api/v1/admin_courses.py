@@ -336,7 +336,7 @@ async def generate_course_structure(
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
 
-    if course.creation_step in ("generating", "indexing"):
+    if course.creation_step == "generating":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"A task is already in progress (step: {course.creation_step})",
