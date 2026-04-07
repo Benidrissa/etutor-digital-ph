@@ -177,6 +177,7 @@ export function CourseWizardClient({
   const [publishSummaryModuleCount, setPublishSummaryModuleCount] = useState<number>(0);
   const [isFetchingPublishSummary, setIsFetchingPublishSummary] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const [isFetchingExistingFiles, setIsFetchingExistingFiles] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -184,6 +185,34 @@ export function CourseWizardClient({
   const generatePollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stepIndex = STEPS.indexOf(step);
+
+  useEffect(() => {
+    if (step !== "upload" || !courseId) return;
+
+    const fetchExistingFiles = async () => {
+      setIsFetchingExistingFiles(true);
+      try {
+        const data = await apiFetch<{ files: Array<{ name: string; size_bytes: number }> }>(
+          `/api/v1/admin/courses/${courseId}/resources`
+        );
+        const serverFiles: UploadedFile[] = (data.files ?? []).map((f) => ({
+          name: f.name,
+          size_bytes: f.size_bytes,
+          status: "uploaded" as const,
+        }));
+        setFiles((prev) => {
+          const localNames = new Set(prev.map((f) => f.name));
+          const toAdd = serverFiles.filter((f) => !localNames.has(f.name));
+          return [...prev, ...toAdd];
+        });
+      } catch {
+      } finally {
+        setIsFetchingExistingFiles(false);
+      }
+    };
+
+    fetchExistingFiles();
+  }, [step, courseId]);
 
   useEffect(() => {
     getCourseTaxonomy().then((tax) => {
@@ -731,6 +760,12 @@ export function CourseWizardClient({
                   className="hidden"
                   onChange={onFileInput}
                 />
+
+                {isFetchingExistingFiles && (
+                  <div className="flex items-center justify-center py-4">
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  </div>
+                )}
 
                 {files.length > 0 && (
                   <div className="space-y-2">
