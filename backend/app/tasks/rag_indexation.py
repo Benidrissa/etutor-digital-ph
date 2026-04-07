@@ -231,20 +231,28 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
             )
 
             image_count = 0
-            try:
-                image_count = await pipeline.process_pdf_images(
-                    pdf_path=str(pdf_path),
-                    source=rag_collection_id,
-                    rag_collection_id=rag_collection_id,
-                )
-                total_images += image_count
-            except Exception as img_exc:
-                logger.warning(
-                    "Image extraction failed for PDF (non-blocking)",
+            if total_images > 0:
+                logger.info(
+                    "Images already indexed, skipping image extraction",
                     file=pdf_path.name,
                     course_id=course_id,
-                    error=str(img_exc),
+                    images_already=total_images,
                 )
+            else:
+                try:
+                    image_count = await pipeline.process_pdf_images(
+                        pdf_path=str(pdf_path),
+                        source=rag_collection_id,
+                        rag_collection_id=rag_collection_id,
+                    )
+                    total_images += image_count
+                except Exception as img_exc:
+                    logger.warning(
+                        "Image extraction failed for PDF (non-blocking)",
+                        file=pdf_path.name,
+                        course_id=course_id,
+                        error=str(img_exc),
+                    )
 
             link_progress = img_progress + int((1 / len(pdf_files)) * 7)
             self.update_state(

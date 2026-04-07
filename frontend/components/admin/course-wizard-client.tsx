@@ -217,6 +217,8 @@ export function CourseWizardClient({
     resumeCreationStep === "indexing"
   );
   const [indexError, setIndexError] = useState<string | null>(null);
+  const [isReindexingImages, setIsReindexingImages] = useState(false);
+  const [reindexImagesError, setReindexImagesError] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishSuccess, setPublishSuccess] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
@@ -638,6 +640,25 @@ export function CourseWizardClient({
     }, 1000);
     return () => clearInterval(interval);
   }, [isGenerating, generationStartTime]);
+
+  const reindexImages = useCallback(async () => {
+    if (!courseId) return;
+    setIsReindexingImages(true);
+    setReindexImagesError(null);
+
+    try {
+      const result = await apiFetch<{ task_id: string; status: string }>(
+        `/api/v1/admin/courses/${courseId}/reindex-images`,
+        { method: "POST" }
+      );
+      setTaskId(result.task_id);
+      setIsIndexing(true);
+    } catch {
+      setReindexImagesError(t("index.reindexImagesError"));
+    } finally {
+      setIsReindexingImages(false);
+    }
+  }, [courseId, t]);
 
   const startIndexation = useCallback(async () => {
     if (!courseId) return;
@@ -1244,21 +1265,51 @@ export function CourseWizardClient({
                 )}
 
                 {indexStatus?.indexed && !isIndexing && (
-                  <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-900 dark:bg-green-950">
-                    <CheckCircle2 className="h-5 w-5 text-green-600" />
-                    <div>
-                      <p className="text-sm font-medium text-green-700 dark:text-green-400">
-                        {t("index.indexed")}
-                      </p>
-                      <p className="text-xs text-green-600 dark:text-green-500">
-                        {indexStatus.images_indexed && indexStatus.images_indexed > 0
-                          ? t("index.chunksAndImagesIndexed", {
-                              chunks: indexStatus.chunks_indexed,
-                              images: indexStatus.images_indexed,
-                            })
-                          : t("index.chunksIndexed", { count: indexStatus.chunks_indexed })}
-                      </p>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-900 dark:bg-green-950">
+                      <CheckCircle2 className="h-5 w-5 text-green-600" />
+                      <div>
+                        <p className="text-sm font-medium text-green-700 dark:text-green-400">
+                          {t("index.indexed")}
+                        </p>
+                        <p className="text-xs text-green-600 dark:text-green-500">
+                          {indexStatus.images_indexed && indexStatus.images_indexed > 0
+                            ? t("index.chunksAndImagesIndexed", {
+                                chunks: indexStatus.chunks_indexed,
+                                images: indexStatus.images_indexed,
+                              })
+                            : t("index.chunksIndexed", { count: indexStatus.chunks_indexed })}
+                        </p>
+                      </div>
                     </div>
+
+                    {(!indexStatus.images_indexed || indexStatus.images_indexed === 0) && (
+                      <div className="space-y-2">
+                        <p className="text-xs text-muted-foreground">
+                          {t("index.noImagesIndexed")}
+                        </p>
+                        {reindexImagesError && (
+                          <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                            <AlertCircle className="h-4 w-4 shrink-0" />
+                            {reindexImagesError}
+                          </div>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={reindexImages}
+                          disabled={isReindexingImages}
+                          className="min-h-[44px] w-full"
+                        >
+                          {isReindexingImages ? (
+                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
+                          ) : (
+                            <Database className="mr-2 h-4 w-4" />
+                          )}
+                          {t("index.reindexImages")}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
