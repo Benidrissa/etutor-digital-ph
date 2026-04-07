@@ -523,7 +523,7 @@ export function CourseWizardClient({
   }, [courseInfo, courseId, getAuthHeaders, t, pendingFiles]);
 
   const generateSyllabus = useCallback(async () => {
-    if (!courseId) return;
+    if (!courseId || isGenerating) return;
     setIsGenerating(true);
     setGenerateError(null);
     setGenerateTaskId(null);
@@ -537,9 +537,6 @@ export function CourseWizardClient({
     setShowTimeoutWarning(false);
 
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 300000);
-
       const result = await apiFetch<{ task_id: string; status: string }>(
         `/api/v1/admin/courses/${courseId}/generate-structure`,
         {
@@ -547,20 +544,14 @@ export function CourseWizardClient({
           body: JSON.stringify({
             estimated_hours: courseInfo.estimated_hours,
           }),
-          signal: controller.signal,
         }
       );
-      clearTimeout(timeout);
       setGenerateTaskId(result.task_id);
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") {
-        setGenerateError(t("generate.error") + " (timeout)");
-      } else {
-        setGenerateError(t("generate.error"));
-      }
+    } catch {
+      setGenerateError(t("generate.error"));
       setIsGenerating(false);
     }
-  }, [courseId, courseInfo, t]);
+  }, [courseId, courseInfo, isGenerating, t]);
 
   useEffect(() => {
     if (!courseId || !isGenerating || !generateTaskId) return;
@@ -748,12 +739,12 @@ export function CourseWizardClient({
   }, [courseId, queryClient, onCourseCreated, t]);
 
   const handleClose = useCallback(() => {
-    if (isIndexing) {
+    if (isIndexing || isGenerating) {
       setShowCloseConfirm(true);
       return;
     }
     onClose();
-  }, [isIndexing, onClose]);
+  }, [isIndexing, isGenerating, onClose]);
 
   const handleForceClose = useCallback(() => {
     setShowCloseConfirm(false);
@@ -762,7 +753,7 @@ export function CourseWizardClient({
 
   const canGoNext = (): boolean => {
     if (step === "upload") return files.filter((f) => f.status === "uploaded").length > 0;
-    if (step === "info") return courseInfo.title_fr.trim().length > 0 && courseInfo.title_en.trim().length > 0;
+    if (step === "info") return courseInfo.title_fr.trim().length > 0 && courseInfo.title_en.trim().length > 0 && files.filter((f) => f.status === "uploaded").length > 0;
     if (step === "generate") return generatedModules.length > 0;
     if (step === "index") return !!(indexStatus?.indexed && indexStatus.chunks_indexed > 0 && !isIndexing);
     return false;
@@ -782,6 +773,7 @@ export function CourseWizardClient({
   };
 
   const handleBack = () => {
+    if (isGenerating || isIndexing) return;
     const idx = STEPS.indexOf(step);
     if (idx > 0) setStep(STEPS[idx - 1]);
   };
@@ -1104,9 +1096,20 @@ export function CourseWizardClient({
                 )}
 
                 {generateError && (
-                  <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
-                    {generateError}
+                  <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+                    <div className="flex items-center gap-2 text-sm text-destructive">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      {generateError}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={generateSyllabus}
+                      className="self-start min-h-[44px]"
+                    >
+                      <Sparkles className="mr-2 h-4 w-4" />
+                      {t("generate.retry")}
+                    </Button>
                   </div>
                 )}
 
@@ -1350,7 +1353,7 @@ export function CourseWizardClient({
             <Button
               variant="outline"
               onClick={handleBack}
-              disabled={stepIndex === 0}
+              disabled={stepIndex === 0 || isGenerating || isIndexing}
               className="min-h-11"
             >
               <ChevronLeft className="mr-1 h-4 w-4" />
