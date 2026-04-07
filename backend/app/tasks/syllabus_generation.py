@@ -198,7 +198,9 @@ def generate_course_syllabus(
             )
             for res in existing_resources:
                 if res.raw_text:
-                    pdf_full_texts.append((res.filename.replace("_", " "), res.raw_text, res.toc_json or []))
+                    pdf_full_texts.append(
+                        (res.filename.replace("_", " "), res.raw_text, res.toc_json or [])
+                    )
 
         elif course_dir.exists():
             pdf_files = sorted(course_dir.glob("*.pdf"))
