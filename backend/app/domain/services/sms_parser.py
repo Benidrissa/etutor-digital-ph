@@ -73,7 +73,19 @@ def _normalize_amount(raw: str) -> int:
     return int(float(cleaned))
 
 
-_ECOWAS_COUNTRY_CODES = ("224", "221", "223", "225", "226", "227", "228", "229", "231", "233", "234")
+_ECOWAS_COUNTRY_CODES = (
+    "224",
+    "221",
+    "223",
+    "225",
+    "226",
+    "227",
+    "228",
+    "229",
+    "231",
+    "233",
+    "234",
+)
 
 
 def normalize_phone(raw: str) -> str:
@@ -90,13 +102,13 @@ def normalize_phone(raw: str) -> str:
         phone = phone[1:]
         for prefix in _ECOWAS_COUNTRY_CODES:
             if phone.startswith(prefix) and len(phone) > 8:
-                phone = phone[len(prefix):]
+                phone = phone[len(prefix) :]
                 break
     elif phone.startswith("00"):
         phone = phone[2:]
         for prefix in _ECOWAS_COUNTRY_CODES:
             if phone.startswith(prefix) and len(phone) > 8:
-                phone = phone[len(prefix):]
+                phone = phone[len(prefix) :]
                 break
     elif phone.startswith("0") and len(phone) > 8:
         phone = phone[1:]

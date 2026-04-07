@@ -134,9 +134,10 @@ class TestProcessPaymentPhoneMismatch:
         session.add = MagicMock()
         session.commit = AsyncMock()
 
-        with patch.object(service, "get_active_subscription", new=AsyncMock(return_value=None)), patch(
-            "app.domain.services.subscription_service.SettingsCache.instance"
-        ) as mock_sc:
+        with (
+            patch.object(service, "get_active_subscription", new=AsyncMock(return_value=None)),
+            patch("app.domain.services.subscription_service.SettingsCache.instance") as mock_sc,
+        ):
             mock_sc.return_value.get.side_effect = lambda key, default=None: {
                 "payments-subscription-price-xof": 1000,
                 "payments-subscription-duration-days": 30,
@@ -166,9 +167,10 @@ class TestProcessPaymentPhoneMismatch:
         session.add = MagicMock()
         session.commit = AsyncMock()
 
-        with patch.object(service, "get_active_subscription", new=AsyncMock(return_value=None)), patch(
-            "app.domain.services.subscription_service.SettingsCache.instance"
-        ) as mock_sc:
+        with (
+            patch.object(service, "get_active_subscription", new=AsyncMock(return_value=None)),
+            patch("app.domain.services.subscription_service.SettingsCache.instance") as mock_sc,
+        ):
             mock_sc.return_value.get.side_effect = lambda key, default=None: {
                 "payments-subscription-price-xof": 1000,
                 "payments-subscription-duration-days": 30,
@@ -230,9 +232,10 @@ class TestSubscriptionActivation:
         session.add = MagicMock()
         session.commit = AsyncMock()
 
-        with patch.object(service, "get_active_subscription", new=AsyncMock(return_value=None)), patch(
-            "app.domain.services.subscription_service.SettingsCache.instance"
-        ) as mock_sc:
+        with (
+            patch.object(service, "get_active_subscription", new=AsyncMock(return_value=None)),
+            patch("app.domain.services.subscription_service.SettingsCache.instance") as mock_sc,
+        ):
             mock_sc.return_value.get.side_effect = lambda key, default=None: {
                 "payments-subscription-price-xof": 1000,
                 "payments-subscription-duration-days": 30,
@@ -264,9 +267,10 @@ class TestSubscriptionActivation:
         session.add = MagicMock(side_effect=lambda obj: added_objects.append(obj))
         session.commit = AsyncMock()
 
-        with patch.object(service, "get_active_subscription", new=AsyncMock(return_value=None)), patch(
-            "app.domain.services.subscription_service.SettingsCache.instance"
-        ) as mock_sc:
+        with (
+            patch.object(service, "get_active_subscription", new=AsyncMock(return_value=None)),
+            patch("app.domain.services.subscription_service.SettingsCache.instance") as mock_sc,
+        ):
             mock_sc.return_value.get.side_effect = lambda key, default=None: {
                 "payments-subscription-price-xof": 1000,
                 "payments-subscription-duration-days": 45,
@@ -300,9 +304,10 @@ class TestSubscriptionActivation:
         session.add = MagicMock(side_effect=lambda obj: added_objects.append(obj))
         session.commit = AsyncMock()
 
-        with patch.object(service, "get_active_subscription", new=AsyncMock(return_value=None)), patch(
-            "app.domain.services.subscription_service.SettingsCache.instance"
-        ) as mock_sc:
+        with (
+            patch.object(service, "get_active_subscription", new=AsyncMock(return_value=None)),
+            patch("app.domain.services.subscription_service.SettingsCache.instance") as mock_sc,
+        ):
             mock_sc.return_value.get.side_effect = lambda key, default=None: {
                 "payments-subscription-price-xof": 1000,
             }.get(key, default)
@@ -316,6 +321,7 @@ class TestSubscriptionActivation:
         assert result["subscription_activated"] is False
         assert result.get("insufficient_amount") is True
         from app.domain.models.subscription import SubscriptionPayment
+
         payments = [o for o in added_objects if isinstance(o, SubscriptionPayment)]
         assert len(payments) == 1
         assert payments[0].status == PaymentStatus.pending
@@ -372,11 +378,12 @@ class TestMessageCredits:
         session.add = MagicMock()
         session.commit = AsyncMock()
 
-        with patch.object(
-            service, "get_active_subscription", new=AsyncMock(return_value=active_sub)
-        ), patch(
-            "app.domain.services.subscription_service.SettingsCache.instance"
-        ) as mock_sc:
+        with (
+            patch.object(
+                service, "get_active_subscription", new=AsyncMock(return_value=active_sub)
+            ),
+            patch("app.domain.services.subscription_service.SettingsCache.instance") as mock_sc,
+        ):
             mock_sc.return_value.get.side_effect = lambda key, default=None: {
                 "payments-subscription-price-xof": 1000,
                 "payments-message-price-xof": 5,
@@ -407,11 +414,12 @@ class TestMessageCredits:
         session.add = MagicMock()
         session.commit = AsyncMock()
 
-        with patch.object(
-            service, "get_active_subscription", new=AsyncMock(return_value=active_sub)
-        ), patch(
-            "app.domain.services.subscription_service.SettingsCache.instance"
-        ) as mock_sc:
+        with (
+            patch.object(
+                service, "get_active_subscription", new=AsyncMock(return_value=active_sub)
+            ),
+            patch("app.domain.services.subscription_service.SettingsCache.instance") as mock_sc,
+        ):
             mock_sc.return_value.get.side_effect = lambda key, default=None: {
                 "payments-subscription-price-xof": 1000,
                 "payments-message-price-xof": 10,

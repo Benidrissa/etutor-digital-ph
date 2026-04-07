@@ -103,9 +103,7 @@ class SubscriptionService:
         candidates = list({phone_number, normalized})
         if len(normalized) == 8:
             candidates.append(f"+226{normalized}")
-        user_result = await session.execute(
-            select(User).where(User.phone_number.in_(candidates))
-        )
+        user_result = await session.execute(select(User).where(User.phone_number.in_(candidates)))
         user = user_result.scalar_one_or_none()
 
         if user is None:

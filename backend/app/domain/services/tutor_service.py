@@ -558,7 +558,11 @@ class TutorService:
             conversation.message_count = len(updated_messages)
             session.add(conversation)
 
-            if subscription and messages_used >= subscription.daily_message_limit and subscription.message_credits > 0:
+            if (
+                subscription
+                and messages_used >= subscription.daily_message_limit
+                and subscription.message_credits > 0
+            ):
                 subscription.message_credits -= 1
                 session.add(subscription)
 
