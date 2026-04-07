@@ -65,6 +65,7 @@ class CourseResponse(BaseModel):
     created_by: str | None
     rag_collection_id: str | None
     indexation_task_id: str | None
+    creation_step: str
     preassessment_enabled: bool
     preassessment_mandatory: bool
     created_at: str
@@ -92,6 +93,7 @@ def _course_to_response(course: Course, image_count: int = 0) -> CourseResponse:
         created_by=str(course.created_by) if course.created_by else None,
         rag_collection_id=course.rag_collection_id,
         indexation_task_id=course.indexation_task_id,
+        creation_step=course.creation_step,
         preassessment_enabled=course.preassessment_enabled,
         preassessment_mandatory=course.preassessment_mandatory,
         created_at=course.created_at.isoformat(),
@@ -186,6 +188,7 @@ async def create_course(
         rag_collection_id=request.rag_collection_id or str(uuid.uuid4()),
         created_by=uuid.UUID(current_user.id),
         status="draft",
+        creation_step="upload",
         taxonomy_categories=tax_cats,
         preassessment_enabled=request.preassessment_enabled,
     )
@@ -278,6 +281,7 @@ async def publish_course(
         )
 
     course.status = "published"
+    course.creation_step = "published"
     course.published_at = datetime.now(UTC)
 
     module_count_result = await db.execute(
@@ -332,10 +336,20 @@ async def generate_course_structure(
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
 
+    if course.creation_step in ("generating", "indexing"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A task is already in progress (step: {course.creation_step})",
+        )
+
     task = generate_course_syllabus.delay(
         str(course_id),
         request.estimated_hours or course.estimated_hours,
     )
+
+    course.creation_step = "generating"
+    await db.commit()
+
     logger.info(
         "Syllabus generation triggered",
         course_id=str(course_id),
@@ -436,9 +450,16 @@ async def trigger_rag_indexation(
             detail="Course has no rag_collection_id",
         )
 
+    if course.creation_step in ("generating", "indexing"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A task is already in progress (step: {course.creation_step})",
+        )
+
     task = index_course_resources.delay(str(course_id), course.rag_collection_id)
 
     course.indexation_task_id = task.id
+    course.creation_step = "indexing"
     await db.commit()
 
     logger.info(
@@ -587,6 +608,10 @@ async def upload_course_resource(
     dest = course_dir / safe_name
 
     dest.write_bytes(data)
+
+    if course.creation_step == "upload":
+        course.creation_step = "info"
+        await db.commit()
 
     logger.info(
         "Course resource uploaded",

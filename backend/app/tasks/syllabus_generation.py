@@ -20,6 +20,28 @@ class SyllabusTask(Task):
 
     def on_failure(self, exc, task_id, args, kwargs, einfo):
         logger.error("Syllabus generation failed", task_id=task_id, exception=str(exc))
+        # Reset creation_step so the user can retry
+        try:
+            course_id = args[0] if args else kwargs.get("course_id")
+            if course_id:
+                from sqlalchemy import create_engine, text
+                from sqlalchemy.orm import Session
+
+                from app.infrastructure.config.settings import settings
+
+                engine = create_engine(settings.database_url_sync, pool_pre_ping=True)
+                with Session(engine) as session:
+                    session.execute(
+                        text(
+                            "UPDATE courses SET creation_step = 'info'"
+                            " WHERE id = :cid AND creation_step = 'generating'"
+                        ),
+                        {"cid": course_id},
+                    )
+                    session.commit()
+                engine.dispose()
+        except Exception as reset_exc:
+            logger.warning("Failed to reset creation_step", error=str(reset_exc))
 
 
 @celery_app.task(
@@ -269,7 +291,10 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
             import json
 
             session.execute(
-                text("UPDATE courses SET module_count = :mc, syllabus_json = :sj WHERE id = :cid"),
+                text(
+                    "UPDATE courses SET module_count = :mc, syllabus_json = :sj,"
+                    " creation_step = 'generated' WHERE id = :cid"
+                ),
                 {
                     "mc": len(module_dicts),
                     "sj": json.dumps(module_dicts),
