@@ -196,6 +196,7 @@ class TestSyllabusGenerationTaskUnit:
         mock_session = MagicMock()
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
+        mock_session.execute.return_value.scalars.return_value.all.return_value = []
         mock_sync_engine = MagicMock()
 
         small_pdf_text = "x" * 1000
@@ -255,6 +256,7 @@ class TestSyllabusGenerationTaskUnit:
         mock_session = MagicMock()
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
+        mock_session.execute.return_value.scalars.return_value.all.return_value = []
         mock_sync_engine = MagicMock()
 
         large_pdf_text = "x" * (_CONTEXT_BUDGET_CHARS + 1)
