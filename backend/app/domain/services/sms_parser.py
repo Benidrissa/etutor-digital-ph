@@ -73,23 +73,36 @@ def _normalize_amount(raw: str) -> int:
     return int(float(cleaned))
 
 
-def _normalize_phone(raw: str) -> str:
-    """Strip country code prefix to get local number."""
+_ECOWAS_COUNTRY_CODES = ("224", "221", "223", "225", "226", "227", "228", "229", "231", "233", "234")
+
+
+def normalize_phone(raw: str) -> str:
+    """Strip country code prefix to get local number (public utility).
+
+    Handles:
+    - +22670220689  -> 70220689
+    - 0022670220689 -> 70220689
+    - 70220689      -> 70220689 (unchanged)
+    - 070220689     -> 70220689 (leading 0 stripped if >8 digits remain)
+    """
     phone = raw.strip()
-    # +224 76801718 -> 76801718
     if phone.startswith("+"):
         phone = phone[1:]
-        # Strip country codes (224=Guinea, 221=Senegal, etc.)
-        for prefix in ("224", "221", "223", "225", "226"):
+        for prefix in _ECOWAS_COUNTRY_CODES:
             if phone.startswith(prefix) and len(phone) > 8:
-                phone = phone[len(prefix) :]
+                phone = phone[len(prefix):]
                 break
     elif phone.startswith("00"):
         phone = phone[2:]
-        for prefix in ("224", "221", "223", "225", "226"):
+        for prefix in _ECOWAS_COUNTRY_CODES:
             if phone.startswith(prefix) and len(phone) > 8:
-                phone = phone[len(prefix) :]
+                phone = phone[len(prefix):]
                 break
     elif phone.startswith("0") and len(phone) > 8:
         phone = phone[1:]
     return phone
+
+
+def _normalize_phone(raw: str) -> str:
+    """Strip country code prefix to get local number (internal alias)."""
+    return normalize_phone(raw)

@@ -99,7 +99,8 @@ class TutorStatsResponse(BaseModel):
     """Response for tutor usage statistics."""
 
     daily_messages_used: int = Field(..., description="Messages used today")
-    daily_messages_limit: int = Field(..., description="Daily message limit")
+    daily_messages_limit: int = Field(..., description="Daily message limit (daily + credits)")
+    message_credits: int = Field(default=0, description="Non-resetting AI message credit pool")
     total_conversations: int = Field(..., description="Total conversation count")
     most_discussed_topics: list[str] = Field(
         default_factory=list, description="Most frequently discussed topics"

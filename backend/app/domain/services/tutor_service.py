@@ -243,8 +243,11 @@ class TutorService:
             user_id = uuid.UUID(user_id)
 
         subscription = await SubscriptionService().get_active_subscription(user_id, session)
-        effective_limit = subscription.daily_message_limit if subscription else 5
         messages_used = await self._check_daily_limit(user_id, session)
+        if subscription:
+            effective_limit = subscription.daily_message_limit + subscription.message_credits
+        else:
+            effective_limit = 5
         if messages_used >= effective_limit:
             yield {
                 "type": "error",
@@ -554,6 +557,11 @@ class TutorService:
             conversation.messages = updated_messages
             conversation.message_count = len(updated_messages)
             session.add(conversation)
+
+            if subscription and messages_used >= subscription.daily_message_limit and subscription.message_credits > 0:
+                subscription.message_credits -= 1
+                session.add(subscription)
+
             await session.commit()
 
             if conversation.message_count > COMPACT_TRIGGER:
@@ -592,10 +600,12 @@ class TutorService:
                 "conversation_id": str(conversation.id),
             }
 
+            credits_after = subscription.message_credits if subscription else 0
             yield {
                 "type": "finished",
                 "data": {
-                    "remaining_messages": effective_limit - messages_used - 1,
+                    "remaining_messages": max(0, effective_limit - messages_used - 1),
+                    "message_credits": credits_after,
                     "conversation_id": str(conversation.id),
                     "tool_calls_made": tool_call_count,
                 },
@@ -757,7 +767,12 @@ class TutorService:
         daily_messages = await self._check_daily_limit(user_id, session)
 
         subscription = await SubscriptionService().get_active_subscription(user_id, session)
-        limit = subscription.daily_message_limit if subscription else 5
+        if subscription:
+            limit = subscription.daily_message_limit + subscription.message_credits
+            message_credits = subscription.message_credits
+        else:
+            limit = 5
+            message_credits = 0
 
         count_query = select(func.count(TutorConversation.id)).where(
             TutorConversation.user_id == user_id
@@ -770,6 +785,7 @@ class TutorService:
         return {
             "daily_messages_used": daily_messages,
             "daily_messages_limit": limit,
+            "message_credits": message_credits,
             "total_conversations": total_conversations,
             "most_discussed_topics": most_discussed_topics,
         }

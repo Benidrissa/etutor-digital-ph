@@ -49,6 +49,9 @@ class Subscription(Base):
     daily_message_limit: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="20", default=20
     )
+    message_credits: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0", default=0
+    )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     activated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     pending_expires_at: Mapped[datetime | None] = mapped_column(
@@ -68,8 +71,8 @@ class SubscriptionPayment(Base):
     __tablename__ = "subscription_payments"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
     )
     phone_number: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     amount_xof: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -85,4 +88,4 @@ class SubscriptionPayment(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    user: Mapped[User] = relationship(back_populates="subscription_payments")
+    user: Mapped[User | None] = relationship(back_populates="subscription_payments")

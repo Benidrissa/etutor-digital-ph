@@ -7,7 +7,7 @@ from datetime import timedelta
 from uuid import UUID
 
 import structlog
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.models.subscription import (
@@ -18,6 +18,8 @@ from app.domain.models.subscription import (
     SubscriptionStatus,
 )
 from app.domain.models.user import User, UserRole
+from app.domain.services.platform_settings_service import SettingsCache
+from app.domain.services.sms_parser import normalize_phone
 
 logger = structlog.get_logger(__name__)
 
@@ -41,7 +43,6 @@ class SubscriptionService:
         if sub is not None:
             return sub
 
-        # Auto-provision subscription for admin users
         user = await session.get(User, user_id)
         if user and user.role == UserRole.admin:
             return await self.ensure_admin_subscription(user_id, session)
@@ -93,28 +94,71 @@ class SubscriptionService:
             )
             return {
                 "status": "ok",
-                "subscription_activated": existing.payment_type == PaymentType.access,
-                "user_found": True,
+                "subscription_activated": existing.payment_type == PaymentType.access
+                and existing.status == PaymentStatus.confirmed,
+                "user_found": existing.user_id is not None,
             }
 
-        user_result = await session.execute(select(User).where(User.phone_number == phone_number))
+        normalized = normalize_phone(phone_number)
+        candidates = list({phone_number, normalized})
+        if len(normalized) == 8:
+            candidates.append(f"+226{normalized}")
+        user_result = await session.execute(
+            select(User).where(User.phone_number.in_(candidates))
+        )
         user = user_result.scalar_one_or_none()
-        user_found = user is not None
 
-        if not user_found:
+        if user is None:
             logger.info(
-                "No user found for phone number, recording unprocessed payment",
+                "No user found for phone number, saving pending payment",
                 phone_number=phone_number,
             )
+            payment = SubscriptionPayment(
+                user_id=None,
+                phone_number=normalized,
+                amount_xof=amount_xof,
+                payment_type=PaymentType.access,
+                external_reference=external_reference,
+                status=PaymentStatus.pending,
+            )
+            session.add(payment)
+            await session.commit()
             return {"status": "ok", "subscription_activated": False, "user_found": False}
 
+        sc = SettingsCache.instance()
+        min_price: int = sc.get("payments-subscription-price-xof", 1000)
         active_sub = await self.get_active_subscription(user.id, session)
         now = datetime.datetime.now(tz=datetime.UTC)
 
         if active_sub is None:
+            if amount_xof < min_price:
+                logger.info(
+                    "Payment below minimum activation price, saving as pending",
+                    user_id=str(user.id),
+                    amount_xof=amount_xof,
+                    min_price=min_price,
+                )
+                payment = SubscriptionPayment(
+                    user_id=user.id,
+                    phone_number=normalized,
+                    amount_xof=amount_xof,
+                    payment_type=PaymentType.access,
+                    external_reference=external_reference,
+                    status=PaymentStatus.pending,
+                )
+                session.add(payment)
+                await session.commit()
+                return {
+                    "status": "ok",
+                    "subscription_activated": False,
+                    "user_found": True,
+                    "insufficient_amount": True,
+                }
+
+            duration_days: int = sc.get("payments-subscription-duration-days", 30)
             payment = SubscriptionPayment(
                 user_id=user.id,
-                phone_number=phone_number,
+                phone_number=normalized,
                 amount_xof=amount_xof,
                 payment_type=PaymentType.access,
                 external_reference=external_reference,
@@ -124,10 +168,10 @@ class SubscriptionService:
 
             subscription = Subscription(
                 user_id=user.id,
-                phone_number=phone_number,
+                phone_number=normalized,
                 status=SubscriptionStatus.active,
                 daily_message_limit=20,
-                expires_at=now + timedelta(days=28),
+                expires_at=now + timedelta(days=duration_days),
                 activated_at=now,
             )
             session.add(subscription)
@@ -136,13 +180,16 @@ class SubscriptionService:
             logger.info(
                 "New subscription created",
                 user_id=str(user.id),
-                expires_at=str(now + timedelta(days=28)),
+                expires_at=str(now + timedelta(days=duration_days)),
             )
             return {"status": "ok", "subscription_activated": True, "user_found": True}
         else:
+            message_price: int = sc.get("payments-message-price-xof", 5)
+            credits = amount_xof // max(1, message_price)
+
             payment = SubscriptionPayment(
                 user_id=user.id,
-                phone_number=phone_number,
+                phone_number=normalized,
                 amount_xof=amount_xof,
                 payment_type=PaymentType.messages,
                 external_reference=external_reference,
@@ -150,13 +197,14 @@ class SubscriptionService:
             )
             session.add(payment)
 
-            active_sub.daily_message_limit += 50
+            active_sub.message_credits += credits
             await session.commit()
 
             logger.info(
-                "Message top-up applied",
+                "Message credits top-up applied",
                 user_id=str(user.id),
-                new_daily_limit=active_sub.daily_message_limit,
+                credits_added=credits,
+                new_credits=active_sub.message_credits,
             )
             return {"status": "ok", "subscription_activated": False, "user_found": True}
 
@@ -169,12 +217,16 @@ class SubscriptionService:
             logger.warning("User not found for phone linking", user_id=str(user_id))
             return
 
-        user.phone_number = phone_number
+        normalized = normalize_phone(phone_number)
+        user.phone_number = normalized
         await session.flush()
 
         unprocessed_result = await session.execute(
             select(SubscriptionPayment).where(
-                SubscriptionPayment.phone_number == phone_number,
+                or_(
+                    SubscriptionPayment.phone_number == phone_number,
+                    SubscriptionPayment.phone_number == normalized,
+                ),
                 SubscriptionPayment.status == PaymentStatus.pending,
             )
         )
@@ -183,12 +235,12 @@ class SubscriptionService:
         if unprocessed:
             logger.info(
                 "Found unprocessed payments for phone, auto-activating",
-                phone_number=phone_number,
+                phone_number=normalized,
                 count=len(unprocessed),
             )
             for payment in unprocessed:
                 await self.process_payment(
-                    phone_number=phone_number,
+                    phone_number=normalized,
                     amount_xof=payment.amount_xof,
                     external_reference=payment.external_reference,
                     session=session,
