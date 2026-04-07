@@ -70,23 +70,7 @@ def generate_course_syllabus(
 
     cache = SettingsCache.instance()
     context_budget = cache.get("syllabus-context-budget-chars", 3_500_000)
-    pdf_chunk_size = cache.get("syllabus-pdf-chunk-size-chars") or None
-    combine_chunk_size = (
-        cache.get("syllabus-combine-chunk-size-chars")
-        or cache.get("syllabus-combine-chunk-size")
-        or None
-    )
     summarizer_model = cache.get("syllabus-summarizer-model", "claude-sonnet-4-6")
-    chunk_max_tokens = (
-        cache.get("syllabus-chunk-max-output-tokens")
-        or cache.get("syllabus-chunk-max-tokens")
-        or None
-    )
-    combine_max_tokens = (
-        cache.get("syllabus-combine-max-output-tokens")
-        or cache.get("syllabus-combine-max-tokens")
-        or None
-    )
     max_concurrent = cache.get("syllabus-max-concurrent-api-calls", 5)
 
     logger.info(
@@ -147,7 +131,7 @@ def generate_course_syllabus(
     level_slugs = course_data["level_slugs"]
     audience_slugs = course_data["audience_slugs"]
 
-    # ── Phase 1.5: Extract text from uploaded PDFs (skipped if cached) ────────
+    # ── Phase 1.5: Load resources from DB (pre-extracted at upload time) ──────
     from pathlib import Path
 
     from sqlalchemy import create_engine
@@ -166,13 +150,11 @@ def generate_course_syllabus(
     else:
         self.update_state(
             state="GENERATING",
-            meta={"step": "extracting_pdf_text", "progress": 15, "modules_count": 0},
+            meta={"step": "loading_resources", "progress": 15, "modules_count": 0},
         )
         resource_text = None
 
     if cached_resource_text is None:
-        import fitz  # PyMuPDF
-
         from app.domain.models.course_resource import CourseResource
         from app.infrastructure.config.settings import settings as _settings
 
@@ -196,9 +178,9 @@ def generate_course_syllabus(
         finally:
             _sync_engine.dispose()
 
-        if existing_resources and not course_dir.exists():
+        if existing_resources:
             logger.info(
-                "PDFs not on disk — loading extracted text from DB",
+                "Loading pre-extracted text from DB",
                 course_id=course_id,
                 resource_count=len(existing_resources),
             )
@@ -209,9 +191,10 @@ def generate_course_syllabus(
                     )
 
         elif course_dir.exists():
-            pdf_files = sorted(course_dir.glob("*.pdf"))
+            import fitz  # PyMuPDF
 
             _new_resources: list[CourseResource] = []
+            pdf_files = sorted(course_dir.glob("*.pdf"))
             for pdf_path in pdf_files:
                 try:
                     doc = fitz.open(str(pdf_path))
@@ -239,7 +222,7 @@ def generate_course_syllabus(
                         )
                     )
                     logger.info(
-                        "Extracted PDF text",
+                        "Extracted PDF text (fallback)",
                         pdf=book_name,
                         pages=len(pages_text),
                         chars=len(full_text),
@@ -261,13 +244,11 @@ def generate_course_syllabus(
                 )
                 try:
                     with Session(_save_engine) as _save_session:
-                        existing_filenames = {r.filename for r in existing_resources}
                         for res in _new_resources:
-                            if res.filename not in existing_filenames:
-                                _save_session.add(res)
+                            _save_session.add(res)
                         _save_session.commit()
                     logger.info(
-                        "Saved extracted PDF text to DB",
+                        "Saved fallback-extracted PDF text to DB",
                         course_id=course_id,
                         count=len(_new_resources),
                     )
@@ -285,19 +266,21 @@ def generate_course_syllabus(
 
             if total_chars <= context_budget:
                 logger.info(
-                    "PDFs fit within context budget — using raw text",
+                    "Resources fit within context budget — using raw text directly",
                     course_id=course_id,
                     total_chars=total_chars,
                     budget=context_budget,
+                    resource_count=len(pdf_full_texts),
                 )
                 pdf_sections = [f"### {name}\n{txt}" for name, txt, _toc in pdf_full_texts]
                 resource_text = "\n\n---\n\n".join(pdf_sections)
             else:
                 logger.info(
-                    "PDFs exceed context budget — using multi-pass summarization",
+                    "Resources exceed context budget — 1-call-per-resource summarization",
                     course_id=course_id,
                     total_chars=total_chars,
                     budget=context_budget,
+                    resource_count=len(pdf_full_texts),
                 )
                 self.update_state(
                     state="GENERATING",
@@ -307,12 +290,7 @@ def generate_course_syllabus(
 
                 pdf_summaries = summarize_pdfs_sync(
                     pdf_full_texts,
-                    chunk_size_chars=pdf_chunk_size,
-                    combine_chunk_size_chars=combine_chunk_size,
                     model=summarizer_model,
-                    chunk_max_output_tokens=chunk_max_tokens,
-                    combine_max_output_tokens=combine_max_tokens,
-                    context_budget_chars=context_budget,
                     max_concurrent=max_concurrent,
                 )
                 pdf_sections = [
@@ -324,9 +302,9 @@ def generate_course_syllabus(
                 resource_text = "\n\n---\n\n".join(pdf_sections)
 
             logger.info(
-                "PDF summaries prepared for syllabus context",
+                "Resource text prepared for syllabus context",
                 course_id=course_id,
-                pdf_count=len(pdf_sections),
+                resource_count=len(pdf_full_texts),
                 total_chars=len(resource_text),
             )
 

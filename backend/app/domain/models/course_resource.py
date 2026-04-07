@@ -22,6 +22,7 @@ class CourseResource(Base):
         ForeignKey("courses.id", ondelete="CASCADE"), nullable=False, index=True
     )
     filename: Mapped[str] = mapped_column(String, nullable=False)
+    parent_filename: Mapped[str | None] = mapped_column(String, nullable=True)
     raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     toc_json: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     char_count: Mapped[int | None] = mapped_column(Integer, nullable=True)

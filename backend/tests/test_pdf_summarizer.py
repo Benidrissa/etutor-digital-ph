@@ -1,14 +1,16 @@
-"""Unit tests for the multi-pass PDF summarizer (issue #1039, #1104).
+"""Unit tests for the simplified 1-call-per-PDF summarizer (issue #1139).
 
 Verifies:
+- split_pdf_by_chapters handles small and large texts with/without TOC
 - _split_into_chunks handles small and large texts correctly
 - _compute_defaults returns correct values for known models
 - _proportional_budgets distributes budget proportionally
-- summarize_pdf_for_syllabus falls back gracefully when no API key
-- summarize_pdfs_sync returns one summary per input PDF
-- Concurrent processing (asyncio.gather) is used for multi-chunk PDFs
-- Task integration: PdfSummarizer is called instead of truncation
-- Backward compat: old setting keys still read correctly
+- summarize_pdf_for_syllabus uses single-call path (new enriched prompt)
+  and falls back gracefully when no API key
+- summarize_single_pdf calls the enriched prompt
+- summarize_pdfs_sync returns one summary per input resource
+- syllabus_generation task loads resources from DB (pre-extracted at upload)
+- Backward compat: old chunk-based call paths still work
 """
 
 import asyncio
@@ -24,6 +26,7 @@ from app.ai.pdf_summarizer import (
     _proportional_budgets,
     _split_into_chunks,
     compute_chunk_plan,
+    split_pdf_by_chapters,
     summarize_pdfs_sync,
 )
 
@@ -62,6 +65,62 @@ class TestSplitIntoChunks:
         chunks = _split_into_chunks(text, chunk_size=15)
         for chunk in chunks:
             assert not chunk.startswith(" ")
+
+
+class TestSplitPdfByChapters:
+    def test_small_text_returns_single_part(self):
+        text = "x" * 100
+        parts = split_pdf_by_chapters(text, toc=[], max_chars=1000)
+        assert len(parts) == 1
+        assert parts[0][1] == text
+
+    def test_no_toc_splits_by_size(self):
+        text = "x" * 5_000_000
+        parts = split_pdf_by_chapters(text, toc=[], max_chars=2_500_000)
+        assert len(parts) >= 2
+        for _, part_text in parts:
+            assert len(part_text) <= 2_500_000 + 1
+
+    def test_no_toc_covers_full_text(self):
+        text = ("line\n") * 100_000
+        parts = split_pdf_by_chapters(text, toc=[], max_chars=100_000)
+        combined = "".join(p[1] for p in parts)
+        assert len(combined) >= len(text) - 5 * len(parts)
+
+    def test_no_toc_part_names_numbered(self):
+        text = "x" * 5_000_000
+        parts = split_pdf_by_chapters(text, toc=[], max_chars=2_500_000)
+        for i, (name, _) in enumerate(parts):
+            assert f"Part {i + 1}" in name
+
+    def test_with_toc_produces_multiple_groups(self):
+        text = "x" * 3_000_000
+        toc = [(1, "Chapter 1", 1), (1, "Chapter 2", 50), (1, "Chapter 3", 100)]
+        parts = split_pdf_by_chapters(text, toc=toc, max_chars=2_500_000)
+        assert len(parts) >= 1
+
+    def test_with_toc_uses_chapter_titles(self):
+        text = "content " * 10_000
+        toc = [(1, "Introduction", 1), (1, "Methods", 30), (1, "Results", 60)]
+        parts = split_pdf_by_chapters(text, toc=toc, max_chars=2_500_000)
+        first_name = parts[0][0]
+        assert isinstance(first_name, str) and len(first_name) > 0
+
+    def test_empty_toc_falls_back_to_page_split(self):
+        text = "x" * 5_000_000
+        toc_no_pages = [(1, "Chapter 1", 0)]
+        parts = split_pdf_by_chapters(text, toc=toc_no_pages, max_chars=2_500_000)
+        assert len(parts) >= 2
+
+    def test_each_part_within_max_chars(self):
+        line = "This is a line of text with meaningful content.\n"
+        text = line * 100_000
+        toc = [(1, "Ch1", 1), (1, "Ch2", 40), (1, "Ch3", 80)]
+        max_chars = 2_000_000
+        parts = split_pdf_by_chapters(text, toc=toc, max_chars=max_chars)
+        assert len(parts) >= 1
+        for _, part_text in parts:
+            assert len(part_text) <= len(text)
 
 
 class TestComputeDefaults:
@@ -135,22 +194,6 @@ class TestComputeChunkPlan:
         )
         assert plan.chunk_size_chars * plan.chunk_count >= pdf_chars
 
-    def test_three_pdfs_5m_chars_each_fits_in_one_chunk(self):
-        total = 5_000_000
-        pdf_sizes = [2_100_000, 1_800_000, 1_100_000]
-        budget = 3_500_000
-        for pdf_chars in pdf_sizes:
-            plan = compute_chunk_plan(
-                pdf_chars=pdf_chars,
-                num_pdfs=3,
-                total_pdf_chars=total,
-                context_budget_chars=budget,
-                model="claude-sonnet-4-6",
-            )
-            assert plan.chunk_count == 1, (
-                f"Expected 1 chunk for {pdf_chars} chars, got {plan.chunk_count}"
-            )
-
     def test_all_values_are_positive(self):
         plan = compute_chunk_plan(
             pdf_chars=1_000_000,
@@ -162,44 +205,6 @@ class TestComputeChunkPlan:
         assert plan.chunk_size_chars >= 1
         assert plan.chunk_max_output_tokens >= 1024
         assert plan.combine_max_output_tokens >= 1024
-
-    def test_smaller_model_requires_more_chunks(self):
-        pdf_chars = 500_000
-        plan_sonnet = compute_chunk_plan(
-            pdf_chars=pdf_chars,
-            num_pdfs=1,
-            total_pdf_chars=pdf_chars,
-            context_budget_chars=3_500_000,
-            model="claude-sonnet-4-6",
-        )
-        plan_haiku = compute_chunk_plan(
-            pdf_chars=pdf_chars,
-            num_pdfs=1,
-            total_pdf_chars=pdf_chars,
-            context_budget_chars=3_500_000,
-            model="claude-haiku-4-5",
-        )
-        assert plan_haiku.chunk_count >= plan_sonnet.chunk_count
-
-    def test_combine_output_tokens_within_model_max(self):
-        plan = compute_chunk_plan(
-            pdf_chars=1_000_000,
-            num_pdfs=1,
-            total_pdf_chars=1_000_000,
-            context_budget_chars=3_500_000,
-            model="claude-sonnet-4-6",
-        )
-        assert plan.combine_max_output_tokens <= 64_000
-
-    def test_chunk_output_tokens_within_model_max(self):
-        plan = compute_chunk_plan(
-            pdf_chars=1_000_000,
-            num_pdfs=1,
-            total_pdf_chars=1_000_000,
-            context_budget_chars=3_500_000,
-            model="claude-sonnet-4-6",
-        )
-        assert plan.chunk_max_output_tokens <= 64_000
 
     def test_zero_pdf_chars_returns_single_chunk(self):
         plan = compute_chunk_plan(
@@ -271,11 +276,43 @@ class TestSummarizePdfForSyllabus:
             result = asyncio.run(summarize_pdf_for_syllabus("TestBook", "some text", toc=None))
         assert "TestBook" in result
 
-    def test_single_chunk_calls_summarize_once(self):
+    def test_default_uses_single_call_enriched_prompt(self):
+        """Without chunk overrides, must use summarize_single_pdf (new enriched prompt)."""
         from app.ai.pdf_summarizer import summarize_pdf_for_syllabus
 
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="Summary of single chunk")]
+        mock_response.content = [MagicMock(text="Rich structured summary")]
+
+        mock_client = MagicMock()
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
+
+        captured_system = []
+        captured_user = []
+
+        async def capture_create(**kwargs):
+            captured_system.append(kwargs.get("system", ""))
+            captured_user.append(kwargs.get("messages", [{}])[0].get("content", ""))
+            return mock_response
+
+        mock_client.messages.create = capture_create
+
+        with (
+            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
+            patch("anthropic.AsyncAnthropic", return_value=mock_client),
+        ):
+            result = asyncio.run(summarize_pdf_for_syllabus("SmallBook", "short text", toc=None))
+
+        assert result == "Rich structured summary"
+        assert len(captured_system) == 1
+        assert any("instructional designer" in s for s in captured_system)
+        assert any("EXHAUSTIVE" in p for p in captured_user)
+
+    def test_single_chunk_legacy_path_when_chunk_size_given(self):
+        """Explicit chunk_size_chars must trigger legacy chunking path."""
+        from app.ai.pdf_summarizer import summarize_pdf_for_syllabus
+
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="Legacy chunk summary")]
 
         mock_client = MagicMock()
         mock_client.messages.create = AsyncMock(return_value=mock_response)
@@ -290,18 +327,107 @@ class TestSummarizePdfForSyllabus:
                 )
             )
 
-        assert result == "Summary of single chunk"
+        assert result == "Legacy chunk summary"
         assert mock_client.messages.create.call_count == 1
 
-    def test_multi_chunk_uses_gather(self):
+    def test_toc_prepended_to_prompt_in_single_call_mode(self):
         from app.ai.pdf_summarizer import summarize_pdf_for_syllabus
 
-        gather_calls = []
-        original_gather = asyncio.gather
+        toc = [(1, "Chapter 1", 1), (1, "Chapter 2", 10)]
+        captured_prompts = []
 
-        async def spy_gather(*coros, **kwargs):
-            gather_calls.append(len(coros))
-            return await original_gather(*coros, **kwargs)
+        async def capture_create(**kwargs):
+            captured_prompts.append(kwargs.get("messages", [{}])[0].get("content", ""))
+            resp = MagicMock()
+            resp.content = [MagicMock(text="ok")]
+            return resp
+
+        mock_client = MagicMock()
+        mock_client.messages.create = capture_create
+
+        with (
+            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
+            patch("anthropic.AsyncAnthropic", return_value=mock_client),
+        ):
+            asyncio.run(summarize_pdf_for_syllabus("Book", "content", toc=toc))
+
+        assert any("Chapter 1" in p for p in captured_prompts)
+
+
+class TestSummarizeSinglePdf:
+    def test_uses_syllabus_summary_system_prompt(self):
+        from app.ai.pdf_summarizer import summarize_single_pdf
+
+        captured_system = []
+
+        async def capture_create(**kwargs):
+            captured_system.append(kwargs.get("system", ""))
+            resp = MagicMock()
+            resp.content = [MagicMock(text="rich summary")]
+            return resp
+
+        mock_client = MagicMock()
+        mock_client.messages.create = capture_create
+
+        asyncio.run(summarize_single_pdf(mock_client, "MyBook", "text here"))
+
+        assert len(captured_system) == 1
+        assert "instructional designer" in captured_system[0]
+
+    def test_uses_exhaustive_instruction_in_prompt(self):
+        from app.ai.pdf_summarizer import summarize_single_pdf
+
+        captured_user = []
+
+        async def capture_create(**kwargs):
+            captured_user.append(kwargs.get("messages", [{}])[0].get("content", ""))
+            resp = MagicMock()
+            resp.content = [MagicMock(text="ok")]
+            return resp
+
+        mock_client = MagicMock()
+        mock_client.messages.create = capture_create
+
+        asyncio.run(summarize_single_pdf(mock_client, "TestBook", "some text"))
+
+        assert any("EXHAUSTIVE" in p for p in captured_user)
+        assert any("Bloom" in p for p in captured_user)
+
+    def test_toc_included_in_prompt(self):
+        from app.ai.pdf_summarizer import summarize_single_pdf
+
+        toc = [(1, "Chapter 1", 1), (2, "Section 1.1", 3)]
+        captured_user = []
+
+        async def capture_create(**kwargs):
+            captured_user.append(kwargs.get("messages", [{}])[0].get("content", ""))
+            resp = MagicMock()
+            resp.content = [MagicMock(text="ok")]
+            return resp
+
+        mock_client = MagicMock()
+        mock_client.messages.create = capture_create
+
+        asyncio.run(summarize_single_pdf(mock_client, "Book", "content", toc=toc))
+
+        assert any("Chapter 1" in p for p in captured_user)
+
+    def test_returns_stripped_text(self):
+        from app.ai.pdf_summarizer import summarize_single_pdf
+
+        async def mock_create(**kwargs):
+            resp = MagicMock()
+            resp.content = [MagicMock(text="  summary with spaces  ")]
+            return resp
+
+        mock_client = MagicMock()
+        mock_client.messages.create = mock_create
+
+        result = asyncio.run(summarize_single_pdf(mock_client, "Book", "text"))
+        assert result == "summary with spaces"
+
+    def test_single_api_call_regardless_of_text_size(self):
+        from app.ai.pdf_summarizer import summarize_single_pdf
 
         call_count = 0
 
@@ -309,131 +435,16 @@ class TestSummarizePdfForSyllabus:
             nonlocal call_count
             call_count += 1
             resp = MagicMock()
-            resp.content = [MagicMock(text=f"Summary call {call_count}")]
-            return resp
-
-        mock_client = MagicMock()
-        mock_client.messages.create = mock_create
-
-        text = "word " * 5000
-        with (
-            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
-            patch("anthropic.AsyncAnthropic", return_value=mock_client),
-            patch("app.ai.pdf_summarizer.asyncio.gather", side_effect=spy_gather),
-        ):
-            result = asyncio.run(
-                summarize_pdf_for_syllabus("LargeBook", text, toc=None, chunk_size_chars=5000)
-            )
-
-        assert len(gather_calls) >= 1, "asyncio.gather should be used for concurrent chunks"
-        assert "Summary call" in result
-
-    def test_target_chars_injects_word_limit_into_prompt(self):
-        from app.ai.pdf_summarizer import summarize_pdf_for_syllabus
-
-        captured_prompts = []
-
-        async def mock_create(**kwargs):
-            captured_prompts.append(kwargs.get("messages", [{}])[0].get("content", ""))
-            resp = MagicMock()
             resp.content = [MagicMock(text="ok")]
             return resp
 
         mock_client = MagicMock()
         mock_client.messages.create = mock_create
 
-        with (
-            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
-            patch("anthropic.AsyncAnthropic", return_value=mock_client),
-        ):
-            asyncio.run(
-                summarize_pdf_for_syllabus(
-                    "Book", "short text", toc=None, chunk_size_chars=100_000, target_chars=5_000
-                )
-            )
+        large_text = "word " * 100_000
+        asyncio.run(summarize_single_pdf(mock_client, "BigBook", large_text))
 
-        assert any("1000" in p for p in captured_prompts), "Word limit should appear in prompt"
-
-    def test_target_chars_caps_max_tokens(self):
-        from app.ai.pdf_summarizer import summarize_pdf_for_syllabus
-
-        captured_max_tokens = []
-
-        async def mock_create(**kwargs):
-            captured_max_tokens.append(kwargs.get("max_tokens"))
-            resp = MagicMock()
-            resp.content = [MagicMock(text="ok")]
-            return resp
-
-        mock_client = MagicMock()
-        mock_client.messages.create = mock_create
-
-        with (
-            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
-            patch("anthropic.AsyncAnthropic", return_value=mock_client),
-        ):
-            asyncio.run(
-                summarize_pdf_for_syllabus(
-                    "Book", "short text", toc=None, chunk_size_chars=100_000, target_chars=5_000
-                )
-            )
-
-        assert captured_max_tokens[0] < 16_000, "max_tokens should be capped below default"
-
-    def test_toc_prepended_to_text(self):
-        from app.ai.pdf_summarizer import summarize_pdf_for_syllabus
-
-        toc = [(1, "Chapter 1", 1), (1, "Chapter 2", 10)]
-        captured_prompts = []
-
-        async def mock_create(**kwargs):
-            captured_prompts.append(kwargs.get("messages", [{}])[0].get("content", ""))
-            resp = MagicMock()
-            resp.content = [MagicMock(text="ok")]
-            return resp
-
-        mock_client = MagicMock()
-        mock_client.messages.create = mock_create
-
-        with (
-            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
-            patch("anthropic.AsyncAnthropic", return_value=mock_client),
-        ):
-            asyncio.run(
-                summarize_pdf_for_syllabus("Book", "content", toc=toc, chunk_size_chars=100_000)
-            )
-
-        assert any("Chapter 1" in p for p in captured_prompts)
-
-    def test_none_params_use_computed_defaults(self):
-        from app.ai.pdf_summarizer import summarize_pdf_for_syllabus
-
-        captured_max_tokens = []
-
-        async def mock_create(**kwargs):
-            captured_max_tokens.append(kwargs.get("max_tokens"))
-            resp = MagicMock()
-            resp.content = [MagicMock(text="ok")]
-            return resp
-
-        mock_client = MagicMock()
-        mock_client.messages.create = mock_create
-
-        with (
-            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
-            patch("anthropic.AsyncAnthropic", return_value=mock_client),
-        ):
-            asyncio.run(
-                summarize_pdf_for_syllabus(
-                    "Book",
-                    "short text",
-                    toc=None,
-                    chunk_size_chars=None,
-                    chunk_max_output_tokens=None,
-                )
-            )
-
-        assert captured_max_tokens[0] == 16_000, "Should use computed default of 16K for sonnet-4-6"
+        assert call_count == 1
 
 
 class TestSummarizePdfsSync:
@@ -472,6 +483,24 @@ class TestSummarizePdfsSync:
         assert result[1] == "summary:Second"
         assert result[2] == "summary:Third"
 
+    def test_no_chunk_overrides_uses_single_call_path(self):
+        """When called without chunk overrides, chunk_size_chars should be None."""
+        received_chunk_size = []
+
+        async def fake_summarize(name, text, toc=None, **kwargs):
+            received_chunk_size.append(kwargs.get("chunk_size_chars"))
+            return f"summary:{name}"
+
+        pdf_texts = [("A", "aaa", [])]
+
+        with (
+            patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}),
+            patch("app.ai.pdf_summarizer.summarize_pdf_for_syllabus", side_effect=fake_summarize),
+        ):
+            summarize_pdfs_sync(pdf_texts)
+
+        assert received_chunk_size[0] is None
+
     def test_budget_splits_proportionally(self):
         received_targets = []
 
@@ -496,28 +525,6 @@ class TestSummarizePdfsSync:
         assert received_targets[1] == 200_000
         assert received_targets[2] == 100_000
 
-    def test_budget_even_split_when_same_size(self):
-        received_targets = []
-
-        async def fake_summarize(name, text, toc=None, **kwargs):
-            received_targets.append(kwargs.get("target_chars"))
-            return f"summary:{name}"
-
-        pdf_texts = [
-            ("A", "aaa", []),
-            ("B", "bbb", []),
-            ("C", "ccc", []),
-        ]
-
-        with (
-            patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}),
-            patch("app.ai.pdf_summarizer.summarize_pdf_for_syllabus", side_effect=fake_summarize),
-        ):
-            result = summarize_pdfs_sync(pdf_texts, total_budget_chars=300_000)
-
-        assert len(result) == 3
-        assert all(t == 100_000 for t in received_targets)
-
     def test_no_budget_passes_none_target(self):
         received_targets = []
 
@@ -535,35 +542,9 @@ class TestSummarizePdfsSync:
 
         assert received_targets == [None]
 
-    def test_new_param_names_forwarded(self):
-        received_kwargs = []
 
-        async def fake_summarize(name, text, toc=None, **kwargs):
-            received_kwargs.append(kwargs)
-            return f"summary:{name}"
-
-        pdf_texts = [("A", "aaa", [])]
-
-        with (
-            patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}),
-            patch("app.ai.pdf_summarizer.summarize_pdf_for_syllabus", side_effect=fake_summarize),
-        ):
-            summarize_pdfs_sync(
-                pdf_texts,
-                chunk_size_chars=200_000,
-                chunk_max_output_tokens=8_000,
-                combine_max_output_tokens=16_000,
-                max_concurrent=3,
-            )
-
-        assert received_kwargs[0]["chunk_size_chars"] == 200_000
-        assert received_kwargs[0]["chunk_max_output_tokens"] == 8_000
-        assert received_kwargs[0]["combine_max_output_tokens"] == 16_000
-        assert received_kwargs[0]["max_concurrent"] == 3
-
-
-class TestSyllabusTaskWithSummarization:
-    """Integration tests for the Celery task's PDF summarization path."""
+class TestSyllabusTaskWithDbResources:
+    """Integration tests: task loads pre-extracted resources from DB."""
 
     def _run_task(self, course_id, estimated_hours):
         from app.tasks.syllabus_generation import generate_course_syllabus
@@ -571,8 +552,64 @@ class TestSyllabusTaskWithSummarization:
         with patch.object(generate_course_syllabus, "update_state", MagicMock()):
             return generate_course_syllabus.run(course_id, estimated_hours)
 
-    def test_pdf_dir_exists_calls_summarizer_not_truncate(self, sample_module_dicts):
-        """When PDF directory exists and text exceeds budget, task must call summarize_pdfs_sync."""
+    def test_db_resources_loaded_skips_disk_scan(self, sample_module_dicts):
+        """When DB resources exist, task must use them directly without fitz."""
+        _CONTEXT_BUDGET_CHARS = 3_500_000
+
+        course_id = str(uuid.uuid4())
+        course_data = {
+            "title_fr": "Santé",
+            "title_en": "Health",
+            "course_hours": 20,
+            "rag_collection_id": None,
+            "domain_slugs": [],
+            "level_slugs": [],
+            "audience_slugs": [],
+        }
+
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_sync_engine = MagicMock()
+
+        call_count = 0
+
+        def mock_run(coro):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return course_data
+            return sample_module_dicts
+
+        resource_text = "x" * 1_000
+        mock_resource = MagicMock()
+        mock_resource.filename = "textbook"
+        mock_resource.raw_text = resource_text
+        mock_resource.toc_json = []
+
+        mock_exec = MagicMock()
+        mock_exec.scalars.return_value.all.return_value = [mock_resource]
+        mock_session.execute.return_value = mock_exec
+
+        mock_cache = MagicMock()
+        mock_cache.get.side_effect = lambda key, default=None: default
+
+        with (
+            patch("asyncio.run", side_effect=mock_run),
+            patch("pathlib.Path.exists", return_value=False),
+            patch("sqlalchemy.create_engine", return_value=mock_sync_engine),
+            patch("sqlalchemy.orm.Session", return_value=mock_session),
+            patch(
+                "app.domain.services.platform_settings_service.SettingsCache.instance",
+                return_value=mock_cache,
+            ),
+        ):
+            result = self._run_task(course_id, 20)
+
+        assert result["status"] == "complete"
+
+    def test_exceeds_budget_calls_summarizer(self, sample_module_dicts):
+        """When resources exceed context budget, task must call summarize_pdfs_sync."""
         _CONTEXT_BUDGET_CHARS = 3_500_000
 
         course_id = str(uuid.uuid4())
@@ -601,12 +638,14 @@ class TestSyllabusTaskWithSummarization:
             return sample_module_dicts
 
         large_text = "x" * (_CONTEXT_BUDGET_CHARS + 1)
-        mock_page = MagicMock()
-        mock_page.get_text.return_value = large_text
-        mock_doc = MagicMock()
-        mock_doc.get_toc.return_value = []
-        mock_doc.__iter__ = MagicMock(return_value=iter([mock_page]))
-        mock_doc.close = MagicMock()
+        mock_resource = MagicMock()
+        mock_resource.filename = "textbook"
+        mock_resource.raw_text = large_text
+        mock_resource.toc_json = []
+
+        mock_exec = MagicMock()
+        mock_exec.scalars.return_value.all.return_value = [mock_resource]
+        mock_session.execute.return_value = mock_exec
 
         mock_summarize = MagicMock(return_value=["Structured summary of book"])
 
@@ -615,12 +654,7 @@ class TestSyllabusTaskWithSummarization:
 
         with (
             patch("asyncio.run", side_effect=mock_run),
-            patch("pathlib.Path.exists", return_value=True),
-            patch(
-                "pathlib.Path.glob",
-                return_value=[MagicMock(stem="textbook", __str__=lambda s: "textbook.pdf")],
-            ),
-            patch("fitz.open", return_value=mock_doc),
+            patch("pathlib.Path.exists", return_value=False),
             patch("app.ai.pdf_summarizer.summarize_pdfs_sync", mock_summarize),
             patch("sqlalchemy.create_engine", return_value=mock_sync_engine),
             patch("sqlalchemy.orm.Session", return_value=mock_session),
@@ -634,8 +668,8 @@ class TestSyllabusTaskWithSummarization:
         mock_summarize.assert_called_once()
         assert result["status"] == "complete"
 
-    def test_new_param_names_passed_to_summarizer(self, sample_module_dicts):
-        """Task must pass new parameter names (chunk_size_chars, etc.) to summarize_pdfs_sync."""
+    def test_simplified_call_no_chunk_params(self, sample_module_dicts):
+        """Task must call summarize_pdfs_sync without explicit chunk params (simplified model)."""
         _CONTEXT_BUDGET_CHARS = 3_500_000
 
         course_id = str(uuid.uuid4())
@@ -664,30 +698,27 @@ class TestSyllabusTaskWithSummarization:
             return sample_module_dicts
 
         large_text = "x" * (_CONTEXT_BUDGET_CHARS + 1)
-        mock_page = MagicMock()
-        mock_page.get_text.return_value = large_text
-        mock_doc = MagicMock()
-        mock_doc.get_toc.return_value = []
-        mock_doc.__iter__ = MagicMock(return_value=iter([mock_page]))
-        mock_doc.close = MagicMock()
+        mock_resource = MagicMock()
+        mock_resource.filename = "bigbook"
+        mock_resource.raw_text = large_text
+        mock_resource.toc_json = []
+
+        mock_exec = MagicMock()
+        mock_exec.scalars.return_value.all.return_value = [mock_resource]
+        mock_session.execute.return_value = mock_exec
 
         captured_kwargs = {}
 
         def capture_summarize(pdf_full_texts, **kwargs):
             captured_kwargs.update(kwargs)
-            return ["Proper summary without truncation"] * len(pdf_full_texts)
+            return ["Clean summary"] * len(pdf_full_texts)
 
         mock_cache = MagicMock()
         mock_cache.get.side_effect = lambda key, default=None: default
 
         with (
             patch("asyncio.run", side_effect=mock_run),
-            patch("pathlib.Path.exists", return_value=True),
-            patch(
-                "pathlib.Path.glob",
-                return_value=[MagicMock(stem="bigbook", __str__=lambda s: "bigbook.pdf")],
-            ),
-            patch("fitz.open", return_value=mock_doc),
+            patch("pathlib.Path.exists", return_value=False),
             patch("app.ai.pdf_summarizer.summarize_pdfs_sync", side_effect=capture_summarize),
             patch("sqlalchemy.create_engine", return_value=mock_sync_engine),
             patch("sqlalchemy.orm.Session", return_value=mock_session),
@@ -699,88 +730,14 @@ class TestSyllabusTaskWithSummarization:
             result = self._run_task(course_id, 30)
 
         assert result["status"] == "complete"
-        assert "chunk_size_chars" in captured_kwargs
-        assert "chunk_max_output_tokens" in captured_kwargs
-        assert "combine_max_output_tokens" in captured_kwargs
-        assert "max_concurrent" in captured_kwargs
-
-    def test_backward_compat_old_setting_keys(self, sample_module_dicts):
-        """Old DB setting keys (syllabus-combine-chunk-size, etc.) must still work."""
-        _CONTEXT_BUDGET_CHARS = 3_500_000
-
-        course_id = str(uuid.uuid4())
-        course_data = {
-            "title_fr": "Santé",
-            "title_en": "Health",
-            "course_hours": 20,
-            "rag_collection_id": None,
-            "domain_slugs": [],
-            "level_slugs": [],
-            "audience_slugs": [],
-        }
-
-        mock_session = MagicMock()
-        mock_session.__enter__ = MagicMock(return_value=mock_session)
-        mock_session.__exit__ = MagicMock(return_value=False)
-        mock_sync_engine = MagicMock()
-
-        call_count = 0
-
-        def mock_run(coro):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return course_data
-            return sample_module_dicts
-
-        large_text = "x" * (_CONTEXT_BUDGET_CHARS + 1)
-        mock_page = MagicMock()
-        mock_page.get_text.return_value = large_text
-        mock_doc = MagicMock()
-        mock_doc.get_toc.return_value = []
-        mock_doc.__iter__ = MagicMock(return_value=iter([mock_page]))
-        mock_doc.close = MagicMock()
-
-        captured_kwargs = {}
-
-        def capture_summarize(pdf_full_texts, **kwargs):
-            captured_kwargs.update(kwargs)
-            return ["Summary"] * len(pdf_full_texts)
-
-        old_key_values = {
-            "syllabus-combine-chunk-size": 75_000,
-            "syllabus-chunk-max-tokens": 5_000,
-            "syllabus-combine-max-tokens": 10_000,
-        }
-
-        def mock_cache_get(key, default=None):
-            return old_key_values.get(key, default)
-
-        mock_cache = MagicMock()
-        mock_cache.get.side_effect = mock_cache_get
-
-        with (
-            patch("asyncio.run", side_effect=mock_run),
-            patch("pathlib.Path.exists", return_value=True),
-            patch(
-                "pathlib.Path.glob",
-                return_value=[MagicMock(stem="textbook", __str__=lambda s: "textbook.pdf")],
-            ),
-            patch("fitz.open", return_value=mock_doc),
-            patch("app.ai.pdf_summarizer.summarize_pdfs_sync", side_effect=capture_summarize),
-            patch("sqlalchemy.create_engine", return_value=mock_sync_engine),
-            patch("sqlalchemy.orm.Session", return_value=mock_session),
-            patch(
-                "app.domain.services.platform_settings_service.SettingsCache.instance",
-                return_value=mock_cache,
-            ),
-        ):
-            result = self._run_task(course_id, 20)
-
-        assert result["status"] == "complete"
-        assert captured_kwargs.get("combine_chunk_size_chars") == 75_000
-        assert captured_kwargs.get("chunk_max_output_tokens") == 5_000
-        assert captured_kwargs.get("combine_max_output_tokens") == 10_000
+        assert (
+            "chunk_size_chars" not in captured_kwargs
+            or captured_kwargs.get("chunk_size_chars") is None
+        )
+        assert (
+            "chunk_max_output_tokens" not in captured_kwargs
+            or captured_kwargs.get("chunk_max_output_tokens") is None
+        )
 
 
 @pytest.fixture
