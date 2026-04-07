@@ -2,12 +2,14 @@ from fastapi import APIRouter
 
 from app.api.v1.admin import router as admin_router
 from app.api.v1.admin_courses import router as admin_courses_router
+from app.api.v1.admin_curricula import router as admin_curricula_router
 from app.api.v1.admin_settings import router as admin_settings_router
 from app.api.v1.admin_taxonomy import router as admin_taxonomy_router
 from app.api.v1.analytics import router as analytics_router
 from app.api.v1.content import router as content_router
 from app.api.v1.course_preassessment import router as course_preassessment_router
 from app.api.v1.courses import router as courses_router
+from app.api.v1.curricula import router as curricula_router
 from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.flashcards import router as flashcards_router
 from app.api.v1.health import router as health_router
@@ -41,8 +43,10 @@ api_v1_router.include_router(images_router)
 api_v1_router.include_router(admin_router)
 api_v1_router.include_router(admin_settings_router)
 api_v1_router.include_router(admin_courses_router)
+api_v1_router.include_router(admin_curricula_router)
 api_v1_router.include_router(admin_taxonomy_router)
 api_v1_router.include_router(courses_router)
+api_v1_router.include_router(curricula_router)
 api_v1_router.include_router(course_preassessment_router)
 api_v1_router.include_router(module_media_router)
 api_v1_router.include_router(sms_relay_router)
