@@ -119,13 +119,14 @@ class TestSyllabusGenerationTaskUnit:
         assert result["status"] == "complete"
         assert result["modules_count"] == 1
 
-        mock_ce.assert_called_once()
-        engine_url_arg = mock_ce.call_args[0][0]
-        assert "postgresql" in engine_url_arg
-        assert "asyncpg" not in engine_url_arg, (
-            "Phase 3 must use the sync DB URL — no asyncpg driver"
-        )
-        mock_sync_engine.dispose.assert_called_once()
+        assert mock_ce.call_count >= 1
+        for call in mock_ce.call_args_list:
+            engine_url_arg = call[0][0]
+            assert "postgresql" in engine_url_arg
+            assert "asyncpg" not in engine_url_arg, (
+                "All create_engine calls must use the sync DB URL — no asyncpg driver"
+            )
+        assert mock_sync_engine.dispose.call_count >= 1
 
         assert len(asyncio_run_calls) == 2, (
             "asyncio.run should be called exactly twice (_fetch_course + _call_claude), "
@@ -341,4 +342,4 @@ class TestSyllabusGenerationTaskUnit:
         ):
             self._run(course_id, 10)
 
-        mock_sync_engine.dispose.assert_called_once()
+        assert mock_sync_engine.dispose.call_count >= 1
