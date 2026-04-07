@@ -125,8 +125,8 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
             "chunks_stored": 0,
         }
 
-    estimated_seconds = _estimate_seconds(pdf_files) if pdf_files else max(
-        30, len(db_resources) * 60
+    estimated_seconds = (
+        _estimate_seconds(pdf_files) if pdf_files else max(30, len(db_resources) * 60)
     )
     start_time = time.monotonic()
 
@@ -194,9 +194,7 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                 text = res.raw_text
                 language = detect_language(text)
                 chunks = list(
-                    chunker.chunk_document(
-                        text=text, source=rag_collection_id, language=language
-                    )
+                    chunker.chunk_document(text=text, source=rag_collection_id, language=language)
                 )
                 if not chunks:
                     continue
