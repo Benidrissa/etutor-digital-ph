@@ -158,20 +158,27 @@ async def require_subscription_or_first_unit(
     request: Request,
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> AuthenticatedUser:
-    """Allow first unit of a module for free; require subscription for others.
+    """Allow free units of a module for free; require subscription for others.
 
-    Reads `unit_id` from path params (e.g. 'M01-U01'). If unit ends with
-    '-U01' or order_index == 0 in DB, access is free. Otherwise requires
-    an active subscription.
+    Reads `unit_id` from path params (e.g. 'M01-U02'). The number of free units
+    is controlled by the 'subscription-free-units-count' platform setting (default: 2).
+    Falls back to DB order_index check when unit_id format is unrecognised.
     """
+    import re
+
     from ..domain.models.module_unit import ModuleUnit
+    from ..domain.services.platform_settings_service import SettingsCache
     from ..domain.services.subscription_service import SubscriptionService
     from ..infrastructure.persistence.database import get_db_session
 
+    if user.role == "admin":
+        return user
+
     unit_id = request.path_params.get("unit_id") or request.path_params.get("unitId")
 
-    # Quick check: if unit_id looks like first unit (M01-U01, U01, etc.)
-    if unit_id and unit_id.upper().endswith("-U01"):
+    free_count = SettingsCache.instance().get("subscription-free-units-count", 2)
+    m = re.search(r"-U0*(\d+)$", unit_id.upper()) if unit_id else None
+    if m and int(m.group(1)) <= free_count:
         return user
 
     # Check subscription
@@ -180,13 +187,13 @@ async def require_subscription_or_first_unit(
         if sub is not None:
             return user
 
-        # No subscription — check if this is order_index 0 in DB
+        # No subscription — fall back to DB order_index check
         if unit_id:
             result = await session.execute(
                 select(ModuleUnit.order_index).where(ModuleUnit.unit_number == unit_id)
             )
             order = result.scalar_one_or_none()
-            if order is not None and order == 0:
+            if order is not None and order < free_count:
                 return user
         break
 
