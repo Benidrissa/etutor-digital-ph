@@ -168,7 +168,7 @@
   },
   "Dashboard": {
     "title": "Dashboard",
-    "welcome": "Welcome to Tutor",
+    "welcome": "Welcome to Sira",
     "subtitle": "Your public health learning platform",
     "streak": "Day streak",
     "nextReview": "Next review",
@@ -464,7 +464,7 @@
     "goToModules": "Go to Modules"
   },
   "Onboarding": {
-    "welcome": "Welcome to Tutor",
+    "welcome": "Welcome to Sira",
     "subtitle": "Let's set up your personalized learning experience",
     "step": "Step {current} of {total}",
     "next": "Next",
@@ -520,7 +520,7 @@
     },
     "step4": {
       "title": "Skill Level",
-      "description": "How would you assess your public health knowledge?",
+      "description": "How would you assess your competence in your field?",
       "selectLevel": "Select your level",
       "levels": {
         "debutant": "Beginner (Débutant)",
