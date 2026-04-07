@@ -54,8 +54,10 @@ export function Sidebar() {
   const [curriculumSlug, setCurriculumSlug] = useState<string | null>(null);
 
   useEffect(() => {
-    startTransition(() => setUserRole(getUserRole()));
-    setCurriculumSlug(getCurriculumContext());
+    startTransition(() => {
+      setUserRole(getUserRole());
+      setCurriculumSlug(getCurriculumContext());
+    });
   }, [pathname]);
 
   const handleLogout = async () => {
