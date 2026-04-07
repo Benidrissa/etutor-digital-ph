@@ -228,7 +228,7 @@ class TestSyllabusTaskWithSummarization:
                 return_value=[MagicMock(stem="textbook", __str__=lambda s: "textbook.pdf")],
             ),
             patch("fitz.open", return_value=mock_doc),
-            patch("app.tasks.syllabus_generation.summarize_pdfs_sync", mock_summarize),
+            patch("app.ai.pdf_summarizer.summarize_pdfs_sync", mock_summarize),
             patch("sqlalchemy.create_engine", return_value=mock_sync_engine),
             patch("sqlalchemy.orm.Session", return_value=mock_session),
         ):
@@ -280,9 +280,7 @@ class TestSyllabusTaskWithSummarization:
                 return_value=[MagicMock(stem="bigbook", __str__=lambda s: "bigbook.pdf")],
             ),
             patch("fitz.open", return_value=mock_doc),
-            patch(
-                "app.tasks.syllabus_generation.summarize_pdfs_sync", side_effect=capture_summarize
-            ),
+            patch("app.ai.pdf_summarizer.summarize_pdfs_sync", side_effect=capture_summarize),
             patch("sqlalchemy.create_engine", return_value=mock_sync_engine),
             patch("sqlalchemy.orm.Session", return_value=mock_session),
         ):
