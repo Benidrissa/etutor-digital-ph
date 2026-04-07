@@ -69,17 +69,23 @@ def generate_course_syllabus(
     from app.infrastructure.config.settings import settings
 
     cache = SettingsCache.instance()
-    context_budget = cache.get("syllabus-context-budget-chars", 2_000_000)
-    pdf_chunk_size = cache.get("syllabus-pdf-chunk-size-chars", 300_000)
-    combine_chunk_size = cache.get("syllabus-combine-chunk-size-chars") or cache.get(
-        "syllabus-combine-chunk-size", 200_000
+    context_budget = cache.get("syllabus-context-budget-chars", 3_500_000)
+    pdf_chunk_size = cache.get("syllabus-pdf-chunk-size-chars") or None
+    combine_chunk_size = (
+        cache.get("syllabus-combine-chunk-size-chars")
+        or cache.get("syllabus-combine-chunk-size")
+        or None
     )
     summarizer_model = cache.get("syllabus-summarizer-model", "claude-sonnet-4-6")
-    chunk_max_tokens = cache.get("syllabus-chunk-max-output-tokens") or cache.get(
-        "syllabus-chunk-max-tokens", 16_000
+    chunk_max_tokens = (
+        cache.get("syllabus-chunk-max-output-tokens")
+        or cache.get("syllabus-chunk-max-tokens")
+        or None
     )
-    combine_max_tokens = cache.get("syllabus-combine-max-output-tokens") or cache.get(
-        "syllabus-combine-max-tokens", 64_000
+    combine_max_tokens = (
+        cache.get("syllabus-combine-max-output-tokens")
+        or cache.get("syllabus-combine-max-tokens")
+        or None
     )
     max_concurrent = cache.get("syllabus-max-concurrent-api-calls", 5)
 
@@ -144,7 +150,11 @@ def generate_course_syllabus(
     # ── Phase 1.5: Extract text from uploaded PDFs (skipped if cached) ────────
     from pathlib import Path
 
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
     course_dir = Path("uploads/course_resources") / course_id
+    pdf_full_texts: list[tuple[str, str, list]] = []
 
     if cached_resource_text is not None:
         resource_text = cached_resource_text
@@ -160,42 +170,115 @@ def generate_course_syllabus(
         )
         resource_text = None
 
-    if cached_resource_text is None and course_dir.exists():
+    if cached_resource_text is None:
         import fitz  # PyMuPDF
 
-        pdf_files = sorted(course_dir.glob("*.pdf"))
+        from app.domain.models.course_resource import CourseResource
+        from app.infrastructure.config.settings import settings as _settings
 
-        pdf_full_texts = []
-        for pdf_path in pdf_files:
-            try:
-                doc = fitz.open(str(pdf_path))
-                book_name = pdf_path.stem.replace("_", " ")
-                toc = doc.get_toc()
-                pages_text = []
-                for page in doc:
-                    page_text = page.get_text().strip()
-                    if page_text:
-                        pages_text.append(page_text)
-                doc.close()
-                full_text = "\n\n".join(pages_text)
-                if toc:
-                    toc_lines = [f"{'  ' * (lvl - 1)}{title}" for lvl, title, _ in toc]
-                    toc_str = "\n".join(toc_lines[:100])
-                    full_text = f"TABLE OF CONTENTS:\n{toc_str}\n\nCONTENT:\n{full_text}"
-                pdf_full_texts.append((book_name, full_text, toc))
-                logger.info(
-                    "Extracted PDF text",
-                    pdf=book_name,
-                    pages=len(pages_text),
-                    chars=len(full_text),
-                    has_toc=bool(toc),
+        _sync_engine = create_engine(
+            _settings.database_url_sync,
+            pool_pre_ping=True,
+            pool_size=2,
+            max_overflow=0,
+        )
+        try:
+            with Session(_sync_engine) as _session:
+                existing_resources = (
+                    _session.execute(
+                        select(CourseResource).where(
+                            CourseResource.course_id == uuid.UUID(course_id)
+                        )
+                    )
+                    .scalars()
+                    .all()
                 )
-            except Exception as e:
-                logger.warning(
-                    "Failed to extract PDF text",
-                    pdf=str(pdf_path),
-                    error=str(e),
+        finally:
+            _sync_engine.dispose()
+
+        if existing_resources and not course_dir.exists():
+            logger.info(
+                "PDFs not on disk — loading extracted text from DB",
+                course_id=course_id,
+                resource_count=len(existing_resources),
+            )
+            for res in existing_resources:
+                if res.raw_text:
+                    pdf_full_texts.append(
+                        (res.filename.replace("_", " "), res.raw_text, res.toc_json or [])
+                    )
+
+        elif course_dir.exists():
+            pdf_files = sorted(course_dir.glob("*.pdf"))
+
+            _new_resources: list[CourseResource] = []
+            for pdf_path in pdf_files:
+                try:
+                    doc = fitz.open(str(pdf_path))
+                    book_name = pdf_path.stem.replace("_", " ")
+                    toc = doc.get_toc()
+                    pages_text = []
+                    for page in doc:
+                        page_text = page.get_text().strip()
+                        if page_text:
+                            pages_text.append(page_text)
+                    doc.close()
+                    full_text = "\n\n".join(pages_text)
+                    if toc:
+                        toc_lines = [f"{'  ' * (lvl - 1)}{title}" for lvl, title, _ in toc]
+                        toc_str = "\n".join(toc_lines[:100])
+                        full_text = f"TABLE OF CONTENTS:\n{toc_str}\n\nCONTENT:\n{full_text}"
+                    pdf_full_texts.append((book_name, full_text, toc))
+                    _new_resources.append(
+                        CourseResource(
+                            course_id=uuid.UUID(course_id),
+                            filename=pdf_path.stem,
+                            raw_text=full_text,
+                            toc_json=toc or None,
+                            char_count=len(full_text),
+                        )
+                    )
+                    logger.info(
+                        "Extracted PDF text",
+                        pdf=book_name,
+                        pages=len(pages_text),
+                        chars=len(full_text),
+                        has_toc=bool(toc),
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to extract PDF text",
+                        pdf=str(pdf_path),
+                        error=str(e),
+                    )
+
+            if _new_resources:
+                _save_engine = create_engine(
+                    _settings.database_url_sync,
+                    pool_pre_ping=True,
+                    pool_size=2,
+                    max_overflow=0,
                 )
+                try:
+                    with Session(_save_engine) as _save_session:
+                        existing_filenames = {r.filename for r in existing_resources}
+                        for res in _new_resources:
+                            if res.filename not in existing_filenames:
+                                _save_session.add(res)
+                        _save_session.commit()
+                    logger.info(
+                        "Saved extracted PDF text to DB",
+                        course_id=course_id,
+                        count=len(_new_resources),
+                    )
+                except Exception as save_exc:
+                    logger.warning(
+                        "Failed to persist extracted PDF text to DB (non-blocking)",
+                        course_id=course_id,
+                        error=str(save_exc),
+                    )
+                finally:
+                    _save_engine.dispose()
 
         if pdf_full_texts:
             total_chars = sum(len(txt) for _, txt, _ in pdf_full_texts)
@@ -229,7 +312,7 @@ def generate_course_syllabus(
                     model=summarizer_model,
                     chunk_max_output_tokens=chunk_max_tokens,
                     combine_max_output_tokens=combine_max_tokens,
-                    total_budget_chars=context_budget,
+                    context_budget_chars=context_budget,
                     max_concurrent=max_concurrent,
                 )
                 pdf_sections = [
@@ -291,6 +374,8 @@ def generate_course_syllabus(
     if course_dir.exists():
         pdf_names = [f.stem.replace("_", " ") for f in course_dir.glob("*.pdf")]
         books_sources = {name: [] for name in pdf_names}
+    elif pdf_full_texts:
+        books_sources = {name: [] for name, _txt, _toc in pdf_full_texts}
     elif rag_collection_id:
         books_sources = {rag_collection_id: []}
     else:
