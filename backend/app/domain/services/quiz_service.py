@@ -371,9 +371,7 @@ class QuizService:
 
         if all_units:
             module_title = module.title_fr if language == "fr" else module.title_en
-            unit_titles = [
-                (u.title_fr if language == "fr" else u.title_en) for u in all_units
-            ]
+            unit_titles = [(u.title_fr if language == "fr" else u.title_en) for u in all_units]
             return " ".join([module_title] + unit_titles)
 
         title = module.title_fr if language == "fr" else module.title_en
@@ -512,7 +510,7 @@ QUIZ REQUIREMENTS:
 - Number of questions: {num_questions}
 - Format: Multiple choice with exactly 4 options each
 - Include explanations and source citations
-{('- ' + topic_constraint) if topic_constraint else ''}
+{("- " + topic_constraint) if topic_constraint else ""}
 
 INSTRUCTIONS:
 1. Create {num_questions} multiple-choice questions based on the provided context
