@@ -47,6 +47,9 @@ class TutorChatRequest(BaseModel):
         description="Tutor mode: socratic (guided questions) or explanatory (direct answers)",
     )
     file_ids: list[str] = Field(default_factory=list, description="Uploaded file IDs to attach")
+    locale: str | None = Field(
+        None, description="Active UI locale ('fr' or 'en') from the frontend"
+    )
 
 
 class TutorChatResponse(BaseModel):
@@ -96,7 +99,8 @@ class TutorStatsResponse(BaseModel):
     """Response for tutor usage statistics."""
 
     daily_messages_used: int = Field(..., description="Messages used today")
-    daily_messages_limit: int = Field(..., description="Daily message limit")
+    daily_messages_limit: int = Field(..., description="Daily message limit (daily + credits)")
+    message_credits: int = Field(default=0, description="Non-resetting AI message credit pool")
     total_conversations: int = Field(..., description="Total conversation count")
     most_discussed_topics: list[str] = Field(
         default_factory=list, description="Most frequently discussed topics"

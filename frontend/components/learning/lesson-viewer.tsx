@@ -16,6 +16,7 @@ import { SourceImage } from './source-image';
 import { SourceCitations } from './source-citations';
 import { apiFetch, checkUnitQuizPassed } from '@/lib/api';
 import type { SourceImageMeta } from '@/lib/api';
+import { SOURCE_IMAGE_RE, splitWithSourceImageMarkers } from '@/lib/source-image-utils';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { useRouter } from 'next/navigation';
 import { useLocale } from 'next-intl';
@@ -44,33 +45,6 @@ interface LessonData {
   content: LessonContent;
   cached: boolean;
   source_image_refs?: SourceImageMeta[];
-}
-
-const SOURCE_IMAGE_RE = /\{\{source_image:([0-9a-f-]{36})\}\}/g;
-
-function splitWithSourceImageMarkers(
-  text: string,
-  imageMap: Map<string, SourceImageMeta>
-): Array<{ type: 'markdown'; text: string } | { type: 'source_image'; meta: SourceImageMeta }> {
-  const parts: Array<{ type: 'markdown'; text: string } | { type: 'source_image'; meta: SourceImageMeta }> = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  SOURCE_IMAGE_RE.lastIndex = 0;
-  while ((match = SOURCE_IMAGE_RE.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push({ type: 'markdown', text: text.slice(lastIndex, match.index) });
-    }
-    const meta = imageMap.get(match[1]);
-    if (meta) {
-      parts.push({ type: 'source_image', meta });
-    }
-    lastIndex = SOURCE_IMAGE_RE.lastIndex;
-  }
-  if (lastIndex < text.length) {
-    parts.push({ type: 'markdown', text: text.slice(lastIndex) });
-  }
-  return parts;
 }
 
 interface GeneratingResponse {

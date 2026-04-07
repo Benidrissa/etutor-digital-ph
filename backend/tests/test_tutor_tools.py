@@ -114,6 +114,7 @@ def mock_learner_memory_service():
 def mock_subscription_service():
     sub = MagicMock()
     sub.daily_message_limit = 20
+    sub.message_credits = 0
     with patch("app.domain.services.tutor_service.SubscriptionService") as MockSubSvc:
         MockSubSvc.return_value.get_active_subscription = AsyncMock(return_value=sub)
         yield MockSubSvc

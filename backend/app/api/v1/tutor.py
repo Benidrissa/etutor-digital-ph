@@ -159,6 +159,7 @@ async def chat_with_tutor(
                 tutor_mode=request.tutor_mode,
                 file_content_blocks=file_content_blocks,
                 course_id=request.course_id,
+                locale=request.locale,
             ):
                 yield f"data: {json.dumps(chunk)}\n\n"
 
@@ -300,6 +301,7 @@ async def get_remaining_messages(
         "remaining_messages": max(0, remaining),
         "daily_limit": stats["daily_messages_limit"],
         "messages_used": stats["daily_messages_used"],
+        "message_credits": stats.get("message_credits", 0),
     }
 
 

@@ -586,20 +586,29 @@ SETTING_DEFINITIONS: list[SettingDef] = [
     SettingDef(
         "payments-subscription-price-xof",
         "payments",
-        2000,
+        1000,
         "integer",
         "Subscription price (FCFA)",
-        "Monthly subscription price displayed on the subscribe page.",
+        "Minimum subscription activation price in FCFA.",
         {"min": 0, "max": 100000},
     ),
     SettingDef(
         "payments-subscription-duration-days",
         "payments",
-        28,
+        30,
         "integer",
         "Subscription duration (days)",
         "Days of access per payment.",
         {"min": 1, "max": 365},
+    ),
+    SettingDef(
+        "payments-message-price-xof",
+        "payments",
+        5,
+        "integer",
+        "Price per tutor message (FCFA)",
+        "XOF cost per tutor AI message credit.",
+        {"min": 1, "max": 1000},
     ),
     # ── AI Prompts ─────────────────────────────────────────
     SettingDef(

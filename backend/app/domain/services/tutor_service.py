@@ -24,6 +24,7 @@ from app.ai.rag.retriever import SemanticRetriever
 from app.domain.models.conversation import TutorConversation
 from app.domain.models.course import Course, UserCourseEnrollment
 from app.domain.models.module import Module
+from app.domain.models.source_image import SourceImage
 from app.domain.models.user import User
 from app.domain.services.learner_memory_service import LearnerMemoryService
 from app.domain.services.platform_settings_service import SettingsCache
@@ -216,6 +217,7 @@ class TutorService:
         tutor_mode: str = "socratic",
         file_content_blocks: list[dict[str, Any]] | None = None,
         course_id: uuid.UUID | None = None,
+        locale: str | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """
         Send a message to the AI tutor and stream the response using agentic tool_use.
@@ -241,8 +243,11 @@ class TutorService:
             user_id = uuid.UUID(user_id)
 
         subscription = await SubscriptionService().get_active_subscription(user_id, session)
-        effective_limit = subscription.daily_message_limit if subscription else 5
         messages_used = await self._check_daily_limit(user_id, session)
+        if subscription:
+            effective_limit = subscription.daily_message_limit + subscription.message_credits
+        else:
+            effective_limit = 5
         if messages_used >= effective_limit:
             yield {
                 "type": "error",
@@ -286,6 +291,12 @@ class TutorService:
                 "data": {"conversation_id": str(conversation.id)},
             }
 
+            effective_language = locale if locale in ("fr", "en") else user.preferred_language
+
+            if locale in ("fr", "en") and user.preferred_language != locale:
+                user.preferred_language = locale
+                session.add(user)
+
             # Resolve module title for human-readable system prompt
             module_title = None
             module_number = None
@@ -294,9 +305,7 @@ class TutorService:
                 module_obj = await session.get(Module, module_id)
                 if module_obj:
                     module_title = (
-                        module_obj.title_fr
-                        if user.preferred_language == "fr"
-                        else module_obj.title_en
+                        module_obj.title_fr if effective_language == "fr" else module_obj.title_en
                     )
                     module_number = module_obj.module_number
 
@@ -306,14 +315,13 @@ class TutorService:
             course_domain = None
             rag_collection_id = None
             if course:
-                lang = user.preferred_language
-                course_title = course.title_fr if lang == "fr" else course.title_en
+                course_title = course.title_fr if effective_language == "fr" else course.title_en
                 course_domain = course_domain or course_title
                 rag_collection_id = course.rag_collection_id
 
             context = TutorContext(
                 user_level=user.current_level,
-                user_language=user.preferred_language,
+                user_language=effective_language,
                 user_country=user.country or "SN",
                 module_id=str(module_id) if module_id else None,
                 module_title=module_title,
@@ -350,7 +358,7 @@ class TutorService:
                 anthropic_client=self.anthropic,
                 user_id=user_id,
                 user_level=user.current_level,
-                user_language=user.preferred_language,
+                user_language=effective_language,
                 rag_collection_id=rag_collection_id,
             )
 
@@ -476,17 +484,47 @@ class TutorService:
 
                             img_result = _json.loads(tool_result_str)
                             prefix = "{{source_image:"
+                            img_ids_to_fetch: list[str] = []
                             for fig in img_result.get("figures", []):
                                 ref: str = fig.get("ref", "")
                                 if ref.startswith(prefix) and ref.endswith("}}"):
-                                    img_id = ref[len(prefix) : -2]
-                                    source_image_refs.append(
-                                        {
-                                            "id": img_id,
-                                            "figure_number": fig.get("figure_number"),
-                                            "caption": fig.get("caption"),
-                                        }
+                                    img_ids_to_fetch.append(ref[len(prefix) : -2])
+
+                            if img_ids_to_fetch:
+                                try:
+                                    db_imgs = await session.execute(
+                                        select(SourceImage).where(
+                                            SourceImage.id.in_(
+                                                [uuid.UUID(i) for i in img_ids_to_fetch]
+                                            )
+                                        )
                                     )
+                                    db_img_map = {str(r.id): r for r in db_imgs.scalars().all()}
+                                except Exception:
+                                    db_img_map = {}
+
+                                seen_img_ids: set[str] = {r["id"] for r in source_image_refs}
+                                for img_id in img_ids_to_fetch:
+                                    if img_id in seen_img_ids:
+                                        continue
+                                    seen_img_ids.add(img_id)
+                                    db_img = db_img_map.get(img_id)
+                                    if db_img:
+                                        meta = db_img.to_meta_dict()
+                                        source_image_refs.append(
+                                            {
+                                                "id": img_id,
+                                                "figure_number": meta.get("figure_number"),
+                                                "caption": meta.get("caption"),
+                                                "caption_fr": meta.get("caption"),
+                                                "caption_en": meta.get("caption"),
+                                                "attribution": meta.get("attribution"),
+                                                "image_type": meta.get("image_type", "unknown"),
+                                                "storage_url": meta.get("storage_url"),
+                                                "alt_text_fr": meta.get("alt_text_fr"),
+                                                "alt_text_en": meta.get("alt_text_en"),
+                                            }
+                                        )
                         except Exception:
                             pass
 
@@ -519,6 +557,15 @@ class TutorService:
             conversation.messages = updated_messages
             conversation.message_count = len(updated_messages)
             session.add(conversation)
+
+            if (
+                subscription
+                and messages_used >= subscription.daily_message_limit
+                and subscription.message_credits > 0
+            ):
+                subscription.message_credits -= 1
+                session.add(subscription)
+
             await session.commit()
 
             if conversation.message_count > COMPACT_TRIGGER:
@@ -557,10 +604,12 @@ class TutorService:
                 "conversation_id": str(conversation.id),
             }
 
+            credits_after = subscription.message_credits if subscription else 0
             yield {
                 "type": "finished",
                 "data": {
-                    "remaining_messages": effective_limit - messages_used - 1,
+                    "remaining_messages": max(0, effective_limit - messages_used - 1),
+                    "message_credits": credits_after,
                     "conversation_id": str(conversation.id),
                     "tool_calls_made": tool_call_count,
                 },
@@ -722,7 +771,12 @@ class TutorService:
         daily_messages = await self._check_daily_limit(user_id, session)
 
         subscription = await SubscriptionService().get_active_subscription(user_id, session)
-        limit = subscription.daily_message_limit if subscription else 5
+        if subscription:
+            limit = subscription.daily_message_limit + subscription.message_credits
+            message_credits = subscription.message_credits
+        else:
+            limit = 5
+            message_credits = 0
 
         count_query = select(func.count(TutorConversation.id)).where(
             TutorConversation.user_id == user_id
@@ -735,6 +789,7 @@ class TutorService:
         return {
             "daily_messages_used": daily_messages,
             "daily_messages_limit": limit,
+            "message_credits": message_credits,
             "total_conversations": total_conversations,
             "most_discussed_topics": most_discussed_topics,
         }
