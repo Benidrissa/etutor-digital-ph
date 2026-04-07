@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth";
 import { useQueryClient } from "@tanstack/react-query";
+import { getCurriculumContext } from "@/lib/curriculum-context";
 
 function getUserRole(): string | null {
   if (typeof window === "undefined") return null;
@@ -50,10 +51,12 @@ export function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [curriculumSlug, setCurriculumSlug] = useState<string | null>(null);
 
   useEffect(() => {
     startTransition(() => setUserRole(getUserRole()));
-  }, []);
+    setCurriculumSlug(getCurriculumContext());
+  }, [pathname]);
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -68,13 +71,17 @@ export function Sidebar() {
 
   const navItems = [
     {
-      href: `/${locale}/dashboard`,
+      href: curriculumSlug
+        ? `/${locale}/dashboard?curriculum=${curriculumSlug}`
+        : `/${locale}/dashboard`,
       label: t("dashboard"),
       icon: Home,
       description: t("dashboardDescription")
     },
     {
-      href: `/${locale}/courses`,
+      href: curriculumSlug
+        ? `/${locale}/curricula/${curriculumSlug}`
+        : `/${locale}/courses`,
       label: t("courses"),
       icon: GraduationCap,
       description: t("coursesDescription")

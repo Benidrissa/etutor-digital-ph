@@ -6,10 +6,14 @@ import { useRouter } from '@/i18n/routing';
 import { ModuleMap } from '@/components/learning/module-map';
 import { getMyEnrollments, type CourseWithEnrollment } from '@/lib/api';
 
-export function DashboardClient() {
+export function DashboardClient({ curriculumSlug }: { curriculumSlug?: string }) {
   const t = useTranslations('Dashboard');
   const locale = useLocale() as 'en' | 'fr';
   const router = useRouter();
+
+  const coursesHref = curriculumSlug
+    ? `/curricula/${curriculumSlug}`
+    : '/courses';
 
   const [enrollments, setEnrollments] = useState<CourseWithEnrollment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,7 +59,7 @@ export function DashboardClient() {
         <p className="text-stone-600 text-sm">{t('noEnrollments')}</p>
         <button
           className="mt-4 text-teal-600 text-sm font-medium underline-offset-2 hover:underline min-h-11"
-          onClick={() => router.push('/courses')}
+          onClick={() => router.push(coursesHref)}
         >
           {t('browseCourses')}
         </button>
@@ -72,7 +76,7 @@ export function DashboardClient() {
         />
         <button
           className="w-full text-center text-teal-600 text-sm font-medium underline-offset-2 hover:underline min-h-11 rounded-lg border border-dashed border-teal-200 py-3 hover:bg-teal-50 transition-colors"
-          onClick={() => router.push('/courses')}
+          onClick={() => router.push(coursesHref)}
         >
           {t('browseMoreCourses')}
         </button>
@@ -127,7 +131,7 @@ export function DashboardClient() {
       })}
       <button
         className="w-full text-center text-teal-600 text-sm font-medium underline-offset-2 hover:underline min-h-11 rounded-lg border border-dashed border-teal-200 py-3 hover:bg-teal-50 transition-colors"
-        onClick={() => router.push('/courses')}
+        onClick={() => router.push(coursesHref)}
       >
         {t('browseMoreCourses')}
       </button>

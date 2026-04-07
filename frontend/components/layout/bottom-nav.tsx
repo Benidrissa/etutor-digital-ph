@@ -16,13 +16,19 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useRef } from "react";
+import { getCurriculumContext } from "@/lib/curriculum-context";
 
 export function BottomNav() {
   const t = useTranslations("Navigation");
   const pathname = usePathname();
   const locale = useLocale();
   const [moreOpen, setMoreOpen] = useState(false);
+  const [curriculumSlug, setCurriculumSlug] = useState<string | null>(null);
   const moreRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setCurriculumSlug(getCurriculumContext());
+  }, [pathname]);
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -37,13 +43,17 @@ export function BottomNav() {
 
   const primaryItems = [
     {
-      href: `/${locale}/dashboard`,
+      href: curriculumSlug
+        ? `/${locale}/dashboard?curriculum=${curriculumSlug}`
+        : `/${locale}/dashboard`,
       label: t("dashboard"),
       icon: Home,
       description: t("dashboardDescription"),
     },
     {
-      href: `/${locale}/courses`,
+      href: curriculumSlug
+        ? `/${locale}/curricula/${curriculumSlug}`
+        : `/${locale}/courses`,
       label: t("courses"),
       icon: GraduationCap,
       description: t("coursesDescription"),
