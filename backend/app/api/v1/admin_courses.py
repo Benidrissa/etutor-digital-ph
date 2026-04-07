@@ -536,30 +536,29 @@ async def delete_course(
     if indexation_task_id:
         try:
             AsyncResult(indexation_task_id).revoke(terminate=True)
-        except Exception:
-            pass
+        except Exception as revoke_exc:
+            logger.warning(
+                "Could not revoke indexation task during course delete",
+                task_id=indexation_task_id,
+                course_id=str(course_id),
+                error=str(revoke_exc),
+            )
 
     if syllabus_task_id:
         try:
             AsyncResult(syllabus_task_id).revoke(terminate=True)
-        except Exception:
-            pass
+        except Exception as revoke_exc:
+            logger.warning(
+                "Could not revoke syllabus task during course delete",
+                task_id=syllabus_task_id,
+                course_id=str(course_id),
+                error=str(revoke_exc),
+            )
 
     if rag_collection_id:
         await db.execute(
             sa_delete(DocumentChunk).where(DocumentChunk.source == rag_collection_id)
         )
-
-    course_upload_dir = UPLOAD_DIR / str(course_id)
-    if course_upload_dir.exists():
-        try:
-            shutil.rmtree(course_upload_dir)
-        except Exception:
-            logger.warning(
-                "Failed to delete course upload directory",
-                course_id=str(course_id),
-                path=str(course_upload_dir),
-            )
 
     try:
         await db.delete(course)
@@ -571,6 +570,17 @@ async def delete_course(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete course — database error",
         ) from exc
+
+    course_upload_dir = UPLOAD_DIR / str(course_id)
+    if course_upload_dir.exists():
+        try:
+            shutil.rmtree(course_upload_dir)
+        except Exception:
+            logger.warning(
+                "Failed to delete course upload directory",
+                course_id=str(course_id),
+                path=str(course_upload_dir),
+            )
 
     logger.info("Course deleted", course_id=str(course_id), admin_id=current_user.id)
 
