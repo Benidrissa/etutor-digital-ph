@@ -852,7 +852,13 @@
     "units": "unités",
     "backToCatalog": "Retour au catalogue",
     "notFound": "Cours non trouvé.",
-    "serverError": "Impossible de charger ce cours. Veuillez réessayer."
+    "serverError": "Impossible de charger ce cours. Veuillez réessayer.",
+    "preassessmentTitle": "Passer la Pré-Évaluation",
+    "preassessmentDesc": "Déterminez votre niveau de départ pour personnaliser votre parcours d'apprentissage.",
+    "preassessmentMandatoryTitle": "Pré-Évaluation Obligatoire",
+    "preassessmentMandatoryDesc": "Vous devez compléter la pré-évaluation avant d'accéder aux modules du cours.",
+    "preassessmentCta": "Commencer la Pré-Évaluation",
+    "preassessmentRequiredTooltip": "Complétez la pré-évaluation pour déverrouiller les modules du cours."
   },
   "Privacy": {
     "title": "Confidentialité et analytique",

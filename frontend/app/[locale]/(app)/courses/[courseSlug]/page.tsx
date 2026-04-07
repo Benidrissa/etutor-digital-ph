@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { useParams } from "next/navigation";
 import { useRouter, Link } from "@/i18n/routing";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -15,6 +15,8 @@ import {
   ChevronRight,
   CheckCircle,
   ArrowLeft,
+  ClipboardList,
+  AlertTriangle,
 } from "lucide-react";
 import { apiFetch, enrollInCourse } from "@/lib/api";
 import { ShareButton } from "@/components/shared/share-button";
@@ -40,6 +42,14 @@ interface CourseModule {
   units: ModuleUnit[];
 }
 
+interface PreassessmentStatus {
+  enabled: boolean;
+  mandatory: boolean;
+  completed: boolean;
+  skipped: boolean;
+  can_retake: boolean;
+}
+
 interface CourseDetail {
   id: string;
   slug: string;
@@ -56,6 +66,8 @@ interface CourseDetail {
   enrolled: boolean;
   syllabus_json: Record<string, unknown> | null;
   modules: CourseModule[];
+  preassessment_enabled: boolean;
+  preassessment_mandatory: boolean;
 }
 
 const LEVEL_COLORS: Record<string, string> = {
@@ -79,6 +91,7 @@ export default function CourseDetailPage() {
   const [enrolling, setEnrolling] = useState(false);
   const [enrolled, setEnrolled] = useState(false);
   const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
+  const [preassessmentStatus, setPreassessmentStatus] = useState<PreassessmentStatus | null>(null);
 
   useEffect(() => {
     apiFetch<CourseDetail>(`/api/v1/courses/${courseSlug}`)
@@ -86,6 +99,11 @@ export default function CourseDetailPage() {
         setCourse(data);
         setEnrolled(data.enrolled);
         setLoading(false);
+        if (data.preassessment_enabled) {
+          apiFetch<PreassessmentStatus>(`/api/v1/courses/${data.id}/preassessment/status`)
+            .then(setPreassessmentStatus)
+            .catch(() => {});
+        }
       })
       .catch((err: Error) => {
         const is404 = err.message?.includes("404") || err.message?.includes("not found");
@@ -215,6 +233,41 @@ export default function CourseDetailPage() {
         </div>
       </div>
 
+      {/* Pre-assessment banner */}
+      {course.preassessment_enabled && preassessmentStatus && !preassessmentStatus.completed && (
+        <Card className={`border-2 ${preassessmentStatus.mandatory ? "border-amber-400 bg-amber-50" : "border-teal-300 bg-teal-50"}`}>
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              {preassessmentStatus.mandatory ? (
+                <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+              ) : (
+                <ClipboardList className="h-5 w-5 text-teal-600 shrink-0 mt-0.5" />
+              )}
+              <div className="flex-1 min-w-0">
+                <p className={`font-semibold text-sm ${preassessmentStatus.mandatory ? "text-amber-800" : "text-teal-800"}`}>
+                  {preassessmentStatus.mandatory
+                    ? tDetail("preassessmentMandatoryTitle")
+                    : tDetail("preassessmentTitle")}
+                </p>
+                <p className={`text-sm mt-0.5 ${preassessmentStatus.mandatory ? "text-amber-700" : "text-teal-700"}`}>
+                  {preassessmentStatus.mandatory
+                    ? tDetail("preassessmentMandatoryDesc")
+                    : tDetail("preassessmentDesc")}
+                </p>
+              </div>
+              <Link href={`/courses/${courseSlug}/placement-test`}>
+                <Button
+                  size="sm"
+                  className={`shrink-0 min-h-11 ${preassessmentStatus.mandatory ? "bg-amber-600 hover:bg-amber-700" : "bg-teal-600 hover:bg-teal-700"}`}
+                >
+                  {tDetail("preassessmentCta")}
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Syllabus — modules */}
       {course.modules.length > 0 && (
         <div>
@@ -290,6 +343,18 @@ export default function CourseDetailPage() {
           <Button
             className="w-full min-h-11 bg-teal-600 hover:bg-teal-700"
             onClick={() => router.push(`/modules?course_id=${course.id}`)}
+            disabled={
+              course.preassessment_enabled &&
+              preassessmentStatus?.mandatory === true &&
+              preassessmentStatus?.completed === false
+            }
+            title={
+              course.preassessment_enabled &&
+              preassessmentStatus?.mandatory === true &&
+              preassessmentStatus?.completed === false
+                ? tDetail("preassessmentRequiredTooltip")
+                : undefined
+            }
           >
             <CheckCircle className="mr-2 h-4 w-4" />
             {t("viewModules")}

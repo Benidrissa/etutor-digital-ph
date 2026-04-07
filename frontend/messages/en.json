@@ -852,7 +852,13 @@
     "units": "units",
     "backToCatalog": "Back to catalog",
     "notFound": "Course not found.",
-    "serverError": "Unable to load this course. Please try again."
+    "serverError": "Unable to load this course. Please try again.",
+    "preassessmentTitle": "Take the Pre-Assessment",
+    "preassessmentDesc": "Determine your starting level to personalize your learning path.",
+    "preassessmentMandatoryTitle": "Pre-Assessment Required",
+    "preassessmentMandatoryDesc": "You must complete the pre-assessment before accessing course modules.",
+    "preassessmentCta": "Start Pre-Assessment",
+    "preassessmentRequiredTooltip": "Complete the pre-assessment to unlock course modules."
   },
   "Privacy": {
     "title": "Privacy & Analytics",
