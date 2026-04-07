@@ -356,6 +356,24 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "Chunks retrieved for flashcard generation.",
         {"min": 3, "max": 30},
     ),
+    SettingDef(
+        "ai-syllabus-soft-time-limit-seconds",
+        "ai",
+        2700,
+        "integer",
+        "Syllabus generation — soft time limit (seconds)",
+        "Soft time limit for syllabus generation Celery task. Task receives a warning after this duration.",
+        {"min": 300, "max": 7200},
+    ),
+    SettingDef(
+        "ai-syllabus-hard-time-limit-seconds",
+        "ai",
+        3600,
+        "integer",
+        "Syllabus generation — hard time limit (seconds)",
+        "Hard time limit for syllabus generation Celery task. Task is killed after this duration.",
+        {"min": 600, "max": 7200},
+    ),
     # ── Tutor ──────────────────────────────────────────────
     SettingDef(
         "tutor-response-max-tokens",
