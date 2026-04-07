@@ -249,7 +249,9 @@ async def summarize_pdf_for_syllabus(
         )
 
     combined = await _combine_summaries(
-        client, book_name, summaries,
+        client,
+        book_name,
+        summaries,
         combine_chunk_size=combine_chunk_size,
         model=model,
         max_tokens=combine_max_tokens,
@@ -290,7 +292,9 @@ def summarize_pdfs_sync(
     async def _run_all():
         tasks = [
             summarize_pdf_for_syllabus(
-                name, text, toc,
+                name,
+                text,
+                toc,
                 chunk_size=chunk_size,
                 combine_chunk_size=combine_chunk_size,
                 model=model,
