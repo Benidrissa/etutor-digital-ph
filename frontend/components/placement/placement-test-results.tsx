@@ -24,26 +24,43 @@ import {
 interface PlacementTestResult {
   assigned_level: number;
   score_percentage: number;
+  level_scores: Record<string, number>;
   competency_areas: string[];
   recommendations: string[];
-  level_description: { en: string; fr: string };
   can_retake_after?: string;
+  course_id?: string;
   skipped?: boolean;
 }
 
 interface PlacementTestResultsProps {
   result: PlacementTestResult;
   locale: string;
+  courseId?: string;
   isSkipped?: boolean;
 }
 
-export function PlacementTestResults({ result, locale, isSkipped = false }: PlacementTestResultsProps) {
+const LEVEL_DESCRIPTIONS: Record<number, { en: string; fr: string }> = {
+  1: { en: 'Beginner — foundational concepts', fr: 'Débutant — concepts fondamentaux' },
+  2: { en: 'Intermediate — core competencies', fr: 'Intermédiaire — compétences clés' },
+  3: { en: 'Advanced — applied expertise', fr: 'Avancé — expertise appliquée' },
+  4: { en: 'Expert — leadership & research', fr: 'Expert — leadership et recherche' },
+};
+
+export function PlacementTestResults({ result, locale, courseId, isSkipped = false }: PlacementTestResultsProps) {
   const t = useTranslations('PlacementTest');
   const router = useRouter();
 
   const handleContinue = () => {
-    router.push('/dashboard');
+    if (courseId) {
+      router.push(`/courses/${courseId}`);
+    } else {
+      router.push('/dashboard');
+    }
   };
+
+  const levelDescription = LEVEL_DESCRIPTIONS[result.assigned_level]?.[locale as 'en' | 'fr']
+    ?? LEVEL_DESCRIPTIONS[result.assigned_level]?.en
+    ?? '';
 
   const getLevelColor = (level: number) => {
     switch (level) {
@@ -99,7 +116,7 @@ export function PlacementTestResults({ result, locale, isSkipped = false }: Plac
               </Badge>
             </div>
             <p className="text-lg font-medium">
-              {result.level_description[locale as 'en' | 'fr']}
+              {levelDescription}
             </p>
             
             {!isSkipped && (
