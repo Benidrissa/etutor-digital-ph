@@ -1,5 +1,12 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+export class ApiError extends Error {
+  constructor(message: string, public status: number, public code?: string) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 // Course Taxonomy Types (DB-driven, no hardcoded enums)
 export interface TaxonomyItem {
   value: string;
@@ -275,14 +282,16 @@ export async function apiFetch<T>(
   });
   if (!res.ok) {
     let message = `API error: ${res.status}`;
+    let code: string | undefined;
     try {
       const body = await res.json();
       if (body?.detail?.message) message = body.detail.message;
       else if (typeof body?.detail === 'string') message = body.detail;
+      if (body?.detail?.code) code = body.detail.code;
     } catch {
       // ignore parse errors — keep the status-code message
     }
-    throw new Error(message);
+    throw new ApiError(message, res.status, code);
   }
   return res.json();
 }

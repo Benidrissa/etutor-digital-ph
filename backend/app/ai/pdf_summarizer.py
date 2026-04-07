@@ -25,6 +25,9 @@ logger = structlog.get_logger(__name__)
 
 _CHUNK_SIZE_CHARS = 80_000
 _COMBINE_CHUNK_SIZE = 60_000
+_SUMMARIZER_MODEL = "claude-sonnet-4-6"
+_CHUNK_MAX_TOKENS = 4096
+_COMBINE_MAX_TOKENS = 8192
 
 _CHUNK_SUMMARY_SYSTEM = (
     "You are an expert educational content analyst. Your task is to extract "
@@ -91,6 +94,8 @@ async def _summarize_chunk(
     excerpt: str,
     chunk_num: int,
     total_chunks: int,
+    model: str = _SUMMARIZER_MODEL,
+    max_tokens: int = _CHUNK_MAX_TOKENS,
 ) -> str:
     """Generate a structured summary for a single chunk using Claude."""
     prompt = _CHUNK_SUMMARY_PROMPT.format(
@@ -100,8 +105,8 @@ async def _summarize_chunk(
         excerpt=excerpt,
     )
     response = await client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=4096,
+        model=model,
+        max_tokens=max_tokens,
         system=_CHUNK_SUMMARY_SYSTEM,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -112,6 +117,9 @@ async def _combine_summaries(
     client,
     book_name: str,
     summaries: list[str],
+    combine_chunk_size: int = _COMBINE_CHUNK_SIZE,
+    model: str = _SUMMARIZER_MODEL,
+    max_tokens: int = _COMBINE_MAX_TOKENS,
 ) -> str:
     """Combine chunk summaries into a single unified per-PDF summary.
 
@@ -120,17 +128,17 @@ async def _combine_summaries(
     """
     joined = "\n\n---\n\n".join(f"[Section {i + 1}]\n{s}" for i, s in enumerate(summaries))
 
-    if len(joined) <= _COMBINE_CHUNK_SIZE:
+    if len(joined) <= combine_chunk_size:
         batches = [joined]
     else:
-        batch_chunks = _split_into_chunks(joined, _COMBINE_CHUNK_SIZE)
+        batch_chunks = _split_into_chunks(joined, combine_chunk_size)
         batches = batch_chunks
 
     if len(batches) == 1:
         prompt = _COMBINE_PROMPT.format(book_name=book_name, analyses=batches[0])
         response = await client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=8192,
+            model=model,
+            max_tokens=max_tokens,
             system=_COMBINE_SYSTEM,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -140,8 +148,8 @@ async def _combine_summaries(
     for i, batch in enumerate(batches):
         prompt = _COMBINE_PROMPT.format(book_name=book_name, analyses=batch)
         response = await client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=8192,
+            model=model,
+            max_tokens=max_tokens,
             system=_COMBINE_SYSTEM,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -156,8 +164,8 @@ async def _combine_summaries(
     final_joined = "\n\n---\n\n".join(f"[Group {i + 1}]\n{s}" for i, s in enumerate(intermediate))
     prompt = _COMBINE_PROMPT.format(book_name=book_name, analyses=final_joined)
     response = await client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=8192,
+        model=model,
+        max_tokens=max_tokens,
         system=_COMBINE_SYSTEM,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -169,6 +177,10 @@ async def summarize_pdf_for_syllabus(
     full_text: str,
     toc: list | None = None,
     chunk_size: int = _CHUNK_SIZE_CHARS,
+    combine_chunk_size: int = _COMBINE_CHUNK_SIZE,
+    model: str = _SUMMARIZER_MODEL,
+    chunk_max_tokens: int = _CHUNK_MAX_TOKENS,
+    combine_max_tokens: int = _COMBINE_MAX_TOKENS,
 ) -> str:
     """Produce a compact, complete knowledge-structure summary of one PDF.
 
@@ -177,6 +189,10 @@ async def summarize_pdf_for_syllabus(
         full_text: Complete extracted text of the PDF.
         toc: Optional table of contents list from PyMuPDF get_toc().
         chunk_size: Max characters per chunk (default 80 000).
+        combine_chunk_size: Max chars when combining chunk summaries.
+        model: Claude model name to use.
+        chunk_max_tokens: Max tokens for chunk summary responses.
+        combine_max_tokens: Max tokens for combined summary responses.
 
     Returns:
         A structured text summary covering 100% of the PDF's content.
@@ -213,13 +229,17 @@ async def summarize_pdf_for_syllabus(
     )
 
     if total == 1:
-        summary = await _summarize_chunk(client, book_name, chunks[0], 1, 1)
+        summary = await _summarize_chunk(
+            client, book_name, chunks[0], 1, 1, model=model, max_tokens=chunk_max_tokens
+        )
         logger.info("Single-chunk summary done", book=book_name)
         return summary
 
     summaries: list[str] = []
     for i, chunk in enumerate(chunks):
-        chunk_summary = await _summarize_chunk(client, book_name, chunk, i + 1, total)
+        chunk_summary = await _summarize_chunk(
+            client, book_name, chunk, i + 1, total, model=model, max_tokens=chunk_max_tokens
+        )
         summaries.append(chunk_summary)
         logger.info(
             "Chunk summarized",
@@ -228,7 +248,14 @@ async def summarize_pdf_for_syllabus(
             total=total,
         )
 
-    combined = await _combine_summaries(client, book_name, summaries)
+    combined = await _combine_summaries(
+        client,
+        book_name,
+        summaries,
+        combine_chunk_size=combine_chunk_size,
+        model=model,
+        max_tokens=combine_max_tokens,
+    )
     logger.info(
         "Multi-pass summarization complete",
         book=book_name,
@@ -241,6 +268,10 @@ async def summarize_pdf_for_syllabus(
 def summarize_pdfs_sync(
     pdf_texts: list[tuple[str, str, list]],
     chunk_size: int = _CHUNK_SIZE_CHARS,
+    combine_chunk_size: int = _COMBINE_CHUNK_SIZE,
+    model: str = _SUMMARIZER_MODEL,
+    chunk_max_tokens: int = _CHUNK_MAX_TOKENS,
+    combine_max_tokens: int = _COMBINE_MAX_TOKENS,
 ) -> list[str]:
     """Synchronous wrapper — summarize a list of (book_name, full_text, toc) tuples.
 
@@ -249,6 +280,10 @@ def summarize_pdfs_sync(
     Args:
         pdf_texts: List of (book_name, full_text, toc) tuples.
         chunk_size: Max characters per chunk.
+        combine_chunk_size: Max chars when combining chunk summaries.
+        model: Claude model name to use.
+        chunk_max_tokens: Max tokens for chunk summary responses.
+        combine_max_tokens: Max tokens for combined summary responses.
 
     Returns:
         List of structured summaries, one per PDF, in the same order.
@@ -256,7 +291,17 @@ def summarize_pdfs_sync(
 
     async def _run_all():
         tasks = [
-            summarize_pdf_for_syllabus(name, text, toc, chunk_size) for name, text, toc in pdf_texts
+            summarize_pdf_for_syllabus(
+                name,
+                text,
+                toc,
+                chunk_size=chunk_size,
+                combine_chunk_size=combine_chunk_size,
+                model=model,
+                chunk_max_tokens=chunk_max_tokens,
+                combine_max_tokens=combine_max_tokens,
+            )
+            for name, text, toc in pdf_texts
         ]
         return await asyncio.gather(*tasks)
 

@@ -9,8 +9,6 @@ from sqlalchemy import delete, select, text
 
 from app.tasks.celery_app import celery_app
 
-_CONTEXT_BUDGET_CHARS = 400_000
-
 logger = structlog.get_logger(__name__)
 
 
@@ -64,7 +62,16 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
     - Phase 3 (DB save) uses the sync SQLAlchemy engine obtained from
       engine.sync_engine to avoid any asyncio event loop conflict during commit.
     """
+    from app.domain.services.platform_settings_service import SettingsCache
     from app.infrastructure.config.settings import settings
+
+    cache = SettingsCache.instance()
+    context_budget = cache.get("syllabus-context-budget-chars", 400_000)
+    pdf_chunk_size = cache.get("syllabus-pdf-chunk-size-chars", 80_000)
+    combine_chunk_size = cache.get("syllabus-combine-chunk-size", 60_000)
+    summarizer_model = cache.get("syllabus-summarizer-model", "claude-sonnet-4-6")
+    chunk_max_tokens = cache.get("syllabus-chunk-max-tokens", 4096)
+    combine_max_tokens = cache.get("syllabus-combine-max-tokens", 8192)
 
     logger.info(
         "Starting syllabus generation",
@@ -174,12 +181,12 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
         if pdf_full_texts:
             total_chars = sum(len(txt) for _, txt, _ in pdf_full_texts)
 
-            if total_chars <= _CONTEXT_BUDGET_CHARS:
+            if total_chars <= context_budget:
                 logger.info(
                     "PDFs fit within context budget — using raw text",
                     course_id=course_id,
                     total_chars=total_chars,
-                    budget=_CONTEXT_BUDGET_CHARS,
+                    budget=context_budget,
                 )
                 pdf_sections = [f"### {name}\n{txt}" for name, txt, _toc in pdf_full_texts]
                 resource_text = "\n\n---\n\n".join(pdf_sections)
@@ -188,7 +195,7 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
                     "PDFs exceed context budget — using multi-pass summarization",
                     course_id=course_id,
                     total_chars=total_chars,
-                    budget=_CONTEXT_BUDGET_CHARS,
+                    budget=context_budget,
                 )
                 self.update_state(
                     state="GENERATING",
@@ -196,7 +203,14 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
                 )
                 from app.ai.pdf_summarizer import summarize_pdfs_sync
 
-                pdf_summaries = summarize_pdfs_sync(pdf_full_texts)
+                pdf_summaries = summarize_pdfs_sync(
+                    pdf_full_texts,
+                    chunk_size=pdf_chunk_size,
+                    combine_chunk_size=combine_chunk_size,
+                    model=summarizer_model,
+                    chunk_max_tokens=chunk_max_tokens,
+                    combine_max_tokens=combine_max_tokens,
+                )
                 pdf_sections = [
                     f"### {name}\n{summary}"
                     for (name, _text, _toc), summary in zip(
