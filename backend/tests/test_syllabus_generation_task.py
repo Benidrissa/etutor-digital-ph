@@ -51,9 +51,15 @@ class TestSyllabusGenerationTaskUnit:
     def test_course_not_found_returns_failed_dict(self):
         """When asyncio.run returns None (course not found), task returns failed dict."""
         course_id = str(uuid.uuid4())
+        mock_cache = MagicMock()
+        mock_cache.get.side_effect = lambda key, default=None: default
 
         with (
             patch("asyncio.run", return_value=None),
+            patch(
+                "app.domain.services.platform_settings_service.SettingsCache.instance",
+                return_value=mock_cache,
+            ),
         ):
             result = self._run(course_id, 20)
 
@@ -95,11 +101,18 @@ class TestSyllabusGenerationTaskUnit:
                 return course_data
             return sample_module_dicts
 
+        mock_cache = MagicMock()
+        mock_cache.get.side_effect = lambda key, default=None: default
+
         with (
             patch("asyncio.run", side_effect=track_asyncio_run),
             patch("pathlib.Path.exists", return_value=False),
             patch("sqlalchemy.create_engine", return_value=mock_sync_engine) as mock_ce,
             patch("sqlalchemy.orm.Session", return_value=mock_session),
+            patch(
+                "app.domain.services.platform_settings_service.SettingsCache.instance",
+                return_value=mock_cache,
+            ),
         ):
             result = self._run(course_id, 20)
 
@@ -144,11 +157,18 @@ class TestSyllabusGenerationTaskUnit:
             call_count += 1
             return course_data if call_count == 1 else sample_module_dicts
 
+        mock_cache = MagicMock()
+        mock_cache.get.side_effect = lambda key, default=None: default
+
         with (
             patch("asyncio.run", side_effect=mock_run),
             patch("pathlib.Path.exists", return_value=False),
             patch("sqlalchemy.create_engine", return_value=mock_sync_engine),
             patch("sqlalchemy.orm.Session", return_value=mock_session),
+            patch(
+                "app.domain.services.platform_settings_service.SettingsCache.instance",
+                return_value=mock_cache,
+            ),
         ):
             result = self._run(course_id, 30)
 
@@ -192,6 +212,9 @@ class TestSyllabusGenerationTaskUnit:
             call_count += 1
             return course_data if call_count == 1 else sample_module_dicts
 
+        mock_cache = MagicMock()
+        mock_cache.get.side_effect = lambda key, default=None: default
+
         with (
             patch("asyncio.run", side_effect=mock_run),
             patch("pathlib.Path.exists", return_value=True),
@@ -203,6 +226,10 @@ class TestSyllabusGenerationTaskUnit:
             patch("app.ai.pdf_summarizer.summarize_pdfs_sync") as mock_summarize,
             patch("sqlalchemy.create_engine", return_value=mock_sync_engine),
             patch("sqlalchemy.orm.Session", return_value=mock_session),
+            patch(
+                "app.domain.services.platform_settings_service.SettingsCache.instance",
+                return_value=mock_cache,
+            ),
         ):
             result = self._run(course_id, 10)
 
@@ -210,8 +237,8 @@ class TestSyllabusGenerationTaskUnit:
         assert result["status"] == "complete"
 
     def test_large_pdfs_use_summarization(self, sample_module_dicts):
-        """PDFs over _CONTEXT_BUDGET_CHARS trigger summarize_pdfs_sync."""
-        from app.tasks.syllabus_generation import _CONTEXT_BUDGET_CHARS
+        """PDFs over context budget trigger summarize_pdfs_sync."""
+        _CONTEXT_BUDGET_CHARS = 400_000
 
         course_id = str(uuid.uuid4())
         course_data = {
@@ -244,6 +271,9 @@ class TestSyllabusGenerationTaskUnit:
             call_count += 1
             return course_data if call_count == 1 else sample_module_dicts
 
+        mock_cache = MagicMock()
+        mock_cache.get.side_effect = lambda key, default=None: default
+
         with (
             patch("asyncio.run", side_effect=mock_run),
             patch("pathlib.Path.exists", return_value=True),
@@ -257,6 +287,10 @@ class TestSyllabusGenerationTaskUnit:
             ) as mock_summarize,
             patch("sqlalchemy.create_engine", return_value=mock_sync_engine),
             patch("sqlalchemy.orm.Session", return_value=mock_session),
+            patch(
+                "app.domain.services.platform_settings_service.SettingsCache.instance",
+                return_value=mock_cache,
+            ),
         ):
             result = self._run(course_id, 10)
 
@@ -289,11 +323,18 @@ class TestSyllabusGenerationTaskUnit:
             call_count += 1
             return course_data if call_count == 1 else sample_module_dicts
 
+        mock_cache = MagicMock()
+        mock_cache.get.side_effect = lambda key, default=None: default
+
         with (
             patch("asyncio.run", side_effect=mock_run),
             patch("pathlib.Path.exists", return_value=False),
             patch("sqlalchemy.create_engine", return_value=mock_sync_engine),
             patch("sqlalchemy.orm.Session", return_value=mock_session),
+            patch(
+                "app.domain.services.platform_settings_service.SettingsCache.instance",
+                return_value=mock_cache,
+            ),
             pytest.raises(RuntimeError, match="DB commit failed"),
         ):
             self._run(course_id, 10)

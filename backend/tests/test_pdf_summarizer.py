@@ -156,7 +156,7 @@ class TestSummarizePdfsSync:
     def test_order_preserved(self):
         names_seen = []
 
-        async def fake_summarize(name, text, toc=None, chunk_size=None):
+        async def fake_summarize(name, text, toc=None, **kwargs):
             names_seen.append(name)
             return f"summary:{name}"
 
@@ -188,7 +188,7 @@ class TestSyllabusTaskWithSummarization:
 
     def test_pdf_dir_exists_calls_summarizer_not_truncate(self, sample_module_dicts):
         """When PDF directory exists and text exceeds budget, task must call summarize_pdfs_sync."""
-        from app.tasks.syllabus_generation import _CONTEXT_BUDGET_CHARS
+        _CONTEXT_BUDGET_CHARS = 400_000
 
         course_id = str(uuid.uuid4())
         course_data = {
@@ -225,6 +225,9 @@ class TestSyllabusTaskWithSummarization:
 
         mock_summarize = MagicMock(return_value=["Structured summary of book"])
 
+        mock_cache = MagicMock()
+        mock_cache.get.side_effect = lambda key, default=None: default
+
         with (
             patch("asyncio.run", side_effect=mock_run),
             patch("pathlib.Path.exists", return_value=True),
@@ -236,6 +239,10 @@ class TestSyllabusTaskWithSummarization:
             patch("app.ai.pdf_summarizer.summarize_pdfs_sync", mock_summarize),
             patch("sqlalchemy.create_engine", return_value=mock_sync_engine),
             patch("sqlalchemy.orm.Session", return_value=mock_session),
+            patch(
+                "app.domain.services.platform_settings_service.SettingsCache.instance",
+                return_value=mock_cache,
+            ),
         ):
             result = self._run_task(course_id, 20)
 
@@ -244,7 +251,7 @@ class TestSyllabusTaskWithSummarization:
 
     def test_no_truncation_string_in_resource_text(self, sample_module_dicts):
         """The resource_text passed to Claude must NOT contain '(truncated to'."""
-        from app.tasks.syllabus_generation import _CONTEXT_BUDGET_CHARS
+        _CONTEXT_BUDGET_CHARS = 400_000
 
         course_id = str(uuid.uuid4())
         course_data = {
@@ -282,6 +289,9 @@ class TestSyllabusTaskWithSummarization:
         def capture_summarize(pdf_full_texts, **kwargs):
             return ["Proper summary without truncation"] * len(pdf_full_texts)
 
+        mock_cache = MagicMock()
+        mock_cache.get.side_effect = lambda key, default=None: default
+
         with (
             patch("asyncio.run", side_effect=mock_run),
             patch("pathlib.Path.exists", return_value=True),
@@ -293,6 +303,10 @@ class TestSyllabusTaskWithSummarization:
             patch("app.ai.pdf_summarizer.summarize_pdfs_sync", side_effect=capture_summarize),
             patch("sqlalchemy.create_engine", return_value=mock_sync_engine),
             patch("sqlalchemy.orm.Session", return_value=mock_session),
+            patch(
+                "app.domain.services.platform_settings_service.SettingsCache.instance",
+                return_value=mock_cache,
+            ),
         ):
             result = self._run_task(course_id, 30)
 
