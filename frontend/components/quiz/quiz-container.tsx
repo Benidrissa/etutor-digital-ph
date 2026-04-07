@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { QuizInterface } from './quiz-interface';
 import { QuizResults } from './quiz-results';
 import type { Quiz, QuizAttemptResponse } from '@/lib/api';
-import { generateQuiz, apiFetch } from '@/lib/api';
+import { ApiError, generateQuiz, apiFetch } from '@/lib/api';
 import { useSettings } from '@/lib/settings-context';
 import { track } from '@/lib/analytics';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
@@ -140,7 +140,18 @@ export function QuizContainer({
         }
       } catch (err) {
         console.error('Failed to load quiz:', err);
-        const errorMessage = err instanceof Error ? err.message : t('failedToLoad');
+        let errorMessage: string;
+        if (err instanceof ApiError) {
+          if (err.code === 'subscription_required' || err.status === 403) {
+            errorMessage = t('subscriptionRequired');
+          } else if (err.status === 401) {
+            errorMessage = t('authRequired');
+          } else {
+            errorMessage = err.message || t('failedToLoad');
+          }
+        } else {
+          errorMessage = err instanceof Error ? err.message : t('failedToLoad');
+        }
         setError(errorMessage);
         setState('error');
         onError?.(errorMessage);
