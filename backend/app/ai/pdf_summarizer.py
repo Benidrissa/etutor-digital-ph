@@ -1,26 +1,19 @@
-"""Multi-pass PDF summarizer for syllabus generation.
+"""Simplified 1-call-per-PDF summarizer for syllabus generation.
 
-Replaces naive truncation with a summarize-then-combine approach that
-preserves content from every page of every PDF, regardless of size.
+Algorithm (issue #1139):
+  1. Each resource (PDF or chapter-split part) fits in one Claude API call
+     because oversized PDFs are pre-split at upload time (see admin_courses.py).
+  2. If total chars across all resources ≤ context_budget → send raw text directly.
+  3. Otherwise: 1 API call per resource (summarize_single_pdf), then combine.
+  4. Result: N resources + 1 combine + 1 syllabus = N+2 API calls maximum.
 
-Algorithm:
-  1. Split each PDF's extracted text into chunks that fit comfortably in the
-     model context window (computed dynamically from model capabilities).
-  2. Generate a structured summary for each chunk (topics, concepts, hierarchy).
-  3. Combine chunk summaries into one unified per-PDF summary.
-  4. Return all per-PDF summaries joined for use as syllabus context.
-
-The combining step deduplicates overlapping content across chunks.
-For very large PDFs the combine step itself may be chunked (2-level hierarchy).
-
-Budget-aware mode (target_chars):
-  When target_chars is provided, word limits are injected into prompts and
-  max_tokens is capped so outputs are predictably sized to fit the context window.
-
-Dynamic defaults:
-  All chunk/token limits are computed from model capabilities via model_registry.
-  Platform settings override these computed values for admin fine-tuning.
-  Pass None to any size/token parameter to use the computed default.
+Backward compatibility:
+  - _combine_summaries() is kept (used by syllabus_generation.py).
+  - _split_into_chunks(), _proportional_budgets(), compute_chunk_plan(),
+    PdfChunkPlan, and _compute_defaults() are preserved for tests
+    that import them directly.
+  - summarize_pdf_for_syllabus() still works (used in old test paths).
+  - summarize_pdfs_sync() still works (old call sites remain functional).
 """
 
 from __future__ import annotations
@@ -39,23 +32,50 @@ logger = structlog.get_logger(__name__)
 _SUMMARIZER_MODEL = "claude-sonnet-4-6"
 _CHARS_PER_WORD = 5
 
-_CHUNK_SUMMARY_SYSTEM = (
-    "You are an expert educational content analyst. Your task is to extract "
-    "the key knowledge structure from a portion of a textbook or reference document "
-    "that will be used to build a course syllabus. Be concise but thorough."
+_MAX_PDF_CHARS = 2_500_000
+
+_SYLLABUS_SUMMARY_SYSTEM = (
+    "You are an expert instructional designer and curriculum analyst. "
+    "Your task is to produce a comprehensive, structured analysis of a textbook "
+    "that will be used to design a complete training course with lessons, quizzes, "
+    "flashcards, and case studies."
 )
 
-_CHUNK_SUMMARY_PROMPT = (
-    "Analyze the following excerpt from '{book_name}' (chunk {chunk_num} of {total_chunks}).\n\n"
-    "Extract and list in structured form:\n"
-    "1. Main topic areas / chapter titles covered in this excerpt\n"
-    "2. Key concepts, theories, frameworks, and methods introduced\n"
-    "3. Important sub-topics and their relationships\n"
-    "4. Estimated depth/importance of each topic (brief, moderate, extensive)\n"
-    "5. Any learning objectives or competencies explicitly stated\n\n"
-    "Be precise and exhaustive — every topic here must appear in the final summary. "
-    "Use bullet points. Do not include page text verbatim.{word_limit_instruction}\n\n"
-    "EXCERPT:\n{excerpt}"
+_SYLLABUS_SUMMARY_PROMPT = (
+    "Analyze the complete text of '{book_name}' and produce a rich, detailed "
+    "educational content map.\n\n"
+    "For EACH chapter or major section, provide:\n\n"
+    "## 1. Structure & Progression\n"
+    "- Chapter/section title and scope\n"
+    "- Prerequisites (what the learner must know before this section)\n"
+    "- How this section builds on previous ones\n"
+    "- Estimated learning time (hours) based on content density\n\n"
+    "## 2. Core Knowledge (for LESSONS)\n"
+    "- Key concepts, theories, frameworks, and models — with brief definitions\n"
+    "- Important terminology and vocabulary (bilingual FR/EN when relevant)\n"
+    "- Formulas, processes, or step-by-step methods explained\n"
+    "- Real-world examples and illustrations mentioned in the text\n"
+    "- Data, statistics, or research findings cited\n\n"
+    "## 3. Assessment Material (for QUIZZES & FLASHCARDS)\n"
+    "- Factual knowledge points that can be tested (definitions, dates, formulas)\n"
+    "- Conceptual understanding questions (compare/contrast, explain why)\n"
+    "- Application scenarios (given X situation, what approach?)\n"
+    "- Common misconceptions or tricky distinctions\n"
+    "- Key term ↔ definition pairs suitable for flashcards\n\n"
+    "## 4. Practical Application (for CASE STUDIES)\n"
+    "- Case studies, examples, or scenarios from the text\n"
+    "- Real-world applications and industry practices described\n"
+    "- Decision-making frameworks the learner should practice\n"
+    "- Datasets, tools, or methods the learner could apply\n\n"
+    "## 5. Bloom's Taxonomy Mapping\n"
+    "- Which topics are foundational (remember/understand)?\n"
+    "- Which require application (apply/analyze)?\n"
+    "- Which demand synthesis or evaluation (evaluate/create)?\n\n"
+    "Be EXHAUSTIVE — every topic, concept, and example in the text must appear. "
+    "This summary is the ONLY input for course design; anything omitted will be "
+    "missing from the final course. Use structured markdown with headers and bullets. "
+    "Aim for maximum detail and completeness.\n\n"
+    "FULL TEXT:\n{text}"
 )
 
 _COMBINE_SYSTEM = (
@@ -77,16 +97,28 @@ _COMBINE_PROMPT = (
     "SECTION ANALYSES:\n{analyses}"
 )
 
+_CHUNK_SUMMARY_SYSTEM = (
+    "You are an expert educational content analyst. Your task is to extract "
+    "the key knowledge structure from a portion of a textbook or reference document "
+    "that will be used to build a course syllabus. Be concise but thorough."
+)
+
+_CHUNK_SUMMARY_PROMPT = (
+    "Analyze the following excerpt from '{book_name}' (chunk {chunk_num} of {total_chunks}).\n\n"
+    "Extract and list in structured form:\n"
+    "1. Main topic areas / chapter titles covered in this excerpt\n"
+    "2. Key concepts, theories, frameworks, and methods introduced\n"
+    "3. Important sub-topics and their relationships\n"
+    "4. Estimated depth/importance of each topic (brief, moderate, extensive)\n"
+    "5. Any learning objectives or competencies explicitly stated\n\n"
+    "Be precise and exhaustive — every topic here must appear in the final summary. "
+    "Use bullet points. Do not include page text verbatim.{word_limit_instruction}\n\n"
+    "EXCERPT:\n{excerpt}"
+)
+
 
 def _compute_defaults(model: str) -> dict:
-    """Compute chunk/token defaults dynamically from model capabilities.
-
-    For claude-sonnet-4-6 (1M ctx, 64K out, 3.5 cpt):
-      chunk_size_chars          = min(1_000_000 * 0.5 * 3.5, 500_000) = 500_000
-      combine_chunk_size_chars  = min(1_000_000 * 0.4 * 3.5, 400_000) = 400_000
-      chunk_max_output_tokens   = min(64_000 // 4, 16_000)             = 16_000
-      combine_max_output_tokens = min(64_000, 64_000)                  = 64_000
-    """
+    """Compute chunk/token defaults dynamically from model capabilities."""
     caps = get_model_caps(model)
     ctx = caps["context_window_tokens"]
     max_out = caps["max_output_tokens"]
@@ -116,22 +148,7 @@ def compute_chunk_plan(
     context_budget_chars: int,
     model: str = _SUMMARIZER_MODEL,
 ) -> PdfChunkPlan:
-    """Compute the optimal chunk plan for a PDF by working backwards from constraints.
-
-    For claude-sonnet-4-6 with 3 PDFs totaling 5M chars and a 3.5M budget:
-      max_input = 3.5M - 224K - 5K ≈ 3.27M chars
-      A 2.1M PDF fits in 1 chunk (ceil(2.1M / 3.27M) = 1)
-
-    Args:
-        pdf_chars: Character count of this specific PDF.
-        num_pdfs: Total number of PDFs being summarized (for proportional budget).
-        total_pdf_chars: Total character count across all PDFs.
-        context_budget_chars: Available character budget for all summaries combined.
-        model: Claude model name.
-
-    Returns:
-        PdfChunkPlan with optimal chunk_count, chunk_size_chars, and token limits.
-    """
+    """Compute the optimal chunk plan for a PDF."""
     caps = get_model_caps(model)
     cpt = caps["chars_per_token"]
     ctx_chars = caps["context_window_tokens"] * cpt
@@ -193,40 +210,116 @@ def _split_into_chunks(text: str, chunk_size: int) -> list[str]:
     return chunks
 
 
-async def _summarize_chunk(
+def split_pdf_by_chapters(text: str, toc: list, max_chars: int) -> list[tuple[str, str]]:
+    """Split extracted text at chapter boundaries to fit max_chars per part.
+
+    Falls back to page-based split if TOC is missing or has no page markers.
+
+    Returns:
+        List of (part_name, part_text) tuples.
+    """
+    if not toc:
+        parts: list[tuple[str, str]] = []
+        chunk_count = math.ceil(len(text) / max_chars)
+        size = math.ceil(len(text) / chunk_count)
+        for i in range(chunk_count):
+            start = i * size
+            end = min((i + 1) * size, len(text))
+            if end < len(text):
+                boundary = text.rfind("\n", start, end)
+                if boundary > start:
+                    end = boundary
+            parts.append((f"Part {i + 1}", text[start:end]))
+        return parts
+
+    lines = text.splitlines(keepends=True)
+    total_lines = len(lines)
+
+    toc_chapters = [(title, page) for lvl, title, page in toc if lvl == 1 and page > 0]
+    if not toc_chapters:
+        toc_chapters = [(title, page) for lvl, title, page in toc if page > 0]
+
+    if not toc_chapters:
+        return split_pdf_by_chapters(text, [], max_chars)
+
+    chars_per_line = max(1, len(text) / max(total_lines, 1))
+
+    chapter_char_positions: list[tuple[str, int]] = []
+    for title, page in toc_chapters:
+        approx_char = int((page - 1) * chars_per_line * 45)
+        chapter_char_positions.append((title, min(approx_char, len(text))))
+    chapter_char_positions.sort(key=lambda x: x[1])
+
+    groups: list[tuple[str, str]] = []
+    group_start_idx = 0
+    group_start_title = chapter_char_positions[0][0] if chapter_char_positions else "Part 1"
+    current_len = 0
+
+    for i, (title, char_pos) in enumerate(chapter_char_positions):
+        chapter_text_start = char_pos
+        chapter_text_end = (
+            chapter_char_positions[i + 1][1] if i + 1 < len(chapter_char_positions) else len(text)
+        )
+        chapter_len = chapter_text_end - chapter_text_start
+
+        if current_len + chapter_len > max_chars and current_len > 0:
+            group_text = text[group_start_idx:char_pos]
+            groups.append((group_start_title, group_text))
+            group_start_idx = char_pos
+            group_start_title = title
+            current_len = 0
+
+        current_len += chapter_len
+
+    remaining = text[group_start_idx:]
+    if remaining.strip():
+        groups.append((group_start_title, remaining))
+
+    return groups if groups else [("Part 1", text)]
+
+
+async def summarize_single_pdf(
     client,
     book_name: str,
-    excerpt: str,
-    chunk_num: int,
-    total_chunks: int,
+    full_text: str,
+    toc: list | None = None,
     model: str = _SUMMARIZER_MODEL,
-    max_tokens: int = 16_000,
-    target_words: int | None = None,
+    max_output_tokens: int = 60_000,
 ) -> str:
-    """Generate a structured summary for a single chunk using Claude."""
-    word_limit_instruction = (
-        f"\n\nLimit your summary to approximately {target_words} words. "
-        "Focus on the most important topics."
-        if target_words is not None
-        else ""
+    """Summarize a single PDF in one API call using the enriched syllabus prompt.
+
+    The text is sent directly — no chunking. The caller must ensure the text
+    fits within the model's context window (use split_pdf_by_chapters() at
+    upload time to guarantee this).
+    """
+    toc_prefix = ""
+    if toc:
+        toc_lines = [f"{'  ' * (lvl - 1)}{title}" for lvl, title, _ in toc[:200]]
+        toc_prefix = "TABLE OF CONTENTS:\n" + "\n".join(toc_lines) + "\n\n"
+
+    full_input = toc_prefix + full_text
+    prompt = _SYLLABUS_SUMMARY_PROMPT.format(book_name=book_name, text=full_input)
+
+    logger.info(
+        "Summarizing PDF (single call)",
+        book=book_name,
+        input_chars=len(full_input),
+        max_output_tokens=max_output_tokens,
     )
-    adjusted_max_tokens = (
-        min(max_tokens, max(256, target_words * 2)) if target_words is not None else max_tokens
-    )
-    prompt = _CHUNK_SUMMARY_PROMPT.format(
-        book_name=book_name,
-        chunk_num=chunk_num,
-        total_chunks=total_chunks,
-        excerpt=excerpt,
-        word_limit_instruction=word_limit_instruction,
-    )
+
     response = await client.messages.create(
         model=model,
-        max_tokens=adjusted_max_tokens,
-        system=_CHUNK_SUMMARY_SYSTEM,
+        max_tokens=max_output_tokens,
+        system=_SYLLABUS_SUMMARY_SYSTEM,
         messages=[{"role": "user", "content": prompt}],
     )
-    return response.content[0].text.strip()
+    result = response.content[0].text.strip()
+    logger.info(
+        "PDF summarized",
+        book=book_name,
+        summary_chars=len(result),
+    )
+    return result
 
 
 async def _combine_summaries(
@@ -240,11 +333,10 @@ async def _combine_summaries(
     max_concurrent: int = 5,
     _shared_semaphore: asyncio.Semaphore | None = None,
 ) -> str:
-    """Combine chunk summaries into a single unified per-PDF summary.
+    """Combine per-resource summaries into one unified summary.
 
     If the concatenated summaries are too large for one call, they are
     combined hierarchically (in groups) before the final merge.
-    Intermediate combine batches are processed concurrently up to max_concurrent.
     """
     joined = "\n\n---\n\n".join(f"[Section {i + 1}]\n{s}" for i, s in enumerate(summaries))
 
@@ -321,6 +413,42 @@ async def _combine_summaries(
     return response.content[0].text.strip()
 
 
+async def _summarize_chunk(
+    client,
+    book_name: str,
+    excerpt: str,
+    chunk_num: int,
+    total_chunks: int,
+    model: str = _SUMMARIZER_MODEL,
+    max_tokens: int = 16_000,
+    target_words: int | None = None,
+) -> str:
+    """Generate a structured summary for a single chunk using Claude (legacy path)."""
+    word_limit_instruction = (
+        f"\n\nLimit your summary to approximately {target_words} words. "
+        "Focus on the most important topics."
+        if target_words is not None
+        else ""
+    )
+    adjusted_max_tokens = (
+        min(max_tokens, max(256, target_words * 2)) if target_words is not None else max_tokens
+    )
+    prompt = _CHUNK_SUMMARY_PROMPT.format(
+        book_name=book_name,
+        chunk_num=chunk_num,
+        total_chunks=total_chunks,
+        excerpt=excerpt,
+        word_limit_instruction=word_limit_instruction,
+    )
+    response = await client.messages.create(
+        model=model,
+        max_tokens=adjusted_max_tokens,
+        system=_CHUNK_SUMMARY_SYSTEM,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return response.content[0].text.strip()
+
+
 async def summarize_pdf_for_syllabus(
     book_name: str,
     full_text: str,
@@ -337,27 +465,11 @@ async def summarize_pdf_for_syllabus(
     total_pdf_chars: int | None = None,
     context_budget_chars: int | None = None,
 ) -> str:
-    """Produce a compact, complete knowledge-structure summary of one PDF.
+    """Produce a rich educational content map summary of one PDF.
 
-    Args:
-        book_name: Human-readable book title (used in prompts).
-        full_text: Complete extracted text of the PDF.
-        toc: Optional table of contents list from PyMuPDF get_toc().
-        chunk_size_chars: Max characters per chunk. None = compute from model.
-        combine_chunk_size_chars: Max chars when combining chunk summaries. None = compute.
-        model: Claude model name to use.
-        chunk_max_output_tokens: Max tokens for chunk summary responses. None = compute.
-        combine_max_output_tokens: Max tokens for combined summary responses. None = compute.
-        target_chars: Target character budget for the final summary. When set,
-            word limits are injected into prompts and max_tokens is capped to
-            ensure the output fits within the context window.
-        max_concurrent: Max parallel Claude API calls for chunk summarization.
-        num_pdfs: Total number of PDFs being summarized (enables dynamic chunk plan).
-        total_pdf_chars: Total chars across all PDFs (enables dynamic chunk plan).
-        context_budget_chars: Context budget chars (enables dynamic chunk plan).
-
-    Returns:
-        A structured text summary covering 100% of the PDF's content.
+    Uses the new enriched summarization prompt when called without chunk overrides
+    (single-call mode). Falls back to the legacy multi-chunk path when explicit
+    chunk_size_chars is provided (backward compatibility).
     """
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key:
@@ -370,13 +482,31 @@ async def summarize_pdf_for_syllabus(
             return "Table of Contents:\n" + "\n".join(toc_lines[:200])
         return f"[No API key — full text not summarized for {book_name}]"
 
+    import anthropic
+
+    client = anthropic.AsyncAnthropic(api_key=api_key, timeout=300.0)
+
+    use_single_call = chunk_size_chars is None and chunk_max_output_tokens is None
+
+    if use_single_call:
+        caps = get_model_caps(model)
+        max_out = caps["max_output_tokens"]
+        summary_max_tokens = min(max_out, 60_000)
+        return await summarize_single_pdf(
+            client,
+            book_name,
+            full_text,
+            toc=toc,
+            model=model,
+            max_output_tokens=summary_max_tokens,
+        )
+
     use_dynamic_plan = (
         num_pdfs is not None
         and total_pdf_chars is not None
         and context_budget_chars is not None
         and chunk_size_chars is None
         and chunk_max_output_tokens is None
-        and combine_max_output_tokens is None
     )
 
     if use_dynamic_plan:
@@ -412,10 +542,6 @@ async def summarize_pdf_for_syllabus(
             else defaults["combine_max_output_tokens"]
         )
 
-    import anthropic
-
-    client = anthropic.AsyncAnthropic(api_key=api_key, timeout=300.0)
-
     toc_prefix = ""
     if toc:
         toc_lines = [f"{'  ' * (lvl - 1)}{title}" for lvl, title, _ in toc[:200]]
@@ -432,7 +558,7 @@ async def summarize_pdf_for_syllabus(
         target_per_chunk_words = max(100, target_words // total)
 
     logger.info(
-        "Starting multi-pass summarization",
+        "Starting multi-pass summarization (legacy path)",
         book=book_name,
         total_chars=len(full_text),
         chunk_count=total,
@@ -528,30 +654,10 @@ def summarize_pdfs_sync(
 ) -> list[str]:
     """Synchronous wrapper — summarize a list of (book_name, full_text, toc) tuples.
 
+    When called without explicit chunk/token overrides, uses the new single-call
+    enriched summarization path (one API call per PDF).
+
     Used from Celery tasks that call asyncio.run() explicitly.
-
-    When context_budget_chars is provided (and chunk_size_chars / chunk_max_output_tokens
-    / combine_max_output_tokens are all None), each PDF uses compute_chunk_plan() to
-    dynamically determine chunk count based on model limits and proportional budget.
-    This avoids unnecessary chunking when PDFs fit in a single model call.
-
-    Args:
-        pdf_texts: List of (book_name, full_text, toc) tuples.
-        chunk_size_chars: Max characters per chunk. None = compute from model.
-        combine_chunk_size_chars: Max chars when combining chunk summaries. None = compute.
-        model: Claude model name to use.
-        chunk_max_output_tokens: Max tokens for chunk summary responses. None = compute.
-        combine_max_output_tokens: Max tokens for combined summary responses. None = compute.
-        total_budget_chars: Total character budget shared across all PDFs. When set,
-            each PDF receives a proportional share based on its text length, and word
-            limits are injected into prompts to guarantee combined output fits context window.
-            Alias for context_budget_chars for backward compatibility.
-        context_budget_chars: Preferred name for total context budget. Takes precedence
-            over total_budget_chars when both are provided.
-        max_concurrent: Max parallel Claude API calls per PDF.
-
-    Returns:
-        List of structured summaries, one per PDF, in the same order.
     """
     effective_budget = (
         context_budget_chars if context_budget_chars is not None else total_budget_chars
@@ -606,11 +712,7 @@ def _proportional_budgets(
     pdf_texts: list[tuple[str, str, list]],
     total_budget_chars: int | None,
 ) -> list[int | None]:
-    """Compute per-PDF character budgets proportional to each PDF's text size.
-
-    Returns a list of None values if total_budget_chars is None.
-    Falls back to even split if total text size is zero.
-    """
+    """Compute per-PDF character budgets proportional to each PDF's text size."""
     if total_budget_chars is None:
         return [None] * len(pdf_texts)
     if not pdf_texts:

@@ -955,6 +955,16 @@ SETTING_DEFINITIONS: list[SettingDef] = [
     ),
     # ── Syllabus & Ingestion ───────────────────────────────
     SettingDef(
+        "upload-max-pdf-chars",
+        "syllabus",
+        2_500_000,
+        "integer",
+        "Max PDF size (chars) before chapter-split",
+        "PDFs exceeding this limit are auto-split at chapter boundaries into separate resources. "
+        "Default 2.5M chars (~714K tokens) fits comfortably in Sonnet 4.6's 1M token context.",
+        {"min": 500_000, "max": 3_500_000},
+    ),
+    SettingDef(
         "syllabus-context-budget-chars",
         "syllabus",
         3_500_000,
