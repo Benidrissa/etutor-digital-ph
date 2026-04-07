@@ -336,6 +336,12 @@ async def generate_course_structure(
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
 
+    if course.creation_step in ("generating", "indexing"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A task is already in progress (step: {course.creation_step})",
+        )
+
     task = generate_course_syllabus.delay(
         str(course_id),
         request.estimated_hours or course.estimated_hours,
@@ -442,6 +448,12 @@ async def trigger_rag_indexation(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Course has no rag_collection_id",
+        )
+
+    if course.creation_step in ("generating", "indexing"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A task is already in progress (step: {course.creation_step})",
         )
 
     task = index_course_resources.delay(str(course_id), course.rag_collection_id)
