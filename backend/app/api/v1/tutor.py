@@ -159,6 +159,7 @@ async def chat_with_tutor(
                 tutor_mode=request.tutor_mode,
                 file_content_blocks=file_content_blocks,
                 course_id=request.course_id,
+                locale=request.locale,
             ):
                 yield f"data: {json.dumps(chunk)}\n\n"
 

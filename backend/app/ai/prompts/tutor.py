@@ -58,6 +58,9 @@ def get_socratic_system_prompt(context: TutorContext, rag_chunks: list[dict[str,
     prompt = f"""Tu es un tuteur IA spécialisé en {course_label} pour l'Afrique de l'Ouest.
 {_get_mode_intro(context.tutor_mode)}
 
+## LANGUE DE RÉPONSE OBLIGATOIRE
+{language_instruction}
+
 ## CONTEXTE DE L'APPRENANT
 - Niveau: {level_instruction}
 - Langue: {language_instruction}
@@ -318,9 +321,9 @@ def _get_pedagogical_rules(tutor_mode: str) -> str:
 def _get_language_instruction(language: str) -> str:
     """Get language-specific instruction."""
     if language == "fr":
-        return "Français (langue principale), avec traductions en anglais si nécessaire"
+        return "Français — Tu DOIS répondre ENTIÈREMENT en français. N'utilise PAS l'anglais sauf si l'apprenant le demande explicitement dans son message."
     else:
-        return "English (primary language), with French translations when needed"
+        return "English — You MUST respond ENTIRELY in English. Do NOT use French unless the learner explicitly requests it in their message."
 
 
 def _get_level_instruction(level: int) -> str:
