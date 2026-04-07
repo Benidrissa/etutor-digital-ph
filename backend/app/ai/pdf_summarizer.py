@@ -5,7 +5,7 @@ preserves content from every page of every PDF, regardless of size.
 
 Algorithm:
   1. Split each PDF's extracted text into chunks that fit comfortably in the
-     model context window (default: 80 000 chars ≈ ~20 000 tokens).
+     model context window (computed dynamically from model capabilities).
   2. Generate a structured summary for each chunk (topics, concepts, hierarchy).
   3. Combine chunk summaries into one unified per-PDF summary.
   4. Return all per-PDF summaries joined for use as syllabus context.
@@ -16,6 +16,11 @@ For very large PDFs the combine step itself may be chunked (2-level hierarchy).
 Budget-aware mode (target_chars):
   When target_chars is provided, word limits are injected into prompts and
   max_tokens is capped so outputs are predictably sized to fit the context window.
+
+Dynamic defaults:
+  All chunk/token limits are computed from model capabilities via model_registry.
+  Platform settings override these computed values for admin fine-tuning.
+  Pass None to any size/token parameter to use the computed default.
 """
 
 from __future__ import annotations
@@ -25,13 +30,11 @@ import os
 
 import structlog
 
+from app.ai.model_registry import get_model_caps
+
 logger = structlog.get_logger(__name__)
 
-_CHUNK_SIZE_CHARS = 80_000
-_COMBINE_CHUNK_SIZE = 60_000
 _SUMMARIZER_MODEL = "claude-sonnet-4-6"
-_CHUNK_MAX_TOKENS = 4096
-_COMBINE_MAX_TOKENS = 8192
 _CHARS_PER_WORD = 5
 
 _CHUNK_SUMMARY_SYSTEM = (
@@ -73,7 +76,28 @@ _COMBINE_PROMPT = (
 )
 
 
-def _split_into_chunks(text: str, chunk_size: int = _CHUNK_SIZE_CHARS) -> list[str]:
+def _compute_defaults(model: str) -> dict:
+    """Compute chunk/token defaults dynamically from model capabilities.
+
+    For claude-sonnet-4-6 (1M ctx, 64K out, 3.5 cpt):
+      chunk_size_chars        = min(1_000_000 * 0.5 * 3.5, 500_000) = 500_000
+      combine_chunk_size_chars= min(1_000_000 * 0.4 * 3.5, 400_000) = 400_000
+      chunk_max_output_tokens = min(64_000 // 4, 16_000)            = 16_000
+      combine_max_output_tokens = min(64_000 // 2, 32_000)          = 32_000
+    """
+    caps = get_model_caps(model)
+    ctx = caps["context_window_tokens"]
+    max_out = caps["max_output_tokens"]
+    cpt = caps["chars_per_token"]
+    return {
+        "chunk_size_chars": min(int(ctx * 0.5 * cpt), 500_000),
+        "combine_chunk_size_chars": min(int(ctx * 0.4 * cpt), 400_000),
+        "chunk_max_output_tokens": min(max_out // 4, 16_000),
+        "combine_max_output_tokens": min(max_out // 2, 32_000),
+    }
+
+
+def _split_into_chunks(text: str, chunk_size: int) -> list[str]:
     """Split text into chunks of at most chunk_size chars, breaking on newlines."""
     if len(text) <= chunk_size:
         return [text]
@@ -100,7 +124,7 @@ async def _summarize_chunk(
     chunk_num: int,
     total_chunks: int,
     model: str = _SUMMARIZER_MODEL,
-    max_tokens: int = _CHUNK_MAX_TOKENS,
+    max_tokens: int = 16_000,
     target_words: int | None = None,
 ) -> str:
     """Generate a structured summary for a single chunk using Claude."""
@@ -133,23 +157,24 @@ async def _combine_summaries(
     client,
     book_name: str,
     summaries: list[str],
-    combine_chunk_size: int = _COMBINE_CHUNK_SIZE,
+    combine_chunk_size: int,
     model: str = _SUMMARIZER_MODEL,
-    max_tokens: int = _COMBINE_MAX_TOKENS,
+    max_tokens: int = 32_000,
     target_words: int | None = None,
+    max_concurrent: int = 5,
 ) -> str:
     """Combine chunk summaries into a single unified per-PDF summary.
 
     If the concatenated summaries are too large for one call, they are
     combined hierarchically (in groups) before the final merge.
+    Intermediate combine batches are processed concurrently up to max_concurrent.
     """
     joined = "\n\n---\n\n".join(f"[Section {i + 1}]\n{s}" for i, s in enumerate(summaries))
 
     if len(joined) <= combine_chunk_size:
         batches = [joined]
     else:
-        batch_chunks = _split_into_chunks(joined, combine_chunk_size)
-        batches = batch_chunks
+        batches = _split_into_chunks(joined, combine_chunk_size)
 
     word_limit_instruction = (
         f"\n\nThe final unified summary must be under {target_words} words total."
@@ -174,26 +199,33 @@ async def _combine_summaries(
         )
         return response.content[0].text.strip()
 
-    intermediate: list[str] = []
-    for i, batch in enumerate(batches):
-        prompt = _COMBINE_PROMPT.format(
-            book_name=book_name,
-            analyses=batch,
-            word_limit_instruction=word_limit_instruction,
-        )
-        response = await client.messages.create(
-            model=model,
-            max_tokens=adjusted_max_tokens,
-            system=_COMBINE_SYSTEM,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        intermediate.append(response.content[0].text.strip())
-        logger.debug(
-            "Intermediate combine done",
-            book=book_name,
-            batch=i + 1,
-            total_batches=len(batches),
-        )
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def _bounded_combine(i: int, batch: str) -> str:
+        async with semaphore:
+            prompt = _COMBINE_PROMPT.format(
+                book_name=book_name,
+                analyses=batch,
+                word_limit_instruction=word_limit_instruction,
+            )
+            response = await client.messages.create(
+                model=model,
+                max_tokens=adjusted_max_tokens,
+                system=_COMBINE_SYSTEM,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            result = response.content[0].text.strip()
+            logger.debug(
+                "Intermediate combine done",
+                book=book_name,
+                batch=i + 1,
+                total_batches=len(batches),
+            )
+            return result
+
+    intermediate: list[str] = list(
+        await asyncio.gather(*[_bounded_combine(i, b) for i, b in enumerate(batches)])
+    )
 
     final_joined = "\n\n---\n\n".join(f"[Group {i + 1}]\n{s}" for i, s in enumerate(intermediate))
     prompt = _COMBINE_PROMPT.format(
@@ -214,12 +246,13 @@ async def summarize_pdf_for_syllabus(
     book_name: str,
     full_text: str,
     toc: list | None = None,
-    chunk_size: int = _CHUNK_SIZE_CHARS,
-    combine_chunk_size: int = _COMBINE_CHUNK_SIZE,
+    chunk_size_chars: int | None = None,
+    combine_chunk_size_chars: int | None = None,
     model: str = _SUMMARIZER_MODEL,
-    chunk_max_tokens: int = _CHUNK_MAX_TOKENS,
-    combine_max_tokens: int = _COMBINE_MAX_TOKENS,
+    chunk_max_output_tokens: int | None = None,
+    combine_max_output_tokens: int | None = None,
     target_chars: int | None = None,
+    max_concurrent: int = 5,
 ) -> str:
     """Produce a compact, complete knowledge-structure summary of one PDF.
 
@@ -227,14 +260,15 @@ async def summarize_pdf_for_syllabus(
         book_name: Human-readable book title (used in prompts).
         full_text: Complete extracted text of the PDF.
         toc: Optional table of contents list from PyMuPDF get_toc().
-        chunk_size: Max characters per chunk (default 80 000).
-        combine_chunk_size: Max chars when combining chunk summaries.
+        chunk_size_chars: Max characters per chunk. None = compute from model.
+        combine_chunk_size_chars: Max chars when combining chunk summaries. None = compute.
         model: Claude model name to use.
-        chunk_max_tokens: Max tokens for chunk summary responses.
-        combine_max_tokens: Max tokens for combined summary responses.
+        chunk_max_output_tokens: Max tokens for chunk summary responses. None = compute.
+        combine_max_output_tokens: Max tokens for combined summary responses. None = compute.
         target_chars: Target character budget for the final summary. When set,
             word limits are injected into prompts and max_tokens is capped to
             ensure the output fits within the context window.
+        max_concurrent: Max parallel Claude API calls for chunk summarization.
 
     Returns:
         A structured text summary covering 100% of the PDF's content.
@@ -249,6 +283,24 @@ async def summarize_pdf_for_syllabus(
             toc_lines = [f"{'  ' * (lvl - 1)}{title}" for lvl, title, _ in toc]
             return "Table of Contents:\n" + "\n".join(toc_lines[:200])
         return f"[No API key — full text not summarized for {book_name}]"
+
+    defaults = _compute_defaults(model)
+    chunk_size = chunk_size_chars if chunk_size_chars is not None else defaults["chunk_size_chars"]
+    combine_chunk_size = (
+        combine_chunk_size_chars
+        if combine_chunk_size_chars is not None
+        else defaults["combine_chunk_size_chars"]
+    )
+    chunk_max_tokens = (
+        chunk_max_output_tokens
+        if chunk_max_output_tokens is not None
+        else defaults["chunk_max_output_tokens"]
+    )
+    combine_max_tokens = (
+        combine_max_output_tokens
+        if combine_max_output_tokens is not None
+        else defaults["combine_max_output_tokens"]
+    )
 
     import anthropic
 
@@ -274,9 +326,13 @@ async def summarize_pdf_for_syllabus(
         book=book_name,
         total_chars=len(full_text),
         chunk_count=total,
+        chunk_size_chars=chunk_size,
+        chunk_max_output_tokens=chunk_max_tokens,
+        combine_max_output_tokens=combine_max_tokens,
         target_chars=target_chars,
         target_words=target_words,
         target_per_chunk_words=target_per_chunk_words,
+        max_concurrent=max_concurrent,
     )
 
     if total == 1:
@@ -298,26 +354,32 @@ async def summarize_pdf_for_syllabus(
         )
         return summary
 
-    summaries: list[str] = []
-    for i, chunk in enumerate(chunks):
-        chunk_summary = await _summarize_chunk(
-            client,
-            book_name,
-            chunk,
-            i + 1,
-            total,
-            model=model,
-            max_tokens=chunk_max_tokens,
-            target_words=target_per_chunk_words,
-        )
-        summaries.append(chunk_summary)
-        logger.info(
-            "Chunk summarized",
-            book=book_name,
-            chunk=i + 1,
-            total=total,
-            summary_chars=len(chunk_summary),
-        )
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def _bounded_chunk(i: int, chunk: str) -> str:
+        async with semaphore:
+            result = await _summarize_chunk(
+                client,
+                book_name,
+                chunk,
+                i + 1,
+                total,
+                model=model,
+                max_tokens=chunk_max_tokens,
+                target_words=target_per_chunk_words,
+            )
+            logger.info(
+                "Chunk summarized",
+                book=book_name,
+                chunk=i + 1,
+                total=total,
+                summary_chars=len(result),
+            )
+            return result
+
+    summaries: list[str] = list(
+        await asyncio.gather(*[_bounded_chunk(i, c) for i, c in enumerate(chunks)])
+    )
 
     combined = await _combine_summaries(
         client,
@@ -327,6 +389,7 @@ async def summarize_pdf_for_syllabus(
         model=model,
         max_tokens=combine_max_tokens,
         target_words=target_words,
+        max_concurrent=max_concurrent,
     )
     logger.info(
         "Multi-pass summarization complete",
@@ -341,12 +404,13 @@ async def summarize_pdf_for_syllabus(
 
 def summarize_pdfs_sync(
     pdf_texts: list[tuple[str, str, list]],
-    chunk_size: int = _CHUNK_SIZE_CHARS,
-    combine_chunk_size: int = _COMBINE_CHUNK_SIZE,
+    chunk_size_chars: int | None = None,
+    combine_chunk_size_chars: int | None = None,
     model: str = _SUMMARIZER_MODEL,
-    chunk_max_tokens: int = _CHUNK_MAX_TOKENS,
-    combine_max_tokens: int = _COMBINE_MAX_TOKENS,
+    chunk_max_output_tokens: int | None = None,
+    combine_max_output_tokens: int | None = None,
     total_budget_chars: int | None = None,
+    max_concurrent: int = 5,
 ) -> list[str]:
     """Synchronous wrapper — summarize a list of (book_name, full_text, toc) tuples.
 
@@ -354,26 +418,27 @@ def summarize_pdfs_sync(
 
     Args:
         pdf_texts: List of (book_name, full_text, toc) tuples.
-        chunk_size: Max characters per chunk.
-        combine_chunk_size: Max chars when combining chunk summaries.
+        chunk_size_chars: Max characters per chunk. None = compute from model.
+        combine_chunk_size_chars: Max chars when combining chunk summaries. None = compute.
         model: Claude model name to use.
-        chunk_max_tokens: Max tokens for chunk summary responses.
-        combine_max_tokens: Max tokens for combined summary responses.
-        total_budget_chars: Total character budget shared across all PDFs. When
-            set, each PDF receives an equal share and word limits are injected
-            into prompts to guarantee the combined output fits the context window.
+        chunk_max_output_tokens: Max tokens for chunk summary responses. None = compute.
+        combine_max_output_tokens: Max tokens for combined summary responses. None = compute.
+        total_budget_chars: Total character budget shared across all PDFs. When set,
+            each PDF receives a proportional share based on its text length, and word
+            limits are injected into prompts to guarantee combined output fits context window.
+        max_concurrent: Max parallel Claude API calls per PDF.
 
     Returns:
         List of structured summaries, one per PDF, in the same order.
     """
-    per_pdf_budget: int | None = None
-    if total_budget_chars is not None and len(pdf_texts) > 0:
-        per_pdf_budget = total_budget_chars // len(pdf_texts)
+    per_pdf_budgets: list[int | None] = _proportional_budgets(pdf_texts, total_budget_chars)
+
+    if total_budget_chars is not None:
         logger.info(
             "Budget-aware summarization",
             total_budget_chars=total_budget_chars,
             num_pdfs=len(pdf_texts),
-            per_pdf_budget=per_pdf_budget,
+            per_pdf_budgets=per_pdf_budgets,
         )
 
     async def _run_all():
@@ -382,15 +447,37 @@ def summarize_pdfs_sync(
                 name,
                 text,
                 toc,
-                chunk_size=chunk_size,
-                combine_chunk_size=combine_chunk_size,
+                chunk_size_chars=chunk_size_chars,
+                combine_chunk_size_chars=combine_chunk_size_chars,
                 model=model,
-                chunk_max_tokens=chunk_max_tokens,
-                combine_max_tokens=combine_max_tokens,
-                target_chars=per_pdf_budget,
+                chunk_max_output_tokens=chunk_max_output_tokens,
+                combine_max_output_tokens=combine_max_output_tokens,
+                target_chars=budget,
+                max_concurrent=max_concurrent,
             )
-            for name, text, toc in pdf_texts
+            for (name, text, toc), budget in zip(pdf_texts, per_pdf_budgets, strict=True)
         ]
         return await asyncio.gather(*tasks)
 
     return list(asyncio.run(_run_all()))
+
+
+def _proportional_budgets(
+    pdf_texts: list[tuple[str, str, list]],
+    total_budget_chars: int | None,
+) -> list[int | None]:
+    """Compute per-PDF character budgets proportional to each PDF's text size.
+
+    Returns a list of None values if total_budget_chars is None.
+    Falls back to even split if total text size is zero.
+    """
+    if total_budget_chars is None:
+        return [None] * len(pdf_texts)
+    if not pdf_texts:
+        return []
+    sizes = [len(txt) for _, txt, _ in pdf_texts]
+    total = sum(sizes)
+    if total == 0:
+        even = total_budget_chars // len(pdf_texts)
+        return [even] * len(pdf_texts)
+    return [int(total_budget_chars * s / total) for s in sizes]
