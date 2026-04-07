@@ -1,6 +1,7 @@
 from app.domain.models.audit_log import AuditLog
 from app.domain.models.auth import MagicLink, RefreshToken, TOTPSecret
 from app.domain.models.base import Base
+from app.domain.models.chunk_summary import ChunkSummary
 from app.domain.models.content import GeneratedContent
 from app.domain.models.conversation import TutorConversation
 from app.domain.models.course import Course, UserCourseEnrollment
@@ -37,6 +38,7 @@ from app.domain.models.user import User
 __all__ = [
     "AuditLog",
     "Base",
+    "ChunkSummary",
     "Course",
     "CoursePreAssessment",
     "Curriculum",

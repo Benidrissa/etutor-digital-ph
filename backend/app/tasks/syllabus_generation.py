@@ -220,18 +220,34 @@ def generate_course_syllabus(
                     state="GENERATING",
                     meta={"step": "summarizing_pdfs", "progress": 20, "modules_count": 0},
                 )
+                from sqlalchemy import create_engine
+                from sqlalchemy.orm import Session, sessionmaker
+
                 from app.ai.pdf_summarizer import summarize_pdfs_sync
 
-                pdf_summaries = summarize_pdfs_sync(
-                    pdf_full_texts,
-                    chunk_size_chars=pdf_chunk_size,
-                    combine_chunk_size_chars=combine_chunk_size,
-                    model=summarizer_model,
-                    chunk_max_output_tokens=chunk_max_tokens,
-                    combine_max_output_tokens=combine_max_tokens,
-                    total_budget_chars=context_budget,
-                    max_concurrent=max_concurrent,
+                _summary_engine = create_engine(
+                    settings.database_url_sync,
+                    pool_pre_ping=True,
+                    pool_size=2,
+                    max_overflow=0,
                 )
+                _SummarySession = sessionmaker(bind=_summary_engine, class_=Session)
+
+                try:
+                    pdf_summaries = summarize_pdfs_sync(
+                        pdf_full_texts,
+                        chunk_size_chars=pdf_chunk_size,
+                        combine_chunk_size_chars=combine_chunk_size,
+                        model=summarizer_model,
+                        chunk_max_output_tokens=chunk_max_tokens,
+                        combine_max_output_tokens=combine_max_tokens,
+                        total_budget_chars=context_budget,
+                        max_concurrent=max_concurrent,
+                        course_id=course_id,
+                        session_factory=_SummarySession,
+                    )
+                finally:
+                    _summary_engine.dispose()
                 pdf_sections = [
                     f"### {name}\n{summary}"
                     for (name, _text, _toc), summary in zip(

@@ -21,16 +21,27 @@ Dynamic defaults:
   All chunk/token limits are computed from model capabilities via model_registry.
   Platform settings override these computed values for admin fine-tuning.
   Pass None to any size/token parameter to use the computed default.
+
+Chunk-summary caching (P2 resilience):
+  When course_id and session_factory are provided, each chunk summary is saved
+  to the chunk_summaries DB table immediately after generation. On retry,
+  existing summaries are loaded from DB and only missing chunks are re-summarized.
 """
 
 from __future__ import annotations
 
 import asyncio
 import os
+import uuid as _uuid_mod
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import structlog
 
 from app.ai.model_registry import get_model_caps
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 logger = structlog.get_logger(__name__)
 
@@ -115,6 +126,80 @@ def _split_into_chunks(text: str, chunk_size: int) -> list[str]:
         chunks.append(text[start:boundary])
         start = boundary
     return chunks
+
+
+def _load_cached_summaries(
+    session_factory: Callable[[], Session],
+    course_id: str,
+    book_name: str,
+    total_chunks: int,
+) -> dict[int, str]:
+    """Load existing chunk summaries from DB for a given course + book.
+
+    Returns a dict mapping chunk_index → summary_text.
+    Only returns entries matching the current total_chunks to avoid stale data.
+    """
+    from app.domain.models.chunk_summary import ChunkSummary
+    from sqlalchemy import select
+
+    result: dict[int, str] = {}
+    try:
+        with session_factory() as session:
+            rows = session.execute(
+                select(ChunkSummary).where(
+                    ChunkSummary.course_id == _uuid_mod.UUID(course_id),
+                    ChunkSummary.book_name == book_name,
+                    ChunkSummary.total_chunks == total_chunks,
+                )
+            ).scalars().all()
+            for row in rows:
+                result[row.chunk_index] = row.summary_text
+    except Exception as exc:
+        logger.warning("Failed to load cached chunk summaries", error=str(exc))
+    return result
+
+
+def _save_chunk_summary(
+    session_factory: Callable[[], Session],
+    course_id: str,
+    book_name: str,
+    chunk_index: int,
+    total_chunks: int,
+    summary_text: str,
+    model: str,
+) -> None:
+    """Persist a single chunk summary to DB (upsert via delete+insert)."""
+    from app.domain.models.chunk_summary import ChunkSummary
+    from sqlalchemy import delete
+
+    try:
+        with session_factory() as session:
+            session.execute(
+                delete(ChunkSummary).where(
+                    ChunkSummary.course_id == _uuid_mod.UUID(course_id),
+                    ChunkSummary.book_name == book_name,
+                    ChunkSummary.chunk_index == chunk_index,
+                )
+            )
+            session.add(
+                ChunkSummary(
+                    course_id=_uuid_mod.UUID(course_id),
+                    book_name=book_name,
+                    chunk_index=chunk_index,
+                    total_chunks=total_chunks,
+                    summary_text=summary_text,
+                    model=model,
+                )
+            )
+            session.commit()
+    except Exception as exc:
+        logger.warning(
+            "Failed to save chunk summary",
+            course_id=course_id,
+            book=book_name,
+            chunk=chunk_index,
+            error=str(exc),
+        )
 
 
 async def _summarize_chunk(
@@ -257,6 +342,8 @@ async def summarize_pdf_for_syllabus(
     target_chars: int | None = None,
     max_concurrent: int = 5,
     _shared_semaphore: asyncio.Semaphore | None = None,
+    course_id: str | None = None,
+    session_factory: Callable[[], Session] | None = None,
 ) -> str:
     """Produce a compact, complete knowledge-structure summary of one PDF.
 
@@ -273,6 +360,8 @@ async def summarize_pdf_for_syllabus(
             word limits are injected into prompts and max_tokens is capped to
             ensure the output fits within the context window.
         max_concurrent: Max parallel Claude API calls for chunk summarization.
+        course_id: When provided (with session_factory), enables chunk summary caching.
+        session_factory: Sync SQLAlchemy session factory for DB persistence.
 
     Returns:
         A structured text summary covering 100% of the PDF's content.
@@ -325,6 +414,19 @@ async def summarize_pdf_for_syllabus(
         target_words = target_chars // _CHARS_PER_WORD
         target_per_chunk_words = max(100, target_words // total)
 
+    cached: dict[int, str] = {}
+    caching_enabled = course_id is not None and session_factory is not None
+    if caching_enabled:
+        cached = _load_cached_summaries(session_factory, course_id, book_name, total)
+        if cached:
+            logger.info(
+                "Loaded cached chunk summaries",
+                book=book_name,
+                cached_count=len(cached),
+                total_chunks=total,
+                missing=total - len(cached),
+            )
+
     logger.info(
         "Starting multi-pass summarization",
         book=book_name,
@@ -337,19 +439,28 @@ async def summarize_pdf_for_syllabus(
         target_words=target_words,
         target_per_chunk_words=target_per_chunk_words,
         max_concurrent=max_concurrent,
+        cached_chunks=len(cached),
     )
 
     if total == 1:
-        summary = await _summarize_chunk(
-            client,
-            book_name,
-            chunks[0],
-            1,
-            1,
-            model=model,
-            max_tokens=chunk_max_tokens,
-            target_words=target_words,
-        )
+        if 0 in cached:
+            logger.info("Single-chunk summary loaded from cache", book=book_name)
+            summary = cached[0]
+        else:
+            summary = await _summarize_chunk(
+                client,
+                book_name,
+                chunks[0],
+                1,
+                1,
+                model=model,
+                max_tokens=chunk_max_tokens,
+                target_words=target_words,
+            )
+            if caching_enabled:
+                _save_chunk_summary(
+                    session_factory, course_id, book_name, 0, total, summary, model
+                )
         logger.info(
             "Single-chunk summary done",
             book=book_name,
@@ -363,6 +474,14 @@ async def summarize_pdf_for_syllabus(
     )
 
     async def _bounded_chunk(i: int, chunk: str) -> str:
+        if i in cached:
+            logger.info(
+                "Chunk summary loaded from cache — skipping Claude call",
+                book=book_name,
+                chunk=i + 1,
+                total=total,
+            )
+            return cached[i]
         async with semaphore:
             result = await _summarize_chunk(
                 client,
@@ -381,6 +500,10 @@ async def summarize_pdf_for_syllabus(
                 total=total,
                 summary_chars=len(result),
             )
+            if caching_enabled:
+                _save_chunk_summary(
+                    session_factory, course_id, book_name, i, total, result, model
+                )
             return result
 
     summaries: list[str] = list(
@@ -418,6 +541,8 @@ def summarize_pdfs_sync(
     combine_max_output_tokens: int | None = None,
     total_budget_chars: int | None = None,
     max_concurrent: int = 5,
+    course_id: str | None = None,
+    session_factory: Callable[[], Session] | None = None,
 ) -> list[str]:
     """Synchronous wrapper — summarize a list of (book_name, full_text, toc) tuples.
 
@@ -434,6 +559,8 @@ def summarize_pdfs_sync(
             each PDF receives a proportional share based on its text length, and word
             limits are injected into prompts to guarantee combined output fits context window.
         max_concurrent: Max parallel Claude API calls per PDF.
+        course_id: When provided (with session_factory), enables chunk summary caching.
+        session_factory: Sync SQLAlchemy session factory for DB persistence.
 
     Returns:
         List of structured summaries, one per PDF, in the same order.
@@ -463,6 +590,8 @@ def summarize_pdfs_sync(
                 target_chars=budget,
                 max_concurrent=max_concurrent,
                 _shared_semaphore=shared_semaphore,
+                course_id=course_id,
+                session_factory=session_factory,
             )
             for (name, text, toc), budget in zip(pdf_texts, per_pdf_budgets, strict=True)
         ]
