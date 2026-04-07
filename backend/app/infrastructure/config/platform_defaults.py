@@ -1028,7 +1028,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
     SettingDef(
         "syllabus-combine-max-output-tokens",
         "syllabus",
-        32_000,
+        64_000,
         "integer",
         "Combined summary max output tokens",
         "Max output tokens for combined summary response. 0 = compute from model.",

@@ -80,10 +80,10 @@ def _compute_defaults(model: str) -> dict:
     """Compute chunk/token defaults dynamically from model capabilities.
 
     For claude-sonnet-4-6 (1M ctx, 64K out, 3.5 cpt):
-      chunk_size_chars        = min(1_000_000 * 0.5 * 3.5, 500_000) = 500_000
-      combine_chunk_size_chars= min(1_000_000 * 0.4 * 3.5, 400_000) = 400_000
-      chunk_max_output_tokens = min(64_000 // 4, 16_000)            = 16_000
-      combine_max_output_tokens = min(64_000 // 2, 32_000)          = 32_000
+      chunk_size_chars          = min(1_000_000 * 0.5 * 3.5, 500_000) = 500_000
+      combine_chunk_size_chars  = min(1_000_000 * 0.4 * 3.5, 400_000) = 400_000
+      chunk_max_output_tokens   = min(64_000 // 4, 16_000)             = 16_000
+      combine_max_output_tokens = min(64_000, 64_000)                  = 64_000
     """
     caps = get_model_caps(model)
     ctx = caps["context_window_tokens"]
@@ -93,7 +93,7 @@ def _compute_defaults(model: str) -> dict:
         "chunk_size_chars": min(int(ctx * 0.5 * cpt), 500_000),
         "combine_chunk_size_chars": min(int(ctx * 0.4 * cpt), 400_000),
         "chunk_max_output_tokens": min(max_out // 4, 16_000),
-        "combine_max_output_tokens": min(max_out // 2, 32_000),
+        "combine_max_output_tokens": min(max_out, 64_000),
     }
 
 
@@ -159,9 +159,10 @@ async def _combine_summaries(
     summaries: list[str],
     combine_chunk_size: int,
     model: str = _SUMMARIZER_MODEL,
-    max_tokens: int = 32_000,
+    max_tokens: int = 64_000,
     target_words: int | None = None,
     max_concurrent: int = 5,
+    _shared_semaphore: asyncio.Semaphore | None = None,
 ) -> str:
     """Combine chunk summaries into a single unified per-PDF summary.
 
@@ -199,7 +200,9 @@ async def _combine_summaries(
         )
         return response.content[0].text.strip()
 
-    semaphore = asyncio.Semaphore(max_concurrent)
+    semaphore = (
+        _shared_semaphore if _shared_semaphore is not None else asyncio.Semaphore(max_concurrent)
+    )
 
     async def _bounded_combine(i: int, batch: str) -> str:
         async with semaphore:
@@ -253,6 +256,7 @@ async def summarize_pdf_for_syllabus(
     combine_max_output_tokens: int | None = None,
     target_chars: int | None = None,
     max_concurrent: int = 5,
+    _shared_semaphore: asyncio.Semaphore | None = None,
 ) -> str:
     """Produce a compact, complete knowledge-structure summary of one PDF.
 
@@ -354,7 +358,9 @@ async def summarize_pdf_for_syllabus(
         )
         return summary
 
-    semaphore = asyncio.Semaphore(max_concurrent)
+    semaphore = (
+        _shared_semaphore if _shared_semaphore is not None else asyncio.Semaphore(max_concurrent)
+    )
 
     async def _bounded_chunk(i: int, chunk: str) -> str:
         async with semaphore:
@@ -390,6 +396,7 @@ async def summarize_pdf_for_syllabus(
         max_tokens=combine_max_tokens,
         target_words=target_words,
         max_concurrent=max_concurrent,
+        _shared_semaphore=semaphore,
     )
     logger.info(
         "Multi-pass summarization complete",
@@ -442,6 +449,7 @@ def summarize_pdfs_sync(
         )
 
     async def _run_all():
+        shared_semaphore = asyncio.Semaphore(max_concurrent)
         tasks = [
             summarize_pdf_for_syllabus(
                 name,
@@ -454,6 +462,7 @@ def summarize_pdfs_sync(
                 combine_max_output_tokens=combine_max_output_tokens,
                 target_chars=budget,
                 max_concurrent=max_concurrent,
+                _shared_semaphore=shared_semaphore,
             )
             for (name, text, toc), budget in zip(pdf_texts, per_pdf_budgets, strict=True)
         ]

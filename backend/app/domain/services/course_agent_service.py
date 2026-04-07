@@ -56,6 +56,79 @@ class CourseAgentService:
             logger.warning("Failed to apply admin syllabus prompt", error=str(e))
             return None
 
+    def _build_prompt(
+        self,
+        title_fr: str,
+        title_en: str,
+        domains_str: str,
+        levels_str: str,
+        audience_str: str,
+        estimated_hours: int,
+        resource_block: str,
+    ) -> str:
+        """Build the syllabus generation prompt, using admin override if available."""
+        admin = self._get_admin_prompt(
+            course_title=f"{title_fr} / {title_en}",
+            course_domain=domains_str,
+            level=levels_str,
+            estimated_hours=str(estimated_hours),
+            resource_text=resource_block,
+        )
+        if admin:
+            return admin
+        return (
+            "You are an expert instructional designer specializing in "
+            "bilingual (FR/EN) adaptive e-learning. You design curricula "
+            "using Bloom's taxonomy, Knowles' andragogy, the ADDIE model, "
+            "and spiral learning.\n\n"
+            f"Create a complete course syllabus for:\n"
+            f"- Title FR: {title_fr}\n"
+            f"- Title EN: {title_en}\n"
+            f"- Domain(s): {domains_str}\n"
+            f"- Level(s): {levels_str}\n"
+            f"- Target audience: {audience_str}\n"
+            f"- Estimated total hours: {estimated_hours}\n\n"
+            f"{resource_block}\n\n"
+            "## Design principles (mandatory)\n"
+            "- Progressive complexity: start with foundational concepts "
+            "(remember/understand), build to applied skills "
+            "(apply/analyze), end with expert synthesis "
+            "(evaluate/create)\n"
+            "- Each module must be self-contained (10-25h) with clear "
+            "learning objectives\n"
+            "- Units are micro-learning (10-15 min each), 3-6 lessons "
+            "per module\n"
+            "- Every module includes: lessons, a formative quiz per "
+            "lesson, a summative module quiz (20 questions, 80% pass), "
+            "flashcards (20-40 bilingual cards), and a practical case "
+            "study contextualized to the target audience\n"
+            "- Bilingual: all text in both FR and EN\n\n"
+            "## Output format\n"
+            "Return a JSON array of modules. Each module must have:\n"
+            "{\n"
+            '  "module_number": int,\n'
+            '  "title_fr": str, "title_en": str,\n'
+            '  "description_fr": str, "description_en": str,\n'
+            '  "estimated_hours": int,\n'
+            '  "bloom_level": "remember"|"understand"|"apply"|'
+            '"analyze"|"evaluate"|"create",\n'
+            '  "learning_objectives_fr": [str], '
+            '"learning_objectives_en": [str],\n'
+            '  "units": [\n'
+            '    {"title_fr": str, "title_en": str, '
+            '"type": "lesson"|"quiz"|"case-study",\n'
+            '     "description_fr": str, "description_en": str}\n'
+            "  ],\n"
+            '  "quiz_topics_fr": [str], '
+            '"quiz_topics_en": [str],\n'
+            '  "flashcard_categories_fr": [str], '
+            '"flashcard_categories_en": [str],\n'
+            '  "case_study_fr": str, "case_study_en": str\n'
+            "}\n\n"
+            "Return ONLY valid JSON, no markdown fences, "
+            "no explanation."
+        )
+
     async def generate_course_structure(
         self,
         title_fr: str,
@@ -90,82 +163,29 @@ class CourseAgentService:
             levels_str = ", ".join(course_level) if course_level else "All levels"
             audience_str = ", ".join(audience_type) if audience_type else "Professionals"
 
-            # Build resource context block for PDF content
-            resource_block = ""
-            if resource_text:
-                resource_block = (
+            def _make_resource_block(text: str | None) -> str:
+                if not text:
+                    return ""
+                return (
                     "## Reference materials (full text)\n"
                     "The following is the complete extracted text from the course's "
                     "reference materials. You MUST base the syllabus on this content — "
                     "every module and unit should map to actual chapters, topics, and "
                     "concepts found in these materials. Do NOT invent topics that are "
                     "not covered in the references.\n\n"
-                    f"{resource_text}"
+                    f"{text}"
                 )
 
-            # Check for admin-customized prompt
-            prompt = self._get_admin_prompt(
-                course_title=f"{title_fr} / {title_en}",
-                course_domain=domains_str,
-                level=levels_str,
-                estimated_hours=str(estimated_hours),
-                resource_text=resource_block,
+            resource_block = _make_resource_block(resource_text)
+            prompt = self._build_prompt(
+                title_fr,
+                title_en,
+                domains_str,
+                levels_str,
+                audience_str,
+                estimated_hours,
+                resource_block,
             )
-
-            if not prompt:
-                # Fallback to built-in prompt
-                prompt = (
-                    "You are an expert instructional designer specializing in "
-                    "bilingual (FR/EN) adaptive e-learning. You design curricula "
-                    "using Bloom's taxonomy, Knowles' andragogy, the ADDIE model, "
-                    "and spiral learning.\n\n"
-                    f"Create a complete course syllabus for:\n"
-                    f"- Title FR: {title_fr}\n"
-                    f"- Title EN: {title_en}\n"
-                    f"- Domain(s): {domains_str}\n"
-                    f"- Level(s): {levels_str}\n"
-                    f"- Target audience: {audience_str}\n"
-                    f"- Estimated total hours: {estimated_hours}\n\n"
-                    f"{resource_block}\n\n"
-                    "## Design principles (mandatory)\n"
-                    "- Progressive complexity: start with foundational concepts "
-                    "(remember/understand), build to applied skills "
-                    "(apply/analyze), end with expert synthesis "
-                    "(evaluate/create)\n"
-                    "- Each module must be self-contained (10-25h) with clear "
-                    "learning objectives\n"
-                    "- Units are micro-learning (10-15 min each), 3-6 lessons "
-                    "per module\n"
-                    "- Every module includes: lessons, a formative quiz per "
-                    "lesson, a summative module quiz (20 questions, 80% pass), "
-                    "flashcards (20-40 bilingual cards), and a practical case "
-                    "study contextualized to the target audience\n"
-                    "- Bilingual: all text in both FR and EN\n\n"
-                    "## Output format\n"
-                    "Return a JSON array of modules. Each module must have:\n"
-                    "{\n"
-                    '  "module_number": int,\n'
-                    '  "title_fr": str, "title_en": str,\n'
-                    '  "description_fr": str, "description_en": str,\n'
-                    '  "estimated_hours": int,\n'
-                    '  "bloom_level": "remember"|"understand"|"apply"|'
-                    '"analyze"|"evaluate"|"create",\n'
-                    '  "learning_objectives_fr": [str], '
-                    '"learning_objectives_en": [str],\n'
-                    '  "units": [\n'
-                    '    {"title_fr": str, "title_en": str, '
-                    '"type": "lesson"|"quiz"|"case-study",\n'
-                    '     "description_fr": str, "description_en": str}\n'
-                    "  ],\n"
-                    '  "quiz_topics_fr": [str], '
-                    '"quiz_topics_en": [str],\n'
-                    '  "flashcard_categories_fr": [str], '
-                    '"flashcard_categories_en": [str],\n'
-                    '  "case_study_fr": str, "case_study_en": str\n'
-                    "}\n\n"
-                    "Return ONLY valid JSON, no markdown fences, "
-                    "no explanation."
-                )
 
             import json
 
@@ -180,72 +200,15 @@ class CourseAgentService:
                     "Truncated resource_text to fit context window",
                     excess_chars=excess_chars,
                 )
-                resource_block = (
-                    "## Reference materials (full text)\n"
-                    "The following is the complete extracted text from the course's "
-                    "reference materials. You MUST base the syllabus on this content — "
-                    "every module and unit should map to actual chapters, topics, and "
-                    "concepts found in these materials. Do NOT invent topics that are "
-                    "not covered in the references.\n\n"
-                    f"{resource_text}"
-                )
-                prompt = self._get_admin_prompt(
-                    course_title=f"{title_fr} / {title_en}",
-                    course_domain=domains_str,
-                    level=levels_str,
-                    estimated_hours=str(estimated_hours),
-                    resource_text=resource_block,
-                ) or (
-                    "You are an expert instructional designer specializing in "
-                    "bilingual (FR/EN) adaptive e-learning. You design curricula "
-                    "using Bloom's taxonomy, Knowles' andragogy, the ADDIE model, "
-                    "and spiral learning.\n\n"
-                    f"Create a complete course syllabus for:\n"
-                    f"- Title FR: {title_fr}\n"
-                    f"- Title EN: {title_en}\n"
-                    f"- Domain(s): {domains_str}\n"
-                    f"- Level(s): {levels_str}\n"
-                    f"- Target audience: {audience_str}\n"
-                    f"- Estimated total hours: {estimated_hours}\n\n"
-                    f"{resource_block}\n\n"
-                    "## Design principles (mandatory)\n"
-                    "- Progressive complexity: start with foundational concepts "
-                    "(remember/understand), build to applied skills "
-                    "(apply/analyze), end with expert synthesis "
-                    "(evaluate/create)\n"
-                    "- Each module must be self-contained (10-25h) with clear "
-                    "learning objectives\n"
-                    "- Units are micro-learning (10-15 min each), 3-6 lessons "
-                    "per module\n"
-                    "- Every module includes: lessons, a formative quiz per "
-                    "lesson, a summative module quiz (20 questions, 80% pass), "
-                    "flashcards (20-40 bilingual cards), and a practical case "
-                    "study contextualized to the target audience\n"
-                    "- Bilingual: all text in both FR and EN\n\n"
-                    "## Output format\n"
-                    "Return a JSON array of modules. Each module must have:\n"
-                    "{\n"
-                    '  "module_number": int,\n'
-                    '  "title_fr": str, "title_en": str,\n'
-                    '  "description_fr": str, "description_en": str,\n'
-                    '  "estimated_hours": int,\n'
-                    '  "bloom_level": "remember"|"understand"|"apply"|'
-                    '"analyze"|"evaluate"|"create",\n'
-                    '  "learning_objectives_fr": [str], '
-                    '"learning_objectives_en": [str],\n'
-                    '  "units": [\n'
-                    '    {"title_fr": str, "title_en": str, '
-                    '"type": "lesson"|"quiz"|"case-study",\n'
-                    '     "description_fr": str, "description_en": str}\n'
-                    "  ],\n"
-                    '  "quiz_topics_fr": [str], '
-                    '"quiz_topics_en": [str],\n'
-                    '  "flashcard_categories_fr": [str], '
-                    '"flashcard_categories_en": [str],\n'
-                    '  "case_study_fr": str, "case_study_en": str\n'
-                    "}\n\n"
-                    "Return ONLY valid JSON, no markdown fences, "
-                    "no explanation."
+                resource_block = _make_resource_block(resource_text)
+                prompt = self._build_prompt(
+                    title_fr,
+                    title_en,
+                    domains_str,
+                    levels_str,
+                    audience_str,
+                    estimated_hours,
+                    resource_block,
                 )
 
             # Use streaming to avoid timeout with large max_tokens

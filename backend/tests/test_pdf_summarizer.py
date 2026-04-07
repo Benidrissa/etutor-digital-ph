@@ -83,7 +83,7 @@ class TestComputeDefaults:
     def test_haiku_returns_caps(self):
         defaults = _compute_defaults("claude-haiku-4-5")
         assert defaults["chunk_max_output_tokens"] <= 16_000
-        assert defaults["combine_max_output_tokens"] <= 32_000
+        assert defaults["combine_max_output_tokens"] <= 64_000
 
     def test_all_values_are_positive(self):
         for model in ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5", "_default"]:
