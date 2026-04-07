@@ -501,11 +501,18 @@
       "description": "Parlez-nous de votre parcours professionnel",
       "selectRole": "Sélectionnez votre rôle",
       "roles": {
+        "eleve": "Élève (pré-universitaire)",
+        "etudiant": "Étudiant",
+        "universitaire": "Universitaire",
         "medecin": "Médecin",
         "infirmier": "Infirmier",
         "data-analyst": "Analyste de données",
-        "etudiant": "Étudiant",
         "cadre": "Cadre/Administrateur",
+        "consultant": "Consultant",
+        "commercant": "Commerçant",
+        "entrepreneur": "Entrepreneur",
+        "coach": "Coach",
+        "influencer": "Influenceur",
         "autre": "Autre"
       }
     },
