@@ -33,9 +33,7 @@ class Curriculum(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    courses: Mapped[list[Course]] = relationship(
-        secondary="curriculum_courses", lazy="selectin"
-    )
+    courses: Mapped[list[Course]] = relationship(secondary="curriculum_courses", lazy="selectin")
     creator: Mapped[User | None] = relationship(foreign_keys=[created_by])
 
 

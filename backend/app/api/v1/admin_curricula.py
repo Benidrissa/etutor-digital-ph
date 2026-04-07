@@ -86,16 +86,18 @@ def _curriculum_to_response(curriculum: Curriculum) -> CurriculumResponse:
 def _curriculum_to_detail_response(curriculum: Curriculum) -> CurriculumDetailResponse:
     base = _curriculum_to_response(curriculum)
     courses_data = []
-    for course in (curriculum.courses or []):
-        courses_data.append({
-            "id": str(course.id),
-            "slug": course.slug,
-            "title_fr": course.title_fr,
-            "title_en": course.title_en,
-            "status": course.status,
-            "module_count": course.module_count,
-            "estimated_hours": course.estimated_hours,
-        })
+    for course in curriculum.courses or []:
+        courses_data.append(
+            {
+                "id": str(course.id),
+                "slug": course.slug,
+                "title_fr": course.title_fr,
+                "title_en": course.title_en,
+                "status": course.status,
+                "module_count": course.module_count,
+                "estimated_hours": course.estimated_hours,
+            }
+        )
     return CurriculumDetailResponse(**base.model_dump(), courses=courses_data)
 
 
@@ -270,9 +272,7 @@ async def assign_courses(
             )
 
     if course_uuids:
-        courses_result = await db.execute(
-            select(Course).where(Course.id.in_(course_uuids))
-        )
+        courses_result = await db.execute(select(Course).where(Course.id.in_(course_uuids)))
         found_courses = courses_result.scalars().all()
         if len(found_courses) != len(course_uuids):
             raise HTTPException(

@@ -156,9 +156,7 @@ async def list_published_courses(
         try:
             cid = uuid.UUID(curriculum)
             result_c = await db.execute(
-                select(Curriculum).where(
-                    Curriculum.id == cid, Curriculum.status == "published"
-                )
+                select(Curriculum).where(Curriculum.id == cid, Curriculum.status == "published")
             )
             curriculum_obj = result_c.scalar_one_or_none()
         except ValueError:
