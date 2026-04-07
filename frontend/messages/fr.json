@@ -168,7 +168,7 @@
   },
   "Dashboard": {
     "title": "Tableau de bord",
-    "welcome": "Bienvenue sur Tutor",
+    "welcome": "Bienvenue sur Sira",
     "subtitle": "Votre plateforme d'apprentissage en santé publique",
     "streak": "Jours consécutifs",
     "nextReview": "Prochaine révision",
@@ -462,7 +462,7 @@
     "goToModules": "Aller aux modules"
   },
   "Onboarding": {
-    "welcome": "Bienvenue sur Tutor",
+    "welcome": "Bienvenue sur Sira",
     "subtitle": "Configurons votre expérience d'apprentissage personnalisée",
     "step": "Étape {current} de {total}",
     "next": "Suivant",
@@ -518,7 +518,7 @@
     },
     "step4": {
       "title": "Niveau de Compétence",
-      "description": "Comment évalueriez-vous vos connaissances en santé publique ?",
+      "description": "Comment évalueriez-vous votre compétence dans votre domaine ?",
       "selectLevel": "Sélectionnez votre niveau",
       "levels": {
         "debutant": "Débutant",
