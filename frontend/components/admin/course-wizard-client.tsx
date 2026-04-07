@@ -228,6 +228,9 @@ export function CourseWizardClient({
   const [publishSummaryModuleCount, setPublishSummaryModuleCount] = useState<number>(0);
   const [isFetchingPublishSummary, setIsFetchingPublishSummary] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const [showFreshConfirm, setShowFreshConfirm] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [regenerateError, setRegenerateError] = useState<string | null>(null);
   const [isFetchingExistingFiles, setIsFetchingExistingFiles] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -537,6 +540,36 @@ export function CourseWizardClient({
       setIsCreatingCourse(false);
     }
   }, [courseInfo, courseId, getAuthHeaders, t, pendingFiles]);
+
+  const regenerateSyllabus = useCallback(async (mode: "reuse" | "fresh") => {
+    if (!courseId || isGenerating || isRegenerating) return;
+    setIsRegenerating(true);
+    setRegenerateError(null);
+    setGenerateError(null);
+    setGenerateTaskId(null);
+    setGenerateTaskState(null);
+    setGenerationProgress(0);
+    setGenerationStep(undefined);
+    setGenerationStartTime(Date.now());
+    setGenerationElapsed(0);
+    lastProgressValueRef.current = 0;
+    lastProgressTimeRef.current = Date.now();
+    setShowTimeoutWarning(false);
+    setGeneratedModules([]);
+
+    try {
+      const result = await apiFetch<{ task_id: string; status: string }>(
+        `/api/v1/admin/courses/${courseId}/regenerate-syllabus?mode=${mode}`,
+        { method: "POST" }
+      );
+      setGenerateTaskId(result.task_id);
+      setIsGenerating(true);
+    } catch {
+      setRegenerateError(t("generate.regenerateError"));
+    } finally {
+      setIsRegenerating(false);
+    }
+  }, [courseId, isGenerating, isRegenerating, t]);
 
   const generateSyllabus = useCallback(async (force?: boolean) => {
     if (!courseId || isGenerating) return;
@@ -1175,6 +1208,41 @@ export function CourseWizardClient({
                         </div>
                       ))}
                     </div>
+
+                    {!isGenerating && (
+                      <div className="flex flex-col gap-2 pt-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => regenerateSyllabus("reuse")}
+                          disabled={isRegenerating}
+                          className="min-h-[44px] w-full"
+                        >
+                          {isRegenerating ? (
+                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
+                          ) : (
+                            <Sparkles className="mr-2 h-4 w-4" />
+                          )}
+                          {t("generate.regenerate")}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowFreshConfirm(true)}
+                          disabled={isRegenerating}
+                          className="min-h-[44px] w-full border-destructive/50 text-destructive hover:bg-destructive/5 hover:text-destructive"
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          {t("generate.regenerateFresh")}
+                        </Button>
+                        {regenerateError && (
+                          <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                            <AlertCircle className="h-4 w-4 shrink-0" />
+                            {regenerateError}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1461,6 +1529,29 @@ export function CourseWizardClient({
             </Button>
             <Button onClick={handleForceClose}>
               {t("closeWhileRunning.confirmClose")}
+            </Button>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showFreshConfirm} onOpenChange={setShowFreshConfirm}>
+        <AlertDialogContent>
+          <AlertDialogTitle>{t("generate.regenerateFreshConfirmTitle")}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {t("generate.regenerateFreshConfirmDescription")}
+          </AlertDialogDescription>
+          <div className="flex justify-end gap-3 mt-4">
+            <Button variant="outline" onClick={() => setShowFreshConfirm(false)}>
+              {t("generate.regenerateFreshConfirmCancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setShowFreshConfirm(false);
+                regenerateSyllabus("fresh");
+              }}
+            >
+              {t("generate.regenerateFreshConfirmAction")}
             </Button>
           </div>
         </AlertDialogContent>

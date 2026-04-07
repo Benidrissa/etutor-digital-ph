@@ -370,6 +370,85 @@ async def generate_course_structure(
     return {"task_id": task.id, "status": "started"}
 
 
+@router.post("/{course_id}/regenerate-syllabus")
+async def regenerate_course_syllabus(
+    course_id: uuid.UUID,
+    mode: str = "reuse",
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    db=Depends(get_db_session),
+) -> dict:
+    """Regenerate syllabus for an unpublished course with 0 enrollments.
+
+    mode=reuse (default): reuses cached syllabus_context — skips PDF extraction.
+    mode=fresh: clears syllabus_context and re-extracts + re-summarizes from PDFs.
+    """
+    result = await db.execute(select(Course).where(Course.id == course_id))
+    course = result.scalar_one_or_none()
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    if course.status == "published":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot regenerate syllabus for a published course",
+        )
+
+    enroll_count = await db.execute(
+        select(func.count())
+        .select_from(UserCourseEnrollment)
+        .where(UserCourseEnrollment.course_id == course_id)
+    )
+    if enroll_count.scalar_one() > 0:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot regenerate syllabus: course has enrolled learners",
+        )
+
+    if course.creation_step == "generating":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A generation task is already in progress",
+        )
+
+    from app.domain.services.platform_settings_service import SettingsCache
+
+    cache = SettingsCache.instance()
+    hard = int(cache.get("ai-syllabus-hard-time-limit-seconds") or 3600)
+    soft = int(cache.get("ai-syllabus-soft-time-limit-seconds") or 2700)
+
+    cached_resource_text: str | None = None
+
+    if mode == "reuse":
+        if not course.syllabus_context:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No cached syllabus context found. Use mode=fresh to re-extract from PDFs.",
+            )
+        cached_resource_text = course.syllabus_context
+    else:
+        course.syllabus_context = None
+
+    task = generate_course_syllabus.apply_async(
+        args=[str(course_id), course.estimated_hours],
+        kwargs={"cached_resource_text": cached_resource_text},
+        time_limit=hard,
+        soft_time_limit=soft,
+    )
+
+    course.creation_step = "generating"
+    course.syllabus_task_id = task.id
+    await db.commit()
+
+    logger.info(
+        "Syllabus regeneration triggered",
+        course_id=str(course_id),
+        mode=mode,
+        task_id=task.id,
+        admin_id=current_user.id,
+    )
+    return {"task_id": task.id, "status": "started", "mode": mode}
+
+
 @router.get("/{course_id}/generate-status")
 async def get_generate_status(
     course_id: uuid.UUID,

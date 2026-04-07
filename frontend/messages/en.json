@@ -1239,7 +1239,14 @@
         "stepParsingResponse": "Processing AI response...",
         "stepSavingModules": "Saving course structure...",
         "elapsed": "Elapsed: {time}",
-        "timeoutWarning": "This is taking longer than expected. You can wait or try again."
+        "timeoutWarning": "This is taking longer than expected. You can wait or try again.",
+        "regenerate": "Regenerate syllabus",
+        "regenerateFresh": "Discard cache & regenerate",
+        "regenerateFreshConfirmTitle": "Discard cache and regenerate?",
+        "regenerateFreshConfirmDescription": "This will re-analyze all PDFs from scratch. The current module structure will be replaced.",
+        "regenerateFreshConfirmAction": "Discard & regenerate",
+        "regenerateFreshConfirmCancel": "Cancel",
+        "regenerateError": "Failed to regenerate syllabus."
       },
       "index": {
         "title": "RAG Indexation",
