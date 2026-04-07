@@ -65,6 +65,7 @@ class RAGTask(Task):
     rate_limit="2/h",
     time_limit=1800,
     soft_time_limit=1500,
+    ignore_result=True,
 )
 def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict:
     """Index uploaded PDFs for a course into pgvector.

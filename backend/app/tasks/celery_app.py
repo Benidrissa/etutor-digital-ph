@@ -37,6 +37,8 @@ celery_app.conf.update(
     task_eager_propagates=True,
     task_ignore_result=False,
     result_expires=3600,  # 1 hour
+    result_backend_always_retry=True,
+    result_backend_max_retries=3,
     worker_prefetch_multiplier=4,
     task_acks_late=True,
     worker_disable_rate_limits=False,
