@@ -41,11 +41,11 @@ router = APIRouter(prefix="/quiz", tags=["quiz"])
 
 
 async def _check_subscription_or_first_unit(user: AuthenticatedUser, unit_id: str) -> None:
-    """Allow first unit of a module for free; require subscription for others.
+    """Allow free units of a module; require subscription for others.
 
-    If unit_id ends with '-U01' or user is admin → allow.
-    Otherwise checks subscription via SubscriptionService.
-    Falls back to DB ModuleUnit.order_index == 0 check.
+    The number of free units is controlled by the 'subscription-free-units-count' platform
+    setting (default: 2). Admin users always bypass this check.
+    Falls back to DB ModuleUnit.order_index check when unit_id format is unrecognised.
     Raises 403 with code 'subscription_required' if no subscription.
     """
     import uuid as _uuid
@@ -57,7 +57,9 @@ async def _check_subscription_or_first_unit(user: AuthenticatedUser, unit_id: st
     if user.role == "admin":
         return
 
-    if unit_id and unit_id.upper().endswith("-U01"):
+    free_count = SettingsCache.instance().get("subscription-free-units-count", 2)
+    m = re.search(r"-U0*(\d+)$", unit_id.upper()) if unit_id else None
+    if m and int(m.group(1)) <= free_count:
         return
 
     async for session in get_db_session():
@@ -70,7 +72,7 @@ async def _check_subscription_or_first_unit(user: AuthenticatedUser, unit_id: st
                 select(ModuleUnit.order_index).where(ModuleUnit.unit_number == unit_id)
             )
             order = result.scalar_one_or_none()
-            if order is not None and order == 0:
+            if order is not None and order < free_count:
                 return
         break
 
