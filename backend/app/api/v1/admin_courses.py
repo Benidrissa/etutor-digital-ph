@@ -794,6 +794,7 @@ async def trigger_preassessment_generation(
         select(CoursePreAssessment.generation_task_id)
         .where(
             CoursePreAssessment.course_id == course_id,
+            CoursePreAssessment.language == language,
             CoursePreAssessment.generation_task_id.is_not(None),
         )
         .order_by(CoursePreAssessment.created_at.desc())

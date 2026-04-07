@@ -296,10 +296,8 @@ export function CoursePreassessmentSettings({
       en: { ...prev.en, status: 'generating', questions: [] },
     }));
     try {
-      const [frTaskId, enTaskId] = await Promise.all([
-        generateForLang('fr'),
-        generateForLang('en'),
-      ]);
+      const frTaskId = await generateForLang('fr');
+      const enTaskId = await generateForLang('en');
       setLocal((prev) => ({
         ...prev,
         fr: { ...prev.fr, taskId: frTaskId },
