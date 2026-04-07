@@ -37,12 +37,23 @@ type WizardStep = "upload" | "info" | "generate" | "index" | "publish";
 
 const STEPS: WizardStep[] = ["upload", "info", "generate", "index", "publish"];
 
-const WIZARD_STORAGE_KEY = "course_wizard_state";
-
-interface WizardStoredState {
-  courseId: string;
-  step: WizardStep;
-  savedAt: number;
+function mapCreationStepToWizardStep(creationStep: string): WizardStep {
+  switch (creationStep) {
+    case "upload":
+      return "upload";
+    case "info":
+      return "info";
+    case "generating":
+    case "generated":
+      return "generate";
+    case "indexing":
+    case "indexed":
+      return "index";
+    case "published":
+      return "publish";
+    default:
+      return "upload";
+  }
 }
 
 interface UploadedFile {
@@ -91,42 +102,13 @@ interface CourseWizardClientProps {
   onClose: () => void;
   onCourseCreated: () => void;
   resumeCourseId?: string;
-  resumeStep?: WizardStep;
+  resumeCreationStep?: string;
 }
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function saveWizardState(courseId: string, step: WizardStep) {
-  try {
-    const state: WizardStoredState = { courseId, step, savedAt: Date.now() };
-    localStorage.setItem(WIZARD_STORAGE_KEY, JSON.stringify(state));
-  } catch {}
-}
-
-function clearWizardState() {
-  try {
-    localStorage.removeItem(WIZARD_STORAGE_KEY);
-  } catch {}
-}
-
-export function loadWizardState(): WizardStoredState | null {
-  try {
-    const raw = localStorage.getItem(WIZARD_STORAGE_KEY);
-    if (!raw) return null;
-    const state = JSON.parse(raw) as WizardStoredState;
-    const ageMs = Date.now() - state.savedAt;
-    if (ageMs > 24 * 60 * 60 * 1000) {
-      clearWizardState();
-      return null;
-    }
-    return state;
-  } catch {
-    return null;
-  }
 }
 
 function ETALabel({ seconds, t }: { seconds: number | undefined; t: ReturnType<typeof useTranslations> }) {
@@ -139,13 +121,17 @@ export function CourseWizardClient({
   onClose,
   onCourseCreated,
   resumeCourseId,
-  resumeStep,
+  resumeCreationStep,
 }: CourseWizardClientProps) {
   const t = useTranslations("AdminCourses.wizard");
   const locale = useLocale();
   const queryClient = useQueryClient();
 
-  const [step, setStep] = useState<WizardStep>(resumeStep ?? "upload");
+  const initialStep = resumeCreationStep
+    ? mapCreationStepToWizardStep(resumeCreationStep)
+    : "upload";
+
+  const [step, setStep] = useState<WizardStep>(initialStep);
   const [isDragOver, setIsDragOver] = useState(false);
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [courseId, setCourseId] = useState<string | null>(resumeCourseId ?? null);
@@ -163,7 +149,9 @@ export function CourseWizardClient({
   const [audienceOptions, setAudienceOptions] = useState<TaxonomyItem[]>([]);
   const [isCreatingCourse, setIsCreatingCourse] = useState(false);
   const [generatedModules, setGeneratedModules] = useState<GeneratedModule[]>([]);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(
+    resumeCreationStep === "generating"
+  );
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [generateTaskId, setGenerateTaskId] = useState<string | null>(null);
   const [generateTaskState, setGenerateTaskState] = useState<string | null>(null);
@@ -176,7 +164,9 @@ export function CourseWizardClient({
   const lastProgressTimeRef = useRef<number | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [indexStatus, setIndexStatus] = useState<IndexStatus | null>(null);
-  const [isIndexing, setIsIndexing] = useState(false);
+  const [isIndexing, setIsIndexing] = useState(
+    resumeCreationStep === "indexing"
+  );
   const [indexError, setIndexError] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishSuccess, setPublishSuccess] = useState(false);
@@ -184,6 +174,7 @@ export function CourseWizardClient({
   const [publishSummaryTitle, setPublishSummaryTitle] = useState<{ title_fr: string; title_en: string } | null>(null);
   const [publishSummaryIndexStatus, setPublishSummaryIndexStatus] = useState<IndexStatus | null>(null);
   const [publishSummaryResources, setPublishSummaryResources] = useState<Array<{ name: string }>>([]);
+  const [publishSummaryModuleCount, setPublishSummaryModuleCount] = useState<number>(0);
   const [isFetchingPublishSummary, setIsFetchingPublishSummary] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 
@@ -201,17 +192,6 @@ export function CourseWizardClient({
       setAudienceOptions(tax.audience_types);
     }).catch(() => {});
   }, []);
-
-  useEffect(() => {
-    if (courseId && step) {
-      saveWizardState(courseId, step);
-    }
-  }, [courseId, step]);
-
-  useEffect(() => {
-    // Only resume indexing state if there is an actual task to poll
-    // Otherwise the "Start indexation" button gets hidden with no way to trigger it
-  }, [resumeCourseId, resumeStep]);
 
   const getAuthHeaders = useCallback(async (): Promise<Record<string, string>> => {
     const token = await authClient.getValidToken();
@@ -328,7 +308,7 @@ export function CourseWizardClient({
     setIsCreatingCourse(true);
 
     try {
-      const course = await apiFetch<{ id: string }>("/api/v1/admin/courses", {
+      const course = await apiFetch<{ id: string; creation_step: string }>("/api/v1/admin/courses", {
         method: "POST",
         body: JSON.stringify({
           title_fr: courseInfo.title_fr,
@@ -525,7 +505,7 @@ export function CourseWizardClient({
 
         if (status.task?.state === "SUCCESS") {
           setIsIndexing(false);
-          clearWizardState();
+          queryClient.invalidateQueries({ queryKey: ["admin-courses"] });
           return;
         }
 
@@ -548,7 +528,7 @@ export function CourseWizardClient({
     return () => {
       if (pollRef.current) clearTimeout(pollRef.current);
     };
-  }, [courseId, isIndexing, taskId, t]);
+  }, [courseId, isIndexing, taskId, t, queryClient]);
 
   useEffect(() => {
     if (step !== "publish" || !courseId) return;
@@ -556,12 +536,14 @@ export function CourseWizardClient({
     const fetchPublishSummary = async () => {
       setIsFetchingPublishSummary(true);
       try {
-        const [courseData, statusData, resourcesData] = await Promise.all([
-          apiFetch<{ title_fr: string; title_en: string }>(`/api/v1/admin/courses/${courseId}`),
+        const [courseData, statusData, resourcesData, modulesData] = await Promise.all([
+          apiFetch<{ title_fr: string; title_en: string; module_count: number }>(`/api/v1/admin/courses/${courseId}`),
           apiFetch<{ indexed: boolean; chunks_indexed: number; images_indexed?: number }>(`/api/v1/admin/courses/${courseId}/index-status`),
           apiFetch<{ files: Array<{ name: string }> }>(`/api/v1/admin/courses/${courseId}/resources`),
+          apiFetch<{ modules_count: number }>(`/api/v1/admin/courses/${courseId}/generate-status`),
         ]);
         setPublishSummaryTitle({ title_fr: courseData.title_fr, title_en: courseData.title_en });
+        setPublishSummaryModuleCount(modulesData.modules_count ?? courseData.module_count ?? 0);
         setPublishSummaryIndexStatus(statusData);
         setPublishSummaryResources(resourcesData.files ?? []);
       } catch {
@@ -581,7 +563,6 @@ export function CourseWizardClient({
     try {
       await apiFetch(`/api/v1/admin/courses/${courseId}/publish`, { method: "POST" });
       setPublishSuccess(true);
-      clearWizardState();
       queryClient.invalidateQueries({ queryKey: ["admin-courses"] });
       onCourseCreated();
     } catch {
@@ -1102,16 +1083,16 @@ export function CourseWizardClient({
                         )}
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">{t("publish.summary.modules")}</span>
-                          <span className="font-medium">{generatedModules.length}</span>
+                          <span className="font-medium">{publishSummaryModuleCount}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">{t("publish.summary.chunks")}</span>
-                          <span className="font-medium">{publishSummaryIndexStatus?.chunks_indexed ?? indexStatus?.chunks_indexed ?? 0}</span>
+                          <span className="font-medium">{publishSummaryIndexStatus?.chunks_indexed ?? 0}</span>
                         </div>
-                        {(publishSummaryIndexStatus?.images_indexed ?? indexStatus?.images_indexed ?? 0) > 0 && (
+                        {(publishSummaryIndexStatus?.images_indexed ?? 0) > 0 && (
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">{t("publish.summary.images")}</span>
-                            <span className="font-medium">{publishSummaryIndexStatus?.images_indexed ?? indexStatus?.images_indexed}</span>
+                            <span className="font-medium">{publishSummaryIndexStatus?.images_indexed}</span>
                           </div>
                         )}
                         {publishSummaryResources.length > 0 && (
