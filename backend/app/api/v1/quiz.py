@@ -61,9 +61,7 @@ async def _check_subscription_or_first_unit(user: AuthenticatedUser, unit_id: st
         return
 
     async for session in get_db_session():
-        sub = await SubscriptionService().get_active_subscription(
-            _uuid.UUID(user.id), session
-        )
+        sub = await SubscriptionService().get_active_subscription(_uuid.UUID(user.id), session)
         if sub is not None:
             return
 
