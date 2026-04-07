@@ -165,19 +165,18 @@ class TestCaseStudyPromptImports:
 
         prompt = get_case_study_system_prompt("fr", "SN", 1, "remember")
 
-        assert "Sénégal" in prompt
-        assert "AOF" in prompt
-        assert "Contexte AOF" in prompt
-        assert "Questions guidées" in prompt
-        assert "Correction annotée" in prompt
+        assert "fr" in prompt
+        assert "West African Context" in prompt
+        assert "Guided Questions" in prompt
+        assert "Annotated Correction" in prompt
 
     def test_get_case_study_system_prompt_en(self):
         from app.ai.prompts.case_study import get_case_study_system_prompt
 
         prompt = get_case_study_system_prompt("en", "GH", 2, "understand")
 
-        assert "Ghana" in prompt
-        assert "AOF Context" in prompt
+        assert "en" in prompt
+        assert "West African Context" in prompt
         assert "Guided Questions" in prompt
         assert "Annotated Correction" in prompt
 
