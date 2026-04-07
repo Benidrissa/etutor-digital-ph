@@ -54,12 +54,14 @@ def upgrade() -> None:
     op.create_index("ix_curricula_slug", "curricula", ["slug"])
 
     # Cast column to enum after table creation
+    op.execute("ALTER TABLE curricula ALTER COLUMN status DROP DEFAULT")
     op.execute(
         "ALTER TABLE curricula"
         " ALTER COLUMN status"
         " TYPE curriculumstatus"
         " USING status::curriculumstatus"
     )
+    op.execute("ALTER TABLE curricula ALTER COLUMN status SET DEFAULT 'draft'")
 
     op.create_table(
         "curriculum_courses",
