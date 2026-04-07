@@ -16,8 +16,13 @@ depends_on = None
 
 
 def upgrade() -> None:
-    curriculumstatus = sa.Enum("draft", "published", "archived", name="curriculumstatus")
-    curriculumstatus.create(op.get_bind(), checkfirst=True)
+    # Create enum via raw SQL to avoid SQLAlchemy/asyncpg create_type bugs
+    op.execute(
+        "DO $$ BEGIN"
+        " CREATE TYPE curriculumstatus AS ENUM ('draft', 'published', 'archived');"
+        " EXCEPTION WHEN duplicate_object THEN NULL;"
+        " END $$"
+    )
 
     op.create_table(
         "curricula",
@@ -30,7 +35,7 @@ def upgrade() -> None:
         sa.Column("cover_image_url", sa.String(), nullable=True),
         sa.Column(
             "status",
-            sa.Enum("draft", "published", "archived", name="curriculumstatus", create_type=False),
+            sa.String(),
             server_default="draft",
             nullable=False,
         ),
@@ -47,6 +52,14 @@ def upgrade() -> None:
         sa.UniqueConstraint("slug"),
     )
     op.create_index("ix_curricula_slug", "curricula", ["slug"])
+
+    # Cast column to enum after table creation
+    op.execute(
+        "ALTER TABLE curricula"
+        " ALTER COLUMN status"
+        " TYPE curriculumstatus"
+        " USING status::curriculumstatus"
+    )
 
     op.create_table(
         "curriculum_courses",
