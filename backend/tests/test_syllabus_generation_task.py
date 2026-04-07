@@ -272,7 +272,9 @@ class TestSyllabusGenerationTaskUnit:
             return course_data if call_count == 1 else sample_module_dicts
 
         mock_cache = MagicMock()
-        mock_cache.get.side_effect = lambda key, default=None: default
+        mock_cache.get.side_effect = lambda key, default=None: (
+            _CONTEXT_BUDGET_CHARS if key == "syllabus-context-budget-chars" else default
+        )
 
         with (
             patch("asyncio.run", side_effect=mock_run),

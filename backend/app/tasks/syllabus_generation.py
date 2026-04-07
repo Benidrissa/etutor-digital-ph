@@ -68,12 +68,19 @@ def generate_course_syllabus(
     from app.infrastructure.config.settings import settings
 
     cache = SettingsCache.instance()
-    context_budget = cache.get("syllabus-context-budget-chars", 400_000)
-    pdf_chunk_size = cache.get("syllabus-pdf-chunk-size-chars", 80_000)
-    combine_chunk_size = cache.get("syllabus-combine-chunk-size", 60_000)
+    context_budget = cache.get("syllabus-context-budget-chars", 2_000_000)
+    pdf_chunk_size = cache.get("syllabus-pdf-chunk-size-chars", 300_000)
+    combine_chunk_size = cache.get("syllabus-combine-chunk-size-chars") or cache.get(
+        "syllabus-combine-chunk-size", 200_000
+    )
     summarizer_model = cache.get("syllabus-summarizer-model", "claude-sonnet-4-6")
-    chunk_max_tokens = cache.get("syllabus-chunk-max-tokens", 4096)
-    combine_max_tokens = cache.get("syllabus-combine-max-tokens", 8192)
+    chunk_max_tokens = cache.get("syllabus-chunk-max-output-tokens") or cache.get(
+        "syllabus-chunk-max-tokens", 16_000
+    )
+    combine_max_tokens = cache.get("syllabus-combine-max-output-tokens") or cache.get(
+        "syllabus-combine-max-tokens", 64_000
+    )
+    max_concurrent = cache.get("syllabus-max-concurrent-api-calls", 5)
 
     logger.info(
         "Starting syllabus generation",
@@ -216,12 +223,13 @@ def generate_course_syllabus(
 
                 pdf_summaries = summarize_pdfs_sync(
                     pdf_full_texts,
-                    chunk_size=pdf_chunk_size,
-                    combine_chunk_size=combine_chunk_size,
+                    chunk_size_chars=pdf_chunk_size,
+                    combine_chunk_size_chars=combine_chunk_size,
                     model=summarizer_model,
-                    chunk_max_tokens=chunk_max_tokens,
-                    combine_max_tokens=combine_max_tokens,
+                    chunk_max_output_tokens=chunk_max_tokens,
+                    combine_max_output_tokens=combine_max_tokens,
                     total_budget_chars=context_budget,
+                    max_concurrent=max_concurrent,
                 )
                 pdf_sections = [
                     f"### {name}\n{summary}"
