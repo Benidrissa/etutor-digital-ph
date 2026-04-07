@@ -462,10 +462,13 @@ async def get_generate_status(
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
 
-    module_count_result = await db.execute(
-        select(func.count()).select_from(Module).where(Module.course_id == course_id)
+    modules_result = await db.execute(
+        select(Module.id, Module.module_number, Module.title_fr, Module.title_en)
+        .where(Module.course_id == course_id)
+        .order_by(Module.module_number)
     )
-    modules_count = module_count_result.scalar_one()
+    modules_rows = modules_result.all()
+    modules_count = len(modules_rows)
 
     resolved_task_id = task_id or course.syllabus_task_id
 
@@ -474,6 +477,15 @@ async def get_generate_status(
         "modules_count": modules_count,
         "has_modules": modules_count > 0,
         "creation_step": course.creation_step,
+        "modules": [
+            {
+                "id": str(row.id),
+                "module_number": row.module_number,
+                "title_fr": row.title_fr,
+                "title_en": row.title_en,
+            }
+            for row in modules_rows
+        ],
     }
 
     if resolved_task_id:
