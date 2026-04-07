@@ -803,7 +803,7 @@ async def trigger_preassessment_generation(
     existing_task_id = in_progress_result.scalar_one_or_none()
     if existing_task_id:
         existing_result = AsyncResult(existing_task_id)
-        if existing_result.state in ("PENDING", "STARTED", "GENERATING"):
+        if existing_result.state in ("STARTED", "GENERATING"):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"A pre-assessment generation is already in progress (task {existing_task_id}). "
