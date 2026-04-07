@@ -2,6 +2,7 @@
 
 import os
 import time
+import uuid
 from pathlib import Path
 
 import structlog
@@ -83,7 +84,33 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
     )
 
     course_dir = UPLOAD_DIR / course_id
-    if not course_dir.exists():
+    pdf_files = list(course_dir.glob("*.pdf")) if course_dir.exists() else []
+
+    db_resources: list = []
+    if not pdf_files:
+        from sqlalchemy import create_engine, select
+        from sqlalchemy.orm import Session
+
+        from app.domain.models.course_resource import CourseResource
+        from app.infrastructure.config.settings import settings
+
+        _eng = create_engine(settings.database_url_sync, pool_pre_ping=True)
+        try:
+            with Session(_eng) as _sess:
+                db_resources = (
+                    _sess.execute(
+                        select(CourseResource).where(
+                            CourseResource.course_id == uuid.UUID(course_id)
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                db_resources = [r for r in db_resources if r.raw_text]
+        finally:
+            _eng.dispose()
+
+    if not pdf_files and not db_resources:
         self.update_state(
             state="FAILURE",
             meta={
@@ -98,23 +125,9 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
             "chunks_stored": 0,
         }
 
-    pdf_files = list(course_dir.glob("*.pdf"))
-    if not pdf_files:
-        self.update_state(
-            state="FAILURE",
-            meta={
-                "step": "failed",
-                "progress": 0,
-                "error": "No PDF files found in course resources",
-            },
-        )
-        return {
-            "status": "failed",
-            "error": "No PDF files found in course resources",
-            "chunks_stored": 0,
-        }
-
-    estimated_seconds = _estimate_seconds(pdf_files)
+    estimated_seconds = _estimate_seconds(pdf_files) if pdf_files else max(
+        30, len(db_resources) * 60
+    )
     start_time = time.monotonic()
 
     def _remaining(progress_pct: float) -> int:
@@ -142,6 +155,7 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
         if not openai_key:
             raise ValueError("OPENAI_API_KEY not set — cannot generate embeddings")
 
+        from app.ai.rag.chunker import TextChunker, detect_language
         from app.ai.rag.embeddings import EmbeddingService
         from app.ai.rag.pipeline import RAGPipeline
 
@@ -150,6 +164,55 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
 
         total_chunks = 0
         total_images = 0
+
+        if not pdf_files and db_resources:
+            logger.info(
+                "No PDFs on disk — indexing text chunks from DB course_resources",
+                course_id=course_id,
+                resource_count=len(db_resources),
+            )
+            from app.infrastructure.persistence.database import async_session_factory
+
+            chunker = TextChunker()
+            files_count = len(db_resources)
+            for i, res in enumerate(db_resources):
+                resource_name = res.filename
+                extract_progress = 5 + int((i / files_count) * 80)
+                self.update_state(
+                    state="EMBEDDING",
+                    meta={
+                        "step": "embedding",
+                        "step_label": f"Indexation depuis DB: {resource_name}",
+                        "progress": extract_progress,
+                        "files_total": files_count,
+                        "files_processed": i,
+                        "current_file": resource_name,
+                        "chunks_processed": total_chunks,
+                        "estimated_seconds_remaining": _remaining(extract_progress),
+                    },
+                )
+                text = res.raw_text
+                language = detect_language(text)
+                chunks = list(
+                    chunker.chunk_document(
+                        text=text, source=rag_collection_id, language=language
+                    )
+                )
+                if not chunks:
+                    continue
+                chunk_texts = [c.content for c in chunks]
+                embeddings = await embedding_service.generate_embeddings_batch(chunk_texts)
+                async with async_session_factory() as _db_session:
+                    stored = await pipeline._store_chunks(chunks, embeddings, _db_session)
+                total_chunks += stored
+                logger.info(
+                    "Indexed DB resource text",
+                    filename=resource_name,
+                    chunks=stored,
+                    course_id=course_id,
+                )
+            return total_chunks, total_images
+
         for i, pdf_path in enumerate(pdf_files):
             extract_progress = 5 + int((i / len(pdf_files)) * 30)
             self.update_state(
