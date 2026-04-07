@@ -187,7 +187,9 @@ class TestSyllabusTaskWithSummarization:
             return generate_course_syllabus.run(course_id, estimated_hours)
 
     def test_pdf_dir_exists_calls_summarizer_not_truncate(self, sample_module_dicts):
-        """When PDF directory exists, task must call summarize_pdfs_sync."""
+        """When PDF directory exists and text exceeds budget, task must call summarize_pdfs_sync."""
+        from app.tasks.syllabus_generation import _CONTEXT_BUDGET_CHARS
+
         course_id = str(uuid.uuid4())
         course_data = {
             "title_fr": "Santé",
@@ -213,9 +215,12 @@ class TestSyllabusTaskWithSummarization:
                 return course_data
             return sample_module_dicts
 
+        large_text = "x" * (_CONTEXT_BUDGET_CHARS + 1)
+        mock_page = MagicMock()
+        mock_page.get_text.return_value = large_text
         mock_doc = MagicMock()
         mock_doc.get_toc.return_value = []
-        mock_doc.__iter__ = MagicMock(return_value=iter([]))
+        mock_doc.__iter__ = MagicMock(return_value=iter([mock_page]))
         mock_doc.close = MagicMock()
 
         mock_summarize = MagicMock(return_value=["Structured summary of book"])
@@ -239,6 +244,8 @@ class TestSyllabusTaskWithSummarization:
 
     def test_no_truncation_string_in_resource_text(self, sample_module_dicts):
         """The resource_text passed to Claude must NOT contain '(truncated to'."""
+        from app.tasks.syllabus_generation import _CONTEXT_BUDGET_CHARS
+
         course_id = str(uuid.uuid4())
         course_data = {
             "title_fr": "Épidémio",
@@ -264,9 +271,12 @@ class TestSyllabusTaskWithSummarization:
                 return course_data
             return sample_module_dicts
 
+        large_text = "x" * (_CONTEXT_BUDGET_CHARS + 1)
+        mock_page = MagicMock()
+        mock_page.get_text.return_value = large_text
         mock_doc = MagicMock()
         mock_doc.get_toc.return_value = []
-        mock_doc.__iter__ = MagicMock(return_value=iter([]))
+        mock_doc.__iter__ = MagicMock(return_value=iter([mock_page]))
         mock_doc.close = MagicMock()
 
         def capture_summarize(pdf_full_texts, **kwargs):

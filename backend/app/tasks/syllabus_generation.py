@@ -9,6 +9,8 @@ from sqlalchemy import delete, select, text
 
 from app.tasks.celery_app import celery_app
 
+_CONTEXT_BUDGET_CHARS = 400_000
+
 logger = structlog.get_logger(__name__)
 
 
@@ -150,6 +152,10 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
                         pages_text.append(page_text)
                 doc.close()
                 full_text = "\n\n".join(pages_text)
+                if toc:
+                    toc_lines = [f"{'  ' * (lvl - 1)}{title}" for lvl, title, _ in toc]
+                    toc_str = "\n".join(toc_lines[:100])
+                    full_text = f"TABLE OF CONTENTS:\n{toc_str}\n\nCONTENT:\n{full_text}"
                 pdf_full_texts.append((book_name, full_text, toc))
                 logger.info(
                     "Extracted PDF text",
@@ -166,20 +172,39 @@ def generate_course_syllabus(self, course_id: str, estimated_hours: int) -> dict
                 )
 
         if pdf_full_texts:
-            self.update_state(
-                state="GENERATING",
-                meta={"step": "summarizing_pdfs", "progress": 20, "modules_count": 0},
-            )
+            total_chars = sum(len(txt) for _, txt, _ in pdf_full_texts)
 
-            from app.ai.pdf_summarizer import summarize_pdfs_sync
+            if total_chars <= _CONTEXT_BUDGET_CHARS:
+                logger.info(
+                    "PDFs fit within context budget — using raw text",
+                    course_id=course_id,
+                    total_chars=total_chars,
+                    budget=_CONTEXT_BUDGET_CHARS,
+                )
+                pdf_sections = [f"### {name}\n{txt}" for name, txt, _toc in pdf_full_texts]
+                resource_text = "\n\n---\n\n".join(pdf_sections)
+            else:
+                logger.info(
+                    "PDFs exceed context budget — using multi-pass summarization",
+                    course_id=course_id,
+                    total_chars=total_chars,
+                    budget=_CONTEXT_BUDGET_CHARS,
+                )
+                self.update_state(
+                    state="GENERATING",
+                    meta={"step": "summarizing_pdfs", "progress": 20, "modules_count": 0},
+                )
+                from app.ai.pdf_summarizer import summarize_pdfs_sync
 
-            pdf_summaries = summarize_pdfs_sync(pdf_full_texts)
+                pdf_summaries = summarize_pdfs_sync(pdf_full_texts)
+                pdf_sections = [
+                    f"### {name}\n{summary}"
+                    for (name, _text, _toc), summary in zip(
+                        pdf_full_texts, pdf_summaries, strict=True
+                    )
+                ]
+                resource_text = "\n\n---\n\n".join(pdf_sections)
 
-            pdf_sections = [
-                f"### {name}\n{summary}"
-                for (name, _text, _toc), summary in zip(pdf_full_texts, pdf_summaries, strict=True)
-            ]
-            resource_text = "\n\n---\n\n".join(pdf_sections)
             logger.info(
                 "PDF summaries prepared for syllabus context",
                 course_id=course_id,
