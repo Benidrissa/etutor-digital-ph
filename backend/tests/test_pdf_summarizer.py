@@ -16,6 +16,7 @@ Verifies:
 import asyncio
 import os
 import uuid
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -260,6 +261,39 @@ class TestProportionalBudgets:
         assert sum(r for r in result if r is not None) <= total
 
 
+def _make_stream_client(
+    text: str = "ok",
+    captured_system: list | None = None,
+    captured_user: list | None = None,
+    stream_call_count: list | None = None,
+):
+    """Build a mock client whose .messages.stream() is an async context manager."""
+    final_message = MagicMock()
+    final_message.content = [MagicMock(text=text)]
+
+    @asynccontextmanager
+    async def mock_stream(**kwargs):
+        if captured_system is not None:
+            captured_system.append(kwargs.get("system", ""))
+        if captured_user is not None:
+            captured_user.append(kwargs.get("messages", [{}])[0].get("content", ""))
+        if stream_call_count is not None:
+            stream_call_count.append(1)
+
+        async def _aiter():
+            return
+            yield  # makes it an async generator
+
+        stream = MagicMock()
+        stream.__aiter__ = lambda self: _aiter()
+        stream.get_final_message = AsyncMock(return_value=final_message)
+        yield stream
+
+    mock_client = MagicMock()
+    mock_client.messages.stream = mock_stream
+    return mock_client
+
+
 class TestSummarizePdfForSyllabus:
     def test_no_api_key_returns_toc_fallback(self):
         from app.ai.pdf_summarizer import summarize_pdf_for_syllabus
@@ -280,21 +314,13 @@ class TestSummarizePdfForSyllabus:
         """Without chunk overrides, must use summarize_single_pdf (new enriched prompt)."""
         from app.ai.pdf_summarizer import summarize_pdf_for_syllabus
 
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="Rich structured summary")]
-
-        mock_client = MagicMock()
-        mock_client.messages.create = AsyncMock(return_value=mock_response)
-
-        captured_system = []
-        captured_user = []
-
-        async def capture_create(**kwargs):
-            captured_system.append(kwargs.get("system", ""))
-            captured_user.append(kwargs.get("messages", [{}])[0].get("content", ""))
-            return mock_response
-
-        mock_client.messages.create = capture_create
+        captured_system: list = []
+        captured_user: list = []
+        mock_client = _make_stream_client(
+            text="Rich structured summary",
+            captured_system=captured_system,
+            captured_user=captured_user,
+        )
 
         with (
             patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
@@ -308,14 +334,13 @@ class TestSummarizePdfForSyllabus:
         assert any("EXHAUSTIVE" in p for p in captured_user)
 
     def test_single_chunk_legacy_path_when_chunk_size_given(self):
-        """Explicit chunk_size_chars must trigger legacy chunking path."""
+        """Explicit chunk_size_chars must trigger legacy chunking path (streaming)."""
         from app.ai.pdf_summarizer import summarize_pdf_for_syllabus
 
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="Legacy chunk summary")]
-
-        mock_client = MagicMock()
-        mock_client.messages.create = AsyncMock(return_value=mock_response)
+        stream_calls: list = []
+        mock_client = _make_stream_client(
+            text="Legacy chunk summary", stream_call_count=stream_calls
+        )
 
         with (
             patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
@@ -328,22 +353,14 @@ class TestSummarizePdfForSyllabus:
             )
 
         assert result == "Legacy chunk summary"
-        assert mock_client.messages.create.call_count == 1
+        assert len(stream_calls) == 1
 
     def test_toc_prepended_to_prompt_in_single_call_mode(self):
         from app.ai.pdf_summarizer import summarize_pdf_for_syllabus
 
         toc = [(1, "Chapter 1", 1), (1, "Chapter 2", 10)]
-        captured_prompts = []
-
-        async def capture_create(**kwargs):
-            captured_prompts.append(kwargs.get("messages", [{}])[0].get("content", ""))
-            resp = MagicMock()
-            resp.content = [MagicMock(text="ok")]
-            return resp
-
-        mock_client = MagicMock()
-        mock_client.messages.create = capture_create
+        captured_user: list = []
+        mock_client = _make_stream_client(text="ok", captured_user=captured_user)
 
         with (
             patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
@@ -351,23 +368,15 @@ class TestSummarizePdfForSyllabus:
         ):
             asyncio.run(summarize_pdf_for_syllabus("Book", "content", toc=toc))
 
-        assert any("Chapter 1" in p for p in captured_prompts)
+        assert any("Chapter 1" in p for p in captured_user)
 
 
 class TestSummarizeSinglePdf:
     def test_uses_syllabus_summary_system_prompt(self):
         from app.ai.pdf_summarizer import summarize_single_pdf
 
-        captured_system = []
-
-        async def capture_create(**kwargs):
-            captured_system.append(kwargs.get("system", ""))
-            resp = MagicMock()
-            resp.content = [MagicMock(text="rich summary")]
-            return resp
-
-        mock_client = MagicMock()
-        mock_client.messages.create = capture_create
+        captured_system: list = []
+        mock_client = _make_stream_client(text="rich summary", captured_system=captured_system)
 
         asyncio.run(summarize_single_pdf(mock_client, "MyBook", "text here"))
 
@@ -377,16 +386,8 @@ class TestSummarizeSinglePdf:
     def test_uses_exhaustive_instruction_in_prompt(self):
         from app.ai.pdf_summarizer import summarize_single_pdf
 
-        captured_user = []
-
-        async def capture_create(**kwargs):
-            captured_user.append(kwargs.get("messages", [{}])[0].get("content", ""))
-            resp = MagicMock()
-            resp.content = [MagicMock(text="ok")]
-            return resp
-
-        mock_client = MagicMock()
-        mock_client.messages.create = capture_create
+        captured_user: list = []
+        mock_client = _make_stream_client(text="ok", captured_user=captured_user)
 
         asyncio.run(summarize_single_pdf(mock_client, "TestBook", "some text"))
 
@@ -397,16 +398,8 @@ class TestSummarizeSinglePdf:
         from app.ai.pdf_summarizer import summarize_single_pdf
 
         toc = [(1, "Chapter 1", 1), (2, "Section 1.1", 3)]
-        captured_user = []
-
-        async def capture_create(**kwargs):
-            captured_user.append(kwargs.get("messages", [{}])[0].get("content", ""))
-            resp = MagicMock()
-            resp.content = [MagicMock(text="ok")]
-            return resp
-
-        mock_client = MagicMock()
-        mock_client.messages.create = capture_create
+        captured_user: list = []
+        mock_client = _make_stream_client(text="ok", captured_user=captured_user)
 
         asyncio.run(summarize_single_pdf(mock_client, "Book", "content", toc=toc))
 
@@ -415,13 +408,7 @@ class TestSummarizeSinglePdf:
     def test_returns_stripped_text(self):
         from app.ai.pdf_summarizer import summarize_single_pdf
 
-        async def mock_create(**kwargs):
-            resp = MagicMock()
-            resp.content = [MagicMock(text="  summary with spaces  ")]
-            return resp
-
-        mock_client = MagicMock()
-        mock_client.messages.create = mock_create
+        mock_client = _make_stream_client(text="  summary with spaces  ")
 
         result = asyncio.run(summarize_single_pdf(mock_client, "Book", "text"))
         assert result == "summary with spaces"
@@ -429,22 +416,13 @@ class TestSummarizeSinglePdf:
     def test_single_api_call_regardless_of_text_size(self):
         from app.ai.pdf_summarizer import summarize_single_pdf
 
-        call_count = 0
-
-        async def mock_create(**kwargs):
-            nonlocal call_count
-            call_count += 1
-            resp = MagicMock()
-            resp.content = [MagicMock(text="ok")]
-            return resp
-
-        mock_client = MagicMock()
-        mock_client.messages.create = mock_create
+        stream_calls: list = []
+        mock_client = _make_stream_client(text="ok", stream_call_count=stream_calls)
 
         large_text = "word " * 100_000
         asyncio.run(summarize_single_pdf(mock_client, "BigBook", large_text))
 
-        assert call_count == 1
+        assert len(stream_calls) == 1
 
 
 class TestSummarizePdfsSync:

@@ -71,7 +71,6 @@ def generate_course_syllabus(
     cache = SettingsCache.instance()
     context_budget = cache.get("syllabus-context-budget-chars", 3_500_000)
     summarizer_model = cache.get("syllabus-summarizer-model", "claude-sonnet-4-6")
-    max_concurrent = cache.get("syllabus-max-concurrent-api-calls", 5)
 
     logger.info(
         "Starting syllabus generation",
@@ -291,7 +290,6 @@ def generate_course_syllabus(
                 pdf_summaries = summarize_pdfs_sync(
                     pdf_full_texts,
                     model=summarizer_model,
-                    max_concurrent=max_concurrent,
                 )
                 pdf_sections = [
                     f"### {name}\n{summary}"
