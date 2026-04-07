@@ -1047,10 +1047,10 @@ SETTING_DEFINITIONS: list[SettingDef] = [
     SettingDef(
         "syllabus-max-concurrent-api-calls",
         "syllabus",
-        5,
+        1,
         "integer",
-        "Max concurrent API calls",
-        "Max parallel Claude API calls during PDF summarization.",
+        "Max concurrent API calls [deprecated — always sequential now]",
+        "Deprecated. PDF summarization is now always sequential (streaming). Value ignored.",
         {"min": 1, "max": 20},
     ),
     SettingDef(
