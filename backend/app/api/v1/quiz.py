@@ -244,6 +244,9 @@ async def generate_quiz(
             status_code=status.HTTP_202_ACCEPTED,
         )
 
+    except HTTPException:
+        raise
+
     except ValueError as e:
         logger.warning("Invalid quiz generation request", error=str(e))
         if "not found" in str(e).lower():
