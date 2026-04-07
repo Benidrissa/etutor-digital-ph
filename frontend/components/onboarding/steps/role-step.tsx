@@ -15,20 +15,34 @@ interface RoleStepProps {
 }
 
 const roles = [
+  'eleve',
+  'etudiant',
+  'universitaire',
   'medecin',
   'infirmier',
   'data-analyst',
-  'etudiant',
   'cadre',
+  'consultant',
+  'commercant',
+  'entrepreneur',
+  'coach',
+  'influencer',
   'autre'
 ];
 
 const roleIcons: { [key: string]: string } = {
+  'eleve': '📚',
+  'etudiant': '🎓',
+  'universitaire': '🏛️',
   'medecin': '👩‍⚕️',
   'infirmier': '👨‍⚕️',
   'data-analyst': '📊',
-  'etudiant': '🎓',
   'cadre': '💼',
+  'consultant': '🧠',
+  'commercant': '🛒',
+  'entrepreneur': '🚀',
+  'coach': '🏅',
+  'influencer': '📱',
   'autre': '👤'
 };
 

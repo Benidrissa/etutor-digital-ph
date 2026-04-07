@@ -501,11 +501,18 @@
       "description": "Tell us about your professional background",
       "selectRole": "Select your role",
       "roles": {
+        "eleve": "Pupil (pre-university)",
+        "etudiant": "Student (Étudiant)",
+        "universitaire": "Academic (Universitaire)",
         "medecin": "Physician (Médecin)",
         "infirmier": "Nurse (Infirmier)",
         "data-analyst": "Data Analyst",
-        "etudiant": "Student (Étudiant)",
         "cadre": "Manager/Administrator (Cadre)",
+        "consultant": "Consultant",
+        "commercant": "Trader/Merchant (Commerçant)",
+        "entrepreneur": "Entrepreneur",
+        "coach": "Coach",
+        "influencer": "Influencer",
         "autre": "Other (Autre)"
       }
     },
