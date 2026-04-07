@@ -19,9 +19,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.ai.pdf_summarizer import (
+    PdfChunkPlan,
     _compute_defaults,
     _proportional_budgets,
     _split_into_chunks,
+    compute_chunk_plan,
     summarize_pdfs_sync,
 )
 
@@ -90,6 +92,132 @@ class TestComputeDefaults:
             defaults = _compute_defaults(model)
             for key, val in defaults.items():
                 assert val > 0, f"{key} should be positive for model {model}"
+
+
+class TestComputeChunkPlan:
+    def test_returns_pdf_chunk_plan_instance(self):
+        plan = compute_chunk_plan(
+            pdf_chars=500_000,
+            num_pdfs=1,
+            total_pdf_chars=500_000,
+            context_budget_chars=3_500_000,
+        )
+        assert isinstance(plan, PdfChunkPlan)
+
+    def test_small_pdf_fits_in_single_chunk_sonnet(self):
+        plan = compute_chunk_plan(
+            pdf_chars=500_000,
+            num_pdfs=1,
+            total_pdf_chars=500_000,
+            context_budget_chars=3_500_000,
+            model="claude-sonnet-4-6",
+        )
+        assert plan.chunk_count == 1
+
+    def test_large_pdf_requires_multiple_chunks(self):
+        plan = compute_chunk_plan(
+            pdf_chars=4_000_000,
+            num_pdfs=1,
+            total_pdf_chars=4_000_000,
+            context_budget_chars=3_500_000,
+            model="claude-sonnet-4-6",
+        )
+        assert plan.chunk_count >= 2
+
+    def test_chunk_size_covers_full_pdf(self):
+        pdf_chars = 2_100_000
+        plan = compute_chunk_plan(
+            pdf_chars=pdf_chars,
+            num_pdfs=3,
+            total_pdf_chars=5_000_000,
+            context_budget_chars=3_500_000,
+            model="claude-sonnet-4-6",
+        )
+        assert plan.chunk_size_chars * plan.chunk_count >= pdf_chars
+
+    def test_three_pdfs_5m_chars_each_fits_in_one_chunk(self):
+        total = 5_000_000
+        pdf_sizes = [2_100_000, 1_800_000, 1_100_000]
+        budget = 3_500_000
+        for pdf_chars in pdf_sizes:
+            plan = compute_chunk_plan(
+                pdf_chars=pdf_chars,
+                num_pdfs=3,
+                total_pdf_chars=total,
+                context_budget_chars=budget,
+                model="claude-sonnet-4-6",
+            )
+            assert plan.chunk_count == 1, f"Expected 1 chunk for {pdf_chars} chars, got {plan.chunk_count}"
+
+    def test_all_values_are_positive(self):
+        plan = compute_chunk_plan(
+            pdf_chars=1_000_000,
+            num_pdfs=2,
+            total_pdf_chars=2_000_000,
+            context_budget_chars=3_500_000,
+        )
+        assert plan.chunk_count >= 1
+        assert plan.chunk_size_chars >= 1
+        assert plan.chunk_max_output_tokens >= 1024
+        assert plan.combine_max_output_tokens >= 1024
+
+    def test_smaller_model_requires_more_chunks(self):
+        pdf_chars = 500_000
+        plan_sonnet = compute_chunk_plan(
+            pdf_chars=pdf_chars,
+            num_pdfs=1,
+            total_pdf_chars=pdf_chars,
+            context_budget_chars=3_500_000,
+            model="claude-sonnet-4-6",
+        )
+        plan_haiku = compute_chunk_plan(
+            pdf_chars=pdf_chars,
+            num_pdfs=1,
+            total_pdf_chars=pdf_chars,
+            context_budget_chars=3_500_000,
+            model="claude-haiku-4-5",
+        )
+        assert plan_haiku.chunk_count >= plan_sonnet.chunk_count
+
+    def test_combine_output_tokens_within_model_max(self):
+        plan = compute_chunk_plan(
+            pdf_chars=1_000_000,
+            num_pdfs=1,
+            total_pdf_chars=1_000_000,
+            context_budget_chars=3_500_000,
+            model="claude-sonnet-4-6",
+        )
+        assert plan.combine_max_output_tokens <= 64_000
+
+    def test_chunk_output_tokens_within_model_max(self):
+        plan = compute_chunk_plan(
+            pdf_chars=1_000_000,
+            num_pdfs=1,
+            total_pdf_chars=1_000_000,
+            context_budget_chars=3_500_000,
+            model="claude-sonnet-4-6",
+        )
+        assert plan.chunk_max_output_tokens <= 64_000
+
+    def test_zero_pdf_chars_returns_single_chunk(self):
+        plan = compute_chunk_plan(
+            pdf_chars=0,
+            num_pdfs=1,
+            total_pdf_chars=0,
+            context_budget_chars=3_500_000,
+        )
+        assert plan.chunk_count == 1
+
+    def test_unknown_model_falls_back_to_default(self):
+        plan = compute_chunk_plan(
+            pdf_chars=100_000,
+            num_pdfs=1,
+            total_pdf_chars=100_000,
+            context_budget_chars=3_500_000,
+            model="unknown-model-xyz",
+        )
+        assert plan.chunk_count >= 1
+        assert plan.chunk_size_chars >= 1
 
 
 class TestProportionalBudgets:
@@ -443,7 +571,7 @@ class TestSyllabusTaskWithSummarization:
 
     def test_pdf_dir_exists_calls_summarizer_not_truncate(self, sample_module_dicts):
         """When PDF directory exists and text exceeds budget, task must call summarize_pdfs_sync."""
-        _CONTEXT_BUDGET_CHARS = 2_000_000
+        _CONTEXT_BUDGET_CHARS = 3_500_000
 
         course_id = str(uuid.uuid4())
         course_data = {
@@ -506,7 +634,7 @@ class TestSyllabusTaskWithSummarization:
 
     def test_new_param_names_passed_to_summarizer(self, sample_module_dicts):
         """Task must pass new parameter names (chunk_size_chars, etc.) to summarize_pdfs_sync."""
-        _CONTEXT_BUDGET_CHARS = 2_000_000
+        _CONTEXT_BUDGET_CHARS = 3_500_000
 
         course_id = str(uuid.uuid4())
         course_data = {
@@ -576,7 +704,7 @@ class TestSyllabusTaskWithSummarization:
 
     def test_backward_compat_old_setting_keys(self, sample_module_dicts):
         """Old DB setting keys (syllabus-combine-chunk-size, etc.) must still work."""
-        _CONTEXT_BUDGET_CHARS = 2_000_000
+        _CONTEXT_BUDGET_CHARS = 3_500_000
 
         course_id = str(uuid.uuid4())
         course_data = {

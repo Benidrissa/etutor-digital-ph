@@ -69,18 +69,18 @@ def generate_course_syllabus(
     from app.infrastructure.config.settings import settings
 
     cache = SettingsCache.instance()
-    context_budget = cache.get("syllabus-context-budget-chars", 2_000_000)
-    pdf_chunk_size = cache.get("syllabus-pdf-chunk-size-chars", 300_000)
+    context_budget = cache.get("syllabus-context-budget-chars", 3_500_000)
+    pdf_chunk_size = cache.get("syllabus-pdf-chunk-size-chars") or None
     combine_chunk_size = cache.get("syllabus-combine-chunk-size-chars") or cache.get(
-        "syllabus-combine-chunk-size", 200_000
-    )
+        "syllabus-combine-chunk-size"
+    ) or None
     summarizer_model = cache.get("syllabus-summarizer-model", "claude-sonnet-4-6")
     chunk_max_tokens = cache.get("syllabus-chunk-max-output-tokens") or cache.get(
-        "syllabus-chunk-max-tokens", 16_000
-    )
+        "syllabus-chunk-max-tokens"
+    ) or None
     combine_max_tokens = cache.get("syllabus-combine-max-output-tokens") or cache.get(
-        "syllabus-combine-max-tokens", 64_000
-    )
+        "syllabus-combine-max-tokens"
+    ) or None
     max_concurrent = cache.get("syllabus-max-concurrent-api-calls", 5)
 
     logger.info(
@@ -229,7 +229,7 @@ def generate_course_syllabus(
                     model=summarizer_model,
                     chunk_max_output_tokens=chunk_max_tokens,
                     combine_max_output_tokens=combine_max_tokens,
-                    total_budget_chars=context_budget,
+                    context_budget_chars=context_budget,
                     max_concurrent=max_concurrent,
                 )
                 pdf_sections = [
