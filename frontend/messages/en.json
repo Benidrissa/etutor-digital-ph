@@ -1230,6 +1230,7 @@
         "generated": "Syllabus generated",
         "moduleCount": "{count} module(s) generated",
         "error": "Failed to generate syllabus.",
+        "retry": "Retry generation",
         "noModules": "No modules generated. Please try again.",
         "taskPending": "Waiting to start...",
         "taskRunning": "Generating modules...",
