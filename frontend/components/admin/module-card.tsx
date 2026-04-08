@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Clock, BookOpen, Layers, Edit2, Plus, Mic, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
-import { getModuleMedia, generateModuleMedia, type MediaStatus } from '@/lib/api';
+import { generateModuleMedia, type MediaStatus } from '@/lib/api';
 
 export interface AdminModuleCardData {
   id: string;
@@ -46,15 +46,6 @@ export function AdminModuleCard({ module, onEdit }: AdminModuleCardProps) {
   const [audioState, setAudioState] = useState<AudioState>(null);
   const [generating, setGenerating] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-
-  useEffect(() => {
-    getModuleMedia(module.id)
-      .then((media) => {
-        const audio = media.find((m) => m.media_type === 'audio' && m.language === locale);
-        if (audio) setAudioState({ status: audio.status });
-      })
-      .catch(() => null);
-  }, [module.id, locale]);
 
   useEffect(() => {
     if (!toast) return;
@@ -118,21 +109,10 @@ export function AdminModuleCard({ module, onEdit }: AdminModuleCardProps) {
             )}
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            {audioState ? (
-              <span
-                className="flex items-center gap-1 text-xs text-muted-foreground px-1"
-                aria-label={t(`audioStatus.${audioState.status}`)}
-              >
-                {audioState.status === 'ready' && (
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                )}
-                {(audioState.status === 'generating' || audioState.status === 'pending') && (
-                  <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
-                )}
-                {audioState.status === 'failed' && (
-                  <AlertCircle className="h-4 w-4 text-red-500" />
-                )}
-              </span>
+            {audioState && audioState.status === 'ready' ? (
+              <CheckCircle2 className="h-4 w-4 text-green-600" aria-label={t('audioStatus.ready')} />
+            ) : audioState && (audioState.status === 'generating' || audioState.status === 'pending') ? (
+              <Loader2 className="h-4 w-4 animate-spin text-blue-500" aria-label={t(`audioStatus.${audioState.status}`)} />
             ) : (
               <Button
                 size="icon"
