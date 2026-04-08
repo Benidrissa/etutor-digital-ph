@@ -80,6 +80,8 @@ class TestSyllabusGenerationTaskUnit:
         course_data = {
             "title_fr": "Santé Publique",
             "title_en": "Public Health",
+            "description_fr": "",
+            "description_en": "",
             "course_hours": 20,
             "rag_collection_id": None,
             "domain_slugs": [],
@@ -139,6 +141,8 @@ class TestSyllabusGenerationTaskUnit:
         course_data = {
             "title_fr": "Épidémiologie",
             "title_en": "Epidemiology",
+            "description_fr": "",
+            "description_en": "",
             "course_hours": 30,
             "rag_collection_id": None,
             "domain_slugs": [],
@@ -186,6 +190,8 @@ class TestSyllabusGenerationTaskUnit:
         course_data = {
             "title_fr": "Test",
             "title_en": "Test",
+            "description_fr": "",
+            "description_en": "",
             "course_hours": 10,
             "rag_collection_id": None,
             "domain_slugs": [],
@@ -246,6 +252,8 @@ class TestSyllabusGenerationTaskUnit:
         course_data = {
             "title_fr": "Test",
             "title_en": "Test",
+            "description_fr": "",
+            "description_en": "",
             "course_hours": 10,
             "rag_collection_id": None,
             "domain_slugs": [],
@@ -310,6 +318,8 @@ class TestSyllabusGenerationTaskUnit:
         course_data = {
             "title_fr": "Test",
             "title_en": "Test",
+            "description_fr": "",
+            "description_en": "",
             "course_hours": 10,
             "rag_collection_id": None,
             "domain_slugs": [],
@@ -356,6 +366,8 @@ class TestSyllabusGenerationTaskUnit:
         course_data = {
             "title_fr": "Test",
             "title_en": "Test",
+            "description_fr": "",
+            "description_en": "",
             "course_hours": 10,
             "rag_collection_id": None,
             "domain_slugs": [],
@@ -416,6 +428,8 @@ class TestSyllabusGenerationTaskUnit:
         course_data = {
             "title_fr": "Test",
             "title_en": "Test",
+            "description_fr": "",
+            "description_en": "",
             "course_hours": 10,
             "rag_collection_id": None,
             "domain_slugs": [],
