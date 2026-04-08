@@ -268,6 +268,7 @@ def _make_stream_client(
     stream_call_count: list | None = None,
 ):
     """Build a mock client whose .messages.stream() is an async context manager."""
+
     @asynccontextmanager
     async def mock_stream(**kwargs):
         if captured_system is not None:
