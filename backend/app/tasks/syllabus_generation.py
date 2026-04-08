@@ -71,7 +71,7 @@ def generate_course_syllabus(
     from app.infrastructure.config.settings import settings
 
     cache = SettingsCache.instance()
-    context_budget = cache.get("syllabus-context-budget-chars", 3_500_000)
+    context_budget = cache.get("syllabus-context-budget-chars", 400_000)
     summarizer_model = cache.get("syllabus-summarizer-model", "gpt-5.4-nano")
     summary_max_tokens = cache.get("syllabus-summary-max-output-tokens", 30_000)
 
