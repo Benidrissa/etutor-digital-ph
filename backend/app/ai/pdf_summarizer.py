@@ -25,7 +25,7 @@ from dataclasses import dataclass
 
 import structlog
 
-from app.ai.model_registry import get_model_caps
+from app.ai.model_registry import get_model_caps, tokens_to_chars
 
 logger = structlog.get_logger(__name__)
 
@@ -328,11 +328,12 @@ async def summarize_single_pdf(
     model: str = _SUMMARIZER_MODEL,
     max_output_tokens: int = 60_000,
 ) -> str:
-    """Summarize a single PDF in one API call using the enriched syllabus prompt.
+    """Summarize a single PDF using the enriched syllabus prompt.
 
-    The text is sent directly — no chunking. The caller must ensure the text
-    fits within the model's context window (use split_pdf_by_chapters() at
-    upload time to guarantee this).
+    If the input fits within the model's context window, sends it in one call.
+    If the input exceeds the model's context window, splits into chunks, summarizes
+    each chunk separately, then combines the results. This allows large PDFs to be
+    processed entirely on the same model without fallback.
 
     Supports both Anthropic (claude-*) and OpenAI (gpt-*) models.
     """
@@ -342,30 +343,91 @@ async def summarize_single_pdf(
         toc_prefix = "TABLE OF CONTENTS:\n" + "\n".join(toc_lines) + "\n\n"
 
     full_input = toc_prefix + full_text
-    prompt = _SYLLABUS_SUMMARY_PROMPT.format(book_name=book_name, text=full_input)
+
+    caps = get_model_caps(model)
+    max_input_chars = tokens_to_chars(
+        caps["context_window_tokens"] - max_output_tokens - 1000, model
+    )
+
+    if len(full_input) <= max_input_chars:
+        prompt = _SYLLABUS_SUMMARY_PROMPT.format(book_name=book_name, text=full_input)
+
+        logger.info(
+            "Summarizing PDF (single call)",
+            book=book_name,
+            model=model,
+            input_chars=len(full_input),
+            max_output_tokens=max_output_tokens,
+        )
+
+        result = await _call_model(
+            client,
+            model=model,
+            system=_SYLLABUS_SUMMARY_SYSTEM,
+            user_content=prompt,
+            max_tokens=max_output_tokens,
+        )
+
+        logger.info(
+            "PDF summarized",
+            book=book_name,
+            summary_chars=len(result),
+        )
+        return result
+
+    chunks = _split_into_chunks(full_input, max_input_chars)
+    total_chunks = len(chunks)
 
     logger.info(
-        "Summarizing PDF (single call)",
+        "Input exceeds model context — splitting into chunks",
         book=book_name,
         model=model,
         input_chars=len(full_input),
-        max_output_tokens=max_output_tokens,
+        max_input_chars=max_input_chars,
+        chunk_count=total_chunks,
+        context_window_tokens=caps["context_window_tokens"],
     )
 
-    result = await _call_model(
+    chunk_max_tokens = min(caps["max_output_tokens"], 16_000)
+    combine_chunk_size = max_input_chars
+
+    chunk_summaries: list[str] = []
+    for i, chunk in enumerate(chunks):
+        summary = await _summarize_chunk(
+            client,
+            book_name,
+            chunk,
+            chunk_num=i + 1,
+            total_chunks=total_chunks,
+            model=model,
+            max_tokens=chunk_max_tokens,
+        )
+        logger.info(
+            "Chunk summarized",
+            book=book_name,
+            chunk=i + 1,
+            total=total_chunks,
+            summary_chars=len(summary),
+        )
+        chunk_summaries.append(summary)
+
+    combined = await _combine_summaries(
         client,
+        book_name,
+        chunk_summaries,
+        combine_chunk_size=combine_chunk_size,
         model=model,
-        system=_SYLLABUS_SUMMARY_SYSTEM,
-        user_content=prompt,
         max_tokens=max_output_tokens,
     )
 
     logger.info(
-        "PDF summarized",
+        "PDF summarized (chunked)",
         book=book_name,
-        summary_chars=len(result),
+        model=model,
+        chunk_count=total_chunks,
+        summary_chars=len(combined),
     )
-    return result
+    return combined
 
 
 async def _combine_summaries(
@@ -740,7 +802,11 @@ def summarize_pdfs_sync(
             results.append(summary)
         return results
 
-    return list(asyncio.run(_run_all()))
+    loop = asyncio.new_event_loop()
+    try:
+        return list(loop.run_until_complete(_run_all()))
+    finally:
+        loop.close()
 
 
 def _proportional_budgets(
