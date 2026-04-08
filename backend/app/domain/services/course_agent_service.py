@@ -168,6 +168,7 @@ class CourseAgentService:
             "- flashcard_categories: max 5 short category names per module\n"
             "- case_study_fr/en: max 2 sentences (~40 words) — topic outline only, not the full case\n"
             "- Keep total response under 20,000 words\n\n"
+            "- NEVER truncate text with '...' or ellipsis — write complete short text instead\n\n"
             "Return ONLY valid JSON, no markdown fences, "
             "no explanation."
         )
