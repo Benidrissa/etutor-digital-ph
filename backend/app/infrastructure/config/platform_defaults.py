@@ -635,7 +635,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "   - Explain main concepts based on the documents\n"
             "   - Adapt complexity level to level {level}/4\n"
             "   - Integrate relevant data and examples from West Africa for this domain\n"
-            "   - Include epidemiological or sector-specific data when available\n\n"
+            "   - Include sector-specific data and statistics when available\n\n"
             "3. **Concrete West African Example** (1-2 paragraphs)\n"
             "   - Use a practical case from {country} or a neighboring"
             " ECOWAS country related to {course_title}\n"
