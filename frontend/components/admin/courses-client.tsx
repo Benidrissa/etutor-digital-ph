@@ -521,21 +521,23 @@ function CourseRow({
         </button>
 
         <div className="flex items-center gap-2 shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5 min-h-11 hidden sm:flex"
-            onClick={() => onGenerateStructure(course)}
-            disabled={isGenerating}
-            aria-label={t('generateStructure')}
-          >
-            {isGenerating ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-            ) : (
-              <Sparkles className="h-4 w-4" aria-hidden="true" />
-            )}
-            <span className="hidden md:inline">{t('generateStructure')}</span>
-          </Button>
+          {!isPublished && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 min-h-11 hidden sm:flex"
+              onClick={() => onGenerateStructure(course)}
+              disabled={isGenerating}
+              aria-label={t('generateStructure')}
+            >
+              {isGenerating ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <Sparkles className="h-4 w-4" aria-hidden="true" />
+              )}
+              <span className="hidden md:inline">{t('generateStructure')}</span>
+            </Button>
+          )}
 
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -555,14 +557,16 @@ function CourseRow({
                 <BookOpen className="mr-2 h-4 w-4" />
                 {t('editCourse')}
               </DropdownMenuItem>
-              <DropdownMenuItem
-                className="sm:hidden"
-                onClick={() => onGenerateStructure(course)}
-                disabled={isGenerating}
-              >
-                <Sparkles className="mr-2 h-4 w-4" />
-                {t('generateStructure')}
-              </DropdownMenuItem>
+              {!isPublished && (
+                <DropdownMenuItem
+                  className="sm:hidden"
+                  onClick={() => onGenerateStructure(course)}
+                  disabled={isGenerating}
+                >
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  {t('generateStructure')}
+                </DropdownMenuItem>
+              )}
               {course.status !== 'published' && (
                 <DropdownMenuItem onClick={() => onPublish(course)}>
                   <Globe className="mr-2 h-4 w-4" />
