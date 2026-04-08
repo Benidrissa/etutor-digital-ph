@@ -419,6 +419,19 @@ def generate_course_syllabus(
                 total_chars=len(resource_text),
             )
 
+        _early_save_engine = create_engine(settings.database_url_sync, pool_pre_ping=True)
+        try:
+            with Session(_early_save_engine) as _early_session:
+                _early_session.execute(
+                    text("UPDATE courses SET syllabus_context = :ctx WHERE id = :cid"),
+                    {"ctx": resource_text, "cid": course_id},
+                )
+                _early_session.commit()
+        except Exception:
+            logger.warning("Failed to save syllabus_context early (non-blocking)")
+        finally:
+            _early_save_engine.dispose()
+
     # ── Phase 2: Call Claude API (async, fresh event loop) ──────────────────
     self.update_state(
         state="GENERATING",
