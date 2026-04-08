@@ -2,7 +2,11 @@
 
 from typing import Literal
 
+import structlog
+
 from app.ai.prompts.lesson import _apply_settings_template
+
+logger = structlog.get_logger(__name__)
 
 CASE_STUDY_TOPICS = {
     "M01": {
@@ -49,6 +53,14 @@ def get_case_study_system_prompt(
     course_domain: str = "",
 ) -> str:
     """Generate system prompt for case study content generation."""
+    logger.debug(
+        "get_case_study_system_prompt called",
+        setting_key="ai-prompt-case-study-system",
+        language=language,
+        country=country,
+        level=level,
+        bloom_level=bloom_level,
+    )
     return _apply_settings_template(
         "ai-prompt-case-study-system",
         language,

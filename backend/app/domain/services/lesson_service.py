@@ -864,6 +864,12 @@ class CaseStudyGenerationService:
                 syllabus_json=course.syllabus_json if course else None,
             )
 
+            logger.debug(
+                "Case study system prompt preview",
+                system_prompt_prefix=system_prompt[:200],
+                system_prompt_len=len(system_prompt),
+            )
+
             accumulated_content = ""
             async for chunk in self.claude_service.generate_lesson_content_stream(
                 system_prompt, user_message
@@ -983,6 +989,12 @@ class CaseStudyGenerationService:
             language,
             module_id=module_key,
             syllabus_json=course.syllabus_json if course else None,
+        )
+
+        logger.debug(
+            "Case study system prompt preview (non-streaming)",
+            system_prompt_prefix=system_prompt[:200],
+            system_prompt_len=len(system_prompt),
         )
 
         response = await self.claude_service.generate_lesson_content(system_prompt, user_message)
