@@ -1,7 +1,7 @@
 """Reset stuck course creation_step values for failed/stale tasks
 
-Revision ID: bad7400491c8
-Revises: 0d1135672916
+Revision ID: 049
+Revises: 048
 Create Date: 2026-04-08 16:30:00.000000
 
 Resets courses where creation_step is stuck in a transient state due to
@@ -20,8 +20,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "bad7400491c8"
-down_revision: str | None = "0d1135672916"
+revision: str = "049"
+down_revision: str | None = "048"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
