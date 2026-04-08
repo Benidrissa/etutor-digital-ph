@@ -438,9 +438,9 @@ export function ChatPanel({
               title={tutorMode === 'socratic' ? t('modeSocraticTooltip') : t('modeExplanatoryTooltip')}
             >
               {tutorMode === 'socratic' ? (
-                <><HelpCircle className="h-3.5 w-3.5" />{t('modeSocratic')}</>
+                <><HelpCircle className="h-3.5 w-3.5" /><span className="hidden sm:inline">{t('modeSocratic')}</span></>
               ) : (
-                <><BookOpen className="h-3.5 w-3.5" />{t('modeExplanatory')}</>
+                <><BookOpen className="h-3.5 w-3.5" /><span className="hidden sm:inline">{t('modeExplanatory')}</span></>
               )}
             </Button>
             <DropdownMenu>
