@@ -99,7 +99,7 @@ def _apply_settings_template(
     if defn is None:
         return ""
     current = SettingsCache.instance().get(setting_key)
-    if current is None:
+    if not current:
         current = defn.default
     vars_map = _build_template_vars(
         language,
