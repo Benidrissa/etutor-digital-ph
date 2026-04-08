@@ -41,12 +41,17 @@ class GenerateModuleMediaRequest(BaseModel):
 
 
 def _to_response(media: ModuleMedia) -> ModuleMediaResponse:
-    storage = S3StorageService()
-    url = (
-        storage.public_url(media.storage_key)
-        if media.storage_key and media.status == "ready"
-        else None
-    )
+    url: str | None = None
+    if media.storage_key and media.status == "ready":
+        try:
+            storage = S3StorageService()
+            url = storage.public_url(media.storage_key)
+        except Exception as exc:
+            logger.warning(
+                "S3StorageService unavailable — returning url=None",
+                media_id=str(media.id),
+                error=str(exc),
+            )
     return ModuleMediaResponse(
         id=str(media.id),
         module_id=str(media.module_id),
@@ -67,9 +72,28 @@ async def list_module_media(
     db: AsyncSession = Depends(get_db_session),
 ) -> list[ModuleMediaResponse]:
     """List all media for a module."""
-    result = await db.execute(select(ModuleMedia).where(ModuleMedia.module_id == module_id))
-    items = result.scalars().all()
-    return [_to_response(m) for m in items]
+    try:
+        result = await db.execute(select(ModuleMedia).where(ModuleMedia.module_id == module_id))
+        items = result.scalars().all()
+    except Exception as exc:
+        logger.error(
+            "Failed to query module_media table",
+            module_id=str(module_id),
+            error=str(exc),
+        )
+        return []
+
+    responses: list[ModuleMediaResponse] = []
+    for m in items:
+        try:
+            responses.append(_to_response(m))
+        except Exception as exc:
+            logger.warning(
+                "Skipping media item due to serialisation error",
+                media_id=str(m.id),
+                error=str(exc),
+            )
+    return responses
 
 
 @router.post(
