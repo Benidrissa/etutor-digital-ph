@@ -1,7 +1,7 @@
 """Fix FK ondelete for user_course_enrollment and modules to CASCADE on course delete.
 
 Revision ID: 045
-Revises: 043
+Revises: 044
 Create Date: 2026-04-07
 
 """
@@ -9,7 +9,7 @@ Create Date: 2026-04-07
 from alembic import op
 
 revision = "045"
-down_revision = "043"
+down_revision = "044"
 branch_labels = None
 depends_on = None
 
