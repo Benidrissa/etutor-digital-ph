@@ -192,24 +192,28 @@ export function ModuleProgressOverlay({
                     href={getUnitHref(moduleId, unit)}
                     className="block"
                   >
-                    <div className="flex items-center gap-4 p-4 border border-stone-200 rounded-lg hover:border-stone-300 hover:bg-stone-50 transition-colors cursor-pointer">
-                      <div className="flex items-center gap-3 flex-1">
-                        {getStatusIcon(mappedStatus)}
-                        <div className="flex items-center gap-2 text-stone-600">
-                          {getTypeIcon(unit)}
-                          <span className="text-sm font-medium">
-                            {t('unitNumber', { number: unit.order_index + 1 })}
-                          </span>
+                    <div className="p-4 border border-stone-200 rounded-lg hover:border-stone-300 hover:bg-stone-50 transition-colors cursor-pointer">
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 shrink-0">
+                          {getStatusIcon(mappedStatus)}
                         </div>
-                        <div className="flex-1">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1">
+                            <div className="flex items-center gap-1 text-stone-600 shrink-0">
+                              {getTypeIcon(unit)}
+                              <span className="text-sm font-medium">
+                                {t('unitNumber', { number: unit.order_index + 1 })}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 text-sm text-stone-500 shrink-0">
+                              <Clock className="w-4 h-4" />
+                              {t('readingTime', { minutes: unit.estimated_minutes })}
+                            </div>
+                          </div>
                           <h4 className="font-medium text-stone-900">{title}</h4>
                           {description && (
                             <p className="text-sm text-stone-600 mt-1">{description}</p>
                           )}
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-stone-500">
-                          <Clock className="w-4 h-4" />
-                          {t('readingTime', { minutes: unit.estimated_minutes })}
                         </div>
                       </div>
                     </div>
