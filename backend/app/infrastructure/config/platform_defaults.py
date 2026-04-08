@@ -1045,6 +1045,15 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 0, "max": 64_000},
     ),
     SettingDef(
+        "syllabus-summary-max-output-tokens",
+        "syllabus",
+        30_000,
+        "integer",
+        "Summary max output tokens per PDF",
+        "Max output tokens per PDF summary. Controls richness vs cost.",
+        {"min": 4_000, "max": 64_000},
+    ),
+    SettingDef(
         "syllabus-max-concurrent-api-calls",
         "syllabus",
         1,

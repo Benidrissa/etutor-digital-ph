@@ -471,6 +471,7 @@ async def summarize_pdf_for_syllabus(
     num_pdfs: int | None = None,
     total_pdf_chars: int | None = None,
     context_budget_chars: int | None = None,
+    summary_max_output_tokens: int | None = None,
 ) -> str:
     """Produce a rich educational content map summary of one PDF.
 
@@ -498,14 +499,16 @@ async def summarize_pdf_for_syllabus(
     if use_single_call:
         caps = get_model_caps(model)
         max_out = caps["max_output_tokens"]
-        summary_max_tokens = min(max_out, 60_000)
+        effective_max = (
+            summary_max_output_tokens if summary_max_output_tokens else min(max_out, 60_000)
+        )
         return await summarize_single_pdf(
             client,
             book_name,
             full_text,
             toc=toc,
             model=model,
-            max_output_tokens=summary_max_tokens,
+            max_output_tokens=effective_max,
         )
 
     use_dynamic_plan = (
@@ -648,6 +651,7 @@ def summarize_pdfs_sync(
     total_budget_chars: int | None = None,
     context_budget_chars: int | None = None,
     max_concurrent: int = 5,
+    summary_max_output_tokens: int | None = None,
 ) -> list[str]:
     """Synchronous wrapper — summarize a list of (book_name, full_text, toc) tuples.
 
@@ -695,6 +699,7 @@ def summarize_pdfs_sync(
                 num_pdfs=len(pdf_texts) if use_dynamic_plan else None,
                 total_pdf_chars=total_chars if use_dynamic_plan else None,
                 context_budget_chars=effective_budget if use_dynamic_plan else None,
+                summary_max_output_tokens=summary_max_output_tokens,
             )
             logger.info("PDF summarized", book=name, summary_chars=len(summary))
             results.append(summary)
