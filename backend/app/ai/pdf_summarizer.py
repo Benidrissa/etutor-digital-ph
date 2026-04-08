@@ -29,7 +29,7 @@ from app.ai.model_registry import get_model_caps
 
 logger = structlog.get_logger(__name__)
 
-_SUMMARIZER_MODEL = "claude-sonnet-4-6"
+_SUMMARIZER_MODEL = "gpt-5.4-nano"
 _CHARS_PER_WORD = 5
 
 _MAX_PDF_CHARS = 2_500_000
@@ -278,6 +278,48 @@ def split_pdf_by_chapters(text: str, toc: list, max_chars: int) -> list[tuple[st
     return groups if groups else [("Part 1", text)]
 
 
+def _get_summarizer_client(model: str):
+    """Return the appropriate API client based on model name."""
+    if model.startswith("gpt-"):
+        from openai import AsyncOpenAI
+
+        return AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+    import anthropic
+
+    return anthropic.AsyncAnthropic(
+        api_key=os.getenv("ANTHROPIC_API_KEY", ""),
+        timeout=600.0,
+    )
+
+
+async def _call_model(
+    client,
+    model: str,
+    system: str,
+    user_content: str,
+    max_tokens: int,
+) -> str:
+    """Call the appropriate model API and return the text response."""
+    if model.startswith("gpt-"):
+        response = await client.chat.completions.create(
+            model=model,
+            max_completion_tokens=max_tokens,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user_content},
+            ],
+        )
+        return response.choices[0].message.content.strip()
+    async with client.messages.stream(
+        model=model,
+        max_tokens=max_tokens,
+        system=system,
+        messages=[{"role": "user", "content": user_content}],
+    ) as stream:
+        message = await stream.get_final_message()
+    return message.content[0].text.strip()
+
+
 async def summarize_single_pdf(
     client,
     book_name: str,
@@ -292,8 +334,7 @@ async def summarize_single_pdf(
     fits within the model's context window (use split_pdf_by_chapters() at
     upload time to guarantee this).
 
-    Uses get_final_message() to consume the stream, which works correctly in
-    Celery prefork workers where async event iteration hangs indefinitely.
+    Supports both Anthropic (claude-*) and OpenAI (gpt-*) models.
     """
     toc_prefix = ""
     if toc:
@@ -306,19 +347,18 @@ async def summarize_single_pdf(
     logger.info(
         "Summarizing PDF (single call)",
         book=book_name,
+        model=model,
         input_chars=len(full_input),
         max_output_tokens=max_output_tokens,
     )
 
-    async with client.messages.stream(
+    result = await _call_model(
+        client,
         model=model,
-        max_tokens=max_output_tokens,
         system=_SYLLABUS_SUMMARY_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
-    ) as stream:
-        message = await stream.get_final_message()
-
-    result = message.content[0].text.strip()
+        user_content=prompt,
+        max_tokens=max_output_tokens,
+    )
 
     logger.info(
         "PDF summarized",
@@ -366,14 +406,13 @@ async def _combine_summaries(
             analyses=batches[0],
             word_limit_instruction=word_limit_instruction,
         )
-        async with client.messages.stream(
+        return await _call_model(
+            client,
             model=model,
-            max_tokens=adjusted_max_tokens,
             system=_COMBINE_SYSTEM,
-            messages=[{"role": "user", "content": prompt}],
-        ) as stream:
-            message = await stream.get_final_message()
-        return message.content[0].text.strip()
+            user_content=prompt,
+            max_tokens=adjusted_max_tokens,
+        )
 
     intermediate: list[str] = []
     for i, batch in enumerate(batches):
@@ -382,14 +421,13 @@ async def _combine_summaries(
             analyses=batch,
             word_limit_instruction=word_limit_instruction,
         )
-        async with client.messages.stream(
+        result = await _call_model(
+            client,
             model=model,
-            max_tokens=adjusted_max_tokens,
             system=_COMBINE_SYSTEM,
-            messages=[{"role": "user", "content": prompt}],
-        ) as stream:
-            msg = await stream.get_final_message()
-        result = msg.content[0].text.strip()
+            user_content=prompt,
+            max_tokens=adjusted_max_tokens,
+        )
         logger.debug(
             "Intermediate combine done",
             book=book_name,
@@ -404,14 +442,13 @@ async def _combine_summaries(
         analyses=final_joined,
         word_limit_instruction=word_limit_instruction,
     )
-    async with client.messages.stream(
+    return await _call_model(
+        client,
         model=model,
-        max_tokens=adjusted_max_tokens,
         system=_COMBINE_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
-    ) as stream:
-        message = await stream.get_final_message()
-    return message.content[0].text.strip()
+        user_content=prompt,
+        max_tokens=adjusted_max_tokens,
+    )
 
 
 async def _summarize_chunk(
@@ -441,14 +478,13 @@ async def _summarize_chunk(
         excerpt=excerpt,
         word_limit_instruction=word_limit_instruction,
     )
-    async with client.messages.stream(
+    return await _call_model(
+        client,
         model=model,
-        max_tokens=adjusted_max_tokens,
         system=_CHUNK_SUMMARY_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
-    ) as stream:
-        message = await stream.get_final_message()
-    return message.content[0].text.strip()
+        user_content=prompt,
+        max_tokens=adjusted_max_tokens,
+    )
 
 
 async def summarize_pdf_for_syllabus(
@@ -474,10 +510,16 @@ async def summarize_pdf_for_syllabus(
     (single-call mode). Falls back to the legacy multi-chunk path when explicit
     chunk_size_chars is provided (backward compatibility).
     """
-    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if model.startswith("gpt-"):
+        api_key = os.getenv("OPENAI_API_KEY", "")
+        key_var = "OPENAI_API_KEY"
+    else:
+        api_key = os.getenv("ANTHROPIC_API_KEY", "")
+        key_var = "ANTHROPIC_API_KEY"
+
     if not api_key:
         logger.warning(
-            "ANTHROPIC_API_KEY not set — returning TOC-only summary",
+            f"{key_var} not set — returning TOC-only summary",
             book=book_name,
         )
         if toc:
@@ -485,9 +527,7 @@ async def summarize_pdf_for_syllabus(
             return "Table of Contents:\n" + "\n".join(toc_lines[:200])
         return f"[No API key — full text not summarized for {book_name}]"
 
-    import anthropic
-
-    client = anthropic.AsyncAnthropic(api_key=api_key, timeout=600.0)
+    client = _get_summarizer_client(model)
 
     use_single_call = chunk_size_chars is None and chunk_max_output_tokens is None
 
