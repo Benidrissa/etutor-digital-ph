@@ -305,16 +305,32 @@ class TestSummarizePdfForSyllabus:
         from app.ai.pdf_summarizer import summarize_pdf_for_syllabus
 
         toc = [(1, "Chapter 1: Intro", 1), (2, "Section 1.1", 5)]
-        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}):
-            result = asyncio.run(summarize_pdf_for_syllabus("TestBook", "some text", toc=toc))
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "", "ANTHROPIC_API_KEY": ""}):
+            result = asyncio.run(
+                summarize_pdf_for_syllabus("TestBook", "some text", toc=toc, model="gpt-5.4-nano")
+            )
         assert "Chapter 1: Intro" in result
 
     def test_no_api_key_no_toc_returns_placeholder(self):
         from app.ai.pdf_summarizer import summarize_pdf_for_syllabus
 
-        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}):
-            result = asyncio.run(summarize_pdf_for_syllabus("TestBook", "some text", toc=None))
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "", "ANTHROPIC_API_KEY": ""}):
+            result = asyncio.run(
+                summarize_pdf_for_syllabus("TestBook", "some text", toc=None, model="gpt-5.4-nano")
+            )
         assert "TestBook" in result
+
+    def test_no_api_key_anthropic_model_returns_toc_fallback(self):
+        from app.ai.pdf_summarizer import summarize_pdf_for_syllabus
+
+        toc = [(1, "Chapter 1: Intro", 1), (2, "Section 1.1", 5)]
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}):
+            result = asyncio.run(
+                summarize_pdf_for_syllabus(
+                    "TestBook", "some text", toc=toc, model="claude-sonnet-4-6"
+                )
+            )
+        assert "Chapter 1: Intro" in result
 
     def test_default_uses_single_call_enriched_prompt(self):
         """Without chunk overrides, must use summarize_single_pdf (new enriched prompt)."""
@@ -330,9 +346,13 @@ class TestSummarizePdfForSyllabus:
 
         with (
             patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
-            patch("anthropic.AsyncAnthropic", return_value=mock_client),
+            patch("app.ai.pdf_summarizer._get_summarizer_client", return_value=mock_client),
         ):
-            result = asyncio.run(summarize_pdf_for_syllabus("SmallBook", "short text", toc=None))
+            result = asyncio.run(
+                summarize_pdf_for_syllabus(
+                    "SmallBook", "short text", toc=None, model="claude-sonnet-4-6"
+                )
+            )
 
         assert result == "Rich structured summary"
         assert len(captured_system) == 1
@@ -350,11 +370,15 @@ class TestSummarizePdfForSyllabus:
 
         with (
             patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
-            patch("anthropic.AsyncAnthropic", return_value=mock_client),
+            patch("app.ai.pdf_summarizer._get_summarizer_client", return_value=mock_client),
         ):
             result = asyncio.run(
                 summarize_pdf_for_syllabus(
-                    "SmallBook", "short text", toc=None, chunk_size_chars=100_000
+                    "SmallBook",
+                    "short text",
+                    toc=None,
+                    chunk_size_chars=100_000,
+                    model="claude-sonnet-4-6",
                 )
             )
 
@@ -370,9 +394,11 @@ class TestSummarizePdfForSyllabus:
 
         with (
             patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
-            patch("anthropic.AsyncAnthropic", return_value=mock_client),
+            patch("app.ai.pdf_summarizer._get_summarizer_client", return_value=mock_client),
         ):
-            asyncio.run(summarize_pdf_for_syllabus("Book", "content", toc=toc))
+            asyncio.run(
+                summarize_pdf_for_syllabus("Book", "content", toc=toc, model="claude-sonnet-4-6")
+            )
 
         assert any("Chapter 1" in p for p in captured_user)
 
@@ -384,7 +410,9 @@ class TestSummarizeSinglePdf:
         captured_system: list = []
         mock_client = _make_stream_client(text="rich summary", captured_system=captured_system)
 
-        asyncio.run(summarize_single_pdf(mock_client, "MyBook", "text here"))
+        asyncio.run(
+            summarize_single_pdf(mock_client, "MyBook", "text here", model="claude-sonnet-4-6")
+        )
 
         assert len(captured_system) == 1
         assert "instructional designer" in captured_system[0]
@@ -395,7 +423,9 @@ class TestSummarizeSinglePdf:
         captured_user: list = []
         mock_client = _make_stream_client(text="ok", captured_user=captured_user)
 
-        asyncio.run(summarize_single_pdf(mock_client, "TestBook", "some text"))
+        asyncio.run(
+            summarize_single_pdf(mock_client, "TestBook", "some text", model="claude-sonnet-4-6")
+        )
 
         assert any("EXHAUSTIVE" in p for p in captured_user)
         assert any("Bloom" in p for p in captured_user)
@@ -407,7 +437,9 @@ class TestSummarizeSinglePdf:
         captured_user: list = []
         mock_client = _make_stream_client(text="ok", captured_user=captured_user)
 
-        asyncio.run(summarize_single_pdf(mock_client, "Book", "content", toc=toc))
+        asyncio.run(
+            summarize_single_pdf(mock_client, "Book", "content", toc=toc, model="claude-sonnet-4-6")
+        )
 
         assert any("Chapter 1" in p for p in captured_user)
 
@@ -416,7 +448,9 @@ class TestSummarizeSinglePdf:
 
         mock_client = _make_stream_client(text="  summary with spaces  ")
 
-        result = asyncio.run(summarize_single_pdf(mock_client, "Book", "text"))
+        result = asyncio.run(
+            summarize_single_pdf(mock_client, "Book", "text", model="claude-sonnet-4-6")
+        )
         assert result == "summary with spaces"
 
     def test_single_api_call_regardless_of_text_size(self):
@@ -426,9 +460,30 @@ class TestSummarizeSinglePdf:
         mock_client = _make_stream_client(text="ok", stream_call_count=stream_calls)
 
         large_text = "word " * 100_000
-        asyncio.run(summarize_single_pdf(mock_client, "BigBook", large_text))
+        asyncio.run(
+            summarize_single_pdf(mock_client, "BigBook", large_text, model="claude-sonnet-4-6")
+        )
 
         assert len(stream_calls) == 1
+
+    def test_gpt_model_uses_chat_completions(self):
+        from app.ai.pdf_summarizer import summarize_single_pdf
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "  GPT summary  "
+
+        mock_client = MagicMock()
+        mock_client.chat = MagicMock()
+        mock_client.chat.completions = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        result = asyncio.run(
+            summarize_single_pdf(mock_client, "Book", "text", model="gpt-5.4-nano")
+        )
+
+        assert result == "GPT summary"
+        mock_client.chat.completions.create.assert_called_once()
 
 
 class TestSummarizePdfsSync:
@@ -437,7 +492,7 @@ class TestSummarizePdfsSync:
             ("BookA", "text a", []),
             ("BookB", "text b", []),
         ]
-        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "", "ANTHROPIC_API_KEY": ""}):
             result = summarize_pdfs_sync(pdf_texts)
 
         assert len(result) == 2

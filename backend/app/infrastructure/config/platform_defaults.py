@@ -1003,10 +1003,10 @@ SETTING_DEFINITIONS: list[SettingDef] = [
     SettingDef(
         "syllabus-summarizer-model",
         "syllabus",
-        "claude-sonnet-4-6",
+        "gpt-5.4-nano",
         "string",
         "Summarizer model",
-        "Model used for PDF summarization.",
+        "Model for PDF summarization. Supports claude-* and gpt-* models.",
     ),
     SettingDef(
         "syllabus-chunk-max-tokens",

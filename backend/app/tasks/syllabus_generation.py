@@ -72,7 +72,7 @@ def generate_course_syllabus(
 
     cache = SettingsCache.instance()
     context_budget = cache.get("syllabus-context-budget-chars", 3_500_000)
-    summarizer_model = cache.get("syllabus-summarizer-model", "claude-sonnet-4-6")
+    summarizer_model = cache.get("syllabus-summarizer-model", "gpt-5.4-nano")
     summary_max_tokens = cache.get("syllabus-summary-max-output-tokens", 30_000)
 
     logger.info(
