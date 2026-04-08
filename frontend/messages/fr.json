@@ -1430,7 +1430,17 @@
     "moduleNumber": "Numéro de module",
     "untitledCourse": "Cours sans titre",
     "unlinkedModules": "Modules non rattachés",
-    "noModules": "Aucun module trouvé. Créez un cours d'abord."
+    "noModules": "Aucun module trouvé. Créez un cours d'abord.",
+    "generateAudio": "Générer le résumé audio",
+    "audioGenerateSuccess": "Génération audio démarrée",
+    "audioGenerateError": "Échec du démarrage de la génération audio",
+    "audioAlreadyExists": "Un audio existe déjà pour ce module",
+    "audioStatus": {
+      "pending": "Audio en attente",
+      "generating": "Audio en cours de génération",
+      "ready": "Audio prêt",
+      "failed": "Échec de la génération audio"
+    }
   },
   "AuthGuard": {
     "loading": "Chargement..."
