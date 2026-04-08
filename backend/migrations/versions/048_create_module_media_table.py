@@ -48,12 +48,8 @@ def upgrade() -> None:
         """
     )
 
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_module_media_module_id ON module_media (module_id)"
-    )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_module_media_status ON module_media (status)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_module_media_module_id ON module_media (module_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_module_media_status ON module_media (status)")
     op.execute(
         "CREATE INDEX IF NOT EXISTS ix_module_media_module_language_type ON module_media (module_id, language, media_type)"
     )
