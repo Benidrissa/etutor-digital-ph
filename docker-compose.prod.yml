@@ -48,6 +48,7 @@ services:
       SMS_RELAY_API_KEY: ${SMS_RELAY_API_KEY}
       SMS_RELAY_TRUSTED_SENDERS: ${SMS_RELAY_TRUSTED_SENDERS}
     volumes:
+      - ./config:/app/config
       - ./resources:/app/resources
       - uploads:/app/uploads
     depends_on:
@@ -122,6 +123,7 @@ services:
       SMS_RELAY_API_KEY: ${SMS_RELAY_API_KEY}
       SMS_RELAY_TRUSTED_SENDERS: ${SMS_RELAY_TRUSTED_SENDERS}
     volumes:
+      - ./config:/app/config
       - ./resources:/app/resources
       - uploads:/app/uploads
     depends_on:
