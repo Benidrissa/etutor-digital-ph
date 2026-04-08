@@ -280,9 +280,15 @@ def _make_stream_client(
         if stream_call_count is not None:
             stream_call_count.append(1)
 
+        delta = MagicMock()
+        delta.text = text
+
+        event = MagicMock()
+        event.type = "content_block_delta"
+        event.delta = delta
+
         async def _aiter():
-            return
-            yield  # makes it an async generator
+            yield event
 
         stream = MagicMock()
         stream.__aiter__ = lambda self: _aiter()
