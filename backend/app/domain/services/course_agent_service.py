@@ -214,7 +214,7 @@ class CourseAgentService:
             # Use streaming to avoid timeout with large max_tokens
             async with client.messages.stream(
                 model=_model,
-                max_tokens=64000,
+                max_tokens=10000,
                 messages=[{"role": "user", "content": prompt}],
             ) as stream:
                 message = await stream.get_final_message()
@@ -227,7 +227,7 @@ class CourseAgentService:
                 )
                 async with client.messages.stream(
                     model=_model,
-                    max_tokens=64000,
+                    max_tokens=10000,
                     messages=[
                         {"role": "user", "content": prompt},
                         {"role": "assistant", "content": message.content[0].text},
