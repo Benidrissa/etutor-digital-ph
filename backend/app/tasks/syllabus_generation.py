@@ -460,6 +460,12 @@ def generate_course_syllabus(
 
     module_dicts = asyncio.run(_call_claude())
 
+    if module_dicts and module_dicts[0].get("title_en") == "Introduction to the field":
+        raise ValueError(
+            "Syllabus generation returned placeholder modules — Claude API call failed or"
+            " response was unparseable. Refusing to save. Check logs for root cause."
+        )
+
     self.update_state(
         state="SAVING",
         meta={

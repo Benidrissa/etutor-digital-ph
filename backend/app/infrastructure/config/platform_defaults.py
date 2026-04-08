@@ -971,10 +971,10 @@ SETTING_DEFINITIONS: list[SettingDef] = [
     SettingDef(
         "syllabus-context-budget-chars",
         "syllabus",
-        3_500_000,
+        400_000,
         "integer",
         "Context budget (chars)",
-        "Max chars before triggering PDF summarization. Raised to 3.5M for Sonnet 4.6 context.",
+        "Max chars before triggering PDF summarization.",
         {"min": 100_000, "max": 4_000_000},
     ),
     SettingDef(

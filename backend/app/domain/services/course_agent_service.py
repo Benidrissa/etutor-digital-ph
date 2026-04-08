@@ -32,6 +32,29 @@ _PLACEHOLDER_MODULES = [
 ]
 
 
+def _try_parse_modules(raw: str) -> list[dict] | None:
+    """Attempt to parse a JSON array of modules, with partial recovery on truncation."""
+    import json
+
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
+    last_brace = raw.rfind("}")
+    if last_brace == -1:
+        return None
+    candidate = raw[: last_brace + 1] + "]"
+    try:
+        result = json.loads(candidate)
+        if isinstance(result, list):
+            return result
+    except json.JSONDecodeError:
+        pass
+
+    return None
+
+
 class CourseAgentService:
     """Generates course structure using Claude API, with graceful fallback."""
 
@@ -137,6 +160,14 @@ class CourseAgentService:
             '"flashcard_categories_en": [str],\n'
             '  "case_study_fr": str, "case_study_en": str\n'
             "}\n\n"
+            "## Conciseness rules (CRITICAL — this is a syllabus, not the course itself)\n"
+            "- description_fr/en: max 2 sentences (~30 words each)\n"
+            "- learning_objectives: max 3-5 bullet points per module, each ≤15 words\n"
+            "- unit description_fr/en: max 1 sentence (~20 words)\n"
+            "- quiz_topics: max 5 short topic names per module\n"
+            "- flashcard_categories: max 5 short category names per module\n"
+            "- case_study_fr/en: max 2 sentences (~40 words) — topic outline only, not the full case\n"
+            "- Keep total response under 20,000 words\n\n"
             "Return ONLY valid JSON, no markdown fences, "
             "no explanation."
         )
@@ -203,8 +234,6 @@ class CourseAgentService:
                 description_en=course_description_en,
             )
 
-            import json
-
             _model = "claude-sonnet-4-6"
             caps = get_model_caps(_model)
             prompt_tokens_est = len(prompt) / caps["chars_per_token"]
@@ -232,7 +261,7 @@ class CourseAgentService:
             # Use streaming to avoid timeout with large max_tokens
             async with client.messages.stream(
                 model=_model,
-                max_tokens=35000,
+                max_tokens=64000,
                 messages=[{"role": "user", "content": prompt}],
             ) as stream:
                 message = await stream.get_final_message()
@@ -245,7 +274,7 @@ class CourseAgentService:
                 )
                 async with client.messages.stream(
                     model=_model,
-                    max_tokens=35000,
+                    max_tokens=64000,
                     messages=[
                         {"role": "user", "content": prompt},
                         {"role": "assistant", "content": message.content[0].text},
@@ -262,7 +291,9 @@ class CourseAgentService:
             raw = message.content[0].text.strip()
             if raw.startswith("```"):
                 raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-            modules_raw: list[dict[str, Any]] = json.loads(raw)
+            modules_raw = _try_parse_modules(raw)
+            if modules_raw is None:
+                raise ValueError("Failed to parse modules JSON after partial recovery attempt")
 
             modules = []
             for i, m in enumerate(modules_raw, start=1):
