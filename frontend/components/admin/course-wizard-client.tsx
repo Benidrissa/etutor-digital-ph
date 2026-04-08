@@ -54,7 +54,7 @@ function mapCreationStepToWizardStep(creationStep: string): WizardStep {
     case "indexed":
       return "index";
     case "published":
-      return "publish";
+      return "index";
     default:
       return "upload";
   }
@@ -220,7 +220,8 @@ export function CourseWizardClient({
   const lastProgressTimeRef = useRef<number | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [indexStatus, setIndexStatus] = useState<IndexStatus | null>(null);
-  const [isIndexing, setIsIndexing] = useState(
+  const [isIndexing, setIsIndexing] = useState(false);
+  const [isCheckingIndexStatus, setIsCheckingIndexStatus] = useState(
     resumeCreationStep === "indexing"
   );
   const [indexError, setIndexError] = useState<string | null>(null);
@@ -306,6 +307,48 @@ export function CourseWizardClient({
   }, [resumeCourseId, resumeCreationStep]);
 
   useEffect(() => {
+    if (resumeCreationStep !== "indexing" || !resumeCourseId) return;
+
+    const checkIndexOnResume = async () => {
+      try {
+        const data = await apiFetch<{
+          indexed: boolean;
+          chunks_indexed: number;
+          images_indexed?: number;
+          creation_step?: string;
+          task?: { id: string; state: string; progress?: number };
+        }>(`/api/v1/admin/courses/${resumeCourseId}/index-status`);
+
+        const activeStates = ["PENDING", "STARTED", "RETRY"];
+        if (data.task && activeStates.includes(data.task.state)) {
+          setTaskId(data.task.id);
+          setIsIndexing(true);
+          lastIndexProgressTimeRef.current = Date.now();
+        } else if (data.indexed && data.chunks_indexed > 0) {
+          setIndexStatus({
+            indexed: true,
+            chunks_indexed: data.chunks_indexed,
+            images_indexed: data.images_indexed,
+          });
+          setStep("publish");
+        } else if (
+          data.task &&
+          (data.task.state === "FAILURE" || data.task.state === "REVOKED")
+        ) {
+          setIndexError(t("index.error"));
+        } else {
+          setIsIndexing(false);
+        }
+      } catch {
+      } finally {
+        setIsCheckingIndexStatus(false);
+      }
+    };
+
+    checkIndexOnResume();
+  }, [resumeCourseId, resumeCreationStep, t]);
+
+  useEffect(() => {
     if (resumeCreationStep !== "generating" || !resumeCourseId) return;
 
     const checkOnResume = async () => {
@@ -339,6 +382,25 @@ export function CourseWizardClient({
     };
 
     checkOnResume();
+  }, [resumeCourseId, resumeCreationStep]);
+
+  useEffect(() => {
+    if (resumeCreationStep !== "published" && resumeCreationStep !== "indexed") return;
+    if (!resumeCourseId) return;
+
+    apiFetch<{
+      indexed: boolean;
+      chunks_indexed: number;
+      images_indexed?: number;
+    }>(`/api/v1/admin/courses/${resumeCourseId}/index-status`)
+      .then((data) => {
+        setIndexStatus({
+          indexed: data.indexed,
+          chunks_indexed: data.chunks_indexed,
+          images_indexed: data.images_indexed,
+        });
+      })
+      .catch(() => {});
   }, [resumeCourseId, resumeCreationStep]);
 
   useEffect(() => {
@@ -803,6 +865,12 @@ export function CourseWizardClient({
         }
 
         if (status.task?.state === "SUCCESS") {
+          setIndexStatus({
+            indexed: true,
+            chunks_indexed: status.chunks_indexed,
+            images_indexed: status.images_indexed,
+            task: status.task,
+          });
           setIsIndexing(false);
           setIndexStaleWarning(false);
           queryClient.invalidateQueries({ queryKey: ["admin-courses"] });
@@ -817,6 +885,16 @@ export function CourseWizardClient({
           setIsIndexing(false);
           setIndexStaleWarning(false);
           return;
+        }
+
+        if (lastIndexProgressTimeRef.current !== null) {
+          const staleSince = Date.now() - lastIndexProgressTimeRef.current;
+          if (staleSince > 2 * 60 * 1000) {
+            setIndexError(t("index.error"));
+            setIsIndexing(false);
+            setIndexStaleWarning(false);
+            return;
+          }
         }
 
         pollRef.current = setTimeout(poll, 3000);
@@ -1350,7 +1428,13 @@ export function CourseWizardClient({
 
                 <AttachedResources files={files} t={t} />
 
-                {!isIndexing && !indexStatus?.indexed && (
+                {isCheckingIndexStatus && (
+                  <div className="flex items-center justify-center py-6">
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  </div>
+                )}
+
+                {!isIndexing && !indexStatus?.indexed && !isCheckingIndexStatus && (
                   <Button onClick={startIndexation} className="w-full min-h-11" disabled={isIndexing}>
                     <Database className="mr-2 h-4 w-4" />
                     {t("index.button")}
