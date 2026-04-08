@@ -599,6 +599,8 @@ class TestSyllabusTaskWithDbResources:
         course_data = {
             "title_fr": "Santé",
             "title_en": "Health",
+            "description_fr": "",
+            "description_en": "",
             "course_hours": 20,
             "rag_collection_id": None,
             "domain_slugs": [],
@@ -655,6 +657,8 @@ class TestSyllabusTaskWithDbResources:
         course_data = {
             "title_fr": "Santé",
             "title_en": "Health",
+            "description_fr": "",
+            "description_en": "",
             "course_hours": 20,
             "rag_collection_id": None,
             "domain_slugs": [],
@@ -719,6 +723,8 @@ class TestSyllabusTaskWithDbResources:
         course_data = {
             "title_fr": "Épidémio",
             "title_en": "Epi",
+            "description_fr": "",
+            "description_en": "",
             "course_hours": 30,
             "rag_collection_id": None,
             "domain_slugs": [],

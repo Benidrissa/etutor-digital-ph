@@ -65,6 +65,8 @@ class CourseAgentService:
         audience_str: str,
         estimated_hours: int,
         resource_block: str,
+        description_fr: str | None = None,
+        description_en: str | None = None,
     ) -> str:
         """Build the syllabus generation prompt, using admin override if available."""
         admin = self._get_admin_prompt(
@@ -76,6 +78,15 @@ class CourseAgentService:
         )
         if admin:
             return admin
+
+        description_block = ""
+        if description_fr or description_en:
+            description_block = "\n"
+            if description_fr:
+                description_block += f"- Description (FR): {description_fr}\n"
+            if description_en:
+                description_block += f"- Description (EN): {description_en}\n"
+
         return (
             "You are an expert instructional designer specializing in "
             "bilingual (FR/EN) adaptive e-learning. You design curricula "
@@ -84,6 +95,7 @@ class CourseAgentService:
             f"Create a complete course syllabus for:\n"
             f"- Title FR: {title_fr}\n"
             f"- Title EN: {title_en}\n"
+            f"{description_block}"
             f"- Domain(s): {domains_str}\n"
             f"- Level(s): {levels_str}\n"
             f"- Target audience: {audience_str}\n"
@@ -133,6 +145,8 @@ class CourseAgentService:
         self,
         title_fr: str,
         title_en: str,
+        course_description_fr: str | None = None,
+        course_description_en: str | None = None,
         course_domain: list[str] | None = None,
         course_level: list[str] | None = None,
         audience_type: list[str] | None = None,
@@ -185,6 +199,8 @@ class CourseAgentService:
                 audience_str,
                 estimated_hours,
                 resource_block,
+                description_fr=course_description_fr,
+                description_en=course_description_en,
             )
 
             import json
@@ -209,6 +225,8 @@ class CourseAgentService:
                     audience_str,
                     estimated_hours,
                     resource_block,
+                    description_fr=course_description_fr,
+                    description_en=course_description_en,
                 )
 
             # Use streaming to avoid timeout with large max_tokens
