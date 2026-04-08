@@ -1,6 +1,7 @@
 """Admin endpoints for course management (CRUD, publish, RAG indexation)."""
 
 import re
+import shutil
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -8,6 +9,7 @@ from pathlib import Path
 from celery.result import AsyncResult
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
 from structlog import get_logger
 
@@ -505,7 +507,7 @@ async def delete_course(
     current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
     db=Depends(get_db_session),
 ) -> None:
-    """Delete a draft course. Admin only. Cannot delete published courses."""
+    """Delete a draft or archived course and all its related data. Admin only."""
     result = await db.execute(select(Course).where(Course.id == course_id))
     course = result.scalar_one_or_none()
     if not course:
@@ -527,8 +529,57 @@ async def delete_course(
             detail="Cannot delete a course with enrolled learners",
         )
 
-    await db.delete(course)
-    await db.commit()
+    rag_collection_id = course.rag_collection_id
+    indexation_task_id = course.indexation_task_id
+    syllabus_task_id = course.syllabus_task_id
+
+    if indexation_task_id:
+        try:
+            AsyncResult(indexation_task_id).revoke(terminate=True)
+        except Exception as revoke_exc:
+            logger.warning(
+                "Could not revoke indexation task during course delete",
+                task_id=indexation_task_id,
+                course_id=str(course_id),
+                error=str(revoke_exc),
+            )
+
+    if syllabus_task_id:
+        try:
+            AsyncResult(syllabus_task_id).revoke(terminate=True)
+        except Exception as revoke_exc:
+            logger.warning(
+                "Could not revoke syllabus task during course delete",
+                task_id=syllabus_task_id,
+                course_id=str(course_id),
+                error=str(revoke_exc),
+            )
+
+    if rag_collection_id:
+        await db.execute(sa_delete(DocumentChunk).where(DocumentChunk.source == rag_collection_id))
+
+    try:
+        await db.delete(course)
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        logger.error("Course delete failed", course_id=str(course_id), error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete course — database error",
+        ) from exc
+
+    course_upload_dir = UPLOAD_DIR / str(course_id)
+    if course_upload_dir.exists():
+        try:
+            shutil.rmtree(course_upload_dir)
+        except Exception:
+            logger.warning(
+                "Failed to delete course upload directory",
+                course_id=str(course_id),
+                path=str(course_upload_dir),
+            )
+
     logger.info("Course deleted", course_id=str(course_id), admin_id=current_user.id)
 
 

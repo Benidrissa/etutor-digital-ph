@@ -36,7 +36,7 @@ class Module(Base):
     )
     books_sources: Mapped[dict | None] = mapped_column(JSON)
     course_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("courses.id", ondelete="SET NULL"),
+        ForeignKey("courses.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
