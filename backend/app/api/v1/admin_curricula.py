@@ -13,7 +13,8 @@ from app.api.deps import get_db as get_db_session
 from app.api.deps_local_auth import AuthenticatedUser, require_role
 from app.domain.models.course import Course
 from app.domain.models.curriculum import Curriculum, CurriculumCourse
-from app.domain.models.user import UserRole
+from app.domain.models.user import User, UserRole
+from app.domain.models.user_group import CurriculumAccess, UserGroup
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/admin/curricula", tags=["Admin - Curricula"])
@@ -35,6 +36,26 @@ class UpdateCurriculumRequest(BaseModel):
     cover_image_url: str | None = None
 
 
+class SetVisibilityRequest(BaseModel):
+    visibility: str
+
+
+class GrantAccessRequest(BaseModel):
+    user_id: str | None = None
+    group_id: str | None = None
+
+
+class AccessEntryResponse(BaseModel):
+    id: str
+    curriculum_id: str
+    user_id: str | None
+    user_email: str | None
+    group_id: str | None
+    group_name: str | None
+    granted_by: str | None
+    granted_at: str
+
+
 class CurriculumResponse(BaseModel):
     id: str
     slug: str
@@ -44,6 +65,7 @@ class CurriculumResponse(BaseModel):
     description_en: str | None
     cover_image_url: str | None
     status: str
+    visibility: str
     created_by: str | None
     course_count: int
     created_at: str
@@ -76,6 +98,7 @@ def _curriculum_to_response(curriculum: Curriculum) -> CurriculumResponse:
         description_en=curriculum.description_en,
         cover_image_url=curriculum.cover_image_url,
         status=curriculum.status,
+        visibility=curriculum.visibility,
         created_by=str(curriculum.created_by) if curriculum.created_by else None,
         course_count=len(curriculum.courses) if curriculum.courses else 0,
         created_at=curriculum.created_at.isoformat(),
@@ -355,3 +378,213 @@ async def remove_course_from_curriculum(
 
     await db.refresh(curriculum)
     return _curriculum_to_detail_response(curriculum)
+
+
+@router.post("/{curriculum_id}/visibility", response_model=CurriculumDetailResponse)
+async def set_curriculum_visibility(
+    curriculum_id: uuid.UUID,
+    request: SetVisibilityRequest,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    db=Depends(get_db_session),
+) -> CurriculumDetailResponse:
+    """Set curriculum visibility to 'public' or 'private'. Admin only."""
+    if request.visibility not in ("public", "private"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="visibility must be 'public' or 'private'",
+        )
+    result = await db.execute(select(Curriculum).where(Curriculum.id == curriculum_id))
+    curriculum = result.scalar_one_or_none()
+    if not curriculum:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Curriculum not found")
+
+    curriculum.visibility = request.visibility
+    await db.commit()
+    await db.refresh(curriculum)
+    logger.info(
+        "Curriculum visibility updated",
+        curriculum_id=str(curriculum_id),
+        visibility=request.visibility,
+        admin_id=current_user.id,
+    )
+    return _curriculum_to_detail_response(curriculum)
+
+
+@router.get("/{curriculum_id}/access", response_model=list[AccessEntryResponse])
+async def list_curriculum_access(
+    curriculum_id: uuid.UUID,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    db=Depends(get_db_session),
+) -> list[AccessEntryResponse]:
+    """List all access entries for a curriculum. Admin only."""
+    result = await db.execute(select(Curriculum).where(Curriculum.id == curriculum_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Curriculum not found")
+
+    access_result = await db.execute(
+        select(CurriculumAccess).where(CurriculumAccess.curriculum_id == curriculum_id)
+    )
+    entries = access_result.scalars().all()
+
+    response = []
+    for entry in entries:
+        user_email = None
+        group_name = None
+        if entry.user_id:
+            user_result = await db.execute(select(User).where(User.id == entry.user_id))
+            user = user_result.scalar_one_or_none()
+            user_email = user.email if user else None
+        if entry.group_id:
+            group_result = await db.execute(select(UserGroup).where(UserGroup.id == entry.group_id))
+            group = group_result.scalar_one_or_none()
+            group_name = group.name if group else None
+
+        response.append(
+            AccessEntryResponse(
+                id=str(entry.id),
+                curriculum_id=str(entry.curriculum_id),
+                user_id=str(entry.user_id) if entry.user_id else None,
+                user_email=user_email,
+                group_id=str(entry.group_id) if entry.group_id else None,
+                group_name=group_name,
+                granted_by=str(entry.granted_by) if entry.granted_by else None,
+                granted_at=entry.granted_at.isoformat(),
+            )
+        )
+    return response
+
+
+@router.post(
+    "/{curriculum_id}/access",
+    response_model=AccessEntryResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def grant_curriculum_access(
+    curriculum_id: uuid.UUID,
+    request: GrantAccessRequest,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    db=Depends(get_db_session),
+) -> AccessEntryResponse:
+    """Grant access to a private curriculum for a user or group. Admin only."""
+    if not request.user_id and not request.group_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Either user_id or group_id must be provided",
+        )
+    if request.user_id and request.group_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only one of user_id or group_id can be provided",
+        )
+
+    curriculum_result = await db.execute(select(Curriculum).where(Curriculum.id == curriculum_id))
+    if not curriculum_result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Curriculum not found")
+
+    user_id: uuid.UUID | None = None
+    group_id: uuid.UUID | None = None
+    user_email = None
+    group_name = None
+
+    if request.user_id:
+        try:
+            user_id = uuid.UUID(request.user_id)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user_id")
+        user_result = await db.execute(select(User).where(User.id == user_id))
+        user = user_result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        user_email = user.email
+
+        existing = await db.execute(
+            select(CurriculumAccess).where(
+                CurriculumAccess.curriculum_id == curriculum_id,
+                CurriculumAccess.user_id == user_id,
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="User already has access to this curriculum",
+            )
+
+    if request.group_id:
+        try:
+            group_id = uuid.UUID(request.group_id)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid group_id")
+        group_result = await db.execute(select(UserGroup).where(UserGroup.id == group_id))
+        group = group_result.scalar_one_or_none()
+        if not group:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+        group_name = group.name
+
+        existing = await db.execute(
+            select(CurriculumAccess).where(
+                CurriculumAccess.curriculum_id == curriculum_id,
+                CurriculumAccess.group_id == group_id,
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Group already has access to this curriculum",
+            )
+
+    entry = CurriculumAccess(
+        id=uuid.uuid4(),
+        curriculum_id=curriculum_id,
+        user_id=user_id,
+        group_id=group_id,
+        granted_by=uuid.UUID(current_user.id),
+    )
+    db.add(entry)
+    await db.commit()
+    await db.refresh(entry)
+
+    logger.info(
+        "Curriculum access granted",
+        curriculum_id=str(curriculum_id),
+        user_id=str(user_id) if user_id else None,
+        group_id=str(group_id) if group_id else None,
+        admin_id=current_user.id,
+    )
+    return AccessEntryResponse(
+        id=str(entry.id),
+        curriculum_id=str(entry.curriculum_id),
+        user_id=str(entry.user_id) if entry.user_id else None,
+        user_email=user_email,
+        group_id=str(entry.group_id) if entry.group_id else None,
+        group_name=group_name,
+        granted_by=str(entry.granted_by) if entry.granted_by else None,
+        granted_at=entry.granted_at.isoformat(),
+    )
+
+
+@router.delete("/{curriculum_id}/access/{access_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_curriculum_access(
+    curriculum_id: uuid.UUID,
+    access_id: uuid.UUID,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    db=Depends(get_db_session),
+) -> None:
+    """Revoke access to a private curriculum. Admin only."""
+    result = await db.execute(
+        select(CurriculumAccess).where(
+            CurriculumAccess.id == access_id,
+            CurriculumAccess.curriculum_id == curriculum_id,
+        )
+    )
+    entry = result.scalar_one_or_none()
+    if not entry:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Access entry not found")
+
+    await db.delete(entry)
+    await db.commit()
+    logger.info(
+        "Curriculum access revoked",
+        curriculum_id=str(curriculum_id),
+        access_id=str(access_id),
+        admin_id=current_user.id,
+    )
