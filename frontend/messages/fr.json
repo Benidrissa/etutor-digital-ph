@@ -1055,7 +1055,28 @@
         "published": "Publié",
         "archived": "Archivé"
       },
-      "viewPublicPage": "Voir la page publique"
+      "viewPublicPage": "Voir la page publique",
+      "visibility": {
+        "public": "Public",
+        "private": "Privé",
+        "makePublic": "Rendre public",
+        "makePrivate": "Rendre privé"
+      },
+      "access": {
+        "title": "Gestion des accès",
+        "subtitle": "Contrôlez qui peut accéder à ce curriculum privé",
+        "manage": "Gérer les accès",
+        "grantUser": "Ajouter un utilisateur",
+        "grantGroup": "Ajouter un groupe",
+        "grant": "Accorder",
+        "revoke": "Révoquer",
+        "currentAccess": "Accès actuels",
+        "noAccess": "Aucun utilisateur ni groupe n'a accès pour l'instant",
+        "searchUserPlaceholder": "Rechercher des utilisateurs par e-mail ou nom...",
+        "selectGroup": "Sélectionner un groupe...",
+        "typeUser": "Utilisateur",
+        "typeGroup": "Groupe"
+      }
     },
     "taxonomy": {
       "title": "Taxonomie",
@@ -1124,6 +1145,30 @@
         "duplicate": "Doublon",
         "ignored": "Ignoré"
       }
+    },
+    "groups": {
+      "title": "Groupes",
+      "subtitle": "Créer et gérer des groupes d'utilisateurs pour l'accès aux curricula",
+      "create": "Nouveau groupe",
+      "edit": "Modifier",
+      "delete": "Supprimer",
+      "save": "Enregistrer",
+      "cancel": "Annuler",
+      "name": "Nom du groupe",
+      "namePlaceholder": "ex. Officiers de santé — Sénégal",
+      "description": "Description",
+      "descriptionPlaceholder": "Description optionnelle",
+      "memberCount": "{count, plural, one {# membre} other {# membres}}",
+      "noGroups": "Aucun groupe pour l'instant",
+      "noGroupsDescription": "Créez un groupe pour gérer les accès de plusieurs utilisateurs à la fois.",
+      "manageMembers": "Membres",
+      "members": "Membres du groupe",
+      "currentMembers": "Membres actuels",
+      "noMembers": "Aucun membre dans ce groupe pour l'instant",
+      "searchMemberPlaceholder": "Rechercher des utilisateurs à ajouter...",
+      "removeMember": "Retirer le membre",
+      "confirmDelete": "Supprimer ce groupe ?",
+      "confirmDeleteDesc": "Cela supprimera le groupe et révoquera tout accès aux curricula accordé via ce groupe."
     }
   },
   "Courses": {
@@ -1508,5 +1553,9 @@
     "loading": "Chargement...",
     "error": "Impossible de charger le curriculum",
     "curriculumScope": "Vous consultez un curriculum curaté"
+  },
+  "AdminGroups": {
+    "pageTitle": "Groupes d'utilisateurs",
+    "pageDescription": "Créer et gérer des groupes d'utilisateurs pour le contrôle d'accès aux curricula"
   }
 }

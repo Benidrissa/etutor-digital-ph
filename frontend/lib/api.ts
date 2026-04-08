@@ -741,6 +741,7 @@ export interface CurriculumAdminResponse {
   description_en?: string;
   cover_image_url?: string;
   status: "draft" | "published" | "archived";
+  visibility: "public" | "private";
   created_by?: string;
   course_count: number;
   created_at: string;
@@ -840,4 +841,121 @@ export async function assignCurriculumCourses(
     `/api/v1/admin/curricula/${curriculumId}/courses`,
     { method: "PUT", body: JSON.stringify({ course_ids: courseIds }) }
   );
+}
+
+export async function setCurriculumVisibility(
+  curriculumId: string,
+  visibility: "public" | "private"
+): Promise<CurriculumAdminDetailResponse> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<CurriculumAdminDetailResponse>(
+    `/api/v1/admin/curricula/${curriculumId}/visibility`,
+    { method: "POST", body: JSON.stringify({ visibility }) }
+  );
+}
+
+export interface CurriculumAccessEntry {
+  id: string;
+  curriculum_id: string;
+  user_id?: string;
+  group_id?: string;
+  user_email?: string;
+  group_name?: string;
+  granted_at: string;
+}
+
+export async function getCurriculumAccess(curriculumId: string): Promise<CurriculumAccessEntry[]> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<CurriculumAccessEntry[]>(
+    `/api/v1/admin/curricula/${curriculumId}/access`
+  );
+}
+
+export async function grantCurriculumAccess(
+  curriculumId: string,
+  data: { user_id?: string; group_id?: string }
+): Promise<CurriculumAccessEntry> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<CurriculumAccessEntry>(
+    `/api/v1/admin/curricula/${curriculumId}/access`,
+    { method: "POST", body: JSON.stringify(data) }
+  );
+}
+
+export async function revokeCurriculumAccess(
+  curriculumId: string,
+  accessId: string
+): Promise<void> {
+  const { authClient } = await import("./auth");
+  await authClient.authenticatedFetch(
+    `/api/v1/admin/curricula/${curriculumId}/access/${accessId}`,
+    { method: "DELETE" }
+  );
+}
+
+export interface UserGroupResponse {
+  id: string;
+  name: string;
+  description?: string;
+  member_count: number;
+  created_at: string;
+}
+
+export interface UserGroupMember {
+  user_id: string;
+  email: string;
+  name: string;
+  joined_at: string;
+}
+
+export async function getAdminGroups(): Promise<UserGroupResponse[]> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<UserGroupResponse[]>("/api/v1/admin/groups");
+}
+
+export async function createAdminGroup(data: {
+  name: string;
+  description?: string;
+}): Promise<UserGroupResponse> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<UserGroupResponse>("/api/v1/admin/groups", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateAdminGroup(
+  id: string,
+  data: { name?: string; description?: string }
+): Promise<UserGroupResponse> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<UserGroupResponse>(`/api/v1/admin/groups/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteAdminGroup(id: string): Promise<void> {
+  const { authClient } = await import("./auth");
+  await authClient.authenticatedFetch(`/api/v1/admin/groups/${id}`, { method: "DELETE" });
+}
+
+export async function getAdminGroupMembers(groupId: string): Promise<UserGroupMember[]> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<UserGroupMember[]>(`/api/v1/admin/groups/${groupId}`);
+}
+
+export async function addGroupMember(groupId: string, userId: string): Promise<void> {
+  const { authClient } = await import("./auth");
+  await authClient.authenticatedFetch(`/api/v1/admin/groups/${groupId}/members`, {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId }),
+  });
+}
+
+export async function removeGroupMember(groupId: string, userId: string): Promise<void> {
+  const { authClient } = await import("./auth");
+  await authClient.authenticatedFetch(`/api/v1/admin/groups/${groupId}/members/${userId}`, {
+    method: "DELETE",
+  });
 }
