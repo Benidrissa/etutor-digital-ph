@@ -29,6 +29,7 @@ class ImageIndexTask(Task):
     time_limit=1800,
     soft_time_limit=1500,
     ignore_result=True,
+    acks_late=False,  # Acknowledge immediately to prevent duplicate dispatch
 )
 def reindex_course_images(self, course_id: str, rag_collection_id: str) -> dict:
     """Re-index images for a course independently from text indexation.
