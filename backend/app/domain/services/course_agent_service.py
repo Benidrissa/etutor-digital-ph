@@ -120,23 +120,21 @@ class CourseAgentService:
             "{\n"
             '  "module_number": int,\n'
             '  "title_fr": str, "title_en": str,\n'
-            '  "description_fr": str, "description_en": str,\n'
+            '  "description_fr": str (1-2 sentences), '
+            '"description_en": str (1-2 sentences),\n'
             '  "estimated_hours": int,\n'
             '  "bloom_level": "remember"|"understand"|"apply"|'
             '"analyze"|"evaluate"|"create",\n'
-            '  "learning_objectives_fr": [str], '
-            '"learning_objectives_en": [str],\n'
             '  "units": [\n'
-            '    {"title_fr": str, "title_en": str, '
-            '"type": "lesson"|"quiz"|"case-study",\n'
-            '     "description_fr": str, "description_en": str}\n'
-            "  ],\n"
-            '  "quiz_topics_fr": [str], '
-            '"quiz_topics_en": [str],\n'
-            '  "flashcard_categories_fr": [str], '
-            '"flashcard_categories_en": [str],\n'
-            '  "case_study_fr": str, "case_study_en": str\n'
+            '    {"title_fr": str, "title_en": str,\n'
+            '     "description_fr": str (1 sentence), '
+            '"description_en": str (1 sentence)}\n'
+            "  ]\n"
             "}\n\n"
+            "Keep descriptions concise (1-2 sentences). "
+            "Do NOT include learning objectives, quiz topics, "
+            "flashcard categories, or case studies — those are "
+            "generated separately.\n\n"
             "Return ONLY valid JSON, no markdown fences, "
             "no explanation."
         )
