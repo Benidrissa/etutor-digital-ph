@@ -1255,7 +1255,10 @@
         "estimatedHours": "Durée estimée (heures)",
         "creating": "Création du cours...",
         "titleFrRequired": "Le titre en français est requis",
-        "titleEnRequired": "Le titre en anglais est requis"
+        "titleEnRequired": "Le titre en anglais est requis",
+        "courseDescription": "Description du cours (FR, optionnel)",
+        "courseDescriptionEn": "Description du cours (EN, optionnel)",
+        "courseDescriptionHint": "Décrivez les axes prioritaires, les objectifs et la structure souhaitée"
       },
       "attachedResources": {
         "title": "Ressources jointes",
