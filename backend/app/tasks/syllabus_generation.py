@@ -53,6 +53,7 @@ class SyllabusTask(Task):
     time_limit=3600,  # 60 min hard limit
     soft_time_limit=2700,  # 45 min soft limit
     ignore_result=True,
+    acks_late=False,  # Acknowledge immediately to prevent duplicate dispatch
 )
 def generate_course_syllabus(
     self, course_id: str, estimated_hours: int, cached_resource_text: str | None = None
