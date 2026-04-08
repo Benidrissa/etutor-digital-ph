@@ -3,8 +3,10 @@
 import structlog
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import worker_ready
 
 import app.domain.models  # noqa: F401 — register all SQLAlchemy models with the mapper
+from app.domain.services.platform_settings_service import SettingsCache
 from app.infrastructure.config.settings import settings
 
 logger = structlog.get_logger(__name__)
@@ -82,6 +84,15 @@ celery_app.conf.beat_schedule = {
 @celery_app.task(bind=True)
 def debug_task(self):
     logger.info(f"Request: {self.request!r}")
+
+
+@worker_ready.connect
+def _on_worker_ready(**kwargs):
+    try:
+        SettingsCache.instance().refresh()
+        logger.info("settings_cache.loaded_on_worker_start")
+    except Exception as exc:
+        logger.warning("settings_cache.load_skipped_on_worker_start", error=str(exc))
 
 
 if __name__ == "__main__":
