@@ -1,6 +1,7 @@
 """Celery task for syllabus generation — generates course module structure via Claude API."""
 
 import asyncio
+import hashlib
 import uuid
 
 import structlog
@@ -158,6 +159,7 @@ def generate_course_syllabus(
         from app.domain.models.course_resource import CourseResource
         from app.infrastructure.config.settings import settings as _settings
 
+        _resources_for_summarization: list[CourseResource] = []
         _sync_engine = create_engine(
             _settings.database_url_sync,
             pool_pre_ping=True,
@@ -189,6 +191,7 @@ def generate_course_syllabus(
                     pdf_full_texts.append(
                         (res.filename.replace("_", " "), res.raw_text, res.toc_json or [])
                     )
+            _resources_for_summarization = list(existing_resources)
 
         elif course_dir.exists():
             import fitz  # PyMuPDF
@@ -219,6 +222,7 @@ def generate_course_syllabus(
                             raw_text=full_text,
                             toc_json=toc or None,
                             char_count=len(full_text),
+                            content_hash=hashlib.sha256(full_text.encode("utf-8")).hexdigest(),
                         )
                     )
                     logger.info(
@@ -260,6 +264,9 @@ def generate_course_syllabus(
                     )
                 finally:
                     _save_engine.dispose()
+                _resources_for_summarization = _new_resources
+            else:
+                _resources_for_summarization = []
 
         if pdf_full_texts:
             total_chars = sum(len(txt) for _, txt, _ in pdf_full_texts)
@@ -288,11 +295,114 @@ def generate_course_syllabus(
                 )
                 from app.ai.pdf_summarizer import summarize_pdfs_sync
 
-                pdf_summaries = summarize_pdfs_sync(
-                    pdf_full_texts,
-                    model=summarizer_model,
-                    summary_max_output_tokens=summary_max_tokens,
+                _needs_summarization: list[tuple[int, tuple[str, str, list]]] = []
+                _cached_summaries: dict[int, str] = {}
+                _partial_threshold_chars = summary_max_tokens * 2
+
+                _lookup_engine = create_engine(
+                    _settings.database_url_sync,
+                    pool_pre_ping=True,
+                    pool_size=2,
+                    max_overflow=0,
                 )
+                try:
+                    with Session(_lookup_engine) as _lookup_session:
+                        for idx, (resource, pdf_entry) in enumerate(
+                            zip(_resources_for_summarization, pdf_full_texts, strict=False)
+                        ):
+                            if resource.summary_text:
+                                if (
+                                    getattr(resource, "summary_status", None) == "partial"
+                                    and len(resource.summary_text) < _partial_threshold_chars
+                                ):
+                                    logger.info(
+                                        "Partial summary too short — re-summarizing",
+                                        filename=resource.filename,
+                                        partial_chars=len(resource.summary_text),
+                                        threshold=_partial_threshold_chars,
+                                    )
+                                    _needs_summarization.append((idx, pdf_entry))
+                                    continue
+                                _cached_summaries[idx] = resource.summary_text
+                                logger.info(
+                                    "Reused existing summary for resource",
+                                    filename=resource.filename,
+                                )
+                                continue
+                            if resource.content_hash:
+                                existing = _lookup_session.execute(
+                                    select(CourseResource)
+                                    .where(
+                                        CourseResource.content_hash == resource.content_hash,
+                                        CourseResource.summary_text.isnot(None),
+                                        CourseResource.id != resource.id,
+                                    )
+                                    .limit(1)
+                                ).scalar_one_or_none()
+                                if existing:
+                                    resource.summary_text = existing.summary_text
+                                    resource.summary_model = existing.summary_model
+                                    _cached_summaries[idx] = existing.summary_text
+                                    logger.info(
+                                        "Reused summary from another course",
+                                        filename=resource.filename,
+                                        source_course_id=str(existing.course_id),
+                                    )
+                                    continue
+                            _needs_summarization.append((idx, pdf_entry))
+                finally:
+                    _lookup_engine.dispose()
+
+                if _needs_summarization:
+                    _persist_engine = create_engine(
+                        _settings.database_url_sync,
+                        pool_pre_ping=True,
+                        pool_size=2,
+                        max_overflow=0,
+                    )
+                    try:
+                        for orig_idx, pdf_entry in _needs_summarization:
+                            res = (
+                                _resources_for_summarization[orig_idx]
+                                if orig_idx < len(_resources_for_summarization)
+                                else None
+                            )
+                            summary: str | None = None
+                            summary_status = "partial"
+                            try:
+                                [summary] = summarize_pdfs_sync(
+                                    [pdf_entry],
+                                    model=summarizer_model,
+                                    summary_max_output_tokens=summary_max_tokens,
+                                )
+                                summary_status = "complete"
+                            except Exception as sum_exc:
+                                logger.warning(
+                                    "Summarization failed for resource",
+                                    filename=res.filename if res else "unknown",
+                                    error=str(sum_exc),
+                                )
+                            finally:
+                                if res is not None and summary:
+                                    try:
+                                        with Session(_persist_engine) as _ps:
+                                            res.summary_text = summary
+                                            res.summary_model = summarizer_model
+                                            res.summary_status = summary_status
+                                            _ps.merge(res)
+                                            _ps.commit()
+                                    except Exception as persist_exc:
+                                        logger.warning(
+                                            "Failed to persist summary to DB (non-blocking)",
+                                            course_id=course_id,
+                                            error=str(persist_exc),
+                                        )
+                            if summary:
+                                _cached_summaries[orig_idx] = summary
+                    finally:
+                        _persist_engine.dispose()
+
+                pdf_summaries = [_cached_summaries.get(i, "") for i in range(len(pdf_full_texts))]
                 pdf_sections = [
                     f"### {name}\n{summary}"
                     for (name, _text, _toc), summary in zip(
