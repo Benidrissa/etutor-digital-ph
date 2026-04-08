@@ -234,8 +234,6 @@ class CourseAgentService:
                 description_en=course_description_en,
             )
 
-            import json
-
             _model = "claude-sonnet-4-6"
             caps = get_model_caps(_model)
             prompt_tokens_est = len(prompt) / caps["chars_per_token"]
