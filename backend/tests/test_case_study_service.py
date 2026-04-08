@@ -220,3 +220,17 @@ class TestCaseStudyPromptImports:
 
         assert "Unknown Module" in context
         assert "health challenge" in context
+
+    def test_empty_cache_value_falls_back_to_default_prompt(self):
+        from unittest.mock import patch
+
+        from app.ai.prompts.case_study import get_case_study_system_prompt
+        from app.domain.services.platform_settings_service import SettingsCache
+
+        cache = SettingsCache.instance()
+        with patch.object(cache, "get", return_value=""):
+            prompt = get_case_study_system_prompt("fr", "SN", 1, "remember")
+
+        assert "West African Context" in prompt
+        assert "Guided Questions" in prompt
+        assert "Annotated Correction" in prompt
