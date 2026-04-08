@@ -27,6 +27,7 @@ class Curriculum(Base):
     status: Mapped[str] = mapped_column(
         Enum("draft", "published", "archived", name="curriculumstatus"), server_default="draft"
     )
+    visibility: Mapped[str] = mapped_column(String(10), server_default="public")
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
