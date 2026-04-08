@@ -33,6 +33,7 @@ class ModuleUnit(Base):
     description_en: Mapped[str | None] = mapped_column(Text, nullable=True)
     estimated_minutes: Mapped[int] = mapped_column(Integer, server_default="45")
     order_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=func.now())
 
     module: Mapped[Module] = relationship(back_populates="units")

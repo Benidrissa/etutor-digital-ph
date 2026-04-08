@@ -521,6 +521,14 @@ def generate_course_syllabus(
                     bloom_level=m.get("bloom_level"),
                     course_id=uuid.UUID(course_id),
                     books_sources=books_sources,
+                    learning_objectives_fr=m.get("learning_objectives_fr"),
+                    learning_objectives_en=m.get("learning_objectives_en"),
+                    quiz_topics_fr=m.get("quiz_topics_fr"),
+                    quiz_topics_en=m.get("quiz_topics_en"),
+                    flashcard_categories_fr=m.get("flashcard_categories_fr"),
+                    flashcard_categories_en=m.get("flashcard_categories_en"),
+                    case_study_fr=m.get("case_study_fr"),
+                    case_study_en=m.get("case_study_en"),
                 )
                 session.add(module)
 
@@ -535,6 +543,7 @@ def generate_course_syllabus(
                         description_en=u.get("description_en"),
                         estimated_minutes=15,
                         order_index=j,
+                        unit_type=u.get("type"),
                     )
                     session.add(unit)
 
