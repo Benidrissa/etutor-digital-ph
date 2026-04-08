@@ -1430,7 +1430,17 @@
     "moduleNumber": "Module number",
     "untitledCourse": "Untitled course",
     "unlinkedModules": "Unlinked modules",
-    "noModules": "No modules found. Create a course first."
+    "noModules": "No modules found. Create a course first.",
+    "generateAudio": "Generate audio summary",
+    "audioGenerateSuccess": "Audio generation started",
+    "audioGenerateError": "Failed to start audio generation",
+    "audioAlreadyExists": "Audio already exists for this module",
+    "audioStatus": {
+      "pending": "Audio pending",
+      "generating": "Audio generating",
+      "ready": "Audio ready",
+      "failed": "Audio generation failed"
+    }
   },
   "AuthGuard": {
     "loading": "Loading..."
