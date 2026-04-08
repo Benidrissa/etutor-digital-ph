@@ -32,7 +32,7 @@ test.describe('Dashboard', () => {
   test('renders dashboard page with title and subtitle', async ({ page }) => {
     await page.goto('/en/dashboard');
     await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
-    await expect(page.getByText('Your public health learning platform')).toBeVisible();
+    await expect(page.getByText('Sira Learning Platform')).toBeVisible();
   });
 
   test('displays streak and key stat cards', async ({ page }) => {
