@@ -1,6 +1,7 @@
 """Service for AI tutor functionality with agentic tool_use and Socratic pedagogical approach."""
 
 import asyncio
+import re
 import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
@@ -590,6 +591,39 @@ class TutorService:
                 "data": {"sources": unique_sources},
                 "conversation_id": str(conversation.id),
             }
+
+            # Resolve any {{source_image:UUID}} markers in the response that
+            # weren't captured via tool calls (e.g. from conversation history)
+            _IMG_RE = re.compile(r"\{\{source_image:([0-9a-f-]{36})\}\}", re.IGNORECASE)
+            seen_ids = {r["id"] for r in source_image_refs}
+            extra_ids = [
+                m.group(1) for m in _IMG_RE.finditer(full_response) if m.group(1) not in seen_ids
+            ]
+            if extra_ids:
+                try:
+                    db_imgs = await session.execute(
+                        select(SourceImage).where(
+                            SourceImage.id.in_([uuid.UUID(i) for i in extra_ids])
+                        )
+                    )
+                    for img in db_imgs.scalars().all():
+                        meta = img.to_meta_dict()
+                        source_image_refs.append(
+                            {
+                                "id": str(img.id),
+                                "figure_number": meta.get("figure_number"),
+                                "caption": meta.get("caption"),
+                                "caption_fr": meta.get("caption"),
+                                "caption_en": meta.get("caption"),
+                                "attribution": meta.get("attribution"),
+                                "image_type": meta.get("image_type", "unknown"),
+                                "storage_url": meta.get("storage_url"),
+                                "alt_text_fr": meta.get("alt_text_fr"),
+                                "alt_text_en": meta.get("alt_text_en"),
+                            }
+                        )
+                except Exception as exc:
+                    logger.warning("Failed to resolve extra image markers", error=str(exc))
 
             if source_image_refs:
                 yield {
