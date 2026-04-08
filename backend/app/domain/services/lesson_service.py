@@ -199,6 +199,16 @@ class LessonGenerationService:
                     error=str(exc),
                 )
 
+            total_linked = sum(len(v) for v in linked_images.values()) if linked_images else 0
+            logger.info(
+                "lesson.image_pipeline",
+                chunk_count=len(chunk_ids),
+                linked_images_total=total_linked,
+                module_id=str(module.id),
+                unit_id=unit_id,
+                streaming=True,
+            )
+
             # Generate lesson using Claude API with streaming
             course: Course | None = module.course
             system_prompt = get_lesson_system_prompt(
@@ -364,6 +374,15 @@ class LessonGenerationService:
             linked_images = await self.semantic_retriever.get_linked_images(chunk_ids, session)
         except Exception as exc:
             logger.warning("get_linked_images failed, continuing without images", error=str(exc))
+
+        total_linked = sum(len(v) for v in linked_images.values()) if linked_images else 0
+        logger.info(
+            "lesson.image_pipeline",
+            chunk_count=len(chunk_ids),
+            linked_images_total=total_linked,
+            module_id=str(module.id),
+            unit_id=unit_id,
+        )
 
         # Generate content with Claude
         course: Course | None = module.course

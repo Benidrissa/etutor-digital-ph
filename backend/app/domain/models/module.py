@@ -4,7 +4,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from sqlalchemy import ARRAY, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSON, UUID
+from sqlalchemy.dialects.postgresql import JSON, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.models.base import Base
@@ -35,6 +35,14 @@ class Module(Base):
         ARRAY(UUID(as_uuid=True)), server_default="{}"
     )
     books_sources: Mapped[dict | None] = mapped_column(JSON)
+    learning_objectives_fr: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    learning_objectives_en: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    quiz_topics_fr: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    quiz_topics_en: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    flashcard_categories_fr: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    flashcard_categories_en: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    case_study_fr: Mapped[str | None] = mapped_column(Text, nullable=True)
+    case_study_en: Mapped[str | None] = mapped_column(Text, nullable=True)
     course_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("courses.id", ondelete="CASCADE"),
         nullable=True,
