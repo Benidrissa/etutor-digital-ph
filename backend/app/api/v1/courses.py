@@ -171,6 +171,34 @@ async def list_published_courses(
             curriculum_obj = result_c.scalar_one_or_none()
 
         if curriculum_obj:
+            if curriculum_obj.visibility == "private":
+                from app.domain.models.user_group import CurriculumAccess, UserGroupMember
+
+                has_access = False
+                if current_user:
+                    uid = uuid.UUID(current_user.id)
+                    direct = await db.execute(
+                        select(CurriculumAccess).where(
+                            CurriculumAccess.curriculum_id == curriculum_obj.id,
+                            CurriculumAccess.user_id == uid,
+                        )
+                    )
+                    has_access = direct.scalar_one_or_none() is not None
+                    if not has_access:
+                        group_q = await db.execute(
+                            select(CurriculumAccess)
+                            .join(
+                                UserGroupMember,
+                                UserGroupMember.group_id == CurriculumAccess.group_id,
+                            )
+                            .where(
+                                CurriculumAccess.curriculum_id == curriculum_obj.id,
+                                UserGroupMember.user_id == uid,
+                            )
+                        )
+                        has_access = group_q.scalar_one_or_none() is not None
+                if not has_access:
+                    return []
             stmt = stmt.where(
                 exists(
                     select(CurriculumCourse.course_id).where(
@@ -181,6 +209,17 @@ async def list_published_courses(
             )
         else:
             return []
+    else:
+        stmt = stmt.where(
+            ~exists(
+                select(CurriculumCourse.course_id)
+                .join(Curriculum, Curriculum.id == CurriculumCourse.curriculum_id)
+                .where(
+                    CurriculumCourse.course_id == Course.id,
+                    Curriculum.visibility == "private",
+                )
+            )
+        )
 
     if course_domain:
         stmt = stmt.where(

@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.v1.admin import router as admin_router
 from app.api.v1.admin_courses import router as admin_courses_router
 from app.api.v1.admin_curricula import router as admin_curricula_router
+from app.api.v1.admin_groups import router as admin_groups_router
 from app.api.v1.admin_settings import router as admin_settings_router
 from app.api.v1.admin_taxonomy import router as admin_taxonomy_router
 from app.api.v1.analytics import router as analytics_router
@@ -44,6 +45,7 @@ api_v1_router.include_router(admin_router)
 api_v1_router.include_router(admin_settings_router)
 api_v1_router.include_router(admin_courses_router)
 api_v1_router.include_router(admin_curricula_router)
+api_v1_router.include_router(admin_groups_router)
 api_v1_router.include_router(admin_taxonomy_router)
 api_v1_router.include_router(courses_router)
 api_v1_router.include_router(curricula_router)
