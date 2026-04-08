@@ -474,14 +474,15 @@ function CourseRow({
   const isGenerating = generatingId === course.id;
   const isIndexing = course.creation_step === 'indexing';
   const isDraft = course.status === 'draft';
+  const isPublished = course.status === 'published';
 
   return (
     <Card className={`p-4 ${isIndexing ? 'border-amber-300 dark:border-amber-700' : ''}`}>
       <div className="flex items-start justify-between gap-3">
         <button
           className="flex flex-col gap-1 text-left min-w-0 flex-1"
-          onClick={isDraft ? onResumeWizard : () => onEdit(course)}
-          aria-label={isDraft ? t('wizard.resumeFrom') : t('editCourse')}
+          onClick={isDraft || isPublished ? onResumeWizard : () => onEdit(course)}
+          aria-label={isDraft || isPublished ? t('wizard.resumeFrom') : t('editCourse')}
         >
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-sm truncate">{title}</span>
