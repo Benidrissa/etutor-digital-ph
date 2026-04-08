@@ -297,6 +297,7 @@ def generate_course_syllabus(
 
                 _needs_summarization: list[tuple[int, tuple[str, str, list]]] = []
                 _cached_summaries: dict[int, str] = {}
+                _partial_threshold_chars = summary_max_tokens * 2
 
                 _lookup_engine = create_engine(
                     _settings.database_url_sync,
@@ -310,6 +311,18 @@ def generate_course_syllabus(
                             zip(_resources_for_summarization, pdf_full_texts, strict=False)
                         ):
                             if resource.summary_text:
+                                if (
+                                    getattr(resource, "summary_status", None) == "partial"
+                                    and len(resource.summary_text) < _partial_threshold_chars
+                                ):
+                                    logger.info(
+                                        "Partial summary too short — re-summarizing",
+                                        filename=resource.filename,
+                                        partial_chars=len(resource.summary_text),
+                                        threshold=_partial_threshold_chars,
+                                    )
+                                    _needs_summarization.append((idx, pdf_entry))
+                                    continue
                                 _cached_summaries[idx] = resource.summary_text
                                 logger.info(
                                     "Reused existing summary for resource",
@@ -341,11 +354,6 @@ def generate_course_syllabus(
                     _lookup_engine.dispose()
 
                 if _needs_summarization:
-                    _new_summaries = summarize_pdfs_sync(
-                        [entry for _, entry in _needs_summarization],
-                        model=summarizer_model,
-                        summary_max_output_tokens=summary_max_tokens,
-                    )
                     _persist_engine = create_engine(
                         _settings.database_url_sync,
                         pool_pre_ping=True,
@@ -353,23 +361,44 @@ def generate_course_syllabus(
                         max_overflow=0,
                     )
                     try:
-                        with Session(_persist_engine) as _persist_session:
-                            for (orig_idx, _pdf_entry), summary in zip(
-                                _needs_summarization, _new_summaries, strict=True
-                            ):
+                        for orig_idx, pdf_entry in _needs_summarization:
+                            res = (
+                                _resources_for_summarization[orig_idx]
+                                if orig_idx < len(_resources_for_summarization)
+                                else None
+                            )
+                            summary: str | None = None
+                            summary_status = "partial"
+                            try:
+                                [summary] = summarize_pdfs_sync(
+                                    [pdf_entry],
+                                    model=summarizer_model,
+                                    summary_max_output_tokens=summary_max_tokens,
+                                )
+                                summary_status = "complete"
+                            except Exception as sum_exc:
+                                logger.warning(
+                                    "Summarization failed for resource",
+                                    filename=res.filename if res else "unknown",
+                                    error=str(sum_exc),
+                                )
+                            finally:
+                                if res is not None and summary:
+                                    try:
+                                        with Session(_persist_engine) as _ps:
+                                            res.summary_text = summary
+                                            res.summary_model = summarizer_model
+                                            res.summary_status = summary_status
+                                            _ps.merge(res)
+                                            _ps.commit()
+                                    except Exception as persist_exc:
+                                        logger.warning(
+                                            "Failed to persist summary to DB (non-blocking)",
+                                            course_id=course_id,
+                                            error=str(persist_exc),
+                                        )
+                            if summary:
                                 _cached_summaries[orig_idx] = summary
-                                if orig_idx < len(_resources_for_summarization):
-                                    res = _resources_for_summarization[orig_idx]
-                                    res.summary_text = summary
-                                    res.summary_model = summarizer_model
-                                    _persist_session.merge(res)
-                            _persist_session.commit()
-                    except Exception as persist_exc:
-                        logger.warning(
-                            "Failed to persist summaries to DB (non-blocking)",
-                            course_id=course_id,
-                            error=str(persist_exc),
-                        )
                     finally:
                         _persist_engine.dispose()
 

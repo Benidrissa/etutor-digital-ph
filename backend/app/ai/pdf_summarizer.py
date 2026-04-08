@@ -291,6 +291,10 @@ async def summarize_single_pdf(
     The text is sent directly — no chunking. The caller must ensure the text
     fits within the model's context window (use split_pdf_by_chapters() at
     upload time to guarantee this).
+
+    Accumulates text chunks during streaming so partial output is preserved if
+    the stream is interrupted. Raises on failure but the accumulated text up to
+    the failure point is logged for diagnostics.
     """
     toc_prefix = ""
     if toc:
@@ -307,28 +311,47 @@ async def summarize_single_pdf(
         max_output_tokens=max_output_tokens,
     )
 
+    accumulated: list[str] = []
     token_count = 0
-    async with client.messages.stream(
-        model=model,
-        max_tokens=max_output_tokens,
-        system=_SYLLABUS_SUMMARY_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
-    ) as stream:
-        async for event in stream:
-            if hasattr(event, "type") and event.type == "content_block_delta":
-                token_count += 1
-                if token_count % 5000 == 0:
-                    logger.info(
-                        "Streaming progress",
-                        book=book_name,
-                        tokens_so_far=token_count,
-                    )
-        message = await stream.get_final_message()
-    result = message.content[0].text.strip()
+    stream_error: BaseException | None = None
+    try:
+        async with client.messages.stream(
+            model=model,
+            max_tokens=max_output_tokens,
+            system=_SYLLABUS_SUMMARY_SYSTEM,
+            messages=[{"role": "user", "content": prompt}],
+        ) as stream:
+            async for event in stream:
+                if hasattr(event, "type") and event.type == "content_block_delta":
+                    delta = getattr(event, "delta", None)
+                    if delta is not None and hasattr(delta, "text"):
+                        accumulated.append(delta.text)
+                    token_count += 1
+                    if token_count % 5000 == 0:
+                        logger.info(
+                            "Streaming progress",
+                            book=book_name,
+                            tokens_so_far=token_count,
+                            chars_so_far=sum(len(c) for c in accumulated),
+                        )
+    except Exception as exc:
+        stream_error = exc
+        logger.warning(
+            "Stream interrupted — partial summary captured",
+            book=book_name,
+            chars_accumulated=sum(len(c) for c in accumulated),
+            error=str(exc),
+        )
+
+    result = "".join(accumulated).strip()
+    if stream_error is not None and not result:
+        raise stream_error
+
     logger.info(
         "PDF summarized",
         book=book_name,
         summary_chars=len(result),
+        partial=stream_error is not None,
     )
     return result
 

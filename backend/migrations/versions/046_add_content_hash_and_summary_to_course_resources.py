@@ -29,6 +29,10 @@ def upgrade() -> None:
         "course_resources",
         sa.Column("summary_model", sa.String(50), nullable=True),
     )
+    op.add_column(
+        "course_resources",
+        sa.Column("summary_status", sa.String(10), nullable=True),
+    )
     op.create_index(
         "ix_course_resources_content_hash",
         "course_resources",
@@ -51,6 +55,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_index("ix_course_resources_content_hash", table_name="course_resources")
+    op.drop_column("course_resources", "summary_status")
     op.drop_column("course_resources", "summary_model")
     op.drop_column("course_resources", "summary_text")
     op.drop_column("course_resources", "content_hash")

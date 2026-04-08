@@ -32,5 +32,6 @@ class CourseResource(Base):
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     summary_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     summary_model: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    summary_status: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
     course: Mapped[Course] = relationship(back_populates="resources")

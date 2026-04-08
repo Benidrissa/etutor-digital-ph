@@ -257,6 +257,7 @@ class TestSyllabusGenerationTaskUnit:
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
         mock_session.execute.return_value.scalars.return_value.all.return_value = []
+        mock_session.execute.return_value.scalar_one_or_none.return_value = None
         mock_sync_engine = MagicMock()
 
         large_pdf_text = "x" * (_CONTEXT_BUDGET_CHARS + 1)
