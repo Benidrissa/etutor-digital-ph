@@ -25,7 +25,7 @@ from dataclasses import dataclass
 
 import structlog
 
-from app.ai.model_registry import get_model_caps
+from app.ai.model_registry import chars_to_tokens, get_model_caps
 
 logger = structlog.get_logger(__name__)
 
@@ -343,6 +343,21 @@ async def summarize_single_pdf(
 
     full_input = toc_prefix + full_text
     prompt = _SYLLABUS_SUMMARY_PROMPT.format(book_name=book_name, text=full_input)
+
+    caps = get_model_caps(model)
+    input_tokens = chars_to_tokens(len(full_input), model)
+    available_tokens = caps["context_window_tokens"] - max_output_tokens - 1000
+
+    if input_tokens > available_tokens:
+        logger.warning(
+            "Input exceeds model context — falling back to claude-sonnet-4-6",
+            book=book_name,
+            input_tokens=input_tokens,
+            model_limit=caps["context_window_tokens"],
+            model=model,
+        )
+        model = "claude-sonnet-4-6"
+        client = _get_summarizer_client(model)
 
     logger.info(
         "Summarizing PDF (single call)",
@@ -740,7 +755,11 @@ def summarize_pdfs_sync(
             results.append(summary)
         return results
 
-    return list(asyncio.run(_run_all()))
+    loop = asyncio.new_event_loop()
+    try:
+        return list(loop.run_until_complete(_run_all()))
+    finally:
+        loop.close()
 
 
 def _proportional_budgets(

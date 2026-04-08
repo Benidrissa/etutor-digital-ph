@@ -13,7 +13,7 @@ from __future__ import annotations
 
 _MODEL_CAPABILITIES: dict[str, dict] = {
     "gpt-5.4-nano": {
-        "context_window_tokens": 1_000_000,
+        "context_window_tokens": 272_000,
         "max_output_tokens": 16_384,
         "chars_per_token": 4.0,
     },
