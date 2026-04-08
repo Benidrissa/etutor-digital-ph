@@ -256,6 +256,7 @@ class TestSyllabusGenerationTaskUnit:
         mock_session = MagicMock()
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
+        # Return empty list for existing resources AND None for dedup lookup
         mock_session.execute.return_value.scalars.return_value.all.return_value = []
         mock_session.execute.return_value.scalar_one_or_none.return_value = None
         mock_sync_engine = MagicMock()

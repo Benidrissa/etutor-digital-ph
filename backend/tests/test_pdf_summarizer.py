@@ -17,7 +17,7 @@ import asyncio
 import os
 import uuid
 from contextlib import asynccontextmanager
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -268,6 +268,8 @@ def _make_stream_client(
     stream_call_count: list | None = None,
 ):
     """Build a mock client whose .messages.stream() is an async context manager."""
+    final_message = MagicMock()
+    final_message.content = [MagicMock(text=text)]
 
     @asynccontextmanager
     async def mock_stream(**kwargs):
@@ -278,18 +280,13 @@ def _make_stream_client(
         if stream_call_count is not None:
             stream_call_count.append(1)
 
-        delta = MagicMock()
-        delta.text = text
-
-        event = MagicMock()
-        event.type = "content_block_delta"
-        event.delta = delta
-
         async def _aiter():
-            yield event
+            return
+            yield  # makes it an async generator
 
         stream = MagicMock()
         stream.__aiter__ = lambda self: _aiter()
+        stream.get_final_message = AsyncMock(return_value=final_message)
         yield stream
 
     mock_client = MagicMock()
@@ -623,13 +620,13 @@ class TestSyllabusTaskWithDbResources:
         mock_resource.filename = "textbook"
         mock_resource.raw_text = large_text
         mock_resource.toc_json = []
-        mock_resource.summary_text = None
-        mock_resource.summary_status = None
-        mock_resource.content_hash = None
-        mock_resource.id = uuid.uuid4()
+        mock_resource.summary_text = None  # No cached summary
+        mock_resource.content_hash = "abc123"
 
         mock_exec = MagicMock()
         mock_exec.scalars.return_value.all.return_value = [mock_resource]
+        # Dedup lookup returns None (no existing summary for this hash)
+        mock_exec.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_exec
 
         mock_summarize = MagicMock(return_value=["Structured summary of book"])
@@ -687,10 +684,6 @@ class TestSyllabusTaskWithDbResources:
         mock_resource.filename = "bigbook"
         mock_resource.raw_text = large_text
         mock_resource.toc_json = []
-        mock_resource.summary_text = None
-        mock_resource.summary_status = None
-        mock_resource.content_hash = None
-        mock_resource.id = uuid.uuid4()
 
         mock_exec = MagicMock()
         mock_exec.scalars.return_value.all.return_value = [mock_resource]
