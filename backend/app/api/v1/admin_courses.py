@@ -1,5 +1,6 @@
 """Admin endpoints for course management (CRUD, publish, RAG indexation)."""
 
+import hashlib
 import re
 import shutil
 import uuid
@@ -899,6 +900,7 @@ async def upload_course_resource(
                 raw_text=full_text,
                 toc_json=toc or None,
                 char_count=len(full_text),
+                content_hash=hashlib.sha256(full_text.encode("utf-8")).hexdigest(),
             )
             db.add(resource)
             resources_created.append({"filename": resource.filename, "chars": len(full_text)})
@@ -924,6 +926,7 @@ async def upload_course_resource(
                     raw_text=part_text,
                     toc_json=toc or None,
                     char_count=len(part_text),
+                    content_hash=hashlib.sha256(part_text.encode("utf-8")).hexdigest(),
                 )
                 db.add(resource)
                 resources_created.append({"filename": part_filename, "chars": len(part_text)})

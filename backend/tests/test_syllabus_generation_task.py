@@ -256,7 +256,9 @@ class TestSyllabusGenerationTaskUnit:
         mock_session = MagicMock()
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
+        # Return empty list for existing resources AND None for dedup lookup
         mock_session.execute.return_value.scalars.return_value.all.return_value = []
+        mock_session.execute.return_value.scalar_one_or_none.return_value = None
         mock_sync_engine = MagicMock()
 
         large_pdf_text = "x" * (_CONTEXT_BUDGET_CHARS + 1)
@@ -345,3 +347,127 @@ class TestSyllabusGenerationTaskUnit:
             self._run(course_id, 10)
 
         assert mock_sync_engine.dispose.call_count >= 1
+
+    def test_summary_reused_from_same_resource(self, sample_module_dicts):
+        """If a resource already has summary_text, summarize_pdfs_sync is NOT called."""
+        _CONTEXT_BUDGET_CHARS = 100
+
+        course_id = str(uuid.uuid4())
+        course_data = {
+            "title_fr": "Test",
+            "title_en": "Test",
+            "course_hours": 10,
+            "rag_collection_id": None,
+            "domain_slugs": [],
+            "level_slugs": [],
+            "audience_slugs": [],
+        }
+
+        mock_resource = MagicMock()
+        mock_resource.raw_text = "x" * (_CONTEXT_BUDGET_CHARS + 1)
+        mock_resource.toc_json = []
+        mock_resource.filename = "existing_pdf"
+        mock_resource.summary_text = "cached summary"
+        mock_resource.summary_model = "claude-sonnet-4-6"
+        mock_resource.content_hash = "abc123"
+        mock_resource.id = uuid.uuid4()
+
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_session.execute.return_value.scalars.return_value.all.return_value = [mock_resource]
+        mock_session.execute.return_value.scalar_one_or_none.return_value = None
+        mock_sync_engine = MagicMock()
+
+        call_count = 0
+
+        def mock_run(coro):
+            nonlocal call_count
+            call_count += 1
+            return course_data if call_count == 1 else sample_module_dicts
+
+        mock_cache = MagicMock()
+        mock_cache.get.side_effect = lambda key, default=None: (
+            _CONTEXT_BUDGET_CHARS if key == "syllabus-context-budget-chars" else default
+        )
+
+        with (
+            patch("asyncio.run", side_effect=mock_run),
+            patch("pathlib.Path.exists", return_value=False),
+            patch("app.ai.pdf_summarizer.summarize_pdfs_sync") as mock_summarize,
+            patch("sqlalchemy.create_engine", return_value=mock_sync_engine),
+            patch("sqlalchemy.orm.Session", return_value=mock_session),
+            patch(
+                "app.domain.services.platform_settings_service.SettingsCache.instance",
+                return_value=mock_cache,
+            ),
+        ):
+            result = self._run(course_id, 10)
+
+        mock_summarize.assert_not_called()
+        assert result["status"] == "complete"
+
+    def test_summary_reused_from_other_course_by_hash(self, sample_module_dicts):
+        """If another CourseResource with same hash has a summary, it is reused — zero API call."""
+        _CONTEXT_BUDGET_CHARS = 100
+
+        course_id = str(uuid.uuid4())
+        other_course_id = uuid.uuid4()
+        course_data = {
+            "title_fr": "Test",
+            "title_en": "Test",
+            "course_hours": 10,
+            "rag_collection_id": None,
+            "domain_slugs": [],
+            "level_slugs": [],
+            "audience_slugs": [],
+        }
+
+        mock_resource = MagicMock()
+        mock_resource.raw_text = "x" * (_CONTEXT_BUDGET_CHARS + 1)
+        mock_resource.toc_json = []
+        mock_resource.filename = "some_pdf"
+        mock_resource.summary_text = None
+        mock_resource.summary_model = None
+        mock_resource.content_hash = "deabc123"
+        mock_resource.id = uuid.uuid4()
+
+        existing_with_summary = MagicMock()
+        existing_with_summary.summary_text = "reused summary from other course"
+        existing_with_summary.summary_model = "claude-sonnet-4-6"
+        existing_with_summary.course_id = other_course_id
+
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_session.execute.return_value.scalars.return_value.all.return_value = [mock_resource]
+        mock_session.execute.return_value.scalar_one_or_none.return_value = existing_with_summary
+        mock_sync_engine = MagicMock()
+
+        call_count = 0
+
+        def mock_run(coro):
+            nonlocal call_count
+            call_count += 1
+            return course_data if call_count == 1 else sample_module_dicts
+
+        mock_cache = MagicMock()
+        mock_cache.get.side_effect = lambda key, default=None: (
+            _CONTEXT_BUDGET_CHARS if key == "syllabus-context-budget-chars" else default
+        )
+
+        with (
+            patch("asyncio.run", side_effect=mock_run),
+            patch("pathlib.Path.exists", return_value=False),
+            patch("app.ai.pdf_summarizer.summarize_pdfs_sync") as mock_summarize,
+            patch("sqlalchemy.create_engine", return_value=mock_sync_engine),
+            patch("sqlalchemy.orm.Session", return_value=mock_session),
+            patch(
+                "app.domain.services.platform_settings_service.SettingsCache.instance",
+                return_value=mock_cache,
+            ),
+        ):
+            result = self._run(course_id, 10)
+
+        mock_summarize.assert_not_called()
+        assert result["status"] == "complete"
