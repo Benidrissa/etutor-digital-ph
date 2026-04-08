@@ -107,6 +107,8 @@ def generate_course_syllabus(
                 return {
                     "title_fr": course.title_fr,
                     "title_en": course.title_en,
+                    "description_fr": course.description_fr,
+                    "description_en": course.description_en,
                     "course_hours": course.estimated_hours,
                     "rag_collection_id": course.rag_collection_id,
                     "domain_slugs": [tc.slug for tc in cats if tc.type == "domain"],
@@ -127,6 +129,8 @@ def generate_course_syllabus(
 
     title_fr = course_data["title_fr"]
     title_en = course_data["title_en"]
+    description_fr = course_data["description_fr"]
+    description_en = course_data["description_en"]
     course_hours = course_data["course_hours"]
     rag_collection_id = course_data["rag_collection_id"]
     domain_slugs = course_data["domain_slugs"]
@@ -432,6 +436,8 @@ def generate_course_syllabus(
         return await agent.generate_course_structure(
             title_fr=title_fr,
             title_en=title_en,
+            course_description_fr=description_fr,
+            course_description_en=description_en,
             course_domain=domain_slugs,
             course_level=level_slugs,
             audience_type=audience_slugs,

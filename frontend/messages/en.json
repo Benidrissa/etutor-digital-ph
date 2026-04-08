@@ -1255,7 +1255,10 @@
         "estimatedHours": "Estimated hours",
         "creating": "Creating course...",
         "titleFrRequired": "French title is required",
-        "titleEnRequired": "English title is required"
+        "titleEnRequired": "English title is required",
+        "courseDescription": "Course description (FR, optional)",
+        "courseDescriptionEn": "Course description (EN, optional)",
+        "courseDescriptionHint": "Describe the focus, goals, and structure you want for this course"
       },
       "attachedResources": {
         "title": "Attached resources",

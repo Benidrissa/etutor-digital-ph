@@ -24,6 +24,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -69,6 +70,8 @@ interface UploadedFile {
 interface CourseInfo {
   title_fr: string;
   title_en: string;
+  description_fr: string;
+  description_en: string;
   course_domain: string[];
   course_level: string[];
   audience_type: string[];
@@ -187,6 +190,8 @@ export function CourseWizardClient({
   const [courseInfo, setCourseInfo] = useState<CourseInfo>({
     title_fr: "",
     title_en: "",
+    description_fr: "",
+    description_en: "",
     course_domain: [],
     course_level: [],
     audience_type: [],
@@ -256,6 +261,8 @@ export function CourseWizardClient({
         const courseData = await apiFetch<{
           title_fr: string;
           title_en: string;
+          description_fr: string | null;
+          description_en: string | null;
           course_domain: string[];
           course_level: string[];
           audience_type: string[];
@@ -264,6 +271,8 @@ export function CourseWizardClient({
         setCourseInfo({
           title_fr: courseData.title_fr,
           title_en: courseData.title_en,
+          description_fr: courseData.description_fr ?? "",
+          description_en: courseData.description_en ?? "",
           course_domain: courseData.course_domain,
           course_level: courseData.course_level,
           audience_type: courseData.audience_type,
@@ -504,6 +513,8 @@ export function CourseWizardClient({
           body: JSON.stringify({
             title_fr: courseInfo.title_fr,
             title_en: courseInfo.title_en,
+            description_fr: courseInfo.description_fr || null,
+            description_en: courseInfo.description_en || null,
             course_domain: courseInfo.course_domain,
             course_level: courseInfo.course_level,
             audience_type: courseInfo.audience_type,
@@ -519,6 +530,8 @@ export function CourseWizardClient({
         body: JSON.stringify({
           title_fr: courseInfo.title_fr,
           title_en: courseInfo.title_en,
+          description_fr: courseInfo.description_fr || null,
+          description_en: courseInfo.description_en || null,
           course_domain: courseInfo.course_domain,
           course_level: courseInfo.course_level,
           audience_type: courseInfo.audience_type,
@@ -1104,6 +1117,31 @@ export function CourseWizardClient({
                     {infoErrors.title_en && (
                       <p className="text-xs text-destructive">{infoErrors.title_en}</p>
                     )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="description_fr">{t("info.courseDescription")}</Label>
+                    <Textarea
+                      id="description_fr"
+                      value={courseInfo.description_fr}
+                      onChange={(e) => setCourseInfo((p) => ({ ...p, description_fr: e.target.value }))}
+                      placeholder="Décrivez les objectifs, la structure et les axes prioritaires de ce cours."
+                      className="min-h-[80px] resize-none text-base"
+                      rows={3}
+                    />
+                    <p className="text-xs text-muted-foreground">{t("info.courseDescriptionHint")}</p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="description_en">{t("info.courseDescriptionEn")}</Label>
+                    <Textarea
+                      id="description_en"
+                      value={courseInfo.description_en}
+                      onChange={(e) => setCourseInfo((p) => ({ ...p, description_en: e.target.value }))}
+                      placeholder="Describe the goals, structure and focus areas of this course."
+                      className="min-h-[80px] resize-none text-base"
+                      rows={3}
+                    />
                   </div>
 
                   {[
