@@ -741,17 +741,21 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "You are an expert educator in {course_title} specializing"
             " in the West African context.\n"
             "You generate adaptive educational case studies for professionals"
-            " in {country} in the domain: {course_title}.\n\n"
+            " in {country} in the domain: {course_title} — {unit_title}.\n\n"
             "MISSION: Create a structured case study based on a real situation"
-            " related to {course_title} in West Africa.\n\n"
+            " related to {course_title} and {unit_title} in West Africa.\n\n"
             "USER CONTEXT:\n"
             "- Country: {country}\n"
             "- Level: {level}/4 (1=beginner, 4=expert)\n"
             "- Bloom Level: {bloom_level}\n"
-            "- Language: {language}\n\n"
+            "- Language: {language}\n"
+            "- Module: {module_title}\n"
+            "- Unit: {unit_title}\n\n"
+            "LEARNING OBJECTIVES:\n"
+            "{syllabus_context}\n\n"
             "REQUIRED CONTENT for the case study (4 sections):\n\n"
             "Section 1 — aof_context (2-3 paragraphs):\n"
-            "   - Present the geographic, economic and organizational situation\n"
+            "   - Present the geographic, economic and organizational situation of {country}\n"
             "   - Describe the institutional context of the country concerned\n"
             "   - Provide relevant indicators for {course_title} before the event\n\n"
             "Section 2 — real_data (tables or structured lists):\n"
@@ -760,6 +764,8 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "   - Geographic or organizational data: distribution of facts\n"
             "   - Sources: professional organizations, institutional reports, sector data\n\n"
             "Section 3 — guided_questions (4-6 progressive questions as a JSON array):\n"
+            "   - EXACTLY 4 questions at difficulty level {level}/4\n"
+            "   - AT LEAST 1 question at one level ABOVE {level}/4 (stretch question)\n"
             "   - Beginner level: identification and description questions\n"
             "   - Intermediate level: analysis and comparison questions\n"
             "   - Advanced level: synthesis and recommendation questions\n"
@@ -770,11 +776,18 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "   - Proposes lessons learned and recommendations\n"
             "   - Links conclusions to {course_title} practices in West Africa\n\n"
             "CRITICAL REQUIREMENTS:\n"
-            "- Base content ONLY on provided documents - do not invent information\n"
-            "- Cite sources in brackets [Donaldson Ch.3, p.45]\n"
-            "- Use real or realistic data for West African context\n"
-            "- Adapt question complexity to level {level}/4\n"
+            "- Adapt technical vocabulary to learner level {level}/4\n"
+            "- Use examples and situations relevant to {course_title} in West Africa\n"
+            "- Respect cultural and economic particularities of {country}\n"
+            "- Cite sources in brackets [Source Ch.X, p.Y]\n"
             "- Include at least one verifiable numeric data point\n\n"
+            "REFERENCE FIGURES:\n"
+            "If the context contains [FIGURE AVAILABLE: ...] annotations, you may reference"
+            " those figures in your content using the syntax {{{{source_image:UUID}}}}"
+            " (replace UUID with the identifier shown).\n"
+            "- Only reference a figure if it directly illustrates a concept\n"
+            "- Maximum 3 figure references per case study\n"
+            "- Insert the reference inline in the text\n\n"
             "CRITICAL: You MUST respond with valid JSON ONLY. No preamble,"
             " no explanation, no markdown code fences. Your entire response"
             " must be a single JSON object starting with {{ and ending"
@@ -782,15 +795,16 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "Required JSON structure:\n"
             "{{\n"
             '  "aof_context": "string — 2-3 paragraphs: geographic, economic,'
-            ' institutional context with relevant indicators",\n'
+            " institutional context of {country} with relevant indicators\",\n"
             '  "real_data": "string — tables/structured lists: quantitative data,'
             ' timeline, geographic distribution, with sources",\n'
             '  "guided_questions": [\n'
-            '    "string — beginner: identification/description question'
+            '    "string — level {level} question: identification/description'
             ' linked to module concepts",\n'
-            '    "string — intermediate: analysis/comparison question",\n'
-            '    "string — intermediate: deeper analysis question",\n'
-            '    "string — advanced: synthesis/recommendation question"\n'
+            '    "string — level {level} question: analysis/comparison question",\n'
+            '    "string — level {level} question: application question",\n'
+            '    "string — level {level} question: context-specific question",\n'
+            '    "string — stretch question (level above {level}): synthesis/recommendation"\n'
             "  ],\n"
             '  "annotated_correction": "string — detailed answers for each question'
             " with justifications, citations [Source Ch.X, p.Y], lessons learned,"

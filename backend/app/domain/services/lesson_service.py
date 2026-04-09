@@ -752,6 +752,14 @@ class CaseStudyGenerationService:
         Returns:
             CaseStudyResponse with generated or cached content
         """
+        module_result = await session.execute(
+            select(Module).where(Module.id == module_id).options(selectinload(Module.course))
+        )
+        module = module_result.scalar_one_or_none()
+
+        if not module:
+            raise ValueError(f"Module {module_id} not found")
+
         if not force_regenerate:
             cached = await self._get_cached_case_study(
                 module_id, unit_id, language, country, level, session
@@ -763,15 +771,13 @@ class CaseStudyGenerationService:
                     unit_id=unit_id,
                     language=language,
                 )
+                unit = await self._resolve_unit(module, unit_id, session)
+                if unit:
+                    cached.unit_title = unit.title_fr if language == "fr" else unit.title_en
+                    cached.unit_description = (
+                        unit.description_fr if language == "fr" else unit.description_en
+                    )
                 return cached
-
-        module_result = await session.execute(
-            select(Module).where(Module.id == module_id).options(selectinload(Module.course))
-        )
-        module = module_result.scalar_one_or_none()
-
-        if not module:
-            raise ValueError(f"Module {module_id} not found")
 
         logger.info(
             "Generating new case study",
@@ -806,14 +812,6 @@ class CaseStudyGenerationService:
             StreamingEvent objects for real-time updates
         """
         try:
-            cached = await self._get_cached_case_study(
-                module_id, unit_id, language, country, level, session
-            )
-
-            if cached:
-                yield StreamingEvent(event="complete", data=cached.model_dump())
-                return
-
             module_result = await session.execute(
                 select(Module).where(Module.id == module_id).options(selectinload(Module.course))
             )
@@ -827,6 +825,20 @@ class CaseStudyGenerationService:
                         "message": f"Module {module_id} not found",
                     },
                 )
+                return
+
+            cached = await self._get_cached_case_study(
+                module_id, unit_id, language, country, level, session
+            )
+
+            if cached:
+                unit = await self._resolve_unit(module, unit_id, session)
+                if unit:
+                    cached.unit_title = unit.title_fr if language == "fr" else unit.title_en
+                    cached.unit_description = (
+                        unit.description_fr if language == "fr" else unit.description_en
+                    )
+                yield StreamingEvent(event="complete", data=cached.model_dump())
                 return
 
             yield StreamingEvent(event="chunk", data="Démarrage de la génération...")
@@ -856,24 +868,47 @@ class CaseStudyGenerationService:
 
             module_key = f"M{module.module_number:02d}"
             course: Course | None = module.course
+            unit = await self._resolve_unit(module, unit_id, session)
+            stream_unit_title = (
+                (unit.title_fr if language == "fr" else unit.title_en) if unit else ""
+            )
+            stream_unit_description = (
+                (unit.description_fr if language == "fr" else unit.description_en) if unit else None
+            )
+            stream_module_title = module.title_fr if language == "fr" else module.title_en
+            stream_learning_objectives = (
+                (module.learning_objectives_fr if language == "fr" else module.learning_objectives_en)
+                if hasattr(module, "learning_objectives_fr")
+                else None
+            )
+            stream_syllabus_context = (
+                "\n".join(f"- {obj}" for obj in stream_learning_objectives)
+                if isinstance(stream_learning_objectives, list) and stream_learning_objectives
+                else ""
+            )
+            stream_course_title = (
+                (course.title_fr if language == "fr" else course.title_en) if course else None
+            )
             system_prompt = get_case_study_system_prompt(
                 language,
                 country,
                 level,
                 module.bloom_level,
-                course_title=(
-                    (course.title_fr if language == "fr" else course.title_en) if course else None
-                ),
+                course_title=stream_course_title,
                 course_description=(
                     (course.description_fr if language == "fr" else course.description_en)
                     if course
                     else None
                 ),
+                module_title=stream_module_title,
+                unit_title=stream_unit_title,
+                syllabus_context=stream_syllabus_context,
+                course_domain=stream_course_title or "",
             )
             user_message = format_rag_context_for_case_study(
                 rag_chunks,
                 query,
-                module.title_fr if language == "fr" else module.title_en,
+                stream_module_title,
                 unit_id,
                 language,
                 module_id=module_key,
@@ -906,6 +941,8 @@ class CaseStudyGenerationService:
                 content=case_study_content,
                 generated_at=datetime.utcnow().isoformat(),
                 cached=False,
+                unit_title=stream_unit_title or None,
+                unit_description=stream_unit_description,
             )
 
             await self._cache_case_study_content(case_study_response, session)
@@ -967,6 +1004,7 @@ class CaseStudyGenerationService:
         session: AsyncSession,
     ) -> CaseStudyResponse:
         """Generate new case study content using RAG + Claude."""
+        unit = await self._resolve_unit(module, unit_id, session)
         query = await self._build_case_study_query(module, unit_id, language, session)
 
         rag_chunks = await self.semantic_retriever.search_for_module(
@@ -983,24 +1021,44 @@ class CaseStudyGenerationService:
 
         module_key = f"M{module.module_number:02d}"
         course: Course | None = module.course
+        resolved_unit_title = (unit.title_fr if language == "fr" else unit.title_en) if unit else ""
+        resolved_unit_description = (
+            (unit.description_fr if language == "fr" else unit.description_en) if unit else None
+        )
+        resolved_module_title = module.title_fr if language == "fr" else module.title_en
+        learning_objectives = (
+            (module.learning_objectives_fr if language == "fr" else module.learning_objectives_en)
+            if hasattr(module, "learning_objectives_fr")
+            else None
+        )
+        syllabus_context = (
+            "\n".join(f"- {obj}" for obj in learning_objectives)
+            if isinstance(learning_objectives, list) and learning_objectives
+            else ""
+        )
+        course_title = (
+            (course.title_fr if language == "fr" else course.title_en) if course else None
+        )
         system_prompt = get_case_study_system_prompt(
             language,
             country,
             level,
             module.bloom_level,
-            course_title=(
-                (course.title_fr if language == "fr" else course.title_en) if course else None
-            ),
+            course_title=course_title,
             course_description=(
                 (course.description_fr if language == "fr" else course.description_en)
                 if course
                 else None
             ),
+            module_title=resolved_module_title,
+            unit_title=resolved_unit_title,
+            syllabus_context=syllabus_context,
+            course_domain=course_title or "",
         )
         user_message = format_rag_context_for_case_study(
             rag_chunks,
             query,
-            module.title_fr if language == "fr" else module.title_en,
+            resolved_module_title,
             unit_id,
             language,
             module_id=module_key,
@@ -1034,6 +1092,8 @@ class CaseStudyGenerationService:
             content=case_study_content,
             generated_at=datetime.utcnow().isoformat(),
             cached=False,
+            unit_title=resolved_unit_title or None,
+            unit_description=resolved_unit_description,
         )
 
     @staticmethod
@@ -1058,23 +1118,28 @@ class CaseStudyGenerationService:
         )
         return None
 
+    async def _resolve_unit(
+        self, module: Module, unit_id: str, session: AsyncSession
+    ) -> ModuleUnit | None:
+        """Resolve a ModuleUnit from unit_id and module."""
+        unit_number = LessonGenerationService._unit_id_to_unit_number(unit_id, module.module_number)
+        if not unit_number:
+            return None
+        unit_result = await session.execute(
+            select(ModuleUnit).where(
+                and_(
+                    ModuleUnit.module_id == module.id,
+                    ModuleUnit.unit_number == unit_number,
+                )
+            )
+        )
+        return unit_result.scalar_one_or_none()
+
     async def _build_case_study_query(
         self, module: Module, unit_id: str, language: str, session: AsyncSession
     ) -> str:
         """Build search query for case study RAG retrieval."""
-        unit_number = LessonGenerationService._unit_id_to_unit_number(unit_id, module.module_number)
-        unit: ModuleUnit | None = None
-
-        if unit_number:
-            unit_result = await session.execute(
-                select(ModuleUnit).where(
-                    and_(
-                        ModuleUnit.module_id == module.id,
-                        ModuleUnit.unit_number == unit_number,
-                    )
-                )
-            )
-            unit = unit_result.scalar_one_or_none()
+        unit = await self._resolve_unit(module, unit_id, session)
 
         if unit:
             unit_title = unit.title_fr if language == "fr" else unit.title_en
