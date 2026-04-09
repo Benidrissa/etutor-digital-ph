@@ -43,8 +43,23 @@ export function track<E extends AnalyticsEvent>(
   event: E["event"],
   properties: E["properties"]
 ) {
-  if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_POSTHOG_KEY && !isOptedOut()) {
+  if (typeof window === "undefined") return;
+  if (isOptedOut()) return;
+
+  if (process.env.NEXT_PUBLIC_POSTHOG_KEY) {
     posthog.capture(event, properties);
+  }
+
+  const token = localStorage.getItem("access_token");
+  if (token) {
+    fetch("/api/v1/analytics/events", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ event_name: event, properties }),
+    }).catch(() => {});
   }
 }
 
