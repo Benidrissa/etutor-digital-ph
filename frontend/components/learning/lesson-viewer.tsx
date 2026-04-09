@@ -425,34 +425,39 @@ export function LessonViewer({
           </div>
 
           {/* West African Example */}
-          <div className="mb-8 bg-teal-50 border-l-4 border-teal-400 p-6 rounded-r-lg">
-            <div className="prose prose-teal max-w-none">
-              {renderContentWithImages(content.aof_example)}
+          {content.aof_example && (
+            <div className="mb-8 bg-teal-50 border-l-4 border-teal-400 p-6 rounded-r-lg">
+              <div className="prose prose-teal max-w-none">
+                {renderContentWithImages(content.aof_example)}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Synthesis */}
-          <div className="mb-8">
-            {renderContentWithImages(content.synthesis)}
-          </div>
-
+          {content.synthesis && (
+            <div className="mb-8">
+              {renderContentWithImages(content.synthesis)}
+            </div>
+          )}
 
           {/* Key Points */}
-          <div className="mb-8">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">
-              {t('keyPoints')}
-            </h2>
-            <ul className="space-y-3">
-              {content.key_points.map((point, index) => (
-                <li key={index} className="flex items-start gap-3">
-                  <div className="w-2 h-2 bg-teal-500 rounded-full mt-3 flex-shrink-0" />
-                  <span className="text-base leading-relaxed text-gray-700">
-                    {point}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          {content.key_points.length > 0 && (
+            <div className="mb-8">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">
+                {t('keyPoints')}
+              </h2>
+              <ul className="space-y-3">
+                {content.key_points.map((point, index) => (
+                  <li key={index} className="flex items-start gap-3">
+                    <div className="w-2 h-2 bg-teal-500 rounded-full mt-3 flex-shrink-0" />
+                    <span className="text-base leading-relaxed text-gray-700">
+                      {point}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </CardContent>
       </Card>
 
