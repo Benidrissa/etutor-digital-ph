@@ -244,6 +244,9 @@ export interface ModuleUnitsResponse {
   description_fr?: string;
   description_en?: string;
   estimated_hours: number;
+  bloom_level?: string;
+  learning_objectives_fr?: string[];
+  learning_objectives_en?: string[];
   units: PublicUnitDetail[];
 }
 

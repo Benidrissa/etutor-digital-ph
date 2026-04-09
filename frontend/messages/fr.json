@@ -745,6 +745,7 @@
     "learningObjectives": "Objectifs pédagogiques",
     "showObjectives": "Afficher les objectifs",
     "hideObjectives": "Masquer les objectifs",
+    "bloomLevel": "Bloom : {level}",
     "generatedOn": "Généré le {date}",
     "stretchBadge": "Défi"
   },
