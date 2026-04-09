@@ -22,7 +22,9 @@ class QuizAttempt(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
-    quiz_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("generated_content.id"), index=True)
+    quiz_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("generated_content.id", ondelete="CASCADE"), index=True
+    )
     answers: Mapped[dict] = mapped_column(JSON)
     score: Mapped[float | None]
     time_taken_sec: Mapped[int | None] = mapped_column(Integer)
@@ -39,8 +41,12 @@ class SummativeAssessmentAttempt(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
-    module_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("modules.id"), index=True)
-    assessment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("generated_content.id"), index=True)
+    module_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("modules.id", ondelete="CASCADE"), index=True
+    )
+    assessment_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("generated_content.id", ondelete="CASCADE"), index=True
+    )
 
     # Assessment results
     answers: Mapped[dict] = mapped_column(JSON)  # All answers and metadata

@@ -20,7 +20,9 @@ class TutorConversation(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
-    module_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("modules.id"))
+    module_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("modules.id", ondelete="CASCADE")
+    )
     messages: Mapped[list] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     compacted_context: Mapped[str | None] = mapped_column(Text, nullable=True)

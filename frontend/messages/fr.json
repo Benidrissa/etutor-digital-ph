@@ -884,7 +884,14 @@
     "preassessmentMandatoryTitle": "Pré-Évaluation Obligatoire",
     "preassessmentMandatoryDesc": "Vous devez compléter la pré-évaluation avant d'accéder aux modules du cours.",
     "preassessmentCta": "Commencer la Pré-Évaluation",
-    "preassessmentRequiredTooltip": "Complétez la pré-évaluation pour déverrouiller les modules du cours."
+    "preassessmentRequiredTooltip": "Complétez la pré-évaluation pour déverrouiller les modules du cours.",
+    "unenroll": "Se désinscrire de cette formation",
+    "unenrollTitle": "Se désinscrire de cette formation ?",
+    "unenrollDescription": "Toute votre progression sera définitivement supprimée : scores aux quiz, révisions de flashcards, lectures de leçons, conversations avec le tuteur et progression des modules. Cette action est irréversible.",
+    "unenrollConfirm": "Se désinscrire et supprimer mes données",
+    "unenrolling": "Désinscription en cours...",
+    "unenrollSuccess": "Désinscription réussie. Toutes les données du cours ont été supprimées.",
+    "unenrollError": "La désinscription a échoué. Veuillez réessayer."
   },
   "Privacy": {
     "title": "Confidentialité et analytique",
@@ -1213,7 +1220,8 @@
     "allLevels": "Tous les niveaux",
     "allAudiences": "Tous les publics",
     "clearFilters": "Effacer les filtres",
-    "activeFilters": "{count, plural, one {# filtre actif} other {# filtres actifs}}"
+    "activeFilters": "{count, plural, one {# filtre actif} other {# filtres actifs}}",
+    "cancel": "Annuler"
   },
   "AdminCourses": {
     "pageTitle": "Gestion des formations",
@@ -1265,6 +1273,10 @@
     "deleteCourse": "Supprimer",
     "confirmDelete": "Supprimer la formation ?",
     "confirmDeleteDesc": "Cette action est irréversible. La formation et tout son contenu seront définitivement supprimés.",
+    "confirmDeleteTitle": "Supprimer définitivement cette formation ?",
+    "confirmDeleteDescDetailed": "Cela supprimera définitivement la formation, tous les modules, le contenu généré, les inscriptions et toutes les données de progression des apprenants. Cette action est irréversible.",
+    "typeDeleteToConfirm": "Tapez DELETE pour confirmer :",
+    "confirmDeleteAction": "Supprimer la formation définitivement",
     "indexResources": "Indexer les ressources",
     "confirmIndex": "Indexer les ressources du cours ?",
     "confirmIndexDesc": "Cela indexera tous les PDFs téléversés dans la base vectorielle pour permettre la génération de contenu IA.",

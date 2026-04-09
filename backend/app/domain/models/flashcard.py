@@ -19,7 +19,9 @@ class FlashcardReview(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
-    card_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("generated_content.id"), index=True)
+    card_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("generated_content.id", ondelete="CASCADE"), index=True
+    )
     rating: Mapped[str] = mapped_column(String)  # again|hard|good|easy
     next_review: Mapped[datetime] = mapped_column(index=True)
     stability: Mapped[float] = mapped_column(server_default="1.0")
