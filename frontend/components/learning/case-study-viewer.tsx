@@ -72,6 +72,7 @@ interface CaseStudyViewerProps {
   language: 'fr' | 'en';
   level: number;
   countryContext?: string;
+  unitTitle?: string;
   unitDescription?: string;
   learningObjectives?: string[];
   estimatedMinutes?: number;
@@ -84,6 +85,7 @@ export function CaseStudyViewer({
   language,
   level,
   countryContext,
+  unitTitle,
   unitDescription,
   learningObjectives,
   estimatedMinutes,
@@ -345,7 +347,7 @@ export function CaseStudyViewer({
           </Button>
         </div>
         <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">
-          {caseStudyData.unit_title ?? t('unitTitle', { unit: unitId })}
+          {unitTitle ?? caseStudyData.unit_title ?? t('unitTitle', { unit: unitId })}
         </h1>
         {(unitDescription ?? caseStudyData.unit_description) && (
           <p className="text-base text-gray-600 mb-2">
