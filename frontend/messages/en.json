@@ -1055,7 +1055,28 @@
         "published": "Published",
         "archived": "Archived"
       },
-      "viewPublicPage": "View public page"
+      "viewPublicPage": "View public page",
+      "visibility": {
+        "public": "Public",
+        "private": "Private",
+        "makePublic": "Make public",
+        "makePrivate": "Make private"
+      },
+      "access": {
+        "title": "Access Management",
+        "subtitle": "Control who can access this private curriculum",
+        "manage": "Manage Access",
+        "grantUser": "Add User",
+        "grantGroup": "Add Group",
+        "grant": "Grant",
+        "revoke": "Revoke",
+        "currentAccess": "Current access",
+        "noAccess": "No users or groups have access yet",
+        "searchUserPlaceholder": "Search users by email or name...",
+        "selectGroup": "Select a group...",
+        "typeUser": "User",
+        "typeGroup": "Group"
+      }
     },
     "taxonomy": {
       "title": "Taxonomy",
@@ -1124,6 +1145,30 @@
         "duplicate": "Duplicate",
         "ignored": "Ignored"
       }
+    },
+    "groups": {
+      "title": "Groups",
+      "subtitle": "Create and manage user groups for curriculum access",
+      "create": "New Group",
+      "edit": "Edit",
+      "delete": "Delete",
+      "save": "Save",
+      "cancel": "Cancel",
+      "name": "Group name",
+      "namePlaceholder": "e.g. Health Officers — Senegal",
+      "description": "Description",
+      "descriptionPlaceholder": "Optional description",
+      "memberCount": "{count, plural, one {# member} other {# members}}",
+      "noGroups": "No groups yet",
+      "noGroupsDescription": "Create a group to manage access for multiple users at once.",
+      "manageMembers": "Members",
+      "members": "Group Members",
+      "currentMembers": "Current members",
+      "noMembers": "No members in this group yet",
+      "searchMemberPlaceholder": "Search users to add...",
+      "removeMember": "Remove member",
+      "confirmDelete": "Delete this group?",
+      "confirmDeleteDesc": "This will remove the group and revoke any curriculum access granted via this group."
     }
   },
   "Courses": {
@@ -1508,5 +1553,9 @@
     "loading": "Loading...",
     "error": "Failed to load curriculum",
     "curriculumScope": "You are viewing a curated curriculum"
+  },
+  "AdminGroups": {
+    "pageTitle": "User Groups",
+    "pageDescription": "Create and manage user groups for curriculum access control"
   }
 }
