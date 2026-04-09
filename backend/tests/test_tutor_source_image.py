@@ -1,4 +1,4 @@
-"""Tests for tutor source image tool and DALL-E fallback optimization (issue #743)."""
+"""Tests for tutor source image tool and gpt-image-1 fallback optimization (issue #743)."""
 
 from __future__ import annotations
 
@@ -513,7 +513,8 @@ class TestDallEFallbackOptimization:
     async def test_dalle_called_when_no_source_image(
         self, service, mock_session, mock_claude_response
     ):
-        """When no source image found, DALL-E should proceed normally."""
+        """When no source image found, gpt-image-1 should proceed normally."""
+        import base64
         from unittest.mock import patch
 
         mock_session.get = AsyncMock(return_value=None)
@@ -524,8 +525,9 @@ class TestDallEFallbackOptimization:
         alt_text_msg = MagicMock()
         alt_text_msg.content = [MagicMock(text="FR: Illustration\nEN: Illustration")]
 
-        dalle_response = MagicMock()
-        dalle_response.data = [MagicMock(url="https://example.com/img.png")]
+        fake_b64 = base64.b64encode(b"FAKE_PNG_DATA").decode()
+        image_api_response = MagicMock()
+        image_api_response.data = [MagicMock(b64_json=fake_b64)]
 
         mock_session.execute = AsyncMock(return_value=reuse_result)
 
@@ -539,25 +541,15 @@ class TestDallEFallbackOptimization:
             with patch("openai.AsyncOpenAI") as mock_openai_cls:
                 mock_openai = AsyncMock()
                 mock_openai_cls.return_value = mock_openai
-                mock_openai.images.generate = AsyncMock(return_value=dalle_response)
+                mock_openai.images.generate = AsyncMock(return_value=image_api_response)
 
-                with patch("httpx.AsyncClient") as mock_http_cls:
-                    mock_http = AsyncMock()
-                    mock_http_cls.return_value.__aenter__ = AsyncMock(return_value=mock_http)
-                    mock_http_cls.return_value.__aexit__ = AsyncMock(return_value=False)
-                    mock_http.get = AsyncMock(
-                        return_value=MagicMock(
-                            content=b"FAKE_PNG_DATA", raise_for_status=MagicMock()
-                        )
-                    )
-
-                    result = await service.generate_for_lesson(
-                        lesson_id=uuid.uuid4(),
-                        module_id=uuid.uuid4(),
-                        unit_id="u01",
-                        lesson_content="Lesson about cholera outbreak.",
-                        session=mock_session,
-                    )
+                result = await service.generate_for_lesson(
+                    lesson_id=uuid.uuid4(),
+                    module_id=uuid.uuid4(),
+                    unit_id="u01",
+                    lesson_content="Lesson about cholera outbreak.",
+                    session=mock_session,
+                )
 
             mock_openai.images.generate.assert_called_once()
 
