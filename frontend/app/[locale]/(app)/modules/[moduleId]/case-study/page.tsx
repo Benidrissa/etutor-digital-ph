@@ -4,8 +4,6 @@ import { ChevronLeft } from 'lucide-react';
 import { getModuleUnits } from '@/lib/api';
 import { CaseStudyViewer } from '@/components/learning/case-study-viewer';
 import { EnrollmentGuard } from '@/components/shared/enrollment-guard';
-import { CURRICULUM_MODULES } from '@/lib/modules';
-
 interface CaseStudyPageProps {
   params: Promise<{ moduleId: string }>;
   searchParams: Promise<{ unit?: string }>;
@@ -22,8 +20,10 @@ export default async function CaseStudyPage({ params, searchParams }: CaseStudyP
   const moduleData = await getModuleUnits(moduleId).catch(() => null);
   const moduleTitle = language === 'fr' ? (moduleData?.title_fr || moduleId) : (moduleData?.title_en || moduleId);
 
-  const staticModule = CURRICULUM_MODULES.find((m) => m.id === moduleId);
-  const learningObjectives = staticModule?.learningObjectives?.[language];
+  const learningObjectives = language === 'fr'
+    ? moduleData?.learning_objectives_fr
+    : moduleData?.learning_objectives_en;
+  const bloomLevel = moduleData?.bloom_level;
 
   // unitId is "M01-U09" format; API units use UUID id and "1.9" unit_number
   // Match by unit_number: extract module & unit numbers from "MXX-UYY" → "X.Y"
@@ -61,6 +61,7 @@ export default async function CaseStudyPage({ params, searchParams }: CaseStudyP
           unitTitle={unitTitle}
           unitDescription={unitDescription}
           learningObjectives={learningObjectives}
+          bloomLevel={bloomLevel}
           estimatedMinutes={estimatedMinutes}
         />
       </div>

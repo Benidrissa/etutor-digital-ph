@@ -290,6 +290,9 @@ class ModuleUnitsResponse(BaseModel):
     description_fr: str | None = None
     description_en: str | None = None
     estimated_hours: int
+    bloom_level: str | None = None
+    learning_objectives_fr: list[str] | None = None
+    learning_objectives_en: list[str] | None = None
     units: list[PublicUnitDetail] = Field(default_factory=list)
 
 

@@ -1368,6 +1368,9 @@ async def get_module_units(
             description_fr=module.description_fr,
             description_en=module.description_en,
             estimated_hours=module.estimated_hours,
+            bloom_level=module.bloom_level,
+            learning_objectives_fr=module.learning_objectives_fr,
+            learning_objectives_en=module.learning_objectives_en,
             units=public_units,
         )
 

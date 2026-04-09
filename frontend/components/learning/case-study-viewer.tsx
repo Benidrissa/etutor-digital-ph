@@ -75,6 +75,7 @@ interface CaseStudyViewerProps {
   unitTitle?: string;
   unitDescription?: string;
   learningObjectives?: string[];
+  bloomLevel?: string;
   estimatedMinutes?: number;
   onComplete?: () => void;
 }
@@ -88,6 +89,7 @@ export function CaseStudyViewer({
   unitTitle,
   unitDescription,
   learningObjectives,
+  bloomLevel,
   estimatedMinutes,
   onComplete,
 }: CaseStudyViewerProps) {
@@ -326,6 +328,11 @@ export function CaseStudyViewer({
               {t('badge')}
             </Badge>
             <Badge variant="outline">{t('level', { level })}</Badge>
+            {bloomLevel && (
+              <Badge variant="outline" className="border-purple-300 text-purple-700 bg-purple-50">
+                {t('bloomLevel', { level: bloomLevel })}
+              </Badge>
+            )}
             <div className="flex items-center text-gray-600 text-sm">
               <Clock className="w-4 h-4 mr-1" />
               {estimatedMinutes

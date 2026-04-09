@@ -745,6 +745,7 @@
     "learningObjectives": "Learning Objectives",
     "showObjectives": "Show objectives",
     "hideObjectives": "Hide objectives",
+    "bloomLevel": "Bloom: {level}",
     "generatedOn": "Generated on {date}",
     "stretchBadge": "Stretch"
   },
