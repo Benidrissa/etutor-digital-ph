@@ -740,6 +740,12 @@
     "completed": "Terminé",
     "refreshContent": "Actualiser le contenu"
   },
+  "CaseStudyPage": {
+    "backToModule": "Retour à {module}",
+    "metadata": {
+      "title": "{unit} - {module}"
+    }
+  },
   "QuizPage": {
     "backToModule": "Retour à {module}"
   },
