@@ -49,12 +49,18 @@ class Module(Base):
         index=True,
     )
 
-    user_progress: Mapped[list[UserModuleProgress]] = relationship(back_populates="module")
-    generated_content: Mapped[list[GeneratedContent]] = relationship(back_populates="module")
-    tutor_conversations: Mapped[list[TutorConversation]] = relationship(back_populates="module")
-    summative_attempts: Mapped[list[SummativeAssessmentAttempt]] = relationship(
-        back_populates="module"
+    user_progress: Mapped[list[UserModuleProgress]] = relationship(
+        back_populates="module", passive_deletes=True
     )
-    units: Mapped[list[ModuleUnit]] = relationship(back_populates="module")
+    generated_content: Mapped[list[GeneratedContent]] = relationship(
+        back_populates="module", passive_deletes=True
+    )
+    tutor_conversations: Mapped[list[TutorConversation]] = relationship(
+        back_populates="module", passive_deletes=True
+    )
+    summative_attempts: Mapped[list[SummativeAssessmentAttempt]] = relationship(
+        back_populates="module", passive_deletes=True
+    )
+    units: Mapped[list[ModuleUnit]] = relationship(back_populates="module", passive_deletes=True)
     course: Mapped[Course | None] = relationship(back_populates="modules")
-    media: Mapped[list[ModuleMedia]] = relationship(back_populates="module")
+    media: Mapped[list[ModuleMedia]] = relationship(back_populates="module", passive_deletes=True)
