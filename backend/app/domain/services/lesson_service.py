@@ -16,7 +16,10 @@ from app.ai.prompts.case_study import (
     format_rag_context_for_case_study,
     get_case_study_system_prompt,
 )
-from app.ai.prompts.lesson import format_rag_context_for_lesson, get_lesson_system_prompt
+from app.ai.prompts.lesson import (
+    format_rag_context_for_lesson,
+    get_lesson_system_prompt,
+)
 from app.ai.rag.retriever import SemanticRetriever
 from app.api.v1.schemas.content import (
     CaseStudyContent,
@@ -88,7 +91,9 @@ class LessonGenerationService:
 
         # Get module information (eager-load course for prompt context)
         module_result = await session.execute(
-            select(Module).where(Module.id == module_id).options(selectinload(Module.course))
+            select(Module)
+            .where(Module.id == module_id)
+            .options(selectinload(Module.course))
         )
         module = module_result.scalar_one_or_none()
 
@@ -149,21 +154,28 @@ class LessonGenerationService:
 
             # Get module information (eager-load course for prompt context)
             module_result = await session.execute(
-                select(Module).where(Module.id == module_id).options(selectinload(Module.course))
+                select(Module)
+                .where(Module.id == module_id)
+                .options(selectinload(Module.course))
             )
             module = module_result.scalar_one_or_none()
 
             if not module:
                 yield StreamingEvent(
                     event="error",
-                    data={"error": "module_not_found", "message": f"Module {module_id} not found"},
+                    data={
+                        "error": "module_not_found",
+                        "message": f"Module {module_id} not found",
+                    },
                 )
                 return
 
             yield StreamingEvent(event="chunk", data="Démarrage de la génération...")
 
             # Perform RAG retrieval
-            yield StreamingEvent(event="chunk", data="Recherche des documents pertinents...")
+            yield StreamingEvent(
+                event="chunk", data="Recherche des documents pertinents..."
+            )
 
             query = await self._build_lesson_query(module, unit_id, language, session)
             rag_chunks = await self.semantic_retriever.search_for_module(
@@ -178,28 +190,38 @@ class LessonGenerationService:
             if not rag_chunks:
                 yield StreamingEvent(
                     event="error",
-                    data={"error": "no_content_found", "message": "Aucun contenu pertinent trouvé"},
+                    data={
+                        "error": "no_content_found",
+                        "message": "Aucun contenu pertinent trouvé",
+                    },
                 )
                 return
 
-            yield StreamingEvent(event="chunk", data="Documents trouvés, génération en cours...")
+            yield StreamingEvent(
+                event="chunk", data="Documents trouvés, génération en cours..."
+            )
 
             # Fetch source images linked to retrieved chunks
             chunk_ids = [
                 c.chunk.id if hasattr(c, "chunk") else c.id
                 for c in rag_chunks
-                if (c.chunk.id if hasattr(c, "chunk") else getattr(c, "id", None)) is not None
+                if (c.chunk.id if hasattr(c, "chunk") else getattr(c, "id", None))
+                is not None
             ]
             linked_images: dict = {}
             try:
-                linked_images = await self.semantic_retriever.get_linked_images(chunk_ids, session)
+                linked_images = await self.semantic_retriever.get_linked_images(
+                    chunk_ids, session
+                )
             except Exception as exc:
                 logger.warning(
                     "get_linked_images failed in streaming, continuing without images",
                     error=str(exc),
                 )
 
-            total_linked = sum(len(v) for v in linked_images.values()) if linked_images else 0
+            total_linked = (
+                sum(len(v) for v in linked_images.values()) if linked_images else 0
+            )
             logger.info(
                 "lesson.image_pipeline",
                 chunk_count=len(chunk_ids),
@@ -217,10 +239,16 @@ class LessonGenerationService:
                 level,
                 module.bloom_level,
                 course_title=(
-                    (course.title_fr if language == "fr" else course.title_en) if course else None
+                    (course.title_fr if language == "fr" else course.title_en)
+                    if course
+                    else None
                 ),
                 course_description=(
-                    (course.description_fr if language == "fr" else course.description_en)
+                    (
+                        course.description_fr
+                        if language == "fr"
+                        else course.description_en
+                    )
                     if course
                     else None
                 ),
@@ -248,7 +276,9 @@ class LessonGenerationService:
             )
 
             # Parse and structure the generated content
-            lesson_content = await self._parse_lesson_content(accumulated_content, rag_chunks)
+            lesson_content = await self._parse_lesson_content(
+                accumulated_content, rag_chunks
+            )
 
             # Create response object
             lesson_response = LessonResponse(
@@ -300,7 +330,9 @@ class LessonGenerationService:
 
         if cached_content:
             raw_refs = cached_content.content.get("source_image_refs", [])
-            source_image_refs = [SourceImageRef(**ref) for ref in raw_refs if isinstance(ref, dict)]
+            source_image_refs = [
+                SourceImageRef(**ref) for ref in raw_refs if isinstance(ref, dict)
+            ]
 
             content_dict = cached_content.content
             all_text_fields = " ".join(
@@ -310,13 +342,19 @@ class LessonGenerationService:
             for field in ("concepts", "key_points"):
                 for item in content_dict.get(field, []):
                     if isinstance(item, dict):
-                        all_text_fields += " " + " ".join(str(v or "") for v in item.values())
+                        all_text_fields += " " + " ".join(
+                            str(v or "") for v in item.values()
+                        )
                     else:
                         all_text_fields += " " + str(item or "")
 
             existing_ids = {ref.id for ref in source_image_refs}
-            if re.search(r"\{\{source_image:[0-9a-f-]{36}\}\}", all_text_fields, re.IGNORECASE):
-                extra_refs = await self._extract_source_image_refs(all_text_fields, {}, session)
+            if re.search(
+                r"\{\{source_image:[0-9a-f-]{36}\}\}", all_text_fields, re.IGNORECASE
+            ):
+                extra_refs = await self._extract_source_image_refs(
+                    all_text_fields, {}, session
+                )
                 for ref in extra_refs:
                     if ref.id not in existing_ids:
                         source_image_refs.append(ref)
@@ -361,21 +399,30 @@ class LessonGenerationService:
         )
 
         if not rag_chunks:
-            raise ValueError(f"No relevant content found for module {module.id}, unit {unit_id}")
+            raise ValueError(
+                f"No relevant content found for module {module.id}, unit {unit_id}"
+            )
 
         # Fetch source images linked to retrieved chunks
         chunk_ids = [
             c.chunk.id if hasattr(c, "chunk") else c.id
             for c in rag_chunks
-            if (c.chunk.id if hasattr(c, "chunk") else getattr(c, "id", None)) is not None
+            if (c.chunk.id if hasattr(c, "chunk") else getattr(c, "id", None))
+            is not None
         ]
         linked_images: dict = {}
         try:
-            linked_images = await self.semantic_retriever.get_linked_images(chunk_ids, session)
+            linked_images = await self.semantic_retriever.get_linked_images(
+                chunk_ids, session
+            )
         except Exception as exc:
-            logger.warning("get_linked_images failed, continuing without images", error=str(exc))
+            logger.warning(
+                "get_linked_images failed, continuing without images", error=str(exc)
+            )
 
-        total_linked = sum(len(v) for v in linked_images.values()) if linked_images else 0
+        total_linked = (
+            sum(len(v) for v in linked_images.values()) if linked_images else 0
+        )
         logger.info(
             "lesson.image_pipeline",
             chunk_count=len(chunk_ids),
@@ -392,7 +439,9 @@ class LessonGenerationService:
             level,
             module.bloom_level,
             course_title=(
-                (course.title_fr if language == "fr" else course.title_en) if course else None
+                (course.title_fr if language == "fr" else course.title_en)
+                if course
+                else None
             ),
             course_description=(
                 (course.description_fr if language == "fr" else course.description_en)
@@ -410,7 +459,9 @@ class LessonGenerationService:
         )
 
         # Get non-streaming response for structured parsing
-        response = await self.claude_service.generate_lesson_content(system_prompt, user_message)
+        response = await self.claude_service.generate_lesson_content(
+            system_prompt, user_message
+        )
 
         if not response or not response.content:
             raise ValueError("Empty response from Claude API")
@@ -477,13 +528,17 @@ class LessonGenerationService:
 
         if unit:
             unit_title = unit.title_fr if language == "fr" else unit.title_en
-            unit_description = unit.description_fr if language == "fr" else unit.description_en
+            unit_description = (
+                unit.description_fr if language == "fr" else unit.description_en
+            )
             query_parts = [unit_title]
             if unit_description:
                 query_parts.append(unit_description[:200])
         else:
             title = module.title_fr if language == "fr" else module.title_en
-            description = module.description_fr if language == "fr" else module.description_en
+            description = (
+                module.description_fr if language == "fr" else module.description_en
+            )
             query_parts = [title]
             if unit_id:
                 query_parts.append(f"unit {unit_id}")
@@ -504,7 +559,9 @@ class LessonGenerationService:
         except (ValueError, IndexError):
             return None
 
-    async def _parse_lesson_content(self, content_text: str, rag_chunks: list) -> LessonContent:
+    async def _parse_lesson_content(
+        self, content_text: str, rag_chunks: list
+    ) -> LessonContent:
         """Parse generated content into structured lesson format."""
         # Extract source citations from RAG chunks
         sources_cited = []
@@ -530,11 +587,13 @@ class LessonGenerationService:
         # For now, return a basic structure with the full content
         # In a production system, you would parse the structured sections
         return LessonContent(
-            introduction=content_text[:200] + "..." if len(content_text) > 200 else content_text,
+            introduction=(
+                content_text[:200] + "..." if len(content_text) > 200 else content_text
+            ),
             concepts=[content_text],  # Simplified - would parse sections in production
-            aof_example="Exemple contextuel sera extrait du contenu généré...",
-            synthesis="Synthèse sera extraite du contenu généré...",
-            key_points=["Point clé 1", "Point clé 2", "Point clé 3"],  # Would be parsed
+            aof_example="",
+            synthesis="",
+            key_points=[],  # Would be parsed
             sources_cited=sources_cited,
         )
 
@@ -756,7 +815,9 @@ class CaseStudyGenerationService:
                 return cached
 
         module_result = await session.execute(
-            select(Module).where(Module.id == module_id).options(selectinload(Module.course))
+            select(Module)
+            .where(Module.id == module_id)
+            .options(selectinload(Module.course))
         )
         module = module_result.scalar_one_or_none()
 
@@ -805,21 +866,30 @@ class CaseStudyGenerationService:
                 return
 
             module_result = await session.execute(
-                select(Module).where(Module.id == module_id).options(selectinload(Module.course))
+                select(Module)
+                .where(Module.id == module_id)
+                .options(selectinload(Module.course))
             )
             module = module_result.scalar_one_or_none()
 
             if not module:
                 yield StreamingEvent(
                     event="error",
-                    data={"error": "module_not_found", "message": f"Module {module_id} not found"},
+                    data={
+                        "error": "module_not_found",
+                        "message": f"Module {module_id} not found",
+                    },
                 )
                 return
 
             yield StreamingEvent(event="chunk", data="Démarrage de la génération...")
-            yield StreamingEvent(event="chunk", data="Recherche des documents pertinents...")
+            yield StreamingEvent(
+                event="chunk", data="Recherche des documents pertinents..."
+            )
 
-            query = await self._build_case_study_query(module, unit_id, language, session)
+            query = await self._build_case_study_query(
+                module, unit_id, language, session
+            )
             rag_chunks = await self.semantic_retriever.search_for_module(
                 query=query,
                 user_level=level,
@@ -832,11 +902,16 @@ class CaseStudyGenerationService:
             if not rag_chunks:
                 yield StreamingEvent(
                     event="error",
-                    data={"error": "no_content_found", "message": "Aucun contenu pertinent trouvé"},
+                    data={
+                        "error": "no_content_found",
+                        "message": "Aucun contenu pertinent trouvé",
+                    },
                 )
                 return
 
-            yield StreamingEvent(event="chunk", data="Documents trouvés, génération en cours...")
+            yield StreamingEvent(
+                event="chunk", data="Documents trouvés, génération en cours..."
+            )
 
             module_key = f"M{module.module_number:02d}"
             course: Course | None = module.course
@@ -846,10 +921,16 @@ class CaseStudyGenerationService:
                 level,
                 module.bloom_level,
                 course_title=(
-                    (course.title_fr if language == "fr" else course.title_en) if course else None
+                    (course.title_fr if language == "fr" else course.title_en)
+                    if course
+                    else None
                 ),
                 course_description=(
-                    (course.description_fr if language == "fr" else course.description_en)
+                    (
+                        course.description_fr
+                        if language == "fr"
+                        else course.description_en
+                    )
                     if course
                     else None
                 ),
@@ -894,7 +975,9 @@ class CaseStudyGenerationService:
 
             await self._cache_case_study_content(case_study_response, session)
 
-            yield StreamingEvent(event="complete", data=case_study_response.model_dump())
+            yield StreamingEvent(
+                event="complete", data=case_study_response.model_dump()
+            )
 
         except Exception as e:
             logger.error("Case study generation streaming failed", error=str(e))
@@ -963,7 +1046,9 @@ class CaseStudyGenerationService:
         )
 
         if not rag_chunks:
-            raise ValueError(f"No relevant content found for module {module.id}, unit {unit_id}")
+            raise ValueError(
+                f"No relevant content found for module {module.id}, unit {unit_id}"
+            )
 
         module_key = f"M{module.module_number:02d}"
         course: Course | None = module.course
@@ -973,7 +1058,9 @@ class CaseStudyGenerationService:
             level,
             module.bloom_level,
             course_title=(
-                (course.title_fr if language == "fr" else course.title_en) if course else None
+                (course.title_fr if language == "fr" else course.title_en)
+                if course
+                else None
             ),
             course_description=(
                 (course.description_fr if language == "fr" else course.description_en)
@@ -997,7 +1084,9 @@ class CaseStudyGenerationService:
             system_prompt_len=len(system_prompt),
         )
 
-        response = await self.claude_service.generate_lesson_content(system_prompt, user_message)
+        response = await self.claude_service.generate_lesson_content(
+            system_prompt, user_message
+        )
 
         if not response or not response.content:
             raise ValueError("Empty response from Claude API")
@@ -1007,7 +1096,9 @@ class CaseStudyGenerationService:
             if hasattr(block, "text"):
                 content_text += block.text
 
-        case_study_content = await self._parse_case_study_content(content_text, rag_chunks)
+        case_study_content = await self._parse_case_study_content(
+            content_text, rag_chunks
+        )
 
         return CaseStudyResponse(
             module_id=module.id,
@@ -1034,7 +1125,9 @@ class CaseStudyGenerationService:
         self, module: Module, unit_id: str, language: str, session: AsyncSession
     ) -> str:
         """Build search query for case study RAG retrieval."""
-        unit_number = LessonGenerationService._unit_id_to_unit_number(unit_id, module.module_number)
+        unit_number = LessonGenerationService._unit_id_to_unit_number(
+            unit_id, module.module_number
+        )
         unit: ModuleUnit | None = None
 
         if unit_number:
@@ -1050,17 +1143,23 @@ class CaseStudyGenerationService:
 
         if unit:
             unit_title = unit.title_fr if language == "fr" else unit.title_en
-            unit_description = unit.description_fr if language == "fr" else unit.description_en
+            unit_description = (
+                unit.description_fr if language == "fr" else unit.description_en
+            )
             query_parts = [unit_title]
             if unit_description:
                 query_parts.append(unit_description[:200])
         else:
             title = module.title_fr if language == "fr" else module.title_en
-            description = module.description_fr if language == "fr" else module.description_en
+            description = (
+                module.description_fr if language == "fr" else module.description_en
+            )
             query_parts = [title]
             if unit_id:
                 query_parts.append(
-                    f"étude de cas {unit_id}" if language == "fr" else f"case study {unit_id}"
+                    f"étude de cas {unit_id}"
+                    if language == "fr"
+                    else f"case study {unit_id}"
                 )
             if description:
                 query_parts.append(description[:200])
@@ -1114,7 +1213,9 @@ class CaseStudyGenerationService:
 
         # Fallback: if regex found no sections, split by paragraphs proportionally
         if not sections:
-            logger.warning("Case study section headers not found, using paragraph fallback")
+            logger.warning(
+                "Case study section headers not found, using paragraph fallback"
+            )
             paragraphs = [p.strip() for p in content_text.split("\n\n") if p.strip()]
             if len(paragraphs) >= 4:
                 quarter = max(1, len(paragraphs) // 4)
