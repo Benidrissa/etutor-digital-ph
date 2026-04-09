@@ -408,11 +408,21 @@ async def get_or_generate_lesson_by_module_and_unit(
 
         resolved_module_id = await _resolve_module_id(module_id, session)
 
+        unit_type_result = await session.execute(
+            select(ModuleUnit.unit_type).where(
+                ModuleUnit.module_id == resolved_module_id,
+                ModuleUnit.unit_number == unit_id,
+            )
+        )
+        unit_type_row = unit_type_result.first()
+        is_case_study = unit_type_row is not None and unit_type_row[0] == "case-study"
+
         if not force_regenerate:
+            content_type_filter = "case" if is_case_study else "lesson"
             cached_query = (
                 select(GeneratedContent)
                 .where(GeneratedContent.module_id == resolved_module_id)
-                .where(GeneratedContent.content_type == "lesson")
+                .where(GeneratedContent.content_type == content_type_filter)
                 .where(GeneratedContent.language == language)
                 .where(GeneratedContent.level == level)
                 .where(GeneratedContent.country_context == country)
@@ -423,11 +433,51 @@ async def get_or_generate_lesson_by_module_and_unit(
             cached = cache_result.scalars().first()
 
             if cached:
+                if is_case_study:
+                    from app.api.v1.schemas.content import CaseStudyContent as _CaseStudyContent
+
+                    content_dict = {k: v for k, v in cached.content.items() if k != "unit_id"}
+                    case_study_response = CaseStudyResponse(
+                        id=cached.id,
+                        module_id=cached.module_id,
+                        unit_id=cached.content.get("unit_id", unit_id),
+                        language=cached.language,
+                        level=cached.level,
+                        country_context=cached.country_context or country,
+                        content=_CaseStudyContent(**content_dict),
+                        generated_at=cached.generated_at.isoformat(),
+                        cached=True,
+                    )
+
+                    if current_user is not None:
+                        try:
+                            from uuid import UUID as _UUID
+
+                            progress_service = ProgressService(session)
+                            await progress_service.track_lesson_access(
+                                user_id=_UUID(str(current_user.id)),
+                                module_id=resolved_module_id,
+                                lesson_id=case_study_response.id,
+                            )
+                        except Exception as track_err:
+                            logger.warning(
+                                "Failed to track case study access (non-fatal)",
+                                error=str(track_err),
+                            )
+
+                    logger.info(
+                        "Case study cache hit",
+                        case_study_id=str(case_study_response.id),
+                    )
+                    return JSONResponse(
+                        content=case_study_response.model_dump(mode="json"),
+                        status_code=status.HTTP_200_OK,
+                    )
+
                 from app.api.v1.schemas.content import LessonContent as _LessonContent
 
                 content_dict = {k: v for k, v in cached.content.items() if k != "unit_id"}
 
-                # Extract source_image_refs from cached content
                 source_image_refs = await lesson_service._extract_source_image_refs(
                     " ".join(str(v or "") for v in cached.content.values() if isinstance(v, str))
                     + " ".join(
@@ -478,20 +528,34 @@ async def get_or_generate_lesson_by_module_and_unit(
                     status_code=status.HTTP_200_OK,
                 )
 
-        task = generate_lesson_task.delay(
-            str(resolved_module_id),
-            unit_id,
-            language,
-            country,
-            level,
-        )
-
-        logger.info(
-            "Lesson generation dispatched",
-            module_id=str(resolved_module_id),
-            unit_id=unit_id,
-            task_id=task.id,
-        )
+        if is_case_study:
+            task = generate_case_study_task.delay(
+                str(resolved_module_id),
+                unit_id,
+                language,
+                country,
+                level,
+            )
+            logger.info(
+                "Case study generation dispatched",
+                module_id=str(resolved_module_id),
+                unit_id=unit_id,
+                task_id=task.id,
+            )
+        else:
+            task = generate_lesson_task.delay(
+                str(resolved_module_id),
+                unit_id,
+                language,
+                country,
+                level,
+            )
+            logger.info(
+                "Lesson generation dispatched",
+                module_id=str(resolved_module_id),
+                unit_id=unit_id,
+                task_id=task.id,
+            )
 
         return JSONResponse(
             content={
@@ -542,6 +606,7 @@ async def stream_lesson_by_module_and_unit(
     level: int = 1,
     country: str = "SN",
     lesson_service: LessonGenerationService = Depends(get_lesson_service),
+    case_study_service: CaseStudyGenerationService = Depends(get_case_study_service),
     session: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ) -> StreamingResponse:
@@ -573,20 +638,39 @@ async def stream_lesson_by_module_and_unit(
                 country=country,
             )
 
-            # Resolve module_id to UUID if it's a module code
             resolved_module_id = await _resolve_module_id(module_id, session)
 
-            async for event in lesson_service.stream_lesson_generation(
-                module_id=resolved_module_id,
-                unit_id=unit_id,
-                language=language,
-                country=country,
-                level=level,
-                session=session,
-            ):
-                yield event.to_sse_format()
+            unit_type_result = await session.execute(
+                select(ModuleUnit.unit_type).where(
+                    ModuleUnit.module_id == resolved_module_id,
+                    ModuleUnit.unit_number == unit_id,
+                )
+            )
+            unit_type_row = unit_type_result.first()
+            is_case_study = unit_type_row is not None and unit_type_row[0] == "case-study"
 
-            logger.info("Lesson streaming generation completed")
+            if is_case_study:
+                async for event in case_study_service.stream_case_study_generation(
+                    module_id=resolved_module_id,
+                    unit_id=unit_id,
+                    language=language,
+                    country=country,
+                    level=level,
+                    session=session,
+                ):
+                    yield event.to_sse_format()
+                logger.info("Case study streaming generation completed")
+            else:
+                async for event in lesson_service.stream_lesson_generation(
+                    module_id=resolved_module_id,
+                    unit_id=unit_id,
+                    language=language,
+                    country=country,
+                    level=level,
+                    session=session,
+                ):
+                    yield event.to_sse_format()
+                logger.info("Lesson streaming generation completed")
 
         except Exception as e:
             logger.error("Lesson streaming generation failed", error=str(e), exc_info=True)
