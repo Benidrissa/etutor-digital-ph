@@ -32,6 +32,9 @@ export default async function CaseStudyPage({ params, searchParams }: CaseStudyP
   const matchedUnit = moduleData?.units?.find(
     (u) => u.id === unitId || (unitNumber && u.unit_number === unitNumber)
   );
+  const unitTitle = matchedUnit
+    ? (language === 'fr' ? matchedUnit.title_fr : matchedUnit.title_en)
+    : undefined;
   const unitDescription = matchedUnit
     ? (language === 'fr' ? matchedUnit.description_fr : matchedUnit.description_en)
     : undefined;
@@ -55,6 +58,7 @@ export default async function CaseStudyPage({ params, searchParams }: CaseStudyP
           unitId={unitId}
           language={language}
           level={moduleData?.level ?? 1}
+          unitTitle={unitTitle}
           unitDescription={unitDescription}
           learningObjectives={learningObjectives}
           estimatedMinutes={estimatedMinutes}
