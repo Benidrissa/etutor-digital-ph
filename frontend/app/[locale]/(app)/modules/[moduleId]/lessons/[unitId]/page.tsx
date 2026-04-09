@@ -5,7 +5,6 @@ import { ChevronLeft } from 'lucide-react';
 
 import { API_BASE, ModuleUnitsResponse } from '@/lib/api';
 import { LessonViewer } from '@/components/learning/lesson-viewer';
-import { CaseStudyViewer } from '@/components/learning/case-study-viewer';
 import { EnrollmentGuard } from '@/components/shared/enrollment-guard';
 
 interface LessonPageProps {
@@ -36,7 +35,6 @@ export default async function LessonPage({ params }: LessonPageProps) {
   const moduleTitle = language === 'fr' ? (moduleData?.title_fr || moduleId) : (moduleData?.title_en || moduleId);
   const unitTitle = language === 'fr' ? (unit?.title_fr || unitId) : (unit?.title_en || unitId);
   const moduleLevel = moduleData?.level || 1;
-  const isCaseStudy = unit?.unit_type === 'case-study';
 
   return (
     <EnrollmentGuard moduleId={moduleId}>
@@ -79,22 +77,13 @@ export default async function LessonPage({ params }: LessonPageProps) {
           </Link>
         </div>
 
-        {/* Lesson or Case Study Content */}
-        {isCaseStudy ? (
-          <CaseStudyViewer
-            moduleId={moduleId}
-            unitId={unitId}
-            language={language}
-            level={moduleLevel}
-          />
-        ) : (
-          <LessonViewer
-            moduleId={moduleId}
-            unitId={unitId}
-            language={language}
-            level={moduleLevel}
-          />
-        )}
+        {/* Lesson Content */}
+        <LessonViewer
+          moduleId={moduleId}
+          unitId={unitId}
+          language={language}
+          level={moduleLevel}
+        />
       </div>
     </EnrollmentGuard>
   );
