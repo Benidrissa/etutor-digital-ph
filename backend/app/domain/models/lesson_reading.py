@@ -19,7 +19,9 @@ class LessonReading(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
-    lesson_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("generated_content.id"), index=True)
+    lesson_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("generated_content.id", ondelete="CASCADE"), index=True
+    )
     time_spent_seconds: Mapped[int] = mapped_column(Integer, server_default="0")
     completion_percentage: Mapped[float] = mapped_column(server_default="0.0")
     read_at: Mapped[datetime] = mapped_column(server_default=func.now())

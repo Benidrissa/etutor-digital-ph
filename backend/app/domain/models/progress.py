@@ -18,7 +18,9 @@ class UserModuleProgress(Base):
     __tablename__ = "user_module_progress"
 
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), primary_key=True)
-    module_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("modules.id"), primary_key=True)
+    module_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("modules.id", ondelete="CASCADE"), primary_key=True
+    )
     status: Mapped[str] = mapped_column(String, server_default="locked")
     completion_pct: Mapped[float] = mapped_column(server_default="0.0")
     quiz_score_avg: Mapped[float | None]

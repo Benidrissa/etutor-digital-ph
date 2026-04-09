@@ -19,6 +19,14 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { apiFetch, enrollInCourse } from "@/lib/api";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ShareButton } from "@/components/shared/share-button";
 
 interface ModuleUnit {
@@ -92,6 +100,9 @@ export default function CourseDetailPage() {
   const [enrolled, setEnrolled] = useState(false);
   const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
   const [preassessmentStatus, setPreassessmentStatus] = useState<PreassessmentStatus | null>(null);
+  const [unenrollDialogOpen, setUnenrollDialogOpen] = useState(false);
+  const [unenrolling, setUnenrolling] = useState(false);
+  const [unenrollError, setUnenrollError] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch<CourseDetail>(`/api/v1/courses/${courseSlug}`)
@@ -134,6 +145,21 @@ export default function CourseDetailPage() {
       // ignore
     } finally {
       setEnrolling(false);
+    }
+  };
+
+  const handleUnenroll = async () => {
+    if (!course) return;
+    setUnenrolling(true);
+    setUnenrollError(null);
+    try {
+      await apiFetch(`/api/v1/courses/${course.id}/unenroll`, { method: "POST" });
+      setEnrolled(false);
+      setUnenrollDialogOpen(false);
+    } catch {
+      setUnenrollError(tDetail("unenrollError"));
+    } finally {
+      setUnenrolling(false);
     }
   };
 
@@ -346,25 +372,34 @@ export default function CourseDetailPage() {
       {/* Sticky enroll CTA on mobile */}
       <div className="fixed bottom-16 left-0 right-0 p-4 bg-background/95 backdrop-blur border-t md:static md:border-0 md:p-0 md:bg-transparent">
         {enrolled ? (
-          <Button
-            className="w-full min-h-11 bg-teal-600 hover:bg-teal-700"
-            onClick={() => router.push(`/modules?course_id=${course.id}`)}
-            disabled={
-              course.preassessment_enabled &&
-              preassessmentStatus?.mandatory === true &&
-              preassessmentStatus?.completed === false
-            }
-            title={
-              course.preassessment_enabled &&
-              preassessmentStatus?.mandatory === true &&
-              preassessmentStatus?.completed === false
-                ? tDetail("preassessmentRequiredTooltip")
-                : undefined
-            }
-          >
-            <CheckCircle className="mr-2 h-4 w-4" />
-            {t("viewModules")}
-          </Button>
+          <div className="flex flex-col items-center gap-2">
+            <Button
+              className="w-full min-h-11 bg-teal-600 hover:bg-teal-700"
+              onClick={() => router.push(`/modules?course_id=${course.id}`)}
+              disabled={
+                course.preassessment_enabled &&
+                preassessmentStatus?.mandatory === true &&
+                preassessmentStatus?.completed === false
+              }
+              title={
+                course.preassessment_enabled &&
+                preassessmentStatus?.mandatory === true &&
+                preassessmentStatus?.completed === false
+                  ? tDetail("preassessmentRequiredTooltip")
+                  : undefined
+              }
+            >
+              <CheckCircle className="mr-2 h-4 w-4" />
+              {t("viewModules")}
+            </Button>
+            <button
+              type="button"
+              onClick={() => setUnenrollDialogOpen(true)}
+              className="text-xs text-destructive hover:underline"
+            >
+              {tDetail("unenroll")}
+            </button>
+          </div>
         ) : (
           <Button
             className="w-full min-h-11 bg-teal-600 hover:bg-teal-700"
@@ -375,6 +410,28 @@ export default function CourseDetailPage() {
           </Button>
         )}
       </div>
+
+      <AlertDialog open={unenrollDialogOpen} onOpenChange={setUnenrollDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogTitle>{tDetail("unenrollTitle")}</AlertDialogTitle>
+          <AlertDialogDescription>{tDetail("unenrollDescription")}</AlertDialogDescription>
+          {unenrollError && (
+            <p className="text-sm text-destructive mt-2" role="alert">{unenrollError}</p>
+          )}
+          <div className="flex justify-end gap-3 mt-4">
+            <AlertDialogCancel onClick={() => setUnenrollDialogOpen(false)}>
+              {t("cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleUnenroll}
+              disabled={unenrolling}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {unenrolling ? tDetail("unenrolling") : tDetail("unenrollConfirm")}
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

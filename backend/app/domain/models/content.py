@@ -20,7 +20,9 @@ class GeneratedContent(Base):
     __tablename__ = "generated_content"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    module_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("modules.id"), index=True)
+    module_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("modules.id", ondelete="CASCADE"), index=True
+    )
     content_type: Mapped[str] = mapped_column(String, index=True)  # lesson|quiz|flashcard|case
     language: Mapped[str] = mapped_column(String(2), index=True)  # fr|en
     level: Mapped[int] = mapped_column(Integer)

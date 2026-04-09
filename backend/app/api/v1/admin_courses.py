@@ -16,11 +16,13 @@ from structlog import get_logger
 
 from app.api.deps import get_db as get_db_session
 from app.api.deps_local_auth import AuthenticatedUser, require_role
+from app.domain.models.audit_log import AdminAction, AuditLog
 from app.domain.models.course import Course, UserCourseEnrollment
 from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.preassessment import CoursePreAssessment
+from app.domain.models.quiz import PlacementTestAttempt
 from app.domain.models.source_image import SourceImage
 from app.domain.models.taxonomy import TaxonomyCategory
 from app.domain.models.user import UserRole
@@ -502,33 +504,28 @@ async def get_generate_status(
     return response
 
 
+class DeleteCourseConfirmation(BaseModel):
+    confirmation_text: str
+
+
 @router.delete("/{course_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_course(
     course_id: uuid.UUID,
+    body: DeleteCourseConfirmation,
     current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
     db=Depends(get_db_session),
 ) -> None:
-    """Delete a draft or archived course and all its related data. Admin only."""
+    """Permanently delete a course and all its related data. Admin only."""
+    if body.confirmation_text != "DELETE":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Confirmation text must be 'DELETE'",
+        )
+
     result = await db.execute(select(Course).where(Course.id == course_id))
     course = result.scalar_one_or_none()
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
-    if course.status == "published":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Archive the course before deleting",
-        )
-
-    enroll_result = await db.execute(
-        select(func.count())
-        .select_from(UserCourseEnrollment)
-        .where(UserCourseEnrollment.course_id == course_id)
-    )
-    if enroll_result.scalar_one() > 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete a course with enrolled learners",
-        )
 
     rag_collection_id = course.rag_collection_id
     indexation_task_id = course.indexation_task_id
@@ -558,6 +555,18 @@ async def delete_course(
 
     if rag_collection_id:
         await db.execute(sa_delete(DocumentChunk).where(DocumentChunk.source == rag_collection_id))
+
+    await db.execute(
+        sa_delete(PlacementTestAttempt).where(PlacementTestAttempt.course_id == course_id)
+    )
+
+    audit_log = AuditLog(
+        admin_id=uuid.UUID(current_user.id),
+        admin_email=current_user.email,
+        action=AdminAction.delete_course,
+        details=f"course_id={course_id} title_fr={course.title_fr!r} title_en={course.title_en!r}",
+    )
+    db.add(audit_log)
 
     try:
         await db.delete(course)

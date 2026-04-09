@@ -4,16 +4,22 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import exists, select
 from structlog import get_logger
 
 from app.api.deps import get_db as get_db_session
 from app.api.deps_local_auth import get_current_user, get_optional_user
+from app.domain.models.content import GeneratedContent
+from app.domain.models.conversation import TutorConversation
 from app.domain.models.course import Course, UserCourseEnrollment
 from app.domain.models.curriculum import Curriculum, CurriculumCourse
+from app.domain.models.flashcard import FlashcardReview
+from app.domain.models.lesson_reading import LessonReading
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.progress import UserModuleProgress
+from app.domain.models.quiz import PlacementTestAttempt, QuizAttempt, SummativeAssessmentAttempt
 from app.domain.models.taxonomy import CourseTaxonomy, TaxonomyCategory
 
 logger = get_logger(__name__)
@@ -472,10 +478,12 @@ async def unenroll_from_course(
     current_user=Depends(get_current_user),
     db=Depends(get_db_session),
 ) -> None:
-    """Drop enrollment in a course."""
+    """Hard-delete enrollment and all associated learner data for this course."""
+    user_id = uuid.UUID(current_user.id)
+
     result = await db.execute(
         select(UserCourseEnrollment).where(
-            UserCourseEnrollment.user_id == uuid.UUID(current_user.id),
+            UserCourseEnrollment.user_id == user_id,
             UserCourseEnrollment.course_id == course_id,
         )
     )
@@ -486,10 +494,60 @@ async def unenroll_from_course(
             detail="Enrollment not found",
         )
 
-    enrollment.status = "dropped"
+    module_ids_subq = select(Module.id).where(Module.course_id == course_id).scalar_subquery()
+    content_ids_subq = (
+        select(GeneratedContent.id)
+        .where(GeneratedContent.module_id.in_(select(Module.id).where(Module.course_id == course_id)))
+        .scalar_subquery()
+    )
+
+    await db.execute(
+        sa_delete(QuizAttempt).where(
+            QuizAttempt.user_id == user_id,
+            QuizAttempt.quiz_id.in_(content_ids_subq),
+        )
+    )
+    await db.execute(
+        sa_delete(FlashcardReview).where(
+            FlashcardReview.user_id == user_id,
+            FlashcardReview.card_id.in_(content_ids_subq),
+        )
+    )
+    await db.execute(
+        sa_delete(LessonReading).where(
+            LessonReading.user_id == user_id,
+            LessonReading.lesson_id.in_(content_ids_subq),
+        )
+    )
+    await db.execute(
+        sa_delete(SummativeAssessmentAttempt).where(
+            SummativeAssessmentAttempt.user_id == user_id,
+            SummativeAssessmentAttempt.module_id.in_(module_ids_subq),
+        )
+    )
+    await db.execute(
+        sa_delete(UserModuleProgress).where(
+            UserModuleProgress.user_id == user_id,
+            UserModuleProgress.module_id.in_(module_ids_subq),
+        )
+    )
+    await db.execute(
+        sa_delete(TutorConversation).where(
+            TutorConversation.user_id == user_id,
+            TutorConversation.module_id.in_(module_ids_subq),
+        )
+    )
+    await db.execute(
+        sa_delete(PlacementTestAttempt).where(
+            PlacementTestAttempt.user_id == user_id,
+            PlacementTestAttempt.course_id == course_id,
+        )
+    )
+
+    await db.delete(enrollment)
     await db.commit()
     logger.info(
-        "User unenrolled from course",
+        "User unenrolled from course and all data deleted",
         user_id=current_user.id,
         course_id=str(course_id),
     )

@@ -24,7 +24,7 @@ class ModuleUnit(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     module_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("modules.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("modules.id", ondelete="CASCADE"), nullable=False, index=True
     )
     unit_number: Mapped[str] = mapped_column(String(10), nullable=False)
     title_fr: Mapped[str] = mapped_column(Text, nullable=False)
