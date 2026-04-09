@@ -1,3 +1,4 @@
+from app.domain.models.activation_code import ActivationCode, ActivationCodeRedemption
 from app.domain.models.audit_log import AuditLog
 from app.domain.models.auth import MagicLink, RefreshToken, TOTPSecret
 from app.domain.models.base import Base
@@ -36,6 +37,8 @@ from app.domain.models.usage_event import UsageEvent
 from app.domain.models.user import User
 
 __all__ = [
+    "ActivationCode",
+    "ActivationCodeRedemption",
     "AuditLog",
     "Base",
     "Course",
