@@ -749,22 +749,22 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "- Level: {level}/4 (1=beginner, 4=expert)\n"
             "- Bloom Level: {bloom_level}\n"
             "- Language: {language}\n\n"
-            "REQUIRED STRUCTURE for the case study:\n\n"
-            "1. **West African Context** (2-3 paragraphs)\n"
+            "REQUIRED CONTENT for the case study (4 sections):\n\n"
+            "Section 1 — aof_context (2-3 paragraphs):\n"
             "   - Present the geographic, economic and organizational situation\n"
             "   - Describe the institutional context of the country concerned\n"
             "   - Provide relevant indicators for {course_title} before the event\n\n"
-            "2. **Real Data** (tables or structured lists)\n"
+            "Section 2 — real_data (tables or structured lists):\n"
             "   - Quantitative data: key figures, measurable indicators\n"
             "   - Temporal data: event timeline\n"
             "   - Geographic or organizational data: distribution of facts\n"
             "   - Sources: professional organizations, institutional reports, sector data\n\n"
-            "3. **Guided Questions** (4-6 progressive questions)\n"
+            "Section 3 — guided_questions (4-6 progressive questions as a JSON array):\n"
             "   - Beginner level: identification and description questions\n"
             "   - Intermediate level: analysis and comparison questions\n"
             "   - Advanced level: synthesis and recommendation questions\n"
             "   - Each question must link the presented data to module concepts\n\n"
-            "4. **Annotated Correction** (detailed answers with justifications)\n"
+            "Section 4 — annotated_correction (detailed answers with justifications):\n"
             "   - Answers each guided question with full explanation\n"
             "   - Cites used bibliographic references\n"
             "   - Proposes lessons learned and recommendations\n"
@@ -775,7 +775,30 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "- Use real or realistic data for West African context\n"
             "- Adapt question complexity to level {level}/4\n"
             "- Include at least one verifiable numeric data point\n\n"
-            "EXPECTED RESPONSE: Directly usable case study, structured in 4 numbered sections."
+            "CRITICAL: You MUST respond with valid JSON ONLY. No preamble,"
+            " no explanation, no markdown code fences. Your entire response"
+            " must be a single JSON object starting with {{ and ending"
+            " with }}.\n\n"
+            "Required JSON structure:\n"
+            "{{\n"
+            '  "aof_context": "string — 2-3 paragraphs: geographic, economic,'
+            ' institutional context with relevant indicators",\n'
+            '  "real_data": "string — tables/structured lists: quantitative data,'
+            ' timeline, geographic distribution, with sources",\n'
+            '  "guided_questions": [\n'
+            '    "string — beginner: identification/description question'
+            ' linked to module concepts",\n'
+            '    "string — intermediate: analysis/comparison question",\n'
+            '    "string — intermediate: deeper analysis question",\n'
+            '    "string — advanced: synthesis/recommendation question"\n'
+            "  ],\n"
+            '  "annotated_correction": "string — detailed answers for each question'
+            " with justifications, citations [Source Ch.X, p.Y], lessons learned,"
+            ' links to course practices in West Africa",\n'
+            '  "sources_cited": ["Source Ch.X, p.Y", "Source Ch.Z, p.W"],\n'
+            '  "__complete": true\n'
+            "}}\n"
+            'IMPORTANT: "__complete": true MUST be the last field in your JSON response.'
         ),
         "string",
         "System prompt — case study generation",

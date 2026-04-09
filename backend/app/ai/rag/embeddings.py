@@ -4,6 +4,7 @@ import asyncio
 from typing import Any
 
 import structlog
+import tiktoken
 from openai import AsyncOpenAI
 
 logger = structlog.get_logger()
@@ -12,10 +13,13 @@ logger = structlog.get_logger()
 class EmbeddingService:
     """Service for generating embeddings using OpenAI's text-embedding-3-small model."""
 
+    MAX_EMBEDDING_TOKENS = 8000
+
     def __init__(self, api_key: str, model: str = "text-embedding-3-small"):
         self.client = AsyncOpenAI(api_key=api_key)
         self.model = model
         self.dimensions = 1536  # text-embedding-3-small dimensions
+        self._encoding = tiktoken.get_encoding("cl100k_base")
 
     async def generate_embedding(self, text: str) -> list[float]:
         """
@@ -62,8 +66,19 @@ class EmbeddingService:
         async def process_batch(batch: list[str]) -> list[list[float]]:
             async with semaphore:
                 try:
+                    safe_batch = []
+                    for text in batch:
+                        tokens = self._count_tokens(text)
+                        if tokens > self.MAX_EMBEDDING_TOKENS:
+                            logger.warning(
+                                "Truncating oversized chunk for embedding",
+                                original_tokens=tokens,
+                                max_tokens=self.MAX_EMBEDDING_TOKENS,
+                            )
+                            text = self._truncate_to_tokens(text, self.MAX_EMBEDDING_TOKENS)
+                        safe_batch.append(text)
                     response = await self.client.embeddings.create(
-                        input=batch, model=self.model, dimensions=self.dimensions
+                        input=safe_batch, model=self.model, dimensions=self.dimensions
                     )
                     return [data.embedding for data in response.data]
                 except Exception as e:
@@ -90,6 +105,15 @@ class EmbeddingService:
         logger.info("Embeddings generated successfully", total_embeddings=len(embeddings))
 
         return embeddings
+
+    def _count_tokens(self, text: str) -> int:
+        """Count tokens using cl100k_base (same tokenizer as text-embedding-3)."""
+        return len(self._encoding.encode(text))
+
+    def _truncate_to_tokens(self, text: str, max_tokens: int) -> str:
+        """Truncate text to max_tokens."""
+        tokens = self._encoding.encode(text)
+        return self._encoding.decode(tokens[:max_tokens])
 
     async def similarity_search(
         self, query_embedding: list[float], embeddings: list[list[float]], top_k: int = 8

@@ -1,5 +1,6 @@
 """Service for lesson and case study content generation and management."""
 
+import json
 import re
 import uuid
 from collections.abc import AsyncGenerator
@@ -1043,6 +1044,18 @@ class CaseStudyGenerationService:
             return {course.rag_collection_id: []}
         if module.books_sources:
             return module.books_sources
+        if course and course.id:
+            logger.warning(
+                "No rag_collection_id or books_sources for module; falling back to course ID filter",
+                module_id=str(module.id),
+                course_id=str(course.id),
+            )
+            return {str(course.id): []}
+        logger.warning(
+            "Cannot resolve books_sources — module has no course or RAG config; "
+            "retrieval will be unfiltered",
+            module_id=str(module.id),
+        )
         return None
 
     async def _build_case_study_query(
@@ -1087,16 +1100,12 @@ class CaseStudyGenerationService:
     ) -> CaseStudyContent:
         """Parse generated content into structured case study format.
 
-        Claude produces 4 numbered sections with bold headers like:
-          1. **Contexte AOF** / 1. **AOF Context**
-          2. **Données réelles** / 2. **Real Data**
-          3. **Questions guidées** / 3. **Guided Questions**
-          4. **Correction annotée** / 4. **Annotated Correction**
-
-        This method splits on those headers and maps each section.
+        Attempts JSON parsing first (new prompt format), then falls back to
+        legacy regex-based section splitting for backward compatibility with
+        cached markdown content.
         """
-        # Extract source citations from RAG chunks
-        sources_cited = []
+        # Extract source citations from RAG chunks (fallback when JSON sources_cited is empty)
+        rag_sources: list[str] = []
         for chunk in rag_chunks:
             if hasattr(chunk, "chunk"):
                 source = chunk.chunk.source
@@ -1113,10 +1122,52 @@ class CaseStudyGenerationService:
             if page:
                 source_citation += f", p.{page}"
 
-            if source_citation not in sources_cited:
-                sources_cited.append(source_citation)
+            if source_citation not in rag_sources:
+                rag_sources.append(source_citation)
 
-        # Split on numbered section headers: "1. **...**", "## 1. **...**", etc.
+        # --- Attempt JSON parsing (new prompt format) ---
+        try:
+            stripped = content_text.strip()
+            if stripped.startswith("```"):
+                stripped = re.sub(r"^```[a-zA-Z]*\n?", "", stripped)
+                stripped = re.sub(r"\n?```$", "", stripped.rstrip())
+
+            data = json.loads(stripped)
+
+            aof_context = str(data.get("aof_context") or "")
+            real_data = str(data.get("real_data") or "")
+            annotated_correction = str(data.get("annotated_correction") or "")
+
+            raw_questions = data.get("guided_questions") or []
+            guided_questions = (
+                [str(q) for q in raw_questions if str(q).strip()]
+                if isinstance(raw_questions, list)
+                else [str(raw_questions)]
+            )
+
+            json_sources = [str(s) for s in (data.get("sources_cited") or []) if str(s).strip()]
+            sources_cited = json_sources if json_sources else rag_sources
+
+            while len(guided_questions) < 2:
+                guided_questions.append("")
+
+            logger.debug("Case study parsed via JSON", questions_count=len(guided_questions))
+            return CaseStudyContent(
+                aof_context=aof_context or content_text[:500],
+                real_data=real_data,
+                guided_questions=guided_questions,
+                annotated_correction=annotated_correction,
+                sources_cited=sources_cited,
+            )
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            logger.warning(
+                "JSON parsing failed for case study; falling back to regex parser",
+                error=str(exc),
+            )
+
+        # --- Legacy regex fallback (backward compat with cached markdown content) ---
+        sources_cited = rag_sources
+
         section_pattern = r"(?:^|\n)(?:#{1,3}\s*)?(\d+)\.\s*\*\*[^*]+\*\*"
         splits = list(re.finditer(section_pattern, content_text))
 
@@ -1127,7 +1178,6 @@ class CaseStudyGenerationService:
             end = splits[i + 1].start() if i + 1 < len(splits) else len(content_text)
             sections[section_num] = content_text[start:end].strip()
 
-        # Fallback: if regex found no sections, split by paragraphs proportionally
         if not sections:
             logger.warning("Case study section headers not found, using paragraph fallback")
             paragraphs = [p.strip() for p in content_text.split("\n\n") if p.strip()]
@@ -1140,7 +1190,6 @@ class CaseStudyGenerationService:
                     4: "\n\n".join(paragraphs[3 * quarter :]),
                 }
             else:
-                # Too few paragraphs — split by character position
                 chunk_size = max(1, len(content_text) // 4)
                 sections = {
                     1: content_text[:chunk_size].strip(),
@@ -1149,16 +1198,14 @@ class CaseStudyGenerationService:
                     4: content_text[3 * chunk_size :].strip(),
                 }
 
-        # Parse guided questions from section 3 (numbered or bulleted lines)
         questions_text = sections.get(3, "")
         question_lines = re.findall(
-            r"(?:^|\n)\s*(?:\d+[\.\)]\s*|-\s*|\*\s*)(.+?)(?=\n\s*(?:\d+[\.\)]|-|\*)|\Z)",
+            r"(?:^|\n)\s*(?:\d+[\.\.\)]\s*|-\s*|\*\s*)(.+?)(?=\n\s*(?:\d+[\.\.\)]|-|\*)|\Z)",
             questions_text,
             re.DOTALL,
         )
         guided_questions = [q.strip() for q in question_lines if q.strip()]
 
-        # If individual question extraction failed, use the whole section text
         if not guided_questions and questions_text.strip():
             guided_questions = [
                 line.strip()
@@ -1166,7 +1213,6 @@ class CaseStudyGenerationService:
                 if line.strip() and not re.match(r"^#{1,3}\s", line)
             ]
 
-        # Ensure minimum 2 questions (schema constraint: min_length=2)
         if len(guided_questions) < 2:
             guided_questions = [questions_text.strip() or sections.get(3, "")]
             if len(guided_questions) < 2:

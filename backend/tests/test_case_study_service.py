@@ -166,9 +166,9 @@ class TestCaseStudyPromptImports:
         prompt = get_case_study_system_prompt("fr", "SN", 1, "remember")
 
         assert "fr" in prompt
-        assert "West African Context" in prompt
-        assert "Guided Questions" in prompt
-        assert "Annotated Correction" in prompt
+        assert "aof_context" in prompt
+        assert "guided_questions" in prompt
+        assert "annotated_correction" in prompt
 
     def test_get_case_study_system_prompt_en(self):
         from app.ai.prompts.case_study import get_case_study_system_prompt
@@ -176,9 +176,9 @@ class TestCaseStudyPromptImports:
         prompt = get_case_study_system_prompt("en", "GH", 2, "understand")
 
         assert "en" in prompt
-        assert "West African Context" in prompt
-        assert "Guided Questions" in prompt
-        assert "Annotated Correction" in prompt
+        assert "aof_context" in prompt
+        assert "guided_questions" in prompt
+        assert "annotated_correction" in prompt
 
     def test_format_rag_context_includes_topic_for_known_module(self):
         from app.ai.prompts.case_study import format_rag_context_for_case_study
@@ -231,6 +231,6 @@ class TestCaseStudyPromptImports:
         with patch.object(cache, "get", return_value=""):
             prompt = get_case_study_system_prompt("fr", "SN", 1, "remember")
 
-        assert "West African Context" in prompt
-        assert "Guided Questions" in prompt
-        assert "Annotated Correction" in prompt
+        assert "aof_context" in prompt
+        assert "guided_questions" in prompt
+        assert "annotated_correction" in prompt
