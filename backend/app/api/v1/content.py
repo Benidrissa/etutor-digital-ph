@@ -446,9 +446,7 @@ async def get_or_generate_lesson_by_module_and_unit(
                 .where(GeneratedContent.level == level)
                 .where(GeneratedContent.country_context == country)
                 .where(
-                    or_(
-                        *[GeneratedContent.content["unit_id"].astext == v for v in unit_variants]
-                    )
+                    or_(*[GeneratedContent.content["unit_id"].astext == v for v in unit_variants])
                 )
                 .order_by(GeneratedContent.generated_at.desc())
             )
@@ -1116,9 +1114,7 @@ async def get_or_generate_case_study(
                 .where(GeneratedContent.level == level)
                 .where(GeneratedContent.country_context == country)
                 .where(
-                    or_(
-                        *[GeneratedContent.content["unit_id"].astext == v for v in unit_variants]
-                    )
+                    or_(*[GeneratedContent.content["unit_id"].astext == v for v in unit_variants])
                 )
                 .order_by(GeneratedContent.generated_at.desc())
             )
