@@ -489,7 +489,7 @@ export default function ExpertCodesPage() {
         <CardContent className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="manual-code">{t("codeColumn")}</Label>
-            <Select value={manualCodeId} onValueChange={setManualCodeId}>
+            <Select value={manualCodeId} onValueChange={(v) => setManualCodeId(v ?? "")}>
               <SelectTrigger id="manual-code" className="min-h-11">
                 <SelectValue placeholder={t("selectCode")} />
               </SelectTrigger>
