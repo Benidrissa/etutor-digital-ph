@@ -86,7 +86,13 @@ export function ChatPanel({
   });
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [enrolledCourses, setEnrolledCourses] = useState<CourseWithEnrollment[]>([]);
-  const [activeCourseId, setActiveCourseId] = useState<string | null>(courseId ?? null);
+  const [activeCourseId, setActiveCourseId] = useState<string | null>(() => {
+    if (courseId) return courseId;
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('activeCourseId') ?? null;
+    }
+    return null;
+  });
 
   const isLimitReached = currentUsage >= maxDailyUsage;
 
@@ -105,6 +111,12 @@ export function ChatPanel({
   useEffect(() => {
     localStorage.setItem('tutorMode', tutorMode);
   }, [tutorMode]);
+
+  useEffect(() => {
+    if (activeCourseId) {
+      localStorage.setItem('activeCourseId', activeCourseId);
+    }
+  }, [activeCourseId]);
 
   // Fetch enrolled courses for course selector
   useEffect(() => {
@@ -387,8 +399,8 @@ export function ChatPanel({
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-3 border-b bg-background shrink-0">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between p-3 border-b bg-background shrink-0 gap-2 flex-nowrap">
+          <div className="flex items-center gap-2 shrink-0">
             {onOpenConversations && (
               <Button
                 variant="ghost"
@@ -400,9 +412,9 @@ export function ChatPanel({
                 <Menu className="h-5 w-5" />
               </Button>
             )}
-            <h2 className="text-base font-semibold">{t('title')}</h2>
+            <h2 className="text-base font-semibold whitespace-nowrap">{t('title')}</h2>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 min-w-0">
             {enrolledCourses.length > 1 ? (
               <DropdownMenu>
                 <DropdownMenuTrigger>

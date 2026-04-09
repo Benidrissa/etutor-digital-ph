@@ -10,7 +10,6 @@ import {
   GraduationCap,
   CreditCard,
   Bot,
-  Settings,
   User,
   ChevronLeft,
   ChevronRight,
@@ -111,12 +110,6 @@ export function Sidebar() {
       label: t("profile"),
       icon: User,
       description: t("profileDescription")
-    },
-    {
-      href: `/${locale}/settings`,
-      label: t("settings"),
-      icon: Settings,
-      description: t("settingsDescription")
     },
     {
       href: `/${locale}/subscribe`,

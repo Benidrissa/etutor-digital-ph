@@ -11,7 +11,6 @@ import {
   MoreHorizontal,
   BookOpen,
   User,
-  Settings,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -84,12 +83,6 @@ export function BottomNav() {
       label: t("profile"),
       icon: User,
       description: t("profileDescription"),
-    },
-    {
-      href: `/${locale}/settings`,
-      label: t("settings"),
-      icon: Settings,
-      description: t("settingsDescription"),
     },
   ];
 

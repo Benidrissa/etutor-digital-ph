@@ -100,7 +100,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
     >
       <div
         className={cn(
-          'max-w-[85%] sm:max-w-[75%] rounded-lg p-3 shadow-sm',
+          'rounded-lg p-3 shadow-sm',
           message.isUser
             ? 'bg-primary text-primary-foreground ml-4'
             : 'bg-muted mr-4'

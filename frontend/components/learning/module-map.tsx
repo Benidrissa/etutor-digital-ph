@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { ModuleCard } from './module-card';
 import type { Module } from '@/lib/modules';
-import { getAllModuleProgress, type ModuleProgressResponse } from '@/lib/api';
+import { getAllModuleProgress, getMyEnrollments, type ModuleProgressResponse, type CourseWithEnrollment } from '@/lib/api';
 
 interface ModuleMapProps {
   onModuleClick: (moduleId: string) => void;
@@ -36,63 +36,83 @@ function apiProgressToModule(p: ModuleProgressResponse): Module {
   };
 }
 
-const LEVEL_LABELS: Record<number, { en: string; fr: string }> = {
-  1: { en: 'Level 1: Beginner', fr: 'Niveau 1 : Débutant' },
-  2: { en: 'Level 2: Intermediate', fr: 'Niveau 2 : Intermédiaire' },
-  3: { en: 'Level 3: Advanced', fr: 'Niveau 3 : Avancé' },
-  4: { en: 'Level 4: Expert', fr: 'Niveau 4 : Expert' },
-};
+interface CourseGroup {
+  courseId: string;
+  courseName: string;
+  modules: Module[];
+}
 
 export function ModuleMap({ onModuleClick, courseId }: ModuleMapProps) {
   const t = useTranslations('ModuleMap');
   const locale = useLocale() as 'en' | 'fr';
 
-  const [modules, setModules] = useState<Module[]>([]);
+  const [courseGroups, setCourseGroups] = useState<CourseGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    getAllModuleProgress(courseId)
-      .then((data) => {
-        if (!cancelled) {
-          setModules(data.map(apiProgressToModule));
-          setLoading(false);
+
+    async function loadData() {
+      try {
+        if (courseId) {
+          const [progressData, enrollments] = await Promise.all([
+            getAllModuleProgress(courseId),
+            getMyEnrollments(),
+          ]);
+          if (cancelled) return;
+          const course = enrollments.find((c: CourseWithEnrollment) => c.id === courseId);
+          const courseName = course
+            ? (locale === 'fr' ? course.title_fr : course.title_en)
+            : t('title');
+          setCourseGroups([{
+            courseId,
+            courseName,
+            modules: progressData.map(apiProgressToModule),
+          }]);
+        } else {
+          const enrollments = await getMyEnrollments();
+          if (cancelled) return;
+          const groups: CourseGroup[] = [];
+          for (const course of enrollments) {
+            const progressData = await getAllModuleProgress(course.id);
+            if (cancelled) return;
+            if (progressData.length > 0) {
+              groups.push({
+                courseId: course.id,
+                courseName: locale === 'fr' ? course.title_fr : course.title_en,
+                modules: progressData.map(apiProgressToModule),
+              });
+            }
+          }
+          setCourseGroups(groups);
         }
-      })
-      .catch(() => {
+        setLoading(false);
+      } catch {
         if (!cancelled) {
           setError(true);
           setLoading(false);
         }
-      });
+      }
+    }
+
+    loadData();
     return () => {
       cancelled = true;
     };
-  }, [courseId]);
+  }, [courseId, locale, t]);
 
-  const levels = Array.from(new Set(modules.map((m) => m.level))).sort() as (1 | 2 | 3 | 4)[];
-
-  const getLevelModules = (level: number) => modules.filter((m) => m.level === level);
-
-  const getLevelProgress = (level: number) => {
-    const levelModules = getLevelModules(level);
-    const completedModules = levelModules.filter((m) => m.status === 'completed').length;
-    const totalModules = levelModules.length;
+  const getGroupProgress = (modules: Module[]) => {
+    const completedModules = modules.filter((m) => m.status === 'completed').length;
+    const totalModules = modules.length;
     const averageCompletion =
       totalModules > 0
-        ? levelModules.reduce((sum, m) => sum + m.completionPercentage, 0) / totalModules
+        ? modules.reduce((sum, m) => sum + m.completionPercentage, 0) / totalModules
         : 0;
     return { completedModules, totalModules, averageCompletion: Math.round(averageCompletion) };
   };
 
   const isModuleUnlocked = (module: Module): boolean => module.status !== 'locked';
-
-  const getLevelLabel = (level: number): string => {
-    const label = LEVEL_LABELS[level];
-    if (label) return label[locale];
-    return locale === 'fr' ? `Niveau ${level}` : `Level ${level}`;
-  };
 
   if (loading) {
     return (
@@ -112,35 +132,34 @@ export function ModuleMap({ onModuleClick, courseId }: ModuleMapProps) {
 
   return (
     <div className="space-y-8">
-      {levels.map((level) => {
-        const levelModules = getLevelModules(level);
-        const levelProgress = getLevelProgress(level);
+      {courseGroups.map((group) => {
+        const groupProgress = getGroupProgress(group.modules);
 
         return (
-          <div key={level} className="space-y-4">
+          <div key={group.courseId} className="space-y-4">
             <div className="border-b border-stone-200 pb-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div>
                   <h3 className="text-lg font-medium text-stone-900">
-                    {getLevelLabel(level)}
+                    {group.courseName}
                   </h3>
                 </div>
                 <div className="flex flex-col sm:items-end gap-1">
                   <div className="text-sm text-stone-600">
                     {t('progress', {
-                      completed: levelProgress.completedModules,
-                      total: levelProgress.totalModules,
+                      completed: groupProgress.completedModules,
+                      total: groupProgress.totalModules,
                     })}
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="h-2 w-20 rounded-full bg-stone-200">
                       <div
                         className="h-2 rounded-full bg-teal-500 transition-all duration-500"
-                        style={{ width: `${levelProgress.averageCompletion}%` }}
+                        style={{ width: `${groupProgress.averageCompletion}%` }}
                       />
                     </div>
                     <span className="text-xs text-stone-500">
-                      {levelProgress.averageCompletion}%
+                      {groupProgress.averageCompletion}%
                     </span>
                   </div>
                 </div>
@@ -148,7 +167,7 @@ export function ModuleMap({ onModuleClick, courseId }: ModuleMapProps) {
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {levelModules.map((module) => {
+              {group.modules.map((module) => {
                 const unlocked = isModuleUnlocked(module);
 
                 return (
@@ -165,18 +184,18 @@ export function ModuleMap({ onModuleClick, courseId }: ModuleMapProps) {
         );
       })}
 
-      {levels.length > 0 && (
+      {courseGroups.length > 0 && (
         <div className="mt-8 rounded-lg bg-teal-50 p-6 text-center">
           <h3 className="text-lg font-semibold text-teal-900">
             {t('overallProgress')}
           </h3>
           <div className="mt-4 space-y-2">
-            {levels.map((level) => {
-              const progress = getLevelProgress(level);
+            {courseGroups.map((group) => {
+              const progress = getGroupProgress(group.modules);
               return (
-                <div key={level} className="flex items-center justify-between">
+                <div key={group.courseId} className="flex items-center justify-between">
                   <span className="text-sm text-teal-700">
-                    {getLevelLabel(level)}
+                    {group.courseName}
                   </span>
                   <span className="text-sm font-medium text-teal-800">
                     {progress.completedModules}/{progress.totalModules} {t('modulesCompleted')}

@@ -12,7 +12,7 @@
     "later": "Plus tard"
   },
   "Navigation": {
-    "dashboard": "Tableau de bord",
+    "dashboard": "Dashboard",
     "courses": "Formations",
     "modules": "Modules",
     "flashcards": "Flashcards",
@@ -167,7 +167,7 @@
     "currentLanguage": "Français"
   },
   "Dashboard": {
-    "title": "Tableau de bord",
+    "title": "Dashboard",
     "welcome": "Bienvenue sur Sira",
     "subtitle": "Sira — Plateforme d'apprentissage",
     "streak": "Jours consécutifs",
@@ -218,7 +218,7 @@
   },
   "ModuleMap": {
     "title": "Modules d'apprentissage",
-    "subtitle": "Suivez votre progression dans le curriculum de santé publique",
+    "subtitle": "Suivez votre progression dans le curriculum",
     "progress": "{completed}/{total} modules",
     "overallProgress": "Progression globale",
     "modulesCompleted": "modules terminés",
@@ -363,7 +363,7 @@
     "errorDescription": "Échec de l'envoi du message. Veuillez réessayer.",
     "retry": "Réessayer",
     "loading": "Chargement de la conversation...",
-    "welcomeMessage": "Bonjour ! Je suis votre tuteur IA pour la santé publique. Demandez-moi n'importe quoi sur les modules, les concepts, ou obtenez de l'aide avec vos études.",
+    "welcomeMessage": "Bonjour ! Je suis votre tuteur IA. Posez-moi des questions sur vos cours, modules ou concepts — je suis là pour vous aider dans vos études.",
     "emptyState": "Commencer une conversation",
     "emptyStateDescription": "Posez des questions, demandez des quiz, ou obtenez des explications sur les sujets de santé publique",
     "moreThan99": "99+",
