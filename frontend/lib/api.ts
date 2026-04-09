@@ -964,3 +964,90 @@ export async function removeGroupMember(groupId: string, userId: string): Promis
     method: "DELETE",
   });
 }
+
+// ── Expert Activation Codes API ───────────────────────────────
+
+export interface ActivationCodeResponse {
+  id: string;
+  code: string;
+  max_uses: number | null;
+  times_used: number;
+  status: "active" | "exhausted" | "inactive";
+  revenue_credits: number;
+  created_at: string;
+}
+
+export interface CodeRedemptionResponse {
+  id: string;
+  learner_name: string;
+  learner_email: string;
+  redeemed_at: string;
+  method: "code" | "qr" | "manual";
+  revenue_credits: number;
+}
+
+export interface GenerateCodesResponse {
+  codes: ActivationCodeResponse[];
+}
+
+export async function generateActivationCodes(
+  courseId: string,
+  count: number,
+  maxUses?: number
+): Promise<GenerateCodesResponse> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<GenerateCodesResponse>(
+    `/api/v1/expert/courses/${courseId}/codes`,
+    {
+      method: "POST",
+      body: JSON.stringify({ count, max_uses: maxUses ?? null }),
+    }
+  );
+}
+
+export async function getActivationCodes(courseId: string): Promise<ActivationCodeResponse[]> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<ActivationCodeResponse[]>(
+    `/api/v1/expert/courses/${courseId}/codes`
+  );
+}
+
+export async function getCodeRedemptions(
+  courseId: string,
+  codeId: string
+): Promise<CodeRedemptionResponse[]> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<CodeRedemptionResponse[]>(
+    `/api/v1/expert/courses/${courseId}/codes/${codeId}/redemptions`
+  );
+}
+
+export async function getCodeQR(courseId: string, codeId: string): Promise<Blob> {
+  const { authClient } = await import("./auth");
+  const token = await authClient.getValidToken();
+  const res = await fetch(
+    `${API_BASE}/api/v1/expert/courses/${courseId}/codes/${codeId}/qr`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+  if (!res.ok) throw new ApiError(`API error: ${res.status}`, res.status);
+  return res.blob();
+}
+
+export async function manualActivate(
+  courseId: string,
+  codeId: string,
+  learnerEmail: string
+): Promise<{ message: string }> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<{ message: string }>(
+    `/api/v1/expert/courses/${courseId}/codes/${codeId}/activate`,
+    {
+      method: "POST",
+      body: JSON.stringify({ learner_email: learnerEmail }),
+    }
+  );
+}

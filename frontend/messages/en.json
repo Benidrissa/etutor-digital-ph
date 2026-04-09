@@ -1584,5 +1584,58 @@
   "AdminGroups": {
     "pageTitle": "User Groups",
     "pageDescription": "Create and manage user groups for curriculum access control"
+  },
+  "expertCodes": {
+    "title": "Activation Codes",
+    "generate": "Generate Codes",
+    "count": "Number of codes",
+    "maxUses": "Max uses per code",
+    "unlimited": "Unlimited",
+    "copyCode": "Copy code",
+    "downloadQr": "Download QR",
+    "manualActivate": "Manual Activation",
+    "learnerEmail": "Learner email",
+    "activate": "Activate",
+    "status": {
+      "active": "Active",
+      "exhausted": "Exhausted",
+      "inactive": "Inactive"
+    },
+    "method": {
+      "code": "Code",
+      "qr": "QR",
+      "manual": "Manual"
+    },
+    "revenue": "Revenue",
+    "uses": "Uses",
+    "redemptions": "Redemptions",
+    "noRedemptions": "No redemptions yet",
+    "learnerNotFound": "No user found with this email",
+    "alreadyEnrolled": "Learner already enrolled",
+    "activateSuccess": "Learner enrolled successfully",
+    "generating": "Generating...",
+    "activating": "Activating...",
+    "noCodes": "No codes yet",
+    "noCodesDescription": "Generate your first activation codes above.",
+    "codeCopied": "Copied!",
+    "codeColumn": "Code",
+    "usesColumn": "Uses",
+    "revenueColumn": "Revenue",
+    "statusColumn": "Status",
+    "createdColumn": "Created",
+    "actionsColumn": "Actions",
+    "selectCode": "Select a code",
+    "errorLoading": "Failed to load codes.",
+    "errorGenerating": "Failed to generate codes.",
+    "errorActivating": "Activation failed.",
+    "countMin": "Minimum 1 code",
+    "countMax": "Maximum 50 codes",
+    "backToCourse": "Back to course",
+    "credits": "{count} credits",
+    "learner": "Learner",
+    "date": "Date",
+    "methodColumn": "Method",
+    "expandRedemptions": "View redemptions",
+    "collapseRedemptions": "Hide redemptions"
   }
 }

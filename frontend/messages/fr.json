@@ -1584,5 +1584,58 @@
   "AdminGroups": {
     "pageTitle": "Groupes d'utilisateurs",
     "pageDescription": "Créer et gérer des groupes d'utilisateurs pour le contrôle d'accès aux curricula"
+  },
+  "expertCodes": {
+    "title": "Codes d'activation",
+    "generate": "Générer des codes",
+    "count": "Nombre de codes",
+    "maxUses": "Utilisations max par code",
+    "unlimited": "Illimité",
+    "copyCode": "Copier le code",
+    "downloadQr": "Télécharger le QR",
+    "manualActivate": "Activation manuelle",
+    "learnerEmail": "Email de l'apprenant",
+    "activate": "Activer",
+    "status": {
+      "active": "Actif",
+      "exhausted": "Épuisé",
+      "inactive": "Inactif"
+    },
+    "method": {
+      "code": "Code",
+      "qr": "QR",
+      "manual": "Manuel"
+    },
+    "revenue": "Revenus",
+    "uses": "Utilisations",
+    "redemptions": "Utilisations",
+    "noRedemptions": "Aucune utilisation pour l'instant",
+    "learnerNotFound": "Aucun utilisateur trouvé avec cet email",
+    "alreadyEnrolled": "L'apprenant est déjà inscrit",
+    "activateSuccess": "L'apprenant a été inscrit avec succès",
+    "generating": "Génération...",
+    "activating": "Activation...",
+    "noCodes": "Aucun code pour l'instant",
+    "noCodesDescription": "Générez vos premiers codes d'activation ci-dessus.",
+    "codeCopied": "Copié !",
+    "codeColumn": "Code",
+    "usesColumn": "Utilisations",
+    "revenueColumn": "Revenus",
+    "statusColumn": "Statut",
+    "createdColumn": "Créé le",
+    "actionsColumn": "Actions",
+    "selectCode": "Sélectionner un code",
+    "errorLoading": "Impossible de charger les codes.",
+    "errorGenerating": "Impossible de générer les codes.",
+    "errorActivating": "Échec de l'activation.",
+    "countMin": "Minimum 1 code",
+    "countMax": "Maximum 50 codes",
+    "backToCourse": "Retour à la formation",
+    "credits": "{count} crédits",
+    "learner": "Apprenant",
+    "date": "Date",
+    "methodColumn": "Méthode",
+    "expandRedemptions": "Voir les utilisations",
+    "collapseRedemptions": "Masquer les utilisations"
   }
 }
