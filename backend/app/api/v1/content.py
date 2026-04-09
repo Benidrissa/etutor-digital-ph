@@ -127,6 +127,22 @@ async def _resolve_module_id(module_id: str, session: AsyncSession) -> UUID:
     )
 
 
+def _resolve_unit_number_variants(unit_id: str) -> list[str]:
+    """
+    Return all known format variants for a unit identifier.
+
+    The frontend sends URL-style IDs like ``M01-U07`` while the DB stores
+    numeric style like ``1.7``.  Query with both so either format matches.
+    """
+    variants: list[str] = [unit_id]
+    m = re.match(r"^M(\d+)-U(\d+)$", unit_id, re.IGNORECASE)
+    if m:
+        numeric = f"{int(m.group(1))}.{int(m.group(2))}"
+        if numeric not in variants:
+            variants.append(numeric)
+    return variants
+
+
 def get_claude_service() -> ClaudeService:
     """Dependency to get Claude service."""
     return ClaudeService()
@@ -408,16 +424,19 @@ async def get_or_generate_lesson_by_module_and_unit(
 
         resolved_module_id = await _resolve_module_id(module_id, session)
 
+        unit_variants = _resolve_unit_number_variants(unit_id)
         unit_type_result = await session.execute(
             select(ModuleUnit.unit_type).where(
                 ModuleUnit.module_id == resolved_module_id,
-                ModuleUnit.unit_number == unit_id,
+                ModuleUnit.unit_number.in_(unit_variants),
             )
         )
         unit_type_row = unit_type_result.first()
         is_case_study = unit_type_row is not None and unit_type_row[0] == "case-study"
 
         if not force_regenerate:
+            from sqlalchemy import or_
+
             content_type_filter = "case" if is_case_study else "lesson"
             cached_query = (
                 select(GeneratedContent)
@@ -426,7 +445,9 @@ async def get_or_generate_lesson_by_module_and_unit(
                 .where(GeneratedContent.language == language)
                 .where(GeneratedContent.level == level)
                 .where(GeneratedContent.country_context == country)
-                .where(GeneratedContent.content["unit_id"].astext == unit_id)
+                .where(
+                    or_(*[GeneratedContent.content["unit_id"].astext == v for v in unit_variants])
+                )
                 .order_by(GeneratedContent.generated_at.desc())
             )
             cache_result = await session.execute(cached_query)
@@ -640,10 +661,11 @@ async def stream_lesson_by_module_and_unit(
 
             resolved_module_id = await _resolve_module_id(module_id, session)
 
+            unit_variants = _resolve_unit_number_variants(unit_id)
             unit_type_result = await session.execute(
                 select(ModuleUnit.unit_type).where(
                     ModuleUnit.module_id == resolved_module_id,
-                    ModuleUnit.unit_number == unit_id,
+                    ModuleUnit.unit_number.in_(unit_variants),
                 )
             )
             unit_type_row = unit_type_result.first()
@@ -1081,6 +1103,9 @@ async def get_or_generate_case_study(
         resolved_module_id = await _resolve_module_id(module_id, session)
 
         if not force_regenerate:
+            unit_variants = _resolve_unit_number_variants(unit_id)
+            from sqlalchemy import or_
+
             cached_query = (
                 select(GeneratedContent)
                 .where(GeneratedContent.module_id == resolved_module_id)
@@ -1088,7 +1113,9 @@ async def get_or_generate_case_study(
                 .where(GeneratedContent.language == language)
                 .where(GeneratedContent.level == level)
                 .where(GeneratedContent.country_context == country)
-                .where(GeneratedContent.content["unit_id"].astext == unit_id)
+                .where(
+                    or_(*[GeneratedContent.content["unit_id"].astext == v for v in unit_variants])
+                )
                 .order_by(GeneratedContent.generated_at.desc())
             )
             cache_result = await session.execute(cached_query)
