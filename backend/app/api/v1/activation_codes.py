@@ -2,8 +2,6 @@
 
 import base64
 import io
-import secrets
-import string
 import time
 import uuid
 
@@ -15,11 +13,10 @@ from structlog import get_logger
 
 from app.api.deps import get_db as get_db_session
 from app.api.deps_local_auth import AuthenticatedUser, get_current_user, require_role
-from app.domain.models.activation_code import ActivationCode, ActivationCodeRedemption
-from app.domain.models.course import Course, UserCourseEnrollment
-from app.domain.models.module import Module
-from app.domain.models.progress import UserModuleProgress
-from app.domain.models.user import User, UserRole
+from app.domain.models.activation_code import ActivationCode
+from app.domain.models.course import Course
+from app.domain.models.user import UserRole
+from app.domain.services.activation_code_service import ActivationCodeService
 from app.infrastructure.config.settings import settings
 
 logger = get_logger(__name__)
@@ -29,6 +26,8 @@ router = APIRouter(tags=["Activation Codes"])
 _ACTIVATION_RATE_STORE: dict[str, list[float]] = {}
 _ACTIVATION_RATE_LIMIT = 5
 _ACTIVATION_RATE_WINDOW = 60
+
+_service = ActivationCodeService()
 
 
 def _check_activation_rate_limit(request: Request) -> None:
@@ -57,11 +56,6 @@ def _check_activation_rate_limit(request: Request) -> None:
 
     hits.append(now)
     _ACTIVATION_RATE_STORE[client_ip] = hits
-
-
-def _generate_code(length: int = 12) -> str:
-    alphabet = string.ascii_uppercase + string.digits
-    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 # ---------------------------------------------------------------------------
@@ -144,44 +138,6 @@ async def _get_course_for_expert(
     return course
 
 
-async def _enroll_learner(learner_id: uuid.UUID, course_id: uuid.UUID, db) -> None:
-    existing = await db.execute(
-        select(UserCourseEnrollment).where(
-            UserCourseEnrollment.user_id == learner_id,
-            UserCourseEnrollment.course_id == course_id,
-        )
-    )
-    if existing.scalar_one_or_none() is not None:
-        return
-
-    enrollment = UserCourseEnrollment(
-        user_id=learner_id,
-        course_id=course_id,
-        status="active",
-        completion_pct=0.0,
-    )
-    db.add(enrollment)
-
-    modules_result = await db.execute(select(Module).where(Module.course_id == course_id))
-    for mod in modules_result.scalars().all():
-        prog = await db.execute(
-            select(UserModuleProgress).where(
-                UserModuleProgress.user_id == learner_id,
-                UserModuleProgress.module_id == mod.id,
-            )
-        )
-        if prog.scalar_one_or_none() is None:
-            db.add(
-                UserModuleProgress(
-                    user_id=learner_id,
-                    module_id=mod.id,
-                    status="in_progress" if mod.module_number == 1 else "locked",
-                    completion_pct=0.0,
-                    time_spent_minutes=0,
-                )
-            )
-
-
 # ---------------------------------------------------------------------------
 # Expert endpoints
 # ---------------------------------------------------------------------------
@@ -199,30 +155,13 @@ async def generate_codes(
     db=Depends(get_db_session),
 ) -> list[ActivationCodeResponse]:
     """Generate one or more activation codes for a course. Expert/Admin only."""
-    await _get_course_for_expert(course_id, current_user, db)
-
-    codes: list[ActivationCode] = []
-    for _ in range(body.count):
-        for _attempt in range(10):
-            raw = _generate_code()
-            dup = await db.execute(select(ActivationCode).where(ActivationCode.code == raw))
-            if dup.scalar_one_or_none() is None:
-                break
-        ac = ActivationCode(
-            id=uuid.uuid4(),
-            code=raw,
-            course_id=course_id,
-            created_by=uuid.UUID(current_user.id),
-            max_uses=body.max_uses,
-        )
-        db.add(ac)
-        codes.append(ac)
-
-    await db.commit()
-    for ac in codes:
-        await db.refresh(ac)
-
-    logger.info("Activation codes generated", course_id=str(course_id), count=len(codes))
+    codes = await _service.generate_codes(
+        db=db,
+        expert_id=uuid.UUID(current_user.id),
+        course_id=course_id,
+        count=body.count,
+        max_uses=body.max_uses,
+    )
     return [_code_to_response(ac) for ac in codes]
 
 
@@ -257,39 +196,22 @@ async def list_redemptions(
     db=Depends(get_db_session),
 ) -> list[RedemptionResponse]:
     """List all redemptions for a code — who, when, method, revenue. Expert/Admin only."""
-    await _get_course_for_expert(course_id, current_user, db)
-
-    code_result = await db.execute(
-        select(ActivationCode).where(
-            ActivationCode.id == code_id,
-            ActivationCode.course_id == course_id,
-        )
+    rows = await _service.get_code_redemptions(
+        db=db,
+        expert_id=uuid.UUID(current_user.id),
+        course_id=course_id,
+        code_id=code_id,
     )
-    ac = code_result.scalar_one_or_none()
-    if not ac:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Code not found")
-
-    redemptions_result = await db.execute(
-        select(ActivationCodeRedemption)
-        .where(ActivationCodeRedemption.code_id == code_id)
-        .order_by(ActivationCodeRedemption.redeemed_at.desc())
-    )
-    redemptions = redemptions_result.scalars().all()
-
-    responses: list[RedemptionResponse] = []
-    for r in redemptions:
-        user_result = await db.execute(select(User).where(User.id == r.user_id))
-        learner = user_result.scalar_one_or_none()
-        responses.append(
-            RedemptionResponse(
-                learner_name=learner.name if learner else "Unknown",
-                learner_email=learner.email or "" if learner else "",
-                redeemed_at=r.redeemed_at.isoformat(),
-                method=r.method,
-                revenue_credits=0,
-            )
+    return [
+        RedemptionResponse(
+            learner_name=row["learner_name"],
+            learner_email=row["learner_email"],
+            redeemed_at=row["redeemed_at"],
+            method=row["method"],
+            revenue_credits=row.get("revenue_amount", 0),
         )
-    return responses
+        for row in rows
+    ]
 
 
 @router.post(
@@ -304,44 +226,12 @@ async def manual_activate(
     db=Depends(get_db_session),
 ) -> dict:
     """Manually activate a code for a learner by email. Expert/Admin only."""
-    await _get_course_for_expert(course_id, current_user, db)
-
-    code_result = await db.execute(
-        select(ActivationCode).where(
-            ActivationCode.id == code_id,
-            ActivationCode.course_id == course_id,
-        )
-    )
-    ac = code_result.scalar_one_or_none()
-    if not ac:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Code not found")
-    if not ac.is_active:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Code is inactive")
-    if ac.max_uses is not None and ac.times_used >= ac.max_uses:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Code usage limit reached"
-        )
-
-    learner_result = await db.execute(select(User).where(User.email == body.learner_email))
-    learner = learner_result.scalar_one_or_none()
-    if not learner:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No user found with email {body.learner_email}",
-        )
-
-    await _enroll_learner(learner.id, course_id, db)
-
-    redemption = ActivationCodeRedemption(
-        id=uuid.uuid4(),
+    await _service.manual_activate(
+        db=db,
+        activator_id=uuid.UUID(current_user.id),
         code_id=code_id,
-        user_id=learner.id,
-        method="manual",
+        learner_email=body.learner_email,
     )
-    db.add(redemption)
-    ac.times_used += 1
-
-    await db.commit()
     logger.info(
         "Manual activation",
         code_id=str(code_id),
@@ -394,12 +284,9 @@ async def preview_code(
     """Preview course info for an activation code. Public, rate-limited 5/min/IP."""
     _check_activation_rate_limit(request)
 
-    code_result = await db.execute(
-        select(ActivationCode).where(ActivationCode.code == code.upper())
-    )
-    ac = code_result.scalar_one_or_none()
+    info = await _service.preview_code(db=db, code_str=code)
 
-    if not ac or not ac.is_active:
+    if not info.get("valid"):
         return CodePreviewResponse(
             course_title_fr="",
             course_title_en="",
@@ -409,45 +296,14 @@ async def preview_code(
             expert_name="",
             valid=False,
         )
-
-    if ac.max_uses is not None and ac.times_used >= ac.max_uses:
-        return CodePreviewResponse(
-            course_title_fr="",
-            course_title_en="",
-            course_description_fr=None,
-            course_description_en=None,
-            cover_image_url=None,
-            expert_name="",
-            valid=False,
-        )
-
-    course_result = await db.execute(select(Course).where(Course.id == ac.course_id))
-    course = course_result.scalar_one_or_none()
-    if not course:
-        return CodePreviewResponse(
-            course_title_fr="",
-            course_title_en="",
-            course_description_fr=None,
-            course_description_en=None,
-            cover_image_url=None,
-            expert_name="",
-            valid=False,
-        )
-
-    expert_name = ""
-    if course.created_by:
-        expert_result = await db.execute(select(User).where(User.id == course.created_by))
-        expert = expert_result.scalar_one_or_none()
-        if expert:
-            expert_name = expert.name
 
     return CodePreviewResponse(
-        course_title_fr=course.title_fr,
-        course_title_en=course.title_en,
-        course_description_fr=course.description_fr,
-        course_description_en=course.description_en,
-        cover_image_url=course.cover_image_url,
-        expert_name=expert_name,
+        course_title_fr=info.get("title_fr") or "",
+        course_title_en=info.get("title_en") or "",
+        course_description_fr=info.get("description_fr"),
+        course_description_en=info.get("description_en"),
+        cover_image_url=info.get("cover_image_url"),
+        expert_name=info.get("expert_name") or "",
         valid=True,
     )
 
@@ -462,51 +318,16 @@ async def redeem_code(
     """Redeem an activation code to enroll in a course. Authenticated, rate-limited 5/min/IP."""
     _check_activation_rate_limit(request)
 
-    code_result = await db.execute(
-        select(ActivationCode).where(ActivationCode.code == code.upper())
-    )
-    ac = code_result.scalar_one_or_none()
-    if not ac:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invalid activation code")
-    if not ac.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Activation code is inactive"
-        )
-    if ac.max_uses is not None and ac.times_used >= ac.max_uses:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Activation code usage limit reached"
-        )
-
-    learner_id = uuid.UUID(current_user.id)
-
-    dup = await db.execute(
-        select(ActivationCodeRedemption).where(
-            ActivationCodeRedemption.code_id == ac.id,
-            ActivationCodeRedemption.user_id == learner_id,
-        )
-    )
-    if dup.scalar_one_or_none() is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="You have already redeemed this code",
-        )
-
-    await _enroll_learner(learner_id, ac.course_id, db)
-
-    redemption = ActivationCodeRedemption(
-        id=uuid.uuid4(),
-        code_id=ac.id,
-        user_id=learner_id,
+    enrollment = await _service.redeem_code(
+        db=db,
+        code_str=code,
+        user_id=uuid.UUID(current_user.id),
         method="code",
     )
-    db.add(redemption)
-    ac.times_used += 1
-
-    await db.commit()
     logger.info(
         "Activation code redeemed",
-        code=code.upper(),
+        code=code,
         user_id=current_user.id,
-        course_id=str(ac.course_id),
+        course_id=str(enrollment.course_id),
     )
-    return {"status": "enrolled", "course_id": str(ac.course_id)}
+    return {"status": "enrolled", "course_id": str(enrollment.course_id)}
