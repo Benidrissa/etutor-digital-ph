@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { CheckCircle, Clock, FileText, RefreshCw, Loader2, AlertTriangle } from 'lucide-react';
+import { CheckCircle, Clock, FileText, RefreshCw, Loader2, AlertTriangle, ChevronDown, ChevronUp, BookOpen, Zap } from 'lucide-react';
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 3 * 60 * 1000;
@@ -17,6 +17,25 @@ import { LessonSkeleton } from './lesson-skeleton';
 import { SourceCitations } from './source-citations';
 import { apiFetch } from '@/lib/api';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
+
+const COUNTRY_NAMES: Record<string, { en: string; fr: string }> = {
+  BF: { en: 'Burkina Faso', fr: 'Burkina Faso' },
+  BJ: { en: 'Benin', fr: 'Bénin' },
+  CI: { en: 'Côte d\'Ivoire', fr: 'Côte d\'Ivoire' },
+  CV: { en: 'Cape Verde', fr: 'Cap-Vert' },
+  GH: { en: 'Ghana', fr: 'Ghana' },
+  GM: { en: 'Gambia', fr: 'Gambie' },
+  GN: { en: 'Guinea', fr: 'Guinée' },
+  GW: { en: 'Guinea-Bissau', fr: 'Guinée-Bissau' },
+  LR: { en: 'Liberia', fr: 'Libéria' },
+  ML: { en: 'Mali', fr: 'Mali' },
+  MR: { en: 'Mauritania', fr: 'Mauritanie' },
+  NE: { en: 'Niger', fr: 'Niger' },
+  NG: { en: 'Nigeria', fr: 'Nigéria' },
+  SL: { en: 'Sierra Leone', fr: 'Sierra Leone' },
+  SN: { en: 'Senegal', fr: 'Sénégal' },
+  TG: { en: 'Togo', fr: 'Togo' },
+};
 
 interface CaseStudyContent {
   aof_context: string;
@@ -38,6 +57,7 @@ interface CaseStudyData {
   cached: boolean;
   unit_title?: string;
   unit_description?: string;
+  generated_at?: string;
 }
 
 interface GeneratingResponse {
@@ -52,6 +72,9 @@ interface CaseStudyViewerProps {
   language: 'fr' | 'en';
   level: number;
   countryContext?: string;
+  unitDescription?: string;
+  learningObjectives?: string[];
+  estimatedMinutes?: number;
   onComplete?: () => void;
 }
 
@@ -61,6 +84,9 @@ export function CaseStudyViewer({
   language,
   level,
   countryContext,
+  unitDescription,
+  learningObjectives,
+  estimatedMinutes,
   onComplete,
 }: CaseStudyViewerProps) {
   const [caseStudyData, setCaseStudyData] = useState<CaseStudyData | null>(null);
@@ -71,6 +97,7 @@ export function CaseStudyViewer({
   const [correctionVisible, setCorrectionVisible] = useState(false);
   const [forceRegenerate, setForceRegenerate] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [objectivesOpen, setObjectivesOpen] = useState(false);
 
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollStartRef = useRef<number>(0);
@@ -184,6 +211,23 @@ export function CaseStudyViewer({
     }
   };
 
+  const getContextLabel = (countryCode: string): string => {
+    const countryInfo = COUNTRY_NAMES[countryCode.toUpperCase()];
+    if (countryInfo) {
+      const name = language === 'fr' ? countryInfo.fr : countryInfo.en;
+      return t('countryContext', { country: name });
+    }
+    return t('westAfricanContext');
+  };
+
+  const isStretchQuestion = (question: string): boolean => {
+    return /^STRETCH\s*[-–—]/i.test(question.trim());
+  };
+
+  const stripStretchPrefix = (question: string): string => {
+    return question.trim().replace(/^STRETCH\s*[-–—]\s*/i, '');
+  };
+
   const mdClass =
     'prose prose-gray max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-900 prose-table:text-sm';
 
@@ -256,20 +300,31 @@ export function CaseStudyViewer({
 
   const { content } = caseStudyData;
 
+  const activeCountry = caseStudyData.country_context || country;
+  const contextLabel = getContextLabel(activeCountry);
+
+  const generatedAtDate = caseStudyData.generated_at
+    ? new Intl.DateTimeFormat(language === 'fr' ? 'fr-FR' : 'en-GB', { dateStyle: 'medium' }).format(
+        new Date(caseStudyData.generated_at)
+      )
+    : null;
+
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6">
       {/* Header */}
       <div className="mb-8">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline" className="flex items-center gap-1">
               <FileText className="w-3 h-3" />
               {t('badge')}
             </Badge>
             <Badge variant="outline">{t('level', { level })}</Badge>
-            <div className="flex items-center text-gray-600">
+            <div className="flex items-center text-gray-600 text-sm">
               <Clock className="w-4 h-4 mr-1" />
-              {t('estimatedTime')}
+              {estimatedMinutes
+                ? t('estimatedTime', { minutes: estimatedMinutes })
+                : t('estimatedTimeFallback')}
             </div>
             {caseStudyData.cached && <Badge variant="secondary">{t('cached')}</Badge>}
           </div>
@@ -285,15 +340,62 @@ export function CaseStudyViewer({
             <span className="hidden sm:inline">{t('refreshContent')}</span>
           </Button>
         </div>
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3">
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">
           {caseStudyData.unit_title ?? t('unitTitle', { unit: unitId })}
         </h1>
+        {(unitDescription ?? caseStudyData.unit_description) && (
+          <p className="text-base text-gray-600 mb-2">
+            {unitDescription ?? caseStudyData.unit_description}
+          </p>
+        )}
+        {generatedAtDate && (
+          <p className="text-xs text-gray-400">{t('generatedOn', { date: generatedAtDate })}</p>
+        )}
       </div>
 
-      {/* Section 1 — AOF Context */}
+      {/* Learning Objectives (collapsible) */}
+      {learningObjectives && learningObjectives.length > 0 && (
+        <Card className="mb-6 border-purple-100">
+          <CardHeader className="pb-3">
+            <button
+              type="button"
+              onClick={() => setObjectivesOpen((prev) => !prev)}
+              className="flex items-center justify-between w-full text-left min-h-11"
+              aria-expanded={objectivesOpen}
+              aria-controls="learning-objectives-list"
+            >
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-purple-600" />
+                <span className="text-base font-semibold text-purple-800">{t('learningObjectives')}</span>
+              </div>
+              {objectivesOpen ? (
+                <ChevronUp className="w-4 h-4 text-purple-600 flex-shrink-0" aria-label={t('hideObjectives')} />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-purple-600 flex-shrink-0" aria-label={t('showObjectives')} />
+              )}
+            </button>
+          </CardHeader>
+          {objectivesOpen && (
+            <CardContent id="learning-objectives-list">
+              <ul className="space-y-2" role="list">
+                {learningObjectives.map((objective, index) => (
+                  <li key={index} className="flex items-start gap-2 text-sm text-gray-700">
+                    <span className="inline-flex items-center justify-center w-5 h-5 bg-purple-100 text-purple-700 text-xs font-semibold rounded-full flex-shrink-0 mt-0.5">
+                      {index + 1}
+                    </span>
+                    <span>{objective}</span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          )}
+        </Card>
+      )}
+
+      {/* Section 1 — Context (dynamic label) */}
       <Card className="mb-6">
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg text-teal-700">{t('aofContext')}</CardTitle>
+          <CardTitle className="text-lg text-teal-700">{contextLabel}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className={mdClass}>
@@ -321,19 +423,40 @@ export function CaseStudyViewer({
         </CardHeader>
         <CardContent>
           <ol className="space-y-4">
-            {content.guided_questions.map((question, index) => (
-              <li
-                key={index}
-                className="flex items-start gap-3 p-4 bg-blue-50 rounded-lg border border-blue-100"
-              >
-                <span className="inline-flex items-center justify-center w-7 h-7 bg-blue-600 text-white text-sm font-bold rounded-full flex-shrink-0 mt-0.5">
-                  {index + 1}
-                </span>
-                <div className={mdClass}>
-                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{question}</ReactMarkdown>
-                </div>
-              </li>
-            ))}
+            {content.guided_questions.map((question, index) => {
+              const stretch = isStretchQuestion(question);
+              return (
+                <li
+                  key={index}
+                  className={`flex items-start gap-3 p-4 rounded-lg border ${
+                    stretch
+                      ? 'bg-amber-50 border-amber-200'
+                      : 'bg-blue-50 border-blue-100'
+                  }`}
+                >
+                  <span
+                    className={`inline-flex items-center justify-center w-7 h-7 text-white text-sm font-bold rounded-full flex-shrink-0 mt-0.5 ${
+                      stretch ? 'bg-amber-500' : 'bg-blue-600'
+                    }`}
+                  >
+                    {index + 1}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    {stretch && (
+                      <div className="flex items-center gap-1 mb-1">
+                        <Zap className="w-3 h-3 text-amber-600" />
+                        <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs px-1.5 py-0 h-auto">
+                          {t('stretchBadge')}
+                        </Badge>
+                      </div>
+                    )}
+                    <div className={mdClass}>
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{stretch ? stripStretchPrefix(question) : question}</ReactMarkdown>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
           </ol>
         </CardContent>
       </Card>

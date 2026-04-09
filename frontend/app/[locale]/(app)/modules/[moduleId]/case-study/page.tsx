@@ -4,6 +4,7 @@ import { ChevronLeft } from 'lucide-react';
 import { getModuleUnits } from '@/lib/api';
 import { CaseStudyViewer } from '@/components/learning/case-study-viewer';
 import { EnrollmentGuard } from '@/components/shared/enrollment-guard';
+import { CURRICULUM_MODULES } from '@/lib/modules';
 
 interface CaseStudyPageProps {
   params: Promise<{ moduleId: string }>;
@@ -20,6 +21,15 @@ export default async function CaseStudyPage({ params, searchParams }: CaseStudyP
   const language = locale as 'en' | 'fr';
   const moduleData = await getModuleUnits(moduleId).catch(() => null);
   const moduleTitle = language === 'fr' ? (moduleData?.title_fr || moduleId) : (moduleData?.title_en || moduleId);
+
+  const staticModule = CURRICULUM_MODULES.find((m) => m.id === moduleId);
+  const learningObjectives = staticModule?.learningObjectives?.[language];
+
+  const matchedUnit = moduleData?.units?.find((u) => u.id === unitId);
+  const unitDescription = matchedUnit
+    ? (language === 'fr' ? matchedUnit.description_fr : matchedUnit.description_en)
+    : undefined;
+  const estimatedMinutes = matchedUnit?.estimated_minutes ?? undefined;
 
   return (
     <EnrollmentGuard moduleId={moduleId}>
@@ -39,6 +49,9 @@ export default async function CaseStudyPage({ params, searchParams }: CaseStudyP
           unitId={unitId}
           language={language}
           level={moduleData?.level ?? 1}
+          unitDescription={unitDescription}
+          learningObjectives={learningObjectives}
+          estimatedMinutes={estimatedMinutes}
         />
       </div>
     </EnrollmentGuard>
