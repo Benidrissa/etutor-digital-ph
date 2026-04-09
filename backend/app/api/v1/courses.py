@@ -21,6 +21,7 @@ from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import PlacementTestAttempt, QuizAttempt, SummativeAssessmentAttempt
 from app.domain.models.taxonomy import CourseTaxonomy, TaxonomyCategory
+from app.domain.services.enrollment_helper import enroll_user_in_course
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/courses", tags=["Courses"])
@@ -407,54 +408,7 @@ async def enroll_in_course(
             detail="Course not found or not published",
         )
 
-    existing_result = await db.execute(
-        select(UserCourseEnrollment).where(
-            UserCourseEnrollment.user_id == uuid.UUID(current_user.id),
-            UserCourseEnrollment.course_id == course_id,
-        )
-    )
-    existing = existing_result.scalar_one_or_none()
-    if existing:
-        if existing.status != "active":
-            existing.status = "active"
-            await db.commit()
-            await db.refresh(existing)
-        return EnrollmentResponse(
-            course_id=str(existing.course_id),
-            user_id=str(existing.user_id),
-            status=existing.status,
-            enrolled_at=existing.enrolled_at.isoformat(),
-            completion_pct=existing.completion_pct,
-        )
-
-    enrollment = UserCourseEnrollment(
-        user_id=uuid.UUID(current_user.id),
-        course_id=course_id,
-        status="active",
-        completion_pct=0.0,
-    )
-    db.add(enrollment)
-
-    modules_result = await db.execute(select(Module).where(Module.course_id == course_id))
-    modules = modules_result.scalars().all()
-    for module in modules:
-        prog_result = await db.execute(
-            select(UserModuleProgress).where(
-                UserModuleProgress.user_id == uuid.UUID(current_user.id),
-                UserModuleProgress.module_id == module.id,
-            )
-        )
-        if prog_result.scalar_one_or_none() is None:
-            db.add(
-                UserModuleProgress(
-                    user_id=uuid.UUID(current_user.id),
-                    module_id=module.id,
-                    status="in_progress" if module.module_number == 1 else "locked",
-                    completion_pct=0.0,
-                    time_spent_minutes=0,
-                )
-            )
-
+    enrollment = await enroll_user_in_course(db, uuid.UUID(current_user.id), course_id)
     await db.commit()
     await db.refresh(enrollment)
 
