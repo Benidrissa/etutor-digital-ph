@@ -1584,5 +1584,28 @@
   "AdminGroups": {
     "pageTitle": "User Groups",
     "pageDescription": "Create and manage user groups for curriculum access control"
+  },
+  "ActivationCodes": {
+    "title": "Activate a Course",
+    "enterCode": "Enter activation code",
+    "codePlaceholder": "SIRA-...",
+    "check": "Check",
+    "checking": "Checking...",
+    "scanQr": "Scan QR Code",
+    "enterManually": "Enter code manually",
+    "cameraError": "Camera access denied. Enter code manually.",
+    "coursePreview": "Course Preview",
+    "expertName": "by {name}",
+    "activate": "Confirm Activation",
+    "activating": "Activating...",
+    "invalidCode": "Invalid or expired code",
+    "exhaustedCode": "This code has reached its usage limit",
+    "alreadyEnrolled": "You are already enrolled in this course",
+    "success": "Successfully enrolled!",
+    "successDescription": "You have been enrolled in the course.",
+    "error": "Activation failed. Please try again.",
+    "codeRequired": "Please enter an activation code",
+    "scanInstructions": "Point your camera at the QR code",
+    "redirecting": "Redirecting to course..."
   }
 }
