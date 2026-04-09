@@ -1584,5 +1584,28 @@
   "AdminGroups": {
     "pageTitle": "Groupes d'utilisateurs",
     "pageDescription": "Créer et gérer des groupes d'utilisateurs pour le contrôle d'accès aux curricula"
+  },
+  "ActivationCodes": {
+    "title": "Activer un cours",
+    "enterCode": "Entrez le code d'activation",
+    "codePlaceholder": "SIRA-...",
+    "check": "Vérifier",
+    "checking": "Vérification...",
+    "scanQr": "Scanner le code QR",
+    "enterManually": "Entrer le code manuellement",
+    "cameraError": "Accès caméra refusé. Entrez le code manuellement.",
+    "coursePreview": "Aperçu du cours",
+    "expertName": "par {name}",
+    "activate": "Confirmer l'activation",
+    "activating": "Activation...",
+    "invalidCode": "Code invalide ou expiré",
+    "exhaustedCode": "Ce code a atteint sa limite d'utilisation",
+    "alreadyEnrolled": "Vous êtes déjà inscrit à ce cours",
+    "success": "Inscription réussie !",
+    "successDescription": "Vous avez été inscrit au cours.",
+    "error": "Activation échouée. Veuillez réessayer.",
+    "codeRequired": "Veuillez entrer un code d'activation",
+    "scanInstructions": "Pointez votre caméra sur le code QR",
+    "redirecting": "Redirection vers le cours..."
   }
 }
