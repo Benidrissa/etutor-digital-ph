@@ -74,7 +74,6 @@ interface CaseStudyViewerProps {
   countryContext?: string;
   unitDescription?: string;
   learningObjectives?: string[];
-  bloomLevel?: string;
   estimatedMinutes?: number;
   onComplete?: () => void;
 }
@@ -87,7 +86,6 @@ export function CaseStudyViewer({
   countryContext,
   unitDescription,
   learningObjectives,
-  bloomLevel,
   estimatedMinutes,
   onComplete,
 }: CaseStudyViewerProps) {
@@ -226,6 +224,10 @@ export function CaseStudyViewer({
     return /^STRETCH\s*[-–—]/i.test(question.trim());
   };
 
+  const stripStretchPrefix = (question: string): string => {
+    return question.trim().replace(/^STRETCH\s*[-–—]\s*/i, '');
+  };
+
   const mdClass =
     'prose prose-gray max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-900 prose-table:text-sm';
 
@@ -318,11 +320,6 @@ export function CaseStudyViewer({
               {t('badge')}
             </Badge>
             <Badge variant="outline">{t('level', { level })}</Badge>
-            {bloomLevel && (
-              <Badge variant="outline" className="border-purple-300 text-purple-700 bg-purple-50">
-                {t('bloomLevel', { level: bloomLevel })}
-              </Badge>
-            )}
             <div className="flex items-center text-gray-600 text-sm">
               <Clock className="w-4 h-4 mr-1" />
               {estimatedMinutes
@@ -454,7 +451,7 @@ export function CaseStudyViewer({
                       </div>
                     )}
                     <div className={mdClass}>
-                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{question}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{stretch ? stripStretchPrefix(question) : question}</ReactMarkdown>
                     </div>
                   </div>
                 </li>

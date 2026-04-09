@@ -731,7 +731,7 @@
     "unitTitle": "Unité {unit}",
     "badge": "Étude de cas",
     "aofContext": "Contexte AOF",
-    "countryContext": "Contexte du {country}",
+    "countryContext": "Contexte : {country}",
     "westAfricanContext": "Contexte ouest-africain",
     "realData": "Données réelles",
     "guidedQuestions": "Questions guidées",
@@ -745,7 +745,6 @@
     "learningObjectives": "Objectifs pédagogiques",
     "showObjectives": "Afficher les objectifs",
     "hideObjectives": "Masquer les objectifs",
-    "bloomLevel": "Bloom : {level}",
     "generatedOn": "Généré le {date}",
     "stretchBadge": "Défi"
   },
