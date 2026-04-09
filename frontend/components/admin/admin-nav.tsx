@@ -14,6 +14,7 @@ export function AdminNav() {
     { href: `/${locale}/admin/users`, label: t("users.title") },
     { href: `/${locale}/admin/courses`, label: t("courses.title") },
     { href: `/${locale}/admin/curricula`, label: t("curricula.title") },
+    { href: `/${locale}/admin/groups`, label: t("groups.title") },
     { href: `/${locale}/admin/taxonomy`, label: t("taxonomy.title") },
     { href: `/${locale}/admin/syllabus`, label: t("syllabus.title") },
     { href: `/${locale}/admin/settings`, label: t("settings.title") },

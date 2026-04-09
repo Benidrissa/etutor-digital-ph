@@ -3,13 +3,20 @@
 import { useState } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, Globe, Archive, BookOpen, Loader2, Check, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, Globe, Archive, BookOpen, Loader2, Check, X, Lock, Unlock, Users, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -27,8 +34,15 @@ import {
   archiveAdminCurriculum,
   deleteAdminCurriculum,
   assignCurriculumCourses,
+  setCurriculumVisibility,
+  getCurriculumAccess,
+  grantCurriculumAccess,
+  revokeCurriculumAccess,
+  getAdminGroups,
   type CurriculumAdminResponse,
   type CurriculumAdminDetailResponse,
+  type CurriculumAccessEntry,
+  type UserGroupResponse,
   apiFetch,
 } from '@/lib/api';
 
@@ -53,6 +67,181 @@ function StatusBadge({ status }: { status: string }) {
     >
       {t(status as 'draft' | 'published' | 'archived')}
     </span>
+  );
+}
+
+function VisibilityBadge({ visibility }: { visibility: 'public' | 'private' }) {
+  const t = useTranslations('Admin.curricula');
+  if (visibility === 'private') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+        <Lock className="h-3 w-3" />
+        {t('visibilityPrivate')}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
+      <Globe className="h-3 w-3" />
+      {t('visibilityPublic')}
+    </span>
+  );
+}
+
+function AccessManagementPanel({
+  curriculumId,
+  onClose,
+}: {
+  curriculumId: string;
+  onClose: () => void;
+}) {
+  const t = useTranslations('Admin.curricula');
+  const [emailInput, setEmailInput] = useState('');
+  const [selectedGroupId, setSelectedGroupId] = useState('');
+  const [granting, setGranting] = useState(false);
+  const queryClient = useQueryClient();
+
+  const { data: accessList = [], isLoading } = useQuery<CurriculumAccessEntry[]>({
+    queryKey: ['admin', 'curricula', curriculumId, 'access'],
+    queryFn: () => getCurriculumAccess(curriculumId),
+  });
+
+  const { data: groups = [] } = useQuery<UserGroupResponse[]>({
+    queryKey: ['admin', 'groups'],
+    queryFn: getAdminGroups,
+  });
+
+  const invalidateAccess = () =>
+    queryClient.invalidateQueries({ queryKey: ['admin', 'curricula', curriculumId, 'access'] });
+
+  const handleGrantUser = async () => {
+    if (!emailInput.trim()) return;
+    setGranting(true);
+    try {
+      await grantCurriculumAccess(curriculumId, { user_id: emailInput.trim() });
+      setEmailInput('');
+      invalidateAccess();
+    } finally {
+      setGranting(false);
+    }
+  };
+
+  const handleGrantGroup = async () => {
+    if (!selectedGroupId) return;
+    setGranting(true);
+    try {
+      await grantCurriculumAccess(curriculumId, { group_id: selectedGroupId });
+      setSelectedGroupId('');
+      invalidateAccess();
+    } finally {
+      setGranting(false);
+    }
+  };
+
+  const handleRevoke = async (accessId: string) => {
+    await revokeCurriculumAccess(curriculumId, accessId);
+    invalidateAccess();
+  };
+
+  return (
+    <Card className="p-4 border-2 border-amber-200 bg-amber-50/30">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4 text-amber-600" />
+          <div>
+            <p className="text-sm font-medium">{t('accessManagement')}</p>
+            <p className="text-xs text-muted-foreground">{t('accessManagementDesc')}</p>
+          </div>
+        </div>
+        <Button variant="ghost" size="sm" className="h-9 w-9 p-0" onClick={onClose}>
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <div className="space-y-3">
+        <div>
+          <p className="text-xs font-medium text-stone-700 mb-1.5">{t('grantUserAccess')}</p>
+          <div className="flex gap-2">
+            <Input
+              value={emailInput}
+              onChange={(e) => setEmailInput(e.target.value)}
+              placeholder={t('userEmailPlaceholder')}
+              className="h-9 text-sm flex-1"
+              onKeyDown={(e) => e.key === 'Enter' && handleGrantUser()}
+            />
+            <Button size="sm" className="h-9 shrink-0" onClick={handleGrantUser} disabled={granting || !emailInput.trim()}>
+              {granting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t('grant')}
+            </Button>
+          </div>
+        </div>
+
+        {groups.length > 0 && (
+          <div>
+            <p className="text-xs font-medium text-stone-700 mb-1.5">{t('grantGroupAccess')}</p>
+            <div className="flex gap-2">
+              <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
+                <SelectTrigger className="h-9 text-sm flex-1">
+                  <SelectValue placeholder={t('selectGroup')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {groups.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      {g.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button size="sm" className="h-9 shrink-0" onClick={handleGrantGroup} disabled={granting || !selectedGroupId}>
+                {granting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t('grant')}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        <div>
+          <p className="text-xs font-medium text-stone-700 mb-1.5">{t('currentAccess')}</p>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 className="h-4 w-4 animate-spin text-stone-400" />
+            </div>
+          ) : accessList.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-2">{t('noAccessEntries')}</p>
+          ) : (
+            <div className="space-y-1 max-h-40 overflow-y-auto">
+              {accessList.map((entry) => (
+                <div
+                  key={entry.id}
+                  className="flex items-center justify-between rounded-lg border border-stone-200 bg-white px-3 py-2"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    {entry.group_id ? (
+                      <Users className="h-3.5 w-3.5 shrink-0 text-blue-500" />
+                    ) : (
+                      <Globe className="h-3.5 w-3.5 shrink-0 text-stone-400" />
+                    )}
+                    <span className="text-xs truncate">
+                      {entry.group_name ?? entry.user_email ?? entry.user_id ?? entry.group_id}
+                    </span>
+                    {entry.group_id && (
+                      <Badge variant="outline" className="text-[10px] shrink-0">{t('group')}</Badge>
+                    )}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-destructive hover:text-destructive shrink-0"
+                    onClick={() => handleRevoke(entry.id)}
+                    aria-label={t('revoke')}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
   );
 }
 
@@ -255,7 +444,8 @@ type PanelState =
   | { type: 'none' }
   | { type: 'create' }
   | { type: 'edit'; curriculum: CurriculumAdminResponse }
-  | { type: 'assign'; curriculumId: string };
+  | { type: 'assign'; curriculumId: string }
+  | { type: 'access'; curriculumId: string };
 
 export function CurriculaClient() {
   const t = useTranslations('Admin.curricula');
@@ -265,6 +455,7 @@ export function CurriculaClient() {
   const [panel, setPanel] = useState<PanelState>({ type: 'none' });
   const [deleteTarget, setDeleteTarget] = useState<CurriculumAdminResponse | null>(null);
   const [saving, setSaving] = useState(false);
+  const [togglingVisibility, setTogglingVisibility] = useState<string | null>(null);
 
   const { data: curricula = [], isLoading } = useQuery<CurriculumAdminResponse[]>({
     queryKey: ['admin', 'curricula'],
@@ -340,6 +531,20 @@ export function CurriculaClient() {
     }
   };
 
+  const handleToggleVisibility = async (curriculum: CurriculumAdminResponse) => {
+    const next = curriculum.visibility === 'public' ? 'private' : 'public';
+    setTogglingVisibility(curriculum.id);
+    try {
+      await setCurriculumVisibility(curriculum.id, next);
+      invalidate();
+      if (next === 'private') {
+        setPanel({ type: 'access', curriculumId: curriculum.id });
+      }
+    } finally {
+      setTogglingVisibility(null);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -382,6 +587,8 @@ export function CurriculaClient() {
             const title = locale === 'fr' ? curriculum.title_fr : curriculum.title_en;
             const isEditingThis = panel.type === 'edit' && panel.curriculum.id === curriculum.id;
             const isAssigningThis = panel.type === 'assign' && panel.curriculumId === curriculum.id;
+            const isAccessThis = panel.type === 'access' && panel.curriculumId === curriculum.id;
+            const isTogglingThis = togglingVisibility === curriculum.id;
 
             return (
               <div key={curriculum.id} className="space-y-2">
@@ -391,6 +598,7 @@ export function CurriculaClient() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-sm font-semibold text-stone-900 truncate">{title}</h3>
                         <StatusBadge status={curriculum.status} />
+                        <VisibilityBadge visibility={curriculum.visibility ?? 'public'} />
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {t('courseCount', { count: curriculum.course_count })} •{' '}
@@ -398,6 +606,41 @@ export function CurriculaClient() {
                       </p>
                     </div>
                     <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-9 px-2 text-xs"
+                        onClick={() => handleToggleVisibility(curriculum)}
+                        disabled={isTogglingThis || (panel.type !== 'none' && !isAccessThis)}
+                        title={curriculum.visibility === 'private' ? t('makePublic') : t('makePrivate')}
+                      >
+                        {isTogglingThis ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : curriculum.visibility === 'private' ? (
+                          <Unlock className="h-3.5 w-3.5 mr-1" />
+                        ) : (
+                          <Lock className="h-3.5 w-3.5 mr-1" />
+                        )}
+                        {curriculum.visibility === 'private' ? t('makePublic') : t('makePrivate')}
+                      </Button>
+                      {curriculum.visibility === 'private' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-9 px-2 text-xs text-amber-600 hover:text-amber-700"
+                          onClick={() =>
+                            setPanel(
+                              isAccessThis
+                                ? { type: 'none' }
+                                : { type: 'access', curriculumId: curriculum.id }
+                            )
+                          }
+                          disabled={panel.type !== 'none' && !isAccessThis}
+                        >
+                          <ShieldCheck className="h-3.5 w-3.5 mr-1" />
+                          {t('manageAccess')}
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="sm"
@@ -489,6 +732,13 @@ export function CurriculaClient() {
                     onClose={() => setPanel({ type: 'none' })}
                     onSave={handleAssign}
                     saving={saving}
+                  />
+                )}
+
+                {isAccessThis && (
+                  <AccessManagementPanel
+                    curriculumId={curriculum.id}
+                    onClose={() => setPanel({ type: 'none' })}
                   />
                 )}
               </div>
