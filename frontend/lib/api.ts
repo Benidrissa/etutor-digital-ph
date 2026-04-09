@@ -964,3 +964,122 @@ export async function removeGroupMember(groupId: string, userId: string): Promis
     method: "DELETE",
   });
 }
+
+// ── Expert Activation Codes API ───────────────────────────────
+
+export interface ActivationCodeResponse {
+  id: string;
+  code: string;
+  max_uses: number | null;
+  times_used: number;
+  status: "active" | "exhausted" | "inactive";
+  revenue_credits: number;
+  created_at: string;
+}
+
+export interface CodeRedemptionResponse {
+  id: string;
+  learner_name: string;
+  learner_email: string;
+  redeemed_at: string;
+  method: "code" | "qr" | "manual";
+  revenue_credits: number;
+}
+
+export interface GenerateCodesResponse {
+  codes: ActivationCodeResponse[];
+}
+
+export async function generateActivationCodes(
+  courseId: string,
+  count: number,
+  maxUses?: number
+): Promise<GenerateCodesResponse> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<GenerateCodesResponse>(
+    `/api/v1/expert/courses/${courseId}/codes`,
+    {
+      method: "POST",
+      body: JSON.stringify({ count, max_uses: maxUses ?? null }),
+    }
+  );
+}
+
+export async function getActivationCodes(courseId: string): Promise<ActivationCodeResponse[]> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<ActivationCodeResponse[]>(
+    `/api/v1/expert/courses/${courseId}/codes`
+  );
+}
+
+export async function getCodeRedemptions(
+  courseId: string,
+  codeId: string
+): Promise<CodeRedemptionResponse[]> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<CodeRedemptionResponse[]>(
+    `/api/v1/expert/courses/${courseId}/codes/${codeId}/redemptions`
+  );
+}
+
+export async function getCodeQR(courseId: string, codeId: string): Promise<Blob> {
+  const { authClient } = await import("./auth");
+  const token = await authClient.getValidToken();
+  const res = await fetch(
+    `${API_BASE}/api/v1/expert/courses/${courseId}/codes/${codeId}/qr`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+  if (!res.ok) throw new ApiError(`API error: ${res.status}`, res.status);
+  return res.blob();
+}
+
+export async function manualActivate(
+  courseId: string,
+  codeId: string,
+  learnerEmail: string
+): Promise<{ message: string }> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<{ message: string }>(
+    `/api/v1/expert/courses/${courseId}/codes/${codeId}/activate`,
+    {
+      method: "POST",
+      body: JSON.stringify({ learner_email: learnerEmail }),
+    }
+  );
+}
+
+// ── Learner Activation Codes API ──────────────────────────────
+
+export interface ActivationPreviewResponse {
+  code: string;
+  course_slug: string;
+  title_fr: string;
+  title_en: string;
+  description_fr?: string;
+  description_en?: string;
+  cover_image_url?: string;
+  expert_name?: string;
+}
+
+export interface ActivationRedeemResponse {
+  course_slug: string;
+  enrolled: boolean;
+}
+
+export async function previewActivationCode(code: string): Promise<ActivationPreviewResponse> {
+  return apiFetch<ActivationPreviewResponse>(`/api/v1/activate/${encodeURIComponent(code)}/preview`);
+}
+
+export async function redeemActivationCode(
+  code: string,
+  method: "code" | "qr"
+): Promise<ActivationRedeemResponse> {
+  return apiFetch<ActivationRedeemResponse>(
+    `/api/v1/activate/${encodeURIComponent(code)}/redeem`,
+    { method: "POST", body: JSON.stringify({ method }) }
+  );
+}
