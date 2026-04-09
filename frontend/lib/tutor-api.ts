@@ -244,3 +244,77 @@ export async function fetchTutorStats(): Promise<TutorStats> {
 
   return response.json();
 }
+
+const DRAFT_KEY_PREFIX = 'tutor_draft_';
+const DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+interface DraftData {
+  text: string;
+  savedAt: number;
+}
+
+export function saveDraft(conversationId: string | null, text: string): void {
+  if (typeof window === 'undefined') return;
+  const key = `${DRAFT_KEY_PREFIX}${conversationId ?? 'new'}`;
+  try {
+    if (!text) {
+      localStorage.removeItem(key);
+      return;
+    }
+    const payload: DraftData = { text, savedAt: Date.now() };
+    localStorage.setItem(key, JSON.stringify(payload));
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+export function loadDraft(conversationId: string | null): string {
+  if (typeof window === 'undefined') return '';
+  const key = `${DRAFT_KEY_PREFIX}${conversationId ?? 'new'}`;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return '';
+    const parsed: DraftData = JSON.parse(raw);
+    if (Date.now() - parsed.savedAt > DRAFT_TTL_MS) {
+      localStorage.removeItem(key);
+      return '';
+    }
+    return parsed.text;
+  } catch {
+    return '';
+  }
+}
+
+export function clearDraft(conversationId: string | null): void {
+  if (typeof window === 'undefined') return;
+  const key = `${DRAFT_KEY_PREFIX}${conversationId ?? 'new'}`;
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Ignore
+  }
+}
+
+export function clearStaleDrafts(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith(DRAFT_KEY_PREFIX)) continue;
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const parsed: DraftData = JSON.parse(raw);
+        if (Date.now() - parsed.savedAt > DRAFT_TTL_MS) {
+          keysToRemove.push(key);
+        }
+      } catch {
+        keysToRemove.push(key!);
+      }
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    // Ignore
+  }
+}
