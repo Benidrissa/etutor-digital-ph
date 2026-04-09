@@ -908,6 +908,16 @@ export interface UserGroupMember {
   joined_at: string;
 }
 
+interface GroupDetailResponse extends UserGroupResponse {
+  created_by?: string | null;
+  members: Array<{
+    user_id: string;
+    user_email: string | null;
+    user_name: string;
+    added_at: string;
+  }>;
+}
+
 export async function getAdminGroups(): Promise<UserGroupResponse[]> {
   const { authClient } = await import("./auth");
   return authClient.authenticatedFetch<UserGroupResponse[]>("/api/v1/admin/groups");
@@ -942,7 +952,13 @@ export async function deleteAdminGroup(id: string): Promise<void> {
 
 export async function getAdminGroupMembers(groupId: string): Promise<UserGroupMember[]> {
   const { authClient } = await import("./auth");
-  return authClient.authenticatedFetch<UserGroupMember[]>(`/api/v1/admin/groups/${groupId}`);
+  const detail = await authClient.authenticatedFetch<GroupDetailResponse>(`/api/v1/admin/groups/${groupId}`);
+  return detail.members.map((m) => ({
+    user_id: m.user_id,
+    email: m.user_email ?? '',
+    name: m.user_name,
+    joined_at: m.added_at,
+  }));
 }
 
 export async function addGroupMember(groupId: string, userId: string): Promise<void> {
