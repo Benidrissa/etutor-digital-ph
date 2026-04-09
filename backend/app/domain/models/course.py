@@ -49,13 +49,19 @@ class Course(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    modules: Mapped[list[Module]] = relationship(back_populates="course")
-    enrollments: Mapped[list[UserCourseEnrollment]] = relationship(back_populates="course")
-    resources: Mapped[list[CourseResource]] = relationship(back_populates="course")
+    modules: Mapped[list[Module]] = relationship(back_populates="course", passive_deletes=True)
+    enrollments: Mapped[list[UserCourseEnrollment]] = relationship(
+        back_populates="course", passive_deletes=True
+    )
+    resources: Mapped[list[CourseResource]] = relationship(
+        back_populates="course", passive_deletes=True
+    )
     taxonomy_categories: Mapped[list[TaxonomyCategory]] = relationship(
         secondary="course_taxonomy", lazy="selectin"
     )
-    preassessments: Mapped[list[CoursePreAssessment]] = relationship(back_populates="course")
+    preassessments: Mapped[list[CoursePreAssessment]] = relationship(
+        back_populates="course", passive_deletes=True
+    )
 
 
 class UserCourseEnrollment(Base):
