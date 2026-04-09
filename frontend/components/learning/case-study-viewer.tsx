@@ -36,6 +36,8 @@ interface CaseStudyData {
   country_context: string;
   content: CaseStudyContent;
   cached: boolean;
+  unit_title?: string;
+  unit_description?: string;
 }
 
 interface GeneratingResponse {
@@ -284,7 +286,7 @@ export function CaseStudyViewer({
           </Button>
         </div>
         <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3">
-          {t('unitTitle', { unit: unitId })}
+          {caseStudyData.unit_title ?? t('unitTitle', { unit: unitId })}
         </h1>
       </div>
 

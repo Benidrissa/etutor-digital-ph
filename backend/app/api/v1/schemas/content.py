@@ -236,6 +236,8 @@ class CaseStudyResponse(BaseModel):
     content: CaseStudyContent = Field(..., description="Structured case study content")
     generated_at: str = Field(..., description="Generation timestamp (ISO format)")
     cached: bool = Field(default=False, description="Whether content was retrieved from cache")
+    unit_title: str | None = Field(None, description="Unit title for display")
+    unit_description: str | None = Field(None, description="Unit description for display")
 
     model_config = {
         "json_schema_extra": {
