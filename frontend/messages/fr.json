@@ -1274,7 +1274,7 @@
     "confirmDeleteDesc": "Cette action est irréversible. La formation et tout son contenu seront définitivement supprimés.",
     "confirmDeleteTitle": "Supprimer définitivement cette formation ?",
     "confirmDeleteDescDetailed": "Cela supprimera définitivement la formation, tous les modules, le contenu généré, les inscriptions et toutes les données de progression des apprenants. Cette action est irréversible.",
-    "typeDeleteToConfirm": "Tapez SUPPRIMER pour confirmer :",
+    "typeDeleteToConfirm": "Tapez DELETE pour confirmer :",
     "confirmDeleteAction": "Supprimer la formation définitivement",
     "indexResources": "Indexer les ressources",
     "confirmIndex": "Indexer les ressources du cours ?",
