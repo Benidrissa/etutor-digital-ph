@@ -24,6 +24,7 @@ import {
   invalidateConversationsCache,
   deleteConversation,
   deleteAllConversations,
+  clearDraft,
   type ConversationSummary,
 } from '@/lib/tutor-api';
 
@@ -101,6 +102,7 @@ export function TutorPageClient() {
     try {
       await deleteConversation(id);
     } catch { /* proxy may block response */ }
+    clearDraft(id);
     if (selectedConversation === id) {
       setSelectedConversation(null);
     }
@@ -112,6 +114,8 @@ export function TutorPageClient() {
     try {
       await deleteAllConversations();
     } catch { /* proxy may block response */ }
+    conversations.forEach((c) => clearDraft(c.id));
+    clearDraft(null);
     setSelectedConversation(null);
     setShowClearAllDialog(false);
     await loadConversations();

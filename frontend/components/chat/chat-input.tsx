@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Send, Paperclip } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { uploadTutorFile } from '@/lib/tutor-api';
+import { uploadTutorFile, saveDraft, loadDraft, clearDraft } from '@/lib/tutor-api';
 import { FilePreview, type PendingFile } from '@/components/chat/file-preview';
 
 const ACCEPTED_TYPES = [
@@ -34,21 +34,47 @@ interface ChatInputProps {
   onSendMessage: (message: string, attachedFiles: AttachedFileInfo[]) => void;
   disabled?: boolean;
   placeholder?: string;
+  conversationId?: string | null;
 }
 
 function generateLocalId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export function ChatInput({ onSendMessage, disabled = false, placeholder }: ChatInputProps) {
+export function ChatInput({ onSendMessage, disabled = false, placeholder, conversationId = null }: ChatInputProps) {
   const t = useTranslations('ChatTutor');
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState(() => loadDraft(conversationId));
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const conversationIdRef = useRef<string | null>(conversationId);
+
+  useEffect(() => {
+    conversationIdRef.current = conversationId;
+  }, [conversationId]);
 
   const actualPlaceholder = placeholder || t('placeholder');
+
+  useEffect(() => {
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = setTimeout(() => {
+      saveDraft(conversationIdRef.current, message);
+    }, 300);
+    return () => {
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    };
+  }, [message]);
+
+  useEffect(() => {
+    const flush = () => {
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+      saveDraft(conversationIdRef.current, message);
+    };
+    window.addEventListener('beforeunload', flush);
+    return () => window.removeEventListener('beforeunload', flush);
+  }, [message]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,6 +88,8 @@ export function ChatInput({ onSendMessage, disabled = false, placeholder }: Chat
         mimeType: f.file.type,
         sizeBytes: f.file.size,
       }));
+      clearDraft(conversationIdRef.current);
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
       onSendMessage(trimmedMessage || ' ', attachedFiles);
       setMessage('');
       setPendingFiles([]);

@@ -39,6 +39,8 @@ import {
   invalidateConversationCache,
   invalidateConversationsCache,
   deleteConversation as apiDeleteConversation,
+  clearDraft,
+  clearStaleDrafts,
 } from '@/lib/tutor-api';
 
 interface ChatPanelProps {
@@ -138,6 +140,10 @@ export function ChatPanel({
         setCurrentUsage(stats.daily_messages_used);
       })
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    clearStaleDrafts();
   }, []);
 
   useEffect(() => {
@@ -374,7 +380,9 @@ export function ChatPanel({
       try {
         await apiDeleteConversation(activeConversationId);
       } catch { /* proxy may block response */ }
+      clearDraft(activeConversationId);
     }
+    clearDraft(null);
     setMessages([welcomeMessage]);
     setActiveConversationId(null);
     setShowClearDialog(false);
@@ -527,8 +535,10 @@ export function ChatPanel({
           )}
 
           <ChatInput
+            key={activeConversationId ?? 'new'}
             onSendMessage={handleSendMessage}
             disabled={isLimitReached || limitReached || isLoading}
+            conversationId={activeConversationId}
           />
         </div>
       </div>
