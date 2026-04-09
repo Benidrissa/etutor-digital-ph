@@ -221,11 +221,15 @@ export function CaseStudyViewer({
   };
 
   const isStretchQuestion = (question: string): boolean => {
-    return /^STRETCH\s*[-–—]/i.test(question.trim());
+    // Matches "STRETCH — ..." at start or "(STRETCH – Level N – Label)" inline
+    return /^STRETCH\s*[-–—]/i.test(question.trim()) || /\(STRETCH\s*[-–—]/i.test(question);
   };
 
-  const stripStretchPrefix = (question: string): string => {
-    return question.trim().replace(/^STRETCH\s*[-–—]\s*/i, '');
+  const stripStretchLabel = (question: string): string => {
+    // Strip "STRETCH — " prefix or "(STRETCH – Level N – Label)" inline marker
+    return question.trim()
+      .replace(/^STRETCH\s*[-–—]\s*/i, '')
+      .replace(/\(STRETCH\s*[-–—][^)]*\)\s*:?\s*/i, '');
   };
 
   const mdClass =
@@ -451,7 +455,7 @@ export function CaseStudyViewer({
                       </div>
                     )}
                     <div className={mdClass}>
-                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{stretch ? stripStretchPrefix(question) : question}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{stretch ? stripStretchLabel(question) : question}</ReactMarkdown>
                     </div>
                   </div>
                 </li>
