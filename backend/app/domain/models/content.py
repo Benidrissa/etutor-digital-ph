@@ -33,8 +33,12 @@ class GeneratedContent(Base):
     validated: Mapped[bool] = mapped_column(Boolean, server_default="false")
 
     module: Mapped[Module] = relationship(back_populates="generated_content")
-    quiz_attempts: Mapped[list[QuizAttempt]] = relationship(back_populates="quiz")
-    summative_attempts: Mapped[list[SummativeAssessmentAttempt]] = relationship(
-        back_populates="assessment"
+    quiz_attempts: Mapped[list[QuizAttempt]] = relationship(
+        back_populates="quiz", passive_deletes=True
     )
-    flashcard_reviews: Mapped[list[FlashcardReview]] = relationship(back_populates="card")
+    summative_attempts: Mapped[list[SummativeAssessmentAttempt]] = relationship(
+        back_populates="assessment", passive_deletes=True
+    )
+    flashcard_reviews: Mapped[list[FlashcardReview]] = relationship(
+        back_populates="card", passive_deletes=True
+    )

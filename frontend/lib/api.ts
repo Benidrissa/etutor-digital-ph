@@ -1051,3 +1051,35 @@ export async function manualActivate(
     }
   );
 }
+
+// ── Learner Activation Codes API ──────────────────────────────
+
+export interface ActivationPreviewResponse {
+  code: string;
+  course_slug: string;
+  title_fr: string;
+  title_en: string;
+  description_fr?: string;
+  description_en?: string;
+  cover_image_url?: string;
+  expert_name?: string;
+}
+
+export interface ActivationRedeemResponse {
+  course_slug: string;
+  enrolled: boolean;
+}
+
+export async function previewActivationCode(code: string): Promise<ActivationPreviewResponse> {
+  return apiFetch<ActivationPreviewResponse>(`/api/v1/activate/${encodeURIComponent(code)}/preview`);
+}
+
+export async function redeemActivationCode(
+  code: string,
+  method: "code" | "qr"
+): Promise<ActivationRedeemResponse> {
+  return apiFetch<ActivationRedeemResponse>(
+    `/api/v1/activate/${encodeURIComponent(code)}/redeem`,
+    { method: "POST", body: JSON.stringify({ method }) }
+  );
+}
