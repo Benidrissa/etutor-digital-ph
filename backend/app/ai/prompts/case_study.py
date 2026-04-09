@@ -82,7 +82,7 @@ def _get_case_study_topic(
     syllabus_json: dict | None = None,
 ) -> str | None:
     """Resolve case study topic from syllabus_json or fallback to CASE_STUDY_TOPICS."""
-    if syllabus_json:
+    if syllabus_json and isinstance(syllabus_json, dict):
         case_study_topics = syllabus_json.get("case_study_topics") or syllabus_json.get(
             "case_studies"
         )

@@ -41,14 +41,22 @@ class TextChunker:
         """Count tokens in text using the specified encoding."""
         return len(self.encoding.encode(text))
 
+    _ABBREV_RE = re.compile(
+        r"\b(?:Fig|fig|Ch|ch|Vol|vol|No|no|Dr|dr|Mr|mr|Mrs|mrs|vs|al|eg|pp|etc|approx|est)\."
+    )
+    _DECIMAL_RE = re.compile(r"\d\.\d")
+    _SENTENCE_END_RE = re.compile(r"[.!?]+(?:\s|$)")
+
     def split_into_sentences(self, text: str) -> list[str]:
         """Split text into sentences while preserving sentence boundaries."""
-        # Handle French and English sentence endings
-        sentence_endings = r"[.!?]+(?:\s|$)"
-        sentences = re.split(sentence_endings, text)
+        placeholder = "\x00"
 
-        # Clean up and filter empty sentences
-        sentences = [s.strip() for s in sentences if s.strip()]
+        protected = self._ABBREV_RE.sub(lambda m: m.group().replace(".", placeholder), text)
+        protected = self._DECIMAL_RE.sub(lambda m: m.group().replace(".", placeholder), protected)
+
+        parts = self._SENTENCE_END_RE.split(protected)
+
+        sentences = [s.replace(placeholder, ".").strip() for s in parts if s.strip()]
         return sentences
 
     def chunk_document(
@@ -89,6 +97,33 @@ class TextChunker:
 
         for sentence in sentences:
             sentence_tokens = self.count_tokens(sentence)
+
+            if sentence_tokens > self.chunk_size:
+                sub_sentences = self._split_by_tokens(sentence, self.chunk_size)
+                for sub in sub_sentences:
+                    sub_tokens = self.count_tokens(sub)
+                    if current_token_count + sub_tokens > self.chunk_size and current_chunk:
+                        yield DocumentChunk(
+                            content=current_chunk.strip(),
+                            token_count=current_token_count,
+                            chunk_index=chunk_index,
+                            source=source,
+                            chapter=chapter,
+                            page=page,
+                            level=level,
+                            language=language,
+                        )
+                        chunk_index += 1
+                        overlap_text = self._get_overlap_text(current_chunk, self.overlap_size)
+                        current_chunk = overlap_text + " " + sub
+                        current_token_count = self.count_tokens(current_chunk)
+                    else:
+                        if current_chunk:
+                            current_chunk += " " + sub
+                        else:
+                            current_chunk = sub
+                        current_token_count += sub_tokens
+                continue
 
             # If adding this sentence would exceed chunk size, finalize current chunk
             if current_token_count + sentence_tokens > self.chunk_size and current_chunk:
@@ -144,6 +179,15 @@ class TextChunker:
         text = re.sub(r"([a-z])([A-Z])", r"\1. \2", text)  # Fix missing sentence breaks
 
         return text.strip()
+
+    def _split_by_tokens(self, text: str, max_tokens: int) -> list[str]:
+        """Split text into segments of at most max_tokens using tiktoken."""
+        tokens = self.encoding.encode(text)
+        segments = []
+        for i in range(0, len(tokens), max_tokens):
+            segment = self.encoding.decode(tokens[i : i + max_tokens])
+            segments.append(segment)
+        return segments
 
     def _get_overlap_text(self, text: str, target_tokens: int) -> str:
         """Get the last N tokens worth of text for overlap."""
