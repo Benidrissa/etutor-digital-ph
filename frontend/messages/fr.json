@@ -365,7 +365,7 @@
     "loading": "Chargement de la conversation...",
     "welcomeMessage": "Bonjour ! Je suis votre tuteur IA. Posez-moi des questions sur vos cours, modules ou concepts — je suis là pour vous aider dans vos études.",
     "emptyState": "Commencer une conversation",
-    "emptyStateDescription": "Posez des questions, demandez des quiz, ou obtenez des explications sur les sujets de santé publique",
+    "emptyStateDescription": "Posez des questions, demandez des quiz, ou obtenez des explications sur vos sujets de cours",
     "moreThan99": "99+",
     "publicHealthFundamentals": "Fondamentaux de la Santé Publique",
     "epidemiologyBasics": "Bases de l'Épidémiologie",

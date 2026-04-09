@@ -365,7 +365,7 @@
     "loading": "Loading conversation...",
     "welcomeMessage": "Hello! I'm your AI tutor. Ask me anything about your courses, modules, or concepts — I'm here to help with your studies.",
     "emptyState": "Start a conversation",
-    "emptyStateDescription": "Ask questions, request quizzes, or get explanations about public health topics",
+    "emptyStateDescription": "Ask questions, request quizzes, or get explanations about your course topics",
     "moreThan99": "99+",
     "publicHealthFundamentals": "Public Health Fundamentals",
     "epidemiologyBasics": "Epidemiology Basics",

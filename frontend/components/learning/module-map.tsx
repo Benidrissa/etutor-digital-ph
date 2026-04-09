@@ -73,18 +73,19 @@ export function ModuleMap({ onModuleClick, courseId }: ModuleMapProps) {
         } else {
           const enrollments = await getMyEnrollments();
           if (cancelled) return;
-          const groups: CourseGroup[] = [];
-          for (const course of enrollments) {
-            const progressData = await getAllModuleProgress(course.id);
-            if (cancelled) return;
-            if (progressData.length > 0) {
-              groups.push({
-                courseId: course.id,
-                courseName: locale === 'fr' ? course.title_fr : course.title_en,
-                modules: progressData.map(apiProgressToModule),
-              });
-            }
-          }
+          const progressResults = await Promise.all(
+            enrollments.map((course: CourseWithEnrollment) =>
+              getAllModuleProgress(course.id).then((data) => ({ course, data }))
+            )
+          );
+          if (cancelled) return;
+          const groups: CourseGroup[] = progressResults
+            .filter(({ data }) => data.length > 0)
+            .map(({ course, data }) => ({
+              courseId: course.id,
+              courseName: locale === 'fr' ? course.title_fr : course.title_en,
+              modules: data.map(apiProgressToModule),
+            }));
           setCourseGroups(groups);
         }
         setLoading(false);
@@ -100,7 +101,8 @@ export function ModuleMap({ onModuleClick, courseId }: ModuleMapProps) {
     return () => {
       cancelled = true;
     };
-  }, [courseId, locale, t]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseId, locale]);
 
   const getGroupProgress = (modules: Module[]) => {
     const completedModules = modules.filter((m) => m.status === 'completed').length;
