@@ -50,13 +50,19 @@ export function ChatInput({ onSendMessage, disabled = false, placeholder, conver
   const fileInputRef = useRef<HTMLInputElement>(null);
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const conversationIdRef = useRef<string | null>(conversationId);
+  const messageRef = useRef(message);
 
   useEffect(() => {
     conversationIdRef.current = conversationId;
   }, [conversationId]);
 
+  useEffect(() => {
+    messageRef.current = message;
+  }, [message]);
+
   const actualPlaceholder = placeholder || t('placeholder');
 
+  // Debounced draft save on every keystroke
   useEffect(() => {
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
     draftTimerRef.current = setTimeout(() => {
@@ -67,14 +73,18 @@ export function ChatInput({ onSendMessage, disabled = false, placeholder, conver
     };
   }, [message]);
 
+  // Flush draft on unmount (conversation switch, panel close) and beforeunload
   useEffect(() => {
     const flush = () => {
       if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
-      saveDraft(conversationIdRef.current, message);
+      saveDraft(conversationIdRef.current, messageRef.current);
     };
     window.addEventListener('beforeunload', flush);
-    return () => window.removeEventListener('beforeunload', flush);
-  }, [message]);
+    return () => {
+      window.removeEventListener('beforeunload', flush);
+      flush();
+    };
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
