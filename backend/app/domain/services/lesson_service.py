@@ -877,7 +877,11 @@ class CaseStudyGenerationService:
             )
             stream_module_title = module.title_fr if language == "fr" else module.title_en
             stream_learning_objectives = (
-                (module.learning_objectives_fr if language == "fr" else module.learning_objectives_en)
+                (
+                    module.learning_objectives_fr
+                    if language == "fr"
+                    else module.learning_objectives_en
+                )
                 if hasattr(module, "learning_objectives_fr")
                 else None
             )

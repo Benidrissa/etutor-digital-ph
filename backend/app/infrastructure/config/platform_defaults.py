@@ -795,7 +795,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "Required JSON structure:\n"
             "{{\n"
             '  "aof_context": "string — 2-3 paragraphs: geographic, economic,'
-            " institutional context of {country} with relevant indicators\",\n"
+            ' institutional context of {country} with relevant indicators",\n'
             '  "real_data": "string — tables/structured lists: quantitative data,'
             ' timeline, geographic distribution, with sources",\n'
             '  "guided_questions": [\n'
