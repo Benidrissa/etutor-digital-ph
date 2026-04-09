@@ -497,7 +497,9 @@ async def unenroll_from_course(
     module_ids_subq = select(Module.id).where(Module.course_id == course_id).scalar_subquery()
     content_ids_subq = (
         select(GeneratedContent.id)
-        .where(GeneratedContent.module_id.in_(select(Module.id).where(Module.course_id == course_id)))
+        .where(
+            GeneratedContent.module_id.in_(select(Module.id).where(Module.course_id == course_id))
+        )
         .scalar_subquery()
     )
 
