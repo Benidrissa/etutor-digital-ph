@@ -103,7 +103,7 @@ class RedemptionResponse(BaseModel):
     learner_email: str
     redeemed_at: str
     method: str
-    revenue_credits: int
+    revenue_credits: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -271,14 +271,14 @@ async def list_redemptions(
 
     redemptions_result = await db.execute(
         select(ActivationCodeRedemption)
-        .where(ActivationCodeRedemption.activation_code_id == code_id)
+        .where(ActivationCodeRedemption.code_id == code_id)
         .order_by(ActivationCodeRedemption.redeemed_at.desc())
     )
     redemptions = redemptions_result.scalars().all()
 
     responses: list[RedemptionResponse] = []
     for r in redemptions:
-        user_result = await db.execute(select(User).where(User.id == r.learner_id))
+        user_result = await db.execute(select(User).where(User.id == r.user_id))
         learner = user_result.scalar_one_or_none()
         responses.append(
             RedemptionResponse(
@@ -286,7 +286,7 @@ async def list_redemptions(
                 learner_email=learner.email or "" if learner else "",
                 redeemed_at=r.redeemed_at.isoformat(),
                 method=r.method,
-                revenue_credits=r.revenue_credits,
+                revenue_credits=0,
             )
         )
     return responses
@@ -334,8 +334,8 @@ async def manual_activate(
 
     redemption = ActivationCodeRedemption(
         id=uuid.uuid4(),
-        activation_code_id=code_id,
-        learner_id=learner.id,
+        code_id=code_id,
+        user_id=learner.id,
         method="manual",
     )
     db.add(redemption)
@@ -481,8 +481,8 @@ async def redeem_code(
 
     dup = await db.execute(
         select(ActivationCodeRedemption).where(
-            ActivationCodeRedemption.activation_code_id == ac.id,
-            ActivationCodeRedemption.learner_id == learner_id,
+            ActivationCodeRedemption.code_id == ac.id,
+            ActivationCodeRedemption.user_id == learner_id,
         )
     )
     if dup.scalar_one_or_none() is not None:
@@ -495,8 +495,8 @@ async def redeem_code(
 
     redemption = ActivationCodeRedemption(
         id=uuid.uuid4(),
-        activation_code_id=ac.id,
-        learner_id=learner_id,
+        code_id=ac.id,
+        user_id=learner_id,
         method="code",
     )
     db.add(redemption)
