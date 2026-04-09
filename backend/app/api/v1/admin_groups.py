@@ -5,6 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
 from app.api.deps import get_db as get_db_session
@@ -83,7 +84,11 @@ async def list_groups(
     db=Depends(get_db_session),
 ) -> list[GroupResponse]:
     """List all user groups. Admin only."""
-    result = await db.execute(select(UserGroup).order_by(UserGroup.created_at.desc()))
+    result = await db.execute(
+        select(UserGroup)
+        .options(selectinload(UserGroup.members))
+        .order_by(UserGroup.created_at.desc())
+    )
     groups = result.scalars().all()
     return [_group_to_response(g) for g in groups]
 
@@ -110,9 +115,14 @@ async def create_group(
     )
     db.add(group)
     await db.commit()
-    await db.refresh(group)
-    logger.info("User group created", group_id=str(group.id), admin_id=current_user.id)
-    return _group_to_detail_response(group)
+    group_id = group.id
+    logger.info("User group created", group_id=str(group_id), admin_id=current_user.id)
+    refreshed = await db.execute(
+        select(UserGroup)
+        .options(selectinload(UserGroup.members).selectinload(UserGroupMember.user))
+        .where(UserGroup.id == group_id)
+    )
+    return _group_to_detail_response(refreshed.scalar_one())
 
 
 @router.get("/{group_id}", response_model=GroupDetailResponse)
@@ -122,7 +132,11 @@ async def get_group(
     db=Depends(get_db_session),
 ) -> GroupDetailResponse:
     """Get group detail with members. Admin only."""
-    result = await db.execute(select(UserGroup).where(UserGroup.id == group_id))
+    result = await db.execute(
+        select(UserGroup)
+        .options(selectinload(UserGroup.members).selectinload(UserGroupMember.user))
+        .where(UserGroup.id == group_id)
+    )
     group = result.scalar_one_or_none()
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
@@ -137,7 +151,11 @@ async def update_group(
     db=Depends(get_db_session),
 ) -> GroupDetailResponse:
     """Update group name or description. Admin only."""
-    result = await db.execute(select(UserGroup).where(UserGroup.id == group_id))
+    result = await db.execute(
+        select(UserGroup)
+        .options(selectinload(UserGroup.members).selectinload(UserGroupMember.user))
+        .where(UserGroup.id == group_id)
+    )
     group = result.scalar_one_or_none()
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
@@ -154,9 +172,13 @@ async def update_group(
         setattr(group, field, value)
 
     await db.commit()
-    await db.refresh(group)
     logger.info("User group updated", group_id=str(group_id), admin_id=current_user.id)
-    return _group_to_detail_response(group)
+    refreshed = await db.execute(
+        select(UserGroup)
+        .options(selectinload(UserGroup.members).selectinload(UserGroupMember.user))
+        .where(UserGroup.id == group_id)
+    )
+    return _group_to_detail_response(refreshed.scalar_one())
 
 
 @router.delete("/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -166,7 +188,9 @@ async def delete_group(
     db=Depends(get_db_session),
 ) -> None:
     """Delete a user group. Admin only."""
-    result = await db.execute(select(UserGroup).where(UserGroup.id == group_id))
+    result = await db.execute(
+        select(UserGroup).options(selectinload(UserGroup.members)).where(UserGroup.id == group_id)
+    )
     group = result.scalar_one_or_none()
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
@@ -188,7 +212,11 @@ async def add_member(
     db=Depends(get_db_session),
 ) -> GroupDetailResponse:
     """Add a user to a group. Admin only."""
-    group_result = await db.execute(select(UserGroup).where(UserGroup.id == group_id))
+    group_result = await db.execute(
+        select(UserGroup)
+        .options(selectinload(UserGroup.members).selectinload(UserGroupMember.user))
+        .where(UserGroup.id == group_id)
+    )
     group = group_result.scalar_one_or_none()
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
@@ -215,14 +243,18 @@ async def add_member(
 
     db.add(UserGroupMember(group_id=group_id, user_id=user_id))
     await db.commit()
-    await db.refresh(group)
     logger.info(
         "Member added to group",
         group_id=str(group_id),
         user_id=str(user_id),
         admin_id=current_user.id,
     )
-    return _group_to_detail_response(group)
+    refreshed = await db.execute(
+        select(UserGroup)
+        .options(selectinload(UserGroup.members).selectinload(UserGroupMember.user))
+        .where(UserGroup.id == group_id)
+    )
+    return _group_to_detail_response(refreshed.scalar_one())
 
 
 @router.delete("/{group_id}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
