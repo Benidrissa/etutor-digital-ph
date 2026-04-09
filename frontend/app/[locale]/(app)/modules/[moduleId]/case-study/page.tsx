@@ -25,7 +25,13 @@ export default async function CaseStudyPage({ params, searchParams }: CaseStudyP
   const staticModule = CURRICULUM_MODULES.find((m) => m.id === moduleId);
   const learningObjectives = staticModule?.learningObjectives?.[language];
 
-  const matchedUnit = moduleData?.units?.find((u) => u.id === unitId);
+  // unitId is "M01-U09" format; API units use UUID id and "1.9" unit_number
+  // Match by unit_number: extract module & unit numbers from "MXX-UYY" → "X.Y"
+  const unitNumMatch = unitId.match(/^M0*(\d+)-U0*(\d+)$/);
+  const unitNumber = unitNumMatch ? `${unitNumMatch[1]}.${unitNumMatch[2]}` : null;
+  const matchedUnit = moduleData?.units?.find(
+    (u) => u.id === unitId || (unitNumber && u.unit_number === unitNumber)
+  );
   const unitDescription = matchedUnit
     ? (language === 'fr' ? matchedUnit.description_fr : matchedUnit.description_en)
     : undefined;
