@@ -5,7 +5,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
-    BIGINT,
     Boolean,
     DateTime,
     ForeignKey,
