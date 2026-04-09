@@ -156,7 +156,11 @@ async def list_published_courses(
     db=Depends(get_db_session),
 ) -> list[CourseListItem]:
     """Browse published courses. No auth required. Use ?curriculum= to scope to a curriculum."""
-    stmt = select(Course).where(Course.status == "published").order_by(Course.published_at.desc())
+    stmt = (
+        select(Course)
+        .where(Course.status == "published", Course.visibility != "private")
+        .order_by(Course.published_at.desc())
+    )
 
     if curriculum:
         curriculum_obj: Curriculum | None = None
