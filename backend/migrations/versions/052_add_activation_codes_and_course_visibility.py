@@ -69,9 +69,7 @@ def upgrade() -> None:
             ["credit_transaction_id"], ["transactions.id"], ondelete="SET NULL"
         ),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "code_id", "user_id", name="uq_activation_code_redemptions_code_user"
-        ),
+        sa.UniqueConstraint("code_id", "user_id", name="uq_activation_code_redemptions_code_user"),
     )
     op.create_index(
         "ix_activation_code_redemptions_code_id", "activation_code_redemptions", ["code_id"]
