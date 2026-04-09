@@ -884,7 +884,14 @@
     "preassessmentMandatoryTitle": "Pre-Assessment Required",
     "preassessmentMandatoryDesc": "You must complete the pre-assessment before accessing course modules.",
     "preassessmentCta": "Start Pre-Assessment",
-    "preassessmentRequiredTooltip": "Complete the pre-assessment to unlock course modules."
+    "preassessmentRequiredTooltip": "Complete the pre-assessment to unlock course modules.",
+    "unenroll": "Unenroll from this course",
+    "unenrollTitle": "Unenroll from this course?",
+    "unenrollDescription": "All your progress will be permanently deleted: quiz scores, flashcard reviews, lesson readings, tutor conversations, and module progress. This cannot be undone.",
+    "unenrollConfirm": "Unenroll and delete my data",
+    "unenrolling": "Unenrolling...",
+    "unenrollSuccess": "Successfully unenrolled. All course data has been deleted.",
+    "unenrollError": "Failed to unenroll. Please try again."
   },
   "Privacy": {
     "title": "Privacy & Analytics",
@@ -1213,7 +1220,8 @@
     "allLevels": "All levels",
     "allAudiences": "All audiences",
     "clearFilters": "Clear filters",
-    "activeFilters": "{count, plural, one {# active filter} other {# active filters}}"
+    "activeFilters": "{count, plural, one {# active filter} other {# active filters}}",
+    "cancel": "Cancel"
   },
   "AdminCourses": {
     "pageTitle": "Course Management",
@@ -1265,6 +1273,10 @@
     "deleteCourse": "Delete",
     "confirmDelete": "Delete course?",
     "confirmDeleteDesc": "This action cannot be undone. The course and all its content will be permanently deleted.",
+    "confirmDeleteTitle": "Permanently delete this course?",
+    "confirmDeleteDescDetailed": "This will permanently delete the course, all modules, generated content, enrollments, and all learner progress data. This action cannot be undone.",
+    "typeDeleteToConfirm": "Type DELETE to confirm:",
+    "confirmDeleteAction": "Delete course permanently",
     "indexResources": "Index Resources",
     "confirmIndex": "Index course resources?",
     "confirmIndexDesc": "This will index all uploaded PDFs into the vector database to enable AI content generation.",

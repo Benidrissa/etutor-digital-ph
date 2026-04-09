@@ -20,6 +20,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -85,6 +86,7 @@ export function CoursesClient() {
   const [wizardResumeCourse, setWizardResumeCourse] = useState<AdminCourse | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [imagesIndexed, setImagesIndexed] = useState<number | null>(null);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [generateTaskId, setGenerateTaskId] = useState<string | null>(null);
@@ -116,11 +118,15 @@ export function CoursesClient() {
 
   const deleteMutation = useMutation({
     mutationFn: (courseId: string) =>
-      apiFetch(`/api/v1/admin/courses/${courseId}`, { method: 'DELETE' }),
+      apiFetch(`/api/v1/admin/courses/${courseId}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ confirmation_text: 'DELETE' }),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'courses'] });
       setPendingAction(null);
       setActionError(null);
+      setDeleteConfirmText('');
     },
     onError: (err: unknown) =>
       setActionError(err instanceof ApiError ? err.message : t('actionError')),
@@ -381,7 +387,7 @@ export function CoursesClient() {
       )}
 
       <AlertDialog
-        open={pendingAction !== null && pendingAction.type !== 'generate'}
+        open={pendingAction !== null && pendingAction.type !== 'generate' && pendingAction.type !== 'delete'}
         onOpenChange={(open) => !open && setPendingAction(null)}
       >
         <AlertDialogContent>
@@ -400,9 +406,45 @@ export function CoursesClient() {
             <AlertDialogAction
               onClick={handleConfirmAction}
               disabled={publishMutation.isPending || archiveMutation.isPending || deleteMutation.isPending}
-              className={pendingAction?.type === 'delete' ? 'bg-destructive hover:bg-destructive/90' : ''}
             >
               {t('confirm')}
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={pendingAction?.type === 'delete'}
+        onOpenChange={(open) => { if (!open) { setPendingAction(null); setDeleteConfirmText(''); setActionError(null); } }}
+      >
+        <AlertDialogContent>
+          <AlertDialogTitle>{t('confirmDeleteTitle')}</AlertDialogTitle>
+          <AlertDialogDescription>{t('confirmDeleteDescDetailed')}</AlertDialogDescription>
+          <div className="mt-3 space-y-1.5">
+            <label className="text-sm font-medium" htmlFor="delete-confirm-input">
+              {t('typeDeleteToConfirm')}
+            </label>
+            <Input
+              id="delete-confirm-input"
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder="DELETE"
+              className="font-mono"
+            />
+          </div>
+          {actionError && (
+            <p className="text-sm text-destructive mt-2" role="alert">{actionError}</p>
+          )}
+          <div className="flex justify-end gap-3 mt-4">
+            <AlertDialogCancel onClick={() => { setPendingAction(null); setDeleteConfirmText(''); setActionError(null); }}>
+              {t('cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => pendingAction?.type === 'delete' && deleteMutation.mutate(pendingAction.course.id)}
+              disabled={deleteConfirmText !== 'DELETE' || deleteMutation.isPending}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {t('confirmDeleteAction')}
             </AlertDialogAction>
           </div>
         </AlertDialogContent>
@@ -582,15 +624,13 @@ function CourseRow({
                   {t('archive')}
                 </DropdownMenuItem>
               )}
-              {course.status === 'draft' && (
-                <DropdownMenuItem
-                  onClick={() => onDelete(course)}
-                  className="text-destructive"
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  {t('deleteCourse')}
-                </DropdownMenuItem>
-              )}
+              <DropdownMenuItem
+                onClick={() => onDelete(course)}
+                className="text-destructive"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                {t('deleteCourse')}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
