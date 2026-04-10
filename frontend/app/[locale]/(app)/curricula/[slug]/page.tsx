@@ -3,11 +3,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { useParams, useSearchParams, useRouter, usePathname } from 'next/navigation';
-import { GraduationCap, BookOpen, X } from 'lucide-react';
+import { GraduationCap, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CourseCard } from '@/components/learning/course-card';
 import { ShareButton } from '@/components/shared/share-button';
-import { FilterChips, type FilterSection } from '@/components/learning/filter-chips';
+import { CourseFilterBar } from '@/components/learning/course-filter-bar';
+import { type FilterSection } from '@/components/learning/filter-chips';
 import {
   getCurriculumBySlug,
   getCourses,
@@ -47,8 +48,9 @@ export default function CurriculumPage() {
   const activeDomain = searchParams.get('domain');
   const activeLevel = searchParams.get('level');
   const activeAudience = searchParams.get('audience');
+  const activeSearch = searchParams.get('search');
   const activeFilterCount =
-    (activeDomain ? 1 : 0) + (activeLevel ? 1 : 0) + (activeAudience ? 1 : 0);
+    (activeDomain ? 1 : 0) + (activeLevel ? 1 : 0) + (activeAudience ? 1 : 0) + (activeSearch ? 1 : 0);
 
   const updateFilter = useCallback(
     (key: string, value: string | null) => {
@@ -98,6 +100,7 @@ export default function CurriculumPage() {
       course_domain: activeDomain ?? undefined,
       course_level: activeLevel ?? undefined,
       audience_type: activeAudience ?? undefined,
+      search: activeSearch ?? undefined,
       curriculum: slug,
     })
       .then((data) => {
@@ -115,7 +118,7 @@ export default function CurriculumPage() {
     return () => {
       cancelled = true;
     };
-  }, [curriculum, slug, activeDomain, activeLevel, activeAudience]);
+  }, [curriculum, slug, activeDomain, activeLevel, activeAudience, activeSearch]);
 
   const title = curriculum
     ? locale === 'fr'
@@ -196,32 +199,16 @@ export default function CurriculumPage() {
 
           {/* Filters (within curriculum scope) */}
           {taxonomy && (
-            <div className="mb-6 space-y-3 bg-stone-50 rounded-xl p-4 border border-stone-200">
-              {filterSections.map((section) => (
-                <FilterChips
-                  key={section.key}
-                  section={section}
-                  active={activeValues[section.key]}
-                  locale={locale}
-                  onToggle={updateFilter}
-                />
-              ))}
-              {activeFilterCount > 0 && (
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-xs text-stone-500">
-                    {tCourses('activeFilters', { count: activeFilterCount })}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={clearFilters}
-                    className="inline-flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700 font-medium"
-                  >
-                    <X className="h-3 w-3" />
-                    {tCourses('clearFilters')}
-                  </button>
-                </div>
-              )}
-            </div>
+            <CourseFilterBar
+              filterSections={filterSections}
+              activeValues={activeValues}
+              activeSearch={activeSearch}
+              courseCount={courses.length}
+              loading={loading}
+              locale={locale}
+              onUpdateFilter={updateFilter}
+              onClearFilters={clearFilters}
+            />
           )}
         </>
       )}
