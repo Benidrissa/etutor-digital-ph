@@ -49,7 +49,7 @@ export function QuizContainer({
   const { getSetting } = useSettings();
   const unitQuestionsCount = getSetting<number>("quiz-unit-questions-count", 10);
   const currentUser = useCurrentUser();
-  const resolvedCountry = country || currentUser?.country || 'SN';
+  const resolvedCountry = country || currentUser?.country || 'CI';
   
   const [state, setState] = useState<QuizState>('loading');
   const [quiz, setQuiz] = useState<Quiz | null>(null);
