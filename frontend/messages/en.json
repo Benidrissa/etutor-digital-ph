@@ -1231,6 +1231,9 @@
     "allAudiences": "All audiences",
     "clearFilters": "Clear filters",
     "activeFilters": "{count, plural, one {# active filter} other {# active filters}}",
+    "searchPlaceholder": "Search courses...",
+    "showingCourses": "{count, plural, one {Showing # course} other {Showing # courses}}",
+    "filters": "Filters",
     "cancel": "Cancel",
     "manageCodes": "Manage Activation Codes"
   },

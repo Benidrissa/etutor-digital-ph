@@ -3,71 +3,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
-import { GraduationCap, X } from 'lucide-react';
+import { GraduationCap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CourseCard } from '@/components/learning/course-card';
+import { CourseFilterBar } from '@/components/learning/course-filter-bar';
+import { type FilterSection } from '@/components/learning/filter-chips';
 import {
   getCourses,
   getCourseTaxonomy,
   type CourseResponse,
   type TaxonomyItem,
 } from '@/lib/api';
-
-interface FilterSection {
-  key: string;
-  label: string;
-  allLabel: string;
-  items: TaxonomyItem[];
-}
-
-function FilterChips({
-  section,
-  active,
-  locale,
-  onToggle,
-}: {
-  section: FilterSection;
-  active: string | null;
-  locale: 'fr' | 'en';
-  onToggle: (key: string, value: string | null) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-xs font-medium text-stone-500 uppercase tracking-wide">
-        {section.label}
-      </span>
-      <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
-        <button
-          type="button"
-          onClick={() => onToggle(section.key, null)}
-          className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors min-h-[36px] ${
-            !active
-              ? 'bg-teal-600 text-white'
-              : 'bg-stone-100 text-stone-600 hover:bg-stone-200 border border-stone-200'
-          }`}
-        >
-          {section.allLabel}
-        </button>
-        {section.items.map((item) => (
-          <button
-            key={item.value}
-            type="button"
-            onClick={() =>
-              onToggle(section.key, active === item.value ? null : item.value)
-            }
-            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors min-h-[36px] ${
-              active === item.value
-                ? 'bg-teal-600 text-white'
-                : 'bg-stone-100 text-stone-600 hover:bg-stone-200 border border-stone-200'
-            }`}
-          >
-            {locale === 'fr' ? item.label_fr : item.label_en}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 export default function CoursesPage() {
   const t = useTranslations('Courses');
@@ -89,8 +35,7 @@ export default function CoursesPage() {
   const activeDomain = searchParams.get('domain');
   const activeLevel = searchParams.get('level');
   const activeAudience = searchParams.get('audience');
-  const activeFilterCount =
-    (activeDomain ? 1 : 0) + (activeLevel ? 1 : 0) + (activeAudience ? 1 : 0);
+  const activeSearch = searchParams.get('search');
 
   const updateFilter = useCallback(
     (key: string, value: string | null) => {
@@ -129,6 +74,7 @@ export default function CoursesPage() {
           course_domain: activeDomain ?? undefined,
           course_level: activeLevel ?? undefined,
           audience_type: activeAudience ?? undefined,
+          search: activeSearch ?? undefined,
         });
         if (!cancelled) {
           setCourses(data);
@@ -146,7 +92,7 @@ export default function CoursesPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeDomain, activeLevel, activeAudience]);
+  }, [activeDomain, activeLevel, activeAudience, activeSearch]);
 
   const handleRetry = () => {
     setError(false);
@@ -155,6 +101,7 @@ export default function CoursesPage() {
       course_domain: activeDomain ?? undefined,
       course_level: activeLevel ?? undefined,
       audience_type: activeAudience ?? undefined,
+      search: activeSearch ?? undefined,
     })
       .then((data) => {
         setCourses(data);
@@ -171,19 +118,16 @@ export default function CoursesPage() {
         {
           key: 'domain',
           label: t('domain'),
-          allLabel: t('allDomains'),
           items: taxonomy.domains,
         },
         {
           key: 'level',
           label: t('level'),
-          allLabel: t('allLevels'),
           items: taxonomy.levels,
         },
         {
           key: 'audience',
           label: t('audience'),
-          allLabel: t('allAudiences'),
           items: taxonomy.audience_types,
         },
       ]
@@ -204,32 +148,16 @@ export default function CoursesPage() {
 
       {/* Filter bar */}
       {taxonomy && (
-        <div className="mb-6 space-y-3 bg-stone-50 rounded-xl p-4 border border-stone-200">
-          {filterSections.map((section) => (
-            <FilterChips
-              key={section.key}
-              section={section}
-              active={activeValues[section.key]}
-              locale={locale}
-              onToggle={updateFilter}
-            />
-          ))}
-          {activeFilterCount > 0 && (
-            <div className="flex items-center justify-between pt-1">
-              <span className="text-xs text-stone-500">
-                {t('activeFilters', { count: activeFilterCount })}
-              </span>
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="inline-flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700 font-medium"
-              >
-                <X className="h-3 w-3" />
-                {t('clearFilters')}
-              </button>
-            </div>
-          )}
-        </div>
+        <CourseFilterBar
+          filterSections={filterSections}
+          activeValues={activeValues}
+          activeSearch={activeSearch}
+          courseCount={courses.length}
+          loading={loading}
+          locale={locale}
+          onUpdateFilter={updateFilter}
+          onClearFilters={clearFilters}
+        />
       )}
 
       {loading && (
@@ -253,10 +181,12 @@ export default function CoursesPage() {
             <GraduationCap className="h-12 w-12 text-teal-600" aria-hidden="true" />
           </div>
           <h2 className="text-lg font-semibold text-stone-900">
-            {activeFilterCount > 0 ? t('noCoursesMatchFilter') : t('noCourses')}
+            {activeValues.domain || activeValues.level || activeValues.audience || activeSearch
+              ? t('noCoursesMatchFilter')
+              : t('noCourses')}
           </h2>
           <p className="text-stone-500 text-sm max-w-sm">
-            {activeFilterCount > 0 ? (
+            {activeValues.domain || activeValues.level || activeValues.audience || activeSearch ? (
               <button
                 type="button"
                 onClick={clearFilters}
