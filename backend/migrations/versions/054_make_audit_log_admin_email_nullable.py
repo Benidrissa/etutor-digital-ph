@@ -19,7 +19,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(
-        "UPDATE admin_audit_logs SET admin_email = 'unknown' WHERE admin_email IS NULL"
-    )
+    op.execute("UPDATE admin_audit_logs SET admin_email = 'unknown' WHERE admin_email IS NULL")
     op.alter_column("admin_audit_logs", "admin_email", nullable=False)
