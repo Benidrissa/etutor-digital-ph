@@ -555,7 +555,9 @@ async def get_or_generate_lesson_by_module_and_unit(
                             session_id=None,
                         )
                     except Exception as analytics_err:
-                        logger.warning("Analytics event failed (non-fatal)", error=str(analytics_err))
+                        logger.warning(
+                            "Analytics event failed (non-fatal)", error=str(analytics_err)
+                        )
 
                 logger.info(
                     "Lesson cache hit",
