@@ -85,7 +85,7 @@ export function LessonViewer({
   const slowWarningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentUser = useCurrentUser();
-  const country = countryContext || currentUser?.country || 'SN';
+  const country = countryContext || currentUser?.country || 'CI';
   const router = useRouter();
   const locale = useLocale();
 

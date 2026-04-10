@@ -107,7 +107,7 @@ export function CaseStudyViewer({
   const pollStartRef = useRef<number>(0);
 
   const currentUser = useCurrentUser();
-  const country = countryContext || currentUser?.country || 'SN';
+  const country = countryContext || currentUser?.country || 'CI';
 
   const t = useTranslations('CaseStudyViewer');
 
