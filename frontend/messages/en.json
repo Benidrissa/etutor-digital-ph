@@ -1221,7 +1221,8 @@
     "allAudiences": "All audiences",
     "clearFilters": "Clear filters",
     "activeFilters": "{count, plural, one {# active filter} other {# active filters}}",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "manageCodes": "Manage Activation Codes"
   },
   "AdminCourses": {
     "pageTitle": "Course Management",

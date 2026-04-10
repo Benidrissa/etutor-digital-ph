@@ -17,8 +17,10 @@ import {
   ArrowLeft,
   ClipboardList,
   AlertTriangle,
+  KeyRound,
 } from "lucide-react";
 import { apiFetch, enrollInCourse } from "@/lib/api";
+import { authClient } from "@/lib/auth";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -103,6 +105,12 @@ export default function CourseDetailPage() {
   const [unenrollDialogOpen, setUnenrollDialogOpen] = useState(false);
   const [unenrolling, setUnenrolling] = useState(false);
   const [unenrollError, setUnenrollError] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    const user = authClient.getCurrentUser();
+    setUserRole(user?.role);
+  }, []);
 
   useEffect(() => {
     apiFetch<CourseDetail>(`/api/v1/courses/${courseSlug}`)
@@ -410,6 +418,16 @@ export default function CourseDetailPage() {
           </Button>
         )}
       </div>
+
+      {(userRole === "expert" || userRole === "admin") && (
+        <Link
+          href={`/courses/${courseSlug}/codes`}
+          className="flex items-center justify-center gap-2 w-full min-h-11 rounded-md border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 text-sm font-medium transition-colors"
+        >
+          <KeyRound className="h-4 w-4" />
+          {t("manageCodes")}
+        </Link>
+      )}
 
       <AlertDialog open={unenrollDialogOpen} onOpenChange={setUnenrollDialogOpen}>
         <AlertDialogContent>
