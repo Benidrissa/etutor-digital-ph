@@ -41,7 +41,8 @@ export default function AnalyticsPage() {
         `/api/v1/analytics/summary?period=${p}`
       );
       setData(result);
-    } catch {
+    } catch (err) {
+      console.error("[admin/analytics] Failed to fetch summary:", err);
       setData(null);
     } finally {
       setLoading(false);
