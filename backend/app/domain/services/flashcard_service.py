@@ -199,6 +199,7 @@ class FlashcardGenerationService:
                 else None
             ),
             module_title=module_title,
+            course=course,
         )
 
         logger.info("Calling Claude API for flashcard generation")

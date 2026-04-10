@@ -312,6 +312,7 @@ class QuizService:
                 unit_title=unit_title,
                 unit_description=unit_description,
                 all_units_summary=all_units_summary,
+                course=course,
             )
 
             response = await self.claude_service.generate_structured_content(
@@ -400,6 +401,7 @@ class QuizService:
         unit_title: str | None = None,
         unit_description: str | None = None,
         all_units_summary: str | None = None,
+        course: Course | None = None,
     ) -> tuple[str, str]:
         """Build the system and user prompts for Claude API to generate quiz questions."""
 
@@ -425,6 +427,7 @@ class QuizService:
             effective_unit_title,
             syllabus_context,
             course_domain,
+            course=course,
         )
 
         audience = (

@@ -1,8 +1,11 @@
 """System prompts for flashcard generation."""
 
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from app.ai.prompts.lesson import _apply_settings_template
+
+if TYPE_CHECKING:
+    from app.domain.models.course import Course
 
 # Mapping of country codes to French names for contextualization
 COUNTRY_NAMES_FR = {
@@ -51,10 +54,19 @@ def get_flashcard_system_prompt(
     module_title: str = "",
     syllabus_context: str = "",
     course_domain: str = "",
+    course: "Course | None" = None,
 ) -> str:
     """Generate system prompt for flashcard content generation."""
+    from app.ai.prompts.audience import detect_audience, get_audience_guidance
+
+    audience = detect_audience(course)
+    key = "ai-prompt-flashcard-kids-system" if audience.is_kids else "ai-prompt-flashcard-system"
+    extra: dict = {}
+    if audience.is_kids:
+        extra["age_range"] = f"{audience.age_min}-{audience.age_max}"
+        extra["audience_guidance"] = get_audience_guidance(audience, language)
     return _apply_settings_template(
-        "ai-prompt-flashcard-system",
+        key,
         language,
         country,
         level,
@@ -65,6 +77,7 @@ def get_flashcard_system_prompt(
         "",
         syllabus_context,
         course_domain,
+        **extra,
     )
 
 

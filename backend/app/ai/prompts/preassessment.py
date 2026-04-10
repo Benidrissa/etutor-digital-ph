@@ -1,6 +1,11 @@
 """Claude prompts for pre-assessment generation."""
 
+from typing import TYPE_CHECKING
+
 from app.ai.prompts.lesson import _apply_settings_template
+
+if TYPE_CHECKING:
+    from app.domain.models.course import Course
 
 
 def get_preassessment_system_prompt(
@@ -9,13 +14,27 @@ def get_preassessment_system_prompt(
     course_description: str | None = None,
     course_domain: str = "",
     module_titles: list[str] | None = None,
+    course: "Course | None" = None,
 ) -> str:
     """Return system prompt for pre-assessment generation."""
+    from app.ai.prompts.audience import detect_audience, get_audience_guidance
+
     module_list = ""
     if module_titles:
         module_list = "\n".join(f"- {t}" for t in module_titles)
+
+    audience = detect_audience(course)
+    key = (
+        "ai-prompt-preassessment-kids-system"
+        if audience.is_kids
+        else "ai-prompt-preassessment-system"
+    )
+    extra: dict = {"module_list": module_list}
+    if audience.is_kids:
+        extra["age_range"] = f"{audience.age_min}-{audience.age_max}"
+        extra["audience_guidance"] = get_audience_guidance(audience, language)
     return _apply_settings_template(
-        "ai-prompt-preassessment-system",
+        key,
         language,
         "SN",
         1,
@@ -26,7 +45,7 @@ def get_preassessment_system_prompt(
         "",
         "",
         course_domain,
-        module_list=module_list,
+        **extra,
     )
 
 
