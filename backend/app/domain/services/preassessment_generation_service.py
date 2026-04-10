@@ -125,6 +125,7 @@ class PreAssessmentGenerationService:
             course_description=course_description,
             course_domain=course_domain,
             module_titles=module_titles,
+            course=course,
         )
         user_message = get_preassessment_user_message(
             context_text=context_text,
