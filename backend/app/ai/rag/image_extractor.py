@@ -222,7 +222,7 @@ class PDFImageExtractor:
                     )
 
                 vector_images = self._extract_non_xref_figures(
-                    doc, page, page_number, figure_patterns, already_extracted_bboxes
+                    page, page_number, figure_patterns, already_extracted_bboxes
                 )
                 results.extend(vector_images)
 
@@ -438,6 +438,7 @@ class PDFImageExtractor:
         self,
         page: pymupdf.Page,
         already_extracted_bboxes: list[pymupdf.Rect],
+        drawings: list[dict] | None = None,
     ) -> list[pymupdf.Rect]:
         """Detect figure regions composed of vector drawings via clustering.
 
@@ -448,7 +449,8 @@ class PDFImageExtractor:
         Performance cap: returns empty list if drawing count > HIGH_DRAWING_COUNT_THRESHOLD
         (falls back to full-page rasterization in caller).
         """
-        drawings = page.get_drawings()
+        if drawings is None:
+            drawings = page.get_drawings()
         if not drawings:
             return []
 
@@ -532,7 +534,6 @@ class PDFImageExtractor:
 
     def _extract_non_xref_figures(
         self,
-        doc: pymupdf.Document,
         page: pymupdf.Page,
         page_number: int,
         figure_patterns: list[re.Pattern],
@@ -562,7 +563,7 @@ class PDFImageExtractor:
             return results
 
         if drawing_count > 3:
-            regions = self._detect_vector_figure_regions(page, already_extracted_bboxes)
+            regions = self._detect_vector_figure_regions(page, already_extracted_bboxes, drawings)
             for region in regions:
                 try:
                     png_bytes, w, h = self._rasterize_region(page, region)

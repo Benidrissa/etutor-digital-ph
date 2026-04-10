@@ -531,6 +531,30 @@ class TestRasterizeRegion:
         assert used_clip.y1 > 200
 
 
+class TestRasterizeFullPageAsFigure:
+    """Tests for _rasterize_full_page_as_figure error handling."""
+
+    def setup_method(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.extractor = PDFImageExtractor(Path(self.temp_dir))
+
+    def teardown_method(self):
+        import shutil
+
+        shutil.rmtree(self.temp_dir)
+
+    def test_returns_none_when_get_pixmap_raises(self):
+        page = MagicMock()
+        page.get_text.return_value = "Figure 1 test"
+        page.get_pixmap.side_effect = RuntimeError("pixmap failed")
+        page.rect = pymupdf.Rect(0, 0, 612, 792)
+
+        patterns = _build_figure_patterns(BOOKS["generic"])
+        result = self.extractor._rasterize_full_page_as_figure(page, 1, patterns)
+
+        assert result is None
+
+
 class TestExtractNonXrefFigures:
     """Tests for the multi-strategy non-xref figure extraction."""
 
@@ -561,10 +585,9 @@ class TestExtractNonXrefFigures:
         mock_pixmap.height = 792
         page.get_pixmap.return_value = mock_pixmap
 
-        doc = MagicMock()
         patterns = self._make_figure_patterns()
 
-        results = self.extractor._extract_non_xref_figures(doc, page, 1, patterns, [])
+        results = self.extractor._extract_non_xref_figures(page, 1, patterns, [])
         assert len(results) >= 1
         assert results[0].original_format == "png"
 
@@ -587,10 +610,9 @@ class TestExtractNonXrefFigures:
         mock_pixmap.height = 200
         page.get_pixmap.return_value = mock_pixmap
 
-        doc = MagicMock()
         patterns = self._make_figure_patterns()
 
-        results = self.extractor._extract_non_xref_figures(doc, page, 1, patterns, [])
+        results = self.extractor._extract_non_xref_figures(page, 1, patterns, [])
         assert len(results) >= 1
 
     def test_mixed_page_xref_and_vector_both_extracted(self):
@@ -615,11 +637,10 @@ class TestExtractNonXrefFigures:
         mock_pixmap.height = 200
         page.get_pixmap.return_value = mock_pixmap
 
-        doc = MagicMock()
         patterns = self._make_figure_patterns()
 
         existing_bbox = pymupdf.Rect(50, 50, 400, 200)
-        results = self.extractor._extract_non_xref_figures(doc, page, 1, patterns, [existing_bbox])
+        results = self.extractor._extract_non_xref_figures(page, 1, patterns, [existing_bbox])
         assert len(results) >= 1
 
     def test_no_drawings_figure_text_triggers_full_page(self):
@@ -636,10 +657,9 @@ class TestExtractNonXrefFigures:
         mock_pixmap.height = 792
         page.get_pixmap.return_value = mock_pixmap
 
-        doc = MagicMock()
         patterns = self._make_figure_patterns()
 
-        results = self.extractor._extract_non_xref_figures(doc, page, 1, patterns, [])
+        results = self.extractor._extract_non_xref_figures(page, 1, patterns, [])
         assert len(results) == 1
 
     def test_no_drawings_no_figure_text_returns_empty(self):
@@ -652,10 +672,9 @@ class TestExtractNonXrefFigures:
         )
         page.rect = pymupdf.Rect(0, 0, 612, 792)
 
-        doc = MagicMock()
         patterns = self._make_figure_patterns()
 
-        results = self.extractor._extract_non_xref_figures(doc, page, 1, patterns, [])
+        results = self.extractor._extract_non_xref_figures(page, 1, patterns, [])
         assert results == []
 
 
@@ -702,10 +721,9 @@ class TestHighDrawingCountPage:
         page.get_drawings.return_value = [
             {"rect": pymupdf.Rect(i, i, i + 5, i + 5)} for i in range(2001)
         ]
-        doc = MagicMock()
         patterns = _build_figure_patterns(BOOKS["generic"])
 
-        results = self.extractor._extract_non_xref_figures(doc, page, 1, patterns, [])
+        results = self.extractor._extract_non_xref_figures(page, 1, patterns, [])
         mock_rasterize.assert_called_once()
         assert len(results) == 1
 
@@ -938,7 +956,7 @@ class TestExtractImagesFromPDF:
         pdf_path = self.resources_path / "Donaldson_test.pdf"
         pdf_path.touch()
         results = self.extractor.extract_images_from_pdf(pdf_path, "donaldson")
-        assert len(results) >= 1
+        assert len(results) == 1
         img = results[0]
         assert isinstance(img, ExtractedImage)
         assert img.width == 200
@@ -969,7 +987,7 @@ class TestExtractAllPDFs:
         (self.resources_path / "Donaldson_test.pdf").touch()
         result = self.extractor.extract_all_pdfs()
         assert "donaldson" in result
-        mock_extract.assert_called()
+        mock_extract.assert_called_once()
 
     @patch.object(PDFImageExtractor, "extract_images_from_pdf")
     def test_unknown_pdfs_processed_as_generic(self, mock_extract):
