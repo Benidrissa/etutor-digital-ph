@@ -12,6 +12,7 @@ export interface User {
   preferred_language: string;
   country?: string;
   current_level: number;
+  role?: string;
 }
 
 export interface RegisterRequest {

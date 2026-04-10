@@ -17,8 +17,10 @@ import {
   ArrowLeft,
   ClipboardList,
   AlertTriangle,
+  KeyRound,
 } from "lucide-react";
 import { apiFetch, enrollInCourse } from "@/lib/api";
+import { authClient } from "@/lib/auth";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -103,6 +105,12 @@ export default function CourseDetailPage() {
   const [unenrollDialogOpen, setUnenrollDialogOpen] = useState(false);
   const [unenrolling, setUnenrolling] = useState(false);
   const [unenrollError, setUnenrollError] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    const user = authClient.getCurrentUser();
+    setUserRole(user?.role);
+  }, []);
 
   useEffect(() => {
     apiFetch<CourseDetail>(`/api/v1/courses/${courseSlug}`)
@@ -371,44 +379,55 @@ export default function CourseDetailPage() {
 
       {/* Sticky enroll CTA on mobile */}
       <div className="fixed bottom-16 left-0 right-0 p-4 bg-background/95 backdrop-blur border-t md:static md:border-0 md:p-0 md:bg-transparent">
-        {enrolled ? (
-          <div className="flex flex-col items-center gap-2">
+        <div className="flex flex-col gap-2">
+          {enrolled ? (
+            <div className="flex flex-col items-center gap-2">
+              <Button
+                className="w-full min-h-11 bg-teal-600 hover:bg-teal-700"
+                onClick={() => router.push(`/modules?course_id=${course.id}`)}
+                disabled={
+                  course.preassessment_enabled &&
+                  preassessmentStatus?.mandatory === true &&
+                  preassessmentStatus?.completed === false
+                }
+                title={
+                  course.preassessment_enabled &&
+                  preassessmentStatus?.mandatory === true &&
+                  preassessmentStatus?.completed === false
+                    ? tDetail("preassessmentRequiredTooltip")
+                    : undefined
+                }
+              >
+                <CheckCircle className="mr-2 h-4 w-4" />
+                {t("viewModules")}
+              </Button>
+              <button
+                type="button"
+                onClick={() => setUnenrollDialogOpen(true)}
+                className="text-xs text-destructive hover:underline"
+              >
+                {tDetail("unenroll")}
+              </button>
+            </div>
+          ) : (
             <Button
               className="w-full min-h-11 bg-teal-600 hover:bg-teal-700"
-              onClick={() => router.push(`/modules?course_id=${course.id}`)}
-              disabled={
-                course.preassessment_enabled &&
-                preassessmentStatus?.mandatory === true &&
-                preassessmentStatus?.completed === false
-              }
-              title={
-                course.preassessment_enabled &&
-                preassessmentStatus?.mandatory === true &&
-                preassessmentStatus?.completed === false
-                  ? tDetail("preassessmentRequiredTooltip")
-                  : undefined
-              }
+              onClick={handleEnroll}
+              disabled={enrolling}
             >
-              <CheckCircle className="mr-2 h-4 w-4" />
-              {t("viewModules")}
+              {enrolling ? t("enrolling") : t("enroll")}
             </Button>
-            <button
-              type="button"
-              onClick={() => setUnenrollDialogOpen(true)}
-              className="text-xs text-destructive hover:underline"
+          )}
+          {(userRole === "expert" || userRole === "admin") && (
+            <Link
+              href={`/courses/${courseSlug}/codes`}
+              className="flex items-center justify-center gap-2 w-full min-h-11 rounded-md border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 text-sm font-medium transition-colors"
             >
-              {tDetail("unenroll")}
-            </button>
-          </div>
-        ) : (
-          <Button
-            className="w-full min-h-11 bg-teal-600 hover:bg-teal-700"
-            onClick={handleEnroll}
-            disabled={enrolling}
-          >
-            {enrolling ? t("enrolling") : t("enroll")}
-          </Button>
-        )}
+              <KeyRound className="h-4 w-4" />
+              {t("manageCodes")}
+            </Link>
+          )}
+        </div>
       </div>
 
       <AlertDialog open={unenrollDialogOpen} onOpenChange={setUnenrollDialogOpen}>

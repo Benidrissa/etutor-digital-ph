@@ -1221,7 +1221,8 @@
     "allAudiences": "Tous les publics",
     "clearFilters": "Effacer les filtres",
     "activeFilters": "{count, plural, one {# filtre actif} other {# filtres actifs}}",
-    "cancel": "Annuler"
+    "cancel": "Annuler",
+    "manageCodes": "Gérer les codes d'activation"
   },
   "AdminCourses": {
     "pageTitle": "Gestion des formations",
