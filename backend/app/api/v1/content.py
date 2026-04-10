@@ -40,6 +40,7 @@ from app.api.v1.schemas.quiz import (
 from app.domain.models.content import GeneratedContent
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
+from app.domain.services.analytics_service import AnalyticsService
 from app.domain.services.flashcard_service import FlashcardGenerationService
 from app.domain.services.lesson_service import CaseStudyGenerationService, LessonGenerationService
 from app.domain.services.progress_service import ProgressService
@@ -538,6 +539,24 @@ async def get_or_generate_lesson_by_module_and_unit(
                         logger.warning(
                             "Failed to track lesson access (non-fatal)",
                             error=str(track_err),
+                        )
+                    try:
+                        from uuid import UUID as _UUID
+
+                        analytics_svc = AnalyticsService(session)
+                        await analytics_svc.ingest_event(
+                            event_name="lesson_viewed",
+                            properties={
+                                "module_id": str(resolved_module_id),
+                                "unit_id": unit_id,
+                                "language": language,
+                            },
+                            user_id=_UUID(str(current_user.id)),
+                            session_id=None,
+                        )
+                    except Exception as analytics_err:
+                        logger.warning(
+                            "Analytics event failed (non-fatal)", error=str(analytics_err)
                         )
 
                 logger.info(

@@ -28,6 +28,7 @@ from app.domain.models.content import GeneratedContent
 from app.domain.models.flashcard import FlashcardReview
 from app.domain.models.module import Module
 from app.domain.models.user import User
+from app.domain.services.analytics_service import AnalyticsService
 from app.domain.services.flashcard_service import FlashcardGenerationService
 from app.domain.services.platform_settings_service import SettingsCache
 from app.infrastructure.config.settings import get_settings
@@ -332,6 +333,20 @@ async def submit_flashcard_review(
         review.reviewed_at = review_request.reviewed_at or datetime.utcnow()
 
         await session.commit()
+
+        try:
+            analytics_svc = AnalyticsService(session)
+            await analytics_svc.ingest_event(
+                event_name="flashcard_reviewed",
+                properties={
+                    "card_id": str(review_request.card_id),
+                    "rating": review_request.rating,
+                },
+                user_id=uuid.UUID(str(current_user.id)),
+                session_id=None,
+            )
+        except Exception as analytics_err:
+            logger.warning("Analytics event failed (non-fatal)", error=str(analytics_err))
 
         logger.info(
             "Flashcard review processed successfully",
