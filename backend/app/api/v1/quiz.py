@@ -498,12 +498,6 @@ async def submit_quiz_attempt(
         try:
             analytics_svc = AnalyticsService(session)
             await analytics_svc.ingest_event(
-                event_name="quiz_started",
-                properties={"module_id": str(quiz_content.module_id)},
-                user_id=user_id,
-                session_id=None,
-            )
-            await analytics_svc.ingest_event(
                 event_name="quiz_completed",
                 properties={
                     "module_id": str(quiz_content.module_id),
