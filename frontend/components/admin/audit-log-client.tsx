@@ -8,7 +8,7 @@ import { apiFetch } from "@/lib/api";
 interface AuditLogEntry {
   id: string;
   admin_id: string | null;
-  admin_email: string;
+  admin_email: string | null;
   target_user_id: string | null;
   target_user_email: string | null;
   action: string;
@@ -80,7 +80,7 @@ export function AuditLogClient({ userId }: { userId?: string }) {
                     minute: "2-digit",
                   })}
                 </td>
-                <td className="py-2 pr-4 truncate max-w-[140px]">{log.admin_email}</td>
+                <td className="py-2 pr-4 truncate max-w-[140px]">{log.admin_email ?? "—"}</td>
                 <td className="py-2 pr-4 truncate max-w-[140px]">
                   {log.target_user_email ?? "—"}
                 </td>

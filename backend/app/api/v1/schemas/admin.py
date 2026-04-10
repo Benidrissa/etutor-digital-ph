@@ -25,7 +25,7 @@ class UpdateUserStatusRequest(BaseModel):
 class AuditLogResponse(BaseModel):
     id: str
     admin_id: str | None
-    admin_email: str
+    admin_email: str | None = None
     target_user_id: str | None
     target_user_email: str | None
     action: AdminAction
