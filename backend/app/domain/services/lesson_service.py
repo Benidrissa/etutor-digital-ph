@@ -234,6 +234,7 @@ class LessonGenerationService:
                     if course
                     else None
                 ),
+                course=course,
             )
             user_message = format_rag_context_for_lesson(
                 rag_chunks,
@@ -409,6 +410,7 @@ class LessonGenerationService:
                 if course
                 else None
             ),
+            course=course,
         )
         user_message = format_rag_context_for_lesson(
             rag_chunks,
@@ -908,6 +910,7 @@ class CaseStudyGenerationService:
                 unit_title=stream_unit_title,
                 syllabus_context=stream_syllabus_context,
                 course_domain=stream_course_title or "",
+                course=course,
             )
             user_message = format_rag_context_for_case_study(
                 rag_chunks,
@@ -1058,6 +1061,7 @@ class CaseStudyGenerationService:
             unit_title=resolved_unit_title,
             syllabus_context=syllabus_context,
             course_domain=course_title or "",
+            course=course,
         )
         user_message = format_rag_context_for_case_study(
             rag_chunks,
