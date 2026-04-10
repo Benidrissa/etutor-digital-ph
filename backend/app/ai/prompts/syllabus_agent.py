@@ -7,6 +7,10 @@ syllabus structure. Reads docs/ at runtime so the prompt stays current.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.domain.models.course import Course
 
 
 def _read_doc(filename: str) -> str:
@@ -61,25 +65,77 @@ def _extract_module_format(syllabus_content: str) -> str:
     return syllabus_content[:4000]
 
 
-def get_syllabus_agent_system_prompt() -> str:
+def get_syllabus_agent_system_prompt(course: Course | None = None) -> str:
     """Build the system prompt for the syllabus creator/editor agent.
 
     Reads SRS and syllabus docs at call time so the prompt automatically
     reflects the latest pedagogical rules and module format.
 
+    When `course` targets a kids audience (detected via taxonomy_categories),
+    injects age-appropriate pedagogical instructions so that generated
+    module/unit titles and learning objectives use child-friendly language.
+
+    Args:
+        course: Optional Course ORM object. When provided and the course has
+                kids taxonomy categories, switches to kids-adapted prompt text.
+                None (default) always produces the standard adult prompt —
+                existing callers are unaffected.
+
     Returns:
         System prompt string for Claude API.
     """
+    from app.ai.prompts.audience import detect_audience, get_audience_guidance
+
+    audience = detect_audience(course)
+
     srs_raw = _read_doc("SRS_Sira.md")
     syllabus_raw = _read_doc("syllabus_sante_publique_AOF.md")
 
     pedagogy_excerpt = _extract_pedagogy_section(srs_raw)
     module_format_excerpt = _extract_module_format(syllabus_raw)
 
+    if audience.is_kids:
+        age_range = f"{audience.age_min}-{audience.age_max}"
+        audience_guidance = get_audience_guidance(audience, "fr")
+        audience_section = f"""
+## ADAPTATION PÉDAGOGIQUE — COURS POUR ENFANTS ({age_range} ans)
+
+Ce cours est destiné à des enfants âgés de {age_range} ans. Adapte TOUTES les sorties en conséquence :
+
+### Titres de modules et d'unités
+- Utilise des titres ludiques et aventureux : "L'Aventure des Nombres !" plutôt que "Types de nombres"
+- Emploie des métaphores concrètes issues du quotidien d'un enfant en Afrique de l'Ouest
+- Évite tout jargon professionnel ou académique dans les titres
+
+### Objectifs d'apprentissage
+- Formule avec des verbes d'action enfantins : découvrir, explorer, créer, jouer, construire, trouver, apprendre, partager
+- Style "Tu vas pouvoir..." plutôt que "L'apprenant démontrera..."
+- Courts et concrets (une seule idée par objectif)
+
+### Descriptions d'unités
+- Courtes (1-2 phrases), concrètes, faisant référence à des activités, jeux ou histoires
+- Ancrage dans la vie quotidienne d'un enfant (marché, école, village, famille)
+- Ton encourageant et positif
+
+### Niveau Bloom adapté
+- École primaire (6-12 ans) : maximum "apply"
+- École secondaire (12-18 ans) : maximum "evaluate"
+
+{audience_guidance}
+"""
+    else:
+        audience_section = ""
+
+    bloom_rules = (
+        "Niveau de Bloom croissant : L1 (mémorisation/compréhension) → L4 (évaluation/création)"
+        if not audience.is_kids
+        else "Niveau de Bloom adapté à l'âge (voir section ci-dessus)"
+    )
+
     prompt = f"""Tu es un agent de création de curricula pour la plateforme Sira.
 Tu assistes les administrateurs à créer et modifier les modules du syllabus en suivant
 les règles pédagogiques de la plateforme.
-
+{audience_section}
 ## RÈGLES PÉDAGOGIQUES (extraites du SRS)
 
 {pedagogy_excerpt if pedagogy_excerpt else "Approche Bloom + Socratique + contextualisation AOF."}
@@ -94,7 +150,7 @@ les règles pédagogiques de la plateforme.
 - 4 niveaux progressifs (1=Débutant 60h, 2=Intermédiaire 90h, 3=Avancé 100h, 4=Expert 70h)
 - 15 modules au total (M01-M15), ~20h par module
 - Prérequis progressifs : chaque module de niveau N nécessite les modules précédents
-- Niveau de Bloom croissant : L1 (mémorisation/compréhension) → L4 (évaluation/création)
+- {bloom_rules}
 
 ### Format de sortie pour chaque module
 Chaque module doit contenir EXACTEMENT ces champs :

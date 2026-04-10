@@ -77,11 +77,12 @@ class SyllabusAgentService:
         anthropic_client: AsyncAnthropic,
         semantic_retriever: SemanticRetriever,
         embedding_service: EmbeddingService,
+        course: Course | None = None,
     ) -> None:
         self._client = anthropic_client
         self._retriever = semantic_retriever
         self._embedding_service = embedding_service
-        self._system_prompt = get_syllabus_agent_system_prompt()
+        self._system_prompt = get_syllabus_agent_system_prompt(course=course)
         self._tools = get_tool_definitions()
 
     async def stream_agent_response(

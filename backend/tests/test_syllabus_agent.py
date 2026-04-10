@@ -71,6 +71,72 @@ class TestSyllabusAgentSystemPrompt:
         prompt = get_syllabus_agent_system_prompt()
         assert len(prompt) > 500
 
+    def test_prompt_course_none_returns_adult_prompt(self):
+        prompt = get_syllabus_agent_system_prompt(course=None)
+        assert "ADAPTATION PÉDAGOGIQUE" not in prompt
+        assert "COURS POUR ENFANTS" not in prompt
+
+    def test_prompt_kids_course_returns_kids_adapted_prompt(self):
+        kids_course = MagicMock()
+        kids_cat = MagicMock()
+        kids_cat.type = "audience"
+        kids_cat.slug = "primary_school"
+        kids_course.taxonomy_categories = [kids_cat]
+        kids_course.title_en = None
+        kids_course.title_fr = None
+
+        prompt = get_syllabus_agent_system_prompt(course=kids_course)
+
+        assert "ADAPTATION PÉDAGOGIQUE" in prompt
+        assert "COURS POUR ENFANTS" in prompt
+        assert "ludiques" in prompt or "aventureux" in prompt
+        assert "découvrir" in prompt or "explorer" in prompt
+
+    def test_prompt_kids_course_includes_age_range(self):
+        kids_course = MagicMock()
+        kids_cat = MagicMock()
+        kids_cat.type = "audience"
+        kids_cat.slug = "primary_school"
+        kids_course.taxonomy_categories = [kids_cat]
+        kids_course.title_en = "Math for Kids (Ages 8-10)"
+        kids_course.title_fr = None
+
+        prompt = get_syllabus_agent_system_prompt(course=kids_course)
+
+        assert "8-10" in prompt
+
+    def test_prompt_adult_course_no_kids_section(self):
+        adult_course = MagicMock()
+        adult_cat = MagicMock()
+        adult_cat.type = "audience"
+        adult_cat.slug = "professionals"
+        adult_course.taxonomy_categories = [adult_cat]
+        adult_course.title_en = None
+        adult_course.title_fr = None
+
+        prompt = get_syllabus_agent_system_prompt(course=adult_course)
+
+        assert "ADAPTATION PÉDAGOGIQUE" not in prompt
+        assert "COURS POUR ENFANTS" not in prompt
+
+    def test_prompt_kids_course_bloom_level_cap_mentioned(self):
+        kids_course = MagicMock()
+        kids_cat = MagicMock()
+        kids_cat.type = "audience"
+        kids_cat.slug = "secondary_school"
+        kids_course.taxonomy_categories = [kids_cat]
+        kids_course.title_en = None
+        kids_course.title_fr = None
+
+        prompt = get_syllabus_agent_system_prompt(course=kids_course)
+
+        assert "evaluate" in prompt or "apply" in prompt
+
+    def test_prompt_no_course_is_identical_to_course_none(self):
+        prompt_no_arg = get_syllabus_agent_system_prompt()
+        prompt_none = get_syllabus_agent_system_prompt(course=None)
+        assert prompt_no_arg == prompt_none
+
 
 class TestSyllabusAgentToolDefinitions:
     """Test tool definitions for the syllabus agent."""
