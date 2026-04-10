@@ -143,7 +143,10 @@ export function UserListClient() {
       setPendingAction(null);
       setActionError(null);
     },
-    onError: () => setActionError(t("actionError")),
+    onError: (err) => {
+      console.error("Admin status action failed:", err);
+      setActionError(t("actionError"));
+    },
   });
 
   const roleMutation = useMutation({
@@ -157,7 +160,10 @@ export function UserListClient() {
       setPendingAction(null);
       setActionError(null);
     },
-    onError: () => setActionError(t("actionError")),
+    onError: (err) => {
+      console.error("Admin role action failed:", err);
+      setActionError(t("actionError"));
+    },
   });
 
   const handleConfirmAction = () => {
