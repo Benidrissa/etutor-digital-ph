@@ -7,6 +7,7 @@ import { GraduationCap, BookOpen, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CourseCard } from '@/components/learning/course-card';
 import { ShareButton } from '@/components/shared/share-button';
+import { FilterChips, type FilterSection } from '@/components/learning/filter-chips';
 import {
   getCurriculumBySlug,
   getCourses,
@@ -16,60 +17,6 @@ import {
   type TaxonomyItem,
 } from '@/lib/api';
 import { setCurriculumContext } from '@/lib/curriculum-context';
-
-interface FilterSection {
-  key: string;
-  label: string;
-  allLabel: string;
-  items: TaxonomyItem[];
-}
-
-function FilterChips({
-  section,
-  active,
-  locale,
-  onToggle,
-}: {
-  section: FilterSection;
-  active: string | null;
-  locale: 'fr' | 'en';
-  onToggle: (key: string, value: string | null) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-xs font-medium text-stone-500 uppercase tracking-wide">
-        {section.label}
-      </span>
-      <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
-        <button
-          type="button"
-          onClick={() => onToggle(section.key, null)}
-          className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors min-h-[36px] ${
-            !active
-              ? 'bg-teal-600 text-white'
-              : 'bg-stone-100 text-stone-600 hover:bg-stone-200 border border-stone-200'
-          }`}
-        >
-          {section.allLabel}
-        </button>
-        {section.items.map((item) => (
-          <button
-            key={item.value}
-            type="button"
-            onClick={() => onToggle(section.key, active === item.value ? null : item.value)}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors min-h-[36px] ${
-              active === item.value
-                ? 'bg-teal-600 text-white'
-                : 'bg-stone-100 text-stone-600 hover:bg-stone-200 border border-stone-200'
-            }`}
-          >
-            {locale === 'fr' ? item.label_fr : item.label_en}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 export default function CurriculumPage() {
   const t = useTranslations('Curricula');
@@ -186,19 +133,16 @@ export default function CurriculumPage() {
         {
           key: 'domain',
           label: tCourses('domain'),
-          allLabel: tCourses('allDomains'),
           items: taxonomy.domains,
         },
         {
           key: 'level',
           label: tCourses('level'),
-          allLabel: tCourses('allLevels'),
           items: taxonomy.levels,
         },
         {
           key: 'audience',
           label: tCourses('audience'),
-          allLabel: tCourses('allAudiences'),
           items: taxonomy.audience_types,
         },
       ]
