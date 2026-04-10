@@ -35,7 +35,7 @@ class AuditLog(Base):
     admin_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    admin_email: Mapped[str] = mapped_column(String, nullable=False)
+    admin_email: Mapped[str | None] = mapped_column(String, nullable=True)
     target_user_id: Mapped[uuid.UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
