@@ -175,6 +175,7 @@ class LocalAuthService:
             access_token = self.jwt_service.create_access_token(
                 user_id=str(user.id),
                 email=user.email,
+                phone_number=user.phone_number,
                 preferred_language=user.preferred_language,
                 country=user.country,
                 current_level=user.current_level,
@@ -322,6 +323,7 @@ class LocalAuthService:
             access_token = self.jwt_service.create_access_token(
                 user_id=str(user.id),
                 email=user.email,
+                phone_number=user.phone_number,
                 preferred_language=user.preferred_language,
                 country=user.country,
                 current_level=user.current_level,
@@ -539,6 +541,7 @@ class LocalAuthService:
             access_token = self.jwt_service.create_access_token(
                 user_id=str(user.id),
                 email=user.email,
+                phone_number=user.phone_number,
                 preferred_language=user.preferred_language,
                 country=user.country,
                 current_level=user.current_level,
@@ -711,6 +714,7 @@ class LocalAuthService:
             access_token = self.jwt_service.create_access_token(
                 user_id=user["id"],
                 email=user["email"],
+                phone_number=user.get("phone_number"),
                 preferred_language=user["preferred_language"],
                 country=user["country"],
                 current_level=user["current_level"],
@@ -905,6 +909,7 @@ class LocalAuthService:
             access_token = self.jwt_service.create_access_token(
                 user_id=str(user.id),
                 email=email or "",
+                phone_number=user.phone_number,
                 preferred_language=user.preferred_language,
                 country=user.country,
                 current_level=user.current_level,
@@ -1034,6 +1039,7 @@ class LocalAuthService:
             access_token = self.jwt_service.create_access_token(
                 user_id=str(user.id),
                 email=user.email or "",
+                phone_number=user.phone_number,
                 preferred_language=user.preferred_language,
                 country=user.country,
                 current_level=user.current_level,
@@ -1241,6 +1247,7 @@ class LocalAuthService:
             access_token = self.jwt_service.create_access_token(
                 user_id=user["id"],
                 email=user["email"],
+                phone_number=user.get("phone_number"),
                 preferred_language=user["preferred_language"],
                 country=user["country"],
                 current_level=user["current_level"],

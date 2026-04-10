@@ -62,7 +62,7 @@ async def _write_audit_log(
 ) -> None:
     log = AuditLog(
         admin_id=UUID(admin.id),
-        admin_email=admin.email,
+        admin_email=admin.email or admin.phone_number or "unknown",
         target_user_id=target_user.id,
         target_user_email=target_user.email,
         action=action,
