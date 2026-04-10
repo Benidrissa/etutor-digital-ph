@@ -9,7 +9,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from '@/components/ui/select';
 import { type FilterSection } from './filter-chips';
 import { useDebounce } from '@/lib/hooks/use-debounce';
@@ -90,29 +89,41 @@ export function CourseFilterBar({
 
         {/* Filter dropdowns */}
         <div className="flex gap-2 flex-wrap sm:flex-nowrap">
-          {filterSections.map((section) => (
-            <Select
-              key={section.key}
-              value={activeValues[section.key] ?? ALL_VALUE}
-              onValueChange={(val) =>
-                onUpdateFilter(section.key, val === ALL_VALUE ? null : val)
-              }
-            >
-              <SelectTrigger className="h-10 min-w-[130px] text-xs">
-                <SelectValue placeholder={section.label} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_VALUE}>
-                  {section.label} — {t('all')}
-                </SelectItem>
-                {section.items.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {locale === 'fr' ? item.label_fr : item.label_en}
+          {filterSections.map((section) => {
+            const activeVal = activeValues[section.key];
+            const activeItem = activeVal
+              ? section.items.find((i) => i.value === activeVal)
+              : null;
+            const triggerLabel = activeItem
+              ? `${section.label}: ${locale === 'fr' ? activeItem.label_fr : activeItem.label_en}`
+              : section.label;
+
+            return (
+              <Select
+                key={section.key}
+                value={activeVal ?? ALL_VALUE}
+                onValueChange={(val) =>
+                  onUpdateFilter(section.key, val === ALL_VALUE ? null : val)
+                }
+              >
+                <SelectTrigger className="h-10 min-w-[130px] text-xs">
+                  <span className={activeVal ? 'text-stone-900' : 'text-stone-500'}>
+                    {triggerLabel}
+                  </span>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_VALUE}>
+                    {t('all')}
                   </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ))}
+                  {section.items.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {locale === 'fr' ? item.label_fr : item.label_en}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            );
+          })}
         </div>
       </div>
 
