@@ -105,12 +105,13 @@ def _age_from_slugs(slugs: list[str]) -> tuple[int, int]:
 
 def _age_tier(age_min: int | None, age_max: int | None) -> str:
     """Map age range to one of three pedagogical tiers."""
-    mid = ((age_min or 0) + (age_max or 12)) / 2
+    effective_max = age_max or 12
+    if effective_max >= 13:
+        return "teen"
+    mid = ((age_min or 0) + effective_max) / 2
     if mid <= 8:
         return "early"
-    if mid <= 12:
-        return "middle"
-    return "teen"
+    return "middle"
 
 
 _GUIDANCE_FR: dict[str, str] = {
