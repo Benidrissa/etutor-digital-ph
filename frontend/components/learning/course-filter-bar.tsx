@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { Search, X, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -33,6 +33,7 @@ export function CourseFilterBar({
   const t = useTranslations('Courses');
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [searchInput, setSearchInput] = useState(activeSearch ?? '');
+  const prevActiveSearch = useRef(activeSearch);
   const debouncedSearch = useDebounce(searchInput, 300);
 
   // Sync debounced search to URL
@@ -44,12 +45,13 @@ export function CourseFilterBar({
   }, [debouncedSearch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync URL search param back to input (e.g. when clearFilters is called)
-  useEffect(() => {
+  if (activeSearch !== prevActiveSearch.current) {
+    prevActiveSearch.current = activeSearch;
     const urlValue = activeSearch ?? '';
     if (urlValue !== searchInput && urlValue === '') {
       setSearchInput('');
     }
-  }, [activeSearch]); // eslint-disable-line react-hooks/exhaustive-deps
+  }
 
   const activeFilterCount = Object.values(activeValues).filter(Boolean).length;
   const totalActiveCount = activeFilterCount + (activeSearch ? 1 : 0);
