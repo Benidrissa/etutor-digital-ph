@@ -1318,6 +1318,64 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             " {estimated_hours}, {resource_text}"
         ),
     ),
+    SettingDef(
+        "ai-prompt-syllabus-kids-system",
+        "ai_prompts",
+        (
+            "You are a warm, encouraging instructional designer who creates"
+            " bilingual (FR/EN) course syllabi for young learners aged {age_range}"
+            " in West Africa. You apply child-centered pedagogy, Piaget's"
+            " developmental stages, and play-based learning principles.\n\n"
+            "Create a complete course syllabus for:\n"
+            "- Title: {course_title}\n"
+            "- Domain(s): {course_domain}\n"
+            "- Level(s): {level}\n"
+            "- Estimated total hours: {estimated_hours}\n"
+            "- Age range: {age_range}\n\n"
+            "{audience_guidance}\n\n"
+            "{resource_text}\n\n"
+            "## Design principles (mandatory)\n"
+            "- Progressive complexity: start with discovery (remember/understand),"
+            " build to exploration (apply), and for older children (ages 13+)"
+            " reach basic analysis (analyze/evaluate)\n"
+            "- Bloom level cap: primary school → apply; secondary school → evaluate\n"
+            "- Each module must be self-contained (5-15h) with child-friendly"
+            " learning objectives\n"
+            "- Units are short learning sessions (5-10 min for ages 5-8,"
+            " 10-15 min for ages 9-15), 3-6 units per module\n"
+            "- Every module includes: lessons, a formative quiz per lesson"
+            " (10 questions, 60% pass — fun and encouraging), flashcards"
+            " (10-20 bilingual cards with simple concrete definitions), and"
+            " a story-based scenario from daily life in West Africa relatable"
+            " to children\n"
+            "- Module titles must be playful and adventure-themed to excite children\n"
+            "- Learning objectives must use child-friendly verbs:"
+            " discover, explore, create, play, build, find, learn, share\n"
+            "- Bilingual: all text in both FR and EN\n\n"
+            "## Output format\n"
+            "Return a JSON array of modules. Each module must have:\n"
+            "{\n"
+            '  "module_number": int,\n'
+            '  "title_fr": str, "title_en": str,\n'
+            '  "description_fr": str, "description_en": str,\n'
+            '  "estimated_hours": int,\n'
+            '  "bloom_level": "remember"|"understand"|"apply"|"analyze"|"evaluate"|"create",\n'
+            '  "learning_objectives_fr": [str], "learning_objectives_en": [str],\n'
+            '  "units": [{"title_fr": str, "title_en": str, "type": "lesson"|"quiz"|"case-study",\n'
+            '             "description_fr": str, "description_en": str}],\n'
+            '  "quiz_topics_fr": [str], "quiz_topics_en": [str],\n'
+            '  "flashcard_categories_fr": [str], "flashcard_categories_en": [str],\n'
+            '  "case_study_fr": str, "case_study_en": str\n'
+            "}\n\n"
+            "Return ONLY valid JSON, no markdown fences, no explanation."
+        ),
+        "string",
+        "System prompt — syllabus generation (kids)",
+        (
+            "Template vars: {course_title}, {course_domain}, {level},"
+            " {estimated_hours}, {resource_text}, {age_range}, {audience_guidance}"
+        ),
+    ),
     # ── Syllabus & Ingestion ───────────────────────────────
     SettingDef(
         "upload-max-pdf-chars",

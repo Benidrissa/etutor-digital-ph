@@ -187,6 +187,54 @@ _GUIDANCE_EN: dict[str, str] = {
 }
 
 
+def detect_audience_from_slugs(
+    audience_type: list[str] | None,
+    title_en: str | None = None,
+    title_fr: str | None = None,
+) -> AudienceContext:
+    """Detect kids audience from raw slug list and optional title strings.
+
+    Lightweight variant of detect_audience() for callers that don't have a
+    Course ORM object (e.g. CourseAgentService._build_prompt).
+
+    Args:
+        audience_type: List of taxonomy slugs (e.g. ["primary_school", "mathematics"]).
+        title_en: Optional English course title for age-range extraction.
+        title_fr: Optional French course title for age-range extraction.
+
+    Returns:
+        AudienceContext with is_kids=False when audience_type is None/empty or adult.
+    """
+    if not audience_type:
+        return AudienceContext(is_kids=False)
+
+    kids_slugs = [s for s in audience_type if s in KIDS_AUDIENCE_SLUGS]
+    if not kids_slugs:
+        return AudienceContext(is_kids=False)
+
+    age_range: tuple[int, int] | None = None
+    for title in (title_en, title_fr):
+        if not title:
+            continue
+        for pattern in (_AGE_PATTERN_EN, _AGE_PATTERN_FR):
+            m = pattern.search(title)
+            if m:
+                age_range = (int(m.group(1)), int(m.group(2)))
+                break
+        if age_range:
+            break
+
+    if age_range is None:
+        age_range = _age_from_slugs(kids_slugs)
+
+    return AudienceContext(
+        is_kids=True,
+        age_min=age_range[0],
+        age_max=age_range[1],
+        audience_slugs=kids_slugs,
+    )
+
+
 def get_audience_guidance(audience: AudienceContext, language: str) -> str:
     """Return age-tier-specific pedagogical instructions for prompt injection.
 
