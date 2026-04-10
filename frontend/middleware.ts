@@ -13,8 +13,9 @@ const PUBLIC_PATTERNS = [
   /^\/_next\//,
   /^\/favicon\.ico$/,
   /^\/manifest\.json$/,
-  /^\/icon-.*\.svg$/,
+  /^\/icon-.*\.(svg|png)$/,
   /^\/sw\.js$/,
+  /^\/.well-known\//,
 ];
 
 function isPublicPath(pathname: string): boolean {
@@ -57,5 +58,5 @@ export default function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/(fr|en)/:path*", "/((?!_next|favicon.ico|manifest.json|icon-|sw.js|.*\\.(?:png|jpg|jpeg|gif|webp|ico|pdf)).*)"],
+  matcher: ["/", "/(fr|en)/:path*", "/((?!_next|favicon.ico|manifest.json|icon-|sw.js|.well-known|.*\\.(?:png|jpg|jpeg|gif|webp|ico|pdf)).*)"],
 };
