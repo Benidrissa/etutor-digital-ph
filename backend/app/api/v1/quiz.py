@@ -30,6 +30,7 @@ from app.domain.models.content import GeneratedContent
 from app.domain.models.module import Module
 from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import QuizAttempt, SummativeAssessmentAttempt
+from app.domain.services.analytics_service import AnalyticsService
 from app.domain.services.platform_settings_service import SettingsCache
 from app.domain.services.progress_service import ProgressService
 from app.domain.services.quiz_service import QuizService
@@ -493,6 +494,28 @@ async def submit_quiz_attempt(
                     "Failed to update progress after quiz (non-fatal)",
                     error=str(progress_err),
                 )
+
+        try:
+            analytics_svc = AnalyticsService(session)
+            await analytics_svc.ingest_event(
+                event_name="quiz_started",
+                properties={"module_id": str(quiz_content.module_id)},
+                user_id=user_id,
+                session_id=None,
+            )
+            await analytics_svc.ingest_event(
+                event_name="quiz_completed",
+                properties={
+                    "module_id": str(quiz_content.module_id),
+                    "score": score,
+                    "passed": passed,
+                    "duration_seconds": request.total_time_seconds,
+                },
+                user_id=user_id,
+                session_id=None,
+            )
+        except Exception as analytics_err:
+            logger.warning("Analytics event failed (non-fatal)", error=str(analytics_err))
 
         response = QuizAttemptResponse(
             attempt_id=attempt.id,

@@ -27,6 +27,7 @@ from app.domain.models.course import Course, UserCourseEnrollment
 from app.domain.models.module import Module
 from app.domain.models.source_image import SourceImage
 from app.domain.models.user import User
+from app.domain.services.analytics_service import AnalyticsService
 from app.domain.services.learner_memory_service import LearnerMemoryService
 from app.domain.services.platform_settings_service import SettingsCache
 from app.domain.services.subscription_service import SubscriptionService
@@ -568,6 +569,20 @@ class TutorService:
                 session.add(subscription)
 
             await session.commit()
+
+            try:
+                analytics_svc = AnalyticsService(session)
+                await analytics_svc.ingest_event(
+                    event_name="tutor_message_sent",
+                    properties={
+                        "module_id": str(module_id) if module_id else None,
+                        "language": effective_language,
+                    },
+                    user_id=uuid.UUID(str(user_id)),
+                    session_id=None,
+                )
+            except Exception as analytics_err:
+                logger.warning("Analytics event failed (non-fatal)", error=str(analytics_err))
 
             if conversation.message_count > COMPACT_TRIGGER:
                 asyncio.ensure_future(
