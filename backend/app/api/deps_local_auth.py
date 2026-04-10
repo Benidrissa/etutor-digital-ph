@@ -23,7 +23,8 @@ class AuthenticatedUser:
 
     def __init__(self, jwt_payload: dict):
         self.id = jwt_payload["sub"]
-        self.email = jwt_payload["email"]
+        self.email = jwt_payload.get("email")
+        self.phone_number = jwt_payload.get("phone_number")
         self.preferred_language = jwt_payload.get("preferred_language", "fr")
         self.country = jwt_payload.get("country")
         self.current_level = jwt_payload.get("current_level", 1)

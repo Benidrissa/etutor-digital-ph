@@ -65,7 +65,7 @@ async def update_setting(
         AuditLog(
             id=uuid.uuid4(),
             admin_id=uuid.UUID(admin.id),
-            admin_email=admin.email,
+            admin_email=admin.email or admin.phone_number or "unknown",
             action=AdminAction.update_setting,
             details=json.dumps({"key": key, "old_value": old_value, "new_value": body.value}),
         )
@@ -91,7 +91,7 @@ async def reset_setting(
         AuditLog(
             id=uuid.uuid4(),
             admin_id=uuid.UUID(admin.id),
-            admin_email=admin.email,
+            admin_email=admin.email or admin.phone_number or "unknown",
             action=AdminAction.reset_setting,
             details=json.dumps({"key": key, "old_value": old_value}),
         )
@@ -114,7 +114,7 @@ async def reset_category(
             AuditLog(
                 id=uuid.uuid4(),
                 admin_id=uuid.UUID(admin.id),
-                admin_email=admin.email,
+                admin_email=admin.email or admin.phone_number or "unknown",
                 action=AdminAction.reset_category,
                 details=json.dumps({"category": category, "reset_count": count}),
             )
