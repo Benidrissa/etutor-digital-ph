@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.ai.claude_service import ClaudeService
+from app.ai.prompts.audience import detect_audience
 from app.ai.prompts.quiz import get_quiz_system_prompt
 from app.ai.rag.retriever import SemanticRetriever
 from app.api.v1.schemas.quiz import QuizContent, QuizResponse
@@ -430,26 +431,42 @@ class QuizService:
             course=course,
         )
 
-        audience = (
-            f"professionals in {domain} in {country}"
-            if course_title
-            else f"public health professionals in {country}"
-        )
-        context_note = (
-            f"Use examples relevant to {country} and West African context when possible, adapted to {domain}"
-            if course_title
-            else f"Use examples relevant to {country} and West African context when possible"
-        )
-        practical_note = (
-            f"Focus on practical applications for {domain} work"
-            if course_title
-            else "Focus on practical applications for public health work"
-        )
-        closing_note = (
-            f"Generate the quiz now, ensuring all questions are relevant to {domain} practice in West Africa."
-            if course_title
-            else "Generate the quiz now, ensuring all questions are relevant to public health practice in West Africa."
-        )
+        audience_ctx = detect_audience(course)
+        if audience_ctx.is_kids:
+            age_range = f"{audience_ctx.age_min}-{audience_ctx.age_max}"
+            audience = f"young learners aged {age_range} in {country}"
+            context_note = (
+                f"Use examples from daily life in {country} that children aged {age_range} can relate to "
+                f"(school, market, family, games)"
+            )
+            practical_note = (
+                f"Focus on fun, engaging questions that make {domain} exciting for children"
+            )
+            closing_note = (
+                f"Generate the quiz now. Make it fun and encouraging for children aged {age_range} "
+                f"learning {domain} in West Africa."
+            )
+        else:
+            audience = (
+                f"professionals in {domain} in {country}"
+                if course_title
+                else f"public health professionals in {country}"
+            )
+            context_note = (
+                f"Use examples relevant to {country} and West African context when possible, adapted to {domain}"
+                if course_title
+                else f"Use examples relevant to {country} and West African context when possible"
+            )
+            practical_note = (
+                f"Focus on practical applications for {domain} work"
+                if course_title
+                else "Focus on practical applications for public health work"
+            )
+            closing_note = (
+                f"Generate the quiz now, ensuring all questions are relevant to {domain} practice in West Africa."
+                if course_title
+                else "Generate the quiz now, ensuring all questions are relevant to public health practice in West Africa."
+            )
 
         if unit_title is not None:
             topic_constraint = (

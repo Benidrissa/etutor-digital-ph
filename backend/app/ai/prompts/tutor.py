@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from typing import Any
 
+from app.ai.prompts.audience import AudienceContext, get_audience_guidance
+
 
 @dataclass
 class TutorContext:
@@ -19,6 +21,9 @@ class TutorContext:
     course_title: str | None = None  # Human-readable course title (fr or en)
     course_domain: str | None = None  # e.g. "Santé Publique", "Marketing", ...
     learner_memory: str | None = None  # Pre-formatted memory text for system prompt
+    is_kids: bool = False
+    age_min: int | None = None
+    age_max: int | None = None
     previous_session_context: str | None = None  # Compacted context from prior session
     progress_snapshot: str | None = None  # Short learner progress summary
     tutor_mode: str = "socratic"  # "socratic" (guided questions) or "explanatory" (direct answers)
@@ -48,15 +53,39 @@ def get_socratic_system_prompt(context: TutorContext, rag_chunks: list[dict[str,
         System prompt string for Claude API
     """
     language_instruction = _get_language_instruction(context.user_language)
-    level_instruction = _get_level_instruction(context.user_level)
-    country_context = _get_country_context(context.user_country)
+    level_instruction = _get_level_instruction(context.user_level, context.is_kids)
+    country_context = _get_country_context(context.user_country, context.course_domain)
     sources_context = _format_sources_context(rag_chunks)
 
-    pedagogical_section = _get_pedagogical_rules(context.tutor_mode)
+    pedagogical_section = _get_pedagogical_rules(context.tutor_mode, context.is_kids)
 
     course_label = context.course_title or "santé publique"
-    prompt = f"""Tu es un tuteur IA spécialisé en {course_label} pour l'Afrique de l'Ouest.
-{_get_mode_intro(context.tutor_mode)}
+
+    if context.is_kids:
+        audience_ctx = AudienceContext(
+            is_kids=True,
+            age_min=context.age_min,
+            age_max=context.age_max,
+        )
+        audience_guidance = get_audience_guidance(audience_ctx, context.user_language)
+        age_range = _format_age_range(context.age_min, context.age_max, context.user_language)
+        if context.user_language == "fr":
+            persona_line = f"Tu es un tuteur ami et encourageant pour les jeunes apprenants de {age_range}, spécialisé en {course_label} pour l'Afrique de l'Ouest."
+        else:
+            persona_line = f"You are a friendly and encouraging tutor for young learners aged {age_range}, specializing in {course_label} for West Africa."
+        concision_rule = _get_kids_concision_rule(
+            context.age_min, context.age_max, context.user_language
+        )
+        kids_section = (
+            f"\n## ADAPTATION JEUNE PUBLIC\n{audience_guidance}" if audience_guidance else ""
+        )
+    else:
+        persona_line = f"Tu es un tuteur IA spécialisé en {course_label} pour l'Afrique de l'Ouest."
+        concision_rule = "3-5 phrases" if context.user_language == "fr" else "3-5 sentences"
+        kids_section = ""
+
+    prompt = f"""{persona_line}
+{_get_mode_intro(context.tutor_mode, context.is_kids)}
 
 ## LANGUE DE RÉPONSE OBLIGATOIRE
 {language_instruction}
@@ -67,7 +96,7 @@ def get_socratic_system_prompt(context: TutorContext, rag_chunks: list[dict[str,
 - Pays: {country_context}
 - Module actuel: {_format_current_module(context)}
 - Mode: {"Socratique (guidage par questions)" if context.tutor_mode == "socratic" else "Explicatif (réponses directes)"}
-{_format_progress_section(context.progress_snapshot)}{_format_memory_section(context.learner_memory)}{_format_previous_session_section(context.previous_session_context)}
+{_format_progress_section(context.progress_snapshot)}{_format_memory_section(context.learner_memory)}{_format_previous_session_section(context.previous_session_context)}{kids_section}
 
 {pedagogical_section}
 
@@ -139,12 +168,12 @@ Lorsqu'un outil retourne un marqueur `{{{{source_image:UUID}}}}`, tu peux l'incl
 ## INSTRUCTIONS SPÉCIALES
 
 ### CONCISION OBLIGATOIRE
-- Chaque réponse fait 3-5 phrases maximum (hors citations de sources)
+- Chaque réponse fait {concision_rule} maximum (hors citations de sources)
 - Ne pose qu'UNE question par message (deux maximum si décomposition nécessaire)
 - Pas de longs préambules ni de résumés après chaque échange
 
 ### RÉPONSES INTERDITES
-- Ne réponds JAMAIS directement à une question
+- {"Évite de donner directement la réponse — guide avec des questions adaptées à leur âge" if context.is_kids else "Ne réponds JAMAIS directement à une question"}
 - N'énumère pas de listes sans questionnement
 - Évite les réponses encyclopédiques
 - Ne donne pas de cours magistral
@@ -179,7 +208,7 @@ BON:
 "Bonne question ! 🎯 Selon toi, quels seraient les premiers signes à observer sur le terrain ?
 (Selon [Source], Ch. X, p. Y)"
 
-Réponds maintenant dans cette approche socratique stricte."""
+{_get_closing_instruction(context.is_kids, context.user_language)}"""
 
     return prompt
 
@@ -216,12 +245,54 @@ def _format_progress_section(progress_snapshot: str | None) -> str:
     return f"\n## PROGRESSION ACTUELLE\n{progress_snapshot}"
 
 
-def _get_mode_intro(tutor_mode: str) -> str:
+def _format_age_range(age_min: int | None, age_max: int | None, language: str) -> str:
+    """Format age range for display in persona line."""
+    if age_min is not None and age_max is not None:
+        if language == "fr":
+            return f"{age_min}-{age_max} ans"
+        return f"{age_min}-{age_max}"
+    if age_min is not None:
+        if language == "fr":
+            return f"{age_min}+ ans"
+        return f"{age_min}+"
+    return "jeunes apprenants" if language == "fr" else "young learners"
+
+
+def _get_kids_concision_rule(age_min: int | None, age_max: int | None, language: str) -> str:
+    """Return concision rule adapted to children's age tier."""
+    effective_max = age_max or 12
+    if effective_max <= 8:
+        return "2-3 phrases" if language == "fr" else "2-3 sentences"
+    if effective_max <= 12:
+        return "3-4 phrases" if language == "fr" else "3-4 sentences"
+    return "3-5 phrases" if language == "fr" else "3-5 sentences"
+
+
+def _get_closing_instruction(is_kids: bool, language: str) -> str:
+    """Return the closing instruction line of the prompt."""
+    if is_kids:
+        if language == "fr":
+            return "Réponds maintenant avec bienveillance, en adaptant ton langage à l'âge de l'apprenant."
+        return "Now respond kindly, adapting your language to the learner's age."
+    return "Réponds maintenant dans cette approche socratique stricte."
+
+
+def _get_mode_intro(tutor_mode: str, is_kids: bool = False) -> str:
     """Return the mission statement based on tutor mode."""
     if tutor_mode == "explanatory":
+        if is_kids:
+            return (
+                "Tu adoptes une approche explicative douce et encourageante. Ta mission est de fournir "
+                "des réponses claires, simples et accessibles aux jeunes apprenants."
+            )
         return (
             "Tu adoptes une approche explicative directe. Ta mission est de fournir "
             "des réponses claires, structurées et complètes aux questions de l'apprenant."
+        )
+    if is_kids:
+        return (
+            "Tu adoptes une approche pédagogique socratique adaptée aux enfants. Ta mission est de guider "
+            "les jeunes apprenants avec bienveillance, en posant des questions adaptées à leur âge."
         )
     return (
         "Tu adoptes une approche pédagogique socratique. Ta mission est de guider "
@@ -229,7 +300,7 @@ def _get_mode_intro(tutor_mode: str) -> str:
     )
 
 
-def _get_pedagogical_rules(tutor_mode: str) -> str:
+def _get_pedagogical_rules(tutor_mode: str, is_kids: bool = False) -> str:
     """Return the pedagogical rules section based on tutor mode."""
     if tutor_mode == "explanatory":
         return """## APPROCHE EXPLICATIVE — RÈGLES
@@ -326,8 +397,16 @@ def _get_language_instruction(language: str) -> str:
         return "English — You MUST respond ENTIRELY in English. Do NOT use French unless the learner explicitly requests it in their message."
 
 
-def _get_level_instruction(level: int) -> str:
+def _get_level_instruction(level: int, is_kids: bool = False) -> str:
     """Get level-specific instruction."""
+    if is_kids:
+        kids_level_map = {
+            1: "Découverte (L1) - Premiers pas",
+            2: "Explorateur (L2) - J'apprends en pratiquant",
+            3: "Champion (L3) - Je comprends et j'applique",
+            4: "Maître (L4) - Je crée et j'invente",
+        }
+        return kids_level_map.get(level, "Non spécifié")
     level_map = {
         1: "Débutant (L1) - Fondamentaux",
         2: "Intermédiaire (L2) - Application et analyse",
@@ -337,9 +416,45 @@ def _get_level_instruction(level: int) -> str:
     return level_map.get(level, "Non spécifié")
 
 
-def _get_country_context(country: str) -> str:
+def _get_country_context(country: str, course_domain: str | None = None) -> str:
     """Get country-specific context for West Africa region."""
-    country_map = {
+    country_names = {
+        "BF": "Burkina Faso",
+        "BJ": "Bénin",
+        "CI": "Côte d'Ivoire",
+        "GH": "Ghana",
+        "GN": "Guinée",
+        "GW": "Guinée-Bissau",
+        "LR": "Libéria",
+        "ML": "Mali",
+        "NE": "Niger",
+        "NG": "Nigeria",
+        "SL": "Sierra Leone",
+        "SN": "Sénégal",
+        "TG": "Togo",
+        "CV": "Cap-Vert",
+        "GM": "Gambie",
+    }
+    country_name = country_names.get(country, country)
+
+    health_keywords = {
+        "santé",
+        "health",
+        "médecine",
+        "medical",
+        "epidemiology",
+        "épidémiologie",
+        "publique",
+        "public",
+        "clinique",
+        "clinical",
+        "nursing",
+        "infirmi",
+    }
+    if course_domain and not any(kw in course_domain.lower() for kw in health_keywords):
+        return f"{country_name} - Afrique de l'Ouest"
+
+    health_map = {
         "BF": "Burkina Faso - Focus paludisme, méningite, malnutrition",
         "BJ": "Bénin - Focus paludisme, fièvre typhoïde, santé maternelle",
         "CI": "Côte d'Ivoire - Focus paludisme, VIH/SIDA, tuberculose",
@@ -356,7 +471,7 @@ def _get_country_context(country: str) -> str:
         "CV": "Cap-Vert - Focus hypertension, diabète, maladies cardiovasculaires",
         "GM": "Gambie - Focus paludisme, tuberculose, santé maternelle",
     }
-    return country_map.get(country, f"{country} - Contexte Afrique de l'Ouest")
+    return health_map.get(country, f"{country_name} - Contexte Afrique de l'Ouest")
 
 
 def _format_sources_context(rag_chunks: list[dict[str, Any]]) -> str:

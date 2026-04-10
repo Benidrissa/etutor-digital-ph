@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.ai.claude_service import ClaudeService
+from app.ai.prompts.audience import detect_audience
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.domain.models.module import Module
@@ -21,21 +22,54 @@ from app.infrastructure.storage.s3 import S3StorageService
 
 logger = structlog.get_logger(__name__)
 
-AUDIO_SUMMARY_SYSTEM_PROMPT = """You are an expert in public health for West Africa (ECOWAS region).
+
+def _build_audio_system_prompt(
+    language: str,
+    course_title: str | None = None,
+    is_kids: bool = False,
+    age_range: str = "",
+) -> str:
+    """Build a context-aware audio summary system prompt.
+
+    Args:
+        language: Content language code ("fr" or "en").
+        course_title: Optional course title used as domain descriptor.
+        is_kids: Whether the course targets children.
+        age_range: Age range string (e.g. "6-12") used when is_kids=True.
+
+    Returns:
+        Formatted system prompt string for Claude.
+    """
+    domain = course_title or "public health"
+    if is_kids:
+        audience = f"young learners aged {age_range}"
+        style = f"clear, engaging, and fun narration suitable for children aged {age_range}"
+        west_africa_note = (
+            "Reference concrete examples from West Africa that children can relate to"
+        )
+    else:
+        audience = f"professionals in {domain}"
+        style = f"clear, engaging narration suitable for {audience}"
+        west_africa_note = (
+            "Reference concrete examples from West African health systems where possible"
+        )
+
+    return f"""You are an expert educator in {domain} for West Africa (ECOWAS region).
 Your task is to write a spoken audio summary script for a learning module.
 
 Guidelines:
 - Write in {language} (French or English as specified)
 - Length: approximately 2000 words — about 10-12 minutes of spoken audio
-- Style: clear, engaging narration suitable for public health professionals
+- Style: {style}
 - Structure: brief introduction → core concepts → real West African examples → key takeaways
 - Use simple language accessible on 2G/3G with limited bandwidth
-- Reference concrete examples from West African health systems where possible
+- {west_africa_note}
 - DO NOT include headers, bullet points, or markdown — write plain spoken prose
 - DO NOT include source citations in the script itself (they are tracked separately)
 - End with 3-5 key takeaways the listener should remember
 
 Output only the script text, nothing else."""
+
 
 AUDIO_SUMMARY_USER_TEMPLATE = """Module: {module_title}
 Language: {language}
@@ -138,12 +172,24 @@ class MediaSummaryService:
                 session=session,
             )
 
+            course = module.course
+            audience_ctx = detect_audience(course)
+            course_title = None
+            if course is not None:
+                course_title = course.title_fr if language == "fr" else course.title_en
+            age_range = (
+                f"{audience_ctx.age_min}-{audience_ctx.age_max}" if audience_ctx.is_kids else ""
+            )
+
             script = await self._generate_script(
                 module_title=module_title or f"Module {module.module_number}",
                 language=language,
                 level=module.level,
                 unit_titles=unit_titles,
                 rag_chunks=rag_chunks,
+                course_title=course_title,
+                is_kids=audience_ctx.is_kids,
+                age_range=age_range,
             )
 
             audio_bytes = await self._call_gemini_tts(script, language)
@@ -289,9 +335,17 @@ class MediaSummaryService:
         level: int,
         unit_titles: list[str],
         rag_chunks: list,
+        course_title: str | None = None,
+        is_kids: bool = False,
+        age_range: str = "",
     ) -> str:
         """Call Claude to generate a ~2000-word spoken summary script."""
-        system_prompt = AUDIO_SUMMARY_SYSTEM_PROMPT.format(language=language)
+        system_prompt = _build_audio_system_prompt(
+            language=language,
+            course_title=course_title,
+            is_kids=is_kids,
+            age_range=age_range,
+        )
         unit_list = "\n".join(f"- {t}" for t in unit_titles) if unit_titles else "- (no units)"
         rag_context = _format_rag_context(rag_chunks)
 
