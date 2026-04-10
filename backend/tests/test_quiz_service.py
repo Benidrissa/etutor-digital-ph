@@ -416,6 +416,129 @@ class TestBuildQuizPrompt:
         assert "M01-U01" not in user_message
 
 
+class TestBuildQuizPromptKidsAware:
+    def _make_kids_course(self, age_min: int = 6, age_max: int = 12) -> MagicMock:
+        tc = MagicMock()
+        tc.slug = "primary_school"
+        tc.type = "audience"
+        course = MagicMock()
+        course.taxonomy_categories = [tc]
+        course.title_en = f"Village Math (Ages {age_min}-{age_max})"
+        course.title_fr = f"Maths au Village ({age_min}-{age_max} ans)"
+        return course
+
+    def _make_adult_course(self) -> MagicMock:
+        tc = MagicMock()
+        tc.slug = "professionals"
+        tc.type = "audience"
+        course = MagicMock()
+        course.taxonomy_categories = [tc]
+        course.title_en = "Internal Audit"
+        course.title_fr = "Audit Interne"
+        return course
+
+    def test_kids_course_user_message_says_young_learners(self, quiz_service):
+        kids_course = self._make_kids_course()
+        _system, user_message = quiz_service._build_quiz_prompt(
+            context="context",
+            unit_id="M01-U01",
+            language="en",
+            country="senegal",
+            level=1,
+            num_questions=5,
+            course_title="Village Math (Ages 6-12)",
+            course=kids_course,
+        )
+        assert "young learners" in user_message
+        assert "professionals" not in user_message
+
+    def test_kids_course_user_message_includes_age_range(self, quiz_service):
+        kids_course = self._make_kids_course(age_min=6, age_max=12)
+        _system, user_message = quiz_service._build_quiz_prompt(
+            context="context",
+            unit_id="M01-U01",
+            language="en",
+            country="senegal",
+            level=1,
+            num_questions=5,
+            course_title="Village Math (Ages 6-12)",
+            course=kids_course,
+        )
+        assert "6-12" in user_message
+
+    def test_kids_course_closing_note_is_fun_and_encouraging(self, quiz_service):
+        kids_course = self._make_kids_course()
+        _system, user_message = quiz_service._build_quiz_prompt(
+            context="context",
+            unit_id="M01-U01",
+            language="en",
+            country="senegal",
+            level=1,
+            num_questions=5,
+            course_title="Village Math (Ages 6-12)",
+            course=kids_course,
+        )
+        assert "fun" in user_message.lower()
+        assert "encouraging" in user_message.lower()
+
+    def test_adult_course_user_message_says_professionals(self, quiz_service):
+        adult_course = self._make_adult_course()
+        _system, user_message = quiz_service._build_quiz_prompt(
+            context="context",
+            unit_id="M01-U01",
+            language="en",
+            country="ghana",
+            level=2,
+            num_questions=5,
+            course_title="Internal Audit",
+            course=adult_course,
+        )
+        assert "professionals" in user_message
+        assert "young learners" not in user_message
+
+    def test_no_course_produces_adult_public_health_message(self, quiz_service):
+        _system, user_message = quiz_service._build_quiz_prompt(
+            context="context",
+            unit_id="M01-U01",
+            language="en",
+            country="nigeria",
+            level=1,
+            num_questions=5,
+            course=None,
+        )
+        assert "public health professionals" in user_message
+        assert "young learners" not in user_message
+
+    def test_kids_context_note_mentions_daily_life(self, quiz_service):
+        kids_course = self._make_kids_course()
+        _system, user_message = quiz_service._build_quiz_prompt(
+            context="context",
+            unit_id="M01-U01",
+            language="en",
+            country="senegal",
+            level=1,
+            num_questions=5,
+            course_title="Village Math (Ages 6-12)",
+            course=kids_course,
+        )
+        assert "daily life" in user_message.lower()
+
+    def test_kids_practical_note_mentions_exciting_and_fun(self, quiz_service):
+        kids_course = self._make_kids_course()
+        _system, user_message = quiz_service._build_quiz_prompt(
+            context="context",
+            unit_id="M01-U01",
+            language="en",
+            country="senegal",
+            level=1,
+            num_questions=5,
+            course_title="Village Math (Ages 6-12)",
+            course=kids_course,
+        )
+        assert "fun" in user_message.lower()
+        assert "exciting" in user_message.lower()
+
+
 class TestBuildQuizSearchQuery:
     def test_returns_unit_id_when_module_is_none(self, quiz_service):
         result = quiz_service._build_quiz_search_query(None, "M01-U04", "fr")
