@@ -1,4 +1,4 @@
-"""Service for AI-generated lesson illustrations using DALL-E 2 with semantic reuse."""
+"""Service for AI-generated lesson illustrations using gpt-image-1 with semantic reuse."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def _jaccard_similarity(tags_a: list[str], tags_b: list[str]) -> float:
 
 
 class ImageGenerationService:
-    """Pipeline: concept extraction → semantic reuse → DALL-E 2 → WebP → bilingual alt-text."""
+    """Pipeline: concept extraction → semantic reuse → gpt-image-1 → WebP → bilingual alt-text."""
 
     async def generate_for_lesson(
         self,
@@ -153,7 +153,7 @@ class ImageGenerationService:
             "You are an expert in public health education for West Africa. "
             "Given lesson content, extract: "
             "1) A short key concept (5 words max), "
-            "2) A vivid DALL-E 3 illustration prompt that follows these STRICT rules:\n"
+            "2) A vivid image generation prompt that follows these STRICT rules:\n"
             "   - NEVER include any text, words, labels, numbers, letters, captions, or titles in the image\n"
             "   - Focus on visual metaphors, diagrams without text, people, scenes, objects\n"
             "   - Style: clean flat illustration, infographic style, vibrant colors, educational\n"
@@ -164,7 +164,7 @@ class ImageGenerationService:
             "3) A JSON array of 5-8 lowercase semantic tags. "
             "Reply ONLY in this exact format:\n"
             "CONCEPT: <concept>\n"
-            "PROMPT: <dalle_prompt>\n"
+            "PROMPT: <image_prompt>\n"
             "TAGS: <json_array>"
         )
 
@@ -233,8 +233,9 @@ class ImageGenerationService:
         return None
 
     async def _call_dalle(self, prompt: str) -> tuple[bytes, str]:
-        """Call OpenAI DALL-E 2 API and return (image_bytes, image_url)."""
-        import httpx
+        """Call OpenAI gpt-image-1 API and return (image_bytes, image_url)."""
+        import base64
+
         from openai import AsyncOpenAI
 
         client = AsyncOpenAI(api_key=settings.openai_api_key)
@@ -243,18 +244,14 @@ class ImageGenerationService:
         final_prompt = prompt + no_text_suffix
 
         response = await client.images.generate(
-            model="dall-e-2",
+            model="gpt-image-1",
             prompt=final_prompt,
-            n=1,
-            size="512x512",
-            response_format="url",
+            size="1024x1024",
+            quality="low",
         )
 
-        image_url = response.data[0].url
-        async with httpx.AsyncClient(timeout=30) as http_client:
-            img_response = await http_client.get(image_url)
-            img_response.raise_for_status()
-            image_bytes = img_response.content
+        image_bytes = base64.b64decode(response.data[0].b64_json)
+        image_url = f"gpt-image-1://{id(response)}"
 
         return image_bytes, image_url
 
