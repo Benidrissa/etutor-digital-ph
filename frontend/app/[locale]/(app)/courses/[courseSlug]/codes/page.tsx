@@ -36,6 +36,12 @@ import {
   type CodeRedemptionResponse,
 } from "@/lib/api";
 
+function getCodeStatus(code: ActivationCodeResponse): "active" | "exhausted" | "inactive" {
+  if (!code.is_active) return "inactive";
+  if (code.max_uses != null && code.times_used >= code.max_uses) return "exhausted";
+  return "active";
+}
+
 interface CourseBasic {
   id: string;
   title_fr: string;
@@ -55,7 +61,7 @@ function getStoredUserRole(): string | null {
   }
 }
 
-function StatusBadge({ status, t }: { status: ActivationCodeResponse["status"]; t: (key: string) => string }) {
+function StatusBadge({ status, t }: { status: "active" | "exhausted" | "inactive"; t: (key: string) => string }) {
   const classes: Record<string, string> = {
     active: "bg-green-100 text-green-700 border-green-200",
     exhausted: "bg-stone-100 text-stone-500 border-stone-200",
@@ -177,7 +183,7 @@ export default function ExpertCodesPage() {
     try {
       const maxUses = generateMaxUses.trim() !== "" ? parseInt(generateMaxUses, 10) : undefined;
       const result = await generateActivationCodes(course.id, generateCount, maxUses);
-      setNewCodes(result.codes);
+      setNewCodes(result);
       await loadCodes();
     } catch {
       setGenerateError(t("errorGenerating"));
@@ -389,10 +395,10 @@ export default function ExpertCodesPage() {
                           {code.times_used}/{code.max_uses ?? "∞"}
                         </td>
                         <td className="px-4 py-3 text-stone-700 hidden sm:table-cell">
-                          {t("credits", { count: code.revenue_credits })}
+                          {code.revenue_credits != null ? t("credits", { count: code.revenue_credits }) : "—"}
                         </td>
                         <td className="px-4 py-3">
-                          <StatusBadge status={code.status} t={t} />
+                          <StatusBadge status={getCodeStatus(code)} t={t} />
                         </td>
                         <td className="px-4 py-3 text-stone-500 hidden md:table-cell">
                           {formatDate(code.created_at)}
@@ -495,7 +501,7 @@ export default function ExpertCodesPage() {
               </SelectTrigger>
               <SelectContent>
                 {codes
-                  .filter((c) => c.status === "active")
+                  .filter((c) => getCodeStatus(c) === "active")
                   .map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       <span className="font-mono text-xs">{c.code}</span>
