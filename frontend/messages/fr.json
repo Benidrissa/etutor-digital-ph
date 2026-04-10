@@ -1231,6 +1231,9 @@
     "allAudiences": "Tous les publics",
     "clearFilters": "Effacer les filtres",
     "activeFilters": "{count, plural, one {# filtre actif} other {# filtres actifs}}",
+    "searchPlaceholder": "Rechercher des formations...",
+    "showingCourses": "{count, plural, one {# formation trouvée} other {# formations trouvées}}",
+    "filters": "Filtres",
     "cancel": "Annuler",
     "manageCodes": "Gérer les codes d'activation"
   },
