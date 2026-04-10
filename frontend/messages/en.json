@@ -965,6 +965,10 @@
       "noUsersFound": "No users found",
       "noUsersDescription": "Try adjusting your search or filters.",
       "userCount": "{count, plural, one {# user} other {# users}}",
+      "userCountTotal": "{count, plural, one {# user total} other {# users total}}",
+      "prevPage": "Previous",
+      "nextPage": "Next",
+      "pageIndicator": "Page {page} of {total}",
       "level": "Level {level}",
       "lastActive": "Last active",
       "memberSince": "Member since",
@@ -1008,7 +1012,13 @@
       "unit": "Unit",
       "quizScore": "Score",
       "moduleProgress": "Progress",
-      "completionPct": "{pct}% complete"
+      "completionPct": "{pct}% complete",
+      "phoneNumber": "Phone number",
+      "language": "Language",
+      "professionalRole": "Professional role",
+      "analyticsOptOut": "Analytics opt-out",
+      "yes": "Yes",
+      "no": "No"
     },
     "analytics": {
       "title": "Analytics",

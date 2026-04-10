@@ -4,7 +4,7 @@ import { useState, useCallback, useTransition } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, Download, MoreVertical, UserCheck, UserX, ShieldCheck, ShieldOff, Shield } from "lucide-react";
+import { Search, Download, MoreVertical, UserCheck, UserX, ShieldCheck, ShieldOff, Shield, ChevronLeft, ChevronRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +28,7 @@ import { authClient } from "@/lib/auth";
 
 interface AdminUser {
   id: string;
-  email: string;
+  email: string | null;
   name: string;
   preferred_language: string;
   country: string | null;
@@ -40,12 +40,31 @@ interface AdminUser {
   created_at: string;
   role: "user" | "expert" | "admin";
   is_active: boolean;
+  phone_number: string | null;
 }
 
 type PendingAction =
   | { type: "deactivate"; user: AdminUser }
   | { type: "reactivate"; user: AdminUser }
   | { type: "promote"; user: AdminUser; newRole: "expert" | "admin" | "user" };
+
+const PAGE_SIZE = 50;
+
+function buildFilterQuery(params: {
+  search: string;
+  country: string;
+  level: string;
+  role: string;
+  isActive: string;
+}) {
+  const query = new URLSearchParams();
+  if (params.search) query.set("search", params.search);
+  if (params.country) query.set("country", params.country);
+  if (params.level) query.set("level", params.level);
+  if (params.role) query.set("role", params.role);
+  if (params.isActive) query.set("is_active", params.isActive);
+  return query;
+}
 
 function useAdminUsers(params: {
   search: string;
@@ -55,18 +74,28 @@ function useAdminUsers(params: {
   isActive: string;
   offset: number;
 }) {
-  const query = new URLSearchParams();
-  if (params.search) query.set("search", params.search);
-  if (params.country) query.set("country", params.country);
-  if (params.level) query.set("level", params.level);
-  if (params.role) query.set("role", params.role);
-  if (params.isActive) query.set("is_active", params.isActive);
+  const query = buildFilterQuery(params);
   query.set("offset", String(params.offset));
-  query.set("limit", "50");
+  query.set("limit", String(PAGE_SIZE));
 
   return useQuery<AdminUser[]>({
     queryKey: ["admin", "users", params],
     queryFn: () => apiFetch<AdminUser[]>(`/api/v1/admin/users?${query.toString()}`),
+  });
+}
+
+function useAdminUserCount(params: {
+  search: string;
+  country: string;
+  level: string;
+  role: string;
+  isActive: string;
+}) {
+  const query = buildFilterQuery(params);
+
+  return useQuery<{ count: number }>({
+    queryKey: ["admin", "users", "count", params],
+    queryFn: () => apiFetch<{ count: number }>(`/api/v1/admin/users/count?${query.toString()}`),
   });
 }
 
@@ -84,27 +113,24 @@ export function UserListClient() {
   const [level, setLevel] = useState("");
   const [role, setRole] = useState("");
   const [isActive, setIsActive] = useState("");
-  const [offset] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const searchTimeout = useCallback(
     (value: string) => {
       setSearch(value);
-      const t = setTimeout(() => setDebouncedSearch(value), 400);
-      return () => clearTimeout(t);
+      setOffset(0);
+      const timer = setTimeout(() => setDebouncedSearch(value), 400);
+      return () => clearTimeout(timer);
     },
     []
   );
 
-  const { data: users, isLoading, error } = useAdminUsers({
-    search: debouncedSearch,
-    country,
-    level,
-    role,
-    isActive,
-    offset,
-  });
+  const filterParams = { search: debouncedSearch, country, level, role, isActive };
+
+  const { data: users, isLoading, error } = useAdminUsers({ ...filterParams, offset });
+  const { data: countData } = useAdminUserCount(filterParams);
 
   const statusMutation = useMutation({
     mutationFn: ({ userId, is_active }: { userId: string; is_active: boolean }) =>
@@ -204,7 +230,7 @@ export function UserListClient() {
         <select
           className="min-h-11 rounded-md border border-input bg-background px-3 py-2 text-sm"
           value={country}
-          onChange={(e) => setCountry(e.target.value)}
+          onChange={(e) => { setCountry(e.target.value); setOffset(0); }}
           aria-label={t("filterCountry")}
         >
           <option value="">{t("allCountries")}</option>
@@ -216,7 +242,7 @@ export function UserListClient() {
         <select
           className="min-h-11 rounded-md border border-input bg-background px-3 py-2 text-sm"
           value={level}
-          onChange={(e) => setLevel(e.target.value)}
+          onChange={(e) => { setLevel(e.target.value); setOffset(0); }}
           aria-label={t("filterLevel")}
         >
           <option value="">{t("allLevels")}</option>
@@ -228,7 +254,7 @@ export function UserListClient() {
         <select
           className="min-h-11 rounded-md border border-input bg-background px-3 py-2 text-sm"
           value={role}
-          onChange={(e) => setRole(e.target.value)}
+          onChange={(e) => { setRole(e.target.value); setOffset(0); }}
           aria-label={t("filterRole")}
         >
           <option value="">{t("allRoles")}</option>
@@ -240,7 +266,7 @@ export function UserListClient() {
         <select
           className="min-h-11 rounded-md border border-input bg-background px-3 py-2 text-sm"
           value={isActive}
-          onChange={(e) => setIsActive(e.target.value)}
+          onChange={(e) => { setIsActive(e.target.value); setOffset(0); }}
           aria-label={t("filterStatus")}
         >
           <option value="">{t("allStatuses")}</option>
@@ -280,7 +306,9 @@ export function UserListClient() {
       {users && users.length > 0 && (
         <div className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
-            {t("userCount", { count: users.length })}
+            {countData
+              ? t("userCountTotal", { count: countData.count })
+              : t("userCount", { count: users.length })}
           </p>
           <div className="flex flex-col gap-2">
             {users.map((user) => (
@@ -298,6 +326,38 @@ export function UserListClient() {
               />
             ))}
           </div>
+          {countData && countData.count > PAGE_SIZE && (
+            <div className="flex items-center justify-between gap-3 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="min-h-11 min-w-11 gap-2"
+                disabled={offset === 0}
+                onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+                aria-label={t("prevPage")}
+              >
+                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                <span className="hidden sm:inline">{t("prevPage")}</span>
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                {t("pageIndicator", {
+                  page: Math.floor(offset / PAGE_SIZE) + 1,
+                  total: Math.ceil(countData.count / PAGE_SIZE),
+                })}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="min-h-11 min-w-11 gap-2"
+                disabled={offset + PAGE_SIZE >= countData.count}
+                onClick={() => setOffset(offset + PAGE_SIZE)}
+                aria-label={t("nextPage")}
+              >
+                <span className="hidden sm:inline">{t("nextPage")}</span>
+                <ChevronRight className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -355,7 +415,12 @@ function UserCard({
               <Badge variant="destructive">{t("inactive")}</Badge>
             )}
           </div>
-          <span className="text-xs text-muted-foreground truncate">{user.email}</span>
+          {user.email && (
+            <span className="text-xs text-muted-foreground truncate">{user.email}</span>
+          )}
+          {user.phone_number && (
+            <span className="text-xs text-muted-foreground truncate">{user.phone_number}</span>
+          )}
           <div className="flex items-center gap-3 mt-1 flex-wrap">
             {user.country && (
               <span className="text-xs text-muted-foreground">{user.country}</span>

@@ -3,7 +3,8 @@
 import { useTranslations, useLocale } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Phone } from "lucide-react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -12,7 +13,7 @@ import { apiFetch } from "@/lib/api";
 
 interface AdminUser {
   id: string;
-  email: string;
+  email: string | null;
   name: string;
   preferred_language: string;
   country: string | null;
@@ -24,6 +25,8 @@ interface AdminUser {
   created_at: string;
   role: "user" | "expert" | "admin";
   is_active: boolean;
+  phone_number: string | null;
+  analytics_opt_out: boolean;
 }
 
 interface ModuleProgressItem {
@@ -102,12 +105,34 @@ export function UserDetailClient({ userId }: { userId: string }) {
       </div>
 
       <Card className="p-4 md:p-6">
-        <h2 className="text-base font-semibold mb-4">{t("profile")}</h2>
+        <div className="flex items-start gap-4 mb-4">
+          {user.avatar_url && (
+            <Image
+              src={user.avatar_url}
+              alt={user.name}
+              width={56}
+              height={56}
+              className="rounded-full object-cover shrink-0"
+            />
+          )}
+          <h2 className="text-base font-semibold">{t("profile")}</h2>
+        </div>
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-          <div>
-            <dt className="text-muted-foreground">Email</dt>
-            <dd className="font-medium mt-0.5">{user.email}</dd>
-          </div>
+          {user.email && (
+            <div>
+              <dt className="text-muted-foreground">Email</dt>
+              <dd className="font-medium mt-0.5">{user.email}</dd>
+            </div>
+          )}
+          {user.phone_number && (
+            <div>
+              <dt className="text-muted-foreground flex items-center gap-1">
+                <Phone className="h-3 w-3" aria-hidden="true" />
+                {t("phoneNumber")}
+              </dt>
+              <dd className="font-medium mt-0.5">{user.phone_number}</dd>
+            </div>
+          )}
           <div>
             <dt className="text-muted-foreground">{tUsers("filterRole")}</dt>
             <dd className="mt-0.5">
@@ -115,6 +140,12 @@ export function UserDetailClient({ userId }: { userId: string }) {
               {!user.is_active && (
                 <Badge variant="destructive" className="ml-2">{tUsers("inactive")}</Badge>
               )}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">{t("language")}</dt>
+            <dd className="mt-0.5">
+              <Badge variant="outline" className="uppercase">{user.preferred_language}</Badge>
             </dd>
           </div>
           {user.country && (
@@ -125,7 +156,7 @@ export function UserDetailClient({ userId }: { userId: string }) {
           )}
           {user.professional_role && (
             <div>
-              <dt className="text-muted-foreground">Role</dt>
+              <dt className="text-muted-foreground">{t("professionalRole")}</dt>
               <dd className="font-medium mt-0.5">{user.professional_role}</dd>
             </div>
           )}
@@ -147,6 +178,14 @@ export function UserDetailClient({ userId }: { userId: string }) {
             <dt className="text-muted-foreground">{tUsers("lastActive")}</dt>
             <dd className="font-medium mt-0.5">
               {new Date(user.last_active).toLocaleDateString(locale)}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">{t("analyticsOptOut")}</dt>
+            <dd className="mt-0.5">
+              <Badge variant={user.analytics_opt_out ? "secondary" : "outline"}>
+                {user.analytics_opt_out ? t("yes") : t("no")}
+              </Badge>
             </dd>
           </div>
         </dl>

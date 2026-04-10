@@ -965,6 +965,10 @@
       "noUsersFound": "Aucun utilisateur trouvé",
       "noUsersDescription": "Essayez d'ajuster votre recherche ou vos filtres.",
       "userCount": "{count, plural, one {# utilisateur} other {# utilisateurs}}",
+      "userCountTotal": "{count, plural, one {# utilisateur au total} other {# utilisateurs au total}}",
+      "prevPage": "Précédent",
+      "nextPage": "Suivant",
+      "pageIndicator": "Page {page} sur {total}",
       "level": "Niveau {level}",
       "lastActive": "Dernière activité",
       "memberSince": "Membre depuis",
@@ -1008,7 +1012,13 @@
       "unit": "Unité",
       "quizScore": "Score",
       "moduleProgress": "Progression",
-      "completionPct": "{pct}% complété"
+      "completionPct": "{pct}% complété",
+      "phoneNumber": "Numéro de téléphone",
+      "language": "Langue",
+      "professionalRole": "Rôle professionnel",
+      "analyticsOptOut": "Désactivation des analytiques",
+      "yes": "Oui",
+      "no": "Non"
     },
     "analytics": {
       "title": "Analytique",

@@ -48,6 +48,8 @@ def _user_to_response(u: User) -> UserProfileResponse:
         created_at=u.created_at.isoformat(),
         role=u.role,
         is_active=u.is_active,
+        phone_number=u.phone_number,
+        analytics_opt_out=u.analytics_opt_out,
     )
 
 
@@ -105,6 +107,7 @@ async def export_users_csv(
             [
                 "id",
                 "email",
+                "phone_number",
                 "name",
                 "country",
                 "professional_role",
@@ -121,7 +124,8 @@ async def export_users_csv(
             writer.writerow(
                 [
                     str(u.id),
-                    u.email,
+                    u.email or "",
+                    u.phone_number or "",
                     u.name,
                     u.country or "",
                     u.professional_role or "",
