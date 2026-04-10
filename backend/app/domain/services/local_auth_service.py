@@ -232,6 +232,7 @@ class LocalAuthService:
                     "preferred_language": user.preferred_language,
                     "country": user.country,
                     "current_level": user.current_level,
+                    "role": user.role,
                 },
             }
 
@@ -354,6 +355,7 @@ class LocalAuthService:
                     "preferred_language": user.preferred_language,
                     "country": user.country,
                     "current_level": user.current_level,
+                    "role": user.role,
                 },
             }
 
@@ -759,7 +761,7 @@ class LocalAuthService:
                 "refresh_token": refresh_token,
                 "token_type": "bearer",
                 "expires_in": self.jwt_service.access_token_expire_minutes * 60,
-                "user": user,
+                "user": {**user, "role": user_obj.role},
             }
 
         except AuthenticationError:
@@ -947,6 +949,7 @@ class LocalAuthService:
                     "preferred_language": user.preferred_language,
                     "country": user.country,
                     "current_level": user.current_level,
+                    "role": user.role,
                 },
             }
 
@@ -1064,6 +1067,7 @@ class LocalAuthService:
                     "preferred_language": user.preferred_language,
                     "country": user.country,
                     "current_level": user.current_level,
+                    "role": user.role,
                 },
             }
 
@@ -1263,7 +1267,7 @@ class LocalAuthService:
                 "refresh_token": refresh_token,
                 "token_type": "bearer",
                 "expires_in": self.jwt_service.access_token_expire_minutes * 60,
-                "user": user,
+                "user": {**user, "role": user_obj.role},
             }
 
         except AuthenticationError:
