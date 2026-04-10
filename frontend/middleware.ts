@@ -57,5 +57,5 @@ export default function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/(fr|en)/:path*", "/((?!_next|favicon.ico|manifest.json|icon-|sw.js).*)"],
+  matcher: ["/", "/(fr|en)/:path*", "/((?!_next|favicon.ico|manifest.json|icon-|sw.js|.*\\.(?:png|jpg|jpeg|gif|webp|ico|pdf)).*)"],
 };
