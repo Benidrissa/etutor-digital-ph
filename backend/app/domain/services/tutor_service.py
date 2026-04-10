@@ -14,6 +14,7 @@ from anthropic.types import MessageParam, ToolResultBlockParam, ToolUseBlock
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.ai.prompts.audience import detect_audience
 from app.ai.prompts.tutor import (
     TutorContext,
     get_activity_suggestions,
@@ -321,6 +322,8 @@ class TutorService:
                 course_domain = course_domain or course_title
                 rag_collection_id = course.rag_collection_id
 
+            audience = detect_audience(course)
+
             context = TutorContext(
                 user_level=user.current_level,
                 user_language=effective_language,
@@ -336,6 +339,9 @@ class TutorService:
                 learner_memory=session_ctx.learner_memory,
                 previous_session_context=session_ctx.previous_compact,
                 progress_snapshot=session_ctx.progress_snapshot,
+                is_kids=audience.is_kids,
+                age_min=audience.age_min,
+                age_max=audience.age_max,
             )
 
             system_prompt = get_socratic_system_prompt(context, [])
