@@ -972,8 +972,8 @@ export interface ActivationCodeResponse {
   code: string;
   max_uses: number | null;
   times_used: number;
-  status: "active" | "exhausted" | "inactive";
-  revenue_credits: number;
+  is_active: boolean;
+  revenue_credits?: number;
   created_at: string;
 }
 
@@ -986,17 +986,13 @@ export interface CodeRedemptionResponse {
   revenue_credits: number;
 }
 
-export interface GenerateCodesResponse {
-  codes: ActivationCodeResponse[];
-}
-
 export async function generateActivationCodes(
   courseId: string,
   count: number,
   maxUses?: number
-): Promise<GenerateCodesResponse> {
+): Promise<ActivationCodeResponse[]> {
   const { authClient } = await import("./auth");
-  return authClient.authenticatedFetch<GenerateCodesResponse>(
+  return authClient.authenticatedFetch<ActivationCodeResponse[]>(
     `/api/v1/expert/courses/${courseId}/codes`,
     {
       method: "POST",
