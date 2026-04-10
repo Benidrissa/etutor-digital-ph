@@ -1,4 +1,4 @@
-"""Tests for DALL-E 2 async image generation pipeline (issue #223, US-025)."""
+"""Tests for gpt-image-1 async image generation pipeline (issue #223, US-025)."""
 
 from __future__ import annotations
 
@@ -202,15 +202,16 @@ class TestImageGenerationService:
     async def test_new_generation_calls_dalle(
         self, service, mock_session, mock_claude_response, mock_alt_text_response
     ):
-        """When no matching image, DALL-E 2 must be called and image saved."""
+        """When no matching image, gpt-image-1 must be called and image saved."""
+        import base64
+
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = []
         mock_session.execute = AsyncMock(return_value=mock_result)
 
-        dalle_response = MagicMock()
-        dalle_response.data = [
-            MagicMock(url="https://oaidalleapiprodscus.blob.core.windows.net/img.png")
-        ]
+        fake_b64 = base64.b64encode(b"FAKE_PNG_DATA").decode()
+        image_api_response = MagicMock()
+        image_api_response.data = [MagicMock(b64_json=fake_b64)]
 
         with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
             mock_client = AsyncMock()
@@ -222,36 +223,25 @@ class TestImageGenerationService:
             with patch("openai.AsyncOpenAI") as mock_openai_cls:
                 mock_openai = AsyncMock()
                 mock_openai_cls.return_value = mock_openai
-                mock_openai.images.generate = AsyncMock(return_value=dalle_response)
+                mock_openai.images.generate = AsyncMock(return_value=image_api_response)
 
-                with patch("httpx.AsyncClient") as mock_http_cls:
-                    mock_http = AsyncMock()
-                    mock_http_cls.return_value.__aenter__ = AsyncMock(return_value=mock_http)
-                    mock_http_cls.return_value.__aexit__ = AsyncMock(return_value=False)
-                    mock_http.get = AsyncMock(
-                        return_value=MagicMock(
-                            content=b"FAKE_PNG_DATA", raise_for_status=MagicMock()
-                        )
-                    )
-
-                    result = await service.generate_for_lesson(
-                        lesson_id=uuid.uuid4(),
-                        module_id=uuid.uuid4(),
-                        unit_id="u01",
-                        lesson_content="Lesson about cholera surveillance.",
-                        session=mock_session,
-                    )
+                result = await service.generate_for_lesson(
+                    lesson_id=uuid.uuid4(),
+                    module_id=uuid.uuid4(),
+                    unit_id="u01",
+                    lesson_content="Lesson about cholera surveillance.",
+                    session=mock_session,
+                )
 
             mock_openai.images.generate.assert_called_once()
             call_kwargs = mock_openai.images.generate.call_args.kwargs
-            assert call_kwargs.get("model") == "dall-e-2"
-            assert call_kwargs.get("size") == "512x512"
+            assert call_kwargs.get("model") == "gpt-image-1"
+            assert call_kwargs.get("size") == "1024x1024"
             prompt_sent = call_kwargs.get("prompt", "")
             assert "NO text" in prompt_sent or "no text" in prompt_sent.lower()
 
         assert result.status == "ready"
         assert result.image_url == f"/api/v1/images/{result.id}/data"
-        assert "oaidalleapiprodscus" not in (result.image_url or "")
         assert result.image_data is not None
         assert len(result.image_data) > 0
 
@@ -280,12 +270,15 @@ class TestImageGenerationService:
         self, service, mock_session, mock_claude_response, mock_alt_text_response
     ):
         """Alt-text must be generated in both FR and EN."""
+        import base64
+
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = []
         mock_session.execute = AsyncMock(return_value=mock_result)
 
-        dalle_response = MagicMock()
-        dalle_response.data = [MagicMock(url="https://example.com/img.png")]
+        fake_b64 = base64.b64encode(b"DATA").decode()
+        image_api_response = MagicMock()
+        image_api_response.data = [MagicMock(b64_json=fake_b64)]
 
         with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
             mock_client = AsyncMock()
@@ -297,23 +290,15 @@ class TestImageGenerationService:
             with patch("openai.AsyncOpenAI") as mock_openai_cls:
                 mock_openai = AsyncMock()
                 mock_openai_cls.return_value = mock_openai
-                mock_openai.images.generate = AsyncMock(return_value=dalle_response)
+                mock_openai.images.generate = AsyncMock(return_value=image_api_response)
 
-                with patch("httpx.AsyncClient") as mock_http_cls:
-                    mock_http = AsyncMock()
-                    mock_http_cls.return_value.__aenter__ = AsyncMock(return_value=mock_http)
-                    mock_http_cls.return_value.__aexit__ = AsyncMock(return_value=False)
-                    mock_http.get = AsyncMock(
-                        return_value=MagicMock(content=b"DATA", raise_for_status=MagicMock())
-                    )
-
-                    result = await service.generate_for_lesson(
-                        lesson_id=uuid.uuid4(),
-                        module_id=uuid.uuid4(),
-                        unit_id="u01",
-                        lesson_content="Lesson content.",
-                        session=mock_session,
-                    )
+                result = await service.generate_for_lesson(
+                    lesson_id=uuid.uuid4(),
+                    module_id=uuid.uuid4(),
+                    unit_id="u01",
+                    lesson_content="Lesson content.",
+                    session=mock_session,
+                )
 
         assert result.alt_text_fr is not None and len(result.alt_text_fr) > 0
         assert result.alt_text_en is not None and len(result.alt_text_en) > 0
@@ -391,13 +376,16 @@ class TestImageGenerationService:
     async def test_new_generation_image_data_not_null(
         self, service, mock_session, mock_claude_response, mock_alt_text_response
     ):
-        """image_data must be stored (not NULL) after successful DALL-E generation."""
+        """image_data must be stored (not NULL) after successful gpt-image-1 generation."""
+        import base64
+
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = []
         mock_session.execute = AsyncMock(return_value=mock_result)
 
-        dalle_response = MagicMock()
-        dalle_response.data = [MagicMock(url="https://example.com/img.png")]
+        fake_b64 = base64.b64encode(b"FAKE_PNG_BINARY_DATA").decode()
+        image_api_response = MagicMock()
+        image_api_response.data = [MagicMock(b64_json=fake_b64)]
 
         with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
             mock_client = AsyncMock()
@@ -409,27 +397,16 @@ class TestImageGenerationService:
             with patch("openai.AsyncOpenAI") as mock_openai_cls:
                 mock_openai = AsyncMock()
                 mock_openai_cls.return_value = mock_openai
-                mock_openai.images.generate = AsyncMock(return_value=dalle_response)
+                mock_openai.images.generate = AsyncMock(return_value=image_api_response)
 
-                with patch("httpx.AsyncClient") as mock_http_cls:
-                    mock_http = AsyncMock()
-                    mock_http_cls.return_value.__aenter__ = AsyncMock(return_value=mock_http)
-                    mock_http_cls.return_value.__aexit__ = AsyncMock(return_value=False)
-                    mock_http.get = AsyncMock(
-                        return_value=MagicMock(
-                            content=b"FAKE_PNG_BINARY_DATA", raise_for_status=MagicMock()
-                        )
-                    )
-
-                    result = await service.generate_for_lesson(
-                        lesson_id=uuid.uuid4(),
-                        module_id=uuid.uuid4(),
-                        unit_id="u01",
-                        lesson_content="Lesson about tuberculosis surveillance in Senegal.",
-                        session=mock_session,
-                    )
+                result = await service.generate_for_lesson(
+                    lesson_id=uuid.uuid4(),
+                    module_id=uuid.uuid4(),
+                    unit_id="u01",
+                    lesson_content="Lesson about tuberculosis surveillance in Senegal.",
+                    session=mock_session,
+                )
 
         assert result.image_data is not None, "image_data must not be NULL after generation"
         assert len(result.image_data) > 0
         assert result.image_url == f"/api/v1/images/{result.id}/data"
-        assert "blob.core.windows.net" not in (result.image_url or "")
