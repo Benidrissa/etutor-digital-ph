@@ -1234,6 +1234,7 @@
     "searchPlaceholder": "Search courses...",
     "showingCourses": "{count, plural, one {Showing # course} other {Showing # courses}}",
     "filters": "Filters",
+    "all": "All",
     "cancel": "Cancel",
     "manageCodes": "Manage Activation Codes"
   },

@@ -1234,6 +1234,7 @@
     "searchPlaceholder": "Rechercher des formations...",
     "showingCourses": "{count, plural, one {# formation trouvée} other {# formations trouvées}}",
     "filters": "Filtres",
+    "all": "Tous",
     "cancel": "Annuler",
     "manageCodes": "Gérer les codes d'activation"
   },
