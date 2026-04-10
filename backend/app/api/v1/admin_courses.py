@@ -16,7 +16,6 @@ from structlog import get_logger
 
 from app.api.deps import get_db as get_db_session
 from app.api.deps_local_auth import AuthenticatedUser, require_role
-from app.domain.models.audit_log import AdminAction, AuditLog
 from app.domain.models.course import Course, UserCourseEnrollment
 from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.module import Module
@@ -568,17 +567,17 @@ async def delete_course(
         sa_delete(PlacementTestAttempt).where(PlacementTestAttempt.course_id == course_id)
     )
 
-    audit_log = AuditLog(
-        admin_id=uuid.UUID(current_user.id),
-        admin_email=current_user.email,
-        action=AdminAction.delete_course,
-        details=f"course_id={course_id} title_fr={course.title_fr!r} title_en={course.title_en!r}",
-    )
-    db.add(audit_log)
-
     try:
         await db.delete(course)
         await db.commit()
+        logger.info(
+            "Admin deleted course",
+            admin_id=current_user.id,
+            admin_email=current_user.email,
+            course_id=str(course_id),
+            title_fr=course.title_fr,
+            title_en=course.title_en,
+        )
     except Exception as exc:
         await db.rollback()
         logger.error("Course delete failed", course_id=str(course_id), error=str(exc))
