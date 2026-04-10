@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.sira.app",
+      "sha256_cert_fingerprints": [
+        "CB:31:03:3F:B5:72:E6:DB:69:42:4C:3F:8B:8B:32:0D:2A:8F:7E:BC:17:E4:25:4B:4B:46:AF:D0:07:0C:4A:AD"
+      ]
+    }
+  }
+]
