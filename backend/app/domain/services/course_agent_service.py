@@ -58,13 +58,19 @@ def _try_parse_modules(raw: str) -> list[dict] | None:
 class CourseAgentService:
     """Generates course structure using Claude API, with graceful fallback."""
 
-    def _get_admin_prompt(self, **template_vars: str) -> str | None:
+    def _get_admin_prompt(
+        self,
+        audience_type: list[str] | None = None,
+        **template_vars: str,
+    ) -> str | None:
         """Check if admin has customized the syllabus prompt via platform settings."""
         try:
+            from app.ai.prompts.audience import KIDS_AUDIENCE_SLUGS
             from app.domain.services.platform_settings_service import SettingsCache
             from app.infrastructure.config.platform_defaults import DEFAULTS_BY_KEY
 
-            key = "ai-prompt-syllabus-system"
+            is_kids = bool(audience_type and any(s in KIDS_AUDIENCE_SLUGS for s in audience_type))
+            key = "ai-prompt-syllabus-kids-system" if is_kids else "ai-prompt-syllabus-system"
             defn = DEFAULTS_BY_KEY.get(key)
             if defn is None:
                 return None
@@ -90,14 +96,30 @@ class CourseAgentService:
         resource_block: str,
         description_fr: str | None = None,
         description_en: str | None = None,
+        audience_type: list[str] | None = None,
     ) -> str:
         """Build the syllabus generation prompt, using admin override if available."""
+        from app.ai.prompts.audience import (
+            detect_audience_from_slugs,
+            get_audience_guidance,
+        )
+
+        audience_ctx = detect_audience_from_slugs(audience_type, title_en, title_fr)
+
+        age_range = f"{audience_ctx.age_min}-{audience_ctx.age_max}" if audience_ctx.is_kids else ""
+        audience_guidance = (
+            get_audience_guidance(audience_ctx, "en") if audience_ctx.is_kids else ""
+        )
+
         admin = self._get_admin_prompt(
+            audience_type=audience_type,
             course_title=f"{title_fr} / {title_en}",
             course_domain=domains_str,
             level=levels_str,
             estimated_hours=str(estimated_hours),
             resource_text=resource_block,
+            age_range=age_range,
+            audience_guidance=audience_guidance,
         )
         if admin:
             return admin
@@ -109,6 +131,20 @@ class CourseAgentService:
                 description_block += f"- Description (FR): {description_fr}\n"
             if description_en:
                 description_block += f"- Description (EN): {description_en}\n"
+
+        if audience_ctx.is_kids:
+            return self._build_kids_prompt(
+                title_fr=title_fr,
+                title_en=title_en,
+                description_block=description_block,
+                domains_str=domains_str,
+                levels_str=levels_str,
+                audience_str=audience_str,
+                estimated_hours=estimated_hours,
+                resource_block=resource_block,
+                age_range=age_range,
+                audience_guidance=audience_guidance,
+            )
 
         return (
             "You are an expert instructional designer specializing in "
@@ -173,6 +209,87 @@ class CourseAgentService:
             "no explanation."
         )
 
+    def _build_kids_prompt(
+        self,
+        title_fr: str,
+        title_en: str,
+        description_block: str,
+        domains_str: str,
+        levels_str: str,
+        audience_str: str,
+        estimated_hours: int,
+        resource_block: str,
+        age_range: str,
+        audience_guidance: str,
+    ) -> str:
+        """Build kids-adapted syllabus prompt with child-centered pedagogy."""
+        return (
+            "You are a warm, encouraging instructional designer who creates "
+            "bilingual (FR/EN) course syllabi for young learners aged "
+            f"{age_range} in West Africa. You apply child-centered pedagogy, "
+            "Piaget's developmental stages, and play-based learning.\n\n"
+            f"{audience_guidance}\n\n"
+            f"Create a complete course syllabus for:\n"
+            f"- Title FR: {title_fr}\n"
+            f"- Title EN: {title_en}\n"
+            f"{description_block}"
+            f"- Domain(s): {domains_str}\n"
+            f"- Level(s): {levels_str}\n"
+            f"- Target audience: {audience_str} (ages {age_range})\n"
+            f"- Estimated total hours: {estimated_hours}\n\n"
+            f"{resource_block}\n\n"
+            "## Design principles (mandatory)\n"
+            "- Progressive complexity: start with discovery (remember/understand), "
+            "build to exploration (apply), and for older children (ages 13+) "
+            "reach basic analysis (analyze/evaluate)\n"
+            "- Bloom level cap: primary school → apply; secondary school → evaluate\n"
+            "- Each module must be self-contained (5-15h) with child-friendly "
+            "learning objectives\n"
+            "- Units are short learning sessions (5-10 min for ages 5-8, "
+            "10-15 min for ages 9-15), 3-6 units per module\n"
+            "- Every module includes: lessons, a formative quiz per lesson "
+            "(10 questions, 60% pass — fun and encouraging), flashcards "
+            "(10-20 bilingual cards with simple concrete definitions), and "
+            "a story-based scenario from daily life in West Africa relatable "
+            "to children\n"
+            "- Module titles must be playful and adventure-themed to excite children\n"
+            "- Learning objectives must use child-friendly verbs: "
+            "discover, explore, create, play, build, find, learn, share\n"
+            "- Bilingual: all text in both FR and EN\n\n"
+            "## Output format\n"
+            "Return a JSON array of modules. Each module must have:\n"
+            "{\n"
+            '  "module_number": int,\n'
+            '  "title_fr": str, "title_en": str,\n'
+            '  "description_fr": str, "description_en": str,\n'
+            '  "estimated_hours": int,\n'
+            '  "bloom_level": "remember"|"understand"|"apply"|'
+            '"analyze"|"evaluate"|"create",\n'
+            '  "learning_objectives_fr": [str], '
+            '"learning_objectives_en": [str],\n'
+            '  "units": [\n'
+            '    {"title_fr": str, "title_en": str, '
+            '"type": "lesson"|"quiz"|"case-study",\n'
+            '     "description_fr": str, "description_en": str}\n'
+            "  ],\n"
+            '  "quiz_topics_fr": [str], '
+            '"quiz_topics_en": [str],\n'
+            '  "flashcard_categories_fr": [str], '
+            '"flashcard_categories_en": [str],\n'
+            '  "case_study_fr": str, "case_study_en": str\n'
+            "}\n\n"
+            "## Conciseness rules (CRITICAL — this is a syllabus, not the course itself)\n"
+            "- description_fr/en: max 2 short sentences (~20 words each)\n"
+            "- learning_objectives: max 3-4 bullet points per module, each ≤12 words\n"
+            "- unit description_fr/en: max 1 sentence (~15 words)\n"
+            "- quiz_topics: max 5 short topic names per module\n"
+            "- flashcard_categories: max 5 short category names per module\n"
+            "- case_study_fr/en: max 2 sentences (~30 words) — a story prompt, not the full case\n"
+            "- Keep total response under 20,000 words\n\n"
+            "- NEVER truncate text with '...' or ellipsis — write complete short text instead\n\n"
+            "Return ONLY valid JSON, no markdown fences, no explanation."
+        )
+
     async def generate_course_structure(
         self,
         title_fr: str,
@@ -233,6 +350,7 @@ class CourseAgentService:
                 resource_block,
                 description_fr=course_description_fr,
                 description_en=course_description_en,
+                audience_type=audience_type,
             )
 
             _model = "claude-sonnet-4-6"
@@ -257,6 +375,7 @@ class CourseAgentService:
                     resource_block,
                     description_fr=course_description_fr,
                     description_en=course_description_en,
+                    audience_type=audience_type,
                 )
 
             # Use streaming to avoid timeout with large max_tokens
