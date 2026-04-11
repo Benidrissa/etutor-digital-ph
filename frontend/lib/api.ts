@@ -135,10 +135,17 @@ export async function deleteTaxonomyCategory(id: string): Promise<void> {
   );
 }
 
-export async function getMyEnrollments(): Promise<CourseWithEnrollment[]> {
+export async function getMyEnrollments(opts?: {
+  orderBy?: 'last_accessed';
+  limit?: number;
+}): Promise<CourseWithEnrollment[]> {
   const { authClient } = await import("./auth");
+  const params = new URLSearchParams();
+  if (opts?.orderBy) params.set('order_by', opts.orderBy);
+  if (opts?.limit) params.set('limit', String(opts.limit));
+  const qs = params.toString();
   return authClient.authenticatedFetch<CourseWithEnrollment[]>(
-    "/api/v1/courses/my-enrollments"
+    `/api/v1/courses/my-enrollments${qs ? `?${qs}` : ''}`
   );
 }
 

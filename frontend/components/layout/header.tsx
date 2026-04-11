@@ -1,10 +1,15 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { usePathname } from "next/navigation";
 import { LocaleSwitcher } from "@/components/shared/locale-switcher";
 
 export function Header() {
   const tCommon = useTranslations("Common");
+  const pathname = usePathname();
+
+  // Hide on tutor page — ChatPanel has its own header with locale switcher
+  if (pathname.endsWith("/tutor")) return null;
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 md:hidden">
