@@ -3,7 +3,7 @@
  * Passwordless TOTP MFA + email magic link recovery.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { API_BASE } from "./api";
 
 export interface User {
   id: string;
