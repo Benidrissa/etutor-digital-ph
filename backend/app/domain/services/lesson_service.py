@@ -60,6 +60,7 @@ class LessonGenerationService:
         level: int,
         session: AsyncSession,
         force_regenerate: bool = False,
+        user_id: uuid.UUID | None = None,
     ) -> LessonResponse:
         """
         Get cached lesson or generate new one.
@@ -72,13 +73,14 @@ class LessonGenerationService:
             level: User's competency level (1-4)
             session: Database session
             force_regenerate: Force new generation even if cached
+            user_id: Optional user UUID for background task logging
 
         Returns:
             LessonResponse with generated or cached content
         """
         # Check for existing cached content first
         if not force_regenerate:
-            cached_lesson = await self._get_cached_lesson(
+            cached_lesson, is_fallback = await self._get_cached_lesson(
                 module_id, unit_id, language, country, level, session
             )
             if cached_lesson:
@@ -87,7 +89,20 @@ class LessonGenerationService:
                     module_id=str(module_id),
                     unit_id=unit_id,
                     language=language,
+                    country_fallback=is_fallback,
                 )
+                if is_fallback:
+                    from app.tasks.content_generation import generate_country_content_task
+
+                    generate_country_content_task.delay(
+                        module_id=str(module_id),
+                        unit_id=unit_id,
+                        content_type="lesson",
+                        language=language,
+                        level=level,
+                        country=country,
+                        user_id=str(user_id) if user_id else "",
+                    )
                 return cached_lesson
 
         # Get module information (eager-load course for prompt context)
@@ -126,6 +141,7 @@ class LessonGenerationService:
         country: str,
         level: int,
         session: AsyncSession,
+        user_id: uuid.UUID | None = None,
     ) -> AsyncGenerator[StreamingEvent, None]:
         """
         Stream lesson generation in real-time.
@@ -137,17 +153,30 @@ class LessonGenerationService:
             country: User's country code
             level: User's competency level (1-4)
             session: Database session
+            user_id: Optional user UUID for background task logging
 
         Yields:
             StreamingEvent objects for real-time updates
         """
         try:
             # Check cache first
-            cached_lesson = await self._get_cached_lesson(
+            cached_lesson, is_fallback = await self._get_cached_lesson(
                 module_id, unit_id, language, country, level, session
             )
 
             if cached_lesson:
+                if is_fallback:
+                    from app.tasks.content_generation import generate_country_content_task
+
+                    generate_country_content_task.delay(
+                        module_id=str(module_id),
+                        unit_id=unit_id,
+                        content_type="lesson",
+                        language=language,
+                        level=level,
+                        country=country,
+                        user_id=str(user_id) if user_id else "",
+                    )
                 yield StreamingEvent(event="complete", data=cached_lesson.model_dump())
                 return
 
@@ -293,8 +322,13 @@ class LessonGenerationService:
         country: str,
         level: int,
         session: AsyncSession,
-    ) -> LessonResponse | None:
-        """Check for existing cached lesson content."""
+    ) -> tuple[LessonResponse | None, bool]:
+        """Check for existing cached lesson content.
+
+        Returns:
+            Tuple of (LessonResponse | None, country_fallback: bool).
+            country_fallback is True when content is from a different country's cache.
+        """
         query = (
             select(GeneratedContent)
             .where(GeneratedContent.module_id == module_id)
@@ -308,6 +342,22 @@ class LessonGenerationService:
 
         result = await session.execute(query)
         cached_content = result.scalars().first()
+
+        if not cached_content:
+            fallback_query = (
+                select(GeneratedContent)
+                .where(GeneratedContent.module_id == module_id)
+                .where(GeneratedContent.content_type == "lesson")
+                .where(GeneratedContent.language == language)
+                .where(GeneratedContent.level == level)
+                .where(GeneratedContent.content["unit_id"].astext == unit_id)
+                .order_by(GeneratedContent.generated_at.desc())
+            )
+            fallback_result = await session.execute(fallback_query)
+            cached_content = fallback_result.scalars().first()
+            is_fallback = cached_content is not None
+        else:
+            is_fallback = False
 
         if cached_content:
             raw_refs = cached_content.content.get("source_image_refs", [])
@@ -343,10 +393,11 @@ class LessonGenerationService:
                 content=LessonContent(**cached_content.content),
                 generated_at=cached_content.generated_at.isoformat(),
                 cached=True,
+                country_fallback=is_fallback,
                 source_image_refs=source_image_refs,
-            )
+            ), is_fallback
 
-        return None
+        return None, False
 
     async def _generate_lesson_content(
         self,
@@ -777,6 +828,7 @@ class CaseStudyGenerationService:
         level: int,
         session: AsyncSession,
         force_regenerate: bool = False,
+        user_id: uuid.UUID | None = None,
     ) -> CaseStudyResponse:
         """
         Get cached case study or generate new one.
@@ -789,6 +841,7 @@ class CaseStudyGenerationService:
             level: User's competency level (1-4)
             session: Database session
             force_regenerate: Force new generation even if cached
+            user_id: Optional user UUID for background task logging
 
         Returns:
             CaseStudyResponse with generated or cached content
@@ -802,7 +855,7 @@ class CaseStudyGenerationService:
             raise ValueError(f"Module {module_id} not found")
 
         if not force_regenerate:
-            cached = await self._get_cached_case_study(
+            cached, is_fallback = await self._get_cached_case_study(
                 module_id, unit_id, language, country, level, session
             )
             if cached:
@@ -811,7 +864,20 @@ class CaseStudyGenerationService:
                     module_id=str(module_id),
                     unit_id=unit_id,
                     language=language,
+                    country_fallback=is_fallback,
                 )
+                if is_fallback:
+                    from app.tasks.content_generation import generate_country_content_task
+
+                    generate_country_content_task.delay(
+                        module_id=str(module_id),
+                        unit_id=unit_id,
+                        content_type="case",
+                        language=language,
+                        level=level,
+                        country=country,
+                        user_id=str(user_id) if user_id else "",
+                    )
                 unit = await self._resolve_unit(module, unit_id, session)
                 if unit:
                     cached.unit_title = unit.title_fr if language == "fr" else unit.title_en
@@ -845,6 +911,7 @@ class CaseStudyGenerationService:
         country: str,
         level: int,
         session: AsyncSession,
+        user_id: uuid.UUID | None = None,
     ) -> AsyncGenerator[StreamingEvent, None]:
         """
         Stream case study generation in real-time.
@@ -868,11 +935,23 @@ class CaseStudyGenerationService:
                 )
                 return
 
-            cached = await self._get_cached_case_study(
+            cached, is_fallback = await self._get_cached_case_study(
                 module_id, unit_id, language, country, level, session
             )
 
             if cached:
+                if is_fallback:
+                    from app.tasks.content_generation import generate_country_content_task
+
+                    generate_country_content_task.delay(
+                        module_id=str(module_id),
+                        unit_id=unit_id,
+                        content_type="case",
+                        language=language,
+                        level=level,
+                        country=country,
+                        user_id=str(user_id) if user_id else "",
+                    )
                 unit = await self._resolve_unit(module, unit_id, session)
                 if unit:
                     cached.unit_title = unit.title_fr if language == "fr" else unit.title_en
@@ -1009,8 +1088,13 @@ class CaseStudyGenerationService:
         country: str,
         level: int,
         session: AsyncSession,
-    ) -> CaseStudyResponse | None:
-        """Check for existing cached case study content."""
+    ) -> tuple[CaseStudyResponse | None, bool]:
+        """Check for existing cached case study content.
+
+        Returns:
+            Tuple of (CaseStudyResponse | None, country_fallback: bool).
+            country_fallback is True when content is from a different country's cache.
+        """
         query = (
             select(GeneratedContent)
             .where(GeneratedContent.module_id == module_id)
@@ -1025,6 +1109,22 @@ class CaseStudyGenerationService:
         result = await session.execute(query)
         cached_content = result.scalars().first()
 
+        if not cached_content:
+            fallback_query = (
+                select(GeneratedContent)
+                .where(GeneratedContent.module_id == module_id)
+                .where(GeneratedContent.content_type == "case")
+                .where(GeneratedContent.language == language)
+                .where(GeneratedContent.level == level)
+                .where(GeneratedContent.content["unit_id"].astext == unit_id)
+                .order_by(GeneratedContent.generated_at.desc())
+            )
+            fallback_result = await session.execute(fallback_query)
+            cached_content = fallback_result.scalars().first()
+            is_fallback = cached_content is not None
+        else:
+            is_fallback = False
+
         if cached_content:
             return CaseStudyResponse(
                 id=cached_content.id,
@@ -1036,9 +1136,10 @@ class CaseStudyGenerationService:
                 content=CaseStudyContent(**cached_content.content),
                 generated_at=cached_content.generated_at.isoformat(),
                 cached=True,
-            )
+                country_fallback=is_fallback,
+            ), is_fallback
 
-        return None
+        return None, False
 
     async def _generate_case_study_content(
         self,

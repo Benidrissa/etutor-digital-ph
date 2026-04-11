@@ -495,6 +495,7 @@ export interface Quiz {
   content: QuizContent;
   generated_at: string;
   cached: boolean;
+  country_fallback?: boolean;
 }
 
 export interface QuizAnswerSubmission {

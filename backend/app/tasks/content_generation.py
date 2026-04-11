@@ -472,6 +472,185 @@ def generate_quiz_task(
 @celery_app.task(
     bind=True,
     base=CallbackTask,
+    soft_time_limit=360,
+    time_limit=400,
+    rate_limit="5/m",
+    priority=5,
+)
+def generate_country_content_task(
+    self,
+    module_id: str,
+    unit_id: str,
+    content_type: str,
+    language: str,
+    level: int,
+    country: str,
+    user_id: str,
+) -> dict:
+    """Generate country-targeted content in background after a country-fallback was served.
+
+    Args:
+        module_id: UUID of the module
+        unit_id: Unit identifier within the module
+        content_type: One of "lesson", "quiz", "case"
+        language: Content language (fr/en)
+        level: User competency level (1-4)
+        country: Target country code for generation
+        user_id: UUID of the requesting user (for logging)
+
+    Returns:
+        dict with status and content_id (or error)
+    """
+    import asyncio
+
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    from app.ai.claude_service import ClaudeService
+    from app.ai.rag.embeddings import EmbeddingService
+    from app.ai.rag.retriever import SemanticRetriever
+    from app.domain.models.content import GeneratedContent
+    from app.infrastructure.config.settings import settings
+
+    logger.info(
+        "Starting country-targeted background generation",
+        module_id=module_id,
+        unit_id=unit_id,
+        content_type=content_type,
+        language=language,
+        level=level,
+        country=country,
+        user_id=user_id,
+        task_id=self.request.id,
+    )
+
+    async def _run() -> dict:
+        engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
+        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        try:
+            async with session_factory() as session:
+                existing = await session.execute(
+                    select(GeneratedContent)
+                    .where(
+                        GeneratedContent.module_id == uuid.UUID(module_id),
+                        GeneratedContent.content_type == content_type,
+                        GeneratedContent.language == language,
+                        GeneratedContent.level == level,
+                        GeneratedContent.country_context == country,
+                        GeneratedContent.content["unit_id"].astext == unit_id,
+                    )
+                    .limit(1)
+                )
+                if existing.scalars().first():
+                    logger.info(
+                        "Country-targeted content already exists, skipping generation",
+                        module_id=module_id,
+                        unit_id=unit_id,
+                        content_type=content_type,
+                        language=language,
+                        level=level,
+                        country=country,
+                    )
+                    return {"status": "skipped", "reason": "already_exists"}
+
+                embedding_service = EmbeddingService(
+                    api_key=settings.openai_api_key, model=settings.embedding_model
+                )
+                retriever = SemanticRetriever(embedding_service)
+
+                if content_type == "lesson":
+                    from app.domain.services.lesson_service import LessonGenerationService
+
+                    service = LessonGenerationService(ClaudeService(), retriever)
+                    result_obj = await service.get_or_generate_lesson(
+                        module_id=uuid.UUID(module_id),
+                        unit_id=unit_id,
+                        language=language,
+                        country=country,
+                        level=level,
+                        session=session,
+                    )
+                    generate_lesson_audio.delay(str(result_obj.id))
+                    logger.info(
+                        "Country-targeted lesson ready",
+                        unit_id=unit_id,
+                        language=language,
+                        country=country,
+                        content_id=str(result_obj.id),
+                    )
+                    return {"status": "complete", "content_id": str(result_obj.id)}
+
+                elif content_type == "quiz":
+                    from app.domain.services.quiz_service import QuizService
+
+                    service = QuizService(ClaudeService(), retriever)
+                    result_obj = await service.get_or_generate_quiz(
+                        module_id=uuid.UUID(module_id),
+                        unit_id=unit_id,
+                        language=language,
+                        country=country,
+                        level=level,
+                        session=session,
+                    )
+                    logger.info(
+                        "Country-targeted quiz ready",
+                        unit_id=unit_id,
+                        language=language,
+                        country=country,
+                        content_id=str(result_obj.id),
+                    )
+                    return {"status": "complete", "content_id": str(result_obj.id)}
+
+                elif content_type == "case":
+                    from app.domain.services.lesson_service import CaseStudyGenerationService
+
+                    service = CaseStudyGenerationService(ClaudeService(), retriever)
+                    result_obj = await service.get_or_generate_case_study(
+                        module_id=uuid.UUID(module_id),
+                        unit_id=unit_id,
+                        language=language,
+                        country=country,
+                        level=level,
+                        session=session,
+                    )
+                    logger.info(
+                        "Country-targeted case study ready",
+                        unit_id=unit_id,
+                        language=language,
+                        country=country,
+                        content_id=str(result_obj.id),
+                    )
+                    return {"status": "complete", "content_id": str(result_obj.id)}
+
+                else:
+                    logger.warning(
+                        "Unknown content_type for country generation",
+                        content_type=content_type,
+                    )
+                    return {"status": "failed", "error": f"unknown content_type: {content_type}"}
+        finally:
+            await engine.dispose()
+
+    try:
+        result = asyncio.run(_run())
+        return result
+    except Exception as exc:
+        logger.error(
+            "Country-targeted background generation failed",
+            module_id=module_id,
+            unit_id=unit_id,
+            content_type=content_type,
+            language=language,
+            country=country,
+            exception=str(exc),
+            task_id=self.request.id,
+        )
+        return {"status": "failed", "error": str(exc)}
+
+
+@celery_app.task(
+    bind=True,
+    base=CallbackTask,
     soft_time_limit=POLL_SOFT_LIMIT,
     time_limit=POLL_HARD_LIMIT,
     rate_limit="5/m",
