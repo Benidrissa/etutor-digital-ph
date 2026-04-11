@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { Play, Pause, Volume2, Loader2 } from 'lucide-react';
+import { Play, Pause, Volume2, Loader2, RotateCcw, RotateCw } from 'lucide-react';
 import { getLessonAudioStatus, API_BASE } from '@/lib/api';
 import type { LessonAudioStatus } from '@/lib/api';
 
 const POLL_INTERVAL_MS = 3000;
 const MAX_POLL_ATTEMPTS = 40;
+const SKIP_SECONDS = 10;
 
 interface LessonAudioProps {
   lessonId: string;
@@ -84,7 +85,8 @@ export function LessonAudio({ lessonId, language }: LessonAudioProps) {
     };
     const onEnded = () => {
       setIsPlaying(false);
-      setProgress(0);
+      setCurrentTime(0);
+      setProgress(100);
     };
 
     audio.addEventListener('timeupdate', onTimeUpdate);
@@ -96,7 +98,13 @@ export function LessonAudio({ lessonId, language }: LessonAudioProps) {
       audio.removeEventListener('loadedmetadata', onLoadedMetadata);
       audio.removeEventListener('ended', onEnded);
     };
-  }, [audioUrl]);
+  }, [audioUrl, duration]);
+
+  const getDuration = () => {
+    const audio = audioRef.current;
+    if (audio?.duration && isFinite(audio.duration)) return audio.duration;
+    return duration;
+  };
 
   const togglePlay = () => {
     const audio = audioRef.current;
@@ -111,15 +119,30 @@ export function LessonAudio({ lessonId, language }: LessonAudioProps) {
     }
   };
 
+  const skipBackward = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.currentTime = Math.max(0, audio.currentTime - SKIP_SECONDS);
+  };
+
+  const skipForward = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const dur = getDuration();
+    audio.currentTime = Math.min(dur, audio.currentTime + SKIP_SECONDS);
+  };
+
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const audio = audioRef.current;
     if (!audio) return;
-    const dur = audio.duration && isFinite(audio.duration) ? audio.duration : duration;
+    const dur = getDuration();
     if (dur <= 0) return;
 
     const rect = e.currentTarget.getBoundingClientRect();
-    const pct = (e.clientX - rect.left) / rect.width;
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     audio.currentTime = pct * dur;
+    setProgress(pct * 100);
+    setCurrentTime(pct * dur);
   };
 
   const formatTime = (seconds: number) => {
@@ -158,7 +181,18 @@ export function LessonAudio({ lessonId, language }: LessonAudioProps) {
 
   return (
     <div className="w-full max-w-xl mx-auto my-4">
-      <div className="flex items-center gap-3 bg-teal-50 border border-teal-200 rounded-lg px-4 py-3">
+      <div className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-lg px-4 py-3">
+        {/* Rewind 10s */}
+        <button
+          type="button"
+          onClick={skipBackward}
+          className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full text-teal-600 hover:bg-teal-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 min-h-11 min-w-11"
+          aria-label={t('rewind')}
+        >
+          <RotateCcw className="w-4 h-4" />
+        </button>
+
+        {/* Play / Pause */}
         <button
           type="button"
           onClick={togglePlay}
@@ -172,6 +206,17 @@ export function LessonAudio({ lessonId, language }: LessonAudioProps) {
           )}
         </button>
 
+        {/* Forward 10s */}
+        <button
+          type="button"
+          onClick={skipForward}
+          className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full text-teal-600 hover:bg-teal-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 min-h-11 min-w-11"
+          aria-label={t('forward')}
+        >
+          <RotateCw className="w-4 h-4" />
+        </button>
+
+        {/* Progress bar + label */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <Volume2 className="w-3.5 h-3.5 text-teal-600 flex-shrink-0" />
@@ -181,7 +226,7 @@ export function LessonAudio({ lessonId, language }: LessonAudioProps) {
           </div>
 
           <div
-            className="w-full h-1.5 bg-teal-200 rounded-full cursor-pointer"
+            className="w-full h-2 bg-teal-200 rounded-full cursor-pointer"
             onClick={handleProgressClick}
             role="progressbar"
             aria-valuenow={Math.round(progress)}
@@ -195,8 +240,9 @@ export function LessonAudio({ lessonId, language }: LessonAudioProps) {
           </div>
         </div>
 
+        {/* Time display */}
         {duration > 0 && (
-          <span className="text-xs text-teal-600 flex-shrink-0 tabular-nums">
+          <span className="text-xs text-teal-600 flex-shrink-0 tabular-nums whitespace-nowrap">
             {formatTime(currentTime)}
             {' / '}
             {formatTime(duration)}

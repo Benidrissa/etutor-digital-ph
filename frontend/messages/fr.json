@@ -696,7 +696,9 @@
     "play": "Écouter le résumé audio",
     "pause": "Mettre en pause le résumé audio",
     "listenToSummary": "Écouter le résumé de la leçon",
-    "audioUnavailable": "Résumé audio pas encore disponible"
+    "audioUnavailable": "Résumé audio pas encore disponible",
+    "rewind": "Reculer de 10 secondes",
+    "forward": "Avancer de 10 secondes"
   },
   "LessonImage": {
     "imagePending": "Illustration en cours de génération...",

@@ -696,7 +696,9 @@
     "play": "Play audio summary",
     "pause": "Pause audio summary",
     "listenToSummary": "Listen to lesson summary",
-    "audioUnavailable": "Audio summary not available yet"
+    "audioUnavailable": "Audio summary not available yet",
+    "rewind": "Rewind 10 seconds",
+    "forward": "Forward 10 seconds"
   },
   "LessonImage": {
     "imagePending": "Generating illustration...",
