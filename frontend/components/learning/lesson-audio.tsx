@@ -129,7 +129,16 @@ export function LessonAudio({ lessonId, language }: LessonAudioProps) {
   };
 
   if (status === 'failed') {
-    return null;
+    return (
+      <div className="w-full max-w-xl mx-auto my-4">
+        <div className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 opacity-60">
+          <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-gray-300 text-gray-500 min-h-11 min-w-11">
+            <Volume2 className="w-4 h-4" />
+          </div>
+          <span className="text-sm text-gray-500">{t('audioUnavailable')}</span>
+        </div>
+      </div>
+    );
   }
 
   if (status !== 'ready' || !audioUrl) {
