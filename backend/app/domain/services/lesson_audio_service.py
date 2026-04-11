@@ -254,7 +254,7 @@ class LessonAudioService:
         voice_name = "Aoede" if language == "fr" else "Charon"
 
         response = await client.aio.models.generate_content(
-            model="gemini-2.5-flash-tts",
+            model="gemini-2.5-flash-preview-tts",
             contents=script,
             config=types.GenerateContentConfig(
                 response_modalities=["AUDIO"],
