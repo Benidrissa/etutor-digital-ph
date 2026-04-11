@@ -7,9 +7,10 @@ from datetime import datetime
 from uuid import UUID
 
 import structlog
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.models.course import UserCourseEnrollment
 from app.domain.models.lesson_reading import LessonReading
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
@@ -17,6 +18,33 @@ from app.domain.models.progress import UserModuleProgress
 from app.domain.services.platform_settings_service import SettingsCache
 
 logger = structlog.get_logger()
+
+
+async def touch_course_interaction(db: AsyncSession, user_id: UUID, course_id: UUID) -> None:
+    """Update last_interacted_at on enrollment with 5-min debounce."""
+    await db.execute(
+        update(UserCourseEnrollment)
+        .where(
+            UserCourseEnrollment.user_id == user_id,
+            UserCourseEnrollment.course_id == course_id,
+            UserCourseEnrollment.status == "active",
+            or_(
+                UserCourseEnrollment.last_interacted_at.is_(None),
+                UserCourseEnrollment.last_interacted_at < func.now() - text("INTERVAL '5 minutes'"),
+            ),
+        )
+        .values(last_interacted_at=func.now())
+    )
+
+
+async def touch_course_interaction_by_module(
+    db: AsyncSession, user_id: UUID, module_id: UUID
+) -> None:
+    """Resolve course_id from module, then touch enrollment."""
+    result = await db.execute(select(Module.course_id).where(Module.id == module_id))
+    course_id = result.scalar_one_or_none()
+    if course_id:
+        await touch_course_interaction(db, user_id, course_id)
 
 
 def _unlock_pct():
@@ -88,6 +116,7 @@ class ProgressService:
 
         await self.db.commit()
         await self.db.refresh(progress)
+        await touch_course_interaction_by_module(self.db, user_id, module_id)
 
         logger.info(
             "Lesson access tracked",
@@ -142,6 +171,7 @@ class ProgressService:
 
         await self.db.commit()
         await self.db.refresh(progress)
+        await touch_course_interaction_by_module(self.db, user_id, module_id)
 
         # After commit, check whether N+1 unlock conditions are met
         if (

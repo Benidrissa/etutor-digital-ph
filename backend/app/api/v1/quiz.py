@@ -954,6 +954,19 @@ async def submit_summative_assessment_attempt(
         await session.commit()
         await session.refresh(attempt)
 
+        # Touch course interaction for recent-courses ranking
+        if assessment_content.module_id:
+            try:
+                from app.domain.services.progress_service import (
+                    touch_course_interaction_by_module,
+                )
+
+                await touch_course_interaction_by_module(
+                    session, user_id, assessment_content.module_id
+                )
+            except Exception as touch_err:
+                logger.warning("touch_course_interaction failed (non-fatal)", error=str(touch_err))
+
         response = SummativeAssessmentResponse(
             attempt_id=attempt.id,
             assessment_id=request.quiz_id,

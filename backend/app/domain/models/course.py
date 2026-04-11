@@ -79,5 +79,8 @@ class UserCourseEnrollment(Base):
         server_default="active",
     )
     completion_pct: Mapped[float] = mapped_column(server_default="0.0")
+    last_interacted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
 
     course: Mapped[Course] = relationship(back_populates="enrollments")

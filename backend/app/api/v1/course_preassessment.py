@@ -226,6 +226,14 @@ async def submit_course_preassessment(
         db.add(attempt)
         await db.commit()
 
+        # Touch course interaction for recent-courses ranking
+        try:
+            from app.domain.services.progress_service import touch_course_interaction
+
+            await touch_course_interaction(db, UUID(str(current_user.id)), course_id)
+        except Exception as touch_err:
+            logger.warning("touch_course_interaction failed (non-fatal)", error=str(touch_err))
+
         logger.info(
             "Course pre-assessment submitted",
             user_id=str(current_user.id),

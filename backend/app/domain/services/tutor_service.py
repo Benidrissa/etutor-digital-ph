@@ -322,6 +322,14 @@ class TutorService:
                 course_domain = course_domain or course_title
                 rag_collection_id = course.rag_collection_id
 
+                # Touch course interaction for recent-courses ranking
+                try:
+                    from app.domain.services.progress_service import touch_course_interaction
+
+                    await touch_course_interaction(session, uuid.UUID(str(user_id)), course.id)
+                except Exception:
+                    pass  # non-fatal
+
             audience = detect_audience(course)
 
             context = TutorContext(
