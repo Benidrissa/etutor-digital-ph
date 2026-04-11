@@ -47,9 +47,7 @@ class TestGetLessonAudio:
         self, client: AsyncClient, sample_audio_ready, db_session
     ):
         await db_session.commit()
-        resp = await client.get(
-            f"/api/v1/audio/lesson/{sample_audio_ready.lesson_id}"
-        )
+        resp = await client.get(f"/api/v1/audio/lesson/{sample_audio_ready.lesson_id}")
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 1
@@ -64,9 +62,7 @@ class TestGetLessonAudio:
         self, client: AsyncClient, sample_audio_pending, db_session
     ):
         await db_session.commit()
-        resp = await client.get(
-            f"/api/v1/audio/lesson/{sample_audio_pending.lesson_id}"
-        )
+        resp = await client.get(f"/api/v1/audio/lesson/{sample_audio_pending.lesson_id}")
         assert resp.status_code == 200
         data = resp.json()
         assert data["audio"][0]["status"] == "pending"
@@ -78,9 +74,7 @@ class TestGetAudioStatus:
         self, client: AsyncClient, sample_audio_ready, db_session
     ):
         await db_session.commit()
-        resp = await client.get(
-            f"/api/v1/audio/{sample_audio_ready.id}/status"
-        )
+        resp = await client.get(f"/api/v1/audio/{sample_audio_ready.id}/status")
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ready"

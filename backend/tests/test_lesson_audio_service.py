@@ -73,17 +73,13 @@ class TestGenerateScript:
         )
         assert result == "This is the lesson audio script."
 
-    async def test_generate_script_passes_content_to_claude(
-        self, audio_service, mock_claude
-    ):
+    async def test_generate_script_passes_content_to_claude(self, audio_service, mock_claude):
         await audio_service._generate_script("Lesson about DHIS2.", "fr")
         call_args = mock_claude.generate_lesson_content.call_args
         user_message = call_args.kwargs["user_message"]
         assert "Lesson about DHIS2." in user_message
 
-    async def test_generate_script_uses_correct_language_prompt(
-        self, audio_service, mock_claude
-    ):
+    async def test_generate_script_uses_correct_language_prompt(self, audio_service, mock_claude):
         await audio_service._generate_script("Content.", "fr")
         call_args = mock_claude.generate_lesson_content.call_args
         system_prompt = call_args.kwargs["system_prompt"]
@@ -100,9 +96,7 @@ class TestGenerateScript:
         with pytest.raises(ValueError, match="empty script"):
             await service._generate_script("Some content.", "en")
 
-    async def test_generate_script_truncates_long_content(
-        self, audio_service, mock_claude
-    ):
+    async def test_generate_script_truncates_long_content(self, audio_service, mock_claude):
         long_content = "x" * 10000
         await audio_service._generate_script(long_content, "en")
         call_args = mock_claude.generate_lesson_content.call_args
