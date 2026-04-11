@@ -16,6 +16,9 @@ from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.flashcards import router as flashcards_router
 from app.api.v1.health import router as health_router
 from app.api.v1.images import router as images_router
+from app.api.v1.lesson_audio import (
+    router as lesson_audio_router,
+)
 from app.api.v1.local_auth import router as local_auth_router
 from app.api.v1.module_media import router as module_media_router
 from app.api.v1.placement import router as placement_router
@@ -42,6 +45,7 @@ api_v1_router.include_router(quiz_router)
 api_v1_router.include_router(flashcards_router)
 api_v1_router.include_router(tutor_router)
 api_v1_router.include_router(images_router)
+api_v1_router.include_router(lesson_audio_router)
 api_v1_router.include_router(admin_router)
 api_v1_router.include_router(admin_settings_router)
 api_v1_router.include_router(admin_courses_router)

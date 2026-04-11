@@ -1,0 +1,224 @@
+"""Lesson audio summary generation: Claude script + Gemini TTS + MinIO upload."""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+
+import structlog
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.ai.claude_service import ClaudeService
+from app.domain.models.generated_audio import GeneratedAudio
+from app.infrastructure.config.settings import settings
+from app.infrastructure.storage.s3 import S3StorageService
+
+logger = structlog.get_logger(__name__)
+
+
+def _build_lesson_audio_system_prompt(language: str) -> str:
+    lang_label = "French" if language == "fr" else "English"
+    return f"""You are an expert educator for West Africa (ECOWAS region).
+Your task is to write a short spoken audio summary script for a single lesson.
+
+Guidelines:
+- Write in {lang_label}
+- Length: approximately 500 words — about 3-4 minutes of spoken audio
+- Style: clear, engaging narration suitable for health professionals
+- Structure: brief intro → key concepts recap → main takeaway
+- Use simple language accessible on 2G/3G with limited bandwidth
+- Reference concrete examples from West African health systems where relevant
+- DO NOT include headers, bullet points, or markdown — write plain spoken prose
+- End with 2-3 key takeaways the listener should remember
+
+Output only the script text, nothing else."""
+
+
+LESSON_AUDIO_USER_TEMPLATE = """Lesson content to summarize:
+
+{lesson_content}
+
+Write the audio summary script now."""
+
+
+class LessonAudioService:
+    """Pipeline: DB cache check → Claude script → Gemini TTS → MinIO upload."""
+
+    def __init__(
+        self,
+        claude_service: ClaudeService | None = None,
+        storage: S3StorageService | None = None,
+    ) -> None:
+        self._claude = claude_service or ClaudeService()
+        self._storage = storage or S3StorageService()
+
+    async def generate_for_lesson(
+        self,
+        lesson_id: uuid.UUID,
+        module_id: uuid.UUID,
+        unit_id: str,
+        language: str,
+        lesson_content: str,
+        session: AsyncSession,
+    ) -> GeneratedAudio:
+        """Generate or return cached audio summary for a lesson.
+
+        Status transitions: pending → generating → ready | failed
+        """
+        cached = await self._find_cached(lesson_id, language, session)
+        if cached is not None:
+            logger.info("Returning cached lesson audio", lesson_id=str(lesson_id))
+            return cached
+
+        record = GeneratedAudio(
+            id=uuid.uuid4(),
+            lesson_id=lesson_id,
+            module_id=module_id,
+            unit_id=unit_id,
+            language=language,
+            status="pending",
+        )
+        session.add(record)
+        await session.flush()
+
+        try:
+            record.status = "generating"
+            await session.flush()
+
+            script = await self._generate_script(lesson_content, language)
+
+            audio_bytes = await self._call_gemini_tts(script, language)
+
+            storage_key = f"audio/lessons/{lesson_id}/{language}/summary.mp3"
+            storage_url = await self._storage.upload_bytes(
+                key=storage_key,
+                data=audio_bytes,
+                content_type="audio/mpeg",
+            )
+
+            record.status = "ready"
+            record.script_text = script
+            record.storage_key = storage_key
+            record.storage_url = storage_url
+            record.duration_seconds = _estimate_duration(len(audio_bytes))
+            record.file_size_bytes = len(audio_bytes)
+            record.generated_at = datetime.utcnow()
+            await session.commit()
+
+            logger.info(
+                "Lesson audio generated successfully",
+                lesson_id=str(lesson_id),
+                audio_id=str(record.id),
+                duration_seconds=record.duration_seconds,
+            )
+
+        except Exception as exc:
+            record.status = "failed"
+            record.error_message = str(exc)
+            await session.commit()
+            logger.error(
+                "Lesson audio generation failed",
+                lesson_id=str(lesson_id),
+                audio_id=str(record.id),
+                error=str(exc),
+            )
+            raise
+
+        return record
+
+    async def _find_cached(
+        self,
+        lesson_id: uuid.UUID,
+        language: str,
+        session: AsyncSession,
+    ) -> GeneratedAudio | None:
+        result = await session.execute(
+            select(GeneratedAudio).where(
+                GeneratedAudio.lesson_id == lesson_id,
+                GeneratedAudio.language == language,
+                GeneratedAudio.status == "ready",
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def _generate_script(self, lesson_content: str, language: str) -> str:
+        system_prompt = _build_lesson_audio_system_prompt(language)
+        user_message = LESSON_AUDIO_USER_TEMPLATE.format(
+            lesson_content=lesson_content[:4000],
+        )
+
+        response = await self._claude.generate_lesson_content(
+            system_prompt=system_prompt,
+            user_message=user_message,
+        )
+
+        script_text = ""
+        for block in response.content:
+            if hasattr(block, "text"):
+                script_text += block.text
+
+        if not script_text.strip():
+            raise ValueError("Claude returned empty script for lesson audio")
+
+        logger.info(
+            "Lesson audio script generated",
+            language=language,
+            script_length=len(script_text),
+        )
+        return script_text.strip()
+
+    async def _call_gemini_tts(self, script: str, language: str) -> bytes:
+        """Call Gemini TTS API to convert script to MP3 bytes."""
+        if not settings.google_api_key:
+            raise ValueError("GOOGLE_API_KEY is required for Gemini TTS")
+
+        import google.generativeai as genai  # type: ignore[import-untyped]
+
+        genai.configure(api_key=settings.google_api_key)
+
+        voice_name = "Aoede" if language == "fr" else "Charon"
+
+        model = genai.GenerativeModel("gemini-2.5-flash-preview-tts")
+
+        response = await model.generate_content_async(
+            script,
+            generation_config=genai.GenerationConfig(
+                response_modalities=["AUDIO"],
+                speech_config=genai.SpeechConfig(
+                    voice_config=genai.VoiceConfig(
+                        prebuilt_voice_config=genai.PrebuiltVoiceConfig(
+                            voice_name=voice_name
+                        )
+                    )
+                ),
+            ),
+        )
+
+        audio_bytes = _extract_audio_bytes(response)
+
+        logger.info(
+            "Gemini TTS audio generated for lesson",
+            language=language,
+            audio_size_bytes=len(audio_bytes),
+        )
+        return audio_bytes
+
+
+def _extract_audio_bytes(response: object) -> bytes:
+    """Extract raw audio bytes from Gemini TTS response."""
+    try:
+        for candidate in response.candidates:  # type: ignore[union-attr]
+            for part in candidate.content.parts:
+                if hasattr(part, "inline_data") and part.inline_data:
+                    return part.inline_data.data
+    except Exception as exc:
+        logger.error("Failed to extract audio bytes from Gemini response", error=str(exc))
+
+    raise ValueError("No audio data found in Gemini TTS response")
+
+
+def _estimate_duration(file_size_bytes: int) -> int:
+    """Estimate audio duration from file size. Assumes ~128kbps MP3."""
+    bytes_per_second = (128 * 1024) // 8
+    return max(1, file_size_bytes // bytes_per_second)

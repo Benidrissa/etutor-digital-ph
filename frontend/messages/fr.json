@@ -691,6 +691,12 @@
     "backToModule": "Retour au module",
     "contentNotAvailableOffline": "Cette leçon n'est pas disponible hors-ligne. Téléchargez le module pour y accéder sans internet."
   },
+  "LessonAudio": {
+    "audioPending": "Génération du résumé audio...",
+    "play": "Écouter le résumé audio",
+    "pause": "Mettre en pause le résumé audio",
+    "listenToSummary": "Écouter le résumé de la leçon"
+  },
   "LessonImage": {
     "imagePending": "Illustration en cours de génération...",
     "imageViewFullscreen": "Voir en plein écran",

@@ -632,6 +632,86 @@ def generate_lesson_image(
 @celery_app.task(
     bind=True,
     base=CallbackTask,
+    soft_time_limit=120,
+    time_limit=150,
+    rate_limit="5/m",
+)
+def generate_lesson_audio(
+    self,
+    lesson_id: str,
+    module_id: str,
+    unit_id: str,
+    language: str,
+    lesson_content: str,
+) -> dict:
+    """Generate an audio summary for a lesson asynchronously (fire-and-forget).
+
+    Args:
+        lesson_id: UUID of the lesson (GeneratedContent.id)
+        module_id: UUID of the module
+        unit_id: Unit identifier within the module
+        language: Language code (fr/en)
+        lesson_content: Lesson text used for script generation
+
+    Returns:
+        dict with audio_id and status
+    """
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    from app.domain.services.lesson_audio_service import LessonAudioService
+    from app.infrastructure.config.settings import settings
+
+    logger.info(
+        "Starting lesson audio generation",
+        lesson_id=lesson_id,
+        module_id=module_id,
+        unit_id=unit_id,
+        language=language,
+        task_id=self.request.id,
+    )
+
+    async def _run() -> dict:
+        engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
+        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        try:
+            async with session_factory() as session:
+                service = LessonAudioService()
+                audio = await service.generate_for_lesson(
+                    lesson_id=uuid.UUID(lesson_id),
+                    module_id=uuid.UUID(module_id),
+                    unit_id=unit_id,
+                    language=language,
+                    lesson_content=lesson_content,
+                    session=session,
+                )
+                return {"audio_id": str(audio.id), "status": audio.status}
+        finally:
+            await engine.dispose()
+
+    try:
+        result = asyncio.run(_run())
+        logger.info(
+            "Lesson audio generation completed",
+            lesson_id=lesson_id,
+            result=result,
+            task_id=self.request.id,
+        )
+        return result
+    except Exception as exc:
+        logger.error(
+            "Lesson audio generation failed",
+            lesson_id=lesson_id,
+            exception=str(exc),
+            task_id=self.request.id,
+        )
+        return {"audio_id": None, "status": "failed", "error": str(exc)}
+
+
+@celery_app.task(
+    bind=True,
+    base=CallbackTask,
     soft_time_limit=360,
     time_limit=400,
     rate_limit="3/m",

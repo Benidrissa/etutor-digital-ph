@@ -358,6 +358,45 @@ export async function getLessonImageStatus(lessonId: string): Promise<LessonImag
   };
 }
 
+// Lesson Audio API Types
+export type LessonAudioStatus = 'pending' | 'generating' | 'ready' | 'failed';
+
+export interface LessonAudioResponse {
+  lesson_id: string;
+  status: LessonAudioStatus;
+  url?: string;
+  duration_seconds?: number;
+}
+
+interface _ApiLessonAudio {
+  audio_id: string;
+  lesson_id: string;
+  status: LessonAudioStatus;
+  audio_url: string | null;
+  duration_seconds: number | null;
+  file_size_bytes: number | null;
+}
+
+interface _ApiLessonAudioListResponse {
+  lesson_id: string;
+  audio: _ApiLessonAudio[];
+  total: number;
+}
+
+export async function getLessonAudioStatus(lessonId: string): Promise<LessonAudioResponse> {
+  const data = await apiFetch<_ApiLessonAudioListResponse>(`/api/v1/audio/lesson/${lessonId}`);
+  const first = data.audio[0];
+  if (!first) {
+    return { lesson_id: lessonId, status: 'pending' };
+  }
+  return {
+    lesson_id: first.lesson_id,
+    status: first.status,
+    url: first.audio_url ?? undefined,
+    duration_seconds: first.duration_seconds ?? undefined,
+  };
+}
+
 export interface DashboardStats {
   streak_days: number;
   average_quiz_score: number;

@@ -11,6 +11,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { LessonSkeleton } from './lesson-skeleton';
+import { LessonAudio } from './lesson-audio';
 import { LessonImage } from './lesson-image';
 import { SourceImage } from './source-image';
 import { SourceCitations } from './source-citations';
@@ -428,6 +429,9 @@ export function LessonViewer({
           {t('unitTitle', { unit: unitId })}
         </h1>
       </div>
+
+      {/* Audio Summary */}
+      <LessonAudio lessonId={lessonData.id} language={lessonData.language} />
 
       {/* Main Content */}
       <Card className="mb-6">
