@@ -6,7 +6,6 @@ Create Date: 2026-04-11
 
 """
 
-import sqlalchemy as sa
 from alembic import op
 
 revision = "056"
@@ -16,7 +15,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Create enum type (idempotent — matches pattern from migration 048)
+    # Use raw SQL for full idempotency (matches pattern from migration 048)
     op.execute(
         """
         DO $$
@@ -27,48 +26,42 @@ def upgrade() -> None:
         END$$;
         """
     )
-    audio_status_enum = sa.Enum(
-        "pending", "generating", "ready", "failed", name="audio_status_enum", create_type=False
+
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS generated_audio (
+            id UUID PRIMARY KEY,
+            lesson_id UUID REFERENCES generated_content(id) ON DELETE SET NULL,
+            module_id UUID REFERENCES modules(id) ON DELETE SET NULL,
+            unit_id TEXT,
+            language VARCHAR(5) NOT NULL DEFAULT 'fr',
+            storage_key TEXT,
+            storage_url TEXT,
+            script_text TEXT,
+            duration_seconds INTEGER,
+            file_size_bytes INTEGER,
+            error_message TEXT,
+            status audio_status_enum NOT NULL DEFAULT 'pending',
+            generated_at TIMESTAMP,
+            created_at TIMESTAMP NOT NULL DEFAULT now()
+        );
+        """
     )
 
-    op.create_table(
-        "generated_audio",
-        sa.Column("id", sa.Uuid(), primary_key=True),
-        sa.Column(
-            "lesson_id",
-            sa.Uuid(),
-            sa.ForeignKey("generated_content.id", ondelete="SET NULL"),
-            nullable=True,
-        ),
-        sa.Column(
-            "module_id",
-            sa.Uuid(),
-            sa.ForeignKey("modules.id", ondelete="SET NULL"),
-            nullable=True,
-        ),
-        sa.Column("unit_id", sa.Text(), nullable=True),
-        sa.Column("language", sa.String(5), server_default="fr", nullable=False),
-        sa.Column("storage_key", sa.Text(), nullable=True),
-        sa.Column("storage_url", sa.Text(), nullable=True),
-        sa.Column("script_text", sa.Text(), nullable=True),
-        sa.Column("duration_seconds", sa.Integer(), nullable=True),
-        sa.Column("file_size_bytes", sa.Integer(), nullable=True),
-        sa.Column("error_message", sa.Text(), nullable=True),
-        sa.Column("status", audio_status_enum, server_default="pending", nullable=False),
-        sa.Column("generated_at", sa.DateTime(), nullable=True),
-        sa.Column(
-            "created_at",
-            sa.DateTime(),
-            server_default=sa.func.now(),
-            nullable=False,
-        ),
+    op.execute(
+        """
+        CREATE INDEX IF NOT EXISTS ix_generated_audio_lesson_id
+        ON generated_audio (lesson_id);
+        """
     )
-    op.create_index("ix_generated_audio_lesson_id", "generated_audio", ["lesson_id"])
-    op.create_index("ix_generated_audio_status", "generated_audio", ["status"])
+    op.execute(
+        """
+        CREATE INDEX IF NOT EXISTS ix_generated_audio_status
+        ON generated_audio (status);
+        """
+    )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_generated_audio_status", table_name="generated_audio")
-    op.drop_index("ix_generated_audio_lesson_id", table_name="generated_audio")
-    op.drop_table("generated_audio")
-    sa.Enum(name="audio_status_enum").drop(op.get_bind(), checkfirst=True)
+    op.execute("DROP TABLE IF EXISTS generated_audio")
+    op.execute("DROP TYPE IF EXISTS audio_status_enum")
