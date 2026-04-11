@@ -415,6 +415,7 @@ class AuthClient {
             );
           }
 
+          if (retryResponse.status === 204) return undefined as T;
           return retryResponse.json();
         } else {
           const errorData = await response.json().catch(() => ({}));
@@ -425,6 +426,7 @@ class AuthClient {
         }
       }
 
+      if (response.status === 204) return undefined as T;
       return response.json();
     } catch (error) {
       if (error instanceof AuthError && error.status === 401) {
