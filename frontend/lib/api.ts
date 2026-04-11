@@ -300,6 +300,7 @@ export async function apiFetch<T>(
     }
     throw new ApiError(message, res.status, code);
   }
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 
