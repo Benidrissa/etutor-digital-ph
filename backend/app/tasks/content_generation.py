@@ -1094,6 +1094,265 @@ def backfill_missing_image_data(self) -> dict:
     bind=True,
     base=CallbackTask,
     soft_time_limit=600,
+    time_limit=660,
+    rate_limit="2/m",
+    priority=5,
+)
+def pregenerate_on_publish_task(self, course_id: str) -> dict:
+    """Pre-generate first 2 content units of Module 01 for a just-published course.
+
+    Iterates over all course languages and generates content for the first 2
+    ModuleUnit rows (ordered by order_index) of the module with the lowest
+    module_number.  For lesson units, also dispatches TTS audio generation.
+
+    Args:
+        course_id: UUID string of the published course.
+
+    Returns:
+        dict with lists of generated, skipped, and failed unit/language combos.
+    """
+    import asyncio
+
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    from app.ai.claude_service import ClaudeService
+    from app.ai.rag.embeddings import EmbeddingService
+    from app.ai.rag.retriever import SemanticRetriever
+    from app.domain.models.content import GeneratedContent
+    from app.domain.models.course import Course
+    from app.domain.models.module import Module
+    from app.domain.models.module_unit import ModuleUnit
+    from app.domain.services.lesson_service import (
+        CaseStudyGenerationService,
+        LessonGenerationService,
+    )
+    from app.domain.services.platform_settings_service import PlatformSettingsService
+    from app.domain.services.quiz_service import QuizService
+    from app.infrastructure.config.settings import settings
+
+    DEFAULT_LEVEL = 1
+    UNITS_TO_PRELOAD = 2
+
+    logger.info(
+        "pregenerate_on_publish: starting",
+        course_id=course_id,
+        task_id=self.request.id,
+    )
+
+    async def _is_cached(
+        session: AsyncSession,
+        module_uuid: uuid.UUID,
+        unit_id: str,
+        content_type: str,
+        language: str,
+    ) -> bool:
+        result = await session.execute(
+            select(GeneratedContent.id).where(
+                GeneratedContent.module_id == module_uuid,
+                GeneratedContent.content_type == content_type,
+                GeneratedContent.language == language,
+                GeneratedContent.content["unit_id"].astext == unit_id,
+            )
+        )
+        return result.scalar_one_or_none() is not None
+
+    async def _run() -> dict:
+        engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
+        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        generated: list[str] = []
+        skipped: list[str] = []
+        failed: list[str] = []
+
+        try:
+            async with session_factory() as session:
+                course_result = await session.execute(
+                    select(Course).where(Course.id == uuid.UUID(course_id))
+                )
+                course = course_result.scalar_one_or_none()
+                if not course:
+                    logger.warning("pregenerate_on_publish: course not found", course_id=course_id)
+                    return {
+                        "generated": [],
+                        "skipped": [],
+                        "failed": [],
+                        "reason": "course_not_found",
+                    }
+
+                languages = [
+                    lang.strip()
+                    for lang in (course.languages or "fr,en").split(",")
+                    if lang.strip()
+                ]
+
+                settings_svc = PlatformSettingsService()
+                default_country = await settings_svc.get("content-preload-default-country") or "SN"
+                quiz_questions_count = int(
+                    await settings_svc.get("quiz-unit-questions-count") or 10
+                )
+
+                module_result = await session.execute(
+                    select(Module)
+                    .where(Module.course_id == uuid.UUID(course_id))
+                    .order_by(Module.module_number)
+                    .limit(1)
+                )
+                module = module_result.scalar_one_or_none()
+                if not module:
+                    logger.warning(
+                        "pregenerate_on_publish: no module found for course",
+                        course_id=course_id,
+                    )
+                    return {"generated": [], "skipped": [], "failed": [], "reason": "no_module"}
+
+                units_result = await session.execute(
+                    select(ModuleUnit)
+                    .where(ModuleUnit.module_id == module.id)
+                    .order_by(ModuleUnit.order_index)
+                    .limit(UNITS_TO_PRELOAD)
+                )
+                units = list(units_result.scalars().all())
+
+                if not units:
+                    logger.warning(
+                        "pregenerate_on_publish: no units found in module",
+                        course_id=course_id,
+                        module_id=str(module.id),
+                    )
+                    return {"generated": [], "skipped": [], "failed": [], "reason": "no_units"}
+
+                embedding_service = EmbeddingService(
+                    api_key=settings.openai_api_key, model=settings.embedding_model
+                )
+                retriever = SemanticRetriever(embedding_service)
+                lesson_service = LessonGenerationService(ClaudeService(), retriever)
+                quiz_service = QuizService(ClaudeService(), retriever)
+                case_study_service = CaseStudyGenerationService(ClaudeService(), retriever)
+
+                for unit in units:
+                    unit_id = f"M{module.module_number:02d}-U{unit.order_index + 1:02d}"
+                    raw_type = (unit.unit_type or "").lower().replace("-", "_").replace(" ", "_")
+                    if "quiz" in raw_type or "evaluation" in raw_type or "évaluation" in raw_type:
+                        content_type = "quiz"
+                    elif "case" in raw_type or "etude" in raw_type or "étude" in raw_type:
+                        content_type = "case_study"
+                    else:
+                        content_type = "lesson"
+
+                    for language in languages:
+                        label = f"{unit_id}:{content_type}:{language}"
+                        try:
+                            cached = await _is_cached(
+                                session, module.id, unit_id, content_type, language
+                            )
+                            if cached:
+                                skipped.append(label)
+                                logger.info(
+                                    "pregenerate_on_publish: cache hit — skipping",
+                                    label=label,
+                                )
+                                continue
+
+                            if content_type == "lesson":
+                                content = await lesson_service.get_or_generate_lesson(
+                                    module_id=module.id,
+                                    unit_id=unit_id,
+                                    language=language,
+                                    country=default_country,
+                                    level=DEFAULT_LEVEL,
+                                    session=session,
+                                )
+                                generated.append(label)
+                                logger.info(
+                                    "pregenerate_on_publish: lesson generated",
+                                    label=label,
+                                    content_id=str(content.id),
+                                )
+                                lesson_text = ""
+                                if hasattr(content, "content") and isinstance(
+                                    content.content, dict
+                                ):
+                                    lesson_text = content.content.get("content", "")
+                                generate_lesson_audio.apply_async(
+                                    kwargs={
+                                        "lesson_id": str(content.id),
+                                        "module_id": str(module.id),
+                                        "unit_id": unit_id,
+                                        "language": language,
+                                        "lesson_content": lesson_text,
+                                    },
+                                    priority=5,
+                                )
+
+                            elif content_type == "quiz":
+                                content = await quiz_service.get_or_generate_quiz(
+                                    module_id=module.id,
+                                    unit_id=unit_id,
+                                    language=language,
+                                    country=default_country,
+                                    level=DEFAULT_LEVEL,
+                                    num_questions=quiz_questions_count,
+                                    session=session,
+                                )
+                                generated.append(label)
+                                logger.info(
+                                    "pregenerate_on_publish: quiz generated",
+                                    label=label,
+                                    content_id=str(content.id),
+                                )
+
+                            else:
+                                content = await case_study_service.get_or_generate_case_study(
+                                    module_id=module.id,
+                                    unit_id=unit_id,
+                                    language=language,
+                                    country=default_country,
+                                    level=DEFAULT_LEVEL,
+                                    session=session,
+                                )
+                                generated.append(label)
+                                logger.info(
+                                    "pregenerate_on_publish: case study generated",
+                                    label=label,
+                                    content_id=str(content.id),
+                                )
+
+                        except Exception as exc:
+                            failed.append(label)
+                            logger.error(
+                                "pregenerate_on_publish: generation failed",
+                                label=label,
+                                error=str(exc),
+                            )
+
+        finally:
+            await engine.dispose()
+
+        return {"generated": generated, "skipped": skipped, "failed": failed}
+
+    try:
+        result = asyncio.run(_run())
+        logger.info(
+            "pregenerate_on_publish: completed",
+            course_id=course_id,
+            result=result,
+            task_id=self.request.id,
+        )
+        return result
+    except Exception as exc:
+        logger.error(
+            "pregenerate_on_publish: task failed",
+            course_id=course_id,
+            exception=str(exc),
+            task_id=self.request.id,
+        )
+        return {"generated": [], "skipped": [], "failed": [], "error": str(exc)}
+
+
+@celery_app.task(
+    bind=True,
+    base=CallbackTask,
+    soft_time_limit=600,
     time_limit=650,
     rate_limit="2/m",
 )
