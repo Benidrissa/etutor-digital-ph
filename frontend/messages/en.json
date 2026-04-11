@@ -695,7 +695,8 @@
     "audioPending": "Generating audio summary...",
     "play": "Play audio summary",
     "pause": "Pause audio summary",
-    "listenToSummary": "Listen to lesson summary"
+    "listenToSummary": "Listen to lesson summary",
+    "audioUnavailable": "Audio summary not available yet"
   },
   "LessonImage": {
     "imagePending": "Generating illustration...",

@@ -695,7 +695,8 @@
     "audioPending": "Génération du résumé audio...",
     "play": "Écouter le résumé audio",
     "pause": "Mettre en pause le résumé audio",
-    "listenToSummary": "Écouter le résumé de la leçon"
+    "listenToSummary": "Écouter le résumé de la leçon",
+    "audioUnavailable": "Résumé audio pas encore disponible"
   },
   "LessonImage": {
     "imagePending": "Illustration en cours de génération...",
