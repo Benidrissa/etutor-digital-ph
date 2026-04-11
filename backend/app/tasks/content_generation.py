@@ -980,13 +980,13 @@ def prefetch_next_lessons_task(
         task_id=self.request.id,
     )
 
-    async def _get_next_lesson_unit_ids(
+    async def _get_next_units(
         session: AsyncSession,
         module_uuid: uuid.UUID,
         current_unit_id: str,
         count: int = 2,
-    ) -> list[str]:
-        """Return unit IDs for the next N lesson-type units after current_unit_id."""
+    ) -> list[tuple[str, str]]:
+        """Return (unit_id, content_type) pairs for the next N units after current_unit_id."""
         module_result = await session.execute(select(Module).where(Module.id == module_uuid))
         module = module_result.scalar_one_or_none()
         if not module:
@@ -1010,34 +1010,36 @@ def prefetch_next_lessons_task(
                     current_idx = i
                     break
 
-        next_lessons = []
+        next_units: list[tuple[str, str]] = []
         for u in all_units[current_idx + 1 :]:
-            title = (u.title_fr or u.title_en or "").lower()
-            is_quiz_or_case = any(
-                kw in title
-                for kw in ("quiz", "évaluation", "evaluation", "étude de cas", "case study")
-            )
-            if not is_quiz_or_case:
-                uid = f"M{module.module_number:02d}-U{u.order_index + 1:02d}"
-                next_lessons.append(uid)
-            if len(next_lessons) >= count:
+            uid = f"M{module.module_number:02d}-U{u.order_index + 1:02d}"
+            raw_type = (u.unit_type or "").lower().replace("-", "_").replace(" ", "_")
+            if "quiz" in raw_type or "evaluation" in raw_type or "évaluation" in raw_type:
+                content_type = "quiz"
+            elif "case" in raw_type or "etude" in raw_type or "étude" in raw_type:
+                content_type = "case_study"
+            else:
+                content_type = "lesson"
+            next_units.append((uid, content_type))
+            if len(next_units) >= count:
                 break
 
-        return next_lessons
+        return next_units
 
     async def _is_cached(
         session: AsyncSession,
         module_uuid: uuid.UUID,
         unit_id: str,
+        content_type: str,
         language: str,
         level: int,
         country: str,
     ) -> bool:
-        """Return True if lesson content already exists in generated_content cache."""
+        """Return True if content already exists in generated_content cache."""
         result = await session.execute(
             select(GeneratedContent.id).where(
                 GeneratedContent.module_id == module_uuid,
-                GeneratedContent.content_type == "lesson",
+                GeneratedContent.content_type == content_type,
                 GeneratedContent.language == language,
                 GeneratedContent.content["unit_id"].astext == unit_id,
             )
@@ -1087,14 +1089,12 @@ def prefetch_next_lessons_task(
                         "errors": [],
                     }
 
-                next_unit_ids = await _get_next_lesson_unit_ids(
-                    session, module_uuid, current_unit_id
-                )
+                next_units = await _get_next_units(session, module_uuid, current_unit_id)
 
                 logger.info(
-                    "Pre-fetching lessons",
+                    "Pre-fetching content units",
                     user_id=user_id,
-                    units=next_unit_ids,
+                    units=[uid for uid, _ in next_units],
                 )
 
                 embedding_service = EmbeddingService(
@@ -1103,39 +1103,113 @@ def prefetch_next_lessons_task(
                 retriever = SemanticRetriever(embedding_service)
                 lesson_service = LessonGenerationService(ClaudeService(), retriever)
 
-                for unit_id_str in next_unit_ids:
+                for unit_id_str, content_type in next_units:
+                    label = f"{unit_id_str}:{content_type}"
                     try:
                         cached = await _is_cached(
-                            session, module_uuid, unit_id_str, language, level, country
+                            session,
+                            module_uuid,
+                            unit_id_str,
+                            content_type,
+                            language,
+                            level,
+                            country,
                         )
                         if cached:
-                            skipped.append(unit_id_str)
+                            skipped.append(label)
                             logger.info(
-                                "Skipping already cached lesson",
+                                "Skipping already cached content",
                                 unit_id=unit_id_str,
+                                content_type=content_type,
                                 user_id=user_id,
                             )
                             continue
 
-                        await lesson_service.get_or_generate_lesson(
-                            module_id=module_uuid,
-                            unit_id=unit_id_str,
-                            language=language,
-                            country=country,
-                            level=level,
-                            session=session,
-                        )
-                        prefetched.append(unit_id_str)
-                        logger.info(
-                            "Lesson pre-fetched",
-                            unit_id=unit_id_str,
-                            user_id=user_id,
-                        )
+                        if content_type == "lesson":
+                            content = await lesson_service.get_or_generate_lesson(
+                                module_id=module_uuid,
+                                unit_id=unit_id_str,
+                                language=language,
+                                country=country,
+                                level=level,
+                                session=session,
+                            )
+                            prefetched.append(label)
+                            logger.info(
+                                "Lesson pre-fetched",
+                                unit_id=unit_id_str,
+                                user_id=user_id,
+                            )
+                            try:
+                                lesson_text = ""
+                                if hasattr(content, "content") and content.content is not None:
+                                    if isinstance(content.content, dict):
+                                        lesson_text = content.content.get("content", "") or ""
+                                    else:
+                                        lesson_text = getattr(content.content, "content", "") or ""
+                                generate_lesson_audio.apply_async(
+                                    kwargs={
+                                        "lesson_id": str(content.id),
+                                        "module_id": str(module_uuid),
+                                        "unit_id": unit_id_str,
+                                        "language": language,
+                                        "lesson_content": lesson_text[:4000],
+                                    },
+                                    priority=5,
+                                )
+                            except Exception as audio_exc:
+                                logger.warning(
+                                    "Audio dispatch failed (non-fatal)",
+                                    unit_id=unit_id_str,
+                                    error=str(audio_exc),
+                                )
+
+                        elif content_type == "quiz":
+                            from app.domain.services.quiz_service import QuizService
+
+                            quiz_service = QuizService(ClaudeService(), retriever)
+                            await quiz_service.get_or_generate_quiz(
+                                module_id=module_uuid,
+                                unit_id=unit_id_str,
+                                language=language,
+                                country=country,
+                                level=level,
+                                session=session,
+                            )
+                            prefetched.append(label)
+                            logger.info(
+                                "Quiz pre-fetched",
+                                unit_id=unit_id_str,
+                                user_id=user_id,
+                            )
+
+                        else:
+                            from app.domain.services.lesson_service import (
+                                CaseStudyGenerationService,
+                            )
+
+                            case_service = CaseStudyGenerationService(ClaudeService(), retriever)
+                            await case_service.get_or_generate_case_study(
+                                module_id=module_uuid,
+                                unit_id=unit_id_str,
+                                language=language,
+                                country=country,
+                                level=level,
+                                session=session,
+                            )
+                            prefetched.append(label)
+                            logger.info(
+                                "Case study pre-fetched",
+                                unit_id=unit_id_str,
+                                user_id=user_id,
+                            )
+
                     except Exception as exc:
-                        errors.append(unit_id_str)
+                        errors.append(label)
                         logger.error(
-                            "Failed to pre-fetch lesson",
+                            "Failed to pre-fetch content",
                             unit_id=unit_id_str,
+                            content_type=content_type,
                             user_id=user_id,
                             error=str(exc),
                         )
