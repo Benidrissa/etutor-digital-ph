@@ -685,7 +685,9 @@
     "completed": "Terminé",
     "refreshContent": "Actualiser le contenu",
     "validateWithQuiz": "Valider avec le Quiz",
-    "checkingStatus": "Vérification..."
+    "checkingStatus": "Vérification...",
+    "unitNotFound": "Cette unité n'existe pas dans ce module.",
+    "backToModule": "Retour au module"
   },
   "LessonImage": {
     "imagePending": "Illustration en cours de génération...",

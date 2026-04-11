@@ -316,6 +316,7 @@ class ProgressService:
                     "description_en": unit.description_en,
                     "estimated_minutes": unit.estimated_minutes,
                     "order_index": unit.order_index,
+                    "unit_type": unit.unit_type,
                     "status": unit_status,
                 }
             )

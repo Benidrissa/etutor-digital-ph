@@ -14,7 +14,7 @@ import { LessonSkeleton } from './lesson-skeleton';
 import { LessonImage } from './lesson-image';
 import { SourceImage } from './source-image';
 import { SourceCitations } from './source-citations';
-import { apiFetch, checkUnitQuizPassed } from '@/lib/api';
+import { apiFetch, checkUnitQuizPassed, ApiError } from '@/lib/api';
 import type { SourceImageMeta } from '@/lib/api';
 import { SOURCE_IMAGE_RE, splitWithSourceImageMarkers } from '@/lib/source-image-utils';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
@@ -74,7 +74,7 @@ export function LessonViewer({
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSlowGeneration, setIsSlowGeneration] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [errorType, setErrorType] = useState<'load' | 'generation' | 'timeout' | 'no_content' | null>(null);
+  const [errorType, setErrorType] = useState<'load' | 'generation' | 'timeout' | 'no_content' | 'not_found' | null>(null);
   const [isQuizPassed, setIsQuizPassed] = useState(false);
   const [isCheckingQuiz, setIsCheckingQuiz] = useState(false);
   const [forceRegenerate, setForceRegenerate] = useState(false);
@@ -205,8 +205,13 @@ export function LessonViewer({
         }
       } catch (err) {
         console.error('Error loading lesson:', err);
-        setError(t('loadError'));
-        setErrorType('load');
+        if (err instanceof ApiError && err.status === 404) {
+          setError(t('unitNotFound'));
+          setErrorType('not_found');
+        } else {
+          setError(t('loadError'));
+          setErrorType('load');
+        }
         setIsLoading(false);
         setIsRefreshing(false);
       }
@@ -270,14 +275,24 @@ export function LessonViewer({
             {errorType === 'no_content' && (
               <p className="text-gray-500 text-sm mb-4">{t('noContentFallback')}</p>
             )}
-            <Button
-              variant="outline"
-              onClick={handleRetry}
-              className="min-h-11"
-            >
-              <RefreshCw className="w-4 h-4 mr-2" />
-              {t('retry')}
-            </Button>
+            {errorType === 'not_found' ? (
+              <Button
+                variant="outline"
+                onClick={() => router.push(`/${locale}/modules/${moduleId}`)}
+                className="min-h-11"
+              >
+                {t('backToModule')}
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={handleRetry}
+                className="min-h-11"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                {t('retry')}
+              </Button>
+            )}
           </CardContent>
         </Card>
       </div>

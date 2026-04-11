@@ -277,6 +277,7 @@ class PublicUnitDetail(BaseModel):
     description_en: str | None = None
     estimated_minutes: int
     order_index: int
+    unit_type: str | None = None
 
 
 class ModuleUnitsResponse(BaseModel):
