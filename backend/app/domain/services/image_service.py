@@ -45,6 +45,25 @@ class ImageGenerationService:
 
         Status transitions: pending → generating → ready | failed
         """
+        # Dedup: return existing image if one already exists for this lesson
+        existing = await session.execute(
+            select(GeneratedImage)
+            .where(
+                GeneratedImage.lesson_id == lesson_id,
+                GeneratedImage.status.in_(["ready", "generating", "pending"]),
+            )
+            .limit(1)
+        )
+        existing_image = existing.scalar_one_or_none()
+        if existing_image is not None:
+            logger.info(
+                "Image already exists for lesson — skipping generation",
+                lesson_id=str(lesson_id),
+                image_id=str(existing_image.id),
+                status=existing_image.status,
+            )
+            return existing_image
+
         image_record = GeneratedImage(
             id=uuid.uuid4(),
             lesson_id=lesson_id,
