@@ -138,11 +138,11 @@ class LessonAudioService:
 
             audio_bytes = await self._call_gemini_tts(script, language)
 
-            storage_key = f"audio/lessons/{lesson_id}/{language}/summary.mp3"
+            storage_key = f"audio/lessons/{lesson_id}/{language}/summary.ogg"
             storage_url = await self._storage.upload_bytes(
                 key=storage_key,
                 data=audio_bytes,
-                content_type="audio/mpeg",
+                content_type="audio/ogg",
             )
 
             record.status = "ready"
@@ -257,6 +257,7 @@ class LessonAudioService:
             model="gemini-2.5-flash-preview-tts",
             contents=script,
             config=types.GenerateContentConfig(
+                response_mime_type="audio/ogg",
                 response_modalities=["AUDIO"],
                 speech_config=types.SpeechConfig(
                     voice_config=types.VoiceConfig(
@@ -292,6 +293,9 @@ def _extract_audio_bytes(response: object) -> bytes:
 
 
 def _estimate_duration(file_size_bytes: int) -> int:
-    """Estimate audio duration from file size. Assumes ~128kbps MP3."""
-    bytes_per_second = (128 * 1024) // 8
+    """Estimate audio duration from OGG Opus file size.
+
+    Speech at ~48kbps OGG Opus ≈ 6 KB/s.
+    """
+    bytes_per_second = 6 * 1024
     return max(1, file_size_bytes // bytes_per_second)
