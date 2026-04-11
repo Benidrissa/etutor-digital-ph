@@ -16,11 +16,16 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Create enum type first
-    audio_status_enum = sa.Enum(
-        "pending", "generating", "ready", "failed", name="audio_status_enum"
+    # Create enum type (IF NOT EXISTS for idempotency)
+    op.execute(
+        "DO $$ BEGIN "
+        "CREATE TYPE audio_status_enum AS ENUM ('pending', 'generating', 'ready', 'failed'); "
+        "EXCEPTION WHEN duplicate_object THEN NULL; "
+        "END $$"
     )
-    audio_status_enum.create(op.get_bind(), checkfirst=True)
+    audio_status_enum = sa.Enum(
+        "pending", "generating", "ready", "failed", name="audio_status_enum", create_type=False
+    )
 
     op.create_table(
         "generated_audio",
