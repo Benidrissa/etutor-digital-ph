@@ -158,7 +158,7 @@ async def get_audio_status(
     "/{audio_id}/data",
     status_code=status.HTTP_200_OK,
     responses={
-        302: {"description": "Redirect to the S3 audio URL"},
+        200: {"content": {"audio/mpeg": {}}, "description": "MP3 audio data"},
         404: {"description": "Audio not found or not ready"},
     },
 )
@@ -166,7 +166,7 @@ async def get_audio_data(
     audio_id: UUID,
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    """Redirect to the S3-stored MP3 audio file."""
+    """Serve the MP3 audio file for a lesson summary."""
     result = await db.execute(select(GeneratedAudio).where(GeneratedAudio.id == audio_id))
     aud = result.scalar_one_or_none()
 
@@ -188,36 +188,25 @@ async def get_audio_data(
             },
         )
 
-    # Try to get a presigned URL from S3 storage
+    # Proxy audio bytes from MinIO (internal URL not accessible from browser)
     if aud.storage_key:
         try:
             from app.infrastructure.storage.s3 import S3StorageService
 
             storage = S3StorageService()
-            url = storage.public_url(aud.storage_key)
+            audio_bytes = await storage.download_bytes(aud.storage_key)
             return Response(
-                status_code=status.HTTP_302_FOUND,
-                headers={
-                    "Location": url,
-                    "Cache-Control": "public, max-age=3600",
-                },
+                content=audio_bytes,
+                media_type="audio/mpeg",
+                headers={"Cache-Control": "public, max-age=31536000, immutable"},
             )
-        except Exception:
-            logger.warning("S3 URL generation failed, falling back to storage_url")
-
-    if aud.storage_url:
-        return Response(
-            status_code=status.HTTP_302_FOUND,
-            headers={
-                "Location": aud.storage_url,
-                "Cache-Control": "public, max-age=3600",
-            },
-        )
+        except Exception as exc:
+            logger.warning("S3 download failed", key=aud.storage_key, error=str(exc))
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
         detail={
             "error": "audio_data_unavailable",
-            "message": f"Audio {audio_id} has no stored data or URL",
+            "message": f"Audio {audio_id} has no stored data",
         },
     )
