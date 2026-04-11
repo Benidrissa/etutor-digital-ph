@@ -16,6 +16,7 @@ export type ActionType =
 
 export interface OfflineModule {
   moduleId: string;
+  courseId?: string;
   status: ModuleDownloadStatus;
   totalUnits: number;
   downloadedUnits: number;
@@ -39,7 +40,7 @@ export interface OfflineAction {
   actionType: ActionType;
   payload: unknown;
   createdAt: number;
-  synced: boolean;
+  synced: number; // 0 = pending, 1 = synced (number for IndexedDB index compat)
   syncedAt?: number;
 }
 
@@ -50,11 +51,12 @@ interface SantePubliqueDB extends DBSchema {
     indexes: { by_status: ModuleDownloadStatus };
   };
   offline_content: {
-    key: [string, string];
+    key: [string, string, string]; // [unitId, contentType, locale]
     value: OfflineContent;
     indexes: {
       by_module: string;
       by_content_type: ContentType;
+      by_unit: string;
     };
   };
   offline_actions: {
@@ -65,7 +67,7 @@ interface SantePubliqueDB extends DBSchema {
 }
 
 const DB_NAME = "santepublique-offline";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 let dbInstance: IDBPDatabase<SantePubliqueDB> | null = null;
 
@@ -73,7 +75,8 @@ export async function getDB(): Promise<IDBPDatabase<SantePubliqueDB>> {
   if (dbInstance) return dbInstance;
 
   dbInstance = await openDB<SantePubliqueDB>(DB_NAME, DB_VERSION, {
-    upgrade(db, oldVersion) {
+    upgrade(db, oldVersion, _newVersion, transaction) {
+      // V1: create modules + actions stores
       if (oldVersion < 1) {
         const modulesStore = db.createObjectStore("offline_modules", {
           keyPath: "moduleId",
@@ -87,21 +90,39 @@ export async function getDB(): Promise<IDBPDatabase<SantePubliqueDB>> {
         actionsStore.createIndex("by_synced", "synced");
       }
 
-      if (oldVersion < 2) {
+      // V3: recreate offline_content with triple composite key + fix actions synced type
+      if (oldVersion < 3) {
+        // Recreate offline_content with [unitId, contentType, locale] key
         if (db.objectStoreNames.contains("offline_content")) {
           db.deleteObjectStore("offline_content");
         }
         const contentStore = db.createObjectStore("offline_content", {
-          keyPath: ["unitId", "locale"],
+          keyPath: ["unitId", "contentType", "locale"],
         });
         contentStore.createIndex("by_module", "moduleId");
         contentStore.createIndex("by_content_type", "contentType");
+        contentStore.createIndex("by_unit", "unitId");
+
+        // Migrate offline_actions: convert boolean synced to number
+        if (oldVersion >= 1) {
+          const actionsStore = transaction.objectStore("offline_actions");
+          actionsStore.openCursor().then(function migrateCursor(cursor) {
+            if (!cursor) return;
+            const value = cursor.value;
+            if (typeof value.synced === "boolean") {
+              cursor.update({ ...value, synced: value.synced ? 1 : 0 });
+            }
+            cursor.continue().then(migrateCursor);
+          });
+        }
       }
     },
   });
 
   return dbInstance;
 }
+
+// --- Offline Modules ---
 
 export async function getOfflineModule(
   moduleId: string
@@ -129,12 +150,15 @@ export async function getOfflineModulesByStatus(
   return db.getAllFromIndex("offline_modules", "by_status", status);
 }
 
+// --- Offline Content ---
+
 export async function getOfflineContent(
   unitId: string,
+  contentType: ContentType,
   locale: "fr" | "en"
 ): Promise<OfflineContent | undefined> {
   const db = await getDB();
-  return db.get("offline_content", [unitId, locale]);
+  return db.get("offline_content", [unitId, contentType, locale]);
 }
 
 export async function upsertOfflineContent(
@@ -149,6 +173,13 @@ export async function getOfflineContentByModule(
 ): Promise<OfflineContent[]> {
   const db = await getDB();
   return db.getAllFromIndex("offline_content", "by_module", moduleId);
+}
+
+export async function getOfflineContentByUnit(
+  unitId: string
+): Promise<OfflineContent[]> {
+  const db = await getDB();
+  return db.getAllFromIndex("offline_content", "by_unit", unitId);
 }
 
 export async function deleteOfflineModule(moduleId: string): Promise<void> {
@@ -169,6 +200,8 @@ export async function deleteOfflineModule(moduleId: string): Promise<void> {
   await tx.done;
 }
 
+// --- Offline Actions ---
+
 export async function addOfflineAction(
   action: Omit<OfflineAction, "id" | "createdAt" | "synced">
 ): Promise<number> {
@@ -176,7 +209,7 @@ export async function addOfflineAction(
   return db.add("offline_actions", {
     ...action,
     createdAt: Date.now(),
-    synced: false,
+    synced: 0,
   });
 }
 
@@ -191,7 +224,7 @@ export async function markOfflineActionSynced(id: number): Promise<void> {
   if (action) {
     await db.put("offline_actions", {
       ...action,
-      synced: true,
+      synced: 1,
       syncedAt: Date.now(),
     });
   }
