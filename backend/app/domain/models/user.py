@@ -14,6 +14,7 @@ from app.domain.models.base import Base
 class UserRole(enum.StrEnum):
     user = "user"
     expert = "expert"
+    sub_admin = "sub_admin"
     admin = "admin"
 
 

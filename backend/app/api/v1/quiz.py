@@ -55,7 +55,7 @@ async def _check_subscription_or_first_unit(user: AuthenticatedUser, unit_id: st
     from app.domain.services.subscription_service import SubscriptionService
     from app.infrastructure.persistence.database import get_db_session
 
-    if user.role == "admin":
+    if user.role in ("admin", "sub_admin"):
         return
 
     free_count = SettingsCache.instance().get("subscription-free-units-count", 2)

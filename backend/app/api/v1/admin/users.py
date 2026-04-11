@@ -78,7 +78,7 @@ async def export_users_csv(
     level: int | None = Query(None, ge=1, le=4),
     role: UserRole | None = Query(None),
     is_active: bool | None = Query(None),
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> StreamingResponse:
     """Export user list as CSV. Admin only."""
@@ -162,7 +162,7 @@ async def count_users(
     level: int | None = Query(None, ge=1, le=4),
     role: UserRole | None = Query(None),
     is_active: bool | None = Query(None),
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> dict:
     """Count users matching filters. Admin only."""
@@ -200,7 +200,7 @@ async def list_users(
     is_active: bool | None = Query(None),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> list[UserProfileResponse]:
     """List users with search and filters. Admin only."""
@@ -235,7 +235,7 @@ async def list_users(
 @router.get("/users/{user_id}", response_model=UserProfileResponse)
 async def get_user(
     user_id: UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> UserProfileResponse:
     """Get user detail. Admin only."""
@@ -317,7 +317,7 @@ async def update_user_role(
 async def update_user_status(
     user_id: UUID,
     request: UpdateUserStatusRequest,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> UserProfileResponse:
     """Deactivate or reactivate a user. Admin only."""
@@ -364,7 +364,7 @@ async def list_audit_logs(
     target_user_id: UUID | None = Query(None),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> list[AuditLogResponse]:
     """List admin audit logs. Admin only."""
@@ -402,7 +402,7 @@ async def list_audit_logs(
 @router.get("/users/{user_id}/progress")
 async def get_user_progress(
     user_id: UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> list[dict]:
     """Get module progress for a user. Admin only."""
@@ -443,7 +443,7 @@ async def get_user_quiz_history(
     user_id: UUID,
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> list[dict]:
     """Get quiz attempt history for a user. Admin only."""

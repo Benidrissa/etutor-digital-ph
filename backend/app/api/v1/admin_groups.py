@@ -80,7 +80,7 @@ def _group_to_detail_response(group: UserGroup) -> GroupDetailResponse:
 
 @router.get("", response_model=list[GroupResponse])
 async def list_groups(
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> list[GroupResponse]:
     """List all user groups. Admin only."""
@@ -96,7 +96,7 @@ async def list_groups(
 @router.post("", response_model=GroupDetailResponse, status_code=status.HTTP_201_CREATED)
 async def create_group(
     request: CreateGroupRequest,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> GroupDetailResponse:
     """Create a user group. Admin only."""
@@ -128,7 +128,7 @@ async def create_group(
 @router.get("/{group_id}", response_model=GroupDetailResponse)
 async def get_group(
     group_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> GroupDetailResponse:
     """Get group detail with members. Admin only."""
@@ -147,7 +147,7 @@ async def get_group(
 async def update_group(
     group_id: uuid.UUID,
     request: UpdateGroupRequest,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> GroupDetailResponse:
     """Update group name or description. Admin only."""
@@ -184,7 +184,7 @@ async def update_group(
 @router.delete("/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_group(
     group_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> None:
     """Delete a user group. Admin only."""
@@ -208,7 +208,7 @@ async def delete_group(
 async def add_member(
     group_id: uuid.UUID,
     request: AddMemberRequest,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> GroupDetailResponse:
     """Add a user to a group. Admin only."""
@@ -261,7 +261,7 @@ async def add_member(
 async def remove_member(
     group_id: uuid.UUID,
     user_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> None:
     """Remove a user from a group. Admin only."""

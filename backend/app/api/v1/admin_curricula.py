@@ -126,7 +126,7 @@ def _curriculum_to_detail_response(curriculum: Curriculum) -> CurriculumDetailRe
 
 @router.get("", response_model=list[CurriculumResponse])
 async def list_curricula_admin(
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> list[CurriculumResponse]:
     """List all curricula (any status). Admin only."""
@@ -138,7 +138,7 @@ async def list_curricula_admin(
 @router.post("", response_model=CurriculumDetailResponse, status_code=status.HTTP_201_CREATED)
 async def create_curriculum(
     request: CreateCurriculumRequest,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> CurriculumDetailResponse:
     """Create a new curriculum (draft). Admin only."""
@@ -174,7 +174,7 @@ async def create_curriculum(
 @router.get("/{curriculum_id}", response_model=CurriculumDetailResponse)
 async def get_curriculum_admin(
     curriculum_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> CurriculumDetailResponse:
     """Get curriculum detail with courses. Admin only."""
@@ -189,7 +189,7 @@ async def get_curriculum_admin(
 async def update_curriculum(
     curriculum_id: uuid.UUID,
     request: UpdateCurriculumRequest,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> CurriculumDetailResponse:
     """Update curriculum metadata. Admin only."""
@@ -210,7 +210,7 @@ async def update_curriculum(
 @router.post("/{curriculum_id}/publish", response_model=CurriculumDetailResponse)
 async def publish_curriculum(
     curriculum_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> CurriculumDetailResponse:
     """Publish a draft curriculum. Admin only."""
@@ -234,7 +234,7 @@ async def publish_curriculum(
 @router.post("/{curriculum_id}/archive", response_model=CurriculumDetailResponse)
 async def archive_curriculum(
     curriculum_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> CurriculumDetailResponse:
     """Archive a curriculum. Admin only."""
@@ -253,7 +253,7 @@ async def archive_curriculum(
 @router.delete("/{curriculum_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_curriculum(
     curriculum_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> None:
     """Delete a curriculum. Admin only. Cannot delete published curricula."""
@@ -276,7 +276,7 @@ async def delete_curriculum(
 async def assign_courses(
     curriculum_id: uuid.UUID,
     request: AssignCoursesRequest,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> CurriculumDetailResponse:
     """Replace courses assigned to a curriculum. Admin only."""
@@ -321,7 +321,7 @@ async def assign_courses(
 async def add_course_to_curriculum(
     curriculum_id: uuid.UUID,
     course_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> CurriculumDetailResponse:
     """Add a single course to a curriculum. Admin only."""
@@ -356,7 +356,7 @@ async def add_course_to_curriculum(
 async def remove_course_from_curriculum(
     curriculum_id: uuid.UUID,
     course_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> CurriculumDetailResponse:
     """Remove a single course from a curriculum. Admin only."""
@@ -384,7 +384,7 @@ async def remove_course_from_curriculum(
 async def set_curriculum_visibility(
     curriculum_id: uuid.UUID,
     request: SetVisibilityRequest,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> CurriculumDetailResponse:
     """Set curriculum visibility to 'public' or 'private'. Admin only."""
@@ -413,7 +413,7 @@ async def set_curriculum_visibility(
 @router.get("/{curriculum_id}/access", response_model=list[AccessEntryResponse])
 async def list_curriculum_access(
     curriculum_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> list[AccessEntryResponse]:
     """List all access entries for a curriculum. Admin only."""
@@ -462,7 +462,7 @@ async def list_curriculum_access(
 async def grant_curriculum_access(
     curriculum_id: uuid.UUID,
     request: GrantAccessRequest,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> AccessEntryResponse:
     """Grant access to a private curriculum for a user or group. Admin only."""
@@ -566,7 +566,7 @@ async def grant_curriculum_access(
 async def revoke_curriculum_access(
     curriculum_id: uuid.UUID,
     access_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> None:
     """Revoke access to a private curriculum. Admin only."""
