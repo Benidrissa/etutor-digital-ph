@@ -551,8 +551,11 @@ def generate_course_syllabus(
                         order_index=j,
                         unit_type=(
                             u.get("type")
-                            if u.get("type") in {
-                                "lesson", "quiz", "case-study",
+                            if u.get("type")
+                            in {
+                                "lesson",
+                                "quiz",
+                                "case-study",
                             }
                             else "lesson"
                         ),
