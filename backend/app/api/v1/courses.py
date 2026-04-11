@@ -319,7 +319,7 @@ async def my_enrollments(
             .group_by(Course.id)
             .order_by(
                 func.max(UserModuleProgress.last_accessed).desc().nullslast(),
-                UserCourseEnrollment.enrolled_at.desc(),
+                func.max(UserCourseEnrollment.enrolled_at).desc(),
             )
         )
     else:
