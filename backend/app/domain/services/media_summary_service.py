@@ -387,22 +387,24 @@ class MediaSummaryService:
         if not settings.google_api_key:
             raise ValueError("GOOGLE_API_KEY is required for Gemini TTS")
 
-        import google.generativeai as genai  # type: ignore[import-untyped]
+        from google import genai  # type: ignore[import-untyped]
+        from google.genai import types  # type: ignore[import-untyped]
 
-        genai.configure(api_key=settings.google_api_key)
+        client = genai.Client(api_key=settings.google_api_key)
 
         voice_name = "Aoede" if language == "fr" else "Charon"
 
-        model = genai.GenerativeModel("gemini-2.5-flash-preview-tts")
-
-        response = await model.generate_content_async(
-            script,
-            generation_config=genai.GenerationConfig(
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash-preview-tts",
+            contents=script,
+            config=types.GenerateContentConfig(
                 response_modalities=["AUDIO"],
-                speech_config=genai.SpeechConfig(
-                    voice_config=genai.VoiceConfig(
-                        prebuilt_voice_config=genai.PrebuiltVoiceConfig(voice_name=voice_name)
-                    )
+                speech_config=types.SpeechConfig(
+                    voice_config=types.VoiceConfig(
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                            voice_name=voice_name,
+                        ),
+                    ),
                 ),
             ),
         )
@@ -419,10 +421,9 @@ class MediaSummaryService:
     def _extract_audio_bytes(self, response: object) -> bytes:
         """Extract raw audio bytes from Gemini TTS response."""
         try:
-            for candidate in response.candidates:  # type: ignore[union-attr]
-                for part in candidate.content.parts:
-                    if hasattr(part, "inline_data") and part.inline_data:
-                        return part.inline_data.data
+            for part in response.candidates[0].content.parts:  # type: ignore[union-attr]
+                if part.inline_data and part.inline_data.data:
+                    return part.inline_data.data
         except Exception as exc:
             logger.error("Failed to extract audio bytes from Gemini response", error=str(exc))
 
