@@ -556,6 +556,7 @@ def generate_course_syllabus(
                                 "lesson",
                                 "quiz",
                                 "case-study",
+                                "scenario",
                             }
                             else "lesson"
                         ),
