@@ -117,8 +117,6 @@ class ProgressService:
 
         await self.db.commit()
         await self.db.refresh(progress)
-        with contextlib.suppress(Exception):
-            await touch_course_interaction_by_module(self.db, user_id, module_id)
 
         logger.info(
             "Lesson access tracked",
@@ -127,6 +125,8 @@ class ProgressService:
             lesson_id=str(lesson_id),
             progress_status=progress.status,
         )
+        with contextlib.suppress(Exception):
+            await touch_course_interaction_by_module(self.db, user_id, module_id)
         return progress
 
     async def update_progress_after_quiz(
@@ -173,8 +173,6 @@ class ProgressService:
 
         await self.db.commit()
         await self.db.refresh(progress)
-        with contextlib.suppress(Exception):
-            await touch_course_interaction_by_module(self.db, user_id, module_id)
 
         # After commit, check whether N+1 unlock conditions are met
         if (
@@ -198,6 +196,8 @@ class ProgressService:
             new_completion_pct=progress.completion_pct,
             status=progress.status,
         )
+        with contextlib.suppress(Exception):
+            await touch_course_interaction_by_module(self.db, user_id, module_id)
         return progress
 
     async def check_quiz_passed_for_unit(
