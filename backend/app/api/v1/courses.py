@@ -5,7 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import exists, func, select
+from sqlalchemy import exists, select
 from structlog import get_logger
 
 from app.api.deps import get_db as get_db_session
@@ -310,17 +310,9 @@ async def my_enrollments(
     )
 
     if order_by == "last_accessed":
-        stmt = (
-            stmt.outerjoin(Module, Module.course_id == Course.id)
-            .outerjoin(
-                UserModuleProgress,
-                (UserModuleProgress.module_id == Module.id) & (UserModuleProgress.user_id == uid),
-            )
-            .group_by(Course.id)
-            .order_by(
-                func.max(UserModuleProgress.last_accessed).desc().nullslast(),
-                func.max(UserCourseEnrollment.enrolled_at).desc(),
-            )
+        stmt = stmt.order_by(
+            UserCourseEnrollment.last_interacted_at.desc().nullslast(),
+            UserCourseEnrollment.enrolled_at.desc(),
         )
     else:
         stmt = stmt.order_by(UserCourseEnrollment.enrolled_at.desc())
