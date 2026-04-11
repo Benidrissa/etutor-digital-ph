@@ -16,13 +16,23 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Create enum type only if it doesn't already exist (idempotent)
-    conn = op.get_bind()
-    row = conn.execute(sa.text("SELECT 1 FROM pg_type WHERE typname = 'audio_status_enum'"))
-    if not row.scalar():
-        sa.Enum("pending", "generating", "ready", "failed", name="audio_status_enum").create(conn)
+    # Create enum type (idempotent — safe for asyncpg and partial re-runs)
+    op.execute(
+        sa.text(
+            "DO $$ BEGIN "
+            "CREATE TYPE audio_status_enum AS ENUM "
+            "('pending', 'generating', 'ready', 'failed'); "
+            "EXCEPTION WHEN duplicate_object THEN NULL; "
+            "END $$"
+        )
+    )
     audio_status_enum = sa.Enum(
-        "pending", "generating", "ready", "failed", name="audio_status_enum", create_type=False
+        "pending",
+        "generating",
+        "ready",
+        "failed",
+        name="audio_status_enum",
+        create_type=False,
     )
 
     op.create_table(
