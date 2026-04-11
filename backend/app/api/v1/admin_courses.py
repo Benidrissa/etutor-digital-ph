@@ -757,6 +757,7 @@ async def cancel_indexation(
 @router.post("/{course_id}/reindex-images")
 async def trigger_image_reindexation(
     course_id: uuid.UUID,
+    clear_old: bool = True,
     current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
     db=Depends(get_db_session),
 ) -> dict:
@@ -765,6 +766,10 @@ async def trigger_image_reindexation(
     Allowed at any creation_step (indexed, published, etc.) since it only touches images.
     Does not re-embed text — no OpenAI cost. Only needs MinIO credentials.
     Returns task_id for polling via the existing index-status endpoint.
+
+    Args:
+        clear_old: If True (default), deletes existing images before re-extracting.
+            Set to False to append without clearing.
     """
     result = await db.execute(select(Course).where(Course.id == course_id))
     course = result.scalar_one_or_none()
@@ -777,7 +782,7 @@ async def trigger_image_reindexation(
             detail="Course has no rag_collection_id",
         )
 
-    task = reindex_course_images.delay(str(course_id), course.rag_collection_id)
+    task = reindex_course_images.delay(str(course_id), course.rag_collection_id, clear_old)
 
     course.indexation_task_id = task.id
     await db.commit()
