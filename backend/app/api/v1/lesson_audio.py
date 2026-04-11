@@ -5,7 +5,6 @@ from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -64,9 +63,7 @@ async def get_lesson_audio(
     db: AsyncSession = Depends(get_db_session),
 ) -> LessonAudioListResponse:
     """Return all audio files for a lesson with their generation status."""
-    result = await db.execute(
-        select(GeneratedAudio).where(GeneratedAudio.lesson_id == lesson_id)
-    )
+    result = await db.execute(select(GeneratedAudio).where(GeneratedAudio.lesson_id == lesson_id))
     db_audio = result.scalars().all()
 
     if not db_audio:
@@ -133,9 +130,7 @@ async def get_audio_status(
             headers={"Retry-After": str(_RATE_LIMIT_WINDOW_SECONDS)},
         )
 
-    result = await db.execute(
-        select(GeneratedAudio).where(GeneratedAudio.id == audio_id)
-    )
+    result = await db.execute(select(GeneratedAudio).where(GeneratedAudio.id == audio_id))
     aud = result.scalar_one_or_none()
 
     if aud is None:
@@ -172,9 +167,7 @@ async def get_audio_data(
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
     """Redirect to the S3-stored MP3 audio file."""
-    result = await db.execute(
-        select(GeneratedAudio).where(GeneratedAudio.id == audio_id)
-    )
+    result = await db.execute(select(GeneratedAudio).where(GeneratedAudio.id == audio_id))
     aud = result.scalar_one_or_none()
 
     if aud is None:
