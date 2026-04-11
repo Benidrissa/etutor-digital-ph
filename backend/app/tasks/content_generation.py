@@ -1187,6 +1187,9 @@ def pregenerate_on_publish_task(self, course_id: str) -> dict:
 
                 settings_svc = PlatformSettingsService()
                 default_country = await settings_svc.get("content-preload-default-country") or "SN"
+                quiz_questions_count = int(
+                    await settings_svc.get("quiz-unit-questions-count") or 10
+                )
 
                 module_result = await session.execute(
                     select(Module)
@@ -1288,6 +1291,7 @@ def pregenerate_on_publish_task(self, course_id: str) -> dict:
                                     language=language,
                                     country=default_country,
                                     level=DEFAULT_LEVEL,
+                                    num_questions=quiz_questions_count,
                                     session=session,
                                 )
                                 generated.append(label)

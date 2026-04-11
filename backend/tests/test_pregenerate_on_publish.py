@@ -180,3 +180,39 @@ class TestDefaultCountryFallback:
         assert defn.default == "SN"
         assert defn.value_type == "string"
         assert defn.category == "ai"
+
+
+# ---------------------------------------------------------------------------
+# Tests: quiz num_questions setting
+# ---------------------------------------------------------------------------
+
+
+class TestQuizQuestionsCountSetting:
+    def test_quiz_unit_questions_count_setting_exists(self):
+        from app.infrastructure.config.platform_defaults import DEFAULTS_BY_KEY
+
+        assert "quiz-unit-questions-count" in DEFAULTS_BY_KEY
+        defn = DEFAULTS_BY_KEY["quiz-unit-questions-count"]
+        assert defn.default == 10
+        assert defn.value_type == "integer"
+        assert defn.category == "quiz"
+
+    @pytest.mark.asyncio
+    async def test_quiz_questions_count_fallback(self):
+        from app.domain.services.platform_settings_service import PlatformSettingsService
+
+        svc = PlatformSettingsService()
+        with patch.object(svc, "get", new=AsyncMock(return_value=None)):
+            val = await svc.get("quiz-unit-questions-count")
+            result = int(val or 10)
+            assert result == 10
+
+    @pytest.mark.asyncio
+    async def test_quiz_questions_count_custom_value(self):
+        from app.domain.services.platform_settings_service import PlatformSettingsService
+
+        svc = PlatformSettingsService()
+        with patch.object(svc, "get", new=AsyncMock(return_value=15)):
+            val = await svc.get("quiz-unit-questions-count")
+            result = int(val or 10)
+            assert result == 15
