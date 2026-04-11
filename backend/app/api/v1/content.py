@@ -49,6 +49,7 @@ from app.infrastructure.config.settings import get_settings
 from app.tasks.content_generation import (
     generate_case_study_task,
     generate_lesson_task,
+    prefetch_next_lessons_task,
 )
 
 logger = structlog.get_logger()
@@ -188,6 +189,35 @@ def get_quiz_service(
 ) -> QuizService:
     """Dependency to get quiz generation service."""
     return QuizService(claude_service, semantic_retriever)
+
+
+def _dispatch_content_prefetch(
+    current_user,
+    module_id: str,
+    unit_id: str,
+) -> None:
+    """Fire-and-forget: pre-generate next 2 content units for current_user."""
+    if current_user is None:
+        return
+    try:
+        prefetch_next_lessons_task.apply_async(
+            kwargs={
+                "user_id": str(current_user.id),
+                "module_id": module_id,
+                "current_unit_id": unit_id,
+                "language": getattr(current_user, "preferred_language", "fr") or "fr",
+                "country": getattr(current_user, "country", "SN") or "SN",
+                "level": getattr(current_user, "current_level", 1) or 1,
+            },
+            priority=3,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Prefetch dispatch failed (non-fatal)",
+            module_id=module_id,
+            unit_id=unit_id,
+            error=str(exc),
+        )
 
 
 @router.post(
@@ -501,6 +531,7 @@ async def get_or_generate_lesson_by_module_and_unit(
                         "Case study cache hit",
                         case_study_id=str(case_study_response.id),
                     )
+                    _dispatch_content_prefetch(current_user, str(resolved_module_id), unit_id)
                     return JSONResponse(
                         content=case_study_response.model_dump(mode="json"),
                         status_code=status.HTTP_200_OK,
@@ -573,6 +604,7 @@ async def get_or_generate_lesson_by_module_and_unit(
                     "Lesson cache hit",
                     lesson_id=str(lesson_response.id),
                 )
+                _dispatch_content_prefetch(current_user, str(resolved_module_id), unit_id)
                 return JSONResponse(
                     content=lesson_response.model_dump(mode="json"),
                     status_code=status.HTTP_200_OK,
@@ -607,6 +639,7 @@ async def get_or_generate_lesson_by_module_and_unit(
                 task_id=task.id,
             )
 
+        _dispatch_content_prefetch(current_user, str(resolved_module_id), unit_id)
         return JSONResponse(
             content={
                 "status": "generating",
@@ -992,6 +1025,7 @@ async def generate_quiz(
             questions_count=len(quiz_response.content.questions),
         )
 
+        _dispatch_content_prefetch(current_user, str(request.module_id), request.unit_id)
         return quiz_response
 
     except ValueError as e:
@@ -1198,6 +1232,7 @@ async def get_or_generate_case_study(
                     "Case study cache hit",
                     case_study_id=str(case_study_response.id),
                 )
+                _dispatch_content_prefetch(current_user, str(resolved_module_id), unit_id)
                 return JSONResponse(
                     content=case_study_response.model_dump(mode="json"),
                     status_code=status.HTTP_200_OK,
@@ -1218,6 +1253,7 @@ async def get_or_generate_case_study(
             task_id=task.id,
         )
 
+        _dispatch_content_prefetch(current_user, str(resolved_module_id), unit_id)
         return JSONResponse(
             content={
                 "status": "generating",
