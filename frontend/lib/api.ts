@@ -1,7 +1,14 @@
+/**
+ * API_BASE resolves to:
+ * - Server-side (SSR): BACKEND_URL for direct container-to-container calls,
+ *   falls back to NEXT_PUBLIC_API_URL, then localhost.
+ * - Client-side (browser): NEXT_PUBLIC_API_URL for direct calls to the
+ *   backend via Traefik, falls back to empty string (relative URLs).
+ */
 export const API_BASE =
   typeof window === "undefined"
-    ? process.env.BACKEND_URL || "http://localhost:8000"
-    : "";
+    ? process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+    : process.env.NEXT_PUBLIC_API_URL || "";
 
 export class ApiError extends Error {
   constructor(message: string, public status: number, public code?: string) {

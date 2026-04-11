@@ -124,6 +124,7 @@ jobs:
           cache-from: type=registry,ref=${{ matrix.image }}:buildcache
           cache-to: type=registry,ref=${{ matrix.image }}:buildcache,mode=max
           build-args: |
+            NEXT_PUBLIC_API_URL=https://api.elearning.portfolio2.kimbetien.com
             NEXT_PUBLIC_SENTRY_DSN=${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
             SENTRY_ORG=${{ secrets.SENTRY_ORG }}
             SENTRY_PROJECT=${{ secrets.SENTRY_PROJECT }}
