@@ -31,7 +31,7 @@ class ImageIndexTask(Task):
     ignore_result=True,
     acks_late=False,  # Acknowledge immediately to prevent duplicate dispatch
 )
-def reindex_course_images(self, course_id: str, rag_collection_id: str) -> dict:
+def reindex_course_images(self, course_id: str, rag_collection_id: str, clear_old: bool = True) -> dict:
     """Re-index images for a course independently from text indexation.
 
     Iterates over PDFs in uploads/course_resources/{course_id}/ and calls
@@ -106,6 +106,26 @@ def reindex_course_images(self, course_id: str, rag_collection_id: str) -> dict:
             pipeline = RAGPipeline(_ES(api_key=""))
 
         total_images = 0
+
+        if clear_old:
+            self.update_state(
+                state="CLEARING_OLD_IMAGES",
+                meta={
+                    "step": "clearing_old_images",
+                    "step_label": "Suppression des anciennes illustrations",
+                    "progress": 3,
+                    "files_total": len(pdf_files),
+                    "files_processed": 0,
+                    "images_processed": 0,
+                },
+            )
+            cleared = await pipeline.clear_source_images(source=rag_collection_id)
+            logger.info(
+                "Cleared old images before re-indexation",
+                count=cleared,
+                course_id=course_id,
+                rag_collection_id=rag_collection_id,
+            )
 
         for i, pdf_path in enumerate(pdf_files):
             extract_progress = 5 + int(((i + 0.5) / len(pdf_files)) * 90)
