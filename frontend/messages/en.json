@@ -1683,6 +1683,8 @@
     "redirecting": "Redirecting to course..."
   },
   "Offline": {
+    "offline": "You are offline",
+    "reconnected": "Back online",
     "downloadForOffline": "Download for offline",
     "availableOffline": "Available offline",
     "removeDownload": "Remove download",
@@ -1705,6 +1707,12 @@
     "offlineBadge": "Offline",
     "contentNotAvailable": "Content not available offline",
     "contentNotAvailableHint": "Download this module to access it offline",
-    "quizOfflineNote": "Quiz scored locally — will sync when back online"
+    "quizOfflineNote": "Quiz scored locally — will sync when back online",
+    "syncPending": "{count} pending",
+    "syncing": "Syncing...",
+    "syncComplete": "Sync complete",
+    "syncFailed": "Sync failed",
+    "syncRetry": "Retry sync",
+    "syncSuccess": "{count} items synced"
   }
 }

@@ -4,6 +4,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { BreadcrumbNav } from "@/components/layout/breadcrumb-nav";
 import { ChatLayout } from "@/components/chat/chat-layout";
 import { OfflineIndicator } from "@/components/shared/offline-indicator";
+import { SyncStatusIndicator } from "@/components/shared/sync-status-indicator";
 import { AuthGuard } from "@/components/shared/auth-guard";
 import { SubscriptionBanner } from "@/components/shared/subscription-banner";
 
@@ -15,6 +16,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <Sidebar />
           <div className="flex flex-1 flex-col min-h-0">
             <OfflineIndicator />
+            <SyncStatusIndicator />
             <SubscriptionBanner />
             <Header />
             <BreadcrumbNav />
