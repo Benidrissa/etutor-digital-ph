@@ -334,6 +334,22 @@ async def submit_flashcard_review(
 
         await session.commit()
 
+        # Touch course interaction for recent-courses ranking
+        try:
+            from app.domain.models.content import GeneratedContent
+            from app.domain.services.progress_service import touch_course_interaction_by_module
+
+            gc_result = await session.execute(
+                select(GeneratedContent.module_id).where(GeneratedContent.id == review.card_id)
+            )
+            card_module_id = gc_result.scalar_one_or_none()
+            if card_module_id:
+                await touch_course_interaction_by_module(
+                    session, uuid.UUID(str(current_user.id)), card_module_id
+                )
+        except Exception as touch_err:
+            logger.warning("touch_course_interaction failed (non-fatal)", error=str(touch_err))
+
         try:
             analytics_svc = AnalyticsService(session)
             await analytics_svc.ingest_event(
