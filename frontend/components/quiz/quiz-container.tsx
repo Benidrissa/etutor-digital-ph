@@ -355,6 +355,11 @@ export function QuizContainer({
                   {t('cached')}
                 </Badge>
               )}
+              {quiz.country_fallback && (
+                <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50">
+                  {t('countryFallback')}
+                </Badge>
+              )}
               <Badge variant="outline">
                 {language.toUpperCase()}
               </Badge>

@@ -58,6 +58,7 @@ interface CaseStudyData {
   country_context: string;
   content: CaseStudyContent;
   cached: boolean;
+  country_fallback?: boolean;
   unit_title?: string;
   unit_description?: string;
   generated_at?: string;
@@ -352,6 +353,11 @@ export function CaseStudyViewer({
             </div>
             {contentSource === 'indexeddb' && <OfflineBadge />}
             {caseStudyData.cached && contentSource !== 'indexeddb' && <Badge variant="secondary">{t('cached')}</Badge>}
+            {caseStudyData.country_fallback && (
+              <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50">
+                {t('countryFallback')}
+              </Badge>
+            )}
           </div>
           <Button
             variant="ghost"

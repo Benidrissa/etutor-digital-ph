@@ -40,6 +40,7 @@ class QuizService:
         num_questions: int,
         session: AsyncSession,
         force_regenerate: bool = False,
+        user_id: UUID | None = None,
     ) -> QuizResponse:
         """
         Get existing quiz from cache or generate new one using RAG + Claude API.
@@ -52,6 +53,7 @@ class QuizService:
             level: Learning level (1-4)
             num_questions: Number of questions to generate (5-15)
             session: Database session
+            user_id: Optional user UUID for background task logging
 
         Returns:
             QuizResponse with quiz content and metadata
@@ -62,6 +64,7 @@ class QuizService:
         """
         try:
             cached_quiz = None
+            is_fallback = False
             if not force_regenerate:
                 # Cache lookup: match all 6 fields that form the unique index
                 # Use .first() with ORDER BY as safety net for any legacy duplicates
@@ -81,13 +84,43 @@ class QuizService:
                 result = await session.execute(query)
                 cached_quiz = result.scalars().first()
 
+                if not cached_quiz:
+                    fallback_query = (
+                        select(GeneratedContent)
+                        .where(
+                            GeneratedContent.module_id == module_id,
+                            GeneratedContent.content_type == "quiz",
+                            GeneratedContent.language == language,
+                            GeneratedContent.level == level,
+                            GeneratedContent.content["unit_id"].astext == unit_id,
+                        )
+                        .order_by(GeneratedContent.generated_at.desc())
+                    )
+                    fallback_result = await session.execute(fallback_query)
+                    cached_quiz = fallback_result.scalars().first()
+                    is_fallback = cached_quiz is not None
+
             if cached_quiz:
                 logger.info(
                     "Retrieved quiz from cache",
                     quiz_id=str(cached_quiz.id),
                     module_id=str(module_id),
                     unit_id=unit_id,
+                    country_fallback=is_fallback,
                 )
+
+                if is_fallback:
+                    from app.tasks.content_generation import generate_country_content_task
+
+                    generate_country_content_task.delay(
+                        module_id=str(module_id),
+                        unit_id=unit_id,
+                        content_type="quiz",
+                        language=language,
+                        level=level,
+                        country=country,
+                        user_id=str(user_id) if user_id else "",
+                    )
 
                 return QuizResponse(
                     id=cached_quiz.id,
@@ -99,6 +132,7 @@ class QuizService:
                     content=QuizContent(**cached_quiz.content),
                     generated_at=cached_quiz.generated_at.isoformat(),
                     cached=True,
+                    country_fallback=is_fallback,
                 )
 
             # Generate new quiz using RAG + Claude

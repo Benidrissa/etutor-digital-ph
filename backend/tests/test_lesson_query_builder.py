@@ -215,7 +215,7 @@ class TestGetCachedLesson:
         mock_result.scalars.return_value = mock_scalars
         session.execute = AsyncMock(return_value=mock_result)
 
-        result = await lesson_service._get_cached_lesson(
+        result, is_fallback = await lesson_service._get_cached_lesson(
             sample_module_id, "M01-U01", "fr", "SN", 1, session
         )
 
@@ -232,7 +232,7 @@ class TestGetCachedLesson:
         mock_result.scalars.return_value = mock_scalars
         session.execute = AsyncMock(return_value=mock_result)
 
-        result = await lesson_service._get_cached_lesson(
+        result, _ = await lesson_service._get_cached_lesson(
             sample_module_id, "M01-U02", "fr", "SN", 1, session
         )
 
@@ -258,10 +258,10 @@ class TestGetCachedLesson:
         session = AsyncMock(spec=AsyncSession)
         session.execute = AsyncMock(side_effect=[mock_result_u01, mock_result_u02])
 
-        result_u01 = await lesson_service._get_cached_lesson(
+        result_u01, _ = await lesson_service._get_cached_lesson(
             sample_module_id, "M01-U01", "fr", "SN", 1, session
         )
-        result_u02 = await lesson_service._get_cached_lesson(
+        result_u02, _ = await lesson_service._get_cached_lesson(
             sample_module_id, "M01-U02", "fr", "SN", 1, session
         )
 
@@ -283,7 +283,7 @@ class TestGetCachedLesson:
         mock_result.scalars.return_value = mock_scalars
         session.execute = AsyncMock(return_value=mock_result)
 
-        result = await lesson_service._get_cached_lesson(
+        result, _ = await lesson_service._get_cached_lesson(
             sample_module_id, "M01-U03", "fr", "SN", 1, session
         )
 
@@ -368,7 +368,7 @@ class TestGetCachedLessonSourceImageRefs:
 
         session.execute = AsyncMock(side_effect=[mock_first_result, mock_db_result])
 
-        result = await lesson_service._get_cached_lesson(
+        result, _ = await lesson_service._get_cached_lesson(
             sample_module_id, "M01-U01", "fr", "SN", 1, session
         )
 
@@ -429,7 +429,7 @@ class TestGetCachedLessonSourceImageRefs:
 
         session.execute = AsyncMock(side_effect=[mock_first_result, mock_db_result])
 
-        result = await lesson_service._get_cached_lesson(
+        result, _ = await lesson_service._get_cached_lesson(
             sample_module_id, "M01-U01", "fr", "SN", 1, session
         )
 

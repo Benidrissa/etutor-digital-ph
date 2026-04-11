@@ -319,7 +319,8 @@
     "refreshContent": "Actualiser le contenu",
     "subscriptionRequired": "Un abonnement est requis pour accéder à ce contenu. La première unité de chaque module est gratuite.",
     "authRequired": "Veuillez vous connecter pour continuer.",
-    "contentNotAvailableOffline": "Ce quiz n'est pas disponible hors-ligne. Téléchargez le module pour le passer sans internet."
+    "contentNotAvailableOffline": "Ce quiz n'est pas disponible hors-ligne. Téléchargez le module pour le passer sans internet.",
+    "countryFallback": "Le contenu adapté à votre région sera disponible prochainement"
   },
   "ChatTutor": {
     "title": "Tuteur IA",
@@ -689,14 +690,17 @@
     "checkingStatus": "Vérification...",
     "unitNotFound": "Cette unité n'existe pas dans ce module.",
     "backToModule": "Retour au module",
-    "contentNotAvailableOffline": "Cette leçon n'est pas disponible hors-ligne. Téléchargez le module pour y accéder sans internet."
+    "contentNotAvailableOffline": "Cette leçon n'est pas disponible hors-ligne. Téléchargez le module pour y accéder sans internet.",
+    "countryFallback": "Le contenu adapté à votre région sera disponible prochainement"
   },
   "LessonAudio": {
     "audioPending": "Génération du résumé audio...",
     "play": "Écouter le résumé audio",
     "pause": "Mettre en pause le résumé audio",
     "listenToSummary": "Écouter le résumé de la leçon",
-    "audioUnavailable": "Résumé audio pas encore disponible"
+    "audioUnavailable": "Résumé audio pas encore disponible",
+    "rewind": "Reculer de 10 secondes",
+    "forward": "Avancer de 10 secondes"
   },
   "LessonImage": {
     "imagePending": "Illustration en cours de génération...",
@@ -759,7 +763,8 @@
     "bloomLevel": "Bloom : {level}",
     "generatedOn": "Généré le {date}",
     "stretchBadge": "Défi",
-    "contentNotAvailableOffline": "Cette étude de cas n'est pas disponible hors-ligne. Téléchargez le module pour y accéder sans internet."
+    "contentNotAvailableOffline": "Cette étude de cas n'est pas disponible hors-ligne. Téléchargez le module pour y accéder sans internet.",
+    "countryFallback": "Le contenu adapté à votre région sera disponible prochainement"
   },
   "CaseStudyPage": {
     "backToModule": "Retour à {module}",
