@@ -2,7 +2,6 @@
 
 import uuid
 
-import pytest
 from httpx import AsyncClient
 
 from app.domain.models.generated_audio import GeneratedAudio
