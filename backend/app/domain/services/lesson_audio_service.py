@@ -335,7 +335,12 @@ class LessonAudioService:
 
         client = AsyncOpenAI(api_key=settings.openai_api_key)
 
-        voice = "nova" if language == "fr" else "ash"
+        # Kids: always use female voice (warmer, more engaging for children)
+        # Adults: nova (female) for FR, ash (male) for EN
+        if is_kids:
+            voice = "nova"
+        else:
+            voice = "nova" if language == "fr" else "ash"
         instructions = _build_tts_instructions(
             language=language,
             course_title=course_title,
