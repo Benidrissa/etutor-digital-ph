@@ -3,6 +3,7 @@ import { DashboardClient } from "./dashboard-client";
 import { DashboardStats } from "@/components/dashboard/dashboard-stats";
 import { UpcomingReviews } from "@/components/dashboard/upcoming-reviews";
 import { CurriculaSection } from "@/components/shared/curricula-section";
+import { ClearCurriculumContext } from "@/components/shared/clear-curriculum-context";
 
 interface DashboardPageProps {
   searchParams: Promise<{ curriculum?: string }>;
@@ -29,6 +30,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         <DashboardClient curriculumSlug={curriculum} />
       </div>
 
+      {!curriculum && <ClearCurriculumContext />}
       {!curriculum && <CurriculaSection />}
     </div>
   );
