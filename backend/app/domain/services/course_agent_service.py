@@ -8,6 +8,94 @@ import structlog
 
 from app.ai.model_registry import get_model_caps
 
+# ── Tool-use schema for structured syllabus output ──────────────────
+# Claude is forced to call this tool, ensuring every unit has an
+# explicit "type" enum value.  Adults get lesson/quiz/case-study;
+# kids courses also allow "scenario" (alias for case-study).
+_UNIT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title_fr": {"type": "string"},
+        "title_en": {"type": "string"},
+        "type": {
+            "type": "string",
+            "enum": ["lesson", "quiz", "case-study", "scenario"],
+        },
+        "description_fr": {"type": "string"},
+        "description_en": {"type": "string"},
+    },
+    "required": [
+        "title_fr", "title_en", "type",
+        "description_fr", "description_en",
+    ],
+}
+
+_MODULE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "module_number": {"type": "integer"},
+        "title_fr": {"type": "string"},
+        "title_en": {"type": "string"},
+        "description_fr": {"type": "string"},
+        "description_en": {"type": "string"},
+        "estimated_hours": {"type": "integer"},
+        "bloom_level": {
+            "type": "string",
+            "enum": [
+                "remember", "understand", "apply",
+                "analyze", "evaluate", "create",
+            ],
+        },
+        "learning_objectives_fr": {
+            "type": "array", "items": {"type": "string"},
+        },
+        "learning_objectives_en": {
+            "type": "array", "items": {"type": "string"},
+        },
+        "units": {
+            "type": "array", "items": _UNIT_SCHEMA,
+        },
+        "quiz_topics_fr": {
+            "type": "array", "items": {"type": "string"},
+        },
+        "quiz_topics_en": {
+            "type": "array", "items": {"type": "string"},
+        },
+        "flashcard_categories_fr": {
+            "type": "array", "items": {"type": "string"},
+        },
+        "flashcard_categories_en": {
+            "type": "array", "items": {"type": "string"},
+        },
+        "case_study_fr": {"type": "string"},
+        "case_study_en": {"type": "string"},
+    },
+    "required": [
+        "module_number", "title_fr", "title_en",
+        "description_fr", "description_en", "estimated_hours",
+        "bloom_level", "learning_objectives_fr",
+        "learning_objectives_en", "units",
+    ],
+}
+
+SYLLABUS_TOOL = {
+    "name": "save_syllabus",
+    "description": (
+        "Save the generated course syllabus. "
+        "You MUST call this tool with the complete module array."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "modules": {
+                "type": "array",
+                "items": _MODULE_SCHEMA,
+            },
+        },
+        "required": ["modules"],
+    },
+}
+
 logger = structlog.get_logger(__name__)
 
 _PLACEHOLDER_MODULES = [
@@ -196,6 +284,10 @@ class CourseAgentService:
             '"flashcard_categories_en": [str],\n'
             '  "case_study_fr": str, "case_study_en": str\n'
             "}\n\n"
+            "## CRITICAL — every unit MUST have a type field\n"
+            'Each unit must include "type" set to exactly one of: '
+            '"lesson", "quiz", or "case-study". '
+            "Never omit the type field.\n\n"
             "## Conciseness rules (CRITICAL — this is a syllabus, not the course itself)\n"
             "- description_fr/en: max 2 sentences (~30 words each)\n"
             "- learning_objectives: max 3-5 bullet points per module, each ≤15 words\n"
@@ -205,8 +297,7 @@ class CourseAgentService:
             "- case_study_fr/en: max 2 sentences (~40 words) — topic outline only, not the full case\n"
             "- Keep total response under 20,000 words\n\n"
             "- NEVER truncate text with '...' or ellipsis — write complete short text instead\n\n"
-            "Return ONLY valid JSON, no markdown fences, "
-            "no explanation."
+            "Call the save_syllabus tool with the complete module array."
         )
 
     def _build_kids_prompt(
@@ -269,7 +360,7 @@ class CourseAgentService:
             '"learning_objectives_en": [str],\n'
             '  "units": [\n'
             '    {"title_fr": str, "title_en": str, '
-            '"type": "lesson"|"quiz"|"case-study",\n'
+            '"type": "lesson"|"quiz"|"scenario",\n'
             '     "description_fr": str, "description_en": str}\n'
             "  ],\n"
             '  "quiz_topics_fr": [str], '
@@ -278,6 +369,11 @@ class CourseAgentService:
             '"flashcard_categories_en": [str],\n'
             '  "case_study_fr": str, "case_study_en": str\n'
             "}\n\n"
+            "## CRITICAL — every unit MUST have a type field\n"
+            'Each unit must include "type" set to exactly one of: '
+            '"lesson", "quiz", or "scenario" '
+            "(scenario is a story-based activity for children). "
+            "Never omit the type field.\n\n"
             "## Conciseness rules (CRITICAL — this is a syllabus, not the course itself)\n"
             "- description_fr/en: max 2 short sentences (~20 words each)\n"
             "- learning_objectives: max 3-4 bullet points per module, each ≤12 words\n"
@@ -287,7 +383,7 @@ class CourseAgentService:
             "- case_study_fr/en: max 2 sentences (~30 words) — a story prompt, not the full case\n"
             "- Keep total response under 20,000 words\n\n"
             "- NEVER truncate text with '...' or ellipsis — write complete short text instead\n\n"
-            "Return ONLY valid JSON, no markdown fences, no explanation."
+            "Call the save_syllabus tool with the complete module array."
         )
 
     async def generate_course_structure(
@@ -378,42 +474,45 @@ class CourseAgentService:
                     audience_type=audience_type,
                 )
 
-            # Use streaming to avoid timeout with large max_tokens
+            # Use tool_use to enforce structured JSON output
+            import json as _json
+
             async with client.messages.stream(
                 model=_model,
                 max_tokens=64000,
                 messages=[{"role": "user", "content": prompt}],
+                tools=[SYLLABUS_TOOL],
+                tool_choice={"type": "tool", "name": "save_syllabus"},
             ) as stream:
                 message = await stream.get_final_message()
 
-            # Check for truncation
-            if message.stop_reason == "max_tokens":
-                logger.warning(
-                    "Response truncated at max_tokens, retrying",
-                    course=title_en,
-                )
-                async with client.messages.stream(
-                    model=_model,
-                    max_tokens=64000,
-                    messages=[
-                        {"role": "user", "content": prompt},
-                        {"role": "assistant", "content": message.content[0].text},
-                        {
-                            "role": "user",
-                            "content": "The JSON was truncated. Please complete it "
-                            "from where you stopped. Return ONLY the remaining "
-                            "JSON to complete the array.",
-                        },
-                    ],
-                ) as stream:
-                    message = await stream.get_final_message()
+            # Extract modules from tool_use block
+            modules_raw = None
+            for block in message.content:
+                if block.type == "tool_use" and block.name == "save_syllabus":
+                    modules_raw = block.input.get("modules", [])
+                    break
 
-            raw = message.content[0].text.strip()
-            if raw.startswith("```"):
-                raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-            modules_raw = _try_parse_modules(raw)
-            if modules_raw is None:
-                raise ValueError("Failed to parse modules JSON after partial recovery attempt")
+            # Fallback: if tool_use failed, try raw text parsing
+            if not modules_raw:
+                logger.warning(
+                    "tool_use extraction failed, falling back to text",
+                    course=title_en,
+                    stop_reason=message.stop_reason,
+                )
+                for block in message.content:
+                    if hasattr(block, "text") and block.text:
+                        raw = block.text.strip()
+                        if raw.startswith("```"):
+                            raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+                        modules_raw = _try_parse_modules(raw)
+                        if modules_raw:
+                            break
+
+            if not modules_raw:
+                raise ValueError(
+                    "Failed to extract modules from tool_use or text"
+                )
 
             modules = []
             for i, m in enumerate(modules_raw, start=1):

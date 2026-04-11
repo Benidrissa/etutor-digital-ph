@@ -443,7 +443,7 @@ async def get_or_generate_lesson_by_module_and_unit(
                 },
             )
 
-        is_case_study = unit_type_row[0] == "case-study"
+        is_case_study = unit_type_row[0] in ("case-study", "scenario")
 
         if not force_regenerate:
             from sqlalchemy import or_
@@ -710,7 +710,7 @@ async def stream_lesson_by_module_and_unit(
                 yield error_event.to_sse_format()
                 return
 
-            is_case_study = unit_type_row[0] == "case-study"
+            is_case_study = unit_type_row[0] in ("case-study", "scenario")
 
             if is_case_study:
                 async for event in case_study_service.stream_case_study_generation(

@@ -36,11 +36,12 @@ function getStatusIcon(status: 'pending' | 'in-progress' | 'completed') {
   }
 }
 
-function detectUnitType(unit: UnitProgressDetail): 'lesson' | 'quiz' | 'case-study' {
+function detectUnitType(unit: UnitProgressDetail): 'lesson' | 'quiz' | 'case-study' | 'scenario' {
   if (unit.unit_type) return unit.unit_type;
   const title = (unit.title_fr || unit.title_en || '').toLowerCase();
   if (title.includes('quiz')) return 'quiz';
   if (title.includes('étude de cas') || title.includes('case study')) return 'case-study';
+  if (title.includes('scénario') || title.includes('scenario')) return 'scenario';
   return 'lesson';
 }
 
@@ -50,6 +51,7 @@ function getTypeIcon(unit: UnitProgressDetail) {
     case 'quiz':
       return <MessageSquare className="w-4 h-4" />;
     case 'case-study':
+    case 'scenario':
       return <FileText className="w-4 h-4" />;
     default:
       return <BookOpen className="w-4 h-4" />;
@@ -59,7 +61,7 @@ function getTypeIcon(unit: UnitProgressDetail) {
 function getUnitHref(moduleId: string, unit: UnitProgressDetail): string {
   const type = detectUnitType(unit);
   if (type === 'quiz') return `/modules/${moduleId}/quiz?unit=${unit.unit_number}`;
-  if (type === 'case-study') return `/modules/${moduleId}/case-study?unit=${unit.unit_number}`;
+  if (type === 'case-study' || type === 'scenario') return `/modules/${moduleId}/case-study?unit=${unit.unit_number}`;
   return `/modules/${moduleId}/lessons/${unit.unit_number}`;
 }
 
