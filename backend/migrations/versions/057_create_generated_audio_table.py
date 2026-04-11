@@ -1,15 +1,15 @@
 """Create generated_audio table.
 
-Revision ID: 056
-Revises: 055
+Revision ID: 057
+Revises: 056
 Create Date: 2026-04-11
 
 """
 
 from alembic import op
 
-revision = "056"
-down_revision = "055"
+revision = "057"
+down_revision = "056"
 branch_labels = None
 depends_on = None
 

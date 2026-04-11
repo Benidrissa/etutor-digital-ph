@@ -1,15 +1,15 @@
 """Add lesson_id index to generated_images for dedup queries.
 
-Revision ID: 057
-Revises: 056
+Revision ID: 058
+Revises: 057
 Create Date: 2026-04-11
 
 """
 
 from alembic import op
 
-revision = "057"
-down_revision = "056"
+revision = "058"
+down_revision = "057"
 branch_labels = None
 depends_on = None
 
