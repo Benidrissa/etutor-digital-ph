@@ -25,8 +25,11 @@ _UNIT_SCHEMA = {
         "description_en": {"type": "string"},
     },
     "required": [
-        "title_fr", "title_en", "type",
-        "description_fr", "description_en",
+        "title_fr",
+        "title_en",
+        "type",
+        "description_fr",
+        "description_en",
     ],
 }
 
@@ -42,39 +45,56 @@ _MODULE_SCHEMA = {
         "bloom_level": {
             "type": "string",
             "enum": [
-                "remember", "understand", "apply",
-                "analyze", "evaluate", "create",
+                "remember",
+                "understand",
+                "apply",
+                "analyze",
+                "evaluate",
+                "create",
             ],
         },
         "learning_objectives_fr": {
-            "type": "array", "items": {"type": "string"},
+            "type": "array",
+            "items": {"type": "string"},
         },
         "learning_objectives_en": {
-            "type": "array", "items": {"type": "string"},
+            "type": "array",
+            "items": {"type": "string"},
         },
         "units": {
-            "type": "array", "items": _UNIT_SCHEMA,
+            "type": "array",
+            "items": _UNIT_SCHEMA,
         },
         "quiz_topics_fr": {
-            "type": "array", "items": {"type": "string"},
+            "type": "array",
+            "items": {"type": "string"},
         },
         "quiz_topics_en": {
-            "type": "array", "items": {"type": "string"},
+            "type": "array",
+            "items": {"type": "string"},
         },
         "flashcard_categories_fr": {
-            "type": "array", "items": {"type": "string"},
+            "type": "array",
+            "items": {"type": "string"},
         },
         "flashcard_categories_en": {
-            "type": "array", "items": {"type": "string"},
+            "type": "array",
+            "items": {"type": "string"},
         },
         "case_study_fr": {"type": "string"},
         "case_study_en": {"type": "string"},
     },
     "required": [
-        "module_number", "title_fr", "title_en",
-        "description_fr", "description_en", "estimated_hours",
-        "bloom_level", "learning_objectives_fr",
-        "learning_objectives_en", "units",
+        "module_number",
+        "title_fr",
+        "title_en",
+        "description_fr",
+        "description_en",
+        "estimated_hours",
+        "bloom_level",
+        "learning_objectives_fr",
+        "learning_objectives_en",
+        "units",
     ],
 }
 
@@ -508,9 +528,7 @@ class CourseAgentService:
                             break
 
             if not modules_raw:
-                raise ValueError(
-                    "Failed to extract modules from tool_use or text"
-                )
+                raise ValueError("Failed to extract modules from tool_use or text")
 
             modules = []
             for i, m in enumerate(modules_raw, start=1):
