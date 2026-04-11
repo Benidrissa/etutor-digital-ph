@@ -116,6 +116,13 @@ class TestResizeToWebp:
         assert result_img.width == 512
 
 
+def _no_existing_image_result() -> MagicMock:
+    """Mock result for the dedup check — no existing image found."""
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = None
+    return result
+
+
 def _make_db_image(tags: list[str], status: str = "ready") -> GeneratedImage:
     img_id = uuid.uuid4()
     img = GeneratedImage(
@@ -175,9 +182,10 @@ class TestImageGenerationService:
         existing = _make_db_image(["paludisme", "malaria", "aof", "épidémiologie"])
         existing.reuse_count = 0
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [existing]
-        mock_session.execute = AsyncMock(return_value=mock_result)
+        dedup_result = _no_existing_image_result()
+        reuse_result = MagicMock()
+        reuse_result.scalars.return_value.all.return_value = [existing]
+        mock_session.execute = AsyncMock(side_effect=[dedup_result, reuse_result])
 
         with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
             mock_client = AsyncMock()
@@ -205,9 +213,10 @@ class TestImageGenerationService:
         """When no matching image, gpt-image-1 must be called and image saved."""
         import base64
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = []
-        mock_session.execute = AsyncMock(return_value=mock_result)
+        dedup_result = _no_existing_image_result()
+        reuse_result = MagicMock()
+        reuse_result.scalars.return_value.all.return_value = []
+        mock_session.execute = AsyncMock(side_effect=[dedup_result, reuse_result])
 
         fake_b64 = base64.b64encode(b"FAKE_PNG_DATA").decode()
         image_api_response = MagicMock()
@@ -247,9 +256,8 @@ class TestImageGenerationService:
 
     async def test_failure_handling_sets_failed_status(self, service, mock_session):
         """When DALL-E raises an exception, status must be 'failed' and lesson unaffected."""
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = []
-        mock_session.execute = AsyncMock(return_value=mock_result)
+        dedup_result = _no_existing_image_result()
+        mock_session.execute = AsyncMock(return_value=dedup_result)
 
         with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
             mock_client = AsyncMock()
@@ -272,9 +280,10 @@ class TestImageGenerationService:
         """Alt-text must be generated in both FR and EN."""
         import base64
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = []
-        mock_session.execute = AsyncMock(return_value=mock_result)
+        dedup_result = _no_existing_image_result()
+        reuse_result = MagicMock()
+        reuse_result.scalars.return_value.all.return_value = []
+        mock_session.execute = AsyncMock(side_effect=[dedup_result, reuse_result])
 
         fake_b64 = base64.b64encode(b"DATA").decode()
         image_api_response = MagicMock()
@@ -308,9 +317,10 @@ class TestImageGenerationService:
         existing = _make_db_image(["paludisme", "malaria", "aof", "épidémiologie"])
         existing.reuse_count = 2
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [existing]
-        mock_session.execute = AsyncMock(return_value=mock_result)
+        dedup_result = _no_existing_image_result()
+        reuse_result = MagicMock()
+        reuse_result.scalars.return_value.all.return_value = [existing]
+        mock_session.execute = AsyncMock(side_effect=[dedup_result, reuse_result])
 
         with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
             mock_client = AsyncMock()
@@ -379,9 +389,10 @@ class TestImageGenerationService:
         """image_data must be stored (not NULL) after successful gpt-image-1 generation."""
         import base64
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = []
-        mock_session.execute = AsyncMock(return_value=mock_result)
+        dedup_result = _no_existing_image_result()
+        reuse_result = MagicMock()
+        reuse_result.scalars.return_value.all.return_value = []
+        mock_session.execute = AsyncMock(side_effect=[dedup_result, reuse_result])
 
         fake_b64 = base64.b64encode(b"FAKE_PNG_BINARY_DATA").decode()
         image_api_response = MagicMock()

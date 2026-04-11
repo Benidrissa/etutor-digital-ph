@@ -441,6 +441,13 @@ class TestFindSourceImage:
         assert result is None
 
 
+def _no_existing_image_result() -> MagicMock:
+    """Mock result for the dedup check — no existing image found."""
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = None
+    return result
+
+
 class TestDallEFallbackOptimization:
     @pytest.fixture
     def service(self):
@@ -485,7 +492,8 @@ class TestDallEFallbackOptimization:
         source_result = MagicMock()
         source_result.scalar_one_or_none = MagicMock(return_value=source_img)
 
-        mock_session.execute = AsyncMock(side_effect=[reuse_result, source_result])
+        dedup_result = _no_existing_image_result()
+        mock_session.execute = AsyncMock(side_effect=[dedup_result, reuse_result, source_result])
 
         with __import__("unittest.mock", fromlist=["patch"]).patch(
             "anthropic.AsyncAnthropic"
@@ -519,6 +527,7 @@ class TestDallEFallbackOptimization:
 
         mock_session.get = AsyncMock(return_value=None)
 
+        dedup_result = _no_existing_image_result()
         reuse_result = MagicMock()
         reuse_result.scalars.return_value.all.return_value = []
 
@@ -529,7 +538,7 @@ class TestDallEFallbackOptimization:
         image_api_response = MagicMock()
         image_api_response.data = [MagicMock(b64_json=fake_b64)]
 
-        mock_session.execute = AsyncMock(return_value=reuse_result)
+        mock_session.execute = AsyncMock(side_effect=[dedup_result, reuse_result])
 
         with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
             mock_client = AsyncMock()
@@ -576,7 +585,8 @@ class TestDallEFallbackOptimization:
         source_result = MagicMock()
         source_result.scalar_one_or_none = MagicMock(return_value=source_img)
 
-        mock_session.execute = AsyncMock(side_effect=[reuse_result, source_result])
+        dedup_result = _no_existing_image_result()
+        mock_session.execute = AsyncMock(side_effect=[dedup_result, reuse_result, source_result])
 
         with __import__("unittest.mock", fromlist=["patch"]).patch(
             "anthropic.AsyncAnthropic"
