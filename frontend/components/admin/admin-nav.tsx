@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations, useLocale } from "next-intl";
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 
 function getRole(): string | null {
@@ -25,11 +25,7 @@ export function AdminNav() {
   const t = useTranslations("Admin");
   const locale = useLocale();
   const pathname = usePathname();
-  const [role, setRole] = useState<string | null>(null);
-
-  useEffect(() => {
-    setRole(getRole());
-  }, []);
+  const role = useMemo(() => getRole(), []);
 
   const allItems = [
     { href: `/${locale}/admin/users`, label: t("users.title"), adminOnly: false },
