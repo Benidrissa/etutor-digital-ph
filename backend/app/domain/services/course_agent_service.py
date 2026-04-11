@@ -475,8 +475,6 @@ class CourseAgentService:
                 )
 
             # Use tool_use to enforce structured JSON output
-            import json as _json
-
             async with client.messages.stream(
                 model=_model,
                 max_tokens=64000,
