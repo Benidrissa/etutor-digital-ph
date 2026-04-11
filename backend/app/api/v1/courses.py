@@ -5,7 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import exists, select
+from sqlalchemy import exists, func, select
 from structlog import get_logger
 
 from app.api.deps import get_db as get_db_session
@@ -292,18 +292,45 @@ async def list_published_courses(
 async def my_enrollments(
     current_user=Depends(get_current_user),
     db=Depends(get_db_session),
+    order_by: str | None = Query(None),
+    limit: int | None = Query(None, ge=1, le=50),
 ) -> list[CourseListItem]:
-    """Get courses the current user is enrolled in."""
-    result = await db.execute(
-        select(Course)
-        .join(
-            UserCourseEnrollment,
-            (UserCourseEnrollment.course_id == Course.id)
-            & (UserCourseEnrollment.user_id == uuid.UUID(current_user.id))
-            & (UserCourseEnrollment.status == "active"),
-        )
-        .order_by(UserCourseEnrollment.enrolled_at.desc())
+    """Get courses the current user is enrolled in.
+
+    Optional query params:
+    - order_by=last_accessed: sort by most recent module activity
+    - limit: max number of courses to return
+    """
+    uid = uuid.UUID(current_user.id)
+    stmt = select(Course).join(
+        UserCourseEnrollment,
+        (UserCourseEnrollment.course_id == Course.id)
+        & (UserCourseEnrollment.user_id == uid)
+        & (UserCourseEnrollment.status == "active"),
     )
+
+    if order_by == "last_accessed":
+        stmt = (
+            stmt
+            .outerjoin(Module, Module.course_id == Course.id)
+            .outerjoin(
+                UserModuleProgress,
+                (UserModuleProgress.module_id == Module.id)
+                & (UserModuleProgress.user_id == uid),
+            )
+            .group_by(Course.id)
+            .order_by(
+                func.max(UserModuleProgress.last_accessed).desc().nullslast(),
+                UserCourseEnrollment.enrolled_at.desc(),
+            )
+        )
+    else:
+        stmt = stmt.order_by(UserCourseEnrollment.enrolled_at.desc())
+
+    if limit:
+        stmt = stmt.limit(limit)
+
+    result = await db.execute(stmt)
     courses = result.scalars().all()
     return [_course_to_list_item(c, enrolled=True) for c in courses]
 

@@ -12,7 +12,7 @@ export async function generateMetadata() {
 
 export default async function TutorPage() {
   return (
-    <div className="fixed inset-0 top-14 bottom-16 md:left-64 md:bottom-0 flex flex-col overflow-hidden bg-background z-10">
+    <div className="fixed inset-0 top-0 bottom-16 md:left-64 md:bottom-0 flex flex-col overflow-hidden bg-background z-10">
       <TutorPageClient />
     </div>
   );
