@@ -31,7 +31,9 @@ class ImageIndexTask(Task):
     ignore_result=True,
     acks_late=False,  # Acknowledge immediately to prevent duplicate dispatch
 )
-def reindex_course_images(self, course_id: str, rag_collection_id: str, clear_old: bool = True) -> dict:
+def reindex_course_images(
+    self, course_id: str, rag_collection_id: str, clear_old: bool = True
+) -> dict:
     """Re-index images for a course independently from text indexation.
 
     Iterates over PDFs in uploads/course_resources/{course_id}/ and calls
