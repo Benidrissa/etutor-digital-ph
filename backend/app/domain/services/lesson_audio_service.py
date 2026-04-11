@@ -187,9 +187,7 @@ class LessonAudioService:
                 response_modalities=["AUDIO"],
                 speech_config=genai.SpeechConfig(
                     voice_config=genai.VoiceConfig(
-                        prebuilt_voice_config=genai.PrebuiltVoiceConfig(
-                            voice_name=voice_name
-                        )
+                        prebuilt_voice_config=genai.PrebuiltVoiceConfig(voice_name=voice_name)
                     )
                 ),
             ),
