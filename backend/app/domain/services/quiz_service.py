@@ -38,7 +38,7 @@ class QuizService:
         country: str,
         level: int,
         num_questions: int = 10,
-        session: AsyncSession | None = None,
+        session: AsyncSession,
         force_regenerate: bool = False,
         user_id: UUID | None = None,
     ) -> QuizResponse:

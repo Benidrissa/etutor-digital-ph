@@ -570,7 +570,16 @@ def generate_country_content_task(
                         level=level,
                         session=session,
                     )
-                    generate_lesson_audio.delay(str(result_obj.id))
+                    lesson_text = ""
+                    if hasattr(result_obj, "content") and result_obj.content is not None:
+                        lesson_text = getattr(result_obj.content, "content", "") or ""
+                    generate_lesson_audio.delay(
+                        str(result_obj.id),
+                        module_id,
+                        unit_id,
+                        language,
+                        lesson_text,
+                    )
                     logger.info(
                         "Country-targeted lesson ready",
                         unit_id=unit_id,
