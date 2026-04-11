@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from datetime import datetime
 from uuid import UUID
@@ -116,7 +117,8 @@ class ProgressService:
 
         await self.db.commit()
         await self.db.refresh(progress)
-        await touch_course_interaction_by_module(self.db, user_id, module_id)
+        with contextlib.suppress(Exception):
+            await touch_course_interaction_by_module(self.db, user_id, module_id)
 
         logger.info(
             "Lesson access tracked",
@@ -171,7 +173,8 @@ class ProgressService:
 
         await self.db.commit()
         await self.db.refresh(progress)
-        await touch_course_interaction_by_module(self.db, user_id, module_id)
+        with contextlib.suppress(Exception):
+            await touch_course_interaction_by_module(self.db, user_id, module_id)
 
         # After commit, check whether N+1 unlock conditions are met
         if (
