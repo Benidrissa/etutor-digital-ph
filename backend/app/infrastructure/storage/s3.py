@@ -75,6 +75,26 @@ class S3StorageService:
         )
         return url
 
+    async def download_bytes(self, key: str) -> bytes:
+        """Download an object from MinIO as raw bytes.
+
+        Args:
+            key: Object key to download
+
+        Returns:
+            Raw bytes of the object
+        """
+        session = self._get_session()
+        async with session.create_client(
+            "s3",
+            endpoint_url=self._endpoint,
+            aws_access_key_id=self._access_key,
+            aws_secret_access_key=self._secret_key,
+        ) as client:
+            response = await client.get_object(Bucket=self._bucket, Key=key)
+            async with response["Body"] as stream:
+                return await stream.read()
+
     async def delete_object(self, key: str) -> None:
         """Delete an object from MinIO.
 
