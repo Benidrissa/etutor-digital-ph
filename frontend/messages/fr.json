@@ -318,7 +318,8 @@
     "lessonNotValidatedDesc": "Vous devez obtenir au moins {score}% pour valider cette leçon. Réessayez !",
     "refreshContent": "Actualiser le contenu",
     "subscriptionRequired": "Un abonnement est requis pour accéder à ce contenu. La première unité de chaque module est gratuite.",
-    "authRequired": "Veuillez vous connecter pour continuer."
+    "authRequired": "Veuillez vous connecter pour continuer.",
+    "contentNotAvailableOffline": "Ce quiz n'est pas disponible hors-ligne. Téléchargez le module pour le passer sans internet."
   },
   "ChatTutor": {
     "title": "Tuteur IA",
@@ -687,7 +688,8 @@
     "validateWithQuiz": "Valider avec le Quiz",
     "checkingStatus": "Vérification...",
     "unitNotFound": "Cette unité n'existe pas dans ce module.",
-    "backToModule": "Retour au module"
+    "backToModule": "Retour au module",
+    "contentNotAvailableOffline": "Cette leçon n'est pas disponible hors-ligne. Téléchargez le module pour y accéder sans internet."
   },
   "LessonImage": {
     "imagePending": "Illustration en cours de génération...",
@@ -749,7 +751,8 @@
     "hideObjectives": "Masquer les objectifs",
     "bloomLevel": "Bloom : {level}",
     "generatedOn": "Généré le {date}",
-    "stretchBadge": "Défi"
+    "stretchBadge": "Défi",
+    "contentNotAvailableOffline": "Cette étude de cas n'est pas disponible hors-ligne. Téléchargez le module pour y accéder sans internet."
   },
   "CaseStudyPage": {
     "backToModule": "Retour à {module}",

@@ -14,6 +14,7 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import type { Quiz, QuizAnswerSubmission, QuizAttemptResponse } from '@/lib/api';
 import { ApiError, submitQuizAttempt } from '@/lib/api';
+import { scoreQuizOffline } from '@/lib/offline/offline-quiz-scorer';
 
 interface QuizInterfaceProps {
   quiz: Quiz;
@@ -99,23 +100,43 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
     }
     
     setIsSubmitting(true);
-    
+
     try {
       const totalTimeSeconds = Math.floor((Date.now() - startTime) / 1000);
-      
+
       const answers: QuizAnswerSubmission[] = quiz.content.questions.map((question, index) => ({
         question_id: question.id,
         selected_option: questionStates[index].selectedOption!,
         time_taken_seconds: questionStates[index].timeSpentSeconds,
       }));
-      
-      const result = await submitQuizAttempt({
-        quiz_id: quiz.id,
-        answers,
-        total_time_seconds: totalTimeSeconds,
-      });
-      
-      onComplete(result);
+
+      // Try server submission first; fall back to offline scoring
+      if (navigator.onLine) {
+        try {
+          const result = await submitQuizAttempt({
+            quiz_id: quiz.id,
+            answers,
+            total_time_seconds: totalTimeSeconds,
+          });
+          onComplete(result);
+          return;
+        } catch (serverErr) {
+          // If it's an auth/subscription error, don't fall back
+          if (serverErr instanceof ApiError && (serverErr.status === 401 || serverErr.status === 403)) {
+            throw serverErr;
+          }
+          // Network or other error: fall back to offline scoring
+          console.warn('Server quiz submit failed, scoring offline:', serverErr);
+        }
+      }
+
+      // Offline scoring: compute results locally, queue for sync
+      const answersMap: Record<string, number> = {};
+      for (const a of answers) {
+        answersMap[a.question_id] = a.selected_option;
+      }
+      const offlineResult = await scoreQuizOffline(quiz, answersMap, totalTimeSeconds);
+      onComplete(offlineResult);
     } catch (error) {
       console.error('Quiz submission failed:', error);
       if (error instanceof ApiError) {
