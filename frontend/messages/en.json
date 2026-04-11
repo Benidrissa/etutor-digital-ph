@@ -844,6 +844,7 @@
     "logout": "Log out",
     "logoutDescription": "Sign out of your account",
     "loggingOut": "Logging out...",
+    "backToDashboard": "Back to Dashboard",
     "languages": {
       "french": "Français",
       "english": "English"
