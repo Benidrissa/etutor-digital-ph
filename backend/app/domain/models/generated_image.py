@@ -21,6 +21,7 @@ class GeneratedImage(Base):
     __table_args__ = (
         Index("ix_generated_images_semantic_tags_gin", "semantic_tags", postgresql_using="gin"),
         Index("ix_generated_images_status", "status"),
+        Index("ix_generated_images_lesson_id", "lesson_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
