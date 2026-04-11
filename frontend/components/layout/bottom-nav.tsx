@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { startTransition, useState, useEffect, useRef } from "react";
-import { getCurriculumContext } from "@/lib/curriculum-context";
+import { getCurriculumContext, onCurriculumContextChange } from "@/lib/curriculum-context";
 
 export function BottomNav() {
   const t = useTranslations("Navigation");
@@ -28,6 +28,12 @@ export function BottomNav() {
   useEffect(() => {
     startTransition(() => setCurriculumSlug(getCurriculumContext()));
   }, [pathname]);
+
+  useEffect(() => {
+    return onCurriculumContextChange(() => {
+      startTransition(() => setCurriculumSlug(getCurriculumContext()));
+    });
+  }, []);
 
   useEffect(() => {
     if (!moreOpen) return;
