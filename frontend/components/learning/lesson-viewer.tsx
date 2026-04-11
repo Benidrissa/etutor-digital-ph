@@ -49,6 +49,7 @@ interface LessonData {
   country_context: string;
   content: LessonContent;
   cached: boolean;
+  country_fallback?: boolean;
   source_image_refs?: SourceImageMeta[];
 }
 
@@ -411,6 +412,11 @@ export function LessonViewer({
             {contentSource === 'indexeddb' && <OfflineBadge />}
             {lessonData.cached && contentSource !== 'indexeddb' && (
               <Badge variant="secondary">{t('cached')}</Badge>
+            )}
+            {lessonData.country_fallback && (
+              <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50">
+                {t('countryFallback')}
+              </Badge>
             )}
           </div>
           <Button
