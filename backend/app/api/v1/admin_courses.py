@@ -25,7 +25,7 @@ from app.domain.models.quiz import PlacementTestAttempt
 from app.domain.models.source_image import SourceImage
 from app.domain.models.taxonomy import TaxonomyCategory
 from app.domain.models.user import UserRole
-from app.tasks.content_generation import generate_lesson_task
+from app.tasks.content_generation import generate_lesson_task, pregenerate_on_publish_task
 from app.tasks.image_indexation import reindex_course_images
 from app.tasks.preassessment_generation import generate_course_preassessment
 from app.tasks.rag_indexation import UPLOAD_DIR, index_course_resources
@@ -306,6 +306,18 @@ async def publish_course(
     await db.refresh(course)
     img_count = await _fetch_image_count(db, course.rag_collection_id)
     logger.info("Course published", course_id=str(course_id), admin_id=current_user.id)
+    try:
+        pregenerate_on_publish_task.apply_async(
+            kwargs={"course_id": str(course_id)},
+            priority=5,
+        )
+        logger.info("pregenerate_on_publish dispatched", course_id=str(course_id))
+    except Exception as exc:
+        logger.warning(
+            "pregenerate_on_publish dispatch failed (non-blocking)",
+            course_id=str(course_id),
+            error=str(exc),
+        )
     return _course_to_response(course, image_count=img_count)
 
 

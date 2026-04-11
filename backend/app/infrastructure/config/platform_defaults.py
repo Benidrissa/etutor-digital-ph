@@ -1503,6 +1503,15 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "Celery soft timeout for syllabus generation task.",
         {"min": 120, "max": 1800},
     ),
+    # ── Content Preloading ─────────────────────────────────
+    SettingDef(
+        "content-preload-default-country",
+        "ai",
+        "SN",
+        "string",
+        "Default country for publish-time preloading",
+        "ISO country code used when pre-generating content at publish time (no learner context).",
+    ),
     # ── Pagination ─────────────────────────────────────────
     SettingDef(
         "pagination-admin-default-limit",
