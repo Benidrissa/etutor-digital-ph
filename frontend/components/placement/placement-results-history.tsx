@@ -10,8 +10,7 @@ import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { ClipboardList, TrendingUp, TrendingDown, Minus, Calendar, Trophy } from 'lucide-react';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { API_BASE } from '@/lib/api';
 
 interface PlacementAttemptSummary {
   id: string;

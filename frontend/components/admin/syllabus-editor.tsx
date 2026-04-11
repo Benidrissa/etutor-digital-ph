@@ -12,8 +12,7 @@ import { Send, Save, Download, Loader2, X, Bot, User } from 'lucide-react';
 import { authClient, AuthError } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import type { AdminModuleCardData } from './module-card';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { API_BASE } from '@/lib/api';
 
 interface ChatMessage {
   id: string;

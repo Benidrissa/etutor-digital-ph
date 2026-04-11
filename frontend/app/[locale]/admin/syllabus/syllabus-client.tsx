@@ -8,8 +8,7 @@ import { Loader2, AlertCircle, ChevronDown, ChevronRight, BookOpen } from 'lucid
 import { AdminModuleCard, NewModuleCard, type AdminModuleCardData } from '@/components/admin/module-card';
 import { SyllabusEditor } from '@/components/admin/syllabus-editor';
 import { authClient, AuthError } from '@/lib/auth';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { API_BASE } from '@/lib/api';
 
 interface CourseGroup {
   course_id: string | null;
