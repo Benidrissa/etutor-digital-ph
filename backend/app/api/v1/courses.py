@@ -311,12 +311,10 @@ async def my_enrollments(
 
     if order_by == "last_accessed":
         stmt = (
-            stmt
-            .outerjoin(Module, Module.course_id == Course.id)
+            stmt.outerjoin(Module, Module.course_id == Course.id)
             .outerjoin(
                 UserModuleProgress,
-                (UserModuleProgress.module_id == Module.id)
-                & (UserModuleProgress.user_id == uid),
+                (UserModuleProgress.module_id == Module.id) & (UserModuleProgress.user_id == uid),
             )
             .group_by(Course.id)
             .order_by(
