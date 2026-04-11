@@ -194,11 +194,11 @@ class MediaSummaryService:
 
             audio_bytes = await self._call_gemini_tts(script, language)
 
-            storage_key = f"audio/{module_id}/{language}/summary.ogg"
+            storage_key = f"audio/{module_id}/{language}/summary.wav"
             storage_url = await self._storage.upload_bytes(
                 key=storage_key,
                 data=audio_bytes,
-                content_type="audio/ogg",
+                content_type="audio/wav",
             )
 
             duration_seconds = self._estimate_duration(len(audio_bytes))
@@ -398,7 +398,6 @@ class MediaSummaryService:
             model="gemini-2.5-flash-preview-tts",
             contents=script,
             config=types.GenerateContentConfig(
-                response_mime_type="audio/ogg",
                 response_modalities=["AUDIO"],
                 speech_config=types.SpeechConfig(
                     voice_config=types.VoiceConfig(
@@ -410,14 +409,16 @@ class MediaSummaryService:
             ),
         )
 
-        audio_bytes = self._extract_audio_bytes(response)
+        pcm_bytes = self._extract_audio_bytes(response)
+        wav_bytes = self._pcm_to_wav(pcm_bytes)
 
         logger.info(
             "Gemini TTS audio generated",
             language=language,
-            audio_size_bytes=len(audio_bytes),
+            pcm_bytes=len(pcm_bytes),
+            wav_bytes=len(wav_bytes),
         )
-        return audio_bytes
+        return wav_bytes
 
     def _extract_audio_bytes(self, response: object) -> bytes:
         """Extract raw audio bytes from Gemini TTS response."""
@@ -430,10 +431,27 @@ class MediaSummaryService:
 
         raise ValueError("No audio data found in Gemini TTS response")
 
-    def _estimate_duration(self, file_size_bytes: int) -> int:
-        """Estimate audio duration from OGG Opus file size.
+    def _pcm_to_wav(
+        self,
+        pcm_data: bytes,
+        sample_rate: int = 24000,
+        channels: int = 1,
+        sample_width: int = 2,
+    ) -> bytes:
+        """Wrap raw PCM bytes in a WAV container."""
+        import io
+        import wave
 
-        Speech at ~48kbps OGG Opus ≈ 6 KB/s.
-        """
-        bytes_per_second = 6 * 1024
-        return max(1, file_size_bytes // bytes_per_second)
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as wf:
+            wf.setnchannels(channels)
+            wf.setsampwidth(sample_width)
+            wf.setframerate(sample_rate)
+            wf.writeframes(pcm_data)
+        return buf.getvalue()
+
+    def _estimate_duration(self, file_size_bytes: int) -> int:
+        """Estimate audio duration from WAV file size (24kHz, 16-bit mono)."""
+        pcm_size = max(0, file_size_bytes - 44)
+        bytes_per_second = 24000 * 2
+        return max(1, pcm_size // bytes_per_second)

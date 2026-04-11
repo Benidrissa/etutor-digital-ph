@@ -158,7 +158,7 @@ async def get_audio_status(
     "/{audio_id}/data",
     status_code=status.HTTP_200_OK,
     responses={
-        200: {"content": {"audio/ogg": {}}, "description": "OGG Opus audio data"},
+        200: {"content": {"audio/wav": {}}, "description": "WAV audio data"},
         404: {"description": "Audio not found or not ready"},
     },
 )
@@ -197,7 +197,7 @@ async def get_audio_data(
             audio_bytes = await storage.download_bytes(aud.storage_key)
             return Response(
                 content=audio_bytes,
-                media_type="audio/ogg",
+                media_type="audio/wav",
                 headers={"Cache-Control": "public, max-age=31536000, immutable"},
             )
         except Exception as exc:

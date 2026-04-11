@@ -41,14 +41,14 @@ class TestEstimateDuration:
     def test_minimum_duration_is_one(self):
         assert _estimate_duration(0) == 1
 
-    def test_ogg_opus_estimate(self):
-        # OGG Opus speech ~6 KB/s = 6144 bytes/sec
-        # 1 minute = 368640 bytes
-        duration = _estimate_duration(368640)
-        assert 55 <= duration <= 65
+    def test_wav_duration_estimate(self):
+        # WAV 24kHz 16-bit mono = 48000 bytes/sec
+        # 1 minute = 2880000 bytes + 44 header = 2880044
+        duration = _estimate_duration(2880044)
+        assert duration == 60
 
     def test_small_file(self):
-        duration = _estimate_duration(6144)
+        duration = _estimate_duration(100)
         assert duration == 1
 
 
