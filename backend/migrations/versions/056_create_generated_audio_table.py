@@ -16,15 +16,16 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Create enum type (idempotent — safe for asyncpg and partial re-runs)
+    # Create enum type (idempotent — matches pattern from migration 048)
     op.execute(
-        sa.text(
-            "DO $$ BEGIN "
-            "CREATE TYPE audio_status_enum AS ENUM "
-            "('pending', 'generating', 'ready', 'failed'); "
-            "EXCEPTION WHEN duplicate_object THEN NULL; "
-            "END $$"
-        )
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'audio_status_enum') THEN
+                CREATE TYPE audio_status_enum AS ENUM ('pending', 'generating', 'ready', 'failed');
+            END IF;
+        END$$;
+        """
     )
     audio_status_enum = sa.Enum(
         "pending",
