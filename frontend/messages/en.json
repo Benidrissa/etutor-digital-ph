@@ -691,6 +691,12 @@
     "backToModule": "Back to module",
     "contentNotAvailableOffline": "This lesson is not available offline. Download the module to access it without internet."
   },
+  "LessonAudio": {
+    "audioPending": "Generating audio summary...",
+    "play": "Play audio summary",
+    "pause": "Pause audio summary",
+    "listenToSummary": "Listen to lesson summary"
+  },
   "LessonImage": {
     "imagePending": "Generating illustration...",
     "imageViewFullscreen": "View fullscreen",

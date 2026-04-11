@@ -10,6 +10,7 @@ from app.domain.models.credit import CreditAccount, CreditPackage, CreditTransac
 from app.domain.models.curriculum import Curriculum, CurriculumCourse
 from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.flashcard import FlashcardReview
+from app.domain.models.generated_audio import GeneratedAudio
 from app.domain.models.generated_image import GeneratedImage
 from app.domain.models.learner_memory import LearnerMemory
 from app.domain.models.lesson_reading import LessonReading
@@ -50,6 +51,7 @@ __all__ = [
     "CreditPackage",
     "CreditTransaction",
     "DocumentChunk",
+    "GeneratedAudio",
     "GeneratedContent",
     "GeneratedImage",
     "LearnerMemory",

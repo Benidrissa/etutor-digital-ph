@@ -717,6 +717,27 @@ class LessonGenerationService:
                 error=str(exc),
             )
 
+        try:
+            from app.tasks.content_generation import generate_lesson_audio
+
+            generate_lesson_audio.delay(
+                str(cached_content.id),
+                str(cached_content.module_id),
+                lesson_response.unit_id,
+                lesson_response.language,
+                lesson_text[:4000],
+            )
+            logger.info(
+                "Dispatched audio generation task",
+                lesson_id=str(cached_content.id),
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to dispatch audio generation task",
+                lesson_id=str(cached_content.id),
+                error=str(exc),
+            )
+
 
 class CaseStudyGenerationService:
     """Service for orchestrating case study content generation."""
