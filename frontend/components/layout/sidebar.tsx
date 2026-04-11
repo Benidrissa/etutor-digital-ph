@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth";
 import { useQueryClient } from "@tanstack/react-query";
-import { getCurriculumContext } from "@/lib/curriculum-context";
+import { getCurriculumContext, onCurriculumContextChange } from "@/lib/curriculum-context";
 
 function getUserRole(): string | null {
   if (typeof window === "undefined") return null;
@@ -58,6 +58,14 @@ export function Sidebar() {
       setCurriculumSlug(getCurriculumContext());
     });
   }, [pathname]);
+
+  useEffect(() => {
+    return onCurriculumContextChange(() => {
+      startTransition(() => {
+        setCurriculumSlug(getCurriculumContext());
+      });
+    });
+  }, []);
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
