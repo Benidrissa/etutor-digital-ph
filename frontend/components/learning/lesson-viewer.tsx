@@ -21,6 +21,10 @@ import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { useRouter } from 'next/navigation';
 import { useLocale } from 'next-intl';
 import { track } from '@/lib/analytics';
+import { loadLesson, OfflineContentNotAvailable } from '@/lib/offline/content-loader';
+import { addOfflineAction } from '@/lib/offline/db';
+import { OfflineBadge } from '@/components/shared/offline-badge';
+import { useNetworkStatus } from '@/lib/hooks/use-network-status';
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 3 * 60 * 1000;
@@ -79,6 +83,7 @@ export function LessonViewer({
   const [isCheckingQuiz, setIsCheckingQuiz] = useState(false);
   const [forceRegenerate, setForceRegenerate] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [contentSource, setContentSource] = useState<'api' | 'indexeddb'>('api');
 
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollStartRef = useRef<number>(0);
@@ -88,6 +93,7 @@ export function LessonViewer({
   const country = countryContext || currentUser?.country || 'CI';
   const router = useRouter();
   const locale = useLocale();
+  const { isOnline } = useNetworkStatus();
 
   const t = useTranslations('LessonViewer');
 
@@ -177,11 +183,13 @@ export function LessonViewer({
         setIsLoading(true);
         setError(null);
 
-        const forceParam = forceRegenerate ? '&force_regenerate=true' : '';
-        const res = await apiFetch<LessonData | GeneratingResponse>(
-          `/api/v1/content/lessons/${moduleId}/${unitId}?language=${language}&level=${level}&country=${country}${forceParam}`
+        const result = await loadLesson<LessonData | GeneratingResponse>(
+          moduleId, unitId, language, level, country, forceRegenerate
         );
 
+        setContentSource(result.source);
+
+        const res = result.data;
         if ('status' in res && res.status === 'generating') {
           setIsLoading(false);
           setIsGenerating(true);
@@ -205,7 +213,10 @@ export function LessonViewer({
         }
       } catch (err) {
         console.error('Error loading lesson:', err);
-        if (err instanceof ApiError && err.status === 404) {
+        if (err instanceof OfflineContentNotAvailable) {
+          setError(t('contentNotAvailableOffline'));
+          setErrorType('load');
+        } else if (err instanceof ApiError && err.status === 404) {
           setError(t('unitNotFound'));
           setErrorType('not_found');
         } else {
@@ -396,7 +407,8 @@ export function LessonViewer({
               <Clock className="w-4 h-4 mr-1" />
               {t('readingTime')}
             </div>
-            {lessonData.cached && (
+            {contentSource === 'indexeddb' && <OfflineBadge />}
+            {lessonData.cached && contentSource !== 'indexeddb' && (
               <Badge variant="secondary">{t('cached')}</Badge>
             )}
           </div>
@@ -404,7 +416,7 @@ export function LessonViewer({
             variant="ghost"
             size="sm"
             onClick={handleRefresh}
-            disabled={isRefreshing || isLoading || isGenerating}
+            disabled={isRefreshing || isLoading || isGenerating || !isOnline}
             className="min-h-11 gap-1.5 text-gray-500 hover:text-gray-900"
             title={t('refreshContent')}
           >

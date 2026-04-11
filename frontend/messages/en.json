@@ -318,7 +318,8 @@
     "lessonNotValidatedDesc": "You need at least {score}% to validate this lesson. Try again!",
     "refreshContent": "Refresh content",
     "subscriptionRequired": "A subscription is required to access this content. The first unit of each module is free.",
-    "authRequired": "Please sign in to continue."
+    "authRequired": "Please sign in to continue.",
+    "contentNotAvailableOffline": "This quiz is not available offline. Download the module to take quizzes without internet."
   },
   "ChatTutor": {
     "title": "AI Tutor",
@@ -687,7 +688,8 @@
     "validateWithQuiz": "Validate with Quiz",
     "checkingStatus": "Checking...",
     "unitNotFound": "This unit does not exist in this module.",
-    "backToModule": "Back to module"
+    "backToModule": "Back to module",
+    "contentNotAvailableOffline": "This lesson is not available offline. Download the module to access it without internet."
   },
   "LessonImage": {
     "imagePending": "Generating illustration...",
@@ -749,7 +751,8 @@
     "hideObjectives": "Hide objectives",
     "bloomLevel": "Bloom: {level}",
     "generatedOn": "Generated on {date}",
-    "stretchBadge": "Stretch"
+    "stretchBadge": "Stretch",
+    "contentNotAvailableOffline": "This case study is not available offline. Download the module to access it without internet."
   },
   "CaseStudyPage": {
     "backToModule": "Back to {module}",

@@ -14,6 +14,10 @@ import { ApiError, generateQuiz, apiFetch } from '@/lib/api';
 import { useSettings } from '@/lib/settings-context';
 import { track } from '@/lib/analytics';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
+import { loadQuiz, OfflineContentNotAvailable } from '@/lib/offline/content-loader';
+import { scoreQuizOffline } from '@/lib/offline/offline-quiz-scorer';
+import { OfflineBadge } from '@/components/shared/offline-badge';
+import { useNetworkStatus } from '@/lib/hooks/use-network-status';
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 3 * 60 * 1000;
@@ -57,9 +61,11 @@ export function QuizContainer({
   const [error, setError] = useState<string>('');
   const [retryCount, setRetryCount] = useState(0);
   const [forceRegenerate, setForceRegenerate] = useState(false);
+  const [contentSource, setContentSource] = useState<'api' | 'indexeddb'>('api');
 
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollStartRef = useRef<number>(0);
+  const { isOnline } = useNetworkStatus();
 
   const pollStatus = (taskId: string, startTime: number) => {
     if (Date.now() - startTime > POLL_TIMEOUT_MS) {
@@ -118,17 +124,23 @@ export function QuizContainer({
       try {
         setState('loading');
         setError('');
-        
-        const rawData = await generateQuiz({
-          module_id: moduleId,
-          unit_id: unitId,
-          language,
-          country: resolvedCountry,
-          level,
-          num_questions: unitQuestionsCount,
-          force_regenerate: forceRegenerate,
-        }) as Quiz | GeneratingResponse;
 
+        const result = await loadQuiz<Quiz | GeneratingResponse>(
+          moduleId, unitId, language, level, resolvedCountry,
+          unitQuestionsCount, forceRegenerate,
+        );
+
+        setContentSource(result.source);
+
+        // If from IndexedDB, it's already a full quiz (no generating state)
+        if (result.source === 'indexeddb') {
+          setQuiz(result.data as Quiz);
+          setForceRegenerate(false);
+          setState('ready');
+          return;
+        }
+
+        const rawData = result.data;
         if ('status' in rawData && rawData.status === 'generating') {
           setState('generating');
           pollStartRef.current = Date.now();
@@ -141,7 +153,9 @@ export function QuizContainer({
       } catch (err) {
         console.error('Failed to load quiz:', err);
         let errorMessage: string;
-        if (err instanceof ApiError) {
+        if (err instanceof OfflineContentNotAvailable) {
+          errorMessage = t('contentNotAvailableOffline');
+        } else if (err instanceof ApiError) {
           if (err.code === 'subscription_required' || err.status === 403) {
             errorMessage = t('subscriptionRequired');
           } else if (err.status === 401) {
@@ -157,7 +171,7 @@ export function QuizContainer({
         onError?.(errorMessage);
       }
     };
-    
+
     fetchQuiz();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moduleId, unitId, language, resolvedCountry, level, retryCount, forceRegenerate]);
@@ -335,7 +349,8 @@ export function QuizContainer({
               <Badge variant="outline">
                 {t('level')} {level}
               </Badge>
-              {quiz.cached && (
+              {contentSource === 'indexeddb' && <OfflineBadge />}
+              {quiz.cached && contentSource !== 'indexeddb' && (
                 <Badge variant="secondary">
                   {t('cached')}
                 </Badge>
@@ -347,6 +362,7 @@ export function QuizContainer({
                 variant="ghost"
                 size="sm"
                 onClick={handleRefreshContent}
+                disabled={!isOnline}
                 className="min-h-11 gap-1.5 text-stone-500 hover:text-stone-900"
               >
                 <RefreshCw className="w-4 h-4" />
