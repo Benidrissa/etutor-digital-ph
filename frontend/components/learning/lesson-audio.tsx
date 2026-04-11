@@ -20,6 +20,7 @@ export function LessonAudio({ lessonId, language }: LessonAudioProps) {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -70,8 +71,10 @@ export function LessonAudio({ lessonId, language }: LessonAudioProps) {
     if (!audio) return;
 
     const onTimeUpdate = () => {
-      if (audio.duration) {
-        setProgress((audio.currentTime / audio.duration) * 100);
+      setCurrentTime(audio.currentTime);
+      const dur = audio.duration && isFinite(audio.duration) ? audio.duration : duration;
+      if (dur > 0) {
+        setProgress((audio.currentTime / dur) * 100);
       }
     };
     const onLoadedMetadata = () => {
@@ -110,11 +113,13 @@ export function LessonAudio({ lessonId, language }: LessonAudioProps) {
 
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const audio = audioRef.current;
-    if (!audio || !audio.duration) return;
+    if (!audio) return;
+    const dur = audio.duration && isFinite(audio.duration) ? audio.duration : duration;
+    if (dur <= 0) return;
 
     const rect = e.currentTarget.getBoundingClientRect();
     const pct = (e.clientX - rect.left) / rect.width;
-    audio.currentTime = pct * audio.duration;
+    audio.currentTime = pct * dur;
   };
 
   const formatTime = (seconds: number) => {
@@ -183,9 +188,7 @@ export function LessonAudio({ lessonId, language }: LessonAudioProps) {
 
         {duration > 0 && (
           <span className="text-xs text-teal-600 flex-shrink-0 tabular-nums">
-            {audioRef.current
-              ? formatTime(audioRef.current.currentTime)
-              : '0:00'}
+            {formatTime(currentTime)}
             {' / '}
             {formatTime(duration)}
           </span>
