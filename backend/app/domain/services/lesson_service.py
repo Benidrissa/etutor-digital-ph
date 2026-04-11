@@ -539,11 +539,11 @@ class LessonGenerationService:
             if source_citation not in sources_cited:
                 sources_cited.append(source_citation)
 
-        # For now, return a basic structure with the full content
-        # In a production system, you would parse the structured sections
+        # Full content is already well-structured by the AI prompt with section headings.
+        # Keep introduction empty — it's already in the content body (concepts).
         return LessonContent(
-            introduction=(content_text[:200] + "..." if len(content_text) > 200 else content_text),
-            concepts=[content_text],  # Simplified - would parse sections in production
+            introduction="",
+            concepts=[content_text],
             aof_example="",
             synthesis="",
             key_points=[],  # Would be parsed
