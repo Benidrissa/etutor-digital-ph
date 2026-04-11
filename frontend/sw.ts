@@ -17,11 +17,24 @@ declare const self: ServiceWorkerGlobalScope;
 
 const DAY_IN_SECONDS = 24 * 60 * 60;
 
+const OFFLINE_FALLBACK_URL = "/offline.html";
+
 const serwist = new Serwist({
-  precacheEntries: self.__SW_MANIFEST,
+  precacheEntries: [
+    ...(self.__SW_MANIFEST || []),
+    { url: OFFLINE_FALLBACK_URL, revision: "1" },
+  ],
   skipWaiting: true,
   clientsClaim: true,
   navigationPreload: false,
+  fallbacks: {
+    entries: [
+      {
+        url: OFFLINE_FALLBACK_URL,
+        matcher: ({ request }: { request: Request }) => request.mode === "navigate",
+      },
+    ],
+  },
   runtimeCaching: [
     {
       matcher: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/i,
