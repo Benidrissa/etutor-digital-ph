@@ -36,6 +36,12 @@ function getToken(request: NextRequest): string | null {
 export default function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Let API routes pass through directly — they are proxied to the backend via
+  // Next.js rewrites in next.config.ts and must not be locale-prefixed.
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
+
   if (pathname === "/settings") {
     return NextResponse.redirect(new URL("/profile", request.url));
   }
