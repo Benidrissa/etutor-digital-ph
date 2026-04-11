@@ -35,7 +35,7 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/admin/syllabus", tags=["admin"])
 
 
-_require_admin = require_role(UserRole.admin)
+_require_admin = require_role(UserRole.admin, UserRole.sub_admin)
 
 
 async def get_syllabus_agent_service() -> SyllabusAgentService:

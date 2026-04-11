@@ -27,7 +27,7 @@ async def list_images_by_source(
     source: str,
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    _current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    _current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db: AsyncSession = Depends(get_db),
 ) -> SourceImageListResponse:
     """List all source images for a given book/collection (admin only, paginated)."""

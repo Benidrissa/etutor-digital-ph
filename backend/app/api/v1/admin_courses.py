@@ -133,7 +133,7 @@ def _slugify(text: str) -> str:
 
 @router.get("", response_model=list[CourseResponse])
 async def list_courses_admin(
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> list[CourseResponse]:
     """List all courses (any status). Admin only."""
@@ -159,7 +159,7 @@ async def list_courses_admin(
 @router.post("", response_model=CourseResponse, status_code=status.HTTP_201_CREATED)
 async def create_course(
     request: CreateCourseRequest,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> CourseResponse:
     """Create a new course (draft). Admin only."""
@@ -216,7 +216,7 @@ async def create_course(
 @router.get("/{course_id}", response_model=CourseResponse)
 async def get_course_admin(
     course_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> CourseResponse:
     """Get course detail. Admin only."""
@@ -232,7 +232,7 @@ async def get_course_admin(
 async def update_course(
     course_id: uuid.UUID,
     request: CreateCourseRequest,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> CourseResponse:
     """Update course metadata. Admin only."""
@@ -271,7 +271,7 @@ async def update_course(
 @router.post("/{course_id}/publish", response_model=CourseResponse)
 async def publish_course(
     course_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> CourseResponse:
     """Publish a draft course. Admin only."""
@@ -312,7 +312,7 @@ async def publish_course(
 @router.post("/{course_id}/archive", response_model=CourseResponse)
 async def archive_course(
     course_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> CourseResponse:
     """Archive a course. Admin only."""
@@ -338,7 +338,7 @@ async def generate_course_structure(
     course_id: uuid.UUID,
     request: GenerateStructureRequest,
     force: bool = False,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> dict:
     """
@@ -386,7 +386,7 @@ async def generate_course_structure(
 async def regenerate_course_syllabus(
     course_id: uuid.UUID,
     mode: str = "reuse",
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> dict:
     """Regenerate syllabus for an unpublished course with 0 enrollments.
@@ -465,7 +465,7 @@ async def regenerate_course_syllabus(
 async def get_generate_status(
     course_id: uuid.UUID,
     task_id: str | None = None,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> dict:
     """Get syllabus generation status for a course."""
@@ -519,7 +519,7 @@ class DeleteCourseConfirmation(BaseModel):
 async def delete_course(
     course_id: uuid.UUID,
     body: DeleteCourseConfirmation,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> None:
     """Permanently delete a course and all its related data. Admin only."""
@@ -608,7 +608,7 @@ async def delete_course(
 @router.post("/{course_id}/index-resources")
 async def trigger_rag_indexation(
     course_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> dict:
     """Trigger RAG indexation for course resources. Returns Celery task ID."""
@@ -648,7 +648,7 @@ async def trigger_rag_indexation(
 async def get_rag_index_status(
     course_id: uuid.UUID,
     task_id: str | None = None,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> dict:
     """Get RAG indexation status for a course."""
@@ -704,7 +704,7 @@ async def get_rag_index_status(
 @router.post("/{course_id}/cancel-indexation", response_model=CourseResponse)
 async def cancel_indexation(
     course_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> CourseResponse:
     """Revoke a running RAG indexation task and reset the course back to 'generated'.
@@ -758,7 +758,7 @@ async def cancel_indexation(
 async def trigger_image_reindexation(
     course_id: uuid.UUID,
     clear_old: bool = True,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> dict:
     """Trigger image-only re-indexation for course resources.
@@ -807,7 +807,7 @@ MAX_RESOURCE_SIZE = 100 * 1024 * 1024  # 100 MB
 @router.get("/{course_id}/resources")
 async def list_course_resources(
     course_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> dict:
     """List uploaded resource files for a course."""
@@ -838,7 +838,7 @@ async def list_course_resources(
 async def upload_course_resource(
     course_id: uuid.UUID,
     file: UploadFile = File(...),
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> dict:
     """Upload a PDF resource for a course.
@@ -995,7 +995,7 @@ async def upload_course_resource(
 async def delete_course_resource(
     course_id: uuid.UUID,
     filename: str,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> None:
     """Delete an uploaded resource file from a course."""
@@ -1034,7 +1034,7 @@ async def admin_generate_module_content(
     course_id: uuid.UUID,
     module_id: uuid.UUID,
     request: GenerateContentRequest,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> dict:
     """Trigger lesson content generation for all units in a module. Admin only.
@@ -1109,7 +1109,7 @@ class GeneratePreAssessmentRequest(BaseModel):
 async def trigger_preassessment_generation(
     course_id: uuid.UUID,
     request: GeneratePreAssessmentRequest,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> dict:
     """Dispatch a Celery task to generate a 20-question pre-assessment via Claude + RAG.
@@ -1189,7 +1189,7 @@ async def trigger_preassessment_generation(
 @router.post("/{course_id}/validate-preassessment")
 async def validate_preassessment(
     course_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> dict:
     """Mark all pre-assessments for a course as validated. Admin only."""
@@ -1225,7 +1225,7 @@ async def validate_preassessment(
 async def get_preassessment_status(
     course_id: uuid.UUID,
     task_id: str | None = None,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> dict:
     """Get pre-assessment generation status and existing pre-assessment metadata.

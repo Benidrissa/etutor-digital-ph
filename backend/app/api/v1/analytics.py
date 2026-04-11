@@ -119,7 +119,9 @@ async def ingest_batch(
 )
 async def get_summary(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[AuthenticatedUser, Depends(require_role(UserRole.admin))],
+    current_user: Annotated[
+        AuthenticatedUser, Depends(require_role(UserRole.admin, UserRole.sub_admin))
+    ],
     period: Annotated[int, Query(description="Period in days: 7, 30, or 90")] = 7,
 ) -> dict[str, Any]:
     """Admin-only: return aggregated analytics summary for the given period."""

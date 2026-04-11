@@ -67,7 +67,7 @@ VALID_TYPES = {"domain", "level", "audience"}
 
 @router.get("", response_model=dict)
 async def list_taxonomy(
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> dict:
     """List all taxonomy categories grouped by type. Admin only."""
@@ -94,7 +94,7 @@ async def list_taxonomy(
 @router.post("", response_model=TaxonomyCategoryResponse, status_code=201)
 async def create_taxonomy_category(
     request: TaxonomyCategoryCreate,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> TaxonomyCategoryResponse:
     """Create a new taxonomy category. Admin only."""
@@ -143,7 +143,7 @@ async def create_taxonomy_category(
 async def update_taxonomy_category(
     category_id: uuid.UUID,
     request: TaxonomyCategoryUpdate,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> TaxonomyCategoryResponse:
     """Update a taxonomy category. Admin only."""
@@ -172,7 +172,7 @@ async def update_taxonomy_category(
 @router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_taxonomy_category(
     category_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> None:
     """Delete a taxonomy category. Fails if referenced by courses. Admin only."""

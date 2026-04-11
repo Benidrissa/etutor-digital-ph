@@ -34,7 +34,7 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
     }
     const payload = parseJwtPayload(token);
     const role = payload?.role as string | undefined;
-    if (role === "admin" || role === "expert") {
+    if (role === "admin" || role === "sub_admin" || role === "expert") {
       startTransition(() => setAuthorized(true));
     } else {
       router.replace(`/${locale}/dashboard`);
