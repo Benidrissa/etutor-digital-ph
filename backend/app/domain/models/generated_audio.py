@@ -42,7 +42,14 @@ class GeneratedAudio(Base):
     file_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(
-        sa.Enum("pending", "generating", "ready", "failed", name="audio_status_enum"),
+        sa.Enum(
+            "pending",
+            "generating",
+            "ready",
+            "failed",
+            name="audio_status_enum",
+            create_type=False,
+        ),
         server_default="pending",
     )
     generated_at: Mapped[datetime | None] = mapped_column(nullable=True)
