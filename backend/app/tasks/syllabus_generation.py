@@ -549,7 +549,13 @@ def generate_course_syllabus(
                         description_en=u.get("description_en"),
                         estimated_minutes=15,
                         order_index=j,
-                        unit_type=u.get("type"),
+                        unit_type=(
+                            u.get("type")
+                            if u.get("type") in {
+                                "lesson", "quiz", "case-study",
+                            }
+                            else "lesson"
+                        ),
                     )
                     session.add(unit)
 

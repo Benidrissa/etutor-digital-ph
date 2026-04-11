@@ -433,7 +433,17 @@ async def get_or_generate_lesson_by_module_and_unit(
             )
         )
         unit_type_row = unit_type_result.first()
-        is_case_study = unit_type_row is not None and unit_type_row[0] == "case-study"
+
+        if unit_type_row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "unit_not_found",
+                    "message": f"Unit '{unit_id}' does not exist in this module.",
+                },
+            )
+
+        is_case_study = unit_type_row[0] == "case-study"
 
         if not force_regenerate:
             from sqlalchemy import or_
@@ -688,7 +698,19 @@ async def stream_lesson_by_module_and_unit(
                 )
             )
             unit_type_row = unit_type_result.first()
-            is_case_study = unit_type_row is not None and unit_type_row[0] == "case-study"
+
+            if unit_type_row is None:
+                error_event = StreamingEvent(
+                    event="error",
+                    data={
+                        "error": "unit_not_found",
+                        "message": f"Unit '{unit_id}' not found.",
+                    },
+                )
+                yield error_event.to_sse_format()
+                return
+
+            is_case_study = unit_type_row[0] == "case-study"
 
             if is_case_study:
                 async for event in case_study_service.stream_case_study_generation(
@@ -1368,6 +1390,7 @@ async def get_module_units(
                 description_en=u.description_en,
                 estimated_minutes=u.estimated_minutes,
                 order_index=u.order_index,
+                unit_type=u.unit_type,
             )
             for u in units
         ]
