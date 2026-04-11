@@ -436,11 +436,6 @@ export function LessonViewer({
       {/* Main Content */}
       <Card className="mb-6">
         <CardContent className="p-6 md:p-8">
-          {/* Introduction */}
-          <div className="mb-8">
-            {renderContentWithImages(content.introduction)}
-          </div>
-
           {/* Lesson Illustration */}
           <LessonImage lessonId={lessonData.id} language={lessonData.language} />
 
