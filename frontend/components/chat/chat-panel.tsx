@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { track } from '@/lib/analytics';
 import { Link } from '@/i18n/routing';
-import { X, MoreVertical, Trash2, Menu, HelpCircle, BookOpen, GraduationCap, ChevronDown } from 'lucide-react';
+import { X, MoreVertical, Trash2, Menu, HelpCircle, BookOpen, GraduationCap, ChevronDown, Globe } from 'lucide-react';
 import { getMyEnrollments, type CourseWithEnrollment } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import {
@@ -31,7 +31,7 @@ import { UsageCounter } from './usage-counter';
 import { ChatSkeleton } from './chat-skeleton';
 import { cn } from '@/lib/utils';
 import { authClient, AuthError } from '@/lib/auth';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import {
   fetchConversation,
   fetchTutorStats,
@@ -69,6 +69,7 @@ export function ChatPanel({
   const t = useTranslations('ChatTutor');
   const locale = useLocale();
   const router = useRouter();
+  const pathname = usePathname();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
@@ -122,7 +123,7 @@ export function ChatPanel({
 
   // Fetch enrolled courses for course selector
   useEffect(() => {
-    getMyEnrollments()
+    getMyEnrollments({ orderBy: 'last_accessed', limit: 3 })
       .then((courses) => {
         setEnrolledCourses(courses);
         // Auto-select first course if none set
@@ -470,6 +471,16 @@ export function ChatPanel({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  className="md:hidden"
+                  onClick={() => {
+                    const next = locale === 'fr' ? 'en' : 'fr';
+                    router.push(pathname.replace(/^\/(fr|en)/, '/' + next));
+                  }}
+                >
+                  <Globe className="h-4 w-4 mr-2" />
+                  {locale === 'fr' ? 'English' : 'Français'}
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setShowClearDialog(true)}>
                   <Trash2 className="h-4 w-4 mr-2" />
                   {t('clearHistory')}
