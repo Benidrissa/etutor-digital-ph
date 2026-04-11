@@ -698,18 +698,36 @@ class LessonGenerationService:
             lesson_text = str(content_dict)[:2000]
 
         try:
-            from app.tasks.content_generation import generate_lesson_image
+            from sqlalchemy import select as sa_select
 
-            generate_lesson_image.delay(
-                str(cached_content.id),
-                str(cached_content.module_id),
-                lesson_response.unit_id,
-                lesson_text[:2000],
+            from app.domain.models.generated_image import GeneratedImage
+
+            existing_img = await session.execute(
+                sa_select(GeneratedImage.id)
+                .where(
+                    GeneratedImage.lesson_id == cached_content.id,
+                    GeneratedImage.status.in_(["ready", "generating", "pending"]),
+                )
+                .limit(1)
             )
-            logger.info(
-                "Dispatched image generation task",
-                lesson_id=str(cached_content.id),
-            )
+            if existing_img.scalar_one_or_none() is not None:
+                logger.info(
+                    "Image already exists — skipping dispatch",
+                    lesson_id=str(cached_content.id),
+                )
+            else:
+                from app.tasks.content_generation import generate_lesson_image
+
+                generate_lesson_image.delay(
+                    str(cached_content.id),
+                    str(cached_content.module_id),
+                    lesson_response.unit_id,
+                    lesson_text[:2000],
+                )
+                logger.info(
+                    "Dispatched image generation task",
+                    lesson_id=str(cached_content.id),
+                )
         except Exception as exc:
             logger.warning(
                 "Failed to dispatch image generation task",

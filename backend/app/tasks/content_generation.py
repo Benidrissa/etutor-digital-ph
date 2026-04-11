@@ -598,6 +598,29 @@ def generate_lesson_image(
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         try:
             async with session_factory() as session:
+                # Guard: skip if image already exists for this lesson
+                from sqlalchemy import select as sa_select
+
+                from app.domain.models.generated_image import GeneratedImage
+
+                existing = await session.execute(
+                    sa_select(GeneratedImage)
+                    .where(
+                        GeneratedImage.lesson_id == uuid.UUID(lesson_id),
+                        GeneratedImage.status.in_(["ready", "generating", "pending"]),
+                    )
+                    .limit(1)
+                )
+                existing_image = existing.scalar_one_or_none()
+                if existing_image is not None:
+                    logger.info(
+                        "Image already exists — skipping task",
+                        lesson_id=lesson_id,
+                        image_id=str(existing_image.id),
+                        status=existing_image.status,
+                    )
+                    return {"image_id": str(existing_image.id), "status": existing_image.status}
+
                 service = ImageGenerationService()
                 image = await service.generate_for_lesson(
                     lesson_id=uuid.UUID(lesson_id),
