@@ -151,6 +151,17 @@ jobs:
             docker-compose.prod.yml \
             deploy@167.86.115.58:~/etutor/docker-compose.yml
 
+      - name: Validate required secrets
+        run: |
+          missing=""
+          [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ] && missing="$missing ANTHROPIC_API_KEY"
+          [ -z "${{ secrets.OPENAI_API_KEY }}" ] && missing="$missing OPENAI_API_KEY"
+          [ -z "${{ secrets.GOOGLE_API_KEY }}" ] && missing="$missing GOOGLE_API_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required secrets:$missing"
+            exit 1
+          fi
+
       - name: Deploy on server
         uses: appleboy/ssh-action@v1
         env:
