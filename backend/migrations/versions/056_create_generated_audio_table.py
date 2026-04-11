@@ -20,9 +20,7 @@ def upgrade() -> None:
     conn = op.get_bind()
     row = conn.execute(sa.text("SELECT 1 FROM pg_type WHERE typname = 'audio_status_enum'"))
     if not row.scalar():
-        sa.Enum(
-            "pending", "generating", "ready", "failed", name="audio_status_enum"
-        ).create(conn)
+        sa.Enum("pending", "generating", "ready", "failed", name="audio_status_enum").create(conn)
     audio_status_enum = sa.Enum(
         "pending", "generating", "ready", "failed", name="audio_status_enum", create_type=False
     )
