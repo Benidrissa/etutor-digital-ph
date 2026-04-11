@@ -8,9 +8,7 @@ from httpx import AsyncClient
 from app.domain.models.generated_audio import GeneratedAudio
 
 
-@pytest.fixture
-def sample_audio_ready(db_session):
-    """Create a ready GeneratedAudio record."""
+def _make_audio_ready(db_session):
     audio = GeneratedAudio(
         id=uuid.uuid4(),
         lesson_id=uuid.uuid4(),
@@ -27,9 +25,7 @@ def sample_audio_ready(db_session):
     return audio
 
 
-@pytest.fixture
-def sample_audio_pending(db_session):
-    """Create a pending GeneratedAudio record."""
+def _make_audio_pending(db_session):
     audio = GeneratedAudio(
         id=uuid.uuid4(),
         lesson_id=uuid.uuid4(),
@@ -43,11 +39,10 @@ def sample_audio_pending(db_session):
 
 
 class TestGetLessonAudio:
-    async def test_returns_audio_for_lesson(
-        self, client: AsyncClient, sample_audio_ready, db_session
-    ):
+    async def test_returns_audio_for_lesson(self, client: AsyncClient, db_session):
+        audio = _make_audio_ready(db_session)
         await db_session.commit()
-        resp = await client.get(f"/api/v1/audio/lesson/{sample_audio_ready.lesson_id}")
+        resp = await client.get(f"/api/v1/audio/lesson/{audio.lesson_id}")
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 1
@@ -58,11 +53,10 @@ class TestGetLessonAudio:
         resp = await client.get(f"/api/v1/audio/lesson/{uuid.uuid4()}")
         assert resp.status_code == 404
 
-    async def test_pending_audio_has_no_url(
-        self, client: AsyncClient, sample_audio_pending, db_session
-    ):
+    async def test_pending_audio_has_no_url(self, client: AsyncClient, db_session):
+        audio = _make_audio_pending(db_session)
         await db_session.commit()
-        resp = await client.get(f"/api/v1/audio/lesson/{sample_audio_pending.lesson_id}")
+        resp = await client.get(f"/api/v1/audio/lesson/{audio.lesson_id}")
         assert resp.status_code == 200
         data = resp.json()
         assert data["audio"][0]["status"] == "pending"
@@ -70,11 +64,10 @@ class TestGetLessonAudio:
 
 
 class TestGetAudioStatus:
-    async def test_returns_status_for_audio(
-        self, client: AsyncClient, sample_audio_ready, db_session
-    ):
+    async def test_returns_status_for_audio(self, client: AsyncClient, db_session):
+        audio = _make_audio_ready(db_session)
         await db_session.commit()
-        resp = await client.get(f"/api/v1/audio/{sample_audio_ready.id}/status")
+        resp = await client.get(f"/api/v1/audio/{audio.id}/status")
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ready"
@@ -86,12 +79,11 @@ class TestGetAudioStatus:
 
 
 class TestGetAudioData:
-    async def test_returns_404_when_not_ready(
-        self, client: AsyncClient, sample_audio_pending, db_session
-    ):
+    async def test_returns_404_when_not_ready(self, client: AsyncClient, db_session):
+        audio = _make_audio_pending(db_session)
         await db_session.commit()
         resp = await client.get(
-            f"/api/v1/audio/{sample_audio_pending.id}/data",
+            f"/api/v1/audio/{audio.id}/data",
             follow_redirects=False,
         )
         assert resp.status_code == 404
