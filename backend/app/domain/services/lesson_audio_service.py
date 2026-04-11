@@ -138,11 +138,11 @@ class LessonAudioService:
 
             audio_bytes = await self._call_gemini_tts(script, language)
 
-            storage_key = f"audio/lessons/{lesson_id}/{language}/summary.wav"
+            storage_key = f"audio/lessons/{lesson_id}/{language}/summary.ogg"
             storage_url = await self._storage.upload_bytes(
                 key=storage_key,
                 data=audio_bytes,
-                content_type="audio/wav",
+                content_type="audio/ogg",
             )
 
             record.status = "ready"
@@ -241,79 +241,68 @@ class LessonAudioService:
         return script_text.strip()
 
     async def _call_gemini_tts(self, script: str, language: str) -> bytes:
-        """Call Gemini TTS API to convert script to MP3 bytes."""
+        """Call Cloud Text-to-Speech API with Gemini TTS model.
+
+        Returns MP3 bytes directly (no PCM conversion needed).
+        """
         if not settings.google_api_key:
             raise ValueError("GOOGLE_API_KEY is required for Gemini TTS")
 
-        from google import genai  # type: ignore[import-untyped]
-        from google.genai import types  # type: ignore[import-untyped]
+        import asyncio
 
-        client = genai.Client(api_key=settings.google_api_key)
+        from google.api_core import client_options
+        from google.cloud import texttospeech
 
-        # Use Aoede for French (warm female voice), Charon for English
-        voice_name = "Aoede" if language == "fr" else "Charon"
-
-        response = await client.aio.models.generate_content(
-            model="gemini-2.5-flash-preview-tts",
-            contents=script,
-            config=types.GenerateContentConfig(
-                response_modalities=["AUDIO"],
-                speech_config=types.SpeechConfig(
-                    voice_config=types.VoiceConfig(
-                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                            voice_name=voice_name,
-                        ),
-                    ),
-                ),
+        client = texttospeech.TextToSpeechClient(
+            client_options=client_options.ClientOptions(
+                api_key=settings.google_api_key,
             ),
         )
 
-        pcm_bytes = _extract_audio_bytes(response)
-        wav_bytes = _pcm_to_wav(pcm_bytes)
+        voice_name = "Aoede" if language == "fr" else "Charon"
+        lang_code = "fr-FR" if language == "fr" else "en-US"
+
+        synthesis_input = texttospeech.SynthesisInput(
+            text=script,
+            prompt="Narrate the following in a clear, warm, educational tone",
+        )
+
+        voice = texttospeech.VoiceSelectionParams(
+            language_code=lang_code,
+            name=voice_name,
+            model_name="gemini-2.5-flash-lite-preview-tts",
+        )
+
+        audio_config = texttospeech.AudioConfig(
+            audio_encoding=texttospeech.AudioEncoding.OGG_OPUS,
+        )
+
+        # Cloud TTS client is synchronous — run in executor
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: client.synthesize_speech(
+                input=synthesis_input, voice=voice, audio_config=audio_config
+            ),
+        )
+
+        ogg_bytes = response.audio_content
+        if not ogg_bytes:
+            raise ValueError("Gemini TTS returned empty audio")
 
         logger.info(
-            "Gemini TTS audio generated for lesson",
+            "Gemini TTS OGG Opus generated for lesson",
             language=language,
             voice=voice_name,
-            pcm_bytes=len(pcm_bytes),
-            wav_bytes=len(wav_bytes),
+            audio_size_bytes=len(ogg_bytes),
         )
-        return wav_bytes
-
-
-def _extract_audio_bytes(response: object) -> bytes:
-    """Extract raw audio bytes from Gemini TTS response."""
-    try:
-        for part in response.candidates[0].content.parts:  # type: ignore[union-attr]
-            if part.inline_data and part.inline_data.data:
-                return part.inline_data.data
-    except Exception as exc:
-        logger.error("Failed to extract audio bytes from Gemini response", error=str(exc))
-
-    raise ValueError("No audio data found in Gemini TTS response")
-
-
-def _pcm_to_wav(
-    pcm_data: bytes,
-    sample_rate: int = 24000,
-    channels: int = 1,
-    sample_width: int = 2,
-) -> bytes:
-    """Wrap raw PCM bytes in a WAV container."""
-    import io
-    import wave
-
-    buf = io.BytesIO()
-    with wave.open(buf, "wb") as wf:
-        wf.setnchannels(channels)
-        wf.setsampwidth(sample_width)
-        wf.setframerate(sample_rate)
-        wf.writeframes(pcm_data)
-    return buf.getvalue()
+        return ogg_bytes
 
 
 def _estimate_duration(file_size_bytes: int) -> int:
-    """Estimate audio duration from WAV file size (24kHz, 16-bit mono)."""
-    pcm_size = max(0, file_size_bytes - 44)  # 44-byte WAV header
-    bytes_per_second = 24000 * 2  # sample_rate * sample_width
-    return max(1, pcm_size // bytes_per_second)
+    """Estimate audio duration from OGG Opus file size.
+
+    OGG Opus speech is typically ~48kbps = 6 KB/s.
+    """
+    bytes_per_second = 6 * 1024
+    return max(1, file_size_bytes // bytes_per_second)
