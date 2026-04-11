@@ -1,12 +1,26 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { WifiOff, Wifi } from "lucide-react";
 import { useNetworkStatus } from "@/lib/hooks/use-network-status";
+import { SyncManager } from "@/lib/offline/sync-manager";
 
 export function OfflineIndicator() {
   const t = useTranslations("Offline");
   const { isOnline, justReconnected } = useNetworkStatus();
+  const syncTriggered = useRef(false);
+
+  // Trigger background sync when reconnecting
+  useEffect(() => {
+    if (justReconnected && !syncTriggered.current) {
+      syncTriggered.current = true;
+      SyncManager.getInstance().syncNow();
+    }
+    if (!justReconnected) {
+      syncTriggered.current = false;
+    }
+  }, [justReconnected]);
 
   if (isOnline && !justReconnected) return null;
 

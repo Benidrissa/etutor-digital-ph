@@ -17,6 +17,9 @@ import { LessonSkeleton } from './lesson-skeleton';
 import { SourceCitations } from './source-citations';
 import { apiFetch } from '@/lib/api';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
+import { loadCaseStudy, OfflineContentNotAvailable } from '@/lib/offline/content-loader';
+import { OfflineBadge } from '@/components/shared/offline-badge';
+import { useNetworkStatus } from '@/lib/hooks/use-network-status';
 
 const COUNTRY_NAMES: Record<string, { en: string; fr: string }> = {
   BF: { en: 'Burkina Faso', fr: 'Burkina Faso' },
@@ -102,12 +105,14 @@ export function CaseStudyViewer({
   const [forceRegenerate, setForceRegenerate] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [objectivesOpen, setObjectivesOpen] = useState(false);
+  const [contentSource, setContentSource] = useState<'api' | 'indexeddb'>('api');
 
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollStartRef = useRef<number>(0);
 
   const currentUser = useCurrentUser();
   const country = countryContext || currentUser?.country || 'CI';
+  const { isOnline } = useNetworkStatus();
 
   const t = useTranslations('CaseStudyViewer');
 
@@ -166,11 +171,13 @@ export function CaseStudyViewer({
         setIsLoading(true);
         setError(null);
 
-        const forceParam = forceRegenerate ? '&force_regenerate=true' : '';
-        const res = await apiFetch<CaseStudyData | GeneratingResponse>(
-          `/api/v1/content/cases/${moduleId}/${unitId}?language=${language}&level=${level}&country=${country}${forceParam}`
+        const result = await loadCaseStudy<CaseStudyData | GeneratingResponse>(
+          moduleId, unitId, language, level, country, forceRegenerate
         );
 
+        setContentSource(result.source);
+
+        const res = result.data;
         if ('status' in res && res.status === 'generating') {
           setIsLoading(false);
           setIsGenerating(true);
@@ -182,8 +189,12 @@ export function CaseStudyViewer({
           setIsRefreshing(false);
           setForceRegenerate(false);
         }
-      } catch {
-        setError(t('loadError'));
+      } catch (err) {
+        if (err instanceof OfflineContentNotAvailable) {
+          setError(t('contentNotAvailableOffline'));
+        } else {
+          setError(t('loadError'));
+        }
         setIsLoading(false);
         setIsRefreshing(false);
       }
@@ -339,13 +350,14 @@ export function CaseStudyViewer({
                 ? t('estimatedTime', { minutes: estimatedMinutes })
                 : t('estimatedTimeFallback')}
             </div>
-            {caseStudyData.cached && <Badge variant="secondary">{t('cached')}</Badge>}
+            {contentSource === 'indexeddb' && <OfflineBadge />}
+            {caseStudyData.cached && contentSource !== 'indexeddb' && <Badge variant="secondary">{t('cached')}</Badge>}
           </div>
           <Button
             variant="ghost"
             size="sm"
             onClick={handleRefresh}
-            disabled={isRefreshing || isLoading || isGenerating}
+            disabled={isRefreshing || isLoading || isGenerating || !isOnline}
             className="min-h-11 gap-1.5 text-gray-500 hover:text-gray-900"
             title={t('refreshContent')}
           >

@@ -318,7 +318,8 @@
     "lessonNotValidatedDesc": "Vous devez obtenir au moins {score}% pour valider cette leçon. Réessayez !",
     "refreshContent": "Actualiser le contenu",
     "subscriptionRequired": "Un abonnement est requis pour accéder à ce contenu. La première unité de chaque module est gratuite.",
-    "authRequired": "Veuillez vous connecter pour continuer."
+    "authRequired": "Veuillez vous connecter pour continuer.",
+    "contentNotAvailableOffline": "Ce quiz n'est pas disponible hors-ligne. Téléchargez le module pour le passer sans internet."
   },
   "ChatTutor": {
     "title": "Tuteur IA",
@@ -687,7 +688,8 @@
     "validateWithQuiz": "Valider avec le Quiz",
     "checkingStatus": "Vérification...",
     "unitNotFound": "Cette unité n'existe pas dans ce module.",
-    "backToModule": "Retour au module"
+    "backToModule": "Retour au module",
+    "contentNotAvailableOffline": "Cette leçon n'est pas disponible hors-ligne. Téléchargez le module pour y accéder sans internet."
   },
   "LessonImage": {
     "imagePending": "Illustration en cours de génération...",
@@ -749,7 +751,8 @@
     "hideObjectives": "Masquer les objectifs",
     "bloomLevel": "Bloom : {level}",
     "generatedOn": "Généré le {date}",
-    "stretchBadge": "Défi"
+    "stretchBadge": "Défi",
+    "contentNotAvailableOffline": "Cette étude de cas n'est pas disponible hors-ligne. Téléchargez le module pour y accéder sans internet."
   },
   "CaseStudyPage": {
     "backToModule": "Retour à {module}",
@@ -1678,5 +1681,38 @@
     "codeRequired": "Veuillez entrer un code d'activation",
     "scanInstructions": "Pointez votre caméra sur le code QR",
     "redirecting": "Redirection vers le cours..."
+  },
+  "Offline": {
+    "offline": "Vous êtes hors-ligne",
+    "reconnected": "Connexion rétablie",
+    "downloadForOffline": "Télécharger pour hors-ligne",
+    "availableOffline": "Disponible hors-ligne",
+    "removeDownload": "Supprimer le téléchargement",
+    "downloading": "Téléchargement en cours...",
+    "units": "unités",
+    "downloadProgress": "Progression du téléchargement",
+    "downloadingLesson": "Téléchargement de la leçon",
+    "downloadingQuiz": "Téléchargement du quiz",
+    "downloadingCaseStudy": "Téléchargement de l'étude de cas",
+    "cancel": "Annuler le téléchargement",
+    "cancelAction": "Annuler",
+    "downloadFailed": "Échec du téléchargement",
+    "partialDownload": "{count} sur {total} unités téléchargées",
+    "retry": "Réessayer le téléchargement",
+    "moduleLimitReached": "Limite de modules hors-ligne atteinte (3/3)",
+    "moduleLimitHint": "Supprimez un module téléchargé pour libérer une place",
+    "downloadConfirm": "Télécharger ce module pour usage hors-ligne (~{size}) ?",
+    "wifiOnly": "WiFi uniquement",
+    "startDownload": "Télécharger",
+    "offlineBadge": "Hors-ligne",
+    "contentNotAvailable": "Contenu non disponible hors-ligne",
+    "contentNotAvailableHint": "Téléchargez ce module pour y accéder hors-ligne",
+    "quizOfflineNote": "Quiz noté localement — synchronisation au retour en ligne",
+    "syncPending": "{count} en attente",
+    "syncing": "Synchronisation...",
+    "syncComplete": "Synchronisation terminée",
+    "syncFailed": "Échec de synchronisation",
+    "syncRetry": "Réessayer la synchronisation",
+    "syncSuccess": "{count} éléments synchronisés"
   }
 }
