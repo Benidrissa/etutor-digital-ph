@@ -319,7 +319,8 @@
     "refreshContent": "Actualiser le contenu",
     "subscriptionRequired": "Un abonnement est requis pour accéder à ce contenu. La première unité de chaque module est gratuite.",
     "authRequired": "Veuillez vous connecter pour continuer.",
-    "contentNotAvailableOffline": "Ce quiz n'est pas disponible hors-ligne. Téléchargez le module pour le passer sans internet."
+    "contentNotAvailableOffline": "Ce quiz n'est pas disponible hors-ligne. Téléchargez le module pour le passer sans internet.",
+    "countryFallback": "Le contenu adapté à votre région sera disponible prochainement"
   },
   "ChatTutor": {
     "title": "Tuteur IA",
@@ -689,7 +690,8 @@
     "checkingStatus": "Vérification...",
     "unitNotFound": "Cette unité n'existe pas dans ce module.",
     "backToModule": "Retour au module",
-    "contentNotAvailableOffline": "Cette leçon n'est pas disponible hors-ligne. Téléchargez le module pour y accéder sans internet."
+    "contentNotAvailableOffline": "Cette leçon n'est pas disponible hors-ligne. Téléchargez le module pour y accéder sans internet.",
+    "countryFallback": "Le contenu adapté à votre région sera disponible prochainement"
   },
   "LessonAudio": {
     "audioPending": "Génération du résumé audio...",
@@ -761,7 +763,8 @@
     "bloomLevel": "Bloom : {level}",
     "generatedOn": "Généré le {date}",
     "stretchBadge": "Défi",
-    "contentNotAvailableOffline": "Cette étude de cas n'est pas disponible hors-ligne. Téléchargez le module pour y accéder sans internet."
+    "contentNotAvailableOffline": "Cette étude de cas n'est pas disponible hors-ligne. Téléchargez le module pour y accéder sans internet.",
+    "countryFallback": "Le contenu adapté à votre région sera disponible prochainement"
   },
   "CaseStudyPage": {
     "backToModule": "Retour à {module}",

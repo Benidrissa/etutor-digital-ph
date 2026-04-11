@@ -47,6 +47,10 @@ class QuizResponse(BaseModel):
     content: QuizContent = Field(description="Quiz content and questions")
     generated_at: str = Field(description="ISO timestamp when quiz was generated")
     cached: bool = Field(description="True if retrieved from cache")
+    country_fallback: bool = Field(
+        default=False,
+        description="True when content is from a different country's cache; country-targeted version generating in background",
+    )
 
     class Config:
         json_schema_extra = {

@@ -319,7 +319,8 @@
     "refreshContent": "Refresh content",
     "subscriptionRequired": "A subscription is required to access this content. The first unit of each module is free.",
     "authRequired": "Please sign in to continue.",
-    "contentNotAvailableOffline": "This quiz is not available offline. Download the module to take quizzes without internet."
+    "contentNotAvailableOffline": "This quiz is not available offline. Download the module to take quizzes without internet.",
+    "countryFallback": "Content optimized for your region will be available shortly"
   },
   "ChatTutor": {
     "title": "AI Tutor",
@@ -689,7 +690,8 @@
     "checkingStatus": "Checking...",
     "unitNotFound": "This unit does not exist in this module.",
     "backToModule": "Back to module",
-    "contentNotAvailableOffline": "This lesson is not available offline. Download the module to access it without internet."
+    "contentNotAvailableOffline": "This lesson is not available offline. Download the module to access it without internet.",
+    "countryFallback": "Content optimized for your region will be available shortly"
   },
   "LessonAudio": {
     "audioPending": "Generating audio summary...",
@@ -761,7 +763,8 @@
     "bloomLevel": "Bloom: {level}",
     "generatedOn": "Generated on {date}",
     "stretchBadge": "Stretch",
-    "contentNotAvailableOffline": "This case study is not available offline. Download the module to access it without internet."
+    "contentNotAvailableOffline": "This case study is not available offline. Download the module to access it without internet.",
+    "countryFallback": "Content optimized for your region will be available shortly"
   },
   "CaseStudyPage": {
     "backToModule": "Back to {module}",

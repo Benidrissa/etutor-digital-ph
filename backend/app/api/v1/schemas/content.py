@@ -70,6 +70,10 @@ class LessonResponse(BaseModel):
     content: LessonContent = Field(..., description="Structured lesson content")
     generated_at: str = Field(..., description="Generation timestamp (ISO format)")
     cached: bool = Field(default=False, description="Whether content was retrieved from cache")
+    country_fallback: bool = Field(
+        default=False,
+        description="True when content is from a different country's cache; country-targeted version generating in background",
+    )
     source_image_refs: list[SourceImageRef] = Field(
         default_factory=list, description="Source images referenced by Claude in this lesson"
     )
@@ -236,6 +240,10 @@ class CaseStudyResponse(BaseModel):
     content: CaseStudyContent = Field(..., description="Structured case study content")
     generated_at: str = Field(..., description="Generation timestamp (ISO format)")
     cached: bool = Field(default=False, description="Whether content was retrieved from cache")
+    country_fallback: bool = Field(
+        default=False,
+        description="True when content is from a different country's cache; country-targeted version generating in background",
+    )
     unit_title: str | None = Field(None, description="Unit title for display")
     unit_description: str | None = Field(None, description="Unit description for display")
 
