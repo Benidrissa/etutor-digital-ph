@@ -192,9 +192,9 @@ class MediaSummaryService:
                 age_range=age_range,
             )
 
-            audio_bytes = await self._call_gemini_tts(script, language)
+            audio_bytes = await self._call_tts(script, language)
 
-            storage_key = f"audio/{module_id}/{language}/summary.ogg"
+            storage_key = f"audio/{module_id}/{language}/summary.opus"
             storage_url = await self._storage.upload_bytes(
                 key=storage_key,
                 data=audio_bytes,
@@ -379,62 +379,37 @@ class MediaSummaryService:
         )
         return script_text.strip()
 
-    async def _call_gemini_tts(self, script: str, language: str) -> bytes:
-        """Call Cloud Text-to-Speech API with Gemini TTS model.
+    async def _call_tts(self, script: str, language: str) -> bytes:
+        """Call OpenAI TTS API to convert script to OGG Opus audio.
 
-        Returns MP3 bytes directly.
+        Uses gpt-4o-mini-tts model with opus output format.
         """
-        if not settings.google_api_key:
-            raise ValueError("GOOGLE_API_KEY is required for Gemini TTS")
+        from openai import AsyncOpenAI
 
-        import asyncio
+        client = AsyncOpenAI(api_key=settings.openai_api_key)
 
-        from google.api_core import client_options
-        from google.cloud import texttospeech
+        voice = "nova" if language == "fr" else "ash"
+        lang_label = "French" if language == "fr" else "English"
 
-        client = texttospeech.TextToSpeechClient(
-            client_options=client_options.ClientOptions(
-                api_key=settings.google_api_key,
-            ),
+        response = await client.audio.speech.create(
+            model="gpt-4o-mini-tts",
+            voice=voice,
+            input=script,
+            instructions=f"Speak in {lang_label} with a clear, warm, educational tone suitable for a learning platform.",
+            response_format="opus",
         )
 
-        voice_name = "Aoede" if language == "fr" else "Charon"
-        lang_code = "fr-FR" if language == "fr" else "en-US"
-
-        synthesis_input = texttospeech.SynthesisInput(
-            text=script,
-            prompt="Narrate the following in a clear, warm, educational tone",
-        )
-
-        voice = texttospeech.VoiceSelectionParams(
-            language_code=lang_code,
-            name=voice_name,
-            model_name="gemini-2.5-flash-lite-preview-tts",
-        )
-
-        audio_config = texttospeech.AudioConfig(
-            audio_encoding=texttospeech.AudioEncoding.OGG_OPUS,
-        )
-
-        loop = asyncio.get_running_loop()
-        response = await loop.run_in_executor(
-            None,
-            lambda: client.synthesize_speech(
-                input=synthesis_input, voice=voice, audio_config=audio_config
-            ),
-        )
-
-        ogg_bytes = response.audio_content
-        if not ogg_bytes:
-            raise ValueError("Gemini TTS returned empty audio")
+        audio_bytes = response.content
+        if not audio_bytes:
+            raise ValueError("OpenAI TTS returned empty audio")
 
         logger.info(
-            "Gemini TTS MP3 generated",
+            "OpenAI TTS audio generated",
             language=language,
-            voice=voice_name,
-            audio_size_bytes=len(ogg_bytes),
+            voice=voice,
+            audio_size_bytes=len(audio_bytes),
         )
-        return ogg_bytes
+        return audio_bytes
 
     def _estimate_duration(self, file_size_bytes: int) -> int:
         """Estimate audio duration from OGG Opus file size (~48kbps speech)."""
