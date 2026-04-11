@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo } from "react";
+import { redirect } from "next/navigation";
 import { useLocale } from "next-intl";
 import { SettingsClient } from "@/components/admin/settings-client";
 
@@ -21,22 +21,12 @@ function getRole(): string | null {
 }
 
 export default function AdminSettingsPage() {
-  const router = useRouter();
   const locale = useLocale();
-  const [allowed, setAllowed] = useState<boolean | null>(null);
+  const role = useMemo(() => getRole(), []);
 
-  useEffect(() => {
-    const role = getRole();
-    if (role === "admin") {
-      setAllowed(true);
-    } else {
-      setAllowed(false);
-      router.replace(`/${locale}/admin`);
-    }
-  }, [locale, router]);
-
-  if (allowed === null) return null;
-  if (!allowed) return null;
+  if (role !== "admin") {
+    redirect(`/${locale}/admin`);
+  }
 
   return <SettingsClient />;
 }

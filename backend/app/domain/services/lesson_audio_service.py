@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import select
@@ -151,7 +151,7 @@ class LessonAudioService:
             record.storage_url = storage_url
             record.duration_seconds = _estimate_duration(len(audio_bytes))
             record.file_size_bytes = len(audio_bytes)
-            record.generated_at = datetime.utcnow()
+            record.generated_at = datetime.now(UTC)
             await session.commit()
 
             logger.info(
