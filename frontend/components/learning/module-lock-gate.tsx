@@ -12,6 +12,7 @@ import { getModuleDetailWithProgress, getModuleUnits, type ModuleDetailWithProgr
 import { track } from '@/lib/analytics';
 import { ModuleProgressOverlay } from '@/components/learning/module-progress-overlay';
 import { ModuleMediaPlayer } from '@/components/learning/module-media-player';
+import { DownloadModuleButton } from '@/components/learning/download-module-button';
 
 interface ModuleLockGateProps {
   moduleId: string;
@@ -212,6 +213,13 @@ export function ModuleLockGate({ moduleId, language }: ModuleLockGateProps) {
               </Button>
             </Link>
           </div>
+
+          <DownloadModuleButton
+            moduleId={moduleId}
+            locale={language}
+            unitCount={moduleData?.units?.length ?? 0}
+            level={moduleData?.level}
+          />
         </div>
       </div>
     </div>

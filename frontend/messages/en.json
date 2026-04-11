@@ -1678,5 +1678,30 @@
     "codeRequired": "Please enter an activation code",
     "scanInstructions": "Point your camera at the QR code",
     "redirecting": "Redirecting to course..."
+  },
+  "Offline": {
+    "downloadForOffline": "Download for offline",
+    "availableOffline": "Available offline",
+    "removeDownload": "Remove download",
+    "downloading": "Downloading...",
+    "units": "units",
+    "downloadProgress": "Download progress",
+    "downloadingLesson": "Downloading lesson",
+    "downloadingQuiz": "Downloading quiz",
+    "downloadingCaseStudy": "Downloading case study",
+    "cancel": "Cancel download",
+    "cancelAction": "Cancel",
+    "downloadFailed": "Download failed",
+    "partialDownload": "{count} of {total} units downloaded",
+    "retry": "Retry download",
+    "moduleLimitReached": "Offline module limit reached (3/3)",
+    "moduleLimitHint": "Remove a downloaded module to free a slot",
+    "downloadConfirm": "Download this module for offline use (~{size})?",
+    "wifiOnly": "WiFi only",
+    "startDownload": "Download",
+    "offlineBadge": "Offline",
+    "contentNotAvailable": "Content not available offline",
+    "contentNotAvailableHint": "Download this module to access it offline",
+    "quizOfflineNote": "Quiz scored locally — will sync when back online"
   }
 }

@@ -1678,5 +1678,30 @@
     "codeRequired": "Veuillez entrer un code d'activation",
     "scanInstructions": "Pointez votre caméra sur le code QR",
     "redirecting": "Redirection vers le cours..."
+  },
+  "Offline": {
+    "downloadForOffline": "Télécharger pour hors-ligne",
+    "availableOffline": "Disponible hors-ligne",
+    "removeDownload": "Supprimer le téléchargement",
+    "downloading": "Téléchargement en cours...",
+    "units": "unités",
+    "downloadProgress": "Progression du téléchargement",
+    "downloadingLesson": "Téléchargement de la leçon",
+    "downloadingQuiz": "Téléchargement du quiz",
+    "downloadingCaseStudy": "Téléchargement de l'étude de cas",
+    "cancel": "Annuler le téléchargement",
+    "cancelAction": "Annuler",
+    "downloadFailed": "Échec du téléchargement",
+    "partialDownload": "{count} sur {total} unités téléchargées",
+    "retry": "Réessayer le téléchargement",
+    "moduleLimitReached": "Limite de modules hors-ligne atteinte (3/3)",
+    "moduleLimitHint": "Supprimez un module téléchargé pour libérer une place",
+    "downloadConfirm": "Télécharger ce module pour usage hors-ligne (~{size}) ?",
+    "wifiOnly": "WiFi uniquement",
+    "startDownload": "Télécharger",
+    "offlineBadge": "Hors-ligne",
+    "contentNotAvailable": "Contenu non disponible hors-ligne",
+    "contentNotAvailableHint": "Téléchargez ce module pour y accéder hors-ligne",
+    "quizOfflineNote": "Quiz noté localement — synchronisation au retour en ligne"
   }
 }
