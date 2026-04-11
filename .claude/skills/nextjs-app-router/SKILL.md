@@ -55,7 +55,14 @@ frontend/
 │   │   │   │   └── courses/[courseId]/page.tsx  # Edit course, view analytics
 │   │   │   └── admin/                   # Admin-only pages (RBAC guarded)
 │   │   │       ├── courses/page.tsx     # Course CRUD, publish, AI generate
+│   │   │       ├── curricula/page.tsx   # Curriculum management
+│   │   │       ├── taxonomy/page.tsx    # Domain/level/audience management
+│   │   │       ├── groups/page.tsx      # User group management
 │   │   │       ├── users/page.tsx       # User management
+│   │   │       ├── analytics/page.tsx   # Platform analytics
+│   │   │       ├── audit-logs/page.tsx  # Audit trail
+│   │   │       ├── payments/page.tsx    # Payment administration
+│   │   │       ├── settings/page.tsx    # Platform settings
 │   │   │       └── syllabus/page.tsx    # Syllabus editor
 │   │   └── ...
 │   └── api/                    # Route handlers (if needed for BFF)

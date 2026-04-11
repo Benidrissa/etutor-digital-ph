@@ -1,8 +1,8 @@
 # Software Requirements Specification
 ## Sira Learning Platform
 
-> **Application Web Mobile-First Bilingue pour la Formation en Sante Publique — Afrique de l'Ouest**  
-> Version : 1.0-draft | Statut : Draft pour validation | Audience : Développeurs, Product Owner, Parties prenantes
+> **Application Web Mobile-First Bilingue pour la Formation Adaptive Multi-Domaine — Afrique de l'Ouest**  
+> Version : 2.0 | Statut : En production | Audience : Développeurs, Product Owner, Parties prenantes
 
 ---
 
@@ -26,9 +26,9 @@
 
 ## 1. Introduction et Portée
 
-Ce document définit les exigences fonctionnelles et non-fonctionnelles pour le développement de **Sira**, une plateforme d'apprentissage en ligne adaptative, bilingue (FR/EN) et mobile-first, destinée aux professionnels de santé et étudiants en Afrique de l'Ouest.
+Ce document définit les exigences fonctionnelles et non-fonctionnelles pour le développement de **Sira**, une plateforme d'apprentissage en ligne adaptative, bilingue (FR/EN) et mobile-first, destinée aux apprenants et professionnels en Afrique de l'Ouest, couvrant tout domaine de formation.
 
-La plateforme génère dynamiquement du contenu pédagogique à partir de 3 ouvrages de référence en santé publique, contextualise chaque leçon dans le contexte de l'Afrique de l'Ouest, et adapte l'expérience au niveau de progression de chaque utilisateur.
+La plateforme génère dynamiquement du contenu pédagogique à partir de documents PDF uploadés par les administrateurs ou experts, contextualise chaque leçon selon le pays et la langue de l'utilisateur, et adapte l'expérience au niveau de progression de chaque apprenant. L'architecture est multi-cours et multi-domaine : les administrateurs créent des cours à partir de n'importe quel contenu source, les regroupent en curricula, et gèrent la taxonomie (domaines, niveaux, audiences) dynamiquement.
 
 ### Portée du document
 
@@ -44,7 +44,7 @@ La plateforme génère dynamiquement du contenu pédagogique à partir de 3 ouvr
 | Intégration DHIS2 données réelles | | ❌ Phase 2 |
 | LMS institutionnel (SCORM) | | ❌ Phase 3 |
 | Certification officielle (PDF + badge) | | ❌ Phase 2 |
-| Système de crédits & marketplace expert | | ✅ Phase 2 |
+| Système de crédits & marketplace expert | ✅ | |
 
 ---
 
@@ -52,7 +52,7 @@ La plateforme génère dynamiquement du contenu pédagogique à partir de 3 ouvr
 
 ### Vision
 
-Rendre la formation en santé publique de niveau expert accessible à tous les professionnels de santé d'Afrique de l'Ouest, en français et en anglais, depuis n'importe quel smartphone, même avec une connexion limitée.
+Rendre la formation de niveau expert dans tout domaine accessible aux apprenants et professionnels d'Afrique de l'Ouest, en français et en anglais, depuis n'importe quel smartphone, même avec une connexion limitée. La plateforme permet à tout administrateur ou expert de créer des cours adaptatifs à partir de leurs propres documents de référence.
 
 ### Objectifs mesurables (OKR)
 
@@ -68,11 +68,11 @@ Rendre la formation en santé publique de niveau expert accessible à tous les p
 - Taux de rétention à 30 jours > 60%
 - NPS (satisfaction) > 50
 
-#### 🎯 Obj. 3 — Pertinence AOF
-- 100% des exemples et cas contextualisés AOF
-- Données réelles intégrées depuis ≥5 pays CEDEAO
-- Mise à jour données épidémiologiques ≤ 30 jours
-- Revue pédagogique par experts santé publique AOF
+#### 🎯 Obj. 3 — Pertinence contextuelle
+- Contenu contextualisé selon le pays et la langue de l'apprenant
+- Support multi-domaine : tout expert peut créer un cours dans son domaine d'expertise
+- Taxonomie dynamique (domaines, niveaux, audiences) gérée par les administrateurs
+- Données et exemples adaptés au contexte ouest-africain par défaut, extensible à tout contexte
 
 ---
 
@@ -85,6 +85,8 @@ Rendre la formation en santé publique de niveau expert accessible à tous les p
 | 🎓 **Fatou** — Étudiante MPH, Dakar | Master en Sante Publique, prépare examens, bilingue FR/EN | Contenu structuré, flashcards, quiz d'entraînement | Android basique, WiFi campus, budget limité |
 | 🏥 **Ibrahim** — Directeur Sante, Burkina | Cadre supérieur MoH, 15 ans expérience | Leadership, politiques, gouvernance, évaluation programmes | iPad + smartphone haut de gamme, peu de temps |
 | 👨‍🏫 **Prof. Ousmane** — Expert épidémiologie, Côte d'Ivoire | Enseignant universitaire, 12 ans d'expérience, veut monétiser ses cours en ligne | Création de cours IA, suivi apprenants, tableau de bord revenus, revenus passifs | Laptop + smartphone haut de gamme, WiFi stable |
+| 🌾 **Adama** — Coordinateur formation ONG, Sénégal | ONG agricole, forme 200 agents terrain en techniques culturales et gestion coopérative | Créer des cours pratiques, suivre la progression des agents, contenu offline obligatoire | Tablette + smartphone basique, 2G/3G rural, Francophone |
+| 💻 **Ama** — Formatrice STEM, Ghana | Enseigne les mathématiques et sciences dans un lycée, veut compléter ses cours avec du contenu interactif | Cours de mathématiques adaptatifs, quiz d'entraînement, flashcards bilingues | Laptop école, WiFi instable, Anglophone |
 
 ---
 
@@ -136,7 +138,7 @@ Rendre la formation en santé publique de niveau expert accessible à tous les p
 ### Epic 2 : Dashboard & Navigation
 
 **US-010** *(P0 — CRITIQUE)* — En tant qu'apprenant, je veux voir mon tableau de bord avec la progression par module, mon streak et mes prochaines révisions.
-- **AC1:** Carte des 15 modules avec statut visuel (verrouillé/en cours/complété)
+- **AC1:** Carte des modules du cours avec statut visuel (verrouillé/en cours/complété)
 - **AC2:** Pourcentage de complétion par module
 - **AC3:** Compteur de streak quotidien
 - **AC4:** Liste des 5 prochaines révisions flashcards planifiées
@@ -173,7 +175,7 @@ Rendre la formation en santé publique de niveau expert accessible à tous les p
 - **AC3:** Barre de progression du module
 - **AC4:** Liste des unités avec statut (à faire/en cours/fait)
 
-**US-021** *(P0 — CRITIQUE)* — En tant qu'apprenant, je veux lire des leçons générées dynamiquement depuis les 3 livres sources, contextualisées pour mon pays.
+**US-021** *(P0 — CRITIQUE)* — En tant qu'apprenant, je veux lire des leçons générées dynamiquement depuis les documents sources du cours, contextualisées pour mon pays.
 - **AC1:** Contenu de 400-600 mots par unité, structuré (Intro → Concept → Exemple AOF → Points clés)
 - **AC2:** Exemples spécifiques au pays de l'utilisateur
 - **AC3:** 3-5 termes techniques affichés en FR et EN
@@ -441,18 +443,18 @@ Rendre la formation en santé publique de niveau expert accessible à tous les p
 - **AC2:** Environnements dev/staging/prod séparés
 - **AC3:** Docker Compose pour développement local
 
-**US-131** *(P0 — CRITIQUE)* — En tant que développeur, je veux un pipeline d'indexation RAG pour les 3 livres PDF.
+**US-131** *(P0 — CRITIQUE)* — En tant que développeur, je veux un pipeline d'indexation RAG pour les documents PDF uploadés par cours.
 - **AC1:** Extraction PDF → texte (PyMuPDF)
 - **AC2:** Chunking en segments de 512 tokens avec overlap
 - **AC3:** Embeddings via text-embedding-3-small
-- **AC4:** Stockage dans ChromaDB avec métadonnées (source, chapitre, page, niveau)
-- **AC5:** Script reproductible et idempotent
+- **AC4:** Stockage dans pgvector (PostgreSQL) avec métadonnées (source, chapitre, page, course_id)
+- **AC5:** Pipeline reproductible et idempotent, déclenché par upload de ressource
 
 **US-132** *(P0 — CRITIQUE)* — En tant que développeur, je veux un schéma de base de données avec migrations.
 - **AC1:** Toutes les tables définies dans la section 9 implémentées
 - **AC2:** Migrations Alembic versionnées
 - **AC3:** Row Level Security activé sur PostgreSQL
-- **AC4:** Seeds de données pour les 15 modules
+- **AC4:** Seeds de données pour le cours initial
 
 ---
 
@@ -473,11 +475,11 @@ Rendre la formation en santé publique de niveau expert accessible à tous les p
 | LLM | Anthropic Claude 3.5 Sonnet | Meilleure performance multilangue FR/EN, RAG |
 | Vector DB | pgvector (extension PostgreSQL) | Embeddings dans PostgreSQL existant, pas de service supplémentaire |
 | Orchestration IA | Anthropic Python SDK | Appels Claude API directs, streaming SSE, pas de middleware LangChain/LlamaIndex |
-| Code Sandbox | Pyodide (Python in browser) | Exécution Python côté client, sécurisé |
-| CDN | Cloudflare Workers | Edge caching, optimisation AOF (nœuds Afrique) |
+| Code Sandbox | Pyodide (Python in browser) | Exécution Python côté client, sécurisé (Phase 3) |
 | Monitoring | Sentry + PostHog | Erreurs + analytics privacy-first |
 | CI/CD | GitHub Actions + Docker | Déploiement automatisé, conteneurisation |
-| Hébergement | Fly.io ou Railway | Présence en Afrique ou faible latence, coût raisonnable |
+| Hébergement | VPS + Traefik | Docker containers, reverse proxy, ghcr.io |
+| Paiements | Paystack + SMS (Orange Money, Wave) | Mobile money, cartes, subscriptions SMS |
 
 ### Vue d'ensemble architecture en couches
 
@@ -495,10 +497,10 @@ Rendre la formation en santé publique de niveau expert accessible à tous les p
 │  IA / RAG  │ Anthropic Claude API · Anthropic SDK      │
 │            │ pgvector · OpenAI Embeddings · PyMuPDF   │
 └──────────────────────┬──────────────────────────────┘
-                       │ ETL pipelines
+                       │ (futur: ETL pipelines)
 ┌──────────────────────▼──────────────────────────────┐
-│  DONNÉES   │ DHIS2 API · DHS Program · World Bank   │
-│            │ WHO AFRO · PubMed · OOAS                │
+│  DONNÉES   │ (Phase 3) DHIS2 API · DHS Program      │
+│  EXTERNES  │ World Bank · WHO AFRO · PubMed          │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -509,37 +511,35 @@ Rendre la formation en santé publique de niveau expert accessible à tous les p
 ### Vue d'ensemble du pipeline
 
 ```
-PHASE 1 — INDEXATION DES SOURCES
-  ├── Donaldson's Essential Public Health   (PDF → chunks 512 tokens)
-  ├── Scutchfield Principles of PH Practice (PDF → chunks)
-  ├── Triola Biostatistics                  (PDF → texte + équations → chunks)
-  ├── Données OMS/AFRO                      (API → JSON → documents)
-  └── Articles PubMed AOF récents           (API → abstracts → résumés)
+PHASE 1 — INDEXATION DES SOURCES (par cours)
+  ├── Documents PDF uploadés par l'administrateur ou expert (PDF → chunks 512 tokens)
+  ├── Documents CSV/Word uploadés                          (extraction texte → chunks)
+  └── Chaque cours a sa propre collection RAG (course_resources → document_chunks)
 
 PHASE 2 — EMBEDDINGS
-  ├── Modèle : text-embedding-3-small (OpenAI) ou claude-3-haiku
+  ├── Modèle : text-embedding-3-small (OpenAI)
   ├── Dimensions : 1536
-  └── Stockage : pgvector (PostgreSQL) avec métadonnées (source, chapitre, niveau, pays)
+  └── Stockage : pgvector (PostgreSQL) avec métadonnées (source, chapitre, course_id)
 
 PHASE 3 — GÉNÉRATION DYNAMIQUE (à la demande utilisateur)
   ├── Input  : {module_id} + {level} + {langue} + {pays} + {objectif}
-  ├── Retrieval : Top-K (k=8) chunks pertinents des 3 livres + données AOF
-  ├── Prompt : System prompt spécialisé pédagogie + contexte AOF
+  ├── Retrieval : Top-K (k=8) chunks pertinents du cours concerné (filtré par course_id)
+  ├── Prompt : System prompt dynamique adapté au domaine du cours
   └── Output : Contenu structuré (leçon / quiz / flashcard / cas pratique)
 ```
 
 ### Prompt système (exemple pour génération de leçon)
 
 ```
-Tu es un expert en santé publique et pédagogue spécialisé en Afrique de l'Ouest.
+Tu es un expert pédagogue dans le domaine de ce cours.
 Génère une leçon sur {topic} pour un apprenant de niveau {level}.
 Langue: {langue}. Pays de l'apprenant: {pays}.
 Base-toi EXCLUSIVEMENT sur les sources ci-dessous: {retrieved_chunks}
 
 Règles:
-- Tous les exemples doivent être contextualisés pour l'Afrique de l'Ouest
-- Cite les données réelles récentes (OMS, DHIS2, DHS) pour le {pays}
-- Structure: Introduction → Concept clé → Exemple AOF → Points clés
+- Contextualise les exemples pour le pays de l'apprenant
+- Cite les sources avec précision (document, chapitre, page)
+- Structure: Introduction → Concept clé → Exemple contextuel → Points clés
 - Longueur: 400-600 mots
 - Inclure 3-5 termes techniques en FR et EN
 - Respecter le niveau taxonomique Bloom: {bloom_level}
@@ -549,11 +549,11 @@ Règles:
 
 | Type | Structure générée | Paramètres clés |
 |---|---|---|
-| **Leçon** | Introduction → Concepts → Exemple AOF → Synthèse → Points clés (5) | module_id, level, langue, pays, bloom_level |
+| **Leçon** | Introduction → Concepts → Exemple contextuel → Synthèse → Points clés (5) | module_id, level, langue, pays, bloom_level |
 | **Quiz** | 10-20 QCM avec 4 options, 1 correct, explication + source | module_id, difficulty, type (recall/application/analysis) |
-| **Flashcard** | Terme FR → Définition FR/EN + exemple AOF + formule si applicable | concept_id, langue_principale, include_formula |
-| **Cas pratique** | Contexte AOF → Données → Questions guidées → Correction commentée | module_id, pays, disease_type, data_source |
-| **Exercice** | Données réelles (CSV/JSON) → Instructions → Résultats → Corrigé | stats_method, tool (R/Python/Excel), dataset |
+| **Flashcard** | Terme FR → Définition FR/EN + exemple contextuel + formule si applicable | concept_id, langue_principale, include_formula |
+| **Cas pratique** | Scénario contextuel → Données → Questions guidées → Correction commentée | module_id, pays, topic, data_source |
+| **Exercice** | Données (CSV/JSON) → Instructions → Résultats → Corrigé | stats_method, tool (R/Python/Excel), dataset |
 
 ---
 
@@ -570,7 +570,7 @@ Questionnaire adaptatif de 20 questions (15-20 min) couvrant 4 domaines : fondem
 ### FR-02 : Cours & Catalogue Multi-Cours
 
 **FR-02.0** *(CRITIQUE)* — **Système multi-cours**  
-La plateforme supporte plusieurs cours indépendants. Chaque cours contient des modules, a un cycle de vie (brouillon → publié → archivé), et un identifiant RAG pour la recherche vectorielle. Le cours par défaut "Santé Publique AOF" (15 modules, 320h) est créé automatiquement à la migration, et tous les utilisateurs existants y sont inscrits.
+La plateforme supporte plusieurs cours indépendants dans tout domaine. Chaque cours contient des modules, a un cycle de vie (brouillon → publié → archivé), et un identifiant RAG pour la recherche vectorielle. Les cours sont créés par les administrateurs ou experts à partir de documents PDF uploadés. Un cours initial de démonstration est créé automatiquement à la migration.
 
 **FR-02.0a** *(CRITIQUE)* — **Catalogue public**  
 Page accessible sans authentification listant les cours publiés. Filtrage par domaine(s), niveau(x) et type de public via des badges-pilules cliquables, plus recherche textuelle (titre FR/EN). Chaque carte affiche : titre, badges de domaine/niveau/public, durée estimée, nombre de modules, image de couverture, statut d'inscription si connecté. L'endpoint `GET /api/v1/courses/taxonomy` fournit les valeurs de taxonomie avec libellés bilingues FR/EN.
@@ -834,7 +834,7 @@ modules {
   bloom_level TEXT,
   course_id UUID FK → courses.id (nullable),
   prereq_modules UUID[],
-  books_sources JSONB  -- {donaldson: [ch2,ch3], triola: [ch4]}
+  books_sources JSONB  -- sources par chapitre, spécifique au cours
 }
 
 -- Table: user_module_progress
@@ -1069,15 +1069,13 @@ user_course_enrollment {
 
 ## 13. Roadmap de Développement
 
-| Phase | Durée | Livrables | Modules couverts |
-|---|---|---|---|
-| **Phase 0** — Setup & Infrastructure | 2 sem. | Repo GitHub, CI/CD, environnements dev/staging/prod, DB schema, indexation RAG des 3 livres | — |
-| **Phase 1** — MVP Alpha | 6 sem. | Auth, Onboarding, Dashboard, M01+M02+M03 avec contenu généré, Quiz basique, Flashcards | M01, M02, M03 |
-| **Phase 2** — Beta Fermée | 8 sem. | Intégration DHIS2/DHS, Cas pratiques, Sandbox Python, Tuteur virtuel, Quiz adaptatif, **Système de crédits, Marketplace expert, Tableau de bord expert, Activation expert** | M04, M05, M06, M07 |
-| **Phase 3** — Beta Ouverte | 8 sem. | Révision espacée FSRS, Surveillance numérique, Statistiques avancées, Profil pays | M08, M09, M10 |
-| **Phase 4** — Release v1.0 | 6 sem. | Modules Env & SMNI, Niveaux 3-4, Certifications PDF, Optimisation performance | M11, M12, M13, M14 |
-| **Phase 5** — v1.1 Capstone | 4 sem. | Module M15, Forum communautaire, Analytics apprenants, App store PWA | M15 |
-| **Phase 6** — v2.0 Scale | Ongoing | App native React Native, LMS SCORM, API ouverte, multilangue (Wolof/Haoussa) | All |
+| Phase | Statut | Livrables |
+|---|---|---|
+| **Phase 0** — Setup & Infrastructure | ✅ Complété | Repo GitHub, CI/CD, environnements, DB schema, pipeline RAG |
+| **Phase 1** — MVP | ✅ Complété | Auth TOTP MFA, Dashboard, Système multi-cours, Leçons/Quiz/Flashcards/Cas pratiques, Tuteur IA |
+| **Phase 2** — Marketplace & Billing | ✅ Complété | Système de crédits, Marketplace expert, Subscriptions SMS, Curricula, Taxonomie admin, Groupes utilisateurs, Audio TTS, Offline PWA + background sync |
+| **Phase 3** — Enrichissement | En cours | Intégration DHIS2/DHS données réelles, Sandbox Python (Pyodide), Certifications PDF |
+| **Phase 4** — Scale | Planifié | App native React Native, LMS SCORM, API ouverte, multilangue (Wolof/Haoussa), Vidéo/cours en direct |
 
 ### Équipe recommandée
 
@@ -1086,7 +1084,7 @@ user_course_enrollment {
 - 1× Lead Developer Full-Stack (Next.js + FastAPI)
 - 1× AI/ML Engineer (RAG, Claude API)
 - 1× UI/UX Designer (mobile-first)
-- 1× Expert Sante Publique AOF (validation contenu)
+- 1× Expert domaine (validation contenu)
 
 **Extended Team (Phase 3+)**
 - 1× DevOps/Infrastructure Engineer
@@ -1107,4 +1105,4 @@ user_course_enrollment {
 
 ---
 
-*Sira Platform · SRS v1.0 · 2025 · Basé sur : Donaldson's Essential Public Health · Principles of Public Health Practice (Scutchfield & Keck) · Biostatistics for the Biological and Health Sciences (Triola) · Sources de données : WHO AFRO · ECOWAS/CEDEAO · DHIS2 · DHS Program · World Bank*
+*Sira Platform · SRS v2.0 · 2026 · Plateforme multi-cours adaptative · Architecture domain-agnostique · Sources de données par cours (PDF/CSV/Word uploadés)*

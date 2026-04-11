@@ -6,7 +6,7 @@ user-invocable: true
 
 # Sira React Component Builder
 
-Build production-grade React 19 components for Sira — a mobile-first, bilingual (FR/EN) learning platform for public health professionals in West Africa.
+Build production-grade React 19 components for Sira — a mobile-first, bilingual (FR/EN), multi-course learning platform for learners and professionals, with a mobile-first focus on West Africa.
 
 ## Before writing any component
 

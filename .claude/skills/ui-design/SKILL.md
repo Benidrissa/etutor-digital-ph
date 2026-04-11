@@ -1,29 +1,29 @@
 ---
 name: ui-design
-description: Design and review UI layouts for the Sira learning platform. Use when planning page layouts, reviewing designs, or making visual decisions. Enforces the health/education design system with green/gold palette, mobile-first, offline indicators, and learning UX patterns.
+description: Design and review UI layouts for the Sira learning platform. Use when planning page layouts, reviewing designs, or making visual decisions. Enforces the education design system with green/gold palette, mobile-first, offline indicators, and learning UX patterns.
 user-invocable: true
 ---
 
 # Sira UI Design System
 
-Design interfaces for Sira — a mobile-first, bilingual learning platform for public health professionals across 15 ECOWAS West African countries.
+Design interfaces for Sira — a mobile-first, bilingual, multi-course learning platform for learners and professionals across West African countries and beyond.
 
 ## Design philosophy
 
-This is a **learning tool for health professionals**, not a consumer social app. The UI must communicate:
-- **Trust** — health/education authority, professional credibility
+This is a **learning tool for professionals and students**, not a consumer social app. The UI must communicate:
+- **Trust** — educational authority, professional credibility
 - **Clarity** — content readability above all, even in bright sunlight
 - **Accessibility** — works on low-end Android phones, 320px screens, slow connections
 - **Progress** — learners must always see where they are and what's next
 - **Calm** — reduce cognitive load; the learning content is already dense
 
-## Color system (health + Africa identity)
+## Color system (knowledge + Africa identity)
 
-Palette inspired by health (green) and West African identity (gold/earth):
+Palette inspired by growth/knowledge (green) and West African identity (gold/earth):
 
 ```css
-/* Primary — health, trust, progress */
---color-primary:          #0F766E;   /* Teal green — health/wellbeing */
+/* Primary — knowledge, trust, progress */
+--color-primary:          #0F766E;   /* Teal green — growth/knowledge */
 --color-primary-dark:     #115E59;
 --color-primary-light:    #14B8A6;
 --color-primary-50:       #F0FDFA;   /* Very light tint for backgrounds */

@@ -6,7 +6,7 @@ user-invocable: true
 
 # Sira Testing Skill
 
-Write comprehensive tests for the Sira backend (FastAPI) and frontend (Next.js/React). Tests must cover learning workflows, AI/RAG content generation, offline behavior, and **mobile-first UX** — this platform targets mid-range Android phones on 2G/3G in West Africa.
+Write comprehensive tests for the Sira backend (FastAPI) and frontend (Next.js/React). Tests must cover learning workflows, AI/RAG content generation, offline behavior, and **mobile-first UX** — this platform targets mid-range Android phones on 2G/3G, primarily in West Africa.
 
 ## Backend testing (Python/pytest)
 
@@ -56,7 +56,7 @@ class TestLessonGenerationService:
 ```
 
 **Rules:**
-- Mock ALL repositories, HTTP clients (DHIS2, WHO), and AI services (Claude API)
+- Mock ALL repositories, external HTTP clients, and AI services (Claude API)
 - Test cache-hit and cache-miss paths for all content generation
 - Test every public method in domain services
 - Verify generated content always includes `sources_cited`
