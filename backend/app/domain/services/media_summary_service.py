@@ -192,13 +192,13 @@ class MediaSummaryService:
                 age_range=age_range,
             )
 
-            audio_bytes = await self._call_gemini_tts(script, language)
+            audio_bytes = await self._call_tts(script, language)
 
-            storage_key = f"audio/{module_id}/{language}/summary.wav"
+            storage_key = f"audio/{module_id}/{language}/summary.opus"
             storage_url = await self._storage.upload_bytes(
                 key=storage_key,
                 data=audio_bytes,
-                content_type="audio/wav",
+                content_type="audio/ogg",
             )
 
             duration_seconds = self._estimate_duration(len(audio_bytes))
@@ -379,79 +379,39 @@ class MediaSummaryService:
         )
         return script_text.strip()
 
-    async def _call_gemini_tts(self, script: str, language: str) -> bytes:
-        """Call Gemini TTS API to convert script to MP3 bytes.
+    async def _call_tts(self, script: str, language: str) -> bytes:
+        """Call OpenAI TTS API to convert script to OGG Opus audio.
 
-        Uses google-generativeai SDK with gemini-2.5-flash-preview-tts model.
+        Uses gpt-4o-mini-tts model with opus output format.
         """
-        if not settings.google_api_key:
-            raise ValueError("GOOGLE_API_KEY is required for Gemini TTS")
+        from openai import AsyncOpenAI
 
-        from google import genai  # type: ignore[import-untyped]
-        from google.genai import types  # type: ignore[import-untyped]
+        client = AsyncOpenAI(api_key=settings.openai_api_key)
 
-        client = genai.Client(api_key=settings.google_api_key)
+        voice = "nova" if language == "fr" else "ash"
+        lang_label = "French" if language == "fr" else "English"
 
-        voice_name = "Aoede" if language == "fr" else "Charon"
-
-        response = await client.aio.models.generate_content(
-            model="gemini-2.5-flash-preview-tts",
-            contents=script,
-            config=types.GenerateContentConfig(
-                response_modalities=["AUDIO"],
-                speech_config=types.SpeechConfig(
-                    voice_config=types.VoiceConfig(
-                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                            voice_name=voice_name,
-                        ),
-                    ),
-                ),
-            ),
+        response = await client.audio.speech.create(
+            model="gpt-4o-mini-tts",
+            voice=voice,
+            input=script,
+            instructions=f"Speak in {lang_label} with a clear, warm, educational tone suitable for a learning platform.",
+            response_format="opus",
         )
 
-        pcm_bytes = self._extract_audio_bytes(response)
-        wav_bytes = self._pcm_to_wav(pcm_bytes)
+        audio_bytes = response.content
+        if not audio_bytes:
+            raise ValueError("OpenAI TTS returned empty audio")
 
         logger.info(
-            "Gemini TTS audio generated",
+            "OpenAI TTS audio generated",
             language=language,
-            pcm_bytes=len(pcm_bytes),
-            wav_bytes=len(wav_bytes),
+            voice=voice,
+            audio_size_bytes=len(audio_bytes),
         )
-        return wav_bytes
-
-    def _extract_audio_bytes(self, response: object) -> bytes:
-        """Extract raw audio bytes from Gemini TTS response."""
-        try:
-            for part in response.candidates[0].content.parts:  # type: ignore[union-attr]
-                if part.inline_data and part.inline_data.data:
-                    return part.inline_data.data
-        except Exception as exc:
-            logger.error("Failed to extract audio bytes from Gemini response", error=str(exc))
-
-        raise ValueError("No audio data found in Gemini TTS response")
-
-    def _pcm_to_wav(
-        self,
-        pcm_data: bytes,
-        sample_rate: int = 24000,
-        channels: int = 1,
-        sample_width: int = 2,
-    ) -> bytes:
-        """Wrap raw PCM bytes in a WAV container."""
-        import io
-        import wave
-
-        buf = io.BytesIO()
-        with wave.open(buf, "wb") as wf:
-            wf.setnchannels(channels)
-            wf.setsampwidth(sample_width)
-            wf.setframerate(sample_rate)
-            wf.writeframes(pcm_data)
-        return buf.getvalue()
+        return audio_bytes
 
     def _estimate_duration(self, file_size_bytes: int) -> int:
-        """Estimate audio duration from WAV file size (24kHz, 16-bit mono)."""
-        pcm_size = max(0, file_size_bytes - 44)
-        bytes_per_second = 24000 * 2
-        return max(1, pcm_size // bytes_per_second)
+        """Estimate audio duration from OGG Opus file size (~48kbps speech)."""
+        bytes_per_second = 6 * 1024
+        return max(1, file_size_bytes // bytes_per_second)
