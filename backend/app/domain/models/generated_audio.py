@@ -43,7 +43,10 @@ class GeneratedAudio(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(
         sa.Enum(
-            "pending", "generating", "ready", "failed",
+            "pending",
+            "generating",
+            "ready",
+            "failed",
             name="audio_status_enum",
             create_type=False,
         ),
