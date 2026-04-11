@@ -22,7 +22,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Link } from "@/i18n/routing";
 import { PlacementResultsHistory } from "@/components/placement/placement-results-history";
-import { Upload, User as UserIcon, AlertTriangle, CheckCircle, ClipboardList, LogOut } from "lucide-react";
+import { Upload, User as UserIcon, AlertTriangle, CheckCircle, ClipboardList, LogOut, ArrowLeft } from "lucide-react";
 import { authClient } from "@/lib/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -208,6 +208,14 @@ export function ProfileClient() {
 
   return (
     <div className="space-y-6">
+      <Link
+        href="/dashboard"
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        {t("backToDashboard")}
+      </Link>
+
       {showRecontextAlert && (
         <Alert>
           <AlertTriangle className="h-4 w-4" />

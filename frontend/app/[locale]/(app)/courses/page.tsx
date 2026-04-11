@@ -14,6 +14,7 @@ import {
   type CourseResponse,
   type TaxonomyItem,
 } from '@/lib/api';
+import { clearCurriculumContext } from '@/lib/curriculum-context';
 
 export default function CoursesPage() {
   const t = useTranslations('Courses');
@@ -21,6 +22,10 @@ export default function CoursesPage() {
   const router = useRouter();
   const pathname = usePathname();
   const locale = (pathname.split('/')[1] || 'fr') as 'fr' | 'en';
+
+  useEffect(() => {
+    clearCurriculumContext();
+  }, []);
 
   const [courses, setCourses] = useState<CourseResponse[]>([]);
   const [loading, setLoading] = useState(true);

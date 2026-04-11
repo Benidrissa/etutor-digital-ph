@@ -844,6 +844,7 @@
     "logout": "Déconnexion",
     "logoutDescription": "Se déconnecter de votre compte",
     "loggingOut": "Déconnexion en cours...",
+    "backToDashboard": "Retour au Tableau de Bord",
     "languages": {
       "french": "Français",
       "english": "English"
