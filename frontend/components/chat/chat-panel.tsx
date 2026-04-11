@@ -5,7 +5,7 @@ import { useTranslations, useLocale } from 'next-intl';
 import { track } from '@/lib/analytics';
 import { Link } from '@/i18n/routing';
 import { X, MoreVertical, Trash2, Menu, HelpCircle, BookOpen, GraduationCap, ChevronDown, Globe } from 'lucide-react';
-import { getMyEnrollments, type CourseWithEnrollment } from '@/lib/api';
+import { getMyEnrollments, type CourseWithEnrollment, API_BASE } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -224,7 +224,6 @@ export function ChatPanel({
     });
 
     try {
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
       let token: string;
       try {
         token = await authClient.getValidToken();

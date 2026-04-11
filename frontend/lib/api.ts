@@ -1,4 +1,7 @@
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API_BASE =
+  typeof window === "undefined"
+    ? process.env.BACKEND_URL || "http://localhost:8000"
+    : "";
 
 export class ApiError extends Error {
   constructor(message: string, public status: number, public code?: string) {

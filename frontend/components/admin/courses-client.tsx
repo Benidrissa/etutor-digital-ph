@@ -35,7 +35,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
-import { apiFetch, ApiError } from '@/lib/api';
+import { apiFetch, ApiError, API_BASE } from '@/lib/api';
 import { authClient, AuthError } from '@/lib/auth';
 import { CourseForm } from '@/components/admin/course-form';
 import { CourseWizardClient } from '@/components/admin/course-wizard-client';
@@ -181,7 +181,7 @@ export function CoursesClient() {
           throw err;
         }
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/admin/courses/${course.id}/generate-structure`,
+          `${API_BASE}/api/v1/admin/courses/${course.id}/generate-structure`,
           {
             method: 'POST',
             headers: {
@@ -219,7 +219,7 @@ export function CoursesClient() {
       try {
         const currentToken = token ?? await authClient.getValidToken();
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/admin/courses/${generatingId}/generate-status?task_id=${generateTaskId}`,
+          `${API_BASE}/api/v1/admin/courses/${generatingId}/generate-status?task_id=${generateTaskId}`,
           { headers: { Authorization: `Bearer ${currentToken}` } }
         );
         if (!res.ok) {

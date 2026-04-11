@@ -167,7 +167,7 @@ async def generate_module_media(
 async def delete_module_media(
     module_id: uuid.UUID,
     media_id: uuid.UUID,
-    _current_user: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    _current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db: AsyncSession = Depends(get_db_session),
 ) -> None:
     """Delete a module media record and its S3 object."""

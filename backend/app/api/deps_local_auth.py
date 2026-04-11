@@ -172,7 +172,7 @@ async def require_subscription_or_first_unit(
     from ..domain.services.subscription_service import SubscriptionService
     from ..infrastructure.persistence.database import get_db_session
 
-    if user.role == "admin":
+    if user.role in ("admin", "sub_admin"):
         return user
 
     unit_id = request.path_params.get("unit_id") or request.path_params.get("unitId")
@@ -248,7 +248,7 @@ def require_enrollment(course_id_param: str = "course_id") -> Callable:
             enrollment = result.scalar_one_or_none()
             break
 
-        if not enrollment and user.role != "admin":
+        if not enrollment and user.role not in ("admin", "sub_admin"):
             logger.warning(
                 "Access denied - not enrolled in course",
                 user_id=user.id,

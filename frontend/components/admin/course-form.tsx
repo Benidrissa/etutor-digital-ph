@@ -7,7 +7,7 @@ import { X, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { apiFetch, getCourseTaxonomy, type TaxonomyItem } from '@/lib/api';
+import { apiFetch, getCourseTaxonomy, type TaxonomyItem, API_BASE } from '@/lib/api';
 import { authClient, AuthError } from '@/lib/auth';
 import type { AdminCourse } from './courses-client';
 
@@ -159,8 +159,6 @@ export function CourseForm({ course, onClose, onSaved }: CourseFormProps) {
         }
         throw err;
       }
-
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
       if (course) {
         await fetch(`${API_BASE}/api/v1/admin/courses/${course.id}`, {

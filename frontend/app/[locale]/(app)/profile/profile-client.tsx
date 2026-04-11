@@ -24,8 +24,7 @@ import { Link } from "@/i18n/routing";
 import { PlacementResultsHistory } from "@/components/placement/placement-results-history";
 import { Upload, User as UserIcon, AlertTriangle, CheckCircle, ClipboardList, LogOut, ArrowLeft } from "lucide-react";
 import { authClient } from "@/lib/auth";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { API_BASE } from "@/lib/api";
 
 const fetchUserProfile = async () => {
   const response = await fetch(`${API_BASE}/api/v1/users/me`, {

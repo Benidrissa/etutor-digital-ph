@@ -13,7 +13,6 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN mkdir -p public
 
-ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_SENTRY_DSN
 ARG SENTRY_ORG
 ARG SENTRY_PROJECT
