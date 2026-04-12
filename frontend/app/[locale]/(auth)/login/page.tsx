@@ -10,7 +10,9 @@ export default function LoginPage() {
   const [useAuthenticator, setUseAuthenticator] = useState(false);
   const t = useTranslations('Auth');
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get('redirect') || undefined;
+  const raw = searchParams.get('redirect');
+  // Strip locale prefix since router.push() from @/i18n/routing adds it automatically
+  const redirectTo = raw?.replace(/^\/(fr|en)/, '') || undefined;
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
