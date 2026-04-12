@@ -31,7 +31,7 @@ async function loadContent<T>(
 
   // Offline: only check IndexedDB
   if (!isOnline) {
-    const cached = await getOfflineContent(unitId, contentType, locale);
+    const cached = await getOfflineContentWithFallback(unitId, contentType, locale);
     if (cached) {
       return { data: cached.content as T, source: 'indexeddb' };
     }
@@ -56,7 +56,7 @@ async function loadContent<T>(
   } catch (err: unknown) {
     // On network error, fall back to IndexedDB
     if (isNetworkError(err)) {
-      const cached = await getOfflineContent(unitId, contentType, locale);
+      const cached = await getOfflineContentWithFallback(unitId, contentType, locale);
       if (cached) {
         return { data: cached.content as T, source: 'indexeddb' };
       }
@@ -119,7 +119,7 @@ export async function loadQuiz<T>(
 
   // Offline: only check IndexedDB
   if (!isOnline) {
-    const cached = await getOfflineContent(unitId, 'quiz', idbLocale);
+    const cached = await getOfflineContentWithFallback(unitId, 'quiz', idbLocale);
     if (cached) {
       return { data: cached.content as T, source: 'indexeddb' };
     }
@@ -154,7 +154,7 @@ export async function loadQuiz<T>(
     return { data, source: 'api' };
   } catch (err: unknown) {
     if (isNetworkError(err)) {
-      const cached = await getOfflineContent(unitId, 'quiz', idbLocale);
+      const cached = await getOfflineContentWithFallback(unitId, 'quiz', idbLocale);
       if (cached) {
         return { data: cached.content as T, source: 'indexeddb' };
       }
@@ -193,6 +193,37 @@ export class OfflineContentNotAvailable extends Error {
 }
 
 // --- Helpers ---
+
+/**
+ * Convert URL-format unitId ("M01-U05") to API-format ("1.5").
+ * Returns null if the input doesn't match the MXX-UYY pattern.
+ *
+ * The download manager stores content under the API format (unit.unit_number),
+ * but quiz/case-study pages pass the URL format from route params.
+ */
+function normalizeUnitId(unitId: string): string | null {
+  const match = unitId.match(/^M0*(\d+)-U0*(\d+)$/);
+  return match ? `${match[1]}.${match[2]}` : null;
+}
+
+/**
+ * Look up offline content trying both the original unitId and the normalized
+ * format (M01-U05 → 1.5) to handle the URL vs API format mismatch.
+ */
+async function getOfflineContentWithFallback(
+  unitId: string,
+  contentType: ContentType,
+  locale: 'fr' | 'en',
+) {
+  const cached = await getOfflineContent(unitId, contentType, locale);
+  if (cached) return cached;
+
+  const normalized = normalizeUnitId(unitId);
+  if (normalized && normalized !== unitId) {
+    return getOfflineContent(normalized, contentType, locale);
+  }
+  return undefined;
+}
 
 function isNetworkError(err: unknown): boolean {
   if (err instanceof TypeError && err.message.includes('fetch')) return true;
