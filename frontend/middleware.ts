@@ -36,6 +36,15 @@ function getToken(request: NextRequest): string | null {
 export default function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Auth-aware root redirect: authenticated → /dashboard, anonymous → /courses
+  const localeRootMatch = pathname.match(/^\/(fr|en)$/);
+  if (localeRootMatch || pathname === "/") {
+    const token = getToken(request);
+    const locale = localeRootMatch ? localeRootMatch[1] : "fr";
+    const dest = token ? `/${locale}/dashboard` : `/${locale}/courses`;
+    return NextResponse.redirect(new URL(dest, request.url));
+  }
+
   if (pathname === "/settings") {
     return NextResponse.redirect(new URL("/profile", request.url));
   }
