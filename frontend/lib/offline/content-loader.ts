@@ -31,7 +31,7 @@ async function loadContent<T>(
 
   // Offline: only check IndexedDB
   if (!isOnline) {
-    const cached = await getOfflineContentWithFallback(unitId, contentType, locale);
+    const cached = await getOfflineContentWithFallback(moduleId, unitId, contentType, locale);
     if (cached) {
       return { data: cached.content as T, source: 'indexeddb' };
     }
@@ -56,7 +56,7 @@ async function loadContent<T>(
   } catch (err: unknown) {
     // On network error, fall back to IndexedDB
     if (isNetworkError(err)) {
-      const cached = await getOfflineContentWithFallback(unitId, contentType, locale);
+      const cached = await getOfflineContentWithFallback(moduleId, unitId, contentType, locale);
       if (cached) {
         return { data: cached.content as T, source: 'indexeddb' };
       }
@@ -119,7 +119,7 @@ export async function loadQuiz<T>(
 
   // Offline: only check IndexedDB
   if (!isOnline) {
-    const cached = await getOfflineContentWithFallback(unitId, 'quiz', idbLocale);
+    const cached = await getOfflineContentWithFallback(moduleId, unitId, 'quiz', idbLocale);
     if (cached) {
       return { data: cached.content as T, source: 'indexeddb' };
     }
@@ -154,7 +154,7 @@ export async function loadQuiz<T>(
     return { data, source: 'api' };
   } catch (err: unknown) {
     if (isNetworkError(err)) {
-      const cached = await getOfflineContentWithFallback(unitId, 'quiz', idbLocale);
+      const cached = await getOfflineContentWithFallback(moduleId, unitId, 'quiz', idbLocale);
       if (cached) {
         return { data: cached.content as T, source: 'indexeddb' };
       }
@@ -211,16 +211,17 @@ function normalizeUnitId(unitId: string): string | null {
  * format (M01-U05 → 1.5) to handle the URL vs API format mismatch.
  */
 async function getOfflineContentWithFallback(
+  moduleId: string,
   unitId: string,
   contentType: ContentType,
   locale: 'fr' | 'en',
 ) {
-  const cached = await getOfflineContent(unitId, contentType, locale);
+  const cached = await getOfflineContent(moduleId, unitId, contentType, locale);
   if (cached) return cached;
 
   const normalized = normalizeUnitId(unitId);
   if (normalized && normalized !== unitId) {
-    return getOfflineContent(normalized, contentType, locale);
+    return getOfflineContent(moduleId, normalized, contentType, locale);
   }
   return undefined;
 }

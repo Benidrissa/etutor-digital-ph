@@ -51,7 +51,7 @@ interface SantePubliqueDB extends DBSchema {
     indexes: { by_status: ModuleDownloadStatus };
   };
   offline_content: {
-    key: [string, string, string]; // [unitId, contentType, locale]
+    key: [string, string, string, string]; // [moduleId, unitId, contentType, locale]
     value: OfflineContent;
     indexes: {
       by_module: string;
@@ -67,7 +67,7 @@ interface SantePubliqueDB extends DBSchema {
 }
 
 const DB_NAME = "santepublique-offline";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 let dbInstance: IDBPDatabase<SantePubliqueDB> | null = null;
 
@@ -90,20 +90,8 @@ export async function getDB(): Promise<IDBPDatabase<SantePubliqueDB>> {
         actionsStore.createIndex("by_synced", "synced");
       }
 
-      // V3: recreate offline_content with triple composite key + fix actions synced type
+      // V3: fix actions synced type (boolean → number)
       if (oldVersion < 3) {
-        // Recreate offline_content with [unitId, contentType, locale] key
-        if (db.objectStoreNames.contains("offline_content")) {
-          db.deleteObjectStore("offline_content");
-        }
-        const contentStore = db.createObjectStore("offline_content", {
-          keyPath: ["unitId", "contentType", "locale"],
-        });
-        contentStore.createIndex("by_module", "moduleId");
-        contentStore.createIndex("by_content_type", "contentType");
-        contentStore.createIndex("by_unit", "unitId");
-
-        // Migrate offline_actions: convert boolean synced to number
         if (oldVersion >= 1) {
           const actionsStore = transaction.objectStore("offline_actions");
           actionsStore.openCursor().then(function migrateCursor(cursor) {
@@ -115,6 +103,20 @@ export async function getDB(): Promise<IDBPDatabase<SantePubliqueDB>> {
             cursor.continue().then(migrateCursor);
           });
         }
+      }
+
+      // V4: recreate offline_content with moduleId in key to prevent cross-module collisions
+      // Key: [moduleId, unitId, contentType, locale]
+      if (oldVersion < 4) {
+        if (db.objectStoreNames.contains("offline_content")) {
+          db.deleteObjectStore("offline_content");
+        }
+        const contentStore = db.createObjectStore("offline_content", {
+          keyPath: ["moduleId", "unitId", "contentType", "locale"],
+        });
+        contentStore.createIndex("by_module", "moduleId");
+        contentStore.createIndex("by_content_type", "contentType");
+        contentStore.createIndex("by_unit", "unitId");
       }
     },
   });
@@ -153,12 +155,13 @@ export async function getOfflineModulesByStatus(
 // --- Offline Content ---
 
 export async function getOfflineContent(
+  moduleId: string,
   unitId: string,
   contentType: ContentType,
   locale: "fr" | "en"
 ): Promise<OfflineContent | undefined> {
   const db = await getDB();
-  return db.get("offline_content", [unitId, contentType, locale]);
+  return db.get("offline_content", [moduleId, unitId, contentType, locale]);
 }
 
 export async function upsertOfflineContent(
