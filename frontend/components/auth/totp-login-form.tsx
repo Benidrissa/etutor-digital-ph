@@ -33,7 +33,7 @@ const createMagicLinkSchema = (t: (key: string) => string) => z.object({
 type LoginForm = z.infer<ReturnType<typeof createLoginSchema>>;
 type MagicLinkForm = z.infer<ReturnType<typeof createMagicLinkSchema>>;
 
-export function TOTPLoginForm() {
+export function TOTPLoginForm({ redirectTo }: { redirectTo?: string }) {
   const t = useTranslations('Auth');
   const tCommon = useTranslations('Common');
   const router = useRouter();
@@ -77,8 +77,7 @@ export function TOTPLoginForm() {
         totp_code: data.totp_code,
       });
       
-      // Login successful - redirect to dashboard
-      router.push('/dashboard');
+      router.push(redirectTo || '/dashboard');
     } catch (error) {
       console.error('Login error:', error);
       

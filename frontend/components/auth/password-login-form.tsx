@@ -25,7 +25,7 @@ const createSchema = (t: (key: string) => string) =>
 
 type FormData = z.infer<ReturnType<typeof createSchema>>;
 
-export function PasswordLoginForm() {
+export function PasswordLoginForm({ redirectTo }: { redirectTo?: string }) {
   const t = useTranslations('Auth');
   const tCommon = useTranslations('Common');
   const router = useRouter();
@@ -52,7 +52,7 @@ export function PasswordLoginForm() {
         password: data.password,
       });
 
-      router.push('/dashboard');
+      router.push(redirectTo || '/dashboard');
     } catch (error) {
       if (error instanceof AuthError) {
         if (
