@@ -147,6 +147,11 @@ export function LessonViewer({
           const lessonRes = await apiFetch<LessonData>(
             `/api/v1/content/lessons/${moduleId}/${unitId}?language=${language}&level=${level}&country=${country}`
           );
+          // Guard: re-fetch may return 202 (generating) instead of cached content
+          if ('status' in lessonRes && (lessonRes as unknown as GeneratingResponse).status === 'generating') {
+            pollStatus(taskId, startTime);
+            return;
+          }
           setLessonData(lessonRes);
           setIsGenerating(false);
           setIsLoading(false);
@@ -180,6 +185,8 @@ export function LessonViewer({
   useEffect(() => {
     if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
 
+    let cancelled = false;
+
     const load = async () => {
       try {
         setIsLoading(true);
@@ -188,6 +195,8 @@ export function LessonViewer({
         const result = await loadLesson<LessonData | GeneratingResponse>(
           moduleId, unitId, language, level, country, forceRegenerate
         );
+
+        if (cancelled) return;
 
         setContentSource(result.source);
 
@@ -214,6 +223,7 @@ export function LessonViewer({
           });
         }
       } catch (err) {
+        if (cancelled) return;
         console.error('Error loading lesson:', err);
         if (err instanceof OfflineContentNotAvailable) {
           setError(t('contentNotAvailableOffline'));
@@ -231,6 +241,8 @@ export function LessonViewer({
     };
 
     load();
+
+    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moduleId, unitId, language, level, country, forceRegenerate]);
 
@@ -352,6 +364,30 @@ export function LessonViewer({
             <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-3" />
             <div className="text-red-600 font-medium mb-2">{t('error')}</div>
             <p className="text-gray-600 mb-4">{t('noContentFallback')}</p>
+            <Button
+              variant="outline"
+              onClick={handleRetry}
+              className="min-h-11"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              {t('retry')}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Defensive guard: lessonData may have been set from a non-lesson response
+  // (e.g. a 202 generating response with no content field)
+  if (!lessonData.content) {
+    return (
+      <div className="container mx-auto max-w-4xl px-4 py-6">
+        <Card className="border-red-200">
+          <CardContent className="p-6 text-center">
+            <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-3" />
+            <div className="text-red-600 font-medium mb-2">{t('error')}</div>
+            <p className="text-gray-600 mb-4">{t('loadError')}</p>
             <Button
               variant="outline"
               onClick={handleRetry}

@@ -42,15 +42,18 @@ async function loadContent<T>(
   try {
     const data = await apiFetch<T>(apiUrl, apiOptions);
 
-    // Opportunistically cache (fire-and-forget)
-    upsertOfflineContent({
-      unitId,
-      moduleId,
-      contentType,
-      locale,
-      content: data,
-      cachedAt: Date.now(),
-    }).catch(() => {/* IndexedDB write failure is non-fatal */});
+    // Opportunistically cache actual content (fire-and-forget).
+    // Skip caching 202 "generating" responses — they have no lesson content.
+    if (!(data && typeof data === 'object' && 'status' in data && (data as Record<string, unknown>).status === 'generating')) {
+      upsertOfflineContent({
+        unitId,
+        moduleId,
+        contentType,
+        locale,
+        content: data,
+        cachedAt: Date.now(),
+      }).catch(() => {/* IndexedDB write failure is non-fatal */});
+    }
 
     return { data, source: 'api' };
   } catch (err: unknown) {
