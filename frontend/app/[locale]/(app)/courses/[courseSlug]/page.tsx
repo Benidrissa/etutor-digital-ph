@@ -145,6 +145,12 @@ export default function CourseDetailPage() {
 
   const handleEnroll = async () => {
     if (!course) return;
+    // Redirect unauthenticated users to login
+    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    if (!token) {
+      router.push(`/login?redirect=/courses/${courseSlug}`);
+      return;
+    }
     setEnrolling(true);
     try {
       await enrollInCourse(course.id);

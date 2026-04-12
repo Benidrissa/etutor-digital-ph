@@ -23,6 +23,16 @@ function isTokenExpired(token: string): boolean {
   }
 }
 
+/** Routes inside the (app) layout that should be accessible without authentication. */
+const PUBLIC_APP_PATHS = [
+  /^\/[a-z]{2}\/courses$/,
+  /^\/[a-z]{2}\/courses\/[^/]+$/,
+];
+
+function isPublicAppPath(pathname: string): boolean {
+  return PUBLIC_APP_PATHS.some((p) => p.test(pathname));
+}
+
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const locale = useLocale();
@@ -30,6 +40,12 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const [authorized, setAuthorized] = useState(false);
 
   useEffect(() => {
+    // Allow public routes through without authentication
+    if (isPublicAppPath(pathname)) {
+      startTransition(() => setAuthorized(true));
+      return;
+    }
+
     const token = getStoredToken();
     if (!token || isTokenExpired(token)) {
       localStorage.removeItem("access_token");
