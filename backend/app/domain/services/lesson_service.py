@@ -787,19 +787,39 @@ class LessonGenerationService:
             )
 
         try:
-            from app.tasks.content_generation import generate_lesson_audio
+            # Audio is shared per (module, unit, language) — skip if one already exists
+            from app.domain.models.generated_audio import GeneratedAudio
 
-            generate_lesson_audio.delay(
-                str(cached_content.id),
-                str(cached_content.module_id),
-                lesson_response.unit_id,
-                lesson_response.language,
-                lesson_text[:4000],
+            existing_audio = await session.execute(
+                select(GeneratedAudio)
+                .where(
+                    GeneratedAudio.module_id == cached_content.module_id,
+                    GeneratedAudio.unit_id == lesson_response.unit_id,
+                    GeneratedAudio.language == lesson_response.language,
+                )
+                .limit(1)
             )
-            logger.info(
-                "Dispatched audio generation task",
-                lesson_id=str(cached_content.id),
-            )
+            if existing_audio.scalar_one_or_none() is not None:
+                logger.info(
+                    "Audio already exists for (module, unit, language) — skipping dispatch",
+                    module_id=str(cached_content.module_id),
+                    unit_id=lesson_response.unit_id,
+                    language=lesson_response.language,
+                )
+            else:
+                from app.tasks.content_generation import generate_lesson_audio
+
+                generate_lesson_audio.delay(
+                    str(cached_content.id),
+                    str(cached_content.module_id),
+                    lesson_response.unit_id,
+                    lesson_response.language,
+                    lesson_text[:4000],
+                )
+                logger.info(
+                    "Dispatched audio generation task",
+                    lesson_id=str(cached_content.id),
+                )
         except Exception as exc:
             logger.warning(
                 "Failed to dispatch audio generation task",
