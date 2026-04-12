@@ -90,6 +90,7 @@ export function LessonViewer({
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollStartRef = useRef<number>(0);
   const slowWarningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasContentRef = useRef(false);
 
   const currentUser = useCurrentUser();
   const country = countryContext || currentUser?.country || 'CI';
@@ -191,9 +192,8 @@ export function LessonViewer({
       try {
         // If we already have valid content and only country changed,
         // keep showing existing content — generate country version silently.
-        const hasContent = lessonData?.content;
-
-        if (!hasContent) {
+        // Use ref (not state) to avoid stale closure issues.
+        if (!hasContentRef.current) {
           setIsLoading(true);
         }
         setError(null);
@@ -210,7 +210,7 @@ export function LessonViewer({
         const res = result.data;
         if ('status' in res && res.status === 'generating') {
           // If we already have content, keep showing it (country fallback)
-          if (hasContent) {
+          if (hasContentRef.current) {
             setIsLoading(false);
             return;
           }
@@ -224,6 +224,7 @@ export function LessonViewer({
           pollStatus((res as GeneratingResponse).task_id, pollStartRef.current);
         } else {
           const lesson = res as LessonData;
+          hasContentRef.current = true;
           setLessonData(lesson);
           setIsLoading(false);
           setIsRefreshing(false);
@@ -238,7 +239,7 @@ export function LessonViewer({
         if (cancelled) return;
         console.error('Error loading lesson:', err);
         // If we already have content, don't show error — keep displaying it
-        if (lessonData?.content) {
+        if (hasContentRef.current) {
           setIsLoading(false);
           return;
         }
