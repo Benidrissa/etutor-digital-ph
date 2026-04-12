@@ -590,8 +590,13 @@ def generate_country_content_task(
                     return {"status": "complete", "content_id": str(result_obj.id)}
 
                 elif content_type == "quiz":
+                    from app.domain.services.platform_settings_service import (
+                        PlatformSettingsService,
+                    )
                     from app.domain.services.quiz_service import QuizService
 
+                    settings_svc = PlatformSettingsService()
+                    num_questions = int(await settings_svc.get("quiz-unit-questions-count") or 10)
                     service = QuizService(ClaudeService(), retriever)
                     result_obj = await service.get_or_generate_quiz(
                         module_id=uuid.UUID(module_id),
@@ -599,6 +604,7 @@ def generate_country_content_task(
                         language=language,
                         country=country,
                         level=level,
+                        num_questions=num_questions,
                         session=session,
                     )
                     logger.info(
