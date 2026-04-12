@@ -19,35 +19,15 @@ from app.infrastructure.storage.s3 import S3StorageService
 
 logger = structlog.get_logger(__name__)
 
-# ECOWAS country codes → accent hints for TTS
-_COUNTRY_ACCENT: dict[str, str] = {
-    "SN": "Senegalese",
-    "CI": "Ivorian",
-    "GH": "Ghanaian",
-    "NG": "Nigerian",
-    "BF": "Burkinabè",
-    "ML": "Malian",
-    "GN": "Guinean",
-    "NE": "Nigerien",
-    "TG": "Togolese",
-    "BJ": "Beninese",
-    "SL": "Sierra Leonean",
-    "LR": "Liberian",
-    "GM": "Gambian",
-    "GW": "Bissau-Guinean",
-    "CV": "Cape Verdean",
-}
-
 
 def _build_tts_instructions(
     language: str,
     course_title: str | None = None,
     is_kids: bool = False,
     age_range: str = "",
-    country: str = "",
     level: int = 1,
 ) -> str:
-    """Build TTS style instructions from course/audience/country/level context."""
+    """Build TTS style instructions from course/audience/level context."""
     lang_label = "French" if language == "fr" else "English"
     domain = course_title or "general education"
 
@@ -66,11 +46,7 @@ def _build_tts_instructions(
     else:
         style = f"Speak in {lang_label} with a clear, warm, educational tone for a {domain} learning platform. {pace}"
 
-    # Country accent
-    accent = _COUNTRY_ACCENT.get(country.upper(), "West African") if country else "West African"
-    accent_hint = f"Use a {accent} {lang_label} accent and intonation."
-
-    return f"{style} {accent_hint}"
+    return style
 
 
 def _build_lesson_audio_system_prompt(
@@ -141,7 +117,7 @@ class LessonAudioService:
 
         Status transitions: pending → generating → ready | failed
         """
-        cached = await self._find_cached(lesson_id, language, session)
+        cached = await self._find_cached(module_id, unit_id, language, session)
         if cached is not None:
             logger.info("Returning cached lesson audio", lesson_id=str(lesson_id))
             return cached
@@ -167,7 +143,6 @@ class LessonAudioService:
             course_title = None
             is_kids = False
             age_range = ""
-            country = ""
             level = 1
             if module:
                 level = module.level or 1
@@ -181,9 +156,6 @@ class LessonAudioService:
                 is_kids = audience_ctx.is_kids
                 if is_kids:
                     age_range = f"{audience_ctx.age_min}-{audience_ctx.age_max}"
-
-            # Fetch country from the lesson's generated content
-            country = await self._fetch_lesson_country(lesson_id, session)
 
             script = await self._generate_script(
                 lesson_content=lesson_content,
@@ -201,11 +173,11 @@ class LessonAudioService:
                 course_title=course_title,
                 is_kids=is_kids,
                 age_range=age_range,
-                country=country,
                 level=level,
             )
 
-            storage_key = f"audio/lessons/{lesson_id}/{language}/summary.opus"
+            # Shared key: one audio per (module, unit, language)
+            storage_key = f"audio/{module_id}/{unit_id}/{language}/summary.opus"
             storage_url = await self._storage.upload_bytes(
                 key=storage_key,
                 data=audio_bytes,
@@ -244,27 +216,21 @@ class LessonAudioService:
 
     async def _find_cached(
         self,
-        lesson_id: uuid.UUID,
+        module_id: uuid.UUID,
+        unit_id: str,
         language: str,
         session: AsyncSession,
     ) -> GeneratedAudio | None:
+        """Find existing ready audio by (module, unit, language) — shared across countries."""
         result = await session.execute(
             select(GeneratedAudio).where(
-                GeneratedAudio.lesson_id == lesson_id,
+                GeneratedAudio.module_id == module_id,
+                GeneratedAudio.unit_id == unit_id,
                 GeneratedAudio.language == language,
                 GeneratedAudio.status == "ready",
             )
         )
         return result.scalar_one_or_none()
-
-    async def _fetch_lesson_country(self, lesson_id: uuid.UUID, session: AsyncSession) -> str:
-        """Get country_context from the GeneratedContent record."""
-        from app.domain.models.content import GeneratedContent
-
-        result = await session.execute(
-            select(GeneratedContent.country_context).where(GeneratedContent.id == lesson_id)
-        )
-        return result.scalar_one_or_none() or ""
 
     async def _fetch_module(self, module_id: uuid.UUID, session: AsyncSession) -> Module | None:
         result = await session.execute(
@@ -323,13 +289,12 @@ class LessonAudioService:
         course_title: str | None = None,
         is_kids: bool = False,
         age_range: str = "",
-        country: str = "",
         level: int = 1,
     ) -> bytes:
         """Call OpenAI TTS API to convert script to OGG Opus audio.
 
         Uses gpt-4o-mini-tts model with opus output format.
-        Style instructions adapt to course domain, audience, level, and country accent.
+        Style instructions adapt to course domain, audience, and level.
         """
         from openai import AsyncOpenAI
 
@@ -343,7 +308,6 @@ class LessonAudioService:
             is_kids=is_kids,
             age_range=age_range,
             level=level,
-            country=country,
         )
 
         response = await client.audio.speech.create(
@@ -362,7 +326,6 @@ class LessonAudioService:
             "OpenAI TTS audio generated for lesson",
             language=language,
             voice=voice,
-            country=country,
             audio_size_bytes=len(audio_bytes),
         )
         return audio_bytes

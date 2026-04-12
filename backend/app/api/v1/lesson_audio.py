@@ -62,18 +62,10 @@ async def get_lesson_audio(
     lesson_id: UUID,
     db: AsyncSession = Depends(get_db_session),
 ) -> LessonAudioListResponse:
-    """Return audio for a lesson, falling back to same lesson/language from another country."""
-    # 1. Try exact match by lesson_id
-    result = await db.execute(select(GeneratedAudio).where(GeneratedAudio.lesson_id == lesson_id))
-    db_audio = result.scalars().all()
-
-    if db_audio:
-        return _build_response(lesson_id, db_audio, fallback=False)
-
-    # 2. Fallback: find ready audio for same (module_id, unit_id, language)
-    #    from a different country's lesson
+    """Return audio for a lesson by (module_id, unit_id, language) — shared across countries."""
     from app.domain.models.content import GeneratedContent
 
+    # Look up lesson metadata to get module_id, unit_id, language
     lesson_row = await db.execute(
         select(
             GeneratedContent.module_id,
@@ -83,40 +75,37 @@ async def get_lesson_audio(
     )
     lesson_meta = lesson_row.first()
 
-    if lesson_meta:
-        fallback_result = await db.execute(
-            select(GeneratedAudio)
-            .where(
-                GeneratedAudio.module_id == lesson_meta.module_id,
-                GeneratedAudio.unit_id == lesson_meta.unit_id,
-                GeneratedAudio.language == lesson_meta.language,
-                GeneratedAudio.status == "ready",
-            )
-            .limit(1)
+    if not lesson_meta:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "lesson_not_found", "message": f"Lesson {lesson_id} not found"},
         )
-        fallback_audio = fallback_result.scalars().all()
 
-        if fallback_audio:
-            logger.info(
-                "Serving cross-country audio fallback",
-                lesson_id=str(lesson_id),
-                fallback_audio_id=str(fallback_audio[0].id),
-            )
-            return _build_response(lesson_id, fallback_audio, fallback=True)
-
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail={
-            "error": "lesson_audio_not_found",
-            "message": f"No audio found for lesson {lesson_id}",
-        },
+    # Query audio by (module_id, unit_id, language) — shared across all countries
+    result = await db.execute(
+        select(GeneratedAudio).where(
+            GeneratedAudio.module_id == lesson_meta.module_id,
+            GeneratedAudio.unit_id == lesson_meta.unit_id,
+            GeneratedAudio.language == lesson_meta.language,
+        )
     )
+    db_audio = result.scalars().all()
+
+    if not db_audio:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": "lesson_audio_not_found",
+                "message": f"No audio for lesson {lesson_id}",
+            },
+        )
+
+    return _build_response(lesson_id, db_audio)
 
 
 def _build_response(
     lesson_id: UUID,
     db_audio: list[GeneratedAudio],
-    fallback: bool = False,
 ) -> LessonAudioListResponse:
     audio_responses = []
     for aud in db_audio:
@@ -136,14 +125,12 @@ def _build_response(
         "Lesson audio fetched",
         lesson_id=str(lesson_id),
         count=len(audio_responses),
-        fallback=fallback,
     )
 
     return LessonAudioListResponse(
         lesson_id=lesson_id,
         audio=audio_responses,
         total=len(audio_responses),
-        fallback=fallback,
     )
 
 

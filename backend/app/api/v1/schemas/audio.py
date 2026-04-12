@@ -28,7 +28,6 @@ class LessonAudioListResponse(BaseModel):
     lesson_id: UUID = Field(..., description="Lesson ID")
     audio: list[LessonAudioResponse] = Field(..., description="Audio files for the lesson")
     total: int = Field(..., description="Total number of audio files")
-    fallback: bool = Field(False, description="True if audio is from a different country context")
 
 
 class AudioStatusResponse(BaseModel):
