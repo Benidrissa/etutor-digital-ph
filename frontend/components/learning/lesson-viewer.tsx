@@ -189,8 +189,15 @@ export function LessonViewer({
 
     const load = async () => {
       try {
-        setIsLoading(true);
+        // If we already have valid content and only country changed,
+        // keep showing existing content — generate country version silently.
+        const hasContent = lessonData?.content;
+
+        if (!hasContent) {
+          setIsLoading(true);
+        }
         setError(null);
+        setErrorType(null);
 
         const result = await loadLesson<LessonData | GeneratingResponse>(
           moduleId, unitId, language, level, country, forceRegenerate
@@ -202,6 +209,11 @@ export function LessonViewer({
 
         const res = result.data;
         if ('status' in res && res.status === 'generating') {
+          // If we already have content, keep showing it (country fallback)
+          if (hasContent) {
+            setIsLoading(false);
+            return;
+          }
           setIsLoading(false);
           setIsGenerating(true);
           setIsSlowGeneration(false);
@@ -225,6 +237,11 @@ export function LessonViewer({
       } catch (err) {
         if (cancelled) return;
         console.error('Error loading lesson:', err);
+        // If we already have content, don't show error — keep displaying it
+        if (lessonData?.content) {
+          setIsLoading(false);
+          return;
+        }
         if (err instanceof OfflineContentNotAvailable) {
           setError(t('contentNotAvailableOffline'));
           setErrorType('load');
