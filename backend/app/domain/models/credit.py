@@ -42,6 +42,9 @@ class TransactionType(enum.StrEnum):
     payout = "payout"
     refund = "refund"
     free_trial = "free_trial"
+    org_code_escrow = "org_code_escrow"
+    org_code_refund = "org_code_refund"
+    org_credit_purchase = "org_credit_purchase"
 
 
 class CreditAccount(Base):
