@@ -8,6 +8,7 @@ Create Date: 2026-04-05
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
 revision = "030"
@@ -17,16 +18,11 @@ depends_on = None
 
 
 def upgrade() -> None:
-    source_image_type_enum = sa.Enum(
-        "diagram",
-        "photo",
-        "chart",
-        "formula",
-        "icon",
-        "unknown",
-        name="source_image_type_enum",
+    op.execute(
+        "DO $$ BEGIN CREATE TYPE source_image_type_enum AS ENUM "
+        "('diagram', 'photo', 'chart', 'formula', 'icon', 'unknown'); "
+        "EXCEPTION WHEN duplicate_object THEN NULL; END $$;"
     )
-    source_image_type_enum.create(op.get_bind())
 
     op.create_table(
         "source_images",
@@ -38,7 +34,7 @@ def upgrade() -> None:
         sa.Column("attribution", sa.Text(), nullable=True),
         sa.Column(
             "image_type",
-            sa.Enum(
+            postgresql.ENUM(
                 "diagram",
                 "photo",
                 "chart",
