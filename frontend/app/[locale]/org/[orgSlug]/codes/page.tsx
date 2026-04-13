@@ -23,6 +23,7 @@ export default function OrgCodesPage() {
   const [formMaxUses, setFormMaxUses] = useState<number | undefined>();
   const [generating, setGenerating] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!orgId) return;
@@ -32,10 +33,15 @@ export default function OrgCodesPage() {
 
   const handleGenerate = async () => {
     if (!orgId) return;
+    if (!formCurriculumId) {
+      setError(t("selectCurriculum"));
+      return;
+    }
     setGenerating(true);
+    setError("");
     try {
       const newCodes = await generateOrgCodes(orgId, {
-        curriculum_id: formCurriculumId || undefined,
+        curriculum_id: formCurriculumId,
         count: formCount,
         max_uses: formMaxUses,
       });
@@ -45,7 +51,7 @@ export default function OrgCodesPage() {
       setFormCount(1);
       setFormMaxUses(undefined);
     } catch (err) {
-      console.error(err);
+      setError(err instanceof Error ? err.message : "Failed to generate codes");
     } finally {
       setGenerating(false);
     }
@@ -133,9 +139,14 @@ export default function OrgCodesPage() {
               />
             </div>
           </div>
+          {error && (
+            <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+              {error}
+            </div>
+          )}
           <button
             onClick={handleGenerate}
-            disabled={generating}
+            disabled={generating || !formCurriculumId}
             className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
           >
             {generating ? "..." : t("generateCodes")}
