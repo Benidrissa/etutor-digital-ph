@@ -83,6 +83,7 @@ export default async function LessonPage({ params }: LessonPageProps) {
           unitId={unitId}
           language={language}
           level={moduleLevel}
+          estimatedMinutes={unit?.estimated_minutes}
         />
       </div>
     </EnrollmentGuard>

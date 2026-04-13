@@ -56,7 +56,7 @@ export const CURRICULUM_MODULES: Module[] = [
     level: 1,
     status: 'in-progress',
     completionPercentage: 75,
-    estimatedHours: 20,
+    estimatedHours: 3,
     prerequisites: [],
     learningObjectives: {
       en: [
@@ -162,7 +162,7 @@ export const CURRICULUM_MODULES: Module[] = [
     level: 1,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 20,
+    estimatedHours: 3,
     prerequisites: ['M01']
   },
   {
@@ -175,7 +175,7 @@ export const CURRICULUM_MODULES: Module[] = [
     level: 1,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 20,
+    estimatedHours: 3,
     prerequisites: ['M01']
   },
   // Level 2 (Intermediate, 90h)
@@ -189,7 +189,7 @@ export const CURRICULUM_MODULES: Module[] = [
     level: 2,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 25,
+    estimatedHours: 4,
     prerequisites: ['M01', 'M02']
   },
   {
@@ -202,7 +202,7 @@ export const CURRICULUM_MODULES: Module[] = [
     level: 2,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 20,
+    estimatedHours: 4,
     prerequisites: ['M04']
   },
   {
@@ -215,7 +215,7 @@ export const CURRICULUM_MODULES: Module[] = [
     level: 2,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 25,
+    estimatedHours: 3,
     prerequisites: ['M02', 'M03']
   },
   {
@@ -228,7 +228,7 @@ export const CURRICULUM_MODULES: Module[] = [
     level: 2,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 20,
+    estimatedHours: 3,
     prerequisites: ['M02']
   },
   // Level 3 (Advanced, 100h)
@@ -242,7 +242,7 @@ export const CURRICULUM_MODULES: Module[] = [
     level: 3,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 25,
+    estimatedHours: 4,
     prerequisites: ['M07']
   },
   {
@@ -255,7 +255,7 @@ export const CURRICULUM_MODULES: Module[] = [
     level: 3,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 25,
+    estimatedHours: 4,
     prerequisites: ['M04', 'M05', 'M07']
   },
   {
@@ -268,7 +268,7 @@ export const CURRICULUM_MODULES: Module[] = [
     level: 3,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 20,
+    estimatedHours: 3,
     prerequisites: ['M05', 'M06']
   },
   {
@@ -281,7 +281,7 @@ export const CURRICULUM_MODULES: Module[] = [
     level: 3,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 15,
+    estimatedHours: 3,
     prerequisites: ['M06', 'M07']
   },
   {
@@ -294,7 +294,7 @@ export const CURRICULUM_MODULES: Module[] = [
     level: 3,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 15,
+    estimatedHours: 3,
     prerequisites: ['M10']
   },
   // Level 4 (Expert, 70h)
@@ -308,7 +308,7 @@ export const CURRICULUM_MODULES: Module[] = [
     level: 4,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 25,
+    estimatedHours: 4,
     prerequisites: ['M10', 'M12']
   },
   {
@@ -321,7 +321,7 @@ export const CURRICULUM_MODULES: Module[] = [
     level: 4,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 25,
+    estimatedHours: 4,
     prerequisites: ['M13']
   },
   {
@@ -334,7 +334,7 @@ export const CURRICULUM_MODULES: Module[] = [
     level: 4,
     status: 'locked',
     completionPercentage: 0,
-    estimatedHours: 20,
+    estimatedHours: 5,
     prerequisites: ['M08', 'M09', 'M11', 'M14']
   }
 ];
