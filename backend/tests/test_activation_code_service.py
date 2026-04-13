@@ -61,6 +61,8 @@ def _make_activation_code(
         id=uuid.uuid4(),
         code=code,
         course_id=course_id,
+        curriculum_id=None,
+        organization_id=None,
         created_by=created_by,
         max_uses=max_uses,
         times_used=times_used,
@@ -321,9 +323,13 @@ class TestRedeemCode:
         def side_effect(*args, **kwargs):
             nonlocal call_count
             call_count += 1
+            # 1: select ActivationCode (with_for_update)
+            # 2: select ActivationCodeRedemption (dup check)
+            # 3: select UserCourseEnrollment (existing enrollment check)
+            # 4: select Course (revenue)
             if call_count == 1:
                 return _scalar_result(ac)
-            elif call_count == 2 or call_count == 3:
+            elif call_count in (2, 3):
                 return _scalar_result(None)
             elif call_count == 4:
                 return _scalar_result(course)
@@ -338,7 +344,8 @@ class TestRedeemCode:
             result = await service.redeem_code(db, ac.code, user_id)
 
         assert ac.times_used == 1
-        assert result is enrollment
+        assert isinstance(result, list)
+        assert enrollment in result
 
     @pytest.mark.asyncio
     async def test_deactivates_code_when_max_uses_reached(self, service):
