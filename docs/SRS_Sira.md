@@ -993,6 +993,37 @@ user_course_enrollment {
 }
 ```
 
+### Tables B2B2C — Organisations (Phase 3)
+
+```
+organizations {
+  id UUID PK
+  name VARCHAR(255)
+  slug VARCHAR(255) UNIQUE
+  description TEXT
+  logo_url VARCHAR
+  contact_email VARCHAR
+  credit_account_id UUID FK → credit_accounts
+  user_group_id UUID FK → user_groups
+  is_active BOOLEAN DEFAULT true
+  created_at TIMESTAMPTZ
+  updated_at TIMESTAMPTZ
+}
+
+organization_members {
+  organization_id UUID FK → organizations PK
+  user_id UUID FK → users PK
+  role orgmemberrole (owner|admin|viewer)
+  invited_by UUID FK → users
+  joined_at TIMESTAMPTZ
+}
+```
+
+Extensions aux tables existantes :
+- `credit_accounts` : ajout `organization_id` (nullable FK → organizations), contrainte XOR `user_id`/`organization_id`
+- `activation_codes` : ajout `organization_id` (nullable FK), `curriculum_id` (nullable FK), `course_id` devient nullable
+- `curricula` : ajout `organization_id` (nullable FK) pour curricula org-scoped
+
 ---
 
 ## 10. APIs & Intégrations Externes
@@ -1074,8 +1105,9 @@ user_course_enrollment {
 | **Phase 0** — Setup & Infrastructure | ✅ Complété | Repo GitHub, CI/CD, environnements, DB schema, pipeline RAG |
 | **Phase 1** — MVP | ✅ Complété | Auth TOTP MFA, Dashboard, Système multi-cours, Leçons/Quiz/Flashcards/Cas pratiques, Tuteur IA |
 | **Phase 2** — Marketplace & Billing | ✅ Complété | Système de crédits, Marketplace expert, Subscriptions SMS, Curricula, Taxonomie admin, Groupes utilisateurs, Audio TTS, Offline PWA + background sync |
-| **Phase 3** — Enrichissement | En cours | Intégration DHIS2/DHS données réelles, Sandbox Python (Pyodide), Certifications PDF |
-| **Phase 4** — Scale | Planifié | App native React Native, LMS SCORM, API ouverte, multilangue (Wolof/Haoussa), Vidéo/cours en direct |
+| **Phase 3** — Organisations & B2B2C | ✅ Complété | Modèle Organisation (CRUD, membres, crédits), Curricula org, Codes d'activation org (escrow/remboursement), Dashboard reporting org, Inscription curriculum multi-cours, Export CSV |
+| **Phase 4** — Enrichissement | En cours | Intégration DHIS2/DHS données réelles, Sandbox Python (Pyodide), Certifications PDF |
+| **Phase 5** — Scale | Planifié | App native React Native, LMS SCORM, API ouverte, multilangue (Wolof/Haoussa), Vidéo/cours en direct |
 
 ### Équipe recommandée
 
