@@ -69,25 +69,25 @@ class OrganizationService:
         # Add creator to the group
         db.add(UserGroupMember(group_id=group.id, user_id=creator_id))
 
-        # Auto-create CreditAccount
-        credit_account = CreditAccount(organization_id=None)  # set after org creation
-        db.add(credit_account)
-        await db.flush()
-
+        # Create org first (without credit account)
         org = Organization(
             name=name,
             slug=final_slug,
             description=description,
             contact_email=contact_email,
             logo_url=logo_url,
-            credit_account_id=credit_account.id,
             user_group_id=group.id,
         )
         db.add(org)
         await db.flush()
 
-        # Back-link credit account to org
-        credit_account.organization_id = org.id
+        # Now create CreditAccount with org_id set (satisfies XOR constraint)
+        credit_account = CreditAccount(organization_id=org.id)
+        db.add(credit_account)
+        await db.flush()
+
+        # Link credit account back to org
+        org.credit_account_id = credit_account.id
 
         # Add creator as owner
         db.add(
