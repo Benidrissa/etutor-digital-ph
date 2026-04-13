@@ -15,10 +15,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_index(
-        "ix_generated_images_lesson_id",
-        "generated_images",
-        ["lesson_id"],
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_generated_images_lesson_id ON generated_images (lesson_id)"
     )
 
 

@@ -207,9 +207,11 @@ jobs:
             # Restart services
             docker compose up -d
 
-            # Run database migrations then restart backend to pick up schema changes
+            # Run database migrations — fail deploy if migrations fail
             sleep 10
-            docker compose exec -T -e PYTHONPATH=/app backend uv run alembic upgrade head || echo "Migration warning (may already be applied)"
+            echo "Running database migrations..."
+            docker compose exec -T -e PYTHONPATH=/app backend uv run alembic upgrade head
+            echo "Migrations completed successfully."
             docker compose up -d --force-recreate backend
             sleep 15
 
