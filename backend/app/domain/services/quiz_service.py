@@ -272,9 +272,7 @@ class QuizService:
             # Detect audience and override config for kids courses
             audience_ctx = detect_audience(course)
             if audience_ctx.is_kids and unit_id != "summative":
-                num_questions = SettingsCache.instance().get(
-                    "quiz-kids-unit-questions-count", 5
-                )
+                num_questions = SettingsCache.instance().get("quiz-kids-unit-questions-count", 5)
 
             if module:
                 if unit_id == "summative":
@@ -496,9 +494,7 @@ class QuizService:
                 f"- CRITICAL: All questions must be age-appropriate for children aged "
                 f"{age_range}. Use simple vocabulary and concepts from the lesson content only."
             )
-            effective_passing = SettingsCache.instance().get(
-                "quiz-kids-passing-score", 60.0
-            )
+            effective_passing = SettingsCache.instance().get("quiz-kids-passing-score", 60.0)
         else:
             audience = (
                 f"professionals in {domain} in {country}"
@@ -521,9 +517,7 @@ class QuizService:
                 else "Generate the quiz now, ensuring all questions are relevant to public health practice in West Africa."
             )
             difficulty_instruction = ""
-            effective_passing = SettingsCache.instance().get(
-                "quiz-passing-score", 80.0
-            )
+            effective_passing = SettingsCache.instance().get("quiz-passing-score", 80.0)
 
         if unit_title is not None:
             topic_constraint = (
@@ -597,7 +591,10 @@ RESPONSE FORMAT (JSON):
         return system_prompt, user_message
 
     def _validate_and_normalize_quiz(
-        self, quiz_data: dict, unit_id: str, expected_questions: int,
+        self,
+        quiz_data: dict,
+        unit_id: str,
+        expected_questions: int,
         is_kids: bool = False,
     ) -> dict:
         """
