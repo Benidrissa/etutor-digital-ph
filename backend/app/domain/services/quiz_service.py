@@ -268,25 +268,32 @@ class QuizService:
                 module = module_result.scalar_one_or_none()
                 if module:
                     course = module.course
-                    if unit_id == "summative":
-                        all_units_result = await session.execute(
-                            select(ModuleUnit)
-                            .where(ModuleUnit.module_id == module.id)
-                            .order_by(ModuleUnit.order_index)
-                        )
-                        all_units = list(all_units_result.scalars().all())
-                    else:
-                        unit_number = self._unit_id_to_unit_number(unit_id, module.module_number)
-                        if unit_number:
-                            unit_result = await session.execute(
-                                select(ModuleUnit).where(
-                                    and_(
-                                        ModuleUnit.module_id == module.id,
-                                        ModuleUnit.unit_number == unit_number,
-                                    )
+
+            # Detect audience and override config for kids courses
+            audience_ctx = detect_audience(course)
+            if audience_ctx.is_kids and unit_id != "summative":
+                num_questions = SettingsCache.instance().get("quiz-kids-unit-questions-count", 5)
+
+            if module:
+                if unit_id == "summative":
+                    all_units_result = await session.execute(
+                        select(ModuleUnit)
+                        .where(ModuleUnit.module_id == module.id)
+                        .order_by(ModuleUnit.order_index)
+                    )
+                    all_units = list(all_units_result.scalars().all())
+                else:
+                    unit_number = self._unit_id_to_unit_number(unit_id, module.module_number)
+                    if unit_number:
+                        unit_result = await session.execute(
+                            select(ModuleUnit).where(
+                                and_(
+                                    ModuleUnit.module_id == module.id,
+                                    ModuleUnit.unit_number == unit_number,
                                 )
                             )
-                            unit_obj = unit_result.scalar_one_or_none()
+                        )
+                        unit_obj = unit_result.scalar_one_or_none()
 
             search_query = self._build_quiz_search_query(
                 module, unit_id, language, unit=unit_obj, all_units=all_units
@@ -355,7 +362,9 @@ class QuizService:
             )
 
             # Validate and normalize the parsed dict from Claude
-            quiz_data = self._validate_and_normalize_quiz(response, unit_id, num_questions)
+            quiz_data = self._validate_and_normalize_quiz(
+                response, unit_id, num_questions, is_kids=audience_ctx.is_kids
+            )
 
             return QuizContent(**quiz_data)
 
@@ -480,6 +489,12 @@ class QuizService:
                 f"Generate the quiz now. Make it fun and encouraging for children aged {age_range} "
                 f"learning {domain} in West Africa."
             )
+            difficulty_instruction = (
+                f"- Difficulty distribution: exactly 3 easy, 1 medium, 1 hard question\n"
+                f"- CRITICAL: All questions must be age-appropriate for children aged "
+                f"{age_range}. Use simple vocabulary and concepts from the lesson content only."
+            )
+            effective_passing = SettingsCache.instance().get("quiz-kids-passing-score", 60.0)
         else:
             audience = (
                 f"professionals in {domain} in {country}"
@@ -501,6 +516,8 @@ class QuizService:
                 if course_title
                 else "Generate the quiz now, ensuring all questions are relevant to public health practice in West Africa."
             )
+            difficulty_instruction = ""
+            effective_passing = SettingsCache.instance().get("quiz-passing-score", 80.0)
 
         if unit_title is not None:
             topic_constraint = (
@@ -531,6 +548,7 @@ QUIZ REQUIREMENTS:
 - Number of questions: {num_questions}
 - Format: Multiple choice with exactly 4 options each
 - Include explanations and source citations
+{difficulty_instruction}
 {("- " + topic_constraint) if topic_constraint else ""}
 
 INSTRUCTIONS:
@@ -564,7 +582,7 @@ RESPONSE FORMAT (JSON):
     }}
   ],
   "time_limit_minutes": {max(SettingsCache.instance().get("quiz-time-limit-min-minutes", 10), num_questions * SettingsCache.instance().get("quiz-time-limit-per-question-minutes", 1.5))},
-  "passing_score": {SettingsCache.instance().get("quiz-passing-score", 80.0)},
+  "passing_score": {effective_passing},
   "__complete": true
 }}
 
@@ -573,7 +591,11 @@ RESPONSE FORMAT (JSON):
         return system_prompt, user_message
 
     def _validate_and_normalize_quiz(
-        self, quiz_data: dict, unit_id: str, expected_questions: int
+        self,
+        quiz_data: dict,
+        unit_id: str,
+        expected_questions: int,
+        is_kids: bool = False,
     ) -> dict:
         """
         Validate and normalize parsed quiz data from Claude API.
@@ -619,7 +641,10 @@ RESPONSE FORMAT (JSON):
             for i, question in enumerate(questions):
                 self._validate_question(question, f"question {i + 1}")
 
-            _passing = SettingsCache.instance().get("quiz-passing-score", 80.0)
+            if is_kids:
+                _passing = SettingsCache.instance().get("quiz-kids-passing-score", 60.0)
+            else:
+                _passing = SettingsCache.instance().get("quiz-passing-score", 80.0)
             quiz_data.setdefault(
                 "time_limit_minutes",
                 max(
