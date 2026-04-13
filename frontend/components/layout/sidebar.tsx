@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Menu,
   LogOut,
+  Building2,
   ShieldCheck,
   Wallet,
 } from "lucide-react";
@@ -124,6 +125,12 @@ export function Sidebar() {
       label: t("subscribe"),
       icon: Wallet,
       description: t("subscribeDescription")
+    },
+    {
+      href: `/${locale}/organizations`,
+      label: t("organizations"),
+      icon: Building2,
+      description: t("organizationsDescription")
     },
     ...(userRole === "admin" || userRole === "expert"
       ? [

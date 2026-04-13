@@ -44,7 +44,9 @@
     "adminDescription": "Accéder au panneau d'administration",
     "more": "Plus",
     "moreMenuLabel": "Plus d'options de navigation",
-    "closeMoreMenu": "Fermer le menu Plus"
+    "closeMoreMenu": "Fermer le menu Plus",
+    "organizations": "Organisations",
+    "organizationsDescription": "Gérer vos organisations"
   },
   "Auth": {
     "login": "Se connecter",
