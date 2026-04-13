@@ -22,7 +22,10 @@ def upgrade() -> None:
     if "role" in columns:
         return
 
-    op.execute("CREATE TYPE IF NOT EXISTS userrole AS ENUM ('user', 'expert', 'admin')")
+    op.execute(
+        "DO $$ BEGIN CREATE TYPE userrole AS ENUM ('user', 'expert', 'admin'); "
+        "EXCEPTION WHEN duplicate_object THEN NULL; END $$;"
+    )
     op.add_column(
         "users",
         sa.Column(
