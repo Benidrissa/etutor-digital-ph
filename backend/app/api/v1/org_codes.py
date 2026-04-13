@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db_session
 from app.api.deps_local_auth import AuthenticatedUser, get_current_user
-from app.core.config import settings
+from app.infrastructure.config.settings import settings
 from app.domain.services.activation_code_service import ActivationCodeService
 from app.domain.services.organization_service import OrganizationService
 
