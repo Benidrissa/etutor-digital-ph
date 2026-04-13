@@ -17,6 +17,7 @@ from app.domain.models.lesson_reading import LessonReading
 from app.domain.models.module import Module
 from app.domain.models.module_media import MediaStatus, MediaType, ModuleMedia
 from app.domain.models.module_unit import ModuleUnit
+from app.domain.models.organization import Organization, OrganizationMember, OrgMemberRole
 from app.domain.models.preassessment import CoursePreAssessment
 from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import PlacementTestAttempt, QuizAttempt, SummativeAssessmentAttempt
@@ -64,6 +65,9 @@ __all__ = [
     "Module",
     "ModuleMedia",
     "ModuleUnit",
+    "OrgMemberRole",
+    "Organization",
+    "OrganizationMember",
     "PlacementTestAttempt",
     "QuizAttempt",
     "RefreshToken",
