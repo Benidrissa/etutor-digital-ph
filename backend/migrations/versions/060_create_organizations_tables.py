@@ -93,8 +93,13 @@ def upgrade() -> None:
     op.create_index("ix_org_members_user_id", "organization_members", ["user_id"])
 
     # --- Extend credit_accounts: add organization_id, make user_id nullable ---
-    # Drop the existing unique constraint on user_id
-    op.drop_constraint("credit_accounts_user_id_key", "credit_accounts", type_="unique")
+    # Drop the existing unique constraint on user_id (name may vary)
+    op.execute(
+        "DO $$ BEGIN "
+        "ALTER TABLE credit_accounts DROP CONSTRAINT IF EXISTS credit_accounts_user_id_key; "
+        "ALTER TABLE credit_accounts DROP CONSTRAINT IF EXISTS uq_credit_accounts_user_id; "
+        "EXCEPTION WHEN undefined_object THEN NULL; END $$"
+    )
 
     # Make user_id nullable
     op.alter_column("credit_accounts", "user_id", existing_type=sa.Uuid(), nullable=True)
