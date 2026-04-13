@@ -791,7 +791,7 @@ class LessonGenerationService:
             from app.domain.models.generated_audio import GeneratedAudio
 
             existing_audio = await session.execute(
-                select(GeneratedAudio)
+                select(GeneratedAudio.id)
                 .where(
                     GeneratedAudio.module_id == cached_content.module_id,
                     GeneratedAudio.unit_id == lesson_response.unit_id,
@@ -799,7 +799,7 @@ class LessonGenerationService:
                 )
                 .limit(1)
             )
-            if existing_audio.scalar_one_or_none() is not None:
+            if existing_audio.scalars().first() is not None:
                 logger.info(
                     "Audio already exists for (module, unit, language) — skipping dispatch",
                     module_id=str(cached_content.module_id),

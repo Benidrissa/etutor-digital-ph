@@ -22,6 +22,10 @@ class GeneratedAudio(Base):
     __table_args__ = (
         Index("ix_generated_audio_lesson_id", "lesson_id"),
         Index("ix_generated_audio_status", "status"),
+        sa.UniqueConstraint(
+            "module_id", "unit_id", "language",
+            name="uq_generated_audio_module_unit_lang",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)

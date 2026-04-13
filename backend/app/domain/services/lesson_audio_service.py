@@ -131,7 +131,16 @@ class LessonAudioService:
             status="pending",
         )
         session.add(record)
-        await session.flush()
+        try:
+            await session.flush()
+        except Exception:
+            # Unique constraint violation — another worker already inserted
+            await session.rollback()
+            cached = await self._find_cached(module_id, unit_id, language, session)
+            if cached is not None:
+                logger.info("Audio race condition resolved, returning existing", lesson_id=str(lesson_id))
+                return cached
+            raise
 
         try:
             record.status = "generating"
@@ -223,14 +232,17 @@ class LessonAudioService:
     ) -> GeneratedAudio | None:
         """Find existing ready audio by (module, unit, language) — shared across countries."""
         result = await session.execute(
-            select(GeneratedAudio).where(
+            select(GeneratedAudio)
+            .where(
                 GeneratedAudio.module_id == module_id,
                 GeneratedAudio.unit_id == unit_id,
                 GeneratedAudio.language == language,
                 GeneratedAudio.status == "ready",
             )
+            .order_by(GeneratedAudio.created_at.desc())
+            .limit(1)
         )
-        return result.scalar_one_or_none()
+        return result.scalars().first()
 
     async def _fetch_module(self, module_id: uuid.UUID, session: AsyncSession) -> Module | None:
         result = await session.execute(
