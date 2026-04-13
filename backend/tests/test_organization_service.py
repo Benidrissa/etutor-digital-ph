@@ -1,6 +1,10 @@
 """Tests for OrganizationService — import and instantiation."""
 
-from app.domain.models.organization import Organization, OrganizationMember, OrgMemberRole
+from app.domain.models.organization import (
+    Organization,
+    OrganizationMember,
+    OrgMemberRole,
+)
 from app.domain.services.organization_service import OrganizationService
 
 
