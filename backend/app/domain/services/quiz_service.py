@@ -278,24 +278,24 @@ class QuizService:
 
             if module:
                 if unit_id == "summative":
-                        all_units_result = await session.execute(
-                            select(ModuleUnit)
-                            .where(ModuleUnit.module_id == module.id)
-                            .order_by(ModuleUnit.order_index)
-                        )
-                        all_units = list(all_units_result.scalars().all())
-                    else:
-                        unit_number = self._unit_id_to_unit_number(unit_id, module.module_number)
-                        if unit_number:
-                            unit_result = await session.execute(
-                                select(ModuleUnit).where(
-                                    and_(
-                                        ModuleUnit.module_id == module.id,
-                                        ModuleUnit.unit_number == unit_number,
-                                    )
+                    all_units_result = await session.execute(
+                        select(ModuleUnit)
+                        .where(ModuleUnit.module_id == module.id)
+                        .order_by(ModuleUnit.order_index)
+                    )
+                    all_units = list(all_units_result.scalars().all())
+                else:
+                    unit_number = self._unit_id_to_unit_number(unit_id, module.module_number)
+                    if unit_number:
+                        unit_result = await session.execute(
+                            select(ModuleUnit).where(
+                                and_(
+                                    ModuleUnit.module_id == module.id,
+                                    ModuleUnit.unit_number == unit_number,
                                 )
                             )
-                            unit_obj = unit_result.scalar_one_or_none()
+                        )
+                        unit_obj = unit_result.scalar_one_or_none()
 
             search_query = self._build_quiz_search_query(
                 module, unit_id, language, unit=unit_obj, all_units=all_units
