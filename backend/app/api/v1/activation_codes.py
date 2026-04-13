@@ -78,14 +78,31 @@ class ActivationCodeResponse(BaseModel):
     created_at: str
 
 
+class CurriculumCoursePreview(BaseModel):
+    id: str
+    title_fr: str
+    title_en: str
+    cover_image_url: str | None = None
+
+
 class CodePreviewResponse(BaseModel):
-    course_title_fr: str
-    course_title_en: str
-    course_description_fr: str | None
-    course_description_en: str | None
-    cover_image_url: str | None
-    expert_name: str
     valid: bool
+    type: str = "course"
+    # Course fields (single-course codes)
+    course_title_fr: str = ""
+    course_title_en: str = ""
+    course_description_fr: str | None = None
+    course_description_en: str | None = None
+    cover_image_url: str | None = None
+    expert_name: str = ""
+    # Curriculum fields (curriculum codes)
+    curriculum_title_fr: str | None = None
+    curriculum_title_en: str | None = None
+    curriculum_description_fr: str | None = None
+    curriculum_description_en: str | None = None
+    organization_name: str | None = None
+    organization_logo_url: str | None = None
+    courses: list[CurriculumCoursePreview] = []
 
 
 class ManualActivateRequest(BaseModel):
@@ -287,24 +304,33 @@ async def preview_code(
     info = await _service.preview_code(db=db, code_str=code)
 
     if not info.get("valid"):
+        return CodePreviewResponse(valid=False)
+
+    preview_type = info.get("type", "course")
+
+    if preview_type == "curriculum":
         return CodePreviewResponse(
-            course_title_fr="",
-            course_title_en="",
-            course_description_fr=None,
-            course_description_en=None,
-            cover_image_url=None,
-            expert_name="",
-            valid=False,
+            valid=True,
+            type="curriculum",
+            curriculum_title_fr=info.get("curriculum_title_fr"),
+            curriculum_title_en=info.get("curriculum_title_en"),
+            curriculum_description_fr=info.get("curriculum_description_fr"),
+            curriculum_description_en=info.get("curriculum_description_en"),
+            cover_image_url=info.get("cover_image_url"),
+            organization_name=info.get("organization_name"),
+            organization_logo_url=info.get("organization_logo_url"),
+            courses=[CurriculumCoursePreview(**c) for c in info.get("courses", [])],
         )
 
     return CodePreviewResponse(
+        valid=True,
+        type="course",
         course_title_fr=info.get("title_fr") or "",
         course_title_en=info.get("title_en") or "",
         course_description_fr=info.get("description_fr"),
         course_description_en=info.get("description_en"),
         cover_image_url=info.get("cover_image_url"),
         expert_name=info.get("expert_name") or "",
-        valid=True,
     )
 
 
@@ -318,16 +344,21 @@ async def redeem_code(
     """Redeem an activation code to enroll in a course. Authenticated, rate-limited 5/min/IP."""
     _check_activation_rate_limit(request)
 
-    enrollment = await _service.redeem_code(
+    enrollments = await _service.redeem_code(
         db=db,
         code_str=code,
         user_id=uuid.UUID(current_user.id),
         method="code",
     )
+    course_ids = [str(e.course_id) for e in enrollments]
     logger.info(
         "Activation code redeemed",
         code=code,
         user_id=current_user.id,
-        course_id=str(enrollment.course_id),
+        courses=len(enrollments),
     )
-    return {"status": "enrolled", "course_id": str(enrollment.course_id)}
+    return {
+        "status": "enrolled",
+        "course_id": course_ids[0] if len(course_ids) == 1 else None,
+        "course_ids": course_ids,
+    }
