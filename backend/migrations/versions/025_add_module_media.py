@@ -46,7 +46,7 @@ def upgrade() -> None:
         ),
         sa.Column(
             "media_type",
-            sa.Enum("audio_summary", "video_summary", "podcast_summary", name="mediatype"),
+            postgresql.ENUM("audio_summary", "video_summary", "podcast_summary", name="mediatype", create_type=False),
             nullable=False,
         ),
         sa.Column("language", sa.String(2), nullable=False),
@@ -56,7 +56,7 @@ def upgrade() -> None:
         sa.Column("file_size_bytes", sa.Integer(), nullable=True),
         sa.Column(
             "status",
-            sa.Enum("pending", "generating", "ready", "failed", name="mediastatus"),
+            postgresql.ENUM("pending", "generating", "ready", "failed", name="mediastatus", create_type=False),
             nullable=False,
             server_default="pending",
         ),

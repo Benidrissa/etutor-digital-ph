@@ -133,20 +133,28 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Recreate enum types
+    # Recreate enum types (idempotent)
     op.execute(
+        "DO $$ BEGIN "
         "CREATE TYPE coursedomain AS ENUM ("
         "'health_sciences','natural_sciences','social_sciences',"
         "'mathematics','engineering','information_technology',"
         "'education','arts_humanities','business_management',"
-        "'law','agriculture','environmental_studies','other')"
+        "'law','agriculture','environmental_studies','other');"
+        " EXCEPTION WHEN duplicate_object THEN NULL; END $$"
     )
-    op.execute("CREATE TYPE courselevel AS ENUM ('beginner','intermediate','advanced','expert')")
     op.execute(
+        "DO $$ BEGIN "
+        "CREATE TYPE courselevel AS ENUM ('beginner','intermediate','advanced','expert');"
+        " EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+    )
+    op.execute(
+        "DO $$ BEGIN "
         "CREATE TYPE audiencetype AS ENUM ("
         "'kindergarten','primary_school','secondary_school',"
         "'university','professional','researcher',"
-        "'teacher','policy_maker','continuing_education')"
+        "'teacher','policy_maker','continuing_education');"
+        " EXCEPTION WHEN duplicate_object THEN NULL; END $$"
     )
 
     # Re-add array columns
