@@ -52,7 +52,7 @@ def upgrade() -> None:
         sa.Column("target_user_email", sa.String(), nullable=True),
         sa.Column(
             "action",
-            sa.Enum(
+            postgresql.ENUM(
                 "deactivate_user",
                 "reactivate_user",
                 "promote_to_expert",
