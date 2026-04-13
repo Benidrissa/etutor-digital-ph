@@ -53,6 +53,24 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 40, "max": 100},
     ),
     SettingDef(
+        "quiz-kids-unit-questions-count",
+        "quiz",
+        5,
+        "integer",
+        "Questions per kids unit quiz",
+        "Number of questions for each kids unit-level quiz.",
+        {"min": 3, "max": 20},
+    ),
+    SettingDef(
+        "quiz-kids-passing-score",
+        "quiz",
+        60.0,
+        "float",
+        "Kids passing score (%)",
+        "Minimum percentage to pass a kids quiz.",
+        {"min": 40, "max": 100},
+    ),
+    SettingDef(
         "quiz-time-limit-min-minutes",
         "quiz",
         10,
@@ -1023,10 +1041,14 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "Language: {language}\n\n"
             "{syllabus_context}\n\n"
             "## Difficulty distribution\n"
-            "- Easy (40%): Identification and recognition — 'What is…?', 'Which one…?'\n"
-            "- Medium (40%): Simple application — 'What would you do if…?'\n"
-            "- Hard (20%): Basic reasoning — 'Why do you think…?'\n\n"
+            "- Easy (3 of 5 — 60%): Identification and recognition — 'What is…?', 'Which one…?'\n"
+            "- Medium (1 of 5 — 20%): Simple application — 'What would you do if…?'\n"
+            "- Hard (1 of 5 — 20%): Basic reasoning — 'Why do you think…?'\n\n"
             "## Quality criteria\n"
+            "- CRITICAL: Questions MUST be derived from the provided lesson content "
+            "and adapted to the cognitive level of {age_range} year olds. "
+            "Never use university-level concepts, academic theories, or complex terminology. "
+            "Rephrase ideas into simple, age-appropriate language.\n"
             "- Simple, clear sentences appropriate for {age_range} year olds\n"
             "- Questions use familiar contexts (school, home, market, village)\n"
             "- All options are clearly distinct — no trick questions\n"

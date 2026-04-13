@@ -442,7 +442,7 @@ async def submit_quiz_attempt(
         _quiz_passing = SettingsCache.instance().get("quiz-passing-score", 80.0)
         passing_score = quiz_data.get("passing_score", _quiz_passing)
         passed = score >= passing_score
-        lesson_validated = score >= _quiz_passing
+        lesson_validated = passed
 
         # Store attempt in database
         attempt = QuizAttempt(
