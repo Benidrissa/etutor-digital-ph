@@ -23,7 +23,9 @@ class GeneratedAudio(Base):
         Index("ix_generated_audio_lesson_id", "lesson_id"),
         Index("ix_generated_audio_status", "status"),
         sa.UniqueConstraint(
-            "module_id", "unit_id", "language",
+            "module_id",
+            "unit_id",
+            "language",
             name="uq_generated_audio_module_unit_lang",
         ),
     )

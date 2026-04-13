@@ -138,7 +138,9 @@ class LessonAudioService:
             await session.rollback()
             cached = await self._find_cached(module_id, unit_id, language, session)
             if cached is not None:
-                logger.info("Audio race condition resolved, returning existing", lesson_id=str(lesson_id))
+                logger.info(
+                    "Audio race condition resolved, returning existing", lesson_id=str(lesson_id)
+                )
                 return cached
             raise
 
