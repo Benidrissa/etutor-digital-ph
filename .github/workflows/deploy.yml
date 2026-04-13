@@ -130,6 +130,16 @@ jobs:
             SENTRY_PROJECT=${{ secrets.SENTRY_PROJECT }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
 
+      - name: Build and push tenant frontend (no baked API URL)
+        if: matrix.service == 'frontend'
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: ${{ matrix.image }}:tenant
+          cache-from: type=registry,ref=${{ matrix.image }}:buildcache
+          cache-to: type=registry,ref=${{ matrix.image }}:buildcache,mode=max
+
   deploy:
     name: Deploy to Server
     needs: build-and-push
