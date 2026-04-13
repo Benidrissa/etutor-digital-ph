@@ -11,6 +11,7 @@ from app.domain.models.base import Base
 
 if TYPE_CHECKING:
     from app.domain.models.course import Course
+    from app.domain.models.organization import Organization
     from app.domain.models.user import User
 
 
@@ -31,11 +32,15 @@ class Curriculum(Base):
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     courses: Mapped[list[Course]] = relationship(secondary="curriculum_courses", lazy="selectin")
     creator: Mapped[User | None] = relationship(foreign_keys=[created_by])
+    organization: Mapped[Organization | None] = relationship(foreign_keys=[organization_id])
 
 
 class CurriculumCourse(Base):

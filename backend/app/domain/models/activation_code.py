@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -21,16 +22,38 @@ from app.domain.models.base import Base
 if TYPE_CHECKING:
     from app.domain.models.course import Course
     from app.domain.models.credit import CreditTransaction
+    from app.domain.models.curriculum import Curriculum
+    from app.domain.models.organization import Organization
     from app.domain.models.user import User
 
 
 class ActivationCode(Base):
     __tablename__ = "activation_codes"
+    __table_args__ = (
+        CheckConstraint(
+            "(course_id IS NOT NULL) OR (curriculum_id IS NOT NULL)",
+            name="ck_activation_codes_course_or_curriculum",
+        ),
+        CheckConstraint(
+            "(organization_id IS NULL) OR (created_by IS NULL)",
+            name="ck_activation_codes_org_xor_expert",
+        ),
+        CheckConstraint(
+            "(curriculum_id IS NULL) OR (organization_id IS NOT NULL)",
+            name="ck_activation_codes_curriculum_requires_org",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     code: Mapped[str] = mapped_column(String(30), unique=True, index=True, nullable=False)
-    course_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("courses.id", ondelete="CASCADE"), index=True
+    course_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("courses.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    curriculum_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("curricula.id", ondelete="CASCADE"), nullable=True, index=True
     )
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -40,7 +63,9 @@ class ActivationCode(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true", default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    course: Mapped[Course] = relationship()
+    course: Mapped[Course | None] = relationship()
+    organization: Mapped[Organization | None] = relationship(foreign_keys=[organization_id])
+    curriculum: Mapped[Curriculum | None] = relationship(foreign_keys=[curriculum_id])
     creator: Mapped[User | None] = relationship(foreign_keys=[created_by])
     redemptions: Mapped[list[ActivationCodeRedemption]] = relationship(back_populates="code")
 
