@@ -379,6 +379,11 @@ class AuthClient {
     path: string,
     options: RequestInit = {}
   ): Promise<T> {
+    if (!this.accessToken && typeof window !== 'undefined') {
+      this.accessToken = localStorage.getItem('access_token');
+      this.refreshToken = localStorage.getItem('refresh_token');
+    }
+
     const url = path.startsWith('/') ? `${API_BASE}${path}` : path;
     
     const headers: Record<string, string> = {
