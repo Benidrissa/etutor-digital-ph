@@ -138,8 +138,8 @@ function GroupMembersPanel({
     (u) =>
       userSearch.trim() &&
       !memberIds.has(u.id) &&
-      (u.email.toLowerCase().includes(userSearch.toLowerCase()) ||
-        u.name.toLowerCase().includes(userSearch.toLowerCase()))
+      ((u.email ?? '').toLowerCase().includes(userSearch.toLowerCase()) ||
+        (u.name ?? '').toLowerCase().includes(userSearch.toLowerCase()))
   );
 
   const handleAddMember = async (userId: string) => {
