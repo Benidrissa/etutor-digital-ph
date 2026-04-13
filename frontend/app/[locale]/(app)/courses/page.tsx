@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { GraduationCap } from 'lucide-react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { CourseCard } from '@/components/learning/course-card';
 import { CourseFilterBar } from '@/components/learning/course-filter-bar';
@@ -213,6 +214,15 @@ export default function CoursesPage() {
           ))}
         </div>
       )}
+
+      <div className="mt-16 pb-4 text-center">
+        <Link
+          href={`/${locale}/about`}
+          className="text-xs text-stone-300 hover:text-stone-400 transition-colors"
+        >
+          {locale === 'fr' ? 'À propos' : 'About'}
+        </Link>
+      </div>
     </div>
   );
 }

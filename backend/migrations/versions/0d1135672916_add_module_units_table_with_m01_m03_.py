@@ -26,7 +26,7 @@ def upgrade() -> None:
     # Create module_units table
     op.create_table(
         "module_units",
-        sa.Column("id", sa.UUID(), primary_key=True, default=sa.text("gen_random_uuid()")),
+        sa.Column("id", sa.UUID(), primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column("module_id", sa.UUID(), sa.ForeignKey("modules.id"), nullable=False),
         sa.Column("unit_number", sa.String(10), nullable=False),
         sa.Column("title_fr", sa.Text(), nullable=False),
