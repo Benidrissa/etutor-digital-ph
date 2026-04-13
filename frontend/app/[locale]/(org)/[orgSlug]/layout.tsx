@@ -1,16 +1,19 @@
+"use client";
+
+import { useParams } from "next/navigation";
 import { OrgProvider } from "@/components/org/org-context";
 import { OrgGuard } from "@/components/org/org-guard";
 import { OrgNav } from "@/components/org/org-nav";
 import { Header } from "@/components/layout/header";
 
-export default async function OrgLayout({
+export default function OrgLayout({
   children,
-  params,
 }: {
   children: React.ReactNode;
-  params: Promise<{ orgSlug: string }>;
 }) {
-  const { orgSlug } = await params;
+  const params = useParams<{ orgSlug: string }>();
+  const orgSlug = params.orgSlug;
+
   return (
     <OrgProvider orgSlug={orgSlug}>
       <OrgGuard>
