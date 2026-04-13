@@ -318,8 +318,8 @@ function AccessManagementPanel({
   const filteredUsers = allUsers.filter(
     (u) =>
       userSearch.trim() &&
-      (u.email.toLowerCase().includes(userSearch.toLowerCase()) ||
-        u.name.toLowerCase().includes(userSearch.toLowerCase()))
+      ((u.email ?? '').toLowerCase().includes(userSearch.toLowerCase()) ||
+        (u.name ?? '').toLowerCase().includes(userSearch.toLowerCase()))
   );
 
   const handleGrantUser = async (userId: string) => {
