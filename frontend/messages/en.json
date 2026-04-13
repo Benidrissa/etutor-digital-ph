@@ -44,7 +44,9 @@
     "adminDescription": "Access the administration panel",
     "more": "More",
     "moreMenuLabel": "More navigation options",
-    "closeMoreMenu": "Close more menu"
+    "closeMoreMenu": "Close more menu",
+    "organizations": "Organizations",
+    "organizationsDescription": "Manage your organizations"
   },
   "Auth": {
     "login": "Sign in",
