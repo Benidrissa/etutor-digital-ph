@@ -494,6 +494,29 @@ async def get_or_generate_lesson_by_module_and_unit(
             cache_result = await session.execute(cached_query)
             cached = cache_result.scalars().first()
 
+            # Country fallback: if no exact country match, try any country (same language/level)
+            is_country_fallback = False
+            if not cached:
+                fallback_query = (
+                    select(GeneratedContent)
+                    .where(GeneratedContent.module_id == resolved_module_id)
+                    .where(GeneratedContent.content_type == content_type_filter)
+                    .where(GeneratedContent.language == language)
+                    .where(GeneratedContent.level == level)
+                    .where(
+                        or_(
+                            *[
+                                GeneratedContent.content["unit_id"].astext == v
+                                for v in unit_variants
+                            ]
+                        )
+                    )
+                    .order_by(GeneratedContent.generated_at.desc())
+                )
+                fallback_result = await session.execute(fallback_query)
+                cached = fallback_result.scalars().first()
+                is_country_fallback = cached is not None
+
             if cached:
                 if is_case_study:
                     from app.api.v1.schemas.content import CaseStudyContent as _CaseStudyContent
@@ -509,6 +532,7 @@ async def get_or_generate_lesson_by_module_and_unit(
                         content=_CaseStudyContent(**content_dict),
                         generated_at=cached.generated_at.isoformat(),
                         cached=True,
+                        country_fallback=is_country_fallback,
                     )
 
                     if current_user is not None:
@@ -530,7 +554,20 @@ async def get_or_generate_lesson_by_module_and_unit(
                     logger.info(
                         "Case study cache hit",
                         case_study_id=str(case_study_response.id),
+                        country_fallback=is_country_fallback,
                     )
+                    if is_country_fallback:
+                        from app.tasks.content_generation import generate_country_content_task
+
+                        generate_country_content_task.delay(
+                            module_id=str(resolved_module_id),
+                            unit_id=unit_id,
+                            content_type="case",
+                            language=language,
+                            level=level,
+                            country=country,
+                            user_id=str(current_user.id) if current_user else "",
+                        )
                     _dispatch_content_prefetch(current_user, str(resolved_module_id), unit_id)
                     return JSONResponse(
                         content=case_study_response.model_dump(mode="json"),
@@ -563,6 +600,7 @@ async def get_or_generate_lesson_by_module_and_unit(
                     content=_LessonContent(**content_dict),
                     generated_at=cached.generated_at.isoformat(),
                     cached=True,
+                    country_fallback=is_country_fallback,
                     source_image_refs=source_image_refs,
                 )
 
@@ -603,7 +641,27 @@ async def get_or_generate_lesson_by_module_and_unit(
                 logger.info(
                     "Lesson cache hit",
                     lesson_id=str(lesson_response.id),
+                    country_fallback=is_country_fallback,
                 )
+                # If serving fallback content, dispatch background generation for the requested country
+                if is_country_fallback:
+                    from app.tasks.content_generation import generate_country_content_task
+
+                    generate_country_content_task.delay(
+                        module_id=str(resolved_module_id),
+                        unit_id=unit_id,
+                        content_type="lesson",
+                        language=language,
+                        level=level,
+                        country=country,
+                        user_id=str(current_user.id) if current_user else "",
+                    )
+                    logger.info(
+                        "Background country-specific generation dispatched",
+                        module_id=str(resolved_module_id),
+                        unit_id=unit_id,
+                        country=country,
+                    )
                 _dispatch_content_prefetch(current_user, str(resolved_module_id), unit_id)
                 return JSONResponse(
                     content=lesson_response.model_dump(mode="json"),
