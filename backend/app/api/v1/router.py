@@ -21,6 +21,10 @@ from app.api.v1.lesson_audio import (
 )
 from app.api.v1.local_auth import router as local_auth_router
 from app.api.v1.module_media import router as module_media_router
+from app.api.v1.org_codes import router as org_codes_router
+from app.api.v1.org_curricula import router as org_curricula_router
+from app.api.v1.org_reports import router as org_reports_router
+from app.api.v1.organizations import router as organizations_router
 from app.api.v1.placement import router as placement_router
 from app.api.v1.progress import router as progress_router
 from app.api.v1.quiz import router as quiz_router
@@ -60,3 +64,7 @@ api_v1_router.include_router(sms_relay_router)
 api_v1_router.include_router(source_images_router)
 api_v1_router.include_router(subscriptions_router)
 api_v1_router.include_router(activation_codes_router)
+api_v1_router.include_router(organizations_router)
+api_v1_router.include_router(org_curricula_router)
+api_v1_router.include_router(org_codes_router)
+api_v1_router.include_router(org_reports_router)
