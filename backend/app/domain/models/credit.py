@@ -17,6 +17,7 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -24,6 +25,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.domain.models.base import Base
 
 if TYPE_CHECKING:
+    from app.domain.models.organization import Organization
     from app.domain.models.user import User
 
 
@@ -44,10 +46,27 @@ class TransactionType(enum.StrEnum):
 
 class CreditAccount(Base):
     __tablename__ = "credit_accounts"
+    __table_args__ = (
+        Index(
+            "ix_credit_accounts_user_id_unique",
+            "user_id",
+            unique=True,
+            postgresql_where=text("user_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_credit_accounts_organization_id_unique",
+            "organization_id",
+            unique=True,
+            postgresql_where=text("organization_id IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True
     )
     balance: Mapped[int] = mapped_column(BIGINT, server_default="0", default=0)
     total_purchased: Mapped[int] = mapped_column(BIGINT, server_default="0", default=0)
@@ -59,7 +78,8 @@ class CreditAccount(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
-    user: Mapped[User] = relationship(back_populates="credit_account")
+    user: Mapped[User | None] = relationship(back_populates="credit_account")
+    organization: Mapped[Organization | None] = relationship(foreign_keys=[organization_id])
     transactions: Mapped[list[CreditTransaction]] = relationship(
         back_populates="account", order_by="CreditTransaction.created_at.desc()"
     )
