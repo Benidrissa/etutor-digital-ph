@@ -1124,20 +1124,45 @@ export async function manualActivate(
 
 // ── Learner Activation Codes API ──────────────────────────────
 
-export interface ActivationPreviewResponse {
-  code: string;
-  course_slug: string;
+export interface CurriculumCoursePreview {
+  id: string;
   title_fr: string;
   title_en: string;
+  cover_image_url?: string;
+}
+
+export interface ActivationPreviewResponse {
+  valid: boolean;
+  type?: "course" | "curriculum";
+  // Course fields
+  code?: string;
+  course_slug?: string;
+  course_title_fr?: string;
+  course_title_en?: string;
+  course_description_fr?: string;
+  course_description_en?: string;
+  title_fr?: string;
+  title_en?: string;
   description_fr?: string;
   description_en?: string;
   cover_image_url?: string;
   expert_name?: string;
+  // Curriculum fields
+  curriculum_title_fr?: string;
+  curriculum_title_en?: string;
+  curriculum_description_fr?: string;
+  curriculum_description_en?: string;
+  organization_name?: string;
+  organization_logo_url?: string;
+  courses?: CurriculumCoursePreview[];
 }
 
 export interface ActivationRedeemResponse {
-  course_slug: string;
-  enrolled: boolean;
+  status: string;
+  course_id?: string;
+  course_ids?: string[];
+  course_slug?: string;
+  enrolled?: boolean;
 }
 
 export async function previewActivationCode(code: string): Promise<ActivationPreviewResponse> {
@@ -1152,4 +1177,188 @@ export async function redeemActivationCode(
     `/api/v1/activate/${encodeURIComponent(code)}/redeem`,
     { method: "POST", body: JSON.stringify({ method }) }
   );
+}
+
+// ── Organization API ──────────────────────────────────────────
+
+export interface OrgResponse {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  logo_url?: string;
+  contact_email?: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface OrgWithRole {
+  organization: OrgResponse;
+  role: string;
+  joined_at: string;
+}
+
+export interface OrgMember {
+  user_id: string;
+  name: string;
+  email?: string;
+  role: string;
+  joined_at: string;
+}
+
+export interface OrgCurriculumResponse {
+  id: string;
+  slug: string;
+  title_fr: string;
+  title_en: string;
+  description_fr?: string;
+  description_en?: string;
+  cover_image_url?: string;
+  status: string;
+  organization_id?: string;
+  course_count: number;
+}
+
+export interface OrgCodeResponse {
+  id: string;
+  code: string;
+  course_id?: string;
+  curriculum_id?: string;
+  max_uses?: number;
+  times_used: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface OrgSummary {
+  total_codes: number;
+  active_codes: number;
+  total_redemptions: number;
+  unique_learners: number;
+  avg_completion_pct: number;
+}
+
+export interface LearnerProgress {
+  user_id: string;
+  name: string;
+  email?: string;
+  activated_at?: string;
+  courses_enrolled: number;
+  avg_completion_pct: number;
+}
+
+// Organization CRUD
+export async function fetchMyOrganizations(): Promise<OrgWithRole[]> {
+  return apiFetch<OrgWithRole[]>("/api/v1/organizations/me");
+}
+
+export async function fetchOrganization(orgId: string): Promise<OrgResponse> {
+  return apiFetch<OrgResponse>(`/api/v1/organizations/${orgId}`);
+}
+
+export async function createOrganization(data: {
+  name: string;
+  slug?: string;
+  description?: string;
+  contact_email?: string;
+}): Promise<OrgResponse> {
+  return apiFetch<OrgResponse>("/api/v1/organizations", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+// Organization Members
+export async function fetchOrgMembers(orgId: string): Promise<OrgMember[]> {
+  return apiFetch<OrgMember[]>(`/api/v1/organizations/${orgId}/members`);
+}
+
+export async function addOrgMember(orgId: string, email: string, role: string): Promise<OrgMember> {
+  return apiFetch<OrgMember>(`/api/v1/organizations/${orgId}/members`, {
+    method: "POST",
+    body: JSON.stringify({ email, role }),
+  });
+}
+
+export async function removeOrgMember(orgId: string, userId: string): Promise<void> {
+  return apiFetch<void>(`/api/v1/organizations/${orgId}/members/${userId}`, {
+    method: "DELETE",
+  });
+}
+
+// Organization Credits
+export async function fetchOrgCredits(orgId: string): Promise<{ balance: number }> {
+  return apiFetch<{ balance: number }>(`/api/v1/organizations/${orgId}/credits`);
+}
+
+// Organization Curricula
+export async function fetchOrgCurricula(orgId: string): Promise<OrgCurriculumResponse[]> {
+  return apiFetch<OrgCurriculumResponse[]>(`/api/v1/organizations/${orgId}/curricula`);
+}
+
+export async function createOrgCurriculum(orgId: string, data: {
+  title_fr: string;
+  title_en: string;
+  slug: string;
+  description_fr?: string;
+  description_en?: string;
+}): Promise<OrgCurriculumResponse> {
+  return apiFetch<OrgCurriculumResponse>(`/api/v1/organizations/${orgId}/curricula`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+// Organization Codes
+export async function fetchOrgCodes(orgId: string): Promise<OrgCodeResponse[]> {
+  return apiFetch<OrgCodeResponse[]>(`/api/v1/organizations/${orgId}/codes`);
+}
+
+export async function generateOrgCodes(orgId: string, data: {
+  curriculum_id?: string;
+  course_id?: string;
+  count: number;
+  max_uses?: number;
+}): Promise<OrgCodeResponse[]> {
+  return apiFetch<OrgCodeResponse[]>(`/api/v1/organizations/${orgId}/codes`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function revokeOrgCode(orgId: string, codeId: string): Promise<void> {
+  return apiFetch<void>(`/api/v1/organizations/${orgId}/codes/${codeId}/revoke`, {
+    method: "POST",
+  });
+}
+
+// Organization Reports
+export async function fetchOrgSummary(orgId: string): Promise<OrgSummary> {
+  return apiFetch<OrgSummary>(`/api/v1/organizations/${orgId}/reports/summary`);
+}
+
+export async function fetchOrgLearners(orgId: string, params?: {
+  curriculum_id?: string;
+  course_id?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<LearnerProgress[]> {
+  const searchParams = new URLSearchParams();
+  if (params?.curriculum_id) searchParams.set("curriculum_id", params.curriculum_id);
+  if (params?.course_id) searchParams.set("course_id", params.course_id);
+  if (params?.limit) searchParams.set("limit", String(params.limit));
+  if (params?.offset) searchParams.set("offset", String(params.offset));
+  const qs = searchParams.toString();
+  return apiFetch<LearnerProgress[]>(
+    `/api/v1/organizations/${orgId}/reports/learners${qs ? `?${qs}` : ""}`
+  );
+}
+
+export async function exportOrgCsv(orgId: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/v1/organizations/${orgId}/reports/export`, {
+    headers: {
+      Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+    },
+  });
+  return res.text();
 }

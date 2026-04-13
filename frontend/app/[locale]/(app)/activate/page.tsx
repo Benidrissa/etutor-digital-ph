@@ -32,15 +32,31 @@ function CoursePreviewCard({
   activating: boolean;
   t: ReturnType<typeof useTranslations>;
 }) {
-  const title = locale === 'fr' ? preview.title_fr : preview.title_en;
-  const description = locale === 'fr' ? preview.description_fr : preview.description_en;
+  const isCurriculum = preview.type === 'curriculum';
+
+  const title = isCurriculum
+    ? (locale === 'fr' ? preview.curriculum_title_fr : preview.curriculum_title_en) || ''
+    : (locale === 'fr'
+        ? (preview.course_title_fr || preview.title_fr)
+        : (preview.course_title_en || preview.title_en)) || '';
+
+  const description = isCurriculum
+    ? (locale === 'fr' ? preview.curriculum_description_fr : preview.curriculum_description_en)
+    : (locale === 'fr'
+        ? (preview.course_description_fr || preview.description_fr)
+        : (preview.course_description_en || preview.description_en));
 
   return (
     <Card className="w-full border-teal-200 bg-teal-50/30">
       <CardHeader className="pb-3">
         <p className="text-xs font-medium text-teal-600 uppercase tracking-wide">
-          {t('coursePreview')}
+          {isCurriculum ? t('curriculumPreview') : t('coursePreview')}
         </p>
+        {preview.organization_name && (
+          <p className="text-xs text-stone-500 mt-1">
+            {preview.organization_name}
+          </p>
+        )}
         {preview.cover_image_url && (
           <div className="relative w-full h-36 rounded-lg overflow-hidden mt-2">
             <Image
@@ -53,7 +69,7 @@ function CoursePreviewCard({
           </div>
         )}
         <CardTitle className="text-lg leading-tight mt-2">{title}</CardTitle>
-        {preview.expert_name && (
+        {!isCurriculum && preview.expert_name && (
           <CardDescription className="text-sm text-stone-500">
             {t('expertName', { name: preview.expert_name })}
           </CardDescription>
@@ -62,6 +78,21 @@ function CoursePreviewCard({
       {description && (
         <CardContent className="pt-0 pb-4">
           <p className="text-sm text-stone-600 line-clamp-3">{description}</p>
+        </CardContent>
+      )}
+      {isCurriculum && preview.courses && preview.courses.length > 0 && (
+        <CardContent className="pt-0 pb-4">
+          <p className="text-xs font-medium text-stone-500 mb-2">
+            {preview.courses.length} {t('coursesIncluded')}
+          </p>
+          <ul className="space-y-1">
+            {preview.courses.map((c) => (
+              <li key={c.id} className="text-sm text-stone-700 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-teal-500 shrink-0" />
+                {locale === 'fr' ? c.title_fr : c.title_en}
+              </li>
+            ))}
+          </ul>
         </CardContent>
       )}
       <CardContent className="pt-0">
@@ -217,15 +248,24 @@ export default function ActivatePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlCode]);
 
+  const [enrolledCount, setEnrolledCount] = useState(0);
+
   const handleActivate = async () => {
     if (!preview) return;
     setStatus('activating');
     try {
       const result = await redeemActivationCode(code, redeemMethod);
+      setEnrolledCount(result.course_ids?.length ?? 1);
       setStatus('success');
       setTimeout(() => {
-        router.push(`/courses/${result.course_slug}`);
-      }, 1500);
+        if (result.course_ids && result.course_ids.length > 1) {
+          router.push('/dashboard');
+        } else if (result.course_slug) {
+          router.push(`/courses/${result.course_slug}`);
+        } else {
+          router.push('/dashboard');
+        }
+      }, 2000);
     } catch (err) {
       let msg = t('error');
       if (err instanceof ApiError) {
@@ -365,6 +405,11 @@ export default function ActivatePage() {
             </div>
             <div>
               <p className="text-lg font-semibold text-stone-900">{t('success')}</p>
+              {enrolledCount > 1 && (
+                <p className="text-sm text-teal-600 font-medium mt-1">
+                  {t('enrolledInCourses', { count: enrolledCount })}
+                </p>
+              )}
               <p className="text-sm text-stone-500 mt-1">{t('redirecting')}</p>
             </div>
           </div>
