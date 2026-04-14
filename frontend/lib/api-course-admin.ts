@@ -221,6 +221,7 @@ export interface SyllabusUnit {
 }
 
 export interface SyllabusModule {
+  id?: string;
   module_number: number;
   title_fr: string;
   title_en: string;
@@ -251,6 +252,57 @@ export async function suggestCourseMetadata(
 ): Promise<SuggestedMetadata> {
   return apiFetch(`/api/v1/admin/courses/${courseId}/suggest-metadata`, {
     method: "POST",
+  });
+}
+
+// ── Lesson preview & editing ──────────────────────────────────────────
+
+export interface LessonContent {
+  introduction: string;
+  concepts: string[];
+  aof_example: string;
+  synthesis: string;
+  key_points: string[];
+  sources_cited: string[];
+}
+
+export interface LessonPreviewResponse {
+  id: string;
+  module_id: string;
+  unit_id: string;
+  language: string;
+  level: number;
+  country_context: string;
+  content: LessonContent;
+  cached: boolean;
+  country_fallback?: boolean;
+}
+
+export async function previewLesson(
+  courseId: string,
+  moduleId: string,
+  unitId: string,
+  language: string = "fr",
+  country: string = "SN",
+  level: number = 1
+): Promise<LessonPreviewResponse> {
+  return apiFetch(
+    `/api/v1/admin/courses/${courseId}/modules/${moduleId}/units/${unitId}/preview-lesson`,
+    {
+      method: "POST",
+      body: JSON.stringify({ language, country, level }),
+    }
+  );
+}
+
+export async function editContent(
+  courseId: string,
+  contentId: string,
+  content: LessonContent
+): Promise<{ id: string; is_manually_edited: boolean; validated: boolean }> {
+  return apiFetch(`/api/v1/admin/courses/${courseId}/content/${contentId}`, {
+    method: "PUT",
+    body: JSON.stringify({ content }),
   });
 }
 
