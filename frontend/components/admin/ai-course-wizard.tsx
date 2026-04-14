@@ -24,6 +24,9 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,9 +52,12 @@ import {
   getIndexStatusApi,
   cancelIndexationApi,
   reindexImagesApi,
+  updateAdminCourse,
   publishAdminCourse,
+  suggestCourseMetadata,
   formatBytes,
 } from "@/lib/api-course-admin";
+import { getCourseTaxonomy, type TaxonomyItem } from "@/lib/api";
 
 // ── Step types ────────────────────────────────────────────────────────
 
@@ -152,6 +158,7 @@ export function AICourseWizard({
 }: AICourseWizardProps) {
   const t = useTranslations("AdminCourses.wizard");
   const tAi = useTranslations("AdminCourses.aiWizard");
+  const locale = useLocale();
   const queryClient = useQueryClient();
 
   // ── State ─────────────────────────────────────────────────────────
@@ -162,6 +169,25 @@ export function AICourseWizard({
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [isFetchingExistingFiles, setIsFetchingExistingFiles] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Objectives state
+  const [objectivesFr, setObjectivesFr] = useState("");
+  const [objectivesEn, setObjectivesEn] = useState("");
+  const [estimatedHours, setEstimatedHours] = useState(20);
+  const [domainOptions, setDomainOptions] = useState<TaxonomyItem[]>([]);
+  const [levelOptions, setLevelOptions] = useState<TaxonomyItem[]>([]);
+  const [audienceOptions, setAudienceOptions] = useState<TaxonomyItem[]>([]);
+  const [selectedDomains, setSelectedDomains] = useState<string[]>([]);
+  const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
+  const [selectedAudience, setSelectedAudience] = useState<string[]>([]);
+  const [isSavingObjectives, setIsSavingObjectives] = useState(false);
+
+  // AI proposal state
+  const [proposedTitle, setProposedTitle] = useState({ fr: "", en: "" });
+  const [proposedDescription, setProposedDescription] = useState({ fr: "", en: "" });
+  const [isLoadingProposal, setIsLoadingProposal] = useState(false);
+  const [proposalError, setProposalError] = useState<string | null>(null);
+  const [isSavingProposal, setIsSavingProposal] = useState(false);
 
   // Generation state
   const [generatedModules, setGeneratedModules] = useState<GeneratedModule[]>([]);
@@ -204,6 +230,16 @@ export function AICourseWizard({
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 
   const stepIndex = AI_STEPS.indexOf(step);
+
+  // ── Load taxonomy ──────────────────────────────────────────────────
+
+  useEffect(() => {
+    getCourseTaxonomy().then((tax) => {
+      setDomainOptions(tax.domains);
+      setLevelOptions(tax.levels);
+      setAudienceOptions(tax.audience_types);
+    }).catch(() => {});
+  }, []);
 
   // ── Hydrate on resume ─────────────────────────────────────────────
 
@@ -371,6 +407,73 @@ export function AICourseWizard({
       // Stay on upload step
     }
   }, [courseId, pendingFiles]);
+
+  // ── Objectives save ────────────────────────────────────────────────
+
+  const saveObjectives = useCallback(async () => {
+    if (!courseId) return;
+    setIsSavingObjectives(true);
+    try {
+      const objFr = objectivesFr.split("\n").map(s => s.trim()).filter(Boolean);
+      const objEn = objectivesEn.split("\n").map(s => s.trim()).filter(Boolean);
+      await updateAdminCourse(courseId, {
+        objectives_json: { fr: objFr, en: objEn },
+        course_domain: selectedDomains,
+        course_level: selectedLevels,
+        audience_type: selectedAudience,
+        estimated_hours: estimatedHours,
+      });
+      setStep("ai_proposal");
+    } catch {
+      // stay on step
+    } finally {
+      setIsSavingObjectives(false);
+    }
+  }, [courseId, objectivesFr, objectivesEn, selectedDomains, selectedLevels, selectedAudience, estimatedHours]);
+
+  // ── AI Proposal ───────────────────────────────────────────────────
+
+  const fetchProposal = useCallback(async () => {
+    if (!courseId) return;
+    setIsLoadingProposal(true);
+    setProposalError(null);
+    try {
+      const result = await suggestCourseMetadata(courseId);
+      setProposedTitle({ fr: result.title_fr, en: result.title_en });
+      setProposedDescription({ fr: result.description_fr, en: result.description_en });
+    } catch {
+      setProposalError(tAi("aiProposal.error"));
+    } finally {
+      setIsLoadingProposal(false);
+    }
+  }, [courseId, tAi]);
+
+  // Fetch proposal when entering the AI proposal step
+  useEffect(() => {
+    if (step !== "ai_proposal" || !courseId) return;
+    // Only fetch if no proposal yet
+    if (!proposedTitle.fr && !proposedTitle.en) {
+      fetchProposal();
+    }
+  }, [step, courseId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const validateProposal = useCallback(async () => {
+    if (!courseId) return;
+    setIsSavingProposal(true);
+    try {
+      await updateAdminCourse(courseId, {
+        title_fr: proposedTitle.fr,
+        title_en: proposedTitle.en,
+        description_fr: proposedDescription.fr || null,
+        description_en: proposedDescription.en || null,
+      });
+      setStep("generate");
+    } catch {
+      // stay on step
+    } finally {
+      setIsSavingProposal(false);
+    }
+  }, [courseId, proposedTitle, proposedDescription]);
 
   // ── Generation polling (reuses shared API) ────────────────────────
 
@@ -636,8 +739,8 @@ export function AICourseWizard({
 
   const canGoNext = (): boolean => {
     if (step === "upload") return files.filter((f) => f.status === "uploaded").length > 0;
-    if (step === "objectives") return true; // Will be gated when objectives step is implemented
-    if (step === "ai_proposal") return true; // Will be gated when AI proposal step is implemented
+    if (step === "objectives") return objectivesFr.trim().length > 0 || objectivesEn.trim().length > 0;
+    if (step === "ai_proposal") return proposedTitle.fr.trim().length > 0 && proposedTitle.en.trim().length > 0;
     if (step === "generate") return generatedModules.length > 0;
     if (step === "syllabus_edit") return generatedModules.length > 0;
     return false;
@@ -646,6 +749,14 @@ export function AICourseWizard({
   const handleNext = () => {
     if (step === "upload") {
       createCourse();
+      return;
+    }
+    if (step === "objectives") {
+      saveObjectives();
+      return;
+    }
+    if (step === "ai_proposal") {
+      validateProposal();
       return;
     }
     const idx = AI_STEPS.indexOf(step);
@@ -831,35 +942,162 @@ export function AICourseWizard({
               </div>
             )}
 
-            {/* ── OBJECTIVES STEP (placeholder) ───────────────────── */}
+            {/* ── OBJECTIVES STEP ────────────────────────────────── */}
             {step === "objectives" && (
               <div className="space-y-4">
                 <div>
                   <h3 className="text-xl font-semibold">{tAi("objectives.title")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">{tAi("objectives.description")}</p>
                 </div>
-                <Card>
-                  <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                    <Target className="h-12 w-12 text-muted-foreground mb-3" />
-                    <p className="text-sm text-muted-foreground">{tAi("comingSoon")}</p>
-                  </CardContent>
-                </Card>
+
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="objectives_fr">{tAi("objectives.objectivesFr")}</Label>
+                    <Textarea
+                      id="objectives_fr"
+                      value={objectivesFr}
+                      onChange={(e) => setObjectivesFr(e.target.value)}
+                      placeholder={tAi("objectives.objectivesFrPlaceholder")}
+                      className="min-h-[100px] resize-none text-base"
+                      rows={4}
+                    />
+                    <p className="text-xs text-muted-foreground">{tAi("objectives.objectivesHint")}</p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="objectives_en">{tAi("objectives.objectivesEn")}</Label>
+                    <Textarea
+                      id="objectives_en"
+                      value={objectivesEn}
+                      onChange={(e) => setObjectivesEn(e.target.value)}
+                      placeholder={tAi("objectives.objectivesEnPlaceholder")}
+                      className="min-h-[100px] resize-none text-base"
+                      rows={4}
+                    />
+                  </div>
+
+                  {[
+                    { label: tAi("objectives.domain"), options: domainOptions, selected: selectedDomains, setSelected: setSelectedDomains },
+                    { label: tAi("objectives.level"), options: levelOptions, selected: selectedLevels, setSelected: setSelectedLevels },
+                    { label: tAi("objectives.audience"), options: audienceOptions, selected: selectedAudience, setSelected: setSelectedAudience },
+                  ].map(({ label, options, selected, setSelected }) => (
+                    <div key={label} className="space-y-1.5">
+                      <Label>{label}</Label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {options.map((opt) => {
+                          const sel = selected.includes(opt.value);
+                          return (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() =>
+                                setSelected(sel ? selected.filter((v) => v !== opt.value) : [...selected, opt.value])
+                              }
+                              className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors min-h-[32px] ${
+                                sel
+                                  ? "bg-teal-600 text-white hover:bg-teal-700"
+                                  : "bg-stone-100 text-stone-600 hover:bg-stone-200 border border-stone-200"
+                              }`}
+                            >
+                              {locale === "fr" ? opt.label_fr : opt.label_en}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="estimated_hours">{tAi("objectives.estimatedHours")}</Label>
+                    <Input
+                      id="estimated_hours"
+                      type="number"
+                      min={1}
+                      max={500}
+                      value={estimatedHours}
+                      onChange={(e) => setEstimatedHours(parseInt(e.target.value) || 20)}
+                    />
+                  </div>
+                </div>
               </div>
             )}
 
-            {/* ── AI PROPOSAL STEP (placeholder) ──────────────────── */}
+            {/* ── AI PROPOSAL STEP ───────────────────────────────── */}
             {step === "ai_proposal" && (
               <div className="space-y-4">
                 <div>
                   <h3 className="text-xl font-semibold">{tAi("aiProposal.title")}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">{tAi("aiProposal.description")}</p>
                 </div>
-                <Card>
-                  <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                    <Wand2 className="h-12 w-12 text-muted-foreground mb-3" />
-                    <p className="text-sm text-muted-foreground">{tAi("comingSoon")}</p>
-                  </CardContent>
-                </Card>
+
+                {isLoadingProposal && (
+                  <div className="flex flex-col items-center justify-center py-12 gap-3">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    <p className="text-sm text-muted-foreground">{tAi("aiProposal.loading")}</p>
+                  </div>
+                )}
+
+                {proposalError && (
+                  <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+                    <div className="flex items-center gap-2 text-sm text-destructive">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      {proposalError}
+                    </div>
+                    <Button variant="outline" size="sm" onClick={fetchProposal} className="self-start min-h-[44px]">
+                      <Wand2 className="mr-2 h-4 w-4" />
+                      {tAi("aiProposal.retry")}
+                    </Button>
+                  </div>
+                )}
+
+                {!isLoadingProposal && !proposalError && (
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="proposed_title_fr">{tAi("aiProposal.titleFr")}</Label>
+                      <Input
+                        id="proposed_title_fr"
+                        value={proposedTitle.fr}
+                        onChange={(e) => setProposedTitle((p) => ({ ...p, fr: e.target.value }))}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="proposed_title_en">{tAi("aiProposal.titleEn")}</Label>
+                      <Input
+                        id="proposed_title_en"
+                        value={proposedTitle.en}
+                        onChange={(e) => setProposedTitle((p) => ({ ...p, en: e.target.value }))}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="proposed_desc_fr">{tAi("aiProposal.descriptionFr")}</Label>
+                      <Textarea
+                        id="proposed_desc_fr"
+                        value={proposedDescription.fr}
+                        onChange={(e) => setProposedDescription((p) => ({ ...p, fr: e.target.value }))}
+                        className="min-h-[80px] resize-none text-base"
+                        rows={3}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="proposed_desc_en">{tAi("aiProposal.descriptionEn")}</Label>
+                      <Textarea
+                        id="proposed_desc_en"
+                        value={proposedDescription.en}
+                        onChange={(e) => setProposedDescription((p) => ({ ...p, en: e.target.value }))}
+                        className="min-h-[80px] resize-none text-base"
+                        rows={3}
+                      />
+                    </div>
+
+                    <Button variant="outline" onClick={fetchProposal} disabled={isLoadingProposal} className="w-full min-h-[44px]">
+                      <Wand2 className="mr-2 h-4 w-4" />
+                      {tAi("aiProposal.regenerate")}
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
 
