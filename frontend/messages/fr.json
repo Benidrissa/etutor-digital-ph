@@ -1498,6 +1498,39 @@
         "medium": "Moyen",
         "hard": "Difficile"
       }
+    },
+    "modePicker": {
+      "title": "Créer un cours",
+      "description": "Choisissez comment vous souhaitez créer votre cours.",
+      "aiAssisted": "Assisté par l'IA",
+      "aiAssistedDesc": "Téléchargez des PDFs et laissez l'IA générer la structure, le titre et la description.",
+      "legacy": "Manuel",
+      "legacyDesc": "Saisissez manuellement toutes les informations, la structure et le contenu du cours."
+    },
+    "aiWizard": {
+      "title": "Création de cours assistée par l'IA",
+      "comingSoon": "Cette étape sera bientôt disponible.",
+      "steps": {
+        "upload": "Télécharger",
+        "objectives": "Objectifs",
+        "ai_proposal": "Proposition IA",
+        "generate": "Générer",
+        "syllabus_edit": "Modifier le programme",
+        "publish": "Publier"
+      },
+      "objectives": {
+        "title": "Objectifs du cours",
+        "description": "Définissez les objectifs d'apprentissage, le public cible, le niveau et la durée prévue."
+      },
+      "aiProposal": {
+        "title": "Titre et description proposés par l'IA",
+        "description": "Vérifiez et modifiez le titre et la description générés par l'IA pour votre cours."
+      },
+      "syllabusEdit": {
+        "title": "Modifier le programme",
+        "description": "Réorganisez les modules, modifiez les titres et ajustez la structure du cours.",
+        "indexNeeded": "L'indexation RAG est nécessaire avant la publication. Lancez-la maintenant pendant que vous modifiez le programme."
+      }
     }
   },
   "AdminSyllabus": {

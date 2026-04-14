@@ -39,6 +39,8 @@ import { apiFetch, ApiError, API_BASE } from '@/lib/api';
 import { authClient, AuthError } from '@/lib/auth';
 import { CourseForm } from '@/components/admin/course-form';
 import { CourseWizardClient } from '@/components/admin/course-wizard-client';
+import { AICourseWizard } from '@/components/admin/ai-course-wizard';
+import { CreationModePicker } from '@/components/admin/creation-mode-picker';
 import { CoursePreassessmentSettings } from '@/components/admin/course-preassessment-settings';
 
 export interface AdminCourse {
@@ -52,6 +54,7 @@ export interface AdminCourse {
   cover_image_url: string | null;
   status: 'draft' | 'published' | 'archived';
   creation_step: string;
+  creation_mode?: string;
   created_at: string;
   updated_at?: string;
   module_count?: number;
@@ -84,6 +87,9 @@ export function CoursesClient() {
   const [editingCourse, setEditingCourse] = useState<AdminCourse | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardResumeCourse, setWizardResumeCourse] = useState<AdminCourse | null>(null);
+  const [modePickerOpen, setModePickerOpen] = useState(false);
+  const [aiWizardOpen, setAiWizardOpen] = useState(false);
+  const [aiWizardResumeCourse, setAiWizardResumeCourse] = useState<AdminCourse | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
@@ -266,18 +272,39 @@ export function CoursesClient() {
   };
 
   const openWizardFresh = () => {
-    setWizardResumeCourse(null);
-    setWizardOpen(true);
+    setModePickerOpen(true);
+  };
+
+  const handleModeSelected = (mode: 'legacy' | 'ai_assisted') => {
+    setModePickerOpen(false);
+    if (mode === 'legacy') {
+      setWizardResumeCourse(null);
+      setWizardOpen(true);
+    } else {
+      setAiWizardResumeCourse(null);
+      setAiWizardOpen(true);
+    }
   };
 
   const openWizardResume = (course: AdminCourse) => {
-    setWizardResumeCourse(course);
-    setWizardOpen(true);
+    // Route to the correct wizard based on creation_mode
+    if (course.creation_mode === 'ai_assisted') {
+      setAiWizardResumeCourse(course);
+      setAiWizardOpen(true);
+    } else {
+      setWizardResumeCourse(course);
+      setWizardOpen(true);
+    }
   };
 
   const handleWizardClose = () => {
     setWizardOpen(false);
     setWizardResumeCourse(null);
+  };
+
+  const handleAiWizardClose = () => {
+    setAiWizardOpen(false);
+    setAiWizardResumeCourse(null);
   };
 
   const confirmTitle =
@@ -385,6 +412,25 @@ export function CoursesClient() {
           resumeCreationStep={wizardResumeCourse?.creation_step}
         />
       )}
+
+      {aiWizardOpen && (
+        <AICourseWizard
+          onClose={handleAiWizardClose}
+          onCourseCreated={() => {
+            setAiWizardOpen(false);
+            setAiWizardResumeCourse(null);
+            queryClient.invalidateQueries({ queryKey: ['admin', 'courses'] });
+          }}
+          resumeCourseId={aiWizardResumeCourse?.id}
+          resumeCreationStep={aiWizardResumeCourse?.creation_step}
+        />
+      )}
+
+      <CreationModePicker
+        open={modePickerOpen}
+        onClose={() => setModePickerOpen(false)}
+        onSelect={handleModeSelected}
+      />
 
       <AlertDialog
         open={pendingAction !== null && pendingAction.type !== 'generate' && pendingAction.type !== 'delete'}

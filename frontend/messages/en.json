@@ -1498,6 +1498,39 @@
         "medium": "Medium",
         "hard": "Hard"
       }
+    },
+    "modePicker": {
+      "title": "Create a Course",
+      "description": "Choose how you want to create your course.",
+      "aiAssisted": "AI-Assisted",
+      "aiAssistedDesc": "Upload PDFs and let AI generate your course structure, title, and description.",
+      "legacy": "Manual",
+      "legacyDesc": "Manually enter all course information, structure, and content."
+    },
+    "aiWizard": {
+      "title": "AI-Assisted Course Creation",
+      "comingSoon": "This step will be available soon.",
+      "steps": {
+        "upload": "Upload",
+        "objectives": "Objectives",
+        "ai_proposal": "AI Proposal",
+        "generate": "Generate",
+        "syllabus_edit": "Edit Syllabus",
+        "publish": "Publish"
+      },
+      "objectives": {
+        "title": "Course Objectives",
+        "description": "Define the learning objectives, target audience, level, and expected duration."
+      },
+      "aiProposal": {
+        "title": "AI-Proposed Title & Description",
+        "description": "Review and edit the AI-generated title and description for your course."
+      },
+      "syllabusEdit": {
+        "title": "Edit Syllabus",
+        "description": "Reorganize modules, edit titles, and adjust the course structure.",
+        "indexNeeded": "RAG indexation is required before publishing. Start it now while you edit the syllabus."
+      }
     }
   },
   "AdminSyllabus": {
