@@ -252,19 +252,51 @@ export function AICourseWizard({
   useEffect(() => {
     if (!resumeCourseId) return;
     setIsFetchingExistingFiles(true);
-    getAdminCourse(resumeCourseId)
-      .then(() => {
-        // AI wizard resume: map creation_step to wizard step
-        if (resumeCreationStep === "generating" || resumeCreationStep === "generated") {
+
+    const hydrate = async () => {
+      try {
+        await getAdminCourse(resumeCourseId);
+
+        if (resumeCreationStep === "generating") {
+          // Task might still be running — go to generate step, polling will pick it up
           setStep("generate");
+          // Check if task is still active or already done
+          const genStatus = await getGenerationStatus(resumeCourseId);
+          if (genStatus.modules && genStatus.modules.length > 0) {
+            setGeneratedModules(genStatus.modules);
+            // If task is done (modules exist), go to syllabus_edit
+            if (genStatus.creation_step === "generated") {
+              setStep("syllabus_edit");
+            }
+          }
+          // If task is still active, start polling
+          if (genStatus.task && ["PENDING", "STARTED", "RETRY"].includes(genStatus.task.state)) {
+            setIsGenerating(true);
+            setGenerateTaskId(genStatus.task.id ?? null);
+            setGenerationStartTime(Date.now());
+          }
+        } else if (resumeCreationStep === "generated") {
+          // Generation done — fetch modules and go to syllabus_edit
+          const genStatus = await getGenerationStatus(resumeCourseId);
+          if (genStatus.modules && genStatus.modules.length > 0) {
+            setGeneratedModules(genStatus.modules);
+            setStep("syllabus_edit");
+          } else {
+            setStep("generate");
+          }
         } else if (resumeCreationStep === "indexing" || resumeCreationStep === "indexed") {
           setStep("publish");
         } else if (resumeCreationStep === "published") {
           setStep("publish");
         }
-      })
-      .catch(() => {})
-      .finally(() => setIsFetchingExistingFiles(false));
+      } catch {
+        // fallback
+      } finally {
+        setIsFetchingExistingFiles(false);
+      }
+    };
+
+    hydrate();
   }, [resumeCourseId, resumeCreationStep]);
 
   // Fetch existing files when on upload step with a courseId
@@ -566,8 +598,15 @@ export function AICourseWizard({
         }
 
         if (status.task?.state === "SUCCESS") {
-          const modules = meta.modules;
-          if (Array.isArray(modules)) setGeneratedModules(modules as GeneratedModule[]);
+          // Modules may be in meta.modules (during task) or status.modules (from DB)
+          const modules = Array.isArray(meta.modules)
+            ? meta.modules
+            : Array.isArray(status.modules)
+              ? status.modules
+              : null;
+          if (modules && modules.length > 0) {
+            setGeneratedModules(modules as GeneratedModule[]);
+          }
           setIsGenerating(false);
           return;
         }
