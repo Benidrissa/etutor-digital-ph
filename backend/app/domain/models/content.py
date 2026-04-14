@@ -31,6 +31,7 @@ class GeneratedContent(Base):
     country_context: Mapped[str | None] = mapped_column(String)
     generated_at: Mapped[datetime] = mapped_column(server_default=func.now())
     validated: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    is_manually_edited: Mapped[bool] = mapped_column(Boolean, server_default="false")
 
     module: Mapped[Module] = relationship(back_populates="generated_content")
     quiz_attempts: Mapped[list[QuizAttempt]] = relationship(
