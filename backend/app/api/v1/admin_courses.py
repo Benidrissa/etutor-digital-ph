@@ -372,9 +372,7 @@ async def suggest_course_metadata(
 
     # Gather context from uploaded resources
     res_result = await db.execute(
-        select(CourseResource.raw_text)
-        .where(CourseResource.course_id == course_id)
-        .limit(5)
+        select(CourseResource.raw_text).where(CourseResource.course_id == course_id).limit(5)
     )
     resource_texts = [r for (r,) in res_result if r]
     context_text = "\n\n---\n\n".join(resource_texts)[:80_000]  # Cap at 80K chars
@@ -488,18 +486,14 @@ class SaveSyllabusRequest(BaseModel):
 async def save_syllabus(
     course_id: uuid.UUID,
     request: SaveSyllabusRequest,
-    current_user: AuthenticatedUser = Depends(
-        require_role(UserRole.admin, UserRole.sub_admin)
-    ),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> dict:
     """Save edited syllabus structure (modules + units). Replaces existing."""
     result = await db.execute(select(Course).where(Course.id == course_id))
     course = result.scalar_one_or_none()
     if not course:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Course not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
 
     if not request.modules:
         raise HTTPException(
@@ -508,9 +502,7 @@ async def save_syllabus(
         )
 
     # Delete existing modules and units (cascade)
-    await db.execute(
-        sa_delete(Module).where(Module.course_id == course_id)
-    )
+    await db.execute(sa_delete(Module).where(Module.course_id == course_id))
 
     # Create new modules and units
     for m in request.modules:
@@ -570,17 +562,13 @@ class PreviewLessonRequest(BaseModel):
     level: int = 1
 
 
-@router.post(
-    "/{course_id}/modules/{module_id}/units/{unit_id}/preview-lesson"
-)
+@router.post("/{course_id}/modules/{module_id}/units/{unit_id}/preview-lesson")
 async def preview_lesson(
     course_id: uuid.UUID,
     module_id: uuid.UUID,
     unit_id: str,
     request: PreviewLessonRequest,
-    current_user: AuthenticatedUser = Depends(
-        require_role(UserRole.admin, UserRole.sub_admin)
-    ),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> dict:
     """Generate a lesson preview for admin review before publishing."""
@@ -608,17 +596,13 @@ async def edit_content(
     course_id: uuid.UUID,
     content_id: uuid.UUID,
     request: EditContentRequest,
-    current_user: AuthenticatedUser = Depends(
-        require_role(UserRole.admin, UserRole.sub_admin)
-    ),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> dict:
     """Edit generated content and mark as manually edited (locked)."""
     from app.domain.models.content import GeneratedContent
 
-    result = await db.execute(
-        select(GeneratedContent).where(GeneratedContent.id == content_id)
-    )
+    result = await db.execute(select(GeneratedContent).where(GeneratedContent.id == content_id))
     content = result.scalar_one_or_none()
     if not content:
         raise HTTPException(
@@ -1303,13 +1287,10 @@ async def upload_course_resource(
         and course.rag_collection_id
         and (
             not course.indexation_task_id
-            or AsyncResult(course.indexation_task_id).state
-            in ("SUCCESS", "FAILURE", "REVOKED")
+            or AsyncResult(course.indexation_task_id).state in ("SUCCESS", "FAILURE", "REVOKED")
         )
     ):
-        task = index_course_resources.delay(
-            str(course_id), course.rag_collection_id
-        )
+        task = index_course_resources.delay(str(course_id), course.rag_collection_id)
         course.indexation_task_id = task.id
         await db.commit()
         logger.info(
