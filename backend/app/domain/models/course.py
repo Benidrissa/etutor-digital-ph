@@ -46,6 +46,7 @@ class Course(Base):
     preassessment_mandatory: Mapped[bool] = mapped_column(server_default="false")
     visibility: Mapped[str] = mapped_column(String(10), server_default="public")
     price_credits: Mapped[int] = mapped_column(BIGINT, server_default="0")
+    objectives_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     syllabus_context: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

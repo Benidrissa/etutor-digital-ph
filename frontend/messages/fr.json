@@ -1520,17 +1520,49 @@
       },
       "objectives": {
         "title": "Objectifs du cours",
-        "description": "Définissez les objectifs d'apprentissage, le public cible, le niveau et la durée prévue."
+        "description": "Définissez les objectifs d'apprentissage, le public cible, le niveau et la durée prévue.",
+        "objectivesFr": "Objectifs d'apprentissage (Français)",
+        "objectivesEn": "Objectifs d'apprentissage (Anglais)",
+        "objectivesFrPlaceholder": "Un objectif par ligne...\nExemple : Comprendre les principes de prévention des maladies",
+        "objectivesEnPlaceholder": "Un objectif par ligne...\nExemple : Understand the principles of disease prevention",
+        "objectivesHint": "Un objectif par ligne. Ceux-ci guideront l'IA dans la génération de la structure du cours.",
+        "domain": "Domaine",
+        "level": "Niveau",
+        "audience": "Public cible",
+        "estimatedHours": "Heures estimées"
       },
       "aiProposal": {
         "title": "Titre et description proposés par l'IA",
-        "description": "Vérifiez et modifiez le titre et la description générés par l'IA pour votre cours."
+        "description": "Vérifiez et modifiez le titre et la description générés par l'IA pour votre cours.",
+        "loading": "L'IA analyse vos documents et objectifs...",
+        "error": "Échec de la génération de la proposition. Veuillez réessayer.",
+        "retry": "Réessayer",
+        "titleFr": "Titre (Français) *",
+        "titleEn": "Titre (Anglais) *",
+        "descriptionFr": "Description (Français)",
+        "descriptionEn": "Description (Anglais)",
+        "regenerate": "Régénérer la proposition"
       },
       "syllabusEdit": {
         "title": "Modifier le programme",
         "description": "Réorganisez les modules, modifiez les titres et ajustez la structure du cours.",
         "indexNeeded": "L'indexation RAG est nécessaire avant la publication. Lancez-la maintenant pendant que vous modifiez le programme."
-      }
+      },
+      "indexingBadge": "Indexation...",
+      "indexedBadge": "Indexé"
+    },
+    "syllabusEditor": {
+      "untitledModule": "Module sans titre",
+      "units": "unités",
+      "titleFrPlaceholder": "Titre du module (Français)",
+      "titleEnPlaceholder": "Titre du module (Anglais)",
+      "unitTitleFrPlaceholder": "Titre de l'unité (FR)",
+      "unitTitleEnPlaceholder": "Titre de l'unité (EN)",
+      "addModule": "Ajouter un module",
+      "addUnit": "Ajouter une unité",
+      "save": "Enregistrer le programme",
+      "saveError": "Échec de l'enregistrement du programme",
+      "saveSuccess": "Programme enregistré avec succès"
     }
   },
   "AdminSyllabus": {

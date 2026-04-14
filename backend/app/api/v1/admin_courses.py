@@ -52,6 +52,7 @@ class CreateCourseRequest(BaseModel):
     visibility: str = "public"
     price_credits: int = 0
     creation_mode: str = "legacy"
+    objectives_json: dict | None = None
 
 
 class CourseResponse(BaseModel):
@@ -343,6 +344,224 @@ async def archive_course(
     img_count = await _fetch_image_count(db, course.rag_collection_id)
     logger.info("Course archived", course_id=str(course_id), admin_id=current_user.id)
     return _course_to_response(course, image_count=img_count)
+
+
+class SuggestMetadataResponse(BaseModel):
+    title_fr: str
+    title_en: str
+    description_fr: str
+    description_en: str
+
+
+@router.post("/{course_id}/suggest-metadata", response_model=SuggestMetadataResponse)
+async def suggest_course_metadata(
+    course_id: uuid.UUID,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
+    db=Depends(get_db_session),
+) -> SuggestMetadataResponse:
+    """Use Claude to propose a title and description based on uploaded PDFs + objectives.
+
+    Synchronous single-turn call — returns within ~10s. Not a Celery task.
+    """
+    from app.domain.models.course_resource import CourseResource
+
+    result = await db.execute(select(Course).where(Course.id == course_id))
+    course = result.scalar_one_or_none()
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    # Gather context from uploaded resources
+    res_result = await db.execute(
+        select(CourseResource.raw_text)
+        .where(CourseResource.course_id == course_id)
+        .limit(5)
+    )
+    resource_texts = [r for (r,) in res_result if r]
+    context_text = "\n\n---\n\n".join(resource_texts)[:80_000]  # Cap at 80K chars
+
+    # Build objectives context
+    objectives_text = ""
+    if course.objectives_json:
+        obj = course.objectives_json
+        if obj.get("fr"):
+            objectives_text += "Objectives (FR): " + "; ".join(obj["fr"]) + "\n"
+        if obj.get("en"):
+            objectives_text += "Objectives (EN): " + "; ".join(obj["en"]) + "\n"
+
+    # Get taxonomy info
+    cats = course.taxonomy_categories or []
+    domains = [tc.slug for tc in cats if tc.type == "domain"]
+    levels = [tc.slug for tc in cats if tc.type == "level"]
+    audiences = [tc.slug for tc in cats if tc.type == "audience"]
+
+    taxonomy_text = ""
+    if domains:
+        taxonomy_text += f"Domain: {', '.join(domains)}\n"
+    if levels:
+        taxonomy_text += f"Level: {', '.join(levels)}\n"
+    if audiences:
+        taxonomy_text += f"Audience: {', '.join(audiences)}\n"
+
+    prompt = f"""Based on the following course materials and context, propose a title and description for this course.
+The title and description must be provided in both French (FR) and English (EN).
+
+{taxonomy_text}
+{objectives_text}
+Estimated hours: {course.estimated_hours}
+
+COURSE MATERIALS (excerpt):
+{context_text[:40_000] if context_text else "(No materials uploaded yet)"}
+
+Respond with EXACTLY this JSON format and nothing else:
+{{
+  "title_fr": "...",
+  "title_en": "...",
+  "description_fr": "A 2-3 sentence description in French",
+  "description_en": "A 2-3 sentence description in English"
+}}"""
+
+    import json as json_module
+    import os
+
+    from anthropic import Anthropic
+
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI service not configured",
+        )
+    client = Anthropic(api_key=api_key)
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=1024,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    response_text = response.content[0].text.strip()
+
+    # Parse JSON from response
+    try:
+        # Try to extract JSON from possible markdown code block
+        if "```" in response_text:
+            json_start = response_text.find("{")
+            json_end = response_text.rfind("}") + 1
+            response_text = response_text[json_start:json_end]
+        parsed = json_module.loads(response_text)
+    except (json_module.JSONDecodeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to parse AI response",
+        )
+
+    return SuggestMetadataResponse(
+        title_fr=parsed.get("title_fr", ""),
+        title_en=parsed.get("title_en", ""),
+        description_fr=parsed.get("description_fr", ""),
+        description_en=parsed.get("description_en", ""),
+    )
+
+
+class SyllabusModuleUnit(BaseModel):
+    title_fr: str
+    title_en: str
+    unit_type: str = "lesson"
+    description_fr: str = ""
+    description_en: str = ""
+
+
+class SyllabusModule(BaseModel):
+    module_number: int
+    title_fr: str
+    title_en: str
+    description_fr: str = ""
+    description_en: str = ""
+    estimated_hours: int = 20
+    bloom_level: str = "understand"
+    units: list[SyllabusModuleUnit] = []
+
+
+class SaveSyllabusRequest(BaseModel):
+    modules: list[SyllabusModule]
+
+
+@router.patch("/{course_id}/syllabus")
+async def save_syllabus(
+    course_id: uuid.UUID,
+    request: SaveSyllabusRequest,
+    current_user: AuthenticatedUser = Depends(
+        require_role(UserRole.admin, UserRole.sub_admin)
+    ),
+    db=Depends(get_db_session),
+) -> dict:
+    """Save edited syllabus structure (modules + units). Replaces existing."""
+    result = await db.execute(select(Course).where(Course.id == course_id))
+    course = result.scalar_one_or_none()
+    if not course:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Course not found"
+        )
+
+    if not request.modules:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one module is required",
+        )
+
+    # Delete existing modules and units (cascade)
+    await db.execute(
+        sa_delete(Module).where(Module.course_id == course_id)
+    )
+
+    # Create new modules and units
+    for m in request.modules:
+        if not m.units:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Module {m.module_number} must have at least one unit",
+            )
+        module = Module(
+            id=uuid.uuid4(),
+            course_id=course_id,
+            module_number=m.module_number,
+            title_fr=m.title_fr,
+            title_en=m.title_en,
+            description_fr=m.description_fr,
+            description_en=m.description_en,
+            estimated_hours=m.estimated_hours,
+            bloom_level=m.bloom_level,
+        )
+        db.add(module)
+
+        for idx, u in enumerate(m.units):
+            unit = ModuleUnit(
+                id=uuid.uuid4(),
+                module_id=module.id,
+                unit_number=f"{m.module_number}.{idx + 1}",
+                unit_type=u.unit_type,
+                title_fr=u.title_fr,
+                title_en=u.title_en,
+                description_fr=u.description_fr,
+                description_en=u.description_en,
+                order_index=idx,
+            )
+            db.add(unit)
+
+    # Update syllabus_json
+    course.syllabus_json = [m.model_dump() for m in request.modules]
+    course.creation_step = "generated"
+
+    await db.commit()
+
+    logger.info(
+        "Syllabus saved",
+        course_id=str(course_id),
+        modules=len(request.modules),
+        admin_id=current_user.id,
+    )
+    return {
+        "status": "saved",
+        "modules_count": len(request.modules),
+    }
 
 
 class GenerateStructureRequest(BaseModel):
@@ -998,6 +1217,25 @@ async def upload_course_resource(
         admin_id=current_user.id,
         resources_created=len(resources_created),
     )
+
+    # Auto-trigger RAG indexation for AI-assisted courses
+    if course.creation_mode == "ai_assisted" and course.rag_collection_id:
+        # Only dispatch if no indexation is already running
+        if not course.indexation_task_id or (
+            course.indexation_task_id
+            and AsyncResult(course.indexation_task_id).state
+            in ("SUCCESS", "FAILURE", "REVOKED")
+        ):
+            task = index_course_resources.delay(
+                str(course_id), course.rag_collection_id
+            )
+            course.indexation_task_id = task.id
+            await db.commit()
+            logger.info(
+                "Auto-triggered RAG indexation for AI-assisted course",
+                course_id=str(course_id),
+                task_id=task.id,
+            )
 
     return {
         "course_id": str(course_id),
