@@ -704,7 +704,7 @@ export function CurriculaClient() {
                 {isAssigningThis && (
                   <CourseAssignPanel
                     coursesUrl="/api/v1/admin/courses"
-                    currentCourseIds={curriculum.courses?.map((c: {id: string}) => c.id) ?? []}
+                    currentCourseIds={curriculum.courses?.map((c) => c.id) ?? []}
                     onClose={() => setPanel({ type: 'none' })}
                     onSave={handleAssign}
                     saving={saving}

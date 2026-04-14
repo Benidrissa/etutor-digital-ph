@@ -807,6 +807,7 @@ export interface CurriculumAdminResponse {
   visibility: "public" | "private";
   created_by?: string;
   course_count: number;
+  courses?: Array<{ id: string; slug: string; title_fr: string; title_en: string; status: string; module_count: number; estimated_hours: number }>;
   created_at: string;
   published_at?: string;
 }
