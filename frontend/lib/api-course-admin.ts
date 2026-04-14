@@ -210,6 +210,33 @@ export async function reindexImagesApi(
   });
 }
 
+// ── Syllabus ──────────────────────────────────────────────────────────
+
+export interface SyllabusUnit {
+  title_fr: string;
+  title_en: string;
+  unit_type: string;
+  description_fr: string;
+  description_en: string;
+}
+
+export interface SyllabusModule {
+  module_number: number;
+  title_fr: string;
+  title_en: string;
+  description_fr: string;
+  description_en: string;
+  estimated_hours: number;
+  bloom_level: string;
+  units: SyllabusUnit[];
+}
+
+export async function getCourseSyllabus(
+  courseId: string
+): Promise<{ modules: SyllabusModule[] }> {
+  return apiFetch(`/api/v1/admin/courses/${courseId}/syllabus`);
+}
+
 // ── AI metadata suggestion ────────────────────────────────────────────
 
 export interface SuggestedMetadata {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import {
   ChevronDown,
@@ -19,28 +19,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { apiFetch } from "@/lib/api";
-
-interface SyllabusUnit {
-  title_fr: string;
-  title_en: string;
-  unit_type: string;
-  description_fr: string;
-  description_en: string;
-}
-
-interface SyllabusModule {
-  module_number: number;
-  title_fr: string;
-  title_en: string;
-  description_fr: string;
-  description_en: string;
-  estimated_hours: number;
-  bloom_level: string;
-  units: SyllabusUnit[];
-}
+import {
+  type SyllabusModule,
+  getCourseSyllabus,
+} from "@/lib/api-course-admin";
 
 interface SyllabusVisualEditorProps {
   courseId: string;
+  fetchOnMount?: boolean;
   initialModules?: SyllabusModule[];
   onSaved?: () => void;
 }
@@ -54,6 +40,7 @@ const UNIT_TYPE_ICONS: Record<string, React.ReactNode> = {
 export function SyllabusVisualEditor({
   courseId,
   initialModules = [],
+  fetchOnMount = false,
   onSaved,
 }: SyllabusVisualEditorProps) {
   const t = useTranslations("AdminCourses.syllabusEditor");
@@ -65,6 +52,22 @@ export function SyllabusVisualEditor({
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Fetch full syllabus from backend when initialModules is empty
+  useEffect(() => {
+    if (!fetchOnMount || initialModules.length > 0) return;
+    setIsLoading(true);
+    getCourseSyllabus(courseId)
+      .then((data) => {
+        if (data.modules.length > 0) {
+          setModules(data.modules);
+          setExpandedModule(0);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setIsLoading(false));
+  }, [courseId, fetchOnMount]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Module operations ─────────────────────────────────────────────
 
@@ -226,6 +229,14 @@ export function SyllabusVisualEditor({
   }, [courseId, modules, onSaved, t]);
 
   // ── Render ────────────────────────────────────────────────────────
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
