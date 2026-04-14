@@ -532,6 +532,7 @@ Respond with ONLY this JSON object, no other text:
 
 
 class SyllabusModuleUnit(BaseModel):
+    model_config = {"extra": "ignore"}
     title_fr: str
     title_en: str
     unit_type: str = "lesson"
@@ -540,6 +541,7 @@ class SyllabusModuleUnit(BaseModel):
 
 
 class SyllabusModule(BaseModel):
+    model_config = {"extra": "ignore"}
     module_number: int
     title_fr: str
     title_en: str
