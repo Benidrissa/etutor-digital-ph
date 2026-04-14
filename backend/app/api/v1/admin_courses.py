@@ -52,6 +52,7 @@ class CreateCourseRequest(BaseModel):
     visibility: str = "public"
     price_credits: int = 0
     creation_mode: str = "legacy"
+    objectives_json: dict | None = None
 
 
 class CourseResponse(BaseModel):
@@ -343,6 +344,121 @@ async def archive_course(
     img_count = await _fetch_image_count(db, course.rag_collection_id)
     logger.info("Course archived", course_id=str(course_id), admin_id=current_user.id)
     return _course_to_response(course, image_count=img_count)
+
+
+class SuggestMetadataResponse(BaseModel):
+    title_fr: str
+    title_en: str
+    description_fr: str
+    description_en: str
+
+
+@router.post("/{course_id}/suggest-metadata", response_model=SuggestMetadataResponse)
+async def suggest_course_metadata(
+    course_id: uuid.UUID,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
+    db=Depends(get_db_session),
+) -> SuggestMetadataResponse:
+    """Use Claude to propose a title and description based on uploaded PDFs + objectives.
+
+    Synchronous single-turn call — returns within ~10s. Not a Celery task.
+    """
+    from app.domain.models.course_resource import CourseResource
+
+    result = await db.execute(select(Course).where(Course.id == course_id))
+    course = result.scalar_one_or_none()
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    # Gather context from uploaded resources
+    res_result = await db.execute(
+        select(CourseResource.raw_text)
+        .where(CourseResource.course_id == course_id)
+        .limit(5)
+    )
+    resource_texts = [r for (r,) in res_result if r]
+    context_text = "\n\n---\n\n".join(resource_texts)[:80_000]  # Cap at 80K chars
+
+    # Build objectives context
+    objectives_text = ""
+    if course.objectives_json:
+        obj = course.objectives_json
+        if obj.get("fr"):
+            objectives_text += "Objectives (FR): " + "; ".join(obj["fr"]) + "\n"
+        if obj.get("en"):
+            objectives_text += "Objectives (EN): " + "; ".join(obj["en"]) + "\n"
+
+    # Get taxonomy info
+    cats = course.taxonomy_categories or []
+    domains = [tc.slug for tc in cats if tc.type == "domain"]
+    levels = [tc.slug for tc in cats if tc.type == "level"]
+    audiences = [tc.slug for tc in cats if tc.type == "audience"]
+
+    taxonomy_text = ""
+    if domains:
+        taxonomy_text += f"Domain: {', '.join(domains)}\n"
+    if levels:
+        taxonomy_text += f"Level: {', '.join(levels)}\n"
+    if audiences:
+        taxonomy_text += f"Audience: {', '.join(audiences)}\n"
+
+    prompt = f"""Based on the following course materials and context, propose a title and description for this course.
+The title and description must be provided in both French (FR) and English (EN).
+
+{taxonomy_text}
+{objectives_text}
+Estimated hours: {course.estimated_hours}
+
+COURSE MATERIALS (excerpt):
+{context_text[:40_000] if context_text else "(No materials uploaded yet)"}
+
+Respond with EXACTLY this JSON format and nothing else:
+{{
+  "title_fr": "...",
+  "title_en": "...",
+  "description_fr": "A 2-3 sentence description in French",
+  "description_en": "A 2-3 sentence description in English"
+}}"""
+
+    import json as json_module
+    import os
+
+    from anthropic import Anthropic
+
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI service not configured",
+        )
+    client = Anthropic(api_key=api_key)
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=1024,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    response_text = response.content[0].text.strip()
+
+    # Parse JSON from response
+    try:
+        # Try to extract JSON from possible markdown code block
+        if "```" in response_text:
+            json_start = response_text.find("{")
+            json_end = response_text.rfind("}") + 1
+            response_text = response_text[json_start:json_end]
+        parsed = json_module.loads(response_text)
+    except (json_module.JSONDecodeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to parse AI response",
+        )
+
+    return SuggestMetadataResponse(
+        title_fr=parsed.get("title_fr", ""),
+        title_en=parsed.get("title_en", ""),
+        description_fr=parsed.get("description_fr", ""),
+        description_en=parsed.get("description_en", ""),
+    )
 
 
 class GenerateStructureRequest(BaseModel):

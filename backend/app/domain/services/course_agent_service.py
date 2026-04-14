@@ -205,6 +205,7 @@ class CourseAgentService:
         description_fr: str | None = None,
         description_en: str | None = None,
         audience_type: list[str] | None = None,
+        objectives_json: dict | None = None,
     ) -> str:
         """Build the syllabus generation prompt, using admin override if available."""
         from app.ai.prompts.audience import (
@@ -240,6 +241,18 @@ class CourseAgentService:
             if description_en:
                 description_block += f"- Description (EN): {description_en}\n"
 
+        objectives_block = ""
+        if objectives_json:
+            objectives_block = "\n## Course Objectives\n"
+            if objectives_json.get("fr"):
+                objectives_block += "Objectives (FR):\n"
+                for obj in objectives_json["fr"]:
+                    objectives_block += f"  - {obj}\n"
+            if objectives_json.get("en"):
+                objectives_block += "Objectives (EN):\n"
+                for obj in objectives_json["en"]:
+                    objectives_block += f"  - {obj}\n"
+
         if audience_ctx.is_kids:
             return self._build_kids_prompt(
                 title_fr=title_fr,
@@ -267,6 +280,7 @@ class CourseAgentService:
             f"- Level(s): {levels_str}\n"
             f"- Target audience: {audience_str}\n"
             f"- Estimated total hours: {estimated_hours}\n\n"
+            f"{objectives_block}\n"
             f"{resource_block}\n\n"
             "## Design principles (mandatory)\n"
             "- Progressive complexity: start with foundational concepts "
@@ -417,6 +431,7 @@ class CourseAgentService:
         audience_type: list[str] | None = None,
         estimated_hours: int = 20,
         resource_text: str | None = None,
+        objectives_json: dict | None = None,
     ) -> list[dict[str, Any]]:
         """
         Generate a course module outline using Claude API.
@@ -467,6 +482,7 @@ class CourseAgentService:
                 description_fr=course_description_fr,
                 description_en=course_description_en,
                 audience_type=audience_type,
+                objectives_json=objectives_json,
             )
 
             _model = "claude-sonnet-4-6"

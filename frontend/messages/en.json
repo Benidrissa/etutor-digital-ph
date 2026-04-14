@@ -1520,11 +1520,28 @@
       },
       "objectives": {
         "title": "Course Objectives",
-        "description": "Define the learning objectives, target audience, level, and expected duration."
+        "description": "Define the learning objectives, target audience, level, and expected duration.",
+        "objectivesFr": "Learning Objectives (French)",
+        "objectivesEn": "Learning Objectives (English)",
+        "objectivesFrPlaceholder": "Enter one objective per line...\nExample: Understand the principles of disease prevention",
+        "objectivesEnPlaceholder": "Enter one objective per line...\nExample: Understand the principles of disease prevention",
+        "objectivesHint": "One objective per line. These will guide the AI in generating the course structure.",
+        "domain": "Domain",
+        "level": "Level",
+        "audience": "Audience",
+        "estimatedHours": "Estimated Hours"
       },
       "aiProposal": {
         "title": "AI-Proposed Title & Description",
-        "description": "Review and edit the AI-generated title and description for your course."
+        "description": "Review and edit the AI-generated title and description for your course.",
+        "loading": "AI is analyzing your materials and objectives...",
+        "error": "Failed to generate proposal. Please try again.",
+        "retry": "Retry",
+        "titleFr": "Title (French) *",
+        "titleEn": "Title (English) *",
+        "descriptionFr": "Description (French)",
+        "descriptionEn": "Description (English)",
+        "regenerate": "Regenerate Proposal"
       },
       "syllabusEdit": {
         "title": "Edit Syllabus",

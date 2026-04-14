@@ -210,6 +210,23 @@ export async function reindexImagesApi(
   });
 }
 
+// ── AI metadata suggestion ────────────────────────────────────────────
+
+export interface SuggestedMetadata {
+  title_fr: string;
+  title_en: string;
+  description_fr: string;
+  description_en: string;
+}
+
+export async function suggestCourseMetadata(
+  courseId: string
+): Promise<SuggestedMetadata> {
+  return apiFetch(`/api/v1/admin/courses/${courseId}/suggest-metadata`, {
+    method: "POST",
+  });
+}
+
 // ── Publishing ────────────────────────────────────────────────────────
 
 export async function publishAdminCourse(courseId: string): Promise<void> {
