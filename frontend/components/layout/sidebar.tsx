@@ -136,7 +136,7 @@ export function Sidebar() {
           },
         ]
       : []),
-    ...(userRole === "admin" || userRole === "expert"
+    ...(userRole === "admin" || userRole === "sub_admin" || userRole === "expert"
       ? [
           {
             href: `/${locale}/admin/users`,
