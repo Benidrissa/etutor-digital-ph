@@ -1555,7 +1555,8 @@
         "title": "Preview & Edit Lessons",
         "description": "Generate lesson previews, review content, and edit before publishing. Edited lessons will be locked and served from cache.",
         "skipHint": "This step is optional. Click Next to skip to publishing."
-      }
+      },
+      "skipToPublish": "Skip to Publish"
     },
     "syllabusEditor": {
       "untitledModule": "Untitled Module",

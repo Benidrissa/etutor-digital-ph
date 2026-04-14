@@ -1555,7 +1555,8 @@
         "title": "Aperçu et modification des leçons",
         "description": "Générez des aperçus de leçons, vérifiez le contenu et modifiez avant la publication. Les leçons modifiées seront verrouillées et servies depuis le cache.",
         "skipHint": "Cette étape est optionnelle. Cliquez sur Suivant pour passer à la publication."
-      }
+      },
+      "skipToPublish": "Passer à la publication"
     },
     "syllabusEditor": {
       "untitledModule": "Module sans titre",

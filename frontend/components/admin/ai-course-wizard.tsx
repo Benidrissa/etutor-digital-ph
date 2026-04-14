@@ -809,6 +809,8 @@ export function AICourseWizard({
     if (idx < AI_STEPS.length - 1) setStep(AI_STEPS[idx + 1]);
   };
 
+  const skipToPublish = () => setStep("publish");
+
   const handleBack = () => {
     if (isGenerating || isIndexing) return;
     const idx = AI_STEPS.indexOf(step);
@@ -1450,12 +1452,20 @@ export function AICourseWizard({
               <ChevronLeft className="mr-1 h-4 w-4" />
               {t("back")}
             </Button>
-            {step !== "publish" && (
-              <Button onClick={handleNext} disabled={!canGoNext() || isGenerating} className="min-h-11">
-                {t("next")}
-                <ChevronRight className="ml-1 h-4 w-4" />
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              {(step === "generate" || step === "syllabus_edit" || step === "lesson_preview") && canGoNext() && (
+                <Button variant="ghost" onClick={skipToPublish} className="min-h-11 text-muted-foreground">
+                  {tAi("skipToPublish")}
+                  <Rocket className="ml-1 h-4 w-4" />
+                </Button>
+              )}
+              {step !== "publish" && (
+                <Button onClick={handleNext} disabled={!canGoNext() || isGenerating} className="min-h-11">
+                  {t("next")}
+                  <ChevronRight className="ml-1 h-4 w-4" />
+                </Button>
+              )}
+            </div>
           </div>
         )}
       </div>
