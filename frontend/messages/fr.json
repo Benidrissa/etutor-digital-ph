@@ -1516,7 +1516,8 @@
         "ai_proposal": "Proposition IA",
         "generate": "Générer",
         "syllabus_edit": "Modifier le programme",
-        "publish": "Publier"
+        "publish": "Publier",
+        "lesson_preview": "Leçons"
       },
       "objectives": {
         "title": "Objectifs du cours",
@@ -1549,7 +1550,12 @@
         "indexNeeded": "L'indexation RAG est nécessaire avant la publication. Lancez-la maintenant pendant que vous modifiez le programme."
       },
       "indexingBadge": "Indexation...",
-      "indexedBadge": "Indexé"
+      "indexedBadge": "Indexé",
+      "lessonPreview": {
+        "title": "Aperçu et modification des leçons",
+        "description": "Générez des aperçus de leçons, vérifiez le contenu et modifiez avant la publication. Les leçons modifiées seront verrouillées et servies depuis le cache.",
+        "skipHint": "Cette étape est optionnelle. Cliquez sur Suivant pour passer à la publication."
+      }
     },
     "syllabusEditor": {
       "untitledModule": "Module sans titre",
@@ -1563,6 +1569,25 @@
       "save": "Enregistrer le programme",
       "saveError": "Échec de l'enregistrement du programme",
       "saveSuccess": "Programme enregistré avec succès"
+    },
+    "lessonPreview": {
+      "language": "Langue",
+      "country": "Pays",
+      "units": "unités",
+      "generate": "Aperçu",
+      "edit": "Modifier",
+      "view": "Voir",
+      "locked": "Verrouillé",
+      "cached": "En cache",
+      "keyPoints": "Points clés",
+      "editIntroduction": "Introduction",
+      "editConcept": "Concept {n}",
+      "editSynthesis": "Synthèse",
+      "saveAndLock": "Enregistrer et verrouiller",
+      "cancel": "Annuler",
+      "lockHint": "Les leçons enregistrées sont verrouillées et ne seront jamais régénérées.",
+      "generateError": "Échec de la génération de l'aperçu de la leçon.",
+      "noModules": "Aucun module trouvé. Générez d'abord un programme."
     }
   },
   "AdminSyllabus": {

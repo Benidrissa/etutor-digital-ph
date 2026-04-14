@@ -602,6 +602,7 @@ async def get_course_syllabus(
 
         syllabus.append(
             {
+                "id": str(mod.id),
                 "module_number": mod.module_number,
                 "title_fr": mod.title_fr,
                 "title_en": mod.title_en,

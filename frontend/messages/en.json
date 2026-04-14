@@ -1516,7 +1516,8 @@
         "ai_proposal": "AI Proposal",
         "generate": "Generate",
         "syllabus_edit": "Edit Syllabus",
-        "publish": "Publish"
+        "publish": "Publish",
+        "lesson_preview": "Lessons"
       },
       "objectives": {
         "title": "Course Objectives",
@@ -1549,7 +1550,12 @@
         "indexNeeded": "RAG indexation is required before publishing. Start it now while you edit the syllabus."
       },
       "indexingBadge": "Indexing...",
-      "indexedBadge": "Indexed"
+      "indexedBadge": "Indexed",
+      "lessonPreview": {
+        "title": "Preview & Edit Lessons",
+        "description": "Generate lesson previews, review content, and edit before publishing. Edited lessons will be locked and served from cache.",
+        "skipHint": "This step is optional. Click Next to skip to publishing."
+      }
     },
     "syllabusEditor": {
       "untitledModule": "Untitled Module",
@@ -1563,6 +1569,25 @@
       "save": "Save Syllabus",
       "saveError": "Failed to save syllabus",
       "saveSuccess": "Syllabus saved successfully"
+    },
+    "lessonPreview": {
+      "language": "Language",
+      "country": "Country",
+      "units": "units",
+      "generate": "Preview",
+      "edit": "Edit",
+      "view": "View",
+      "locked": "Locked",
+      "cached": "Cached",
+      "keyPoints": "Key Points",
+      "editIntroduction": "Introduction",
+      "editConcept": "Concept {n}",
+      "editSynthesis": "Synthesis",
+      "saveAndLock": "Save & Lock",
+      "cancel": "Cancel",
+      "lockHint": "Saved lessons are locked and will never be regenerated.",
+      "generateError": "Failed to generate lesson preview.",
+      "noModules": "No modules found. Generate a syllabus first."
     }
   },
   "AdminSyllabus": {

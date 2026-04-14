@@ -22,6 +22,7 @@ import {
   ChevronDown,
   StopCircle,
   RotateCcw,
+  BookOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,6 +60,7 @@ import {
 } from "@/lib/api-course-admin";
 import { getCourseTaxonomy, type TaxonomyItem } from "@/lib/api";
 import { SyllabusVisualEditor } from "@/components/admin/syllabus-visual-editor";
+import { LessonPreviewStep } from "@/components/admin/lesson-preview-step";
 
 // ── Step types ────────────────────────────────────────────────────────
 
@@ -68,6 +70,7 @@ type AIWizardStep =
   | "ai_proposal"
   | "generate"
   | "syllabus_edit"
+  | "lesson_preview"
   | "publish";
 
 const AI_STEPS: AIWizardStep[] = [
@@ -76,6 +79,7 @@ const AI_STEPS: AIWizardStep[] = [
   "ai_proposal",
   "generate",
   "syllabus_edit",
+  "lesson_preview",
   "publish",
 ];
 
@@ -85,6 +89,7 @@ const STEP_ICONS: Record<AIWizardStep, React.ReactNode> = {
   ai_proposal: <Wand2 className="h-4 w-4" />,
   generate: <Sparkles className="h-4 w-4" />,
   syllabus_edit: <GripVertical className="h-4 w-4" />,
+  lesson_preview: <BookOpen className="h-4 w-4" />,
   publish: <Rocket className="h-4 w-4" />,
 };
 
@@ -744,6 +749,7 @@ export function AICourseWizard({
     if (step === "ai_proposal") return proposedTitle.fr.trim().length > 0 && proposedTitle.en.trim().length > 0;
     if (step === "generate") return generatedModules.length > 0;
     if (step === "syllabus_edit") return generatedModules.length > 0;
+    if (step === "lesson_preview") return true; // Optional step — always skippable
     return false;
   };
 
@@ -1287,6 +1293,22 @@ export function AICourseWizard({
                     fetchOnMount
                   />
                 )}
+              </div>
+            )}
+
+            {/* ── LESSON PREVIEW STEP ───────────────────────────────── */}
+            {step === "lesson_preview" && (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-xl font-semibold">{tAi("lessonPreview.title")}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{tAi("lessonPreview.description")}</p>
+                </div>
+
+                {courseId && <LessonPreviewStep courseId={courseId} />}
+
+                <p className="text-xs text-muted-foreground text-center">
+                  {tAi("lessonPreview.skipHint")}
+                </p>
               </div>
             )}
 
