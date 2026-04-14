@@ -55,6 +55,24 @@ class CreateCourseRequest(BaseModel):
     objectives_json: dict | None = None
 
 
+class UpdateCourseRequest(BaseModel):
+    title_fr: str | None = None
+    title_en: str | None = None
+    description_fr: str | None = None
+    description_en: str | None = None
+    course_domain: list[str] | None = None
+    course_level: list[str] | None = None
+    audience_type: list[str] | None = None
+    languages: str | None = None
+    estimated_hours: int | None = None
+    cover_image_url: str | None = None
+    preassessment_enabled: bool | None = None
+    preassessment_mandatory: bool | None = None
+    visibility: str | None = None
+    price_credits: int | None = None
+    objectives_json: dict | None = None
+
+
 class CourseResponse(BaseModel):
     id: str
     slug: str
@@ -236,7 +254,7 @@ async def get_course_admin(
 @router.patch("/{course_id}", response_model=CourseResponse)
 async def update_course(
     course_id: uuid.UUID,
-    request: CreateCourseRequest,
+    request: UpdateCourseRequest,
     current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> CourseResponse:
