@@ -999,6 +999,25 @@ async def upload_course_resource(
         resources_created=len(resources_created),
     )
 
+    # Auto-trigger RAG indexation for AI-assisted courses
+    if course.creation_mode == "ai_assisted" and course.rag_collection_id:
+        # Only dispatch if no indexation is already running
+        if not course.indexation_task_id or (
+            course.indexation_task_id
+            and AsyncResult(course.indexation_task_id).state
+            in ("SUCCESS", "FAILURE", "REVOKED")
+        ):
+            task = index_course_resources.delay(
+                str(course_id), course.rag_collection_id
+            )
+            course.indexation_task_id = task.id
+            await db.commit()
+            logger.info(
+                "Auto-triggered RAG indexation for AI-assisted course",
+                course_id=str(course_id),
+                task_id=task.id,
+            )
+
     return {
         "course_id": str(course_id),
         "name": safe_name,

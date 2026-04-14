@@ -1530,7 +1530,9 @@
         "title": "Edit Syllabus",
         "description": "Reorganize modules, edit titles, and adjust the course structure.",
         "indexNeeded": "RAG indexation is required before publishing. Start it now while you edit the syllabus."
-      }
+      },
+      "indexingBadge": "Indexing...",
+      "indexedBadge": "Indexed"
     }
   },
   "AdminSyllabus": {

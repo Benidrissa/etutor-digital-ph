@@ -1530,7 +1530,9 @@
         "title": "Modifier le programme",
         "description": "Réorganisez les modules, modifiez les titres et ajustez la structure du cours.",
         "indexNeeded": "L'indexation RAG est nécessaire avant la publication. Lancez-la maintenant pendant que vous modifiez le programme."
-      }
+      },
+      "indexingBadge": "Indexation...",
+      "indexedBadge": "Indexé"
     }
   },
   "AdminSyllabus": {

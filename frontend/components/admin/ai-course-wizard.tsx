@@ -266,8 +266,22 @@ export function AICourseWizard({
       setFiles((prev) =>
         prev.map((f) => (f.name === file.name ? { ...f, status: "uploaded" as const } : f))
       );
+
+      // Check if backend auto-triggered indexation (AI-assisted mode)
+      if (!isIndexing) {
+        try {
+          const status = await getIndexStatusApi(courseId);
+          if (status.task && ["PENDING", "STARTED", "RETRY"].includes(status.task.state)) {
+            setTaskId(status.task.id ?? null);
+            setIsIndexing(true);
+            lastIndexProgressTimeRef.current = Date.now();
+          }
+        } catch {
+          // ignore — indexation check is best-effort
+        }
+      }
     },
-    [courseId]
+    [courseId, isIndexing]
   );
 
   const handleFiles = useCallback(
@@ -688,6 +702,19 @@ export function AICourseWizard({
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
             <h2 className="text-lg font-semibold">{tAi("title")}</h2>
+            {/* Persistent indexation badge */}
+            {isIndexing && step !== "syllabus_edit" && (
+              <Badge className="gap-1 bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-100 dark:bg-amber-900 dark:text-amber-200 text-xs">
+                <Database className="h-3 w-3 animate-pulse" />
+                {tAi("indexingBadge")}
+              </Badge>
+            )}
+            {indexStatus?.indexed && !isIndexing && (
+              <Badge className="gap-1 bg-green-100 text-green-800 border-green-300 hover:bg-green-100 dark:bg-green-900 dark:text-green-200 text-xs">
+                <CheckCircle2 className="h-3 w-3" />
+                {tAi("indexedBadge")}
+              </Badge>
+            )}
           </div>
           <Button variant="ghost" size="icon" onClick={handleClose} aria-label={t("close")}>
             <X className="h-5 w-5" />
