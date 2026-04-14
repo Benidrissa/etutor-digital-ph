@@ -16,6 +16,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { authClient, AuthError } from '@/lib/auth';
+import { useSettings } from '@/lib/settings-context';
 
 const createSchema = (t: (key: string) => string) =>
   z.object({
@@ -32,6 +33,8 @@ export function PasswordLoginForm({ redirectTo }: { redirectTo?: string }) {
 
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const { getSetting } = useSettings();
+  const registrationEnabled = getSetting<boolean>('auth-self-registration-enabled', false);
 
   const schema = createSchema(t);
   const {
@@ -155,12 +158,14 @@ export function PasswordLoginForm({ redirectTo }: { redirectTo?: string }) {
             {isLoading ? tCommon('loading') : t('signIn')}
           </Button>
 
-          <div className="text-center text-sm">
-            <span className="text-muted-foreground">{t('noAccount')} </span>
-            <Link href="/register-options" className="font-medium text-primary hover:underline">
-              {t('signUp')}
-            </Link>
-          </div>
+          {registrationEnabled && (
+            <div className="text-center text-sm">
+              <span className="text-muted-foreground">{t('noAccount')} </span>
+              <Link href="/register-options" className="font-medium text-primary hover:underline">
+                {t('signUp')}
+              </Link>
+            </div>
+          )}
         </form>
       </CardContent>
     </Card>

@@ -317,6 +317,14 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 4, "max": 20},
         True,
     ),
+    SettingDef(
+        "auth-self-registration-enabled",
+        "auth",
+        False,
+        "boolean",
+        "Allow self-registration",
+        "When disabled, only admins can create user accounts. Sign-up pages and registration endpoints are blocked.",
+    ),
     # ── Rate Limiting ──────────────────────────────────────
     SettingDef(
         "rate-limiting-global-requests-per-minute",
