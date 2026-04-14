@@ -461,6 +461,109 @@ Respond with EXACTLY this JSON format and nothing else:
     )
 
 
+class SyllabusModuleUnit(BaseModel):
+    title_fr: str
+    title_en: str
+    unit_type: str = "lesson"
+    description_fr: str = ""
+    description_en: str = ""
+
+
+class SyllabusModule(BaseModel):
+    module_number: int
+    title_fr: str
+    title_en: str
+    description_fr: str = ""
+    description_en: str = ""
+    estimated_hours: int = 20
+    bloom_level: str = "understand"
+    units: list[SyllabusModuleUnit] = []
+
+
+class SaveSyllabusRequest(BaseModel):
+    modules: list[SyllabusModule]
+
+
+@router.patch("/{course_id}/syllabus")
+async def save_syllabus(
+    course_id: uuid.UUID,
+    request: SaveSyllabusRequest,
+    current_user: AuthenticatedUser = Depends(
+        require_role(UserRole.admin, UserRole.sub_admin)
+    ),
+    db=Depends(get_db_session),
+) -> dict:
+    """Save edited syllabus structure (modules + units). Replaces existing."""
+    result = await db.execute(select(Course).where(Course.id == course_id))
+    course = result.scalar_one_or_none()
+    if not course:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Course not found"
+        )
+
+    if not request.modules:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one module is required",
+        )
+
+    # Delete existing modules and units (cascade)
+    await db.execute(
+        sa_delete(Module).where(Module.course_id == course_id)
+    )
+
+    # Create new modules and units
+    for m in request.modules:
+        if not m.units:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Module {m.module_number} must have at least one unit",
+            )
+        module = Module(
+            id=uuid.uuid4(),
+            course_id=course_id,
+            module_number=m.module_number,
+            title_fr=m.title_fr,
+            title_en=m.title_en,
+            description_fr=m.description_fr,
+            description_en=m.description_en,
+            estimated_hours=m.estimated_hours,
+            bloom_level=m.bloom_level,
+        )
+        db.add(module)
+
+        for idx, u in enumerate(m.units):
+            unit = ModuleUnit(
+                id=uuid.uuid4(),
+                module_id=module.id,
+                unit_number=f"{m.module_number}.{idx + 1}",
+                unit_type=u.unit_type,
+                title_fr=u.title_fr,
+                title_en=u.title_en,
+                description_fr=u.description_fr,
+                description_en=u.description_en,
+                order_index=idx,
+            )
+            db.add(unit)
+
+    # Update syllabus_json
+    course.syllabus_json = [m.model_dump() for m in request.modules]
+    course.creation_step = "generated"
+
+    await db.commit()
+
+    logger.info(
+        "Syllabus saved",
+        course_id=str(course_id),
+        modules=len(request.modules),
+        admin_id=current_user.id,
+    )
+    return {
+        "status": "saved",
+        "modules_count": len(request.modules),
+    }
+
+
 class GenerateStructureRequest(BaseModel):
     estimated_hours: int = 20
 

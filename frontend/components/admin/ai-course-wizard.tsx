@@ -58,6 +58,7 @@ import {
   formatBytes,
 } from "@/lib/api-course-admin";
 import { getCourseTaxonomy, type TaxonomyItem } from "@/lib/api";
+import { SyllabusVisualEditor } from "@/components/admin/syllabus-visual-editor";
 
 // ── Step types ────────────────────────────────────────────────────────
 
@@ -1279,12 +1280,28 @@ export function AICourseWizard({
                   </div>
                 )}
 
-                <Card>
-                  <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                    <GripVertical className="h-12 w-12 text-muted-foreground mb-3" />
-                    <p className="text-sm text-muted-foreground">{tAi("comingSoon")}</p>
-                  </CardContent>
-                </Card>
+                {/* Visual syllabus editor */}
+                {courseId && (
+                  <SyllabusVisualEditor
+                    courseId={courseId}
+                    initialModules={generatedModules.map((m, i) => ({
+                      module_number: m.module_number || i + 1,
+                      title_fr: m.title_fr,
+                      title_en: m.title_en,
+                      description_fr: "",
+                      description_en: "",
+                      estimated_hours: 20,
+                      bloom_level: "understand",
+                      units: [{
+                        title_fr: "",
+                        title_en: "",
+                        unit_type: "lesson",
+                        description_fr: "",
+                        description_en: "",
+                      }],
+                    }))}
+                  />
+                )}
               </div>
             )}
 
