@@ -3,12 +3,14 @@
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useOrg } from "@/components/org/org-context";
+import { CourseAssignPanel } from "@/components/shared/course-assign-panel";
 import {
   fetchOrgCurricula,
   createOrgCurriculum,
+  setOrgCurriculumCourses,
 } from "@/lib/api";
 import type { OrgCurriculumResponse } from "@/lib/api";
-import { Library, Plus, BookOpen } from "lucide-react";
+import { Library, Plus, BookOpen, ListPlus } from "lucide-react";
 
 function slugify(name: string): string {
   return name
@@ -32,6 +34,8 @@ export default function OrgCurriculaPage() {
   const [descEn, setDescEn] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+  const [savingCourses, setSavingCourses] = useState(false);
 
   useEffect(() => {
     if (!orgId) return;
@@ -63,6 +67,22 @@ export default function OrgCurriculaPage() {
       setError(err instanceof Error ? err.message : "Failed to create curriculum");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleAssignCourses = async (curriculumId: string, courseIds: string[]) => {
+    if (!orgId) return;
+    setSavingCourses(true);
+    try {
+      const updated = await setOrgCurriculumCourses(orgId, curriculumId, courseIds);
+      setCurricula((prev) =>
+        prev.map((c) => (c.id === curriculumId ? updated : c))
+      );
+      setAssigningId(null);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingCourses(false);
     }
   };
 
@@ -162,33 +182,51 @@ export default function OrgCurriculaPage() {
       ) : (
         <div className="space-y-3">
           {curricula.map((c) => (
-            <div
-              key={c.id}
-              className="flex items-center justify-between rounded-lg border bg-white p-4"
-            >
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-green-100 flex items-center justify-center">
-                  <BookOpen className="h-5 w-5 text-green-600" />
+            <div key={c.id} className="rounded-lg border bg-white p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg bg-green-100 flex items-center justify-center">
+                    <BookOpen className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium">{c.title_en}</p>
+                    <p className="text-sm text-gray-500">{c.title_fr}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-medium">{c.title_en}</p>
-                  <p className="text-sm text-gray-500">{c.title_fr}</p>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-500">
+                    {c.course_count} courses
+                  </span>
+                  <span
+                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                      c.status === "published"
+                        ? "bg-green-100 text-green-700"
+                        : "bg-gray-100 text-gray-600"
+                    }`}
+                  >
+                    {c.status}
+                  </span>
+                  <button
+                    onClick={() =>
+                      setAssigningId(assigningId === c.id ? null : c.id)
+                    }
+                    className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-gray-50"
+                  >
+                    <ListPlus className="h-3.5 w-3.5" />
+                    Assign Courses
+                  </button>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-gray-500">
-                  {c.course_count} courses
-                </span>
-                <span
-                  className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                    c.status === "published"
-                      ? "bg-green-100 text-green-700"
-                      : "bg-gray-100 text-gray-600"
-                  }`}
-                >
-                  {c.status}
-                </span>
-              </div>
+
+              {assigningId === c.id && (
+                <CourseAssignPanel
+                  coursesUrl="/api/v1/courses"
+                  currentCourseIds={[]}
+                  onClose={() => setAssigningId(null)}
+                  onSave={(ids) => handleAssignCourses(c.id, ids)}
+                  saving={savingCourses}
+                />
+              )}
             </div>
           ))}
         </div>

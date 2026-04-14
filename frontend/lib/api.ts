@@ -1309,6 +1309,17 @@ export async function createOrgCurriculum(orgId: string, data: {
   });
 }
 
+export async function setOrgCurriculumCourses(
+  orgId: string,
+  curriculumId: string,
+  courseIds: string[]
+): Promise<OrgCurriculumResponse> {
+  return apiFetch<OrgCurriculumResponse>(
+    `/api/v1/organizations/${orgId}/curricula/${curriculumId}/courses`,
+    { method: "PUT", body: JSON.stringify({ course_ids: courseIds }) }
+  );
+}
+
 // Organization Codes
 export async function fetchOrgCodes(orgId: string): Promise<OrgCodeResponse[]> {
   return apiFetch<OrgCodeResponse[]>(`/api/v1/organizations/${orgId}/codes`);
