@@ -8,9 +8,9 @@ from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
 
 from app.api.deps import get_db_session
-from app.api.deps_local_auth import AuthenticatedUser, get_current_user
+from app.api.deps_local_auth import AuthenticatedUser, get_current_user, require_role
 from app.domain.models.organization import OrgMemberRole
-from app.domain.models.user import User
+from app.domain.models.user import User, UserRole
 from app.domain.services.organization_service import OrganizationService
 
 router = APIRouter(prefix="/organizations", tags=["Organizations"])
@@ -102,10 +102,10 @@ def _org_to_response(org) -> OrgResponse:
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=OrgResponse)
 async def create_organization(
     body: CreateOrgRequest,
-    current_user: AuthenticatedUser = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> OrgResponse:
-    """Create a new organization. Any authenticated user can create."""
+    """Create a new organization. Admin/sub_admin only."""
     org = await _svc.create_organization(
         db,
         name=body.name,
