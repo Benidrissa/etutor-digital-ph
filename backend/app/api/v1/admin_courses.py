@@ -393,47 +393,97 @@ async def suggest_course_metadata(
         select(CourseResource.raw_text).where(CourseResource.course_id == course_id).limit(5)
     )
     resource_texts = [r for (r,) in res_result if r]
-    context_text = "\n\n---\n\n".join(resource_texts)[:80_000]  # Cap at 80K chars
+    context_text = "\n\n---\n\n".join(resource_texts)[:80_000]
+
+    # Determine target languages
+    langs = [l.strip() for l in (course.languages or "fr,en").split(",") if l.strip()]
+    has_fr = "fr" in langs
+    has_en = "en" in langs
 
     # Build objectives context
-    objectives_text = ""
+    objectives_lines: list[str] = []
     if course.objectives_json:
         obj = course.objectives_json
-        if obj.get("fr"):
-            objectives_text += "Objectives (FR): " + "; ".join(obj["fr"]) + "\n"
-        if obj.get("en"):
-            objectives_text += "Objectives (EN): " + "; ".join(obj["en"]) + "\n"
+        for lang_key, label in [("fr", "French"), ("en", "English")]:
+            if obj.get(lang_key):
+                objectives_lines.append(f"Learning objectives ({label}):")
+                for o in obj[lang_key]:
+                    objectives_lines.append(f"  - {o}")
+    objectives_text = "\n".join(objectives_lines)
 
-    # Get taxonomy info
+    # Build taxonomy / criteria context
     cats = course.taxonomy_categories or []
-    domains = [tc.slug for tc in cats if tc.type == "domain"]
-    levels = [tc.slug for tc in cats if tc.type == "level"]
-    audiences = [tc.slug for tc in cats if tc.type == "audience"]
-
-    taxonomy_text = ""
+    criteria_lines: list[str] = []
+    domains = [tc.slug.replace("_", " ") for tc in cats if tc.type == "domain"]
+    levels = [tc.slug.replace("_", " ") for tc in cats if tc.type == "level"]
+    audiences = [tc.slug.replace("_", " ") for tc in cats if tc.type == "audience"]
     if domains:
-        taxonomy_text += f"Domain: {', '.join(domains)}\n"
+        criteria_lines.append(f"- Domain(s): {', '.join(domains)}")
     if levels:
-        taxonomy_text += f"Level: {', '.join(levels)}\n"
+        criteria_lines.append(f"- Level(s): {', '.join(levels)}")
     if audiences:
-        taxonomy_text += f"Audience: {', '.join(audiences)}\n"
+        criteria_lines.append(f"- Target audience: {', '.join(audiences)}")
+    criteria_lines.append(f"- Estimated duration: {course.estimated_hours} hours")
+    criteria_text = "\n".join(criteria_lines)
 
-    prompt = f"""Based on the following course materials and context, propose a title and description for this course.
-The title and description must be provided in both French (FR) and English (EN).
+    # Determine which language fields to request
+    if has_fr and has_en:
+        lang_instruction = (
+            "Provide the title and description in BOTH French and English.\n"
+            "A single title is acceptable if it works in both languages (e.g. a proper noun), "
+            "but you should still provide distinct titles when the natural phrasing differs."
+        )
+        json_fields = (
+            '  "title_fr": "Concise, compelling course title in French (max 15 words)",\n'
+            '  "title_en": "Concise, compelling course title in English (max 15 words)",\n'
+            '  "description_fr": "2-3 sentence course description in French",\n'
+            '  "description_en": "2-3 sentence course description in English"'
+        )
+    elif has_fr:
+        lang_instruction = "Provide the title and description in French only."
+        json_fields = (
+            '  "title_fr": "Concise, compelling course title in French (max 15 words)",\n'
+            '  "title_en": "",\n'
+            '  "description_fr": "2-3 sentence course description in French",\n'
+            '  "description_en": ""'
+        )
+    else:
+        lang_instruction = "Provide the title and description in English only."
+        json_fields = (
+            '  "title_fr": "",\n'
+            '  "title_en": "Concise, compelling course title in English (max 15 words)",\n'
+            '  "description_fr": "",\n'
+            '  "description_en": "2-3 sentence course description in English"'
+        )
 
-{taxonomy_text}
-{objectives_text}
-Estimated hours: {course.estimated_hours}
+    prompt = f"""You are helping an instructor create an online course.
 
-COURSE MATERIALS (excerpt):
-{context_text[:40_000] if context_text else "(No materials uploaded yet)"}
+The instructor has uploaded reference materials (books, reports, guides) and wants to \
+build a structured course based on them. Your task is to propose a clear, compelling \
+title and a concise description for this course.
 
-Respond with EXACTLY this JSON format and nothing else:
+## Course criteria
+{criteria_text}
+
+{objectives_text if objectives_text else ""}
+
+## Reference materials (excerpt)
+The following is an excerpt from the uploaded source documents. \
+The course will be built from this content — the title and description should \
+accurately reflect what learners will study.
+
+{context_text[:40_000] if context_text else "(No materials uploaded yet — base the title on the objectives and criteria above.)"}
+
+## Instructions
+- The title should be specific to the actual content, not generic. \
+Mention the subject matter, not just "Introduction to..." unless truly appropriate.
+- The description should explain what the learner will gain, the scope of the course, \
+and who it is for. Keep it to 2-3 sentences.
+- {lang_instruction}
+
+Respond with ONLY this JSON object, no other text:
 {{
-  "title_fr": "...",
-  "title_en": "...",
-  "description_fr": "A 2-3 sentence description in French",
-  "description_en": "A 2-3 sentence description in English"
+{json_fields}
 }}"""
 
     import json as json_module
@@ -451,13 +501,17 @@ Respond with EXACTLY this JSON format and nothing else:
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=1024,
+        system=(
+            "You are a curriculum design expert. You propose clear, accurate, "
+            "and compelling course titles and descriptions based on source materials "
+            "and learning objectives. Always respond with valid JSON only."
+        ),
         messages=[{"role": "user", "content": prompt}],
     )
     response_text = response.content[0].text.strip()
 
     # Parse JSON from response
     try:
-        # Try to extract JSON from possible markdown code block
         if "```" in response_text:
             json_start = response_text.find("{")
             json_end = response_text.rfind("}") + 1
