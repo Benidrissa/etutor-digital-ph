@@ -8,9 +8,21 @@ from structlog import get_logger
 
 from ...api.deps import get_db_session
 from ...domain.services.local_auth_service import AuthenticationError, LocalAuthService
+from ...domain.services.platform_settings_service import PlatformSettingsService
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+_settings_svc = PlatformSettingsService()
+
+
+async def _require_registration_enabled() -> None:
+    enabled = await _settings_svc.get("auth-self-registration-enabled")
+    if not enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Self-registration is disabled for this instance.",
+        )
 
 
 # =============================================================================
@@ -190,7 +202,9 @@ class VerifyLoginOTPRequest(BaseModel):
 
 
 @router.post("/register", response_model=RegisterResponse)
-async def register(request: RegisterRequest, db=Depends(get_db_session)) -> RegisterResponse:
+async def register(
+    request: RegisterRequest, db=Depends(get_db_session), _guard=Depends(_require_registration_enabled)
+) -> RegisterResponse:
     """Register a new user with TOTP MFA setup.
 
     Flow:
@@ -466,7 +480,10 @@ async def logout(
 
 @router.post("/register-password", response_model=TokenResponse)
 async def register_with_password(
-    request: RegisterPasswordRequest, request_obj: Request, db=Depends(get_db_session)
+    request: RegisterPasswordRequest,
+    request_obj: Request,
+    db=Depends(get_db_session),
+    _guard=Depends(_require_registration_enabled),
 ) -> TokenResponse:
     """Register a new user with email or phone + password.
 
@@ -617,7 +634,10 @@ async def reset_password(
 
 @router.post("/register-email-otp", response_model=RegisterEmailOTPResponse)
 async def register_email_otp(
-    request: RegisterEmailOTPRequest, request_obj: Request, db=Depends(get_db_session)
+    request: RegisterEmailOTPRequest,
+    request_obj: Request,
+    db=Depends(get_db_session),
+    _guard=Depends(_require_registration_enabled),
 ) -> RegisterEmailOTPResponse:
     """Register a new user with email OTP verification.
 

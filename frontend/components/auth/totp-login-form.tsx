@@ -16,6 +16,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { authClient, AuthError } from '@/lib/auth';
+import { useSettings } from '@/lib/settings-context';
 
 const createLoginSchema = (t: (key: string) => string) => z.object({
   email: z.string().min(1, t('emailRequired')).email(t('emailInvalid')),
@@ -41,6 +42,8 @@ export function TOTPLoginForm({ redirectTo }: { redirectTo?: string }) {
   const [isLoading, setIsLoading] = useState(false);
   const [showMagicLink, setShowMagicLink] = useState(false);
   const [magicLinkSent, setMagicLinkSent] = useState(false);
+  const { getSetting } = useSettings();
+  const registrationEnabled = getSetting<boolean>('auth-self-registration-enabled', false);
 
   // Login form
   const loginSchema = createLoginSchema(t);
@@ -273,15 +276,17 @@ export function TOTPLoginForm({ redirectTo }: { redirectTo?: string }) {
           </div>
 
           {/* Registration Link */}
-          <div className="text-center text-sm">
-            <span className="text-muted-foreground">{t('noAccount')} </span>
-            <Link 
-              href="/register"
-              className="font-medium text-primary hover:underline"
-            >
-              {t('signUp')}
-            </Link>
-          </div>
+          {registrationEnabled && (
+            <div className="text-center text-sm">
+              <span className="text-muted-foreground">{t('noAccount')} </span>
+              <Link
+                href="/register"
+                className="font-medium text-primary hover:underline"
+              >
+                {t('signUp')}
+              </Link>
+            </div>
+          )}
         </form>
       </CardContent>
     </Card>

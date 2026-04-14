@@ -11,10 +11,14 @@ import {
 } from '@/components/ui/card';
 import { Link } from '@/i18n/routing';
 import { cn } from '@/lib/utils';
+import { useRegistrationGuard } from '@/hooks/use-registration-guard';
 
 export default function RegisterOptionsPage() {
   const t = useTranslations('Auth');
   const tCommon = useTranslations('Common');
+  const blocked = useRegistrationGuard();
+
+  if (blocked) return null;
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
