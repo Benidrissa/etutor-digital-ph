@@ -126,12 +126,16 @@ export function Sidebar() {
       icon: Wallet,
       description: t("subscribeDescription")
     },
-    {
-      href: `/${locale}/organizations`,
-      label: t("organizations"),
-      icon: Building2,
-      description: t("organizationsDescription")
-    },
+    ...(userRole === "admin" || userRole === "sub_admin"
+      ? [
+          {
+            href: `/${locale}/organizations`,
+            label: t("organizations"),
+            icon: Building2,
+            description: t("organizationsDescription"),
+          },
+        ]
+      : []),
     ...(userRole === "admin" || userRole === "expert"
       ? [
           {
