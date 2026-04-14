@@ -10,6 +10,7 @@ import {
   QrCode,
   BarChart3,
   Users,
+  Library,
 } from "lucide-react";
 
 export function OrgNav() {
@@ -23,6 +24,7 @@ export function OrgNav() {
   const base = `/${locale}/org/${org.slug}`;
   const tabs = [
     { href: base, label: t("dashboard"), icon: LayoutDashboard },
+    { href: `${base}/curricula`, label: t("curricula"), icon: Library },
     { href: `${base}/codes`, label: t("codes"), icon: QrCode },
     { href: `${base}/reports`, label: t("reports"), icon: BarChart3 },
     { href: `${base}/members`, label: t("members"), icon: Users },
