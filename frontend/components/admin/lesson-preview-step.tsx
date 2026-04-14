@@ -66,15 +66,23 @@ export function LessonPreviewStep({ courseId }: LessonPreviewStepProps) {
 
   // Fetch modules on mount
   useEffect(() => {
-    setIsLoadingModules(true);
+    let cancelled = false;
     getCourseSyllabus(courseId)
-      .then((data) => setModules(data.modules))
+      .then((data) => {
+        if (!cancelled) setModules(data.modules);
+      })
       .catch(() => {})
-      .finally(() => setIsLoadingModules(false));
+      .finally(() => {
+        if (!cancelled) setIsLoadingModules(false);
+      });
+    return () => { cancelled = true; };
   }, [courseId]);
 
-  const getPreviewKey = (moduleNumber: number, unitIdx: number) =>
-    `${moduleNumber}-${unitIdx}-${language}-${country}`;
+  const getPreviewKey = useCallback(
+    (moduleNumber: number, unitIdx: number) =>
+      `${moduleNumber}-${unitIdx}-${language}-${country}`,
+    [language, country]
+  );
 
   const generatePreview = useCallback(
     async (moduleId: string, moduleNumber: number, unitIdx: number) => {
@@ -99,7 +107,7 @@ export function LessonPreviewStep({ courseId }: LessonPreviewStepProps) {
         }));
       }
     },
-    [courseId, language, country, t]
+    [courseId, language, country, t, getPreviewKey]
   );
 
   const toggleEdit = useCallback((key: string) => {
