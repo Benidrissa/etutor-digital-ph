@@ -1550,6 +1550,19 @@
       },
       "indexingBadge": "Indexing...",
       "indexedBadge": "Indexed"
+    },
+    "syllabusEditor": {
+      "untitledModule": "Untitled Module",
+      "units": "units",
+      "titleFrPlaceholder": "Module title (French)",
+      "titleEnPlaceholder": "Module title (English)",
+      "unitTitleFrPlaceholder": "Unit title (FR)",
+      "unitTitleEnPlaceholder": "Unit title (EN)",
+      "addModule": "Add Module",
+      "addUnit": "Add Unit",
+      "save": "Save Syllabus",
+      "saveError": "Failed to save syllabus",
+      "saveSuccess": "Syllabus saved successfully"
     }
   },
   "AdminSyllabus": {

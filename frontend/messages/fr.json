@@ -1550,6 +1550,19 @@
       },
       "indexingBadge": "Indexation...",
       "indexedBadge": "Indexé"
+    },
+    "syllabusEditor": {
+      "untitledModule": "Module sans titre",
+      "units": "unités",
+      "titleFrPlaceholder": "Titre du module (Français)",
+      "titleEnPlaceholder": "Titre du module (Anglais)",
+      "unitTitleFrPlaceholder": "Titre de l'unité (FR)",
+      "unitTitleEnPlaceholder": "Titre de l'unité (EN)",
+      "addModule": "Ajouter un module",
+      "addUnit": "Ajouter une unité",
+      "save": "Enregistrer le programme",
+      "saveError": "Échec de l'enregistrement du programme",
+      "saveSuccess": "Programme enregistré avec succès"
     }
   },
   "AdminSyllabus": {
