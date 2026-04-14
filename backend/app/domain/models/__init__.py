@@ -37,6 +37,7 @@ from app.domain.models.subscription import (
 from app.domain.models.taxonomy import CourseTaxonomy, TaxonomyCategory
 from app.domain.models.usage_event import UsageEvent
 from app.domain.models.user import User
+from app.domain.models.user_group import CurriculumAccess, UserGroup, UserGroupMember
 
 __all__ = [
     "ActivationCode",
@@ -90,4 +91,7 @@ __all__ = [
     "SubscriptionPayment",
     "SmsProcessingStatus",
     "SubscriptionStatus",
+    "CurriculumAccess",
+    "UserGroup",
+    "UserGroupMember",
 ]
