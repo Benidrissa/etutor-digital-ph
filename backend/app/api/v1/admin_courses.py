@@ -564,6 +564,85 @@ async def save_syllabus(
     }
 
 
+class PreviewLessonRequest(BaseModel):
+    language: str = "fr"
+    country: str = "SN"
+    level: int = 1
+
+
+@router.post(
+    "/{course_id}/modules/{module_id}/units/{unit_id}/preview-lesson"
+)
+async def preview_lesson(
+    course_id: uuid.UUID,
+    module_id: uuid.UUID,
+    unit_id: str,
+    request: PreviewLessonRequest,
+    current_user: AuthenticatedUser = Depends(
+        require_role(UserRole.admin, UserRole.sub_admin)
+    ),
+    db=Depends(get_db_session),
+) -> dict:
+    """Generate a lesson preview for admin review before publishing."""
+    from app.domain.services.lesson_service import LessonGenerationService
+
+    service = LessonGenerationService()
+    lesson = await service.get_or_generate_lesson(
+        module_id=module_id,
+        unit_id=unit_id,
+        language=request.language,
+        country=request.country,
+        level=request.level,
+        session=db,
+        user_id=uuid.UUID(current_user.id),
+    )
+    return lesson.model_dump()
+
+
+class EditContentRequest(BaseModel):
+    content: dict
+
+
+@router.put("/{course_id}/content/{content_id}")
+async def edit_content(
+    course_id: uuid.UUID,
+    content_id: uuid.UUID,
+    request: EditContentRequest,
+    current_user: AuthenticatedUser = Depends(
+        require_role(UserRole.admin, UserRole.sub_admin)
+    ),
+    db=Depends(get_db_session),
+) -> dict:
+    """Edit generated content and mark as manually edited (locked)."""
+    from app.domain.models.content import GeneratedContent
+
+    result = await db.execute(
+        select(GeneratedContent).where(GeneratedContent.id == content_id)
+    )
+    content = result.scalar_one_or_none()
+    if not content:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Content not found",
+        )
+
+    content.content = request.content
+    content.is_manually_edited = True
+    content.validated = True
+    await db.commit()
+
+    logger.info(
+        "Content edited and locked",
+        content_id=str(content_id),
+        admin_id=current_user.id,
+    )
+    return {
+        "id": str(content.id),
+        "is_manually_edited": True,
+        "validated": True,
+    }
+
+
 class GenerateStructureRequest(BaseModel):
     estimated_hours: int = 20
 
