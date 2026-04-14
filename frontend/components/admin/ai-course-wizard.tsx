@@ -1284,22 +1284,7 @@ export function AICourseWizard({
                 {courseId && (
                   <SyllabusVisualEditor
                     courseId={courseId}
-                    initialModules={generatedModules.map((m, i) => ({
-                      module_number: m.module_number || i + 1,
-                      title_fr: m.title_fr,
-                      title_en: m.title_en,
-                      description_fr: "",
-                      description_en: "",
-                      estimated_hours: 20,
-                      bloom_level: "understand",
-                      units: [{
-                        title_fr: "",
-                        title_en: "",
-                        unit_type: "lesson",
-                        description_fr: "",
-                        description_en: "",
-                      }],
-                    }))}
+                    fetchOnMount
                   />
                 )}
               </div>

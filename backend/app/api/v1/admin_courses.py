@@ -574,6 +574,57 @@ async def save_syllabus(
     }
 
 
+@router.get("/{course_id}/syllabus")
+async def get_course_syllabus(
+    course_id: uuid.UUID,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
+    db=Depends(get_db_session),
+) -> dict:
+    """Get full syllabus structure (modules + units) for a course."""
+    result = await db.execute(select(Course).where(Course.id == course_id))
+    course = result.scalar_one_or_none()
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    modules_result = await db.execute(
+        select(Module).where(Module.course_id == course_id).order_by(Module.module_number)
+    )
+    modules = modules_result.scalars().all()
+
+    syllabus = []
+    for mod in modules:
+        units_result = await db.execute(
+            select(ModuleUnit)
+            .where(ModuleUnit.module_id == mod.id)
+            .order_by(ModuleUnit.order_index)
+        )
+        units = units_result.scalars().all()
+
+        syllabus.append(
+            {
+                "module_number": mod.module_number,
+                "title_fr": mod.title_fr,
+                "title_en": mod.title_en,
+                "description_fr": mod.description_fr or "",
+                "description_en": mod.description_en or "",
+                "estimated_hours": mod.estimated_hours,
+                "bloom_level": mod.bloom_level or "understand",
+                "units": [
+                    {
+                        "title_fr": u.title_fr,
+                        "title_en": u.title_en,
+                        "unit_type": u.unit_type or "lesson",
+                        "description_fr": u.description_fr or "",
+                        "description_en": u.description_en or "",
+                    }
+                    for u in units
+                ],
+            }
+        )
+
+    return {"modules": syllabus}
+
+
 class PreviewLessonRequest(BaseModel):
     language: str = "fr"
     country: str = "SN"
