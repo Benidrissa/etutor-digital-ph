@@ -41,6 +41,7 @@ class Course(Base):
     syllabus_task_id: Mapped[str | None] = mapped_column(String, nullable=True)
     syllabus_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     creation_step: Mapped[str] = mapped_column(String(20), server_default="upload", nullable=False)
+    creation_mode: Mapped[str] = mapped_column(String(20), server_default="legacy", nullable=False)
     preassessment_enabled: Mapped[bool] = mapped_column(server_default="false")
     preassessment_mandatory: Mapped[bool] = mapped_column(server_default="false")
     visibility: Mapped[str] = mapped_column(String(10), server_default="public")

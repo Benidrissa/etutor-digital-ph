@@ -51,6 +51,7 @@ class CreateCourseRequest(BaseModel):
     preassessment_mandatory: bool = False
     visibility: str = "public"
     price_credits: int = 0
+    creation_mode: str = "legacy"
 
 
 class CourseResponse(BaseModel):
@@ -73,6 +74,7 @@ class CourseResponse(BaseModel):
     rag_collection_id: str | None
     indexation_task_id: str | None
     creation_step: str
+    creation_mode: str
     preassessment_enabled: bool
     preassessment_mandatory: bool
     visibility: str
@@ -103,6 +105,7 @@ def _course_to_response(course: Course, image_count: int = 0) -> CourseResponse:
         rag_collection_id=course.rag_collection_id,
         indexation_task_id=course.indexation_task_id,
         creation_step=course.creation_step,
+        creation_mode=course.creation_mode,
         preassessment_enabled=course.preassessment_enabled,
         preassessment_mandatory=course.preassessment_mandatory,
         visibility=course.visibility,
@@ -200,6 +203,7 @@ async def create_course(
         created_by=uuid.UUID(current_user.id),
         status="draft",
         creation_step="upload",
+        creation_mode=request.creation_mode,
         taxonomy_categories=tax_cats,
         preassessment_enabled=request.preassessment_enabled,
         visibility=request.visibility,
