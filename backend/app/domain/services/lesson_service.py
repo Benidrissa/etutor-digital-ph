@@ -78,6 +78,31 @@ class LessonGenerationService:
         Returns:
             LessonResponse with generated or cached content
         """
+        # Always return manually edited content, even with force_regenerate
+        if force_regenerate:
+            locked_query = (
+                select(GeneratedContent.id)
+                .where(GeneratedContent.module_id == module_id)
+                .where(GeneratedContent.content_type == "lesson")
+                .where(GeneratedContent.language == language)
+                .where(GeneratedContent.content["unit_id"].astext == unit_id)
+                .where(GeneratedContent.is_manually_edited.is_(True))
+                .limit(1)
+            )
+            locked_result = await session.execute(locked_query)
+            if locked_result.scalar_one_or_none():
+                logger.info(
+                    "Returning manually edited lesson (locked, ignoring force_regenerate)",
+                    module_id=str(module_id),
+                    unit_id=unit_id,
+                )
+                # Fetch via the normal cache path which handles image refs
+                cached, _ = await self._get_cached_lesson(
+                    module_id, unit_id, language, country, level, session
+                )
+                if cached:
+                    return cached
+
         # Check for existing cached content first
         if not force_regenerate:
             cached_lesson, is_fallback = await self._get_cached_lesson(
