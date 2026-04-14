@@ -396,7 +396,7 @@ async def suggest_course_metadata(
     context_text = "\n\n---\n\n".join(resource_texts)[:80_000]
 
     # Determine target languages
-    langs = [l.strip() for l in (course.languages or "fr,en").split(",") if l.strip()]
+    langs = [lang.strip() for lang in (course.languages or "fr,en").split(",") if lang.strip()]
     has_fr = "fr" in langs
     has_en = "en" in langs
 
