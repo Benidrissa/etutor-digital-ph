@@ -203,7 +203,9 @@ class VerifyLoginOTPRequest(BaseModel):
 
 @router.post("/register", response_model=RegisterResponse)
 async def register(
-    request: RegisterRequest, db=Depends(get_db_session), _guard=Depends(_require_registration_enabled)
+    request: RegisterRequest,
+    db=Depends(get_db_session),
+    _guard=Depends(_require_registration_enabled),
 ) -> RegisterResponse:
     """Register a new user with TOTP MFA setup.
 
