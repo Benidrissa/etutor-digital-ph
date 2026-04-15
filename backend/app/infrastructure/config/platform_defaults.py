@@ -323,7 +323,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         False,
         "boolean",
         "Allow self-registration",
-        "When disabled, only admins can create user accounts. Sign-up pages and registration endpoints are blocked.",
+        "When disabled, only admins can create accounts.",
     ),
     # ── Rate Limiting ──────────────────────────────────────
     SettingDef(
