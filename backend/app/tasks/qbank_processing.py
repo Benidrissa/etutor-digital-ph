@@ -1,0 +1,144 @@
+"""Celery tasks for question bank PDF processing."""
+
+from __future__ import annotations
+
+import asyncio
+import uuid
+from pathlib import Path
+
+import structlog
+from celery import Task
+
+from app.tasks.celery_app import celery_app
+
+logger = structlog.get_logger(__name__)
+
+UPLOAD_DIR = Path("uploads/qbank")
+
+
+class QBankTask(Task):
+    def on_success(self, retval, task_id, args, kwargs):
+        logger.info("QBank processing completed", task_id=task_id, result=retval)
+
+    def on_failure(self, exc, task_id, args, kwargs, einfo):
+        logger.error("QBank processing failed", task_id=task_id, exception=str(exc))
+
+
+@celery_app.task(
+    base=QBankTask,
+    bind=True,
+    name="qbank.process_pdf",
+    max_retries=2,
+    default_retry_delay=60,
+    soft_time_limit=600,
+    time_limit=660,
+    rate_limit="2/m",
+)
+def process_qbank_pdf(
+    self,
+    bank_id: str,
+    pdf_filename: str,
+) -> dict:
+    """Process a PDF into question bank questions.
+
+    1. Extract questions from each slide via Claude Vision
+    2. Store images in MinIO
+    3. Create QBankQuestion rows in the database
+    """
+    return asyncio.get_event_loop().run_until_complete(
+        _process_pdf_async(self, bank_id, pdf_filename)
+    )
+
+
+async def _process_pdf_async(task, bank_id: str, pdf_filename: str) -> dict:
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from app.ai.qbank_slide_extractor import extract_questions_from_pdf
+    from app.domain.models.question_bank import QBankQuestion
+    from app.infrastructure.config.settings import settings
+    from app.infrastructure.storage.s3 import S3StorageService
+
+    bank_uuid = uuid.UUID(bank_id)
+    pdf_dir = UPLOAD_DIR / bank_id
+    pdf_path = pdf_dir / pdf_filename
+
+    if not pdf_path.exists():
+        raise FileNotFoundError(f"PDF not found: {pdf_path}")
+
+    # Extract questions from slides
+    logger.info("Starting PDF extraction", bank_id=bank_id, pdf=pdf_filename)
+    extracted = await extract_questions_from_pdf(pdf_path)
+
+    if not extracted:
+        logger.warning("No questions extracted from PDF", bank_id=bank_id)
+        return {"bank_id": bank_id, "questions_created": 0, "errors": []}
+
+    # Store images and create DB rows
+    storage = S3StorageService()
+    engine = create_engine(settings.database_url_sync, pool_pre_ping=True)
+    errors = []
+    created = 0
+
+    with Session(engine) as session:
+        # Get current max order_index for this bank
+        from sqlalchemy import func, select
+
+        max_order = session.scalar(
+            select(func.coalesce(func.max(QBankQuestion.order_index), 0)).where(
+                QBankQuestion.question_bank_id == bank_uuid
+            )
+        )
+        next_order = (max_order or 0) + 1
+
+        for idx, q in enumerate(extracted):
+            try:
+                # Upload image to MinIO
+                storage_key = f"qbank/{bank_id}/images/{next_order + idx}.webp"
+                # Run async upload in sync context
+                image_url = asyncio.get_event_loop().run_until_complete(
+                    storage.upload_bytes(
+                        key=storage_key,
+                        data=q.image_bytes,
+                        content_type="image/webp",
+                    )
+                )
+
+                question = QBankQuestion(
+                    question_bank_id=bank_uuid,
+                    order_index=next_order + idx,
+                    image_storage_key=storage_key,
+                    image_url=image_url,
+                    question_text=q.question_text,
+                    options=q.options,
+                    correct_answer_indices=q.correct_indices,
+                    explanation=q.explanation,
+                    source_page=q.page_number,
+                    source_pdf_name=pdf_filename,
+                    category=q.category,
+                )
+                session.add(question)
+                created += 1
+
+            except Exception as e:
+                logger.warning(
+                    "Failed to save question",
+                    page=q.page_number,
+                    error=str(e),
+                )
+                errors.append({"page": q.page_number, "error": str(e)})
+
+        session.commit()
+
+    engine.dispose()
+    logger.info(
+        "PDF processing complete",
+        bank_id=bank_id,
+        questions_created=created,
+        errors_count=len(errors),
+    )
+    return {
+        "bank_id": bank_id,
+        "questions_created": created,
+        "errors": errors,
+    }
