@@ -42,3 +42,4 @@ coverage/
 # Claude Code / Playwright MCP
 .playwright-mcp/
 .claude/settings.local.json
+.claude/worktrees/
