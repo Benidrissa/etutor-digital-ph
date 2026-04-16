@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import io
 from pathlib import Path
-from uuid import UUID
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,7 +52,6 @@ def _render_pdf(
     language: str,
 ) -> bytes:
     """Synchronous PDF rendering using ReportLab canvas. Returns PDF bytes."""
-    from reportlab.lib.units import mm
     from reportlab.pdfgen.canvas import Canvas
 
     _register_fonts()
@@ -74,7 +72,6 @@ def _render_pdf(
     c.roundRect(margin + 8, margin + 8, PAGE_W - 2 * (margin + 8), PAGE_H - 2 * (margin + 8), 8)
 
     # ── Corner decorations ─────────────────────────────────────
-    corner_size = 30
     c.setStrokeColorRGB(*COLOR_GOLD)
     c.setLineWidth(2)
     corners = [
@@ -233,9 +230,7 @@ class CertificatePDFService:
         language: str = "fr",
     ) -> bytes:
         """Generate certificate PDF bytes. Runs ReportLab in a thread pool."""
-        return await asyncio.to_thread(
-            _render_pdf, certificate, template, course, user, language
-        )
+        return await asyncio.to_thread(_render_pdf, certificate, template, course, user, language)
 
     async def generate_and_store(
         self,
