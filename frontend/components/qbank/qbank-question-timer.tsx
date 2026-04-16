@@ -15,7 +15,9 @@ export function QBankQuestionTimer({ totalSeconds, onExpire, isRunning, resetKey
   const t = useTranslations('qbank');
   const [remaining, setRemaining] = useState(totalSeconds);
   const onExpireRef = useRef(onExpire);
-  onExpireRef.current = onExpire;
+  useEffect(() => {
+    onExpireRef.current = onExpire;
+  }, [onExpire]);
 
   useEffect(() => {
     setRemaining(totalSeconds);
@@ -36,7 +38,7 @@ export function QBankQuestionTimer({ totalSeconds, onExpire, isRunning, resetKey
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isRunning, remaining <= 0, resetKey]);
+  }, [isRunning, remaining, resetKey]);
 
   const percentage = totalSeconds > 0 ? (remaining / totalSeconds) * 100 : 0;
 
