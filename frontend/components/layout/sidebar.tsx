@@ -18,6 +18,7 @@ import {
   Building2,
   ShieldCheck,
   Wallet,
+  Award,
 } from "lucide-react";
 import { LocaleSwitcher } from "@/components/shared/locale-switcher";
 import { Button } from "@/components/ui/button";
@@ -109,6 +110,12 @@ export function Sidebar() {
       label: t("flashcards"),
       icon: CreditCard,
       description: t("flashcardsDescription")
+    },
+    {
+      href: `/${locale}/certificates`,
+      label: t("certificates"),
+      icon: Award,
+      description: t("certificatesDescription")
     },
     {
       href: `/${locale}/tutor`,
