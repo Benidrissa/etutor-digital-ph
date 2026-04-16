@@ -35,6 +35,7 @@ dependencies = [
     "resend>=2.26.0",
     "sentry-sdk[fastapi]>=2.19.0",
     "google-cloud-texttospeech>=2.29.0",
+    "reportlab>=4.0",
 ]
 
 [dependency-groups]
