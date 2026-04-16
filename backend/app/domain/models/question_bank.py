@@ -79,9 +79,7 @@ class QuestionBank(Base):
         server_default="draft",
         default=QuestionBankStatus.draft,
     )
-    created_by: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id"), nullable=False
-    )
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -159,18 +157,14 @@ class QBankTest(Base):
         ForeignKey("question_banks.id", ondelete="CASCADE"), index=True, nullable=False
     )
     title: Mapped[str] = mapped_column(String(500), nullable=False)
-    mode: Mapped[TestMode] = mapped_column(
-        Enum(TestMode, name="testmode"), nullable=False
-    )
+    mode: Mapped[TestMode] = mapped_column(Enum(TestMode, name="testmode"), nullable=False)
     question_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     shuffle_questions: Mapped[bool] = mapped_column(Boolean, server_default="true", default=True)
     time_per_question_sec: Mapped[int | None] = mapped_column(Integer, nullable=True)
     show_feedback: Mapped[bool] = mapped_column(Boolean, server_default="false", default=False)
     filter_categories: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     filter_failed_only: Mapped[bool] = mapped_column(Boolean, server_default="false", default=False)
-    created_by: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id"), nullable=False
-    )
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     question_bank: Mapped[QuestionBank] = relationship(back_populates="tests")
@@ -187,9 +181,7 @@ class QBankTestAttempt(Base):
     test_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("qbank_tests.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id"), index=True, nullable=False
-    )
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
     answers: Mapped[dict] = mapped_column(JSON, nullable=False)
     score: Mapped[float] = mapped_column(Float, nullable=False)
     total_questions: Mapped[int] = mapped_column(Integer, nullable=False)
