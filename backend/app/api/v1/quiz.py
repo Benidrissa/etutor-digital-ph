@@ -1008,9 +1008,7 @@ async def submit_summative_assessment_attempt(
                 course_id = mod_result.scalar_one_or_none()
                 if course_id:
                     cert_svc = CertificateService(session)
-                    is_complete, _, _ = await cert_svc.check_course_completion(
-                        user_id, course_id
-                    )
+                    is_complete, _, _ = await cert_svc.check_course_completion(user_id, course_id)
                     if is_complete:
                         # Mark enrollment as completed
                         await session.execute(
@@ -1036,7 +1034,11 @@ async def submit_summative_assessment_attempt(
                                 if user_obj and not cert.pdf_url:
                                     pdf_svc = CertificatePDFService()
                                     await pdf_svc.generate_and_store(
-                                        cert, template, cert.course, user_obj, session,
+                                        cert,
+                                        template,
+                                        cert.course,
+                                        user_obj,
+                                        session,
                                         language=current_user.preferred_language or "fr",
                                     )
                             except Exception as pdf_err:
@@ -1051,9 +1053,7 @@ async def submit_summative_assessment_attempt(
                             course_id=str(course_id),
                         )
             except Exception as cert_err:
-                logger.warning(
-                    "certificate_auto_trigger_failed (non-fatal)", error=str(cert_err)
-                )
+                logger.warning("certificate_auto_trigger_failed (non-fatal)", error=str(cert_err))
 
         return response
 
