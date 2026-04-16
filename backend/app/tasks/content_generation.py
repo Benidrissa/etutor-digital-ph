@@ -570,9 +570,12 @@ def generate_country_content_task(
                         level=level,
                         session=session,
                     )
-                    from app.domain.services.lesson_service import extract_lesson_text
+                    from app.domain.services.lesson_service import (
+                        extract_lesson_text,
+                    )
 
-                    lesson_text = extract_lesson_text(result_obj.content) if hasattr(result_obj, "content") and result_obj.content is not None else ""
+                    c = getattr(result_obj, "content", None)
+                    lesson_text = extract_lesson_text(c) if c else ""
                     generate_lesson_audio.delay(
                         str(result_obj.id),
                         module_id,
@@ -1147,16 +1150,19 @@ def prefetch_next_lessons_task(
                                 user_id=user_id,
                             )
                             try:
-                                from app.domain.services.lesson_service import extract_lesson_text
+                                from app.domain.services.lesson_service import (
+                                    extract_lesson_text,
+                                )
 
-                                lesson_text = extract_lesson_text(content.content) if hasattr(content, "content") and content.content is not None else ""
+                                c = getattr(content, "content", None)
+                                lt = extract_lesson_text(c) if c else ""
                                 generate_lesson_audio.apply_async(
                                     kwargs={
                                         "lesson_id": str(content.id),
                                         "module_id": str(module_uuid),
                                         "unit_id": unit_id_str,
                                         "language": language,
-                                        "lesson_content": lesson_text[:4000],
+                                        "lesson_content": lt[:4000],
                                     },
                                     priority=5,
                                 )
@@ -1533,16 +1539,19 @@ def pregenerate_on_publish_task(self, course_id: str) -> dict:
                                     label=label,
                                     content_id=str(content.id),
                                 )
-                                from app.domain.services.lesson_service import extract_lesson_text
+                                from app.domain.services.lesson_service import (
+                                    extract_lesson_text,
+                                )
 
-                                lesson_text = extract_lesson_text(content.content) if hasattr(content, "content") and content.content is not None else ""
+                                c = getattr(content, "content", None)
+                                lt = extract_lesson_text(c) if c else ""
                                 generate_lesson_audio.apply_async(
                                     kwargs={
                                         "lesson_id": str(content.id),
                                         "module_id": str(module.id),
                                         "unit_id": unit_id,
                                         "language": language,
-                                        "lesson_content": lesson_text[:4000],
+                                        "lesson_content": lt[:4000],
                                     },
                                     priority=5,
                                 )
