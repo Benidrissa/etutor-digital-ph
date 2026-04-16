@@ -17,12 +17,13 @@ depends_on = None
 
 
 def _create_enum_if_not_exists(name: str, values: list[str]) -> None:
-    """Create a PostgreSQL enum type only if it doesn't already exist (asyncpg-safe)."""
+    """Create a PostgreSQL enum type only if it doesn't already exist."""
     conn = op.get_bind()
-    result = conn.execute(sa.text("SELECT 1 FROM pg_type WHERE typname = :name"), {"name": name})
-    if not result.scalar():
-        vals = ", ".join(f"'{v}'" for v in values)
-        conn.execute(sa.text(f"CREATE TYPE {name} AS ENUM ({vals})"))
+    vals = ", ".join(f"'{v}'" for v in values)
+    conn.execute(sa.text(
+        f"DO $$ BEGIN CREATE TYPE {name} AS ENUM ({vals}); "
+        f"EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+    ))
 
 
 def upgrade() -> None:
