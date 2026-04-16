@@ -47,6 +47,9 @@ class Course(Base):
     visibility: Mapped[str] = mapped_column(String(10), server_default="public")
     price_credits: Mapped[int] = mapped_column(BIGINT, server_default="0")
     objectives_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     syllabus_context: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

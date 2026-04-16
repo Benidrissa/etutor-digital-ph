@@ -266,3 +266,40 @@ async def get_org_credits(
     await _svc.require_org_role(db, org_id, uuid.UUID(current_user.id))
     balance = await _svc.get_org_credit_balance(db, org_id)
     return OrgCreditSummary(balance=balance)
+
+
+# ---------------------------------------------------------------------------
+# Org Courses (thin wrapper — reuses admin course endpoints)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{org_id}/courses")
+async def list_org_courses(
+    org_id: uuid.UUID,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db=Depends(get_db_session),
+) -> list[dict]:
+    """List courses belonging to this organization."""
+    from sqlalchemy import select
+
+    from app.domain.models.course import Course
+
+    await _svc.require_org_role(db, org_id, uuid.UUID(current_user.id))
+    result = await db.execute(
+        select(Course).where(Course.organization_id == org_id).order_by(Course.created_at.desc())
+    )
+    courses = result.scalars().all()
+    return [
+        {
+            "id": str(c.id),
+            "slug": c.slug,
+            "title_fr": c.title_fr,
+            "title_en": c.title_en,
+            "status": c.status,
+            "creation_mode": c.creation_mode,
+            "creation_step": c.creation_step,
+            "created_at": c.created_at.isoformat(),
+            "cover_image_url": c.cover_image_url,
+        }
+        for c in courses
+    ]
