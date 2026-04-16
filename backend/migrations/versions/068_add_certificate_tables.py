@@ -8,6 +8,7 @@ Create Date: 2026-04-16
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "068"
@@ -84,7 +85,7 @@ def upgrade() -> None:
         sa.Column("pdf_url", sa.String(500), nullable=True),
         sa.Column(
             "status",
-            sa.Enum("valid", "revoked", name="certificatestatus", create_type=False),
+            postgresql.ENUM("valid", "revoked", name="certificatestatus", create_type=False),
             server_default="valid",
             nullable=False,
         ),
