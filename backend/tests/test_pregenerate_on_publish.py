@@ -177,7 +177,7 @@ class TestDefaultCountryFallback:
 
         assert "content-preload-default-country" in DEFAULTS_BY_KEY
         defn = DEFAULTS_BY_KEY["content-preload-default-country"]
-        assert defn.default == "SN"
+        assert defn.default == "CI"
         assert defn.value_type == "string"
         assert defn.category == "ai"
 
