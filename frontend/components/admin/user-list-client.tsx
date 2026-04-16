@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useCallback, useTransition } from "react";
+import { useState, useCallback, useTransition, useRef } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, Download, MoreVertical, UserCheck, UserX, ShieldCheck, ShieldOff, Shield, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Download, Upload, UserPlus, MoreVertical, UserCheck, UserX, ShieldCheck, ShieldOff, Shield, ChevronLeft, ChevronRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -116,6 +116,12 @@ export function UserListClient() {
   const [offset, setOffset] = useState(0);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importResult, setImportResult] = useState<{ created: number; skipped: number; errors: { row: number; error: string }[] } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const searchTimeout = useCallback(
     (value: string) => {
@@ -203,6 +209,70 @@ export function UserListClient() {
     }
   };
 
+  const handleCreateUser = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setCreateLoading(true);
+    setActionError(null);
+    const form = new FormData(e.currentTarget);
+    try {
+      await apiFetch("/api/v1/admin/users", {
+        method: "POST",
+        body: JSON.stringify({
+          name: form.get("name"),
+          identifier: form.get("identifier"),
+          password: form.get("password"),
+          role: form.get("role") || "user",
+          preferred_language: form.get("preferred_language") || "fr",
+          country: form.get("country") || undefined,
+        }),
+      });
+      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+      setShowCreateForm(false);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : t("actionError"));
+    } finally {
+      setCreateLoading(false);
+    }
+  };
+
+  const handleImportCsv = async (file: File) => {
+    setImportLoading(true);
+    setImportResult(null);
+    setActionError(null);
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const token = await authClient.getValidToken();
+      const res = await fetch(`${API_BASE}/api/v1/admin/users/import/csv`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || `Import failed: ${res.status}`);
+      }
+      const result = await res.json();
+      setImportResult(result);
+      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : t("actionError"));
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const downloadTemplate = () => {
+    const csv = "name,identifier,password,role,language,country\nJohn Doe,john@example.com,password123,user,en,senegal\n";
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "users_import_template.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const confirmTitle =
     pendingAction?.type === "deactivate"
       ? t("confirmDeactivate")
@@ -288,6 +358,23 @@ export function UserListClient() {
           <Download className="h-4 w-4" aria-hidden="true" />
           {t("exportCsv")}
         </Button>
+
+        <Button
+          variant="outline"
+          className="min-h-11 gap-2 shrink-0"
+          onClick={() => setShowImport(true)}
+        >
+          <Upload className="h-4 w-4" aria-hidden="true" />
+          {t("importCsv")}
+        </Button>
+
+        <Button
+          className="min-h-11 gap-2 shrink-0"
+          onClick={() => setShowCreateForm(true)}
+        >
+          <UserPlus className="h-4 w-4" aria-hidden="true" />
+          {t("addUser")}
+        </Button>
       </div>
 
       {actionError && (
@@ -367,6 +454,7 @@ export function UserListClient() {
         </div>
       )}
 
+      {/* Confirm action dialog */}
       <AlertDialog open={pendingAction !== null} onOpenChange={(open) => !open && setPendingAction(null)}>
         <AlertDialogContent>
           <AlertDialogTitle>{confirmTitle}</AlertDialogTitle>
@@ -381,6 +469,76 @@ export function UserListClient() {
             >
               {t("confirm")}
             </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Create user dialog */}
+      <AlertDialog open={showCreateForm} onOpenChange={setShowCreateForm}>
+        <AlertDialogContent>
+          <AlertDialogTitle>{t("createUser")}</AlertDialogTitle>
+          <AlertDialogDescription>{t("createUserDesc")}</AlertDialogDescription>
+          <form onSubmit={handleCreateUser} className="space-y-3 mt-2">
+            <Input name="name" placeholder={t("name")} required minLength={2} className="min-h-11" />
+            <Input name="identifier" placeholder={t("identifier")} required className="min-h-11" />
+            <Input name="password" type="password" placeholder={t("password")} required minLength={6} className="min-h-11" />
+            <select name="role" className="w-full min-h-11 rounded-md border border-input bg-background px-3 py-2 text-sm">
+              <option value="user">{tRoles("user")}</option>
+              <option value="expert">{tRoles("expert")}</option>
+            </select>
+            <select name="preferred_language" className="w-full min-h-11 rounded-md border border-input bg-background px-3 py-2 text-sm">
+              <option value="fr">Français</option>
+              <option value="en">English</option>
+            </select>
+            <div className="flex justify-end gap-3 mt-4">
+              <AlertDialogCancel type="button" onClick={() => setShowCreateForm(false)}>
+                {t("cancel")}
+              </AlertDialogCancel>
+              <Button type="submit" disabled={createLoading}>
+                {createLoading ? t("creating") : t("createUser")}
+              </Button>
+            </div>
+          </form>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Import CSV dialog */}
+      <AlertDialog open={showImport} onOpenChange={(open) => { if (!open) { setShowImport(false); setImportResult(null); } }}>
+        <AlertDialogContent>
+          <AlertDialogTitle>{t("importTitle")}</AlertDialogTitle>
+          <AlertDialogDescription>{t("importDesc")}</AlertDialogDescription>
+          <div className="space-y-3 mt-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              className="w-full text-sm"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleImportCsv(file);
+              }}
+            />
+            {importLoading && <p className="text-sm text-muted-foreground">{t("importing")}</p>}
+            {importResult && (
+              <div className="text-sm space-y-1">
+                <p className="font-medium">{t("importResults", { created: importResult.created, skipped: importResult.skipped, errors: importResult.errors.length })}</p>
+                {importResult.errors.length > 0 && (
+                  <ul className="text-destructive text-xs space-y-0.5">
+                    {importResult.errors.slice(0, 10).map((e, i) => (
+                      <li key={i}>Row {e.row}: {e.error}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+            <div className="flex justify-between mt-4">
+              <Button variant="link" size="sm" className="px-0" onClick={downloadTemplate}>
+                {t("downloadTemplate")}
+              </Button>
+              <AlertDialogCancel onClick={() => { setShowImport(false); setImportResult(null); }}>
+                {t("cancel")}
+              </AlertDialogCancel>
+            </div>
           </div>
         </AlertDialogContent>
       </AlertDialog>

@@ -26,6 +26,7 @@ class AdminAction(enum.StrEnum):
     reset_setting = "reset_setting"
     reset_category = "reset_category"
     delete_course = "delete_course"
+    create_user = "create_user"
 
 
 class AuditLog(Base):

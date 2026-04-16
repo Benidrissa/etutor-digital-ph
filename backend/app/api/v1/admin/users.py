@@ -2,12 +2,12 @@
 
 import csv
 import io
-from datetime import date
-from uuid import UUID
+from datetime import date, datetime
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from structlog import get_logger
 
@@ -21,9 +21,11 @@ from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import QuizAttempt
 from app.domain.models.user import User, UserRole
 from app.domain.repositories.implementations.user_repository import UserRepository
+from app.domain.services.password_service import PasswordService
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/admin", tags=["Admin"])
+_password_svc = PasswordService()
 
 
 class UpdateRoleRequest(BaseModel):
@@ -32,6 +34,16 @@ class UpdateRoleRequest(BaseModel):
 
 class UpdateUserStatusRequest(BaseModel):
     is_active: bool
+
+
+class CreateUserRequest(BaseModel):
+    name: str = Field(..., min_length=2, max_length=100)
+    identifier: str = Field(..., description="Email address or phone number")
+    password: str = Field(..., min_length=6)
+    role: UserRole = UserRole.user
+    preferred_language: str = Field(default="fr", pattern="^(fr|en)$")
+    country: str | None = None
+    professional_role: str | None = None
 
 
 def _user_to_response(u: User) -> UserProfileResponse:
@@ -70,6 +82,190 @@ async def _write_audit_log(
         details=details,
     )
     db.add(log)
+
+
+@router.post("/users", response_model=UserProfileResponse)
+async def create_user(
+    request: CreateUserRequest,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
+    db=Depends(get_db_session),
+) -> UserProfileResponse:
+    """Create a new user. Admin and sub_admin."""
+    # sub_admin can only create user/expert roles
+    if current_user.role == UserRole.sub_admin.value and request.role not in (
+        UserRole.user,
+        UserRole.expert,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Sub-admins can only create user or expert accounts",
+        )
+
+    is_email = "@" in request.identifier
+    email = request.identifier if is_email else None
+    phone = request.identifier if not is_email else None
+
+    # Check duplicates
+    existing = await db.scalar(
+        select(User).where(
+            or_(
+                User.email == email if email else False,
+                User.phone_number == phone if phone else False,
+            )
+        )
+    )
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A user with this email or phone already exists",
+        )
+
+    try:
+        _password_svc.validate_password(request.password)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )
+
+    user = User(
+        id=uuid4(),
+        email=email,
+        phone_number=phone,
+        name=request.name,
+        preferred_language=request.preferred_language,
+        country=request.country,
+        professional_role=request.professional_role,
+        current_level=1,
+        streak_days=0,
+        role=request.role,
+        password_hash=_password_svc.hash_password(request.password),
+        failed_password_attempts=0,
+        last_active=datetime.utcnow(),
+        created_at=datetime.utcnow(),
+    )
+    db.add(user)
+
+    await _write_audit_log(
+        db,
+        current_user,
+        user,
+        AdminAction.create_user,
+        details=f"created with role {request.role.value}",
+    )
+    await db.commit()
+    await db.refresh(user)
+
+    logger.info(
+        "Admin created user",
+        admin_id=current_user.id,
+        user_id=str(user.id),
+        role=request.role.value,
+    )
+    return _user_to_response(user)
+
+
+@router.post("/users/import/csv")
+async def import_users_csv(
+    file: UploadFile,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
+    db=Depends(get_db_session),
+) -> dict:
+    """Bulk import users from CSV.
+
+    CSV columns: name, identifier (email or phone), password, role, language, country
+    """
+    if not file.filename or not file.filename.endswith(".csv"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File must be a .csv",
+        )
+
+    content = await file.read()
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = content.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+    created = 0
+    skipped = 0
+    errors: list[dict] = []
+
+    for row_num, row in enumerate(reader, start=2):
+        name = (row.get("name") or "").strip()
+        identifier = (row.get("identifier") or "").strip()
+        password = (row.get("password") or "").strip()
+        role_str = (row.get("role") or "user").strip().lower()
+        language = (row.get("language") or "fr").strip()
+        country_val = (row.get("country") or "").strip() or None
+
+        if not name or not identifier or not password:
+            errors.append({"row": row_num, "error": "Missing required fields"})
+            continue
+
+        # Validate role
+        try:
+            role = UserRole(role_str)
+        except ValueError:
+            role = UserRole.user
+
+        # sub_admin restriction
+        if current_user.role == UserRole.sub_admin.value and role not in (
+            UserRole.user,
+            UserRole.expert,
+        ):
+            role = UserRole.user
+
+        is_email = "@" in identifier
+        email = identifier if is_email else None
+        phone = identifier if not is_email else None
+
+        existing = await db.scalar(
+            select(User).where(
+                or_(
+                    User.email == email if email else False,
+                    User.phone_number == phone if phone else False,
+                )
+            )
+        )
+        if existing:
+            skipped += 1
+            continue
+
+        if len(password) < 6:
+            errors.append({"row": row_num, "error": "Password too short"})
+            continue
+
+        user = User(
+            id=uuid4(),
+            email=email,
+            phone_number=phone,
+            name=name,
+            preferred_language=language if language in ("fr", "en") else "fr",
+            country=country_val,
+            current_level=1,
+            streak_days=0,
+            role=role,
+            password_hash=_password_svc.hash_password(password),
+            failed_password_attempts=0,
+            last_active=datetime.utcnow(),
+            created_at=datetime.utcnow(),
+        )
+        db.add(user)
+        created += 1
+
+    if created:
+        await db.commit()
+
+    logger.info(
+        "CSV import completed",
+        admin_id=current_user.id,
+        created=created,
+        skipped=skipped,
+        errors=len(errors),
+    )
+    return {"created": created, "skipped": skipped, "errors": errors}
 
 
 @router.get("/users/export/csv")
