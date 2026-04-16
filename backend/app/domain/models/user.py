@@ -26,6 +26,7 @@ if TYPE_CHECKING:
         RefreshToken,
         TOTPSecret,
     )
+    from app.domain.models.certificate import Certificate
     from app.domain.models.conversation import TutorConversation
     from app.domain.models.credit import CreditAccount
     from app.domain.models.flashcard import FlashcardReview
@@ -95,3 +96,4 @@ class User(Base):
     )
     subscription: Mapped[Subscription | None] = relationship(back_populates="user", uselist=False)
     subscription_payments: Mapped[list[SubscriptionPayment]] = relationship(back_populates="user")
+    certificates: Mapped[list[Certificate]] = relationship(back_populates="user")
