@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, Query, status
+from celery.result import AsyncResult
+from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 
 from app.api.deps import get_db_session
 from app.api.deps_local_auth import AuthenticatedUser, get_current_user
@@ -385,3 +387,80 @@ async def get_review(
         passed=attempt.passed,
         questions=review_questions,
     )
+
+
+# ---------------------------------------------------------------------------
+# PDF Upload & Processing
+# ---------------------------------------------------------------------------
+
+UPLOAD_DIR = Path("uploads/qbank")
+
+
+@router.post(
+    "/banks/{bank_id}/upload-pdf",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def upload_pdf(
+    bank_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db=Depends(get_db_session),
+):
+    """Upload a PDF to extract image-based MCQ questions from slides."""
+    from app.domain.services.organization_service import OrganizationService
+    from app.tasks.qbank_processing import process_qbank_pdf
+
+    bank = await _svc.get_bank(db, bank_id)
+    org_svc = OrganizationService()
+    await org_svc.require_org_role(
+        db,
+        bank.organization_id,
+        uuid.UUID(current_user.id),
+    )
+
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        from fastapi import HTTPException
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only PDF files are accepted.",
+        )
+
+    # Save PDF to disk
+    bank_dir = UPLOAD_DIR / str(bank_id)
+    bank_dir.mkdir(parents=True, exist_ok=True)
+    pdf_path = bank_dir / file.filename
+    content = await file.read()
+    pdf_path.write_bytes(content)
+
+    # Dispatch Celery task
+    task = process_qbank_pdf.delay(str(bank_id), file.filename)
+
+    return {
+        "task_id": task.id,
+        "bank_id": str(bank_id),
+        "filename": file.filename,
+        "status": "processing",
+    }
+
+
+@router.get("/banks/{bank_id}/processing-status")
+async def processing_status(
+    bank_id: uuid.UUID,
+    task_id: str = Query(...),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db=Depends(get_db_session),
+):
+    """Check the status of a PDF processing task."""
+    result = AsyncResult(task_id)
+    response = {
+        "task_id": task_id,
+        "bank_id": str(bank_id),
+        "status": result.status.lower(),
+    }
+    if result.ready():
+        if result.successful():
+            response["result"] = result.result
+        else:
+            response["error"] = str(result.result)
+    return response
