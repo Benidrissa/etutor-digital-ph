@@ -3,14 +3,12 @@
 import re
 import uuid
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.models.certificate import Certificate, CertificateTemplate
-from app.domain.models.course import Course
 from app.domain.services.certificate_service import CertificateService
 
 
