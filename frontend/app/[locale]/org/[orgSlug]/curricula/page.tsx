@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
+import { useParams } from "next/navigation";
+import Link from "next/link";
 import { useOrg } from "@/components/org/org-context";
 import { CourseAssignPanel } from "@/components/shared/course-assign-panel";
 import {
@@ -10,7 +12,7 @@ import {
   setOrgCurriculumCourses,
 } from "@/lib/api";
 import type { OrgCurriculumResponse } from "@/lib/api";
-import { Library, Plus, BookOpen, ListPlus } from "lucide-react";
+import { Library, Plus, BookOpen, ListPlus, ExternalLink } from "lucide-react";
 
 function slugify(name: string): string {
   return name
@@ -24,6 +26,9 @@ function slugify(name: string): string {
 
 export default function OrgCurriculaPage() {
   const t = useTranslations("Organization");
+  const locale = useLocale();
+  const params = useParams<{ orgSlug: string }>();
+  const orgSlug = params.orgSlug;
   const { orgId } = useOrg();
   const [curricula, setCurricula] = useState<OrgCurriculumResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -189,7 +194,12 @@ export default function OrgCurriculaPage() {
                     <BookOpen className="h-5 w-5 text-green-600" />
                   </div>
                   <div>
-                    <p className="font-medium">{c.title_en}</p>
+                    <Link
+                      href={`/${locale}/org/${orgSlug}/curricula/${c.slug}`}
+                      className="font-medium hover:text-green-600 hover:underline"
+                    >
+                      {c.title_en}
+                    </Link>
                     <p className="text-sm text-gray-500">{c.title_fr}</p>
                   </div>
                 </div>
@@ -206,6 +216,13 @@ export default function OrgCurriculaPage() {
                   >
                     {c.status}
                   </span>
+                  <Link
+                    href={`/${locale}/org/${orgSlug}/curricula/${c.slug}`}
+                    className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-gray-50"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    View Courses
+                  </Link>
                   <button
                     onClick={() =>
                       setAssigningId(assigningId === c.id ? null : c.id)
