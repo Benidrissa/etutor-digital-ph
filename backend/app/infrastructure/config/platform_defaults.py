@@ -1032,7 +1032,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "   - Each point is one sentence, easy to remember\n\n"
             "CRITICAL REQUIREMENTS:\n"
             "- Base content ONLY on provided documents — do not invent information\n"
-            "- Cite sources in brackets [Author Ch.X, p.Y]\n"
+            "- Do NOT include source citations in the lesson text (no brackets like [Author Ch.X, p.Y]) — sources are tracked separately\n"
             "- Use playful, encouraging language appropriate for the age group\n"
             "- Include a 'Try this at home!' mini-activity suggestion\n\n"
             "REFERENCE FIGURES:\n"
@@ -1058,11 +1058,14 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             '  "key_points": [\n'
             '    "string — each element is one simple takeaway (max 5)"\n'
             "  ],\n"
-            '  "sources_cited": ["Author Ch.X, p.Y"],\n'
+            '  "sources_cited": ["Author Ch.X, p.Y (metadata only, NOT shown in lesson text)"],\n'
             '  "__complete": true\n'
             "}}\n"
             "IMPORTANT: All text fields support markdown formatting and"
             " inline {{{{source_image:UUID}}}} references.\n"
+            "IMPORTANT: Do NOT embed source citations like [Author Ch.X, p.Y]"
+            " inside introduction, concepts, aof_example, synthesis, or key_points."
+            " Only list them in sources_cited.\n"
             '"__complete": true MUST be the last field in your JSON response.'
         ),
         "string",
