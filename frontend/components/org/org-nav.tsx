@@ -6,12 +6,12 @@ import { useLocale, useTranslations } from "next-intl";
 import { useOrg } from "./org-context";
 import {
   LayoutDashboard,
-  BookOpen,
   GraduationCap,
   QrCode,
   BarChart3,
   Users,
   Library,
+  ClipboardList,
 } from "lucide-react";
 
 export function OrgNav() {
@@ -26,6 +26,7 @@ export function OrgNav() {
   const tabs = [
     { href: base, label: t("dashboard"), icon: LayoutDashboard },
     { href: `${base}/courses`, label: "Courses", icon: GraduationCap },
+    { href: `${base}/qbank`, label: t("qbank"), icon: ClipboardList },
     { href: `${base}/curricula`, label: t("curricula"), icon: Library },
     { href: `${base}/codes`, label: t("codes"), icon: QrCode },
     { href: `${base}/reports`, label: t("reports"), icon: BarChart3 },

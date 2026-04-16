@@ -1388,3 +1388,193 @@ export async function exportOrgCsv(orgId: string): Promise<string> {
   });
   return res.text();
 }
+
+// ─── Question Bank API Types ───────────────────────────────────────────────
+
+export type QBankStatus = "draft" | "published" | "archived";
+export type QBankType = string;
+export type QuestionDifficulty = "easy" | "medium" | "hard";
+
+export interface QBankResponse {
+  id: string;
+  org_id: string;
+  title: string;
+  bank_type: QBankType;
+  language: string;
+  status: QBankStatus;
+  time_per_question: number;
+  passing_score: number;
+  question_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QBankQuestion {
+  id: string;
+  bank_id: string;
+  question_text: string;
+  image_url?: string;
+  options: { key: string; text: string }[];
+  correct_answer: string;
+  category?: string;
+  difficulty: QuestionDifficulty;
+  sort_order: number;
+}
+
+export interface QBankPdfJob {
+  job_id: string;
+  bank_id: string;
+  status: "pending" | "processing" | "done" | "failed";
+  total_slides: number;
+  processed_slides: number;
+  error_message?: string;
+  created_at: string;
+}
+
+export interface QBankTestConfig {
+  id: string;
+  bank_id: string;
+  mode: "exam" | "training" | "review";
+  question_count: number | null;
+  time_per_question_override: number | null;
+  category_filter: string | null;
+  show_feedback: boolean;
+  created_at: string;
+}
+
+// ─── Question Bank API Functions ───────────────────────────────────────────
+
+export async function fetchOrgQBanks(orgId: string): Promise<QBankResponse[]> {
+  return apiFetch<QBankResponse[]>(`/api/v1/organizations/${orgId}/qbanks`);
+}
+
+export async function fetchQBank(orgId: string, bankId: string): Promise<QBankResponse> {
+  return apiFetch<QBankResponse>(`/api/v1/organizations/${orgId}/qbanks/${bankId}`);
+}
+
+export async function createQBank(orgId: string, data: {
+  title: string;
+  bank_type: string;
+  language: string;
+  time_per_question: number;
+  passing_score: number;
+}): Promise<QBankResponse> {
+  return apiFetch<QBankResponse>(`/api/v1/organizations/${orgId}/qbanks`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function fetchQBankQuestions(
+  orgId: string,
+  bankId: string,
+  params?: { category?: string; difficulty?: string; limit?: number; offset?: number }
+): Promise<{ questions: QBankQuestion[]; total: number }> {
+  const sp = new URLSearchParams();
+  if (params?.category) sp.set("category", params.category);
+  if (params?.difficulty) sp.set("difficulty", params.difficulty);
+  if (params?.limit) sp.set("limit", String(params.limit));
+  if (params?.offset) sp.set("offset", String(params.offset));
+  const qs = sp.toString();
+  return apiFetch<{ questions: QBankQuestion[]; total: number }>(
+    `/api/v1/organizations/${orgId}/qbanks/${bankId}/questions${qs ? `?${qs}` : ""}`
+  );
+}
+
+export async function updateQBankQuestion(
+  orgId: string,
+  bankId: string,
+  questionId: string,
+  data: Partial<Pick<QBankQuestion, "question_text" | "options" | "correct_answer" | "category" | "difficulty">>
+): Promise<QBankQuestion> {
+  return apiFetch<QBankQuestion>(
+    `/api/v1/organizations/${orgId}/qbanks/${bankId}/questions/${questionId}`,
+    { method: "PATCH", body: JSON.stringify(data) }
+  );
+}
+
+export async function deleteQBankQuestion(
+  orgId: string,
+  bankId: string,
+  questionId: string
+): Promise<void> {
+  return apiFetch<void>(
+    `/api/v1/organizations/${orgId}/qbanks/${bankId}/questions/${questionId}`,
+    { method: "DELETE" }
+  );
+}
+
+export async function uploadQBankPdf(
+  orgId: string,
+  bankId: string,
+  file: File
+): Promise<QBankPdfJob> {
+  const { authClient } = await import("./auth");
+  const token = await authClient.getValidToken();
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(
+    `${API_BASE}/api/v1/organizations/${orgId}/qbanks/${bankId}/upload-pdf`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    }
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(
+      body?.detail?.message ?? `Upload failed: ${res.status}`,
+      res.status,
+      body?.detail?.code
+    );
+  }
+  return res.json();
+}
+
+export async function fetchQBankPdfJob(
+  orgId: string,
+  bankId: string,
+  jobId: string
+): Promise<QBankPdfJob> {
+  return apiFetch<QBankPdfJob>(
+    `/api/v1/organizations/${orgId}/qbanks/${bankId}/pdf-jobs/${jobId}`
+  );
+}
+
+export async function fetchQBankTestConfigs(
+  orgId: string,
+  bankId: string
+): Promise<QBankTestConfig[]> {
+  return apiFetch<QBankTestConfig[]>(
+    `/api/v1/organizations/${orgId}/qbanks/${bankId}/test-configs`
+  );
+}
+
+export async function createQBankTestConfig(
+  orgId: string,
+  bankId: string,
+  data: {
+    mode: "exam" | "training" | "review";
+    question_count?: number | null;
+    time_per_question_override?: number | null;
+    category_filter?: string | null;
+    show_feedback: boolean;
+  }
+): Promise<QBankTestConfig> {
+  return apiFetch<QBankTestConfig>(
+    `/api/v1/organizations/${orgId}/qbanks/${bankId}/test-configs`,
+    { method: "POST", body: JSON.stringify(data) }
+  );
+}
+
+export async function deleteQBankTestConfig(
+  orgId: string,
+  bankId: string,
+  configId: string
+): Promise<void> {
+  return apiFetch<void>(
+    `/api/v1/organizations/${orgId}/qbanks/${bankId}/test-configs/${configId}`,
+    { method: "DELETE" }
+  );
+}
