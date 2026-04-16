@@ -30,12 +30,12 @@ class TestFireAndForgetTasksIgnoreResult:
     that causes cascading failures when a prior task leaves corrupted metadata.
     """
 
-    def test_generate_course_syllabus_ignores_result(self):
+    def test_generate_course_syllabus_stores_result(self):
         from app.tasks.syllabus_generation import generate_course_syllabus
 
-        assert generate_course_syllabus.ignore_result is True, (
-            "generate_course_syllabus must have ignore_result=True — "
-            "state is tracked via courses.creation_step, not Celery backend"
+        assert generate_course_syllabus.ignore_result is False, (
+            "generate_course_syllabus must have ignore_result=False — "
+            "frontend polls AsyncResult.state for SUCCESS to enable the Next button"
         )
 
     def test_index_course_resources_ignores_result(self):
