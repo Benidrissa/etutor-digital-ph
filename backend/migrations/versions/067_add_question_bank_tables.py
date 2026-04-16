@@ -16,32 +16,23 @@ branch_labels = None
 depends_on = None
 
 
+def _create_enum_if_not_exists(name: str, values: list[str]) -> None:
+    """Create a PostgreSQL enum type only if it doesn't already exist (asyncpg-safe)."""
+    conn = op.get_bind()
+    result = conn.execute(sa.text("SELECT 1 FROM pg_type WHERE typname = :name"), {"name": name})
+    if not result.scalar():
+        vals = ", ".join(f"'{v}'" for v in values)
+        conn.execute(sa.text(f"CREATE TYPE {name} AS ENUM ({vals})"))
+
+
 def upgrade() -> None:
-    op.execute(
-        "DO $$ BEGIN CREATE TYPE questionbanktype AS ENUM"
-        " ('driving', 'exam_prep', 'psychotechnic', 'general_culture');"
-        " EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+    _create_enum_if_not_exists(
+        "questionbanktype", ["driving", "exam_prep", "psychotechnic", "general_culture"]
     )
-    op.execute(
-        "DO $$ BEGIN CREATE TYPE questionbankstatus AS ENUM"
-        " ('draft', 'published', 'archived');"
-        " EXCEPTION WHEN duplicate_object THEN NULL; END $$"
-    )
-    op.execute(
-        "DO $$ BEGIN CREATE TYPE questiondifficulty AS ENUM"
-        " ('easy', 'medium', 'hard');"
-        " EXCEPTION WHEN duplicate_object THEN NULL; END $$"
-    )
-    op.execute(
-        "DO $$ BEGIN CREATE TYPE testmode AS ENUM"
-        " ('exam', 'training', 'review');"
-        " EXCEPTION WHEN duplicate_object THEN NULL; END $$"
-    )
-    op.execute(
-        "DO $$ BEGIN CREATE TYPE qbankaudiostatus AS ENUM"
-        " ('pending', 'generating', 'ready', 'failed');"
-        " EXCEPTION WHEN duplicate_object THEN NULL; END $$"
-    )
+    _create_enum_if_not_exists("questionbankstatus", ["draft", "published", "archived"])
+    _create_enum_if_not_exists("questiondifficulty", ["easy", "medium", "hard"])
+    _create_enum_if_not_exists("testmode", ["exam", "training", "review"])
+    _create_enum_if_not_exists("qbankaudiostatus", ["pending", "generating", "ready", "failed"])
 
     op.create_table(
         "question_banks",
