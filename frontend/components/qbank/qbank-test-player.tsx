@@ -32,7 +32,7 @@ export function QBankTestPlayer({ testId }: QBankTestPlayerProps) {
   const [timerRunning, setTimerRunning] = useState(false);
   const [showingFeedback, setShowingFeedback] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const questionStartTime = useRef<number>(Date.now());
+  const questionStartTime = useRef<number>(0);
 
   useEffect(() => {
     startQBankTest(testId)
