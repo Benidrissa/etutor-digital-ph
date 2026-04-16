@@ -1,0 +1,550 @@
+"""Question Bank service — CRUD for banks, questions, tests, attempts."""
+
+from __future__ import annotations
+
+import random
+import uuid
+from collections import defaultdict
+
+import structlog
+from fastapi import HTTPException, status
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.domain.models.organization import OrgMemberRole
+from app.domain.models.question_bank import (
+    QBankQuestion,
+    QBankTest,
+    QBankTestAttempt,
+    QuestionBank,
+)
+from app.domain.services.organization_service import OrganizationService
+
+logger = structlog.get_logger(__name__)
+
+_org_svc = OrganizationService()
+
+
+class QBankService:
+    # ------------------------------------------------------------------
+    # Question Bank CRUD
+    # ------------------------------------------------------------------
+
+    async def create_bank(
+        self,
+        db: AsyncSession,
+        *,
+        organization_id: uuid.UUID,
+        title: str,
+        bank_type: str,
+        created_by: uuid.UUID,
+        description: str | None = None,
+        language: str = "fr",
+        time_per_question_sec: int = 25,
+        passing_score: float = 80.0,
+    ) -> QuestionBank:
+        await _org_svc.require_org_role(
+            db, organization_id, created_by,
+            OrgMemberRole.owner, OrgMemberRole.admin,
+        )
+        bank = QuestionBank(
+            organization_id=organization_id,
+            title=title,
+            description=description,
+            bank_type=bank_type,
+            language=language,
+            time_per_question_sec=time_per_question_sec,
+            passing_score=passing_score,
+            created_by=created_by,
+        )
+        db.add(bank)
+        await db.commit()
+        await db.refresh(bank)
+        return bank
+
+    async def get_bank(
+        self, db: AsyncSession, bank_id: uuid.UUID
+    ) -> QuestionBank:
+        bank = await db.get(QuestionBank, bank_id)
+        if bank is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Question bank not found.",
+            )
+        return bank
+
+    async def list_org_banks(
+        self, db: AsyncSession, organization_id: uuid.UUID
+    ) -> list[dict]:
+        result = await db.execute(
+            select(QuestionBank)
+            .where(QuestionBank.organization_id == organization_id)
+            .order_by(QuestionBank.created_at.desc())
+        )
+        banks = result.scalars().all()
+        out = []
+        for bank in banks:
+            q_count = await db.scalar(
+                select(func.count())
+                .select_from(QBankQuestion)
+                .where(QBankQuestion.question_bank_id == bank.id)
+            )
+            t_count = await db.scalar(
+                select(func.count())
+                .select_from(QBankTest)
+                .where(QBankTest.question_bank_id == bank.id)
+            )
+            out.append({
+                "bank": bank,
+                "question_count": q_count or 0,
+                "test_count": t_count or 0,
+            })
+        return out
+
+    async def update_bank(
+        self,
+        db: AsyncSession,
+        bank_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        **fields,
+    ) -> QuestionBank:
+        bank = await self.get_bank(db, bank_id)
+        await _org_svc.require_org_role(
+            db, bank.organization_id, actor_id,
+            OrgMemberRole.owner, OrgMemberRole.admin,
+        )
+        allowed = {
+            "title", "description", "language",
+            "time_per_question_sec", "passing_score", "status",
+        }
+        for key, value in fields.items():
+            if key in allowed and value is not None:
+                setattr(bank, key, value)
+        await db.commit()
+        await db.refresh(bank)
+        return bank
+
+    async def delete_bank(
+        self,
+        db: AsyncSession,
+        bank_id: uuid.UUID,
+        actor_id: uuid.UUID,
+    ) -> None:
+        bank = await self.get_bank(db, bank_id)
+        await _org_svc.require_org_role(
+            db, bank.organization_id, actor_id,
+            OrgMemberRole.owner, OrgMemberRole.admin,
+        )
+        await db.delete(bank)
+        await db.commit()
+
+    # ------------------------------------------------------------------
+    # Questions
+    # ------------------------------------------------------------------
+
+    async def list_questions(
+        self,
+        db: AsyncSession,
+        bank_id: uuid.UUID,
+        page: int = 1,
+        per_page: int = 50,
+    ) -> dict:
+        total = await db.scalar(
+            select(func.count())
+            .select_from(QBankQuestion)
+            .where(QBankQuestion.question_bank_id == bank_id)
+        )
+        result = await db.execute(
+            select(QBankQuestion)
+            .where(QBankQuestion.question_bank_id == bank_id)
+            .order_by(QBankQuestion.order_index)
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+        )
+        return {
+            "questions": result.scalars().all(),
+            "total": total or 0,
+            "page": page,
+            "per_page": per_page,
+        }
+
+    async def update_question(
+        self,
+        db: AsyncSession,
+        question_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        **fields,
+    ) -> QBankQuestion:
+        question = await db.get(QBankQuestion, question_id)
+        if question is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Question not found.",
+            )
+        bank = await self.get_bank(db, question.question_bank_id)
+        await _org_svc.require_org_role(
+            db, bank.organization_id, actor_id,
+            OrgMemberRole.owner, OrgMemberRole.admin,
+        )
+        allowed = {
+            "question_text", "options", "correct_answer_indices",
+            "explanation", "category", "difficulty",
+        }
+        for key, value in fields.items():
+            if key in allowed and value is not None:
+                setattr(question, key, value)
+        await db.commit()
+        await db.refresh(question)
+        return question
+
+    async def delete_question(
+        self,
+        db: AsyncSession,
+        question_id: uuid.UUID,
+        actor_id: uuid.UUID,
+    ) -> None:
+        question = await db.get(QBankQuestion, question_id)
+        if question is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Question not found.",
+            )
+        bank = await self.get_bank(db, question.question_bank_id)
+        await _org_svc.require_org_role(
+            db, bank.organization_id, actor_id,
+            OrgMemberRole.owner, OrgMemberRole.admin,
+        )
+        await db.delete(question)
+        await db.commit()
+
+    # ------------------------------------------------------------------
+    # Test CRUD
+    # ------------------------------------------------------------------
+
+    async def create_test(
+        self,
+        db: AsyncSession,
+        *,
+        question_bank_id: uuid.UUID,
+        title: str,
+        mode: str,
+        created_by: uuid.UUID,
+        question_count: int | None = None,
+        shuffle_questions: bool = True,
+        time_per_question_sec: int | None = None,
+        show_feedback: bool = False,
+        filter_categories: list[str] | None = None,
+        filter_failed_only: bool = False,
+    ) -> QBankTest:
+        bank = await self.get_bank(db, question_bank_id)
+        await _org_svc.require_org_role(
+            db, bank.organization_id, created_by,
+            OrgMemberRole.owner, OrgMemberRole.admin,
+        )
+        test = QBankTest(
+            question_bank_id=question_bank_id,
+            title=title,
+            mode=mode,
+            question_count=question_count,
+            shuffle_questions=shuffle_questions,
+            time_per_question_sec=time_per_question_sec,
+            show_feedback=show_feedback,
+            filter_categories=filter_categories,
+            filter_failed_only=filter_failed_only,
+            created_by=created_by,
+        )
+        db.add(test)
+        await db.commit()
+        await db.refresh(test)
+        return test
+
+    async def get_test(
+        self, db: AsyncSession, test_id: uuid.UUID
+    ) -> QBankTest:
+        test = await db.get(QBankTest, test_id)
+        if test is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Test not found.",
+            )
+        return test
+
+    async def list_tests(
+        self, db: AsyncSession, bank_id: uuid.UUID
+    ) -> list[QBankTest]:
+        result = await db.execute(
+            select(QBankTest)
+            .where(QBankTest.question_bank_id == bank_id)
+            .order_by(QBankTest.created_at.desc())
+        )
+        return list(result.scalars().all())
+
+    async def update_test(
+        self,
+        db: AsyncSession,
+        test_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        **fields,
+    ) -> QBankTest:
+        test = await self.get_test(db, test_id)
+        bank = await self.get_bank(db, test.question_bank_id)
+        await _org_svc.require_org_role(
+            db, bank.organization_id, actor_id,
+            OrgMemberRole.owner, OrgMemberRole.admin,
+        )
+        allowed = {
+            "title", "mode", "question_count", "shuffle_questions",
+            "time_per_question_sec", "show_feedback",
+            "filter_categories", "filter_failed_only",
+        }
+        for key, value in fields.items():
+            if key in allowed and value is not None:
+                setattr(test, key, value)
+        await db.commit()
+        await db.refresh(test)
+        return test
+
+    async def delete_test(
+        self,
+        db: AsyncSession,
+        test_id: uuid.UUID,
+        actor_id: uuid.UUID,
+    ) -> None:
+        test = await self.get_test(db, test_id)
+        bank = await self.get_bank(db, test.question_bank_id)
+        await _org_svc.require_org_role(
+            db, bank.organization_id, actor_id,
+            OrgMemberRole.owner, OrgMemberRole.admin,
+        )
+        await db.delete(test)
+        await db.commit()
+
+    # ------------------------------------------------------------------
+    # Test Session — start / submit / history / review
+    # ------------------------------------------------------------------
+
+    async def start_test(
+        self,
+        db: AsyncSession,
+        test_id: uuid.UUID,
+        user_id: uuid.UUID,
+    ) -> dict:
+        test = await self.get_test(db, test_id)
+        bank = await self.get_bank(db, test.question_bank_id)
+
+        # Build question query
+        stmt = (
+            select(QBankQuestion)
+            .where(QBankQuestion.question_bank_id == bank.id)
+        )
+
+        # Filter by categories if configured
+        if test.filter_categories:
+            stmt = stmt.where(
+                QBankQuestion.category.in_(test.filter_categories)
+            )
+
+        # Filter to previously failed questions only
+        if test.filter_failed_only:
+            failed_ids = await self._get_failed_question_ids(
+                db, test_id, user_id
+            )
+            if failed_ids:
+                stmt = stmt.where(QBankQuestion.id.in_(failed_ids))
+
+        stmt = stmt.order_by(QBankQuestion.order_index)
+        result = await db.execute(stmt)
+        questions = list(result.scalars().all())
+
+        # Shuffle if configured
+        if test.shuffle_questions:
+            random.shuffle(questions)
+
+        # Limit question count
+        if test.question_count and len(questions) > test.question_count:
+            questions = questions[: test.question_count]
+
+        time_per_q = test.time_per_question_sec or bank.time_per_question_sec
+
+        return {
+            "test": test,
+            "bank": bank,
+            "questions": questions,
+            "time_per_question_sec": time_per_q,
+        }
+
+    async def submit_test(
+        self,
+        db: AsyncSession,
+        test_id: uuid.UUID,
+        user_id: uuid.UUID,
+        answers: dict,
+    ) -> QBankTestAttempt:
+        test = await self.get_test(db, test_id)
+        bank = await self.get_bank(db, test.question_bank_id)
+
+        # Load all questions for scoring
+        question_ids = list(answers.keys())
+        result = await db.execute(
+            select(QBankQuestion).where(
+                QBankQuestion.id.in_(
+                    [uuid.UUID(qid) for qid in question_ids]
+                )
+            )
+        )
+        questions_map = {
+            str(q.id): q for q in result.scalars().all()
+        }
+
+        correct = 0
+        total = len(question_ids)
+        total_time = 0
+        category_counts: dict[str, dict] = defaultdict(
+            lambda: {"correct": 0, "total": 0}
+        )
+
+        for qid, answer_data in answers.items():
+            question = questions_map.get(qid)
+            if not question:
+                continue
+            selected = answer_data.get("selected", [])
+            time_sec = answer_data.get("time_sec", 0)
+            total_time += time_sec
+
+            is_correct = sorted(selected) == sorted(
+                question.correct_answer_indices
+            )
+            if is_correct:
+                correct += 1
+
+            cat = question.category or "uncategorized"
+            category_counts[cat]["total"] += 1
+            if is_correct:
+                category_counts[cat]["correct"] += 1
+
+        score = (correct / total * 100) if total > 0 else 0
+        passed = score >= bank.passing_score
+
+        # Count previous attempts
+        prev_count = await db.scalar(
+            select(func.count())
+            .select_from(QBankTestAttempt)
+            .where(
+                QBankTestAttempt.test_id == test_id,
+                QBankTestAttempt.user_id == user_id,
+            )
+        )
+
+        attempt = QBankTestAttempt(
+            test_id=test_id,
+            user_id=user_id,
+            answers=answers,
+            score=score,
+            total_questions=total,
+            correct_answers=correct,
+            time_taken_sec=total_time,
+            passed=passed,
+            category_breakdown=dict(category_counts),
+            attempt_number=(prev_count or 0) + 1,
+        )
+        db.add(attempt)
+        await db.commit()
+        await db.refresh(attempt)
+        return attempt
+
+    async def get_attempt_history(
+        self,
+        db: AsyncSession,
+        test_id: uuid.UUID,
+        user_id: uuid.UUID,
+    ) -> list[QBankTestAttempt]:
+        result = await db.execute(
+            select(QBankTestAttempt)
+            .where(
+                QBankTestAttempt.test_id == test_id,
+                QBankTestAttempt.user_id == user_id,
+            )
+            .order_by(QBankTestAttempt.attempted_at.desc())
+        )
+        return list(result.scalars().all())
+
+    async def get_review(
+        self,
+        db: AsyncSession,
+        test_id: uuid.UUID,
+        attempt_id: uuid.UUID,
+        user_id: uuid.UUID,
+    ) -> dict:
+        attempt = await db.get(QBankTestAttempt, attempt_id)
+        if attempt is None or attempt.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Attempt not found.",
+            )
+        await self.get_test(db, test_id)
+
+        question_ids = [
+            uuid.UUID(qid) for qid in attempt.answers
+        ]
+        result = await db.execute(
+            select(QBankQuestion).where(
+                QBankQuestion.id.in_(question_ids)
+            )
+        )
+        questions = {str(q.id): q for q in result.scalars().all()}
+
+        review_questions = []
+        for qid, answer_data in attempt.answers.items():
+            q = questions.get(qid)
+            if not q:
+                continue
+            selected = answer_data.get("selected", [])
+            is_correct = sorted(selected) == sorted(
+                q.correct_answer_indices
+            )
+            review_questions.append({
+                "question": q,
+                "user_selected": selected,
+                "is_correct": is_correct,
+            })
+
+        return {
+            "attempt": attempt,
+            "questions": review_questions,
+        }
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    async def _get_failed_question_ids(
+        self,
+        db: AsyncSession,
+        test_id: uuid.UUID,
+        user_id: uuid.UUID,
+    ) -> list[uuid.UUID]:
+        """Get question IDs the user answered incorrectly in their last attempt."""
+        result = await db.execute(
+            select(QBankTestAttempt)
+            .where(
+                QBankTestAttempt.test_id == test_id,
+                QBankTestAttempt.user_id == user_id,
+            )
+            .order_by(QBankTestAttempt.attempted_at.desc())
+            .limit(1)
+        )
+        last_attempt = result.scalar_one_or_none()
+        if not last_attempt:
+            return []
+
+        failed_ids = []
+        for qid, answer_data in last_attempt.answers.items():
+            # We need to check against the actual question
+            question = await db.get(QBankQuestion, uuid.UUID(qid))
+            if question:
+                selected = answer_data.get("selected", [])
+                if sorted(selected) != sorted(
+                    question.correct_answer_indices
+                ):
+                    failed_ids.append(question.id)
+        return failed_ids
