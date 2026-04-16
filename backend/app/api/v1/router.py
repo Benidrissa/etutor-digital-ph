@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.activation_codes import router as activation_codes_router
+from app.api.v1.certificates import router as certificates_router
 from app.api.v1.admin import router as admin_router
 from app.api.v1.admin_courses import router as admin_courses_router
 from app.api.v1.admin_curricula import router as admin_curricula_router
@@ -70,3 +71,4 @@ api_v1_router.include_router(org_curricula_router)
 api_v1_router.include_router(org_codes_router)
 api_v1_router.include_router(org_reports_router)
 api_v1_router.include_router(qbank_router)
+api_v1_router.include_router(certificates_router)
