@@ -18,12 +18,30 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute(
-        "CREATE TYPE questionbanktype AS ENUM ('driving', 'exam_prep', 'psychotechnic', 'general_culture')"
+        "DO $$ BEGIN CREATE TYPE questionbanktype AS ENUM"
+        " ('driving', 'exam_prep', 'psychotechnic', 'general_culture');"
+        " EXCEPTION WHEN duplicate_object THEN NULL; END $$"
     )
-    op.execute("CREATE TYPE questionbankstatus AS ENUM ('draft', 'published', 'archived')")
-    op.execute("CREATE TYPE questiondifficulty AS ENUM ('easy', 'medium', 'hard')")
-    op.execute("CREATE TYPE testmode AS ENUM ('exam', 'training', 'review')")
-    op.execute("CREATE TYPE qbankaudiostatus AS ENUM ('pending', 'generating', 'ready', 'failed')")
+    op.execute(
+        "DO $$ BEGIN CREATE TYPE questionbankstatus AS ENUM"
+        " ('draft', 'published', 'archived');"
+        " EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+    )
+    op.execute(
+        "DO $$ BEGIN CREATE TYPE questiondifficulty AS ENUM"
+        " ('easy', 'medium', 'hard');"
+        " EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+    )
+    op.execute(
+        "DO $$ BEGIN CREATE TYPE testmode AS ENUM"
+        " ('exam', 'training', 'review');"
+        " EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+    )
+    op.execute(
+        "DO $$ BEGIN CREATE TYPE qbankaudiostatus AS ENUM"
+        " ('pending', 'generating', 'ready', 'failed');"
+        " EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+    )
 
     op.create_table(
         "question_banks",
