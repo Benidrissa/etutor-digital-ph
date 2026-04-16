@@ -70,6 +70,7 @@ export async function createAdminCourse(data: {
   audience_type?: string[];
   estimated_hours?: number;
   creation_mode?: string;
+  organization_id?: string;
 }): Promise<{ id: string; creation_step: string }> {
   return apiFetch("/api/v1/admin/courses", {
     method: "POST",
