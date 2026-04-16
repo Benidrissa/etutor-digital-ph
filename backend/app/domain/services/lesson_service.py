@@ -40,6 +40,35 @@ from app.domain.services.platform_settings_service import SettingsCache
 logger = structlog.get_logger()
 
 
+def extract_lesson_text(content) -> str:
+    """Extract readable text from lesson content (dict or LessonContent model).
+
+    Works with both raw dicts (from GeneratedContent.content JSON column)
+    and Pydantic LessonContent objects.
+    """
+    if isinstance(content, dict):
+        d = content
+    elif hasattr(content, "model_dump"):
+        d = content.model_dump()
+    else:
+        return str(content)[:2000]
+
+    parts: list[str] = []
+    if d.get("introduction"):
+        parts.append(str(d["introduction"]))
+    if d.get("concepts"):
+        concepts = d["concepts"]
+        if isinstance(concepts, list):
+            parts.extend(str(c) for c in concepts if c)
+        else:
+            parts.append(str(concepts))
+    if d.get("aof_example"):
+        parts.append(str(d["aof_example"]))
+    if d.get("synthesis"):
+        parts.append(str(d["synthesis"]))
+    return "\n\n".join(parts) if parts else str(d)[:2000]
+
+
 class LessonGenerationService:
     """Service for orchestrating lesson content generation."""
 
@@ -812,22 +841,8 @@ class LessonGenerationService:
             unit_id=lesson_response.unit_id,
         )
 
-        # Extract text from all lesson sections for audio generation
-        content_dict = lesson_response.content.model_dump()
-        parts = []
-        if content_dict.get("introduction"):
-            parts.append(str(content_dict["introduction"]))
-        if content_dict.get("concepts"):
-            concepts = content_dict["concepts"]
-            if isinstance(concepts, list):
-                parts.extend(str(c) for c in concepts if c)
-            else:
-                parts.append(str(concepts))
-        if content_dict.get("aof_example"):
-            parts.append(str(content_dict["aof_example"]))
-        if content_dict.get("synthesis"):
-            parts.append(str(content_dict["synthesis"]))
-        lesson_text = "\n\n".join(parts) if parts else str(content_dict)[:2000]
+        # Extract text from all lesson sections for audio/image generation
+        lesson_text = extract_lesson_text(lesson_response.content)
 
         try:
             from sqlalchemy import select as sa_select
