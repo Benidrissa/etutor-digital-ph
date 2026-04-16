@@ -204,7 +204,9 @@ async def download_certificate_pdf(
     # Load user record for PDF
     user = await db.get(User, cert.user_id)
     if not user:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="User not found"
+        )
 
     pdf_svc = CertificatePDFService()
     language = current_user.preferred_language or "fr"
