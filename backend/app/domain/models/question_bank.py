@@ -197,7 +197,9 @@ class QBankTestAttempt(Base):
     time_taken_sec: Mapped[int] = mapped_column(Integer, nullable=False)
     passed: Mapped[bool] = mapped_column(Boolean, nullable=False)
     category_breakdown: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    attempted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
     attempt_number: Mapped[int] = mapped_column(Integer, server_default="1", default=1)
 
     test: Mapped[QBankTest] = relationship(back_populates="attempts")

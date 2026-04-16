@@ -7,8 +7,8 @@ Create Date: 2026-04-16
 """
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import JSON
 from alembic import op
+from sqlalchemy.dialects.postgresql import JSON
 
 revision = "067"
 down_revision = "066"

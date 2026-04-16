@@ -19,6 +19,7 @@ from app.domain.models.module_media import MediaStatus, MediaType, ModuleMedia
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.organization import Organization, OrganizationMember, OrgMemberRole
 from app.domain.models.preassessment import CoursePreAssessment
+from app.domain.models.progress import UserModuleProgress
 from app.domain.models.question_bank import (
     QBankAudioStatus,
     QBankQuestion,
@@ -31,7 +32,6 @@ from app.domain.models.question_bank import (
     QuestionDifficulty,
     TestMode,
 )
-from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import PlacementTestAttempt, QuizAttempt, SummativeAssessmentAttempt
 from app.domain.models.sms_relay import (
     InboundSms,

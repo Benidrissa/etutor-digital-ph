@@ -418,6 +418,9 @@ def generate_course_syllabus(
                 ]
                 resource_text = "\n\n---\n\n".join(pdf_sections)
 
+            # PostgreSQL text columns reject NUL (0x00) bytes
+            resource_text = resource_text.replace("\x00", "")
+
             logger.info(
                 "Resource text prepared for syllabus context",
                 course_id=course_id,
