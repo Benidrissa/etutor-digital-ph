@@ -482,7 +482,7 @@
     },
     "step2": {
       "title": "Sélectionnez Votre Pays",
-      "description": "Choisissez votre pays CEDEAO pour un contenu localisé",
+      "description": "Choisissez votre pays d'Afrique de l'Ouest pour un contenu localisé",
       "selectCountry": "Sélectionnez votre pays",
       "countries": {
         "benin": "Bénin",
@@ -499,7 +499,9 @@
         "nigeria": "Nigeria",
         "senegal": "Sénégal",
         "sierra-leone": "Sierra Leone",
-        "togo": "Togo"
+        "togo": "Togo",
+        "other-west-african": "Autre pays ouest-africain",
+        "other": "Autre"
       }
     },
     "step3": {

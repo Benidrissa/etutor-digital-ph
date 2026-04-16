@@ -11,7 +11,7 @@ class OnboardingRequest(BaseModel):
     preferred_language: str = Field(
         ..., pattern="^(fr|en)$", description="User's preferred language"
     )
-    country: str = Field(..., description="ECOWAS country code")
+    country: str = Field(..., description="Country code")
     professional_role: str = Field(..., description="Professional role")
     current_level: int = Field(..., ge=1, le=4, description="Self-assessed skill level (1-4)")
 

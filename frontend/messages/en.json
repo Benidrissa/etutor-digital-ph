@@ -482,7 +482,7 @@
     },
     "step2": {
       "title": "Select Your Country",
-      "description": "Choose your ECOWAS country for localized content",
+      "description": "Choose your West African country for localized content",
       "selectCountry": "Select your country",
       "countries": {
         "benin": "Benin",
@@ -499,7 +499,9 @@
         "nigeria": "Nigeria",
         "senegal": "Senegal",
         "sierra-leone": "Sierra Leone",
-        "togo": "Togo"
+        "togo": "Togo",
+        "other-west-african": "Other West African",
+        "other": "Other"
       }
     },
     "step3": {

@@ -16,7 +16,7 @@ interface CountryStepProps {
 
 const countries = [
   'benin',
-  'burkina-faso', 
+  'burkina-faso',
   'cabo-verde',
   'cote-divoire',
   'gambia',
@@ -29,7 +29,9 @@ const countries = [
   'nigeria',
   'senegal',
   'sierra-leone',
-  'togo'
+  'togo',
+  'other-west-african',
+  'other'
 ];
 
 const countryFlags: { [key: string]: string } = {
@@ -47,7 +49,9 @@ const countryFlags: { [key: string]: string } = {
   'nigeria': '🇳🇬',
   'senegal': '🇸🇳',
   'sierra-leone': '🇸🇱',
-  'togo': '🇹🇬'
+  'togo': '🇹🇬',
+  'other-west-african': '🌍',
+  'other': '🌐'
 };
 
 export function CountryStep({ value, onChange }: CountryStepProps) {
