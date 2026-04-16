@@ -27,6 +27,7 @@ from app.api.v1.org_reports import router as org_reports_router
 from app.api.v1.organizations import router as organizations_router
 from app.api.v1.placement import router as placement_router
 from app.api.v1.progress import router as progress_router
+from app.api.v1.qbank_audio import router as qbank_audio_router
 from app.api.v1.quiz import router as quiz_router
 from app.api.v1.sms_relay import (
     router as sms_relay_router,
@@ -42,6 +43,7 @@ api_v1_router.include_router(analytics_router)
 api_v1_router.include_router(local_auth_router)
 api_v1_router.include_router(users_router)
 api_v1_router.include_router(placement_router)
+api_v1_router.include_router(qbank_audio_router)
 api_v1_router.include_router(dashboard_router)
 api_v1_router.include_router(progress_router)
 api_v1_router.include_router(content_router)
