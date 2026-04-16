@@ -244,7 +244,7 @@ class GeneratedContentCache:
         self.default_ttl = 3600 * 24 * 7  # 7 days
 
     async def get_cached_content(
-        self, content_type: str, module_id: str, language: str, country: str = "SN"
+        self, content_type: str, module_id: str, language: str, country: str = "CI"
     ) -> dict | None:
         """Get cached generated content.
 

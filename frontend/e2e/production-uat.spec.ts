@@ -49,7 +49,7 @@ test.describe('PRODUCTION UAT: Full User Journey', () => {
     await page.locator('#name').fill('Dr. UAT Validator');
     await page.locator('#email').fill(UNIQUE_EMAIL);
     await page.locator('#language').selectOption('en');
-    await page.locator('#country').selectOption('SN'); // Senegal
+    await page.locator('#country').selectOption('CI'); // Côte d'Ivoire
     await page.locator('#role').fill('Public Health Specialist');
 
     console.log(`✅ Form filled: ${UNIQUE_EMAIL}`);

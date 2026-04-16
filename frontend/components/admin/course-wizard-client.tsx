@@ -732,7 +732,7 @@ export function CourseWizardClient({
           return;
         }
 
-        if (status.task?.state === "SUCCESS") {
+        if (status.task?.state === "SUCCESS" || status.task?.state === "COMPLETE") {
           const modules = meta.modules;
           if (Array.isArray(modules)) {
             setGeneratedModules(modules as GeneratedModule[]);
@@ -864,7 +864,7 @@ export function CourseWizardClient({
           }
         }
 
-        if (status.task?.state === "SUCCESS") {
+        if (status.task?.state === "SUCCESS" || status.task?.state === "COMPLETE") {
           setIndexStatus({
             indexed: true,
             chunks_indexed: status.chunks_indexed,

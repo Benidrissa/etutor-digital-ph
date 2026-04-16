@@ -37,7 +37,7 @@ class CallbackTask(Task):
     retry_kwargs={"max_retries": 3, "countdown": 60},
     rate_limit="5/m",  # 5 tasks per minute
 )
-def generate_lesson_bulk(self, module_id: str, language: str = "fr", country: str = "SN") -> dict:
+def generate_lesson_bulk(self, module_id: str, language: str = "fr", country: str = "CI") -> dict:
     """Generate lessons for a module in bulk (async background task).
 
     Args:
@@ -1454,7 +1454,7 @@ def pregenerate_on_publish_task(self, course_id: str) -> dict:
                 ]
 
                 settings_svc = PlatformSettingsService()
-                default_country = await settings_svc.get("content-preload-default-country") or "SN"
+                default_country = await settings_svc.get("content-preload-default-country") or "CI"
                 quiz_questions_count = int(
                     await settings_svc.get("quiz-unit-questions-count") or 10
                 )

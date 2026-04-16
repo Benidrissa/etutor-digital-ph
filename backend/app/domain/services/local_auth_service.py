@@ -208,7 +208,7 @@ class LocalAuthService:
                     module_id="",
                     current_unit_id="",
                     language=user.preferred_language,
-                    country=user.country or "SN",
+                    country=user.country or "CI",
                     level=user.current_level or 1,
                     module_number=1,
                 )
@@ -747,7 +747,7 @@ class LocalAuthService:
                     module_id="",
                     current_unit_id="",
                     language=user["preferred_language"],
-                    country=user.get("country") or "SN",
+                    country=user.get("country") or "CI",
                     level=user.get("current_level") or 1,
                     module_number=1,
                 )
@@ -927,7 +927,7 @@ class LocalAuthService:
                     module_id="",
                     current_unit_id="",
                     language=user.preferred_language,
-                    country=user.country or "SN",
+                    country=user.country or "CI",
                     level=user.current_level or 1,
                     module_number=1,
                 )

@@ -52,7 +52,7 @@ class SyllabusTask(Task):
     retry_kwargs={"max_retries": 1, "countdown": 30},
     time_limit=3600,  # 60 min hard limit
     soft_time_limit=2700,  # 45 min soft limit
-    ignore_result=True,
+    ignore_result=False,
     acks_late=False,  # Acknowledge immediately to prevent duplicate dispatch
 )
 def generate_course_syllabus(

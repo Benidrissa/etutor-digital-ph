@@ -156,7 +156,7 @@ def _build_progress_snapshot(user: User) -> str:
         4: "Expert (L4)",
     }
     level_label = level_labels.get(user.current_level, f"Level {user.current_level}")
-    parts = [f"Level: {level_label}", f"Country: {user.country or 'SN'}"]
+    parts = [f"Level: {level_label}", f"Country: {user.country or 'CI'}"]
     if hasattr(user, "streak_days") and user.streak_days:
         parts.append(f"Streak: {user.streak_days} days")
     return ", ".join(parts)
@@ -335,7 +335,7 @@ class TutorService:
             context = TutorContext(
                 user_level=user.current_level,
                 user_language=effective_language,
-                user_country=user.country or "SN",
+                user_country=user.country or "CI",
                 module_id=str(module_id) if module_id else None,
                 module_title=module_title,
                 module_number=module_number,

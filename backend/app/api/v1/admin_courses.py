@@ -686,7 +686,7 @@ async def get_course_syllabus(
 
 class PreviewLessonRequest(BaseModel):
     language: str = "fr"
-    country: str = "SN"
+    country: str = "CI"
     level: int = 1
 
 
@@ -1469,7 +1469,7 @@ async def delete_course_resource(
 
 class GenerateContentRequest(BaseModel):
     language: str = "fr"
-    country: str = "SN"
+    country: str = "CI"
     level: int = 1
 
 

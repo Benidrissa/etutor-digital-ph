@@ -22,7 +22,7 @@ class LessonGenerationRequest(BaseModel):
                 "module_id": "550e8400-e29b-41d4-a716-446655440000",
                 "unit_id": "1.1",
                 "language": "fr",
-                "country": "SN",
+                "country": "CI",
                 "level": 2,
             }
         }
@@ -87,7 +87,7 @@ class LessonResponse(BaseModel):
                 "content_type": "lesson",
                 "language": "fr",
                 "level": 2,
-                "country_context": "SN",
+                "country_context": "CI",
                 "content": {
                     "introduction": "La surveillance épidémiologique est un pilier fondamental...",
                     "concepts": [
@@ -143,7 +143,7 @@ class FlashcardGenerationRequest(BaseModel):
             "example": {
                 "module_id": "550e8400-e29b-41d4-a716-446655440000",
                 "language": "fr",
-                "country": "SN",
+                "country": "CI",
                 "level": 2,
             }
         }
@@ -195,7 +195,7 @@ class FlashcardSetResponse(BaseModel):
                 "content_type": "flashcard",
                 "language": "fr",
                 "level": 2,
-                "country_context": "SN",
+                "country_context": "CI",
                 "flashcards": [
                     {
                         "term": "Surveillance épidémiologique",

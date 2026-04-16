@@ -36,7 +36,7 @@ def get_preassessment_system_prompt(
     return _apply_settings_template(
         key,
         language,
-        "SN",
+        "CI",
         1,
         "",
         course_title,
