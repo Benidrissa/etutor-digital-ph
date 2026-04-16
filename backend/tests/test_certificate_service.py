@@ -101,9 +101,7 @@ class TestCheckCourseCompletion:
         score2_result = MagicMock()
         score2_result.scalar.return_value = 85.0
 
-        mock_db.execute = AsyncMock(
-            side_effect=[modules_result, score1_result, score2_result]
-        )
+        mock_db.execute = AsyncMock(side_effect=[modules_result, score1_result, score2_result])
 
         is_complete, avg_score, module_scores = await cert_service.check_course_completion(
             user_id, course_id
@@ -128,9 +126,7 @@ class TestCheckCourseCompletion:
         score2_result = MagicMock()
         score2_result.scalar.return_value = None
 
-        mock_db.execute = AsyncMock(
-            side_effect=[modules_result, score1_result, score2_result]
-        )
+        mock_db.execute = AsyncMock(side_effect=[modules_result, score1_result, score2_result])
 
         is_complete, avg_score, module_scores = await cert_service.check_course_completion(
             user_id, course_id
@@ -165,9 +161,7 @@ class TestIssueCertificate:
         assert cert.id == existing_cert.id
         assert cert.verification_code == "CERT-AAAA-BBBB-CCCC"
 
-    async def test_raises_if_course_not_complete(
-        self, cert_service, mock_db, user_id, course_id
-    ):
+    async def test_raises_if_course_not_complete(self, cert_service, mock_db, user_id, course_id):
         """Cannot issue certificate if course is not complete."""
         # No existing cert
         no_cert_result = MagicMock()
@@ -177,16 +171,12 @@ class TestIssueCertificate:
         no_modules_result = MagicMock()
         no_modules_result.all.return_value = []
 
-        mock_db.execute = AsyncMock(
-            side_effect=[no_cert_result, no_modules_result]
-        )
+        mock_db.execute = AsyncMock(side_effect=[no_cert_result, no_modules_result])
 
         with pytest.raises(ValueError, match="Course not yet completed"):
             await cert_service.issue_certificate(user_id, course_id)
 
-    async def test_raises_if_no_active_template(
-        self, cert_service, mock_db, user_id, course_id
-    ):
+    async def test_raises_if_no_active_template(self, cert_service, mock_db, user_id, course_id):
         """Cannot issue certificate if course has no active template."""
         # No existing cert
         no_cert_result = MagicMock()
@@ -216,9 +206,7 @@ class TestIssueCertificate:
 
 
 class TestTemplateCRUD:
-    async def test_get_template_returns_none_when_missing(
-        self, cert_service, mock_db, course_id
-    ):
+    async def test_get_template_returns_none_when_missing(self, cert_service, mock_db, course_id):
         """get_template returns None when no template exists for the course."""
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
