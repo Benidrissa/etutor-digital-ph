@@ -276,6 +276,9 @@ export function AICourseWizard({
             setIsGenerating(true);
             setGenerateTaskId(genStatus.task.id ?? null);
             setGenerationStartTime(Date.now());
+          } else if (genStatus.creation_step === "generating") {
+            // Task is dead but creation_step never reset — enable force on next generate
+            setShouldForceGenerate(true);
           }
         } else if (resumeCreationStep === "generated") {
           // Generation done — fetch modules and go to syllabus_edit
