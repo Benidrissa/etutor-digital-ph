@@ -49,11 +49,11 @@ async def main(course_slug: str | None, dry_run: bool):
         )
 
         if course_slug:
-            query = query.join(
-                Module, GeneratedAudio.module_id == Module.id
-            ).join(
-                Course, Module.course_id == Course.id
-            ).where(Course.slug == course_slug)
+            query = (
+                query.join(Module, GeneratedAudio.module_id == Module.id)
+                .join(Course, Module.course_id == Course.id)
+                .where(Course.slug == course_slug)
+            )
 
         result = await session.execute(query)
         audio_records = list(result.scalars().all())
@@ -69,23 +69,21 @@ async def main(course_slug: str | None, dry_run: bool):
         for audio in audio_records:
             lesson_content = None
             if audio.lesson_id:
-                content_row = await session.get(
-                    GeneratedContent, audio.lesson_id
-                )
+                content_row = await session.get(GeneratedContent, audio.lesson_id)
                 if content_row and content_row.content:
-                    lesson_content = extract_lesson_text(
-                        content_row.content
-                    )
+                    lesson_content = extract_lesson_text(content_row.content)
 
-            dispatch_list.append({
-                "lesson_id": str(audio.lesson_id) if audio.lesson_id else None,
-                "module_id": str(audio.module_id) if audio.module_id else None,
-                "unit_id": audio.unit_id,
-                "language": audio.language,
-                "storage_key": audio.storage_key,
-                "audio_id": str(audio.id),
-                "lesson_text": (lesson_content or "")[:4000],
-            })
+            dispatch_list.append(
+                {
+                    "lesson_id": str(audio.lesson_id) if audio.lesson_id else None,
+                    "module_id": str(audio.module_id) if audio.module_id else None,
+                    "unit_id": audio.unit_id,
+                    "language": audio.language,
+                    "storage_key": audio.storage_key,
+                    "audio_id": str(audio.id),
+                    "lesson_text": (lesson_content or "")[:4000],
+                }
+            )
 
         # Report
         for item in dispatch_list:
@@ -97,8 +95,10 @@ async def main(course_slug: str | None, dry_run: bool):
             )
 
         if dry_run:
-            print(f"\n[DRY RUN] Would delete {len(audio_records)} "
-                  f"audio records and re-dispatch generation.")
+            print(
+                f"\n[DRY RUN] Would delete {len(audio_records)} "
+                f"audio records and re-dispatch generation."
+            )
             return
 
         # Phase 1: Delete MinIO objects
@@ -109,16 +109,12 @@ async def main(course_slug: str | None, dry_run: bool):
                     await storage.delete_object(item["storage_key"])
                     deleted_s3 += 1
                 except Exception as exc:
-                    print(f"  Warning: failed to delete "
-                          f"{item['storage_key']}: {exc}")
+                    print(f"  Warning: failed to delete {item['storage_key']}: {exc}")
         print(f"Deleted {deleted_s3} MinIO objects.")
 
         # Phase 2: Delete DB rows
         audio_ids = [a.id for a in audio_records]
-        await session.execute(
-            delete(GeneratedAudio)
-            .where(GeneratedAudio.id.in_(audio_ids))
-        )
+        await session.execute(delete(GeneratedAudio).where(GeneratedAudio.id.in_(audio_ids)))
         await session.commit()
         print(f"Deleted {len(audio_ids)} DB records.")
 
@@ -130,10 +126,7 @@ async def main(course_slug: str | None, dry_run: bool):
         for item in dispatch_list:
             if not item["lesson_text"] or not item["lesson_id"]:
                 skipped += 1
-                print(
-                    f"  Skipped {item['unit_id']}:{item['language']}"
-                    f" — no lesson content found"
-                )
+                print(f"  Skipped {item['unit_id']}:{item['language']} — no lesson content found")
                 continue
 
             generate_lesson_audio.apply_async(
@@ -148,14 +141,12 @@ async def main(course_slug: str | None, dry_run: bool):
             )
             dispatched += 1
 
-        print(f"\nDone: {dispatched} tasks dispatched, "
-              f"{skipped} skipped (no lesson content).")
+        print(f"\nDone: {dispatched} tasks dispatched, {skipped} skipped (no lesson content).")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Regenerate lesson audio affected by "
-                    "empty-content bug"
+        description="Regenerate lesson audio affected by empty-content bug"
     )
     parser.add_argument(
         "--course-slug",
