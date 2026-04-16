@@ -689,7 +689,27 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "- Maximum 3 figure references per lesson\n"
             "- Insert the reference inline in the text,"
             ' e.g. "... as illustrated {{{{source_image:abc123}}}}"\n\n'
-            "EXPECTED RESPONSE: Directly usable lesson content, without meta-discourse."
+            "CRITICAL: You MUST respond with valid JSON ONLY. No preamble,"
+            " no explanation, no markdown code fences. Your entire response"
+            " must be a single JSON object starting with {{ and ending "
+            "with }}.\n\n"
+            "Required JSON structure:\n"
+            "{{\n"
+            '  "introduction": "string — 2-3 sentences presenting the topic",\n'
+            '  "concepts": [\n'
+            '    "string — a paragraph (3-4 total, markdown formatting)"\n'
+            "  ],\n"
+            '  "aof_example": "string — practical West African case (1-2 paragraphs, markdown)",\n'
+            '  "synthesis": "string — summary paragraph (markdown)",\n'
+            '  "key_points": [\n'
+            '    "string — each element is one key takeaway (max 5)"\n'
+            "  ],\n"
+            '  "sources_cited": ["Author Ch.X, p.Y"],\n'
+            '  "__complete": true\n'
+            "}}\n"
+            "IMPORTANT: All text fields support markdown formatting and"
+            " inline {{{{source_image:UUID}}}} references.\n"
+            '"__complete": true MUST be the last field in your JSON response.'
         ),
         "string",
         "System prompt — lesson generation",
@@ -1023,7 +1043,27 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "- Only reference a figure if it directly illustrates a concept in the lesson\n"
             "- Maximum 3 figure references per lesson\n"
             "- Insert the reference inline in the text\n\n"
-            "EXPECTED RESPONSE: Directly usable lesson content, without meta-discourse."
+            "CRITICAL: You MUST respond with valid JSON ONLY. No preamble,"
+            " no explanation, no markdown code fences. Your entire response"
+            " must be a single JSON object starting with {{ and ending "
+            "with }}.\n\n"
+            "Required JSON structure:\n"
+            "{{\n"
+            '  "introduction": "string — 2-3 short sentences with a fun fact or question",\n'
+            '  "concepts": [\n'
+            '    "string — each element is a paragraph with a story or analogy (3-4 total, markdown)"\n'
+            "  ],\n"
+            '  "aof_example": "string — West African story example (1-2 paragraphs, markdown)",\n'
+            '  "synthesis": "string — summary with encouraging message (markdown)",\n'
+            '  "key_points": [\n'
+            '    "string — each element is one simple takeaway (max 5)"\n'
+            "  ],\n"
+            '  "sources_cited": ["Author Ch.X, p.Y"],\n'
+            '  "__complete": true\n'
+            "}}\n"
+            "IMPORTANT: All text fields support markdown formatting and"
+            " inline {{{{source_image:UUID}}}} references.\n"
+            '"__complete": true MUST be the last field in your JSON response.'
         ),
         "string",
         "System prompt — lesson generation (kids)",
