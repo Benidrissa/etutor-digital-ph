@@ -1937,5 +1937,40 @@
     "contactCta": "Questions, partenariats ou retours — nous serions ravis de vous entendre.",
     "ctaBrowse": "Parcourir les cours",
     "ctaExpert": "Devenir expert"
+  },
+  "QBank": {
+    "results": {
+      "pageTitle": "Résultats du test",
+      "passed": "Réussi",
+      "failed": "Échoué",
+      "pass": "Réussi",
+      "fail": "Échoué",
+      "passingScore": "Score de passage : {score}%",
+      "correct": "Correct",
+      "incorrect": "Incorrect",
+      "timeTaken": "Temps pris",
+      "categoryBreakdown": "Répartition par catégorie",
+      "attemptHistory": "Tentatives précédentes",
+      "backToBank": "Retour à la banque",
+      "reviewAnswers": "Revoir les réponses",
+      "retakeTest": "Reprendre le test"
+    },
+    "review": {
+      "pageTitle": "Révision des réponses",
+      "back": "Retour",
+      "backToResults": "Retour aux résultats",
+      "filterIncorrect": "Afficher uniquement les incorrectes",
+      "incorrect": "Incorrectes seulement",
+      "showingAll": "Affichage de {count} questions",
+      "showingIncorrect": "Affichage de {count} réponse(s) incorrecte(s)",
+      "noIncorrect": "Bravo — aucune réponse incorrecte !",
+      "questionNumber": "Q{n}",
+      "questionImage": "Image de la question",
+      "yourAnswer": "Votre réponse",
+      "correctAnswer": "Correct",
+      "notAnswered": "Sans réponse",
+      "explanation": "Explication",
+      "source": "Source : {source}"
+    }
   }
 }

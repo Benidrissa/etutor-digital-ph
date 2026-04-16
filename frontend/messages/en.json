@@ -1937,5 +1937,40 @@
     "contactCta": "Questions, partnerships, or feedback — we'd love to hear from you.",
     "ctaBrowse": "Browse Courses",
     "ctaExpert": "Become an Expert"
+  },
+  "QBank": {
+    "results": {
+      "pageTitle": "Test Results",
+      "passed": "Passed",
+      "failed": "Failed",
+      "pass": "Pass",
+      "fail": "Fail",
+      "passingScore": "Passing score: {score}%",
+      "correct": "Correct",
+      "incorrect": "Incorrect",
+      "timeTaken": "Time taken",
+      "categoryBreakdown": "Category breakdown",
+      "attemptHistory": "Previous attempts",
+      "backToBank": "Back to bank",
+      "reviewAnswers": "Review answers",
+      "retakeTest": "Retake test"
+    },
+    "review": {
+      "pageTitle": "Review Answers",
+      "back": "Back",
+      "backToResults": "Back to results",
+      "filterIncorrect": "Show incorrect only",
+      "incorrect": "Incorrect only",
+      "showingAll": "Showing all {count} questions",
+      "showingIncorrect": "Showing {count} incorrect answer(s)",
+      "noIncorrect": "Great job — no incorrect answers!",
+      "questionNumber": "Q{n}",
+      "questionImage": "Question image",
+      "yourAnswer": "Your answer",
+      "correctAnswer": "Correct",
+      "notAnswered": "Not answered",
+      "explanation": "Explanation",
+      "source": "Source: {source}"
+    }
   }
 }

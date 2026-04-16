@@ -1388,3 +1388,88 @@ export async function exportOrgCsv(orgId: string): Promise<string> {
   });
   return res.text();
 }
+
+// QBank Types
+export interface QBankQuestion {
+  id: string;
+  question_text: string;
+  image_url?: string;
+  options: string[];
+  correct_option_index: number;
+  explanation?: string;
+  category?: string;
+  sources_cited: string[];
+}
+
+export interface QBankTest {
+  id: string;
+  title: string;
+  description?: string;
+  questions: QBankQuestion[];
+  passing_score: number;
+  time_limit_minutes?: number;
+  created_at: string;
+}
+
+export interface QBankQuestionResult {
+  question_id: string;
+  user_answer_index: number | null;
+  correct_option_index: number;
+  is_correct: boolean;
+  time_taken_seconds: number;
+  question_text: string;
+  image_url?: string;
+  options: string[];
+  explanation?: string;
+  category?: string;
+  sources_cited: string[];
+}
+
+export interface QBankCategoryBreakdown {
+  category: string;
+  correct: number;
+  total: number;
+  score_percent: number;
+}
+
+export interface QBankAttempt {
+  id: string;
+  test_id: string;
+  score_percent: number;
+  passed: boolean;
+  correct_answers: number;
+  total_questions: number;
+  total_time_seconds: number;
+  completed_at: string;
+  question_results: QBankQuestionResult[];
+  category_breakdown: QBankCategoryBreakdown[];
+}
+
+export interface QBankAttemptSummary {
+  id: string;
+  score_percent: number;
+  passed: boolean;
+  correct_answers: number;
+  total_questions: number;
+  total_time_seconds: number;
+  completed_at: string;
+}
+
+export async function getQBankTest(testId: string): Promise<QBankTest> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<QBankTest>(`/api/v1/qbank/tests/${testId}`);
+}
+
+export async function getQBankAttempt(testId: string, attemptId: string): Promise<QBankAttempt> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<QBankAttempt>(
+    `/api/v1/qbank/tests/${testId}/attempts/${attemptId}`
+  );
+}
+
+export async function getQBankAttemptHistory(testId: string): Promise<QBankAttemptSummary[]> {
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<QBankAttemptSummary[]>(
+    `/api/v1/qbank/tests/${testId}/attempts`
+  );
+}
