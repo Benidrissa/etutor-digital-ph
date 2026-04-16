@@ -73,7 +73,7 @@ const profileSchema = z.object({
 
 type ProfileFormData = z.infer<typeof profileSchema>;
 
-const ECOWAS_COUNTRIES = [
+const WEST_AFRICAN_COUNTRIES = [
   { code: "BJ", name: "Benin" },
   { code: "BF", name: "Burkina Faso" },
   { code: "CV", name: "Cape Verde" },
@@ -89,6 +89,8 @@ const ECOWAS_COUNTRIES = [
   { code: "SN", name: "Senegal" },
   { code: "SL", name: "Sierra Leone" },
   { code: "TG", name: "Togo" },
+  { code: "OWA", name: "Other West African" },
+  { code: "OTH", name: "Other" },
 ];
 
 const PROFESSIONAL_ROLES = [
@@ -255,7 +257,7 @@ export function ProfileClient() {
                 <Badge variant="outline">{profile.preferred_language.toUpperCase()}</Badge>
                 {profile.country && (
                   <Badge variant="outline">
-                    {ECOWAS_COUNTRIES.find(c => c.code === profile.country)?.name || profile.country}
+                    {WEST_AFRICAN_COUNTRIES.find(c => c.code === profile.country)?.name || profile.country}
                   </Badge>
                 )}
               </div>
@@ -376,7 +378,7 @@ export function ProfileClient() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {ECOWAS_COUNTRIES.map((country) => (
+                        {WEST_AFRICAN_COUNTRIES.map((country) => (
                           <SelectItem key={country.code} value={country.code}>
                             {country.name}
                           </SelectItem>
