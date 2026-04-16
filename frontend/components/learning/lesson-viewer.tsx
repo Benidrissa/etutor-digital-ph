@@ -483,6 +483,13 @@ export function LessonViewer({
           {/* Lesson Illustration */}
           <LessonImage lessonId={lessonData.id} language={lessonData.language} />
 
+          {/* Introduction */}
+          {content.introduction && (
+            <div className="mb-8">
+              {renderContentWithImages(content.introduction)}
+            </div>
+          )}
+
           {/* Key Concepts */}
           <div className="mb-8">
             <div className="space-y-6">
@@ -516,9 +523,11 @@ export function LessonViewer({
               {content.key_points.map((point, index) => (
                 <li key={index} className="flex items-start gap-3">
                   <div className="w-2 h-2 bg-teal-500 rounded-full mt-3 flex-shrink-0" />
-                  <span className="text-base leading-relaxed text-gray-700">
-                    {point}
-                  </span>
+                  <div className="text-base leading-relaxed text-gray-700 prose prose-gray max-w-none prose-p:text-gray-700 prose-strong:text-gray-900 prose-p:my-0">
+                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>
+                      {point}
+                    </ReactMarkdown>
+                  </div>
                 </li>
               ))}
             </ul>
