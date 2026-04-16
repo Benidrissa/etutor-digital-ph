@@ -78,9 +78,7 @@ class CertificateService:
 
         Returns: (is_complete, average_score, module_scores_dict)
         """
-        result = await self.db.execute(
-            select(Module.id).where(Module.course_id == course_id)
-        )
+        result = await self.db.execute(select(Module.id).where(Module.course_id == course_id))
         module_ids = [row[0] for row in result.all()]
 
         if not module_ids:
@@ -116,11 +114,15 @@ class CertificateService:
         )
         existing_cert = existing_result.scalar_one_or_none()
         if existing_cert:
-            logger.info("certificate_already_exists", user_id=str(user_id), course_id=str(course_id))
+            logger.info(
+                "certificate_already_exists", user_id=str(user_id), course_id=str(course_id)
+            )
             return existing_cert
 
         # Check completion
-        is_complete, avg_score, module_scores = await self.check_course_completion(user_id, course_id)
+        is_complete, avg_score, module_scores = await self.check_course_completion(
+            user_id, course_id
+        )
         if not is_complete:
             raise ValueError("Course not yet completed")
 
