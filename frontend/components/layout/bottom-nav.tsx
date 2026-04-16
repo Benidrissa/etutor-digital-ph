@@ -15,23 +15,23 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { startTransition, useState, useEffect, useRef } from "react";
-import { getCurriculumContext, onCurriculumContextChange } from "@/lib/curriculum-context";
+import { getCurriculumContext, onCurriculumContextChange, type CurriculumContextValue } from "@/lib/curriculum-context";
 
 export function BottomNav() {
   const t = useTranslations("Navigation");
   const pathname = usePathname();
   const locale = useLocale();
   const [moreOpen, setMoreOpen] = useState(false);
-  const [curriculumSlug, setCurriculumSlug] = useState<string | null>(null);
+  const [curriculumCtx, setCurriculumCtx] = useState<CurriculumContextValue | null>(null);
   const moreRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    startTransition(() => setCurriculumSlug(getCurriculumContext()));
+    startTransition(() => setCurriculumCtx(getCurriculumContext()));
   }, [pathname]);
 
   useEffect(() => {
     return onCurriculumContextChange(() => {
-      startTransition(() => setCurriculumSlug(getCurriculumContext()));
+      startTransition(() => setCurriculumCtx(getCurriculumContext()));
     });
   }, []);
 
@@ -48,16 +48,18 @@ export function BottomNav() {
 
   const primaryItems = [
     {
-      href: curriculumSlug
-        ? `/${locale}/dashboard?curriculum=${curriculumSlug}`
+      href: curriculumCtx
+        ? `/${locale}/dashboard?curriculum=${curriculumCtx.slug}`
         : `/${locale}/dashboard`,
       label: t("dashboard"),
       icon: Home,
       description: t("dashboardDescription"),
     },
     {
-      href: curriculumSlug
-        ? `/${locale}/curricula/${curriculumSlug}`
+      href: curriculumCtx
+        ? curriculumCtx.orgSlug
+          ? `/${locale}/org/${curriculumCtx.orgSlug}/curricula/${curriculumCtx.slug}`
+          : `/${locale}/curricula/${curriculumCtx.slug}`
         : `/${locale}/courses`,
       label: t("courses"),
       icon: GraduationCap,

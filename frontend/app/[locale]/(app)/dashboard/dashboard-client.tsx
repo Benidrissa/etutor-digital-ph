@@ -5,14 +5,18 @@ import { useTranslations, useLocale } from 'next-intl';
 import { useRouter } from '@/i18n/routing';
 import { ModuleMap } from '@/components/learning/module-map';
 import { getMyEnrollments, type CourseWithEnrollment } from '@/lib/api';
+import { getCurriculumContext } from '@/lib/curriculum-context';
 
 export function DashboardClient({ curriculumSlug }: { curriculumSlug?: string }) {
   const t = useTranslations('Dashboard');
   const locale = useLocale() as 'en' | 'fr';
   const router = useRouter();
 
+  const ctx = curriculumSlug ? getCurriculumContext() : null;
   const coursesHref = curriculumSlug
-    ? `/curricula/${curriculumSlug}`
+    ? ctx?.orgSlug
+      ? `/org/${ctx.orgSlug}/curricula/${ctx.slug}`
+      : `/curricula/${curriculumSlug}`
     : '/courses';
 
   const [enrollments, setEnrollments] = useState<CourseWithEnrollment[]>([]);
