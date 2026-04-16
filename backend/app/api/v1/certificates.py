@@ -16,7 +16,6 @@ from app.api.v1.schemas.certificate import (
     CertificateListItem,
     CertificateTemplateCreate,
     CertificateTemplateResponse,
-    CertificateTemplateUpdate,
     CertificateVerifyResponse,
 )
 from app.domain.models.user import User, UserRole
@@ -169,10 +168,7 @@ async def download_certificate_pdf(
     current_user: AuthenticatedUser = Depends(get_current_user),
 ):
     """Download certificate PDF (owner only)."""
-    from sqlalchemy import select
-    from sqlalchemy.orm import selectinload
 
-    from app.domain.models.certificate import Certificate
     from app.domain.services.certificate_pdf_service import CertificatePDFService
 
     svc = CertificateService(db)
@@ -212,7 +208,7 @@ async def download_certificate_pdf(
 
     pdf_svc = CertificatePDFService()
     language = current_user.preferred_language or "fr"
-    url = await pdf_svc.generate_and_store(cert, cert.template, cert.course, user, db, language)
+    await pdf_svc.generate_and_store(cert, cert.template, cert.course, user, db, language)
 
     # Now download the freshly generated PDF
     from app.infrastructure.storage.s3 import S3StorageService
@@ -240,7 +236,6 @@ async def verify_certificate(
     db: AsyncSession = Depends(get_db_session),
 ):
     """Public certificate verification — no authentication required."""
-    from sqlalchemy.orm import selectinload
 
     svc = CertificateService(db)
     cert = await svc.verify_certificate(verification_code)
