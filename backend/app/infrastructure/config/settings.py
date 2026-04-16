@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     upload_max_pdf_tokens: int = 5000
     upload_max_csv_rows: int = 20
 
+    # MMS TTS sidecar (Meta Massively Multilingual Speech)
+    mms_tts_url: str = "http://mms-tts:5050"
+
     # MinIO / S3-compatible object storage
     minio_endpoint: str = "http://localhost:9000"
     minio_access_key: str = ""
