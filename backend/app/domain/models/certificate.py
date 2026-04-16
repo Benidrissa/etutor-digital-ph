@@ -42,9 +42,7 @@ class CertificateTemplate(Base):
 
 class Certificate(Base):
     __tablename__ = "certificates"
-    __table_args__ = (
-        UniqueConstraint("user_id", "course_id", name="uq_certificate_user_course"),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "course_id", name="uq_certificate_user_course"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     template_id: Mapped[uuid.UUID | None] = mapped_column(
