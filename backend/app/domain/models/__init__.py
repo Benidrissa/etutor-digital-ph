@@ -20,6 +20,7 @@ from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.organization import Organization, OrganizationMember, OrgMemberRole
 from app.domain.models.preassessment import CoursePreAssessment
 from app.domain.models.progress import UserModuleProgress
+from app.domain.models.qbank import QBankAttempt, Question, QuestionBank
 from app.domain.models.quiz import PlacementTestAttempt, QuizAttempt, SummativeAssessmentAttempt
 from app.domain.models.sms_relay import (
     InboundSms,
@@ -69,6 +70,9 @@ __all__ = [
     "OrgMemberRole",
     "Organization",
     "OrganizationMember",
+    "QBankAttempt",
+    "Question",
+    "QuestionBank",
     "PlacementTestAttempt",
     "QuizAttempt",
     "RefreshToken",
