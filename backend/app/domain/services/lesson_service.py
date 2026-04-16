@@ -593,7 +593,13 @@ class LessonGenerationService:
             return None
 
     async def _parse_lesson_content(self, content_text: str, rag_chunks: list) -> LessonContent:
-        """Parse generated content into structured lesson format."""
+        """Parse generated content into structured lesson format.
+
+        Tries JSON parsing first (new prompt format), falls back to wrapping
+        raw markdown in concepts[] for backward compatibility with cached content.
+        """
+        import json as _json
+
         # Extract source citations from RAG chunks
         sources_cited = []
         for chunk in rag_chunks:
@@ -615,14 +621,56 @@ class LessonGenerationService:
             if source_citation not in sources_cited:
                 sources_cited.append(source_citation)
 
-        # Full content is already well-structured by the AI prompt with section headings.
-        # Keep introduction empty — it's already in the content body (concepts).
+        # --- Attempt JSON parsing (new prompt format) ---
+        try:
+            stripped = content_text.strip()
+            if stripped.startswith("```"):
+                stripped = re.sub(r"^```[a-zA-Z]*\n?", "", stripped)
+                stripped = re.sub(r"\n?```$", "", stripped.rstrip())
+
+            data = _json.loads(stripped)
+
+            if isinstance(data, dict) and ("concepts" in data or "introduction" in data):
+                raw_concepts = data.get("concepts") or []
+                concepts = (
+                    [str(c) for c in raw_concepts if str(c).strip()]
+                    if isinstance(raw_concepts, list)
+                    else [str(raw_concepts)]
+                )
+                raw_key_points = data.get("key_points") or []
+                key_points = (
+                    [str(k) for k in raw_key_points if str(k).strip()]
+                    if isinstance(raw_key_points, list)
+                    else [str(raw_key_points)]
+                )
+                raw_sources = data.get("sources_cited") or sources_cited
+                if isinstance(raw_sources, list):
+                    all_sources = [str(s) for s in raw_sources if str(s).strip()]
+                    # Merge with RAG-extracted sources
+                    for sc in sources_cited:
+                        if sc not in all_sources:
+                            all_sources.append(sc)
+                else:
+                    all_sources = sources_cited
+
+                return LessonContent(
+                    introduction=str(data.get("introduction") or ""),
+                    concepts=concepts if concepts else [""],
+                    aof_example=str(data.get("aof_example") or ""),
+                    synthesis=str(data.get("synthesis") or ""),
+                    key_points=key_points,
+                    sources_cited=all_sources,
+                )
+        except (_json.JSONDecodeError, ValueError, TypeError):
+            pass
+
+        # --- Fallback: old markdown format (for cached content) ---
         return LessonContent(
             introduction="",
             concepts=[content_text],
             aof_example="",
             synthesis="",
-            key_points=[],  # Would be parsed
+            key_points=[],
             sources_cited=sources_cited,
         )
 
@@ -764,14 +812,22 @@ class LessonGenerationService:
             unit_id=lesson_response.unit_id,
         )
 
-        lesson_text = ""
+        # Extract text from all lesson sections for audio generation
         content_dict = lesson_response.content.model_dump()
-        for key in ("introduction", "body", "summary", "content", "text"):
-            if key in content_dict and content_dict[key]:
-                lesson_text = str(content_dict[key])
-                break
-        if not lesson_text:
-            lesson_text = str(content_dict)[:2000]
+        parts = []
+        if content_dict.get("introduction"):
+            parts.append(str(content_dict["introduction"]))
+        if content_dict.get("concepts"):
+            concepts = content_dict["concepts"]
+            if isinstance(concepts, list):
+                parts.extend(str(c) for c in concepts if c)
+            else:
+                parts.append(str(concepts))
+        if content_dict.get("aof_example"):
+            parts.append(str(content_dict["aof_example"]))
+        if content_dict.get("synthesis"):
+            parts.append(str(content_dict["synthesis"]))
+        lesson_text = "\n\n".join(parts) if parts else str(content_dict)[:2000]
 
         try:
             from sqlalchemy import select as sa_select
