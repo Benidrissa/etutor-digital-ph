@@ -16,24 +16,7 @@ branch_labels = None
 depends_on = None
 
 
-def _create_enum_if_not_exists(name: str, values: list[str]) -> None:
-    """Create a PostgreSQL enum type only if it doesn't already exist (asyncpg-safe)."""
-    conn = op.get_bind()
-    result = conn.execute(sa.text("SELECT 1 FROM pg_type WHERE typname = :name"), {"name": name})
-    if not result.scalar():
-        vals = ", ".join(f"'{v}'" for v in values)
-        conn.execute(sa.text(f"CREATE TYPE {name} AS ENUM ({vals})"))
-
-
 def upgrade() -> None:
-    _create_enum_if_not_exists(
-        "questionbanktype", ["driving", "exam_prep", "psychotechnic", "general_culture"]
-    )
-    _create_enum_if_not_exists("questionbankstatus", ["draft", "published", "archived"])
-    _create_enum_if_not_exists("questiondifficulty", ["easy", "medium", "hard"])
-    _create_enum_if_not_exists("testmode", ["exam", "training", "review"])
-    _create_enum_if_not_exists("qbankaudiostatus", ["pending", "generating", "ready", "failed"])
-
     op.create_table(
         "question_banks",
         sa.Column("id", sa.Uuid(), primary_key=True),
@@ -54,7 +37,7 @@ def upgrade() -> None:
                 "psychotechnic",
                 "general_culture",
                 name="questionbanktype",
-                create_type=False,
+                create_type=True,
             ),
             nullable=False,
         ),
@@ -123,7 +106,7 @@ def upgrade() -> None:
                 "ready",
                 "failed",
                 name="qbankaudiostatus",
-                create_type=False,
+                create_type=True,
             ),
             server_default="pending",
             nullable=False,
