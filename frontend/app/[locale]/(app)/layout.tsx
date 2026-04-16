@@ -6,7 +6,6 @@ import { ChatLayout } from "@/components/chat/chat-layout";
 import { OfflineIndicator } from "@/components/shared/offline-indicator";
 import { SyncStatusIndicator } from "@/components/shared/sync-status-indicator";
 import { AuthGuard } from "@/components/shared/auth-guard";
-import { SubscriptionBanner } from "@/components/shared/subscription-banner";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -17,7 +16,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="flex flex-1 flex-col min-h-0">
             <OfflineIndicator />
             <SyncStatusIndicator />
-            <SubscriptionBanner />
             <Header />
             <BreadcrumbNav />
             <main className="flex flex-col flex-1 overflow-y-auto pb-16 pt-0 md:pb-0">{children}</main>
