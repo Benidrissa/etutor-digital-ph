@@ -43,15 +43,11 @@ def _bank_response(bank, question_count: int = 0, test_count: int = 0):
         organization_id=str(bank.organization_id),
         title=bank.title,
         description=bank.description,
-        bank_type=bank.bank_type.value
-        if hasattr(bank.bank_type, "value")
-        else bank.bank_type,
+        bank_type=bank.bank_type.value if hasattr(bank.bank_type, "value") else bank.bank_type,
         language=bank.language,
         time_per_question_sec=bank.time_per_question_sec,
         passing_score=bank.passing_score,
-        status=bank.status.value
-        if hasattr(bank.status, "value")
-        else bank.status,
+        status=bank.status.value if hasattr(bank.status, "value") else bank.status,
         question_count=question_count,
         test_count=test_count,
         created_by=str(bank.created_by),
@@ -73,9 +69,7 @@ def _question_response(q):
         source_page=q.source_page,
         source_pdf_name=q.source_pdf_name,
         category=q.category,
-        difficulty=q.difficulty.value
-        if hasattr(q.difficulty, "value")
-        else q.difficulty,
+        difficulty=q.difficulty.value if hasattr(q.difficulty, "value") else q.difficulty,
         created_at=q.created_at.isoformat(),
     )
 
@@ -149,10 +143,7 @@ async def list_banks(
 ):
     items = await _svc.list_org_banks(db, org_id)
     return [
-        _bank_response(
-            item["bank"], item["question_count"], item["test_count"]
-        )
-        for item in items
+        _bank_response(item["bank"], item["question_count"], item["test_count"]) for item in items
     ]
 
 
@@ -174,15 +165,11 @@ async def update_bank(
     db=Depends(get_db_session),
 ):
     updates = body.model_dump(exclude_unset=True)
-    bank = await _svc.update_bank(
-        db, bank_id, uuid.UUID(current_user.id), **updates
-    )
+    bank = await _svc.update_bank(db, bank_id, uuid.UUID(current_user.id), **updates)
     return _bank_response(bank)
 
 
-@router.delete(
-    "/banks/{bank_id}", status_code=status.HTTP_204_NO_CONTENT
-)
+@router.delete("/banks/{bank_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_bank(
     bank_id: uuid.UUID,
     current_user: AuthenticatedUser = Depends(get_current_user),
@@ -216,9 +203,7 @@ async def list_questions(
     )
 
 
-@router.patch(
-    "/questions/{question_id}", response_model=QuestionResponse
-)
+@router.patch("/questions/{question_id}", response_model=QuestionResponse)
 async def update_question(
     question_id: uuid.UUID,
     body: QuestionUpdate,
@@ -226,9 +211,7 @@ async def update_question(
     db=Depends(get_db_session),
 ):
     updates = body.model_dump(exclude_unset=True)
-    q = await _svc.update_question(
-        db, question_id, uuid.UUID(current_user.id), **updates
-    )
+    q = await _svc.update_question(db, question_id, uuid.UUID(current_user.id), **updates)
     return _question_response(q)
 
 
@@ -241,9 +224,7 @@ async def delete_question(
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
-    await _svc.delete_question(
-        db, question_id, uuid.UUID(current_user.id)
-    )
+    await _svc.delete_question(db, question_id, uuid.UUID(current_user.id))
 
 
 # ---------------------------------------------------------------------------
@@ -295,23 +276,17 @@ async def update_test(
     db=Depends(get_db_session),
 ):
     updates = body.model_dump(exclude_unset=True)
-    test = await _svc.update_test(
-        db, test_id, uuid.UUID(current_user.id), **updates
-    )
+    test = await _svc.update_test(db, test_id, uuid.UUID(current_user.id), **updates)
     return _test_response(test)
 
 
-@router.delete(
-    "/tests/{test_id}", status_code=status.HTTP_204_NO_CONTENT
-)
+@router.delete("/tests/{test_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_test(
     test_id: uuid.UUID,
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
-    await _svc.delete_test(
-        db, test_id, uuid.UUID(current_user.id)
-    )
+    await _svc.delete_test(db, test_id, uuid.UUID(current_user.id))
 
 
 # ---------------------------------------------------------------------------
@@ -319,17 +294,13 @@ async def delete_test(
 # ---------------------------------------------------------------------------
 
 
-@router.get(
-    "/tests/{test_id}/start", response_model=TestStartResponse
-)
+@router.get("/tests/{test_id}/start", response_model=TestStartResponse)
 async def start_test(
     test_id: uuid.UUID,
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
-    data = await _svc.start_test(
-        db, test_id, uuid.UUID(current_user.id)
-    )
+    data = await _svc.start_test(db, test_id, uuid.UUID(current_user.id))
     test = data["test"]
     questions = [
         TestStartQuestion(
@@ -338,9 +309,7 @@ async def start_test(
             question_text=q.question_text,
             options=q.options,
             category=q.category,
-            difficulty=q.difficulty.value
-            if hasattr(q.difficulty, "value")
-            else q.difficulty,
+            difficulty=q.difficulty.value if hasattr(q.difficulty, "value") else q.difficulty,
         )
         for q in data["questions"]
     ]
@@ -348,9 +317,7 @@ async def start_test(
     return TestStartResponse(
         test_id=str(test.id),
         title=test.title,
-        mode=test.mode.value
-        if hasattr(test.mode, "value")
-        else test.mode,
+        mode=test.mode.value if hasattr(test.mode, "value") else test.mode,
         time_per_question_sec=data["time_per_question_sec"],
         show_feedback=test.show_feedback,
         questions=questions,
@@ -368,9 +335,7 @@ async def submit_test(
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
-    attempt = await _svc.submit_test(
-        db, test_id, uuid.UUID(current_user.id), body.answers
-    )
+    attempt = await _svc.submit_test(db, test_id, uuid.UUID(current_user.id), body.answers)
     return _attempt_response(attempt)
 
 
@@ -383,9 +348,7 @@ async def get_history(
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
-    attempts = await _svc.get_attempt_history(
-        db, test_id, uuid.UUID(current_user.id)
-    )
+    attempts = await _svc.get_attempt_history(db, test_id, uuid.UUID(current_user.id))
     return [_attempt_response(a) for a in attempts]
 
 
@@ -399,9 +362,7 @@ async def get_review(
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
-    data = await _svc.get_review(
-        db, test_id, attempt_id, uuid.UUID(current_user.id)
-    )
+    data = await _svc.get_review(db, test_id, attempt_id, uuid.UUID(current_user.id))
     attempt = data["attempt"]
     review_questions = [
         TestReviewQuestion(
@@ -409,9 +370,7 @@ async def get_review(
             image_url=item["question"].image_url,
             question_text=item["question"].question_text,
             options=item["question"].options,
-            correct_answer_indices=item[
-                "question"
-            ].correct_answer_indices,
+            correct_answer_indices=item["question"].correct_answer_indices,
             explanation=item["question"].explanation,
             category=item["question"].category,
             user_selected=item["user_selected"],

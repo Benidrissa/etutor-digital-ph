@@ -44,8 +44,11 @@ class QBankService:
         passing_score: float = 80.0,
     ) -> QuestionBank:
         await _org_svc.require_org_role(
-            db, organization_id, created_by,
-            OrgMemberRole.owner, OrgMemberRole.admin,
+            db,
+            organization_id,
+            created_by,
+            OrgMemberRole.owner,
+            OrgMemberRole.admin,
         )
         bank = QuestionBank(
             organization_id=organization_id,
@@ -62,9 +65,7 @@ class QBankService:
         await db.refresh(bank)
         return bank
 
-    async def get_bank(
-        self, db: AsyncSession, bank_id: uuid.UUID
-    ) -> QuestionBank:
+    async def get_bank(self, db: AsyncSession, bank_id: uuid.UUID) -> QuestionBank:
         bank = await db.get(QuestionBank, bank_id)
         if bank is None:
             raise HTTPException(
@@ -73,9 +74,7 @@ class QBankService:
             )
         return bank
 
-    async def list_org_banks(
-        self, db: AsyncSession, organization_id: uuid.UUID
-    ) -> list[dict]:
+    async def list_org_banks(self, db: AsyncSession, organization_id: uuid.UUID) -> list[dict]:
         result = await db.execute(
             select(QuestionBank)
             .where(QuestionBank.organization_id == organization_id)
@@ -94,11 +93,13 @@ class QBankService:
                 .select_from(QBankTest)
                 .where(QBankTest.question_bank_id == bank.id)
             )
-            out.append({
-                "bank": bank,
-                "question_count": q_count or 0,
-                "test_count": t_count or 0,
-            })
+            out.append(
+                {
+                    "bank": bank,
+                    "question_count": q_count or 0,
+                    "test_count": t_count or 0,
+                }
+            )
         return out
 
     async def update_bank(
@@ -110,12 +111,19 @@ class QBankService:
     ) -> QuestionBank:
         bank = await self.get_bank(db, bank_id)
         await _org_svc.require_org_role(
-            db, bank.organization_id, actor_id,
-            OrgMemberRole.owner, OrgMemberRole.admin,
+            db,
+            bank.organization_id,
+            actor_id,
+            OrgMemberRole.owner,
+            OrgMemberRole.admin,
         )
         allowed = {
-            "title", "description", "language",
-            "time_per_question_sec", "passing_score", "status",
+            "title",
+            "description",
+            "language",
+            "time_per_question_sec",
+            "passing_score",
+            "status",
         }
         for key, value in fields.items():
             if key in allowed and value is not None:
@@ -132,8 +140,11 @@ class QBankService:
     ) -> None:
         bank = await self.get_bank(db, bank_id)
         await _org_svc.require_org_role(
-            db, bank.organization_id, actor_id,
-            OrgMemberRole.owner, OrgMemberRole.admin,
+            db,
+            bank.organization_id,
+            actor_id,
+            OrgMemberRole.owner,
+            OrgMemberRole.admin,
         )
         await db.delete(bank)
         await db.commit()
@@ -183,12 +194,19 @@ class QBankService:
             )
         bank = await self.get_bank(db, question.question_bank_id)
         await _org_svc.require_org_role(
-            db, bank.organization_id, actor_id,
-            OrgMemberRole.owner, OrgMemberRole.admin,
+            db,
+            bank.organization_id,
+            actor_id,
+            OrgMemberRole.owner,
+            OrgMemberRole.admin,
         )
         allowed = {
-            "question_text", "options", "correct_answer_indices",
-            "explanation", "category", "difficulty",
+            "question_text",
+            "options",
+            "correct_answer_indices",
+            "explanation",
+            "category",
+            "difficulty",
         }
         for key, value in fields.items():
             if key in allowed and value is not None:
@@ -211,8 +229,11 @@ class QBankService:
             )
         bank = await self.get_bank(db, question.question_bank_id)
         await _org_svc.require_org_role(
-            db, bank.organization_id, actor_id,
-            OrgMemberRole.owner, OrgMemberRole.admin,
+            db,
+            bank.organization_id,
+            actor_id,
+            OrgMemberRole.owner,
+            OrgMemberRole.admin,
         )
         await db.delete(question)
         await db.commit()
@@ -238,8 +259,11 @@ class QBankService:
     ) -> QBankTest:
         bank = await self.get_bank(db, question_bank_id)
         await _org_svc.require_org_role(
-            db, bank.organization_id, created_by,
-            OrgMemberRole.owner, OrgMemberRole.admin,
+            db,
+            bank.organization_id,
+            created_by,
+            OrgMemberRole.owner,
+            OrgMemberRole.admin,
         )
         test = QBankTest(
             question_bank_id=question_bank_id,
@@ -258,9 +282,7 @@ class QBankService:
         await db.refresh(test)
         return test
 
-    async def get_test(
-        self, db: AsyncSession, test_id: uuid.UUID
-    ) -> QBankTest:
+    async def get_test(self, db: AsyncSession, test_id: uuid.UUID) -> QBankTest:
         test = await db.get(QBankTest, test_id)
         if test is None:
             raise HTTPException(
@@ -269,9 +291,7 @@ class QBankService:
             )
         return test
 
-    async def list_tests(
-        self, db: AsyncSession, bank_id: uuid.UUID
-    ) -> list[QBankTest]:
+    async def list_tests(self, db: AsyncSession, bank_id: uuid.UUID) -> list[QBankTest]:
         result = await db.execute(
             select(QBankTest)
             .where(QBankTest.question_bank_id == bank_id)
@@ -289,13 +309,21 @@ class QBankService:
         test = await self.get_test(db, test_id)
         bank = await self.get_bank(db, test.question_bank_id)
         await _org_svc.require_org_role(
-            db, bank.organization_id, actor_id,
-            OrgMemberRole.owner, OrgMemberRole.admin,
+            db,
+            bank.organization_id,
+            actor_id,
+            OrgMemberRole.owner,
+            OrgMemberRole.admin,
         )
         allowed = {
-            "title", "mode", "question_count", "shuffle_questions",
-            "time_per_question_sec", "show_feedback",
-            "filter_categories", "filter_failed_only",
+            "title",
+            "mode",
+            "question_count",
+            "shuffle_questions",
+            "time_per_question_sec",
+            "show_feedback",
+            "filter_categories",
+            "filter_failed_only",
         }
         for key, value in fields.items():
             if key in allowed and value is not None:
@@ -313,8 +341,11 @@ class QBankService:
         test = await self.get_test(db, test_id)
         bank = await self.get_bank(db, test.question_bank_id)
         await _org_svc.require_org_role(
-            db, bank.organization_id, actor_id,
-            OrgMemberRole.owner, OrgMemberRole.admin,
+            db,
+            bank.organization_id,
+            actor_id,
+            OrgMemberRole.owner,
+            OrgMemberRole.admin,
         )
         await db.delete(test)
         await db.commit()
@@ -333,22 +364,15 @@ class QBankService:
         bank = await self.get_bank(db, test.question_bank_id)
 
         # Build question query
-        stmt = (
-            select(QBankQuestion)
-            .where(QBankQuestion.question_bank_id == bank.id)
-        )
+        stmt = select(QBankQuestion).where(QBankQuestion.question_bank_id == bank.id)
 
         # Filter by categories if configured
         if test.filter_categories:
-            stmt = stmt.where(
-                QBankQuestion.category.in_(test.filter_categories)
-            )
+            stmt = stmt.where(QBankQuestion.category.in_(test.filter_categories))
 
         # Filter to previously failed questions only
         if test.filter_failed_only:
-            failed_ids = await self._get_failed_question_ids(
-                db, test_id, user_id
-            )
+            failed_ids = await self._get_failed_question_ids(db, test_id, user_id)
             if failed_ids:
                 stmt = stmt.where(QBankQuestion.id.in_(failed_ids))
 
@@ -387,21 +411,15 @@ class QBankService:
         question_ids = list(answers.keys())
         result = await db.execute(
             select(QBankQuestion).where(
-                QBankQuestion.id.in_(
-                    [uuid.UUID(qid) for qid in question_ids]
-                )
+                QBankQuestion.id.in_([uuid.UUID(qid) for qid in question_ids])
             )
         )
-        questions_map = {
-            str(q.id): q for q in result.scalars().all()
-        }
+        questions_map = {str(q.id): q for q in result.scalars().all()}
 
         correct = 0
         total = len(question_ids)
         total_time = 0
-        category_counts: dict[str, dict] = defaultdict(
-            lambda: {"correct": 0, "total": 0}
-        )
+        category_counts: dict[str, dict] = defaultdict(lambda: {"correct": 0, "total": 0})
 
         for qid, answer_data in answers.items():
             question = questions_map.get(qid)
@@ -411,9 +429,7 @@ class QBankService:
             time_sec = answer_data.get("time_sec", 0)
             total_time += time_sec
 
-            is_correct = sorted(selected) == sorted(
-                question.correct_answer_indices
-            )
+            is_correct = sorted(selected) == sorted(question.correct_answer_indices)
             if is_correct:
                 correct += 1
 
@@ -483,14 +499,8 @@ class QBankService:
             )
         await self.get_test(db, test_id)
 
-        question_ids = [
-            uuid.UUID(qid) for qid in attempt.answers
-        ]
-        result = await db.execute(
-            select(QBankQuestion).where(
-                QBankQuestion.id.in_(question_ids)
-            )
-        )
+        question_ids = [uuid.UUID(qid) for qid in attempt.answers]
+        result = await db.execute(select(QBankQuestion).where(QBankQuestion.id.in_(question_ids)))
         questions = {str(q.id): q for q in result.scalars().all()}
 
         review_questions = []
@@ -499,14 +509,14 @@ class QBankService:
             if not q:
                 continue
             selected = answer_data.get("selected", [])
-            is_correct = sorted(selected) == sorted(
-                q.correct_answer_indices
+            is_correct = sorted(selected) == sorted(q.correct_answer_indices)
+            review_questions.append(
+                {
+                    "question": q,
+                    "user_selected": selected,
+                    "is_correct": is_correct,
+                }
             )
-            review_questions.append({
-                "question": q,
-                "user_selected": selected,
-                "is_correct": is_correct,
-            })
 
         return {
             "attempt": attempt,
@@ -543,8 +553,6 @@ class QBankService:
             question = await db.get(QBankQuestion, uuid.UUID(qid))
             if question:
                 selected = answer_data.get("selected", [])
-                if sorted(selected) != sorted(
-                    question.correct_answer_indices
-                ):
+                if sorted(selected) != sorted(question.correct_answer_indices):
                     failed_ids.append(question.id)
         return failed_ids

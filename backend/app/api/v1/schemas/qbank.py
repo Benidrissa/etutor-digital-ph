@@ -27,9 +27,7 @@ class QuestionBankUpdate(BaseModel):
     language: str | None = Field(default=None, max_length=5)
     time_per_question_sec: int | None = Field(default=None, ge=5, le=120)
     passing_score: float | None = Field(default=None, ge=0, le=100)
-    status: str | None = Field(
-        default=None, pattern=r"^(draft|published|archived)$"
-    )
+    status: str | None = Field(default=None, pattern=r"^(draft|published|archived)$")
 
 
 class QuestionBankResponse(BaseModel):
@@ -60,9 +58,7 @@ class QuestionUpdate(BaseModel):
     correct_answer_indices: list[int] | None = None
     explanation: str | None = None
     category: str | None = Field(default=None, max_length=100)
-    difficulty: str | None = Field(
-        default=None, pattern=r"^(easy|medium|hard)$"
-    )
+    difficulty: str | None = Field(default=None, pattern=r"^(easy|medium|hard)$")
 
 
 class QuestionResponse(BaseModel):
@@ -107,9 +103,7 @@ class TestCreate(BaseModel):
 
 class TestUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=2, max_length=500)
-    mode: str | None = Field(
-        default=None, pattern=r"^(exam|training|review)$"
-    )
+    mode: str | None = Field(default=None, pattern=r"^(exam|training|review)$")
     question_count: int | None = Field(default=None, ge=1, le=500)
     shuffle_questions: bool | None = None
     time_per_question_sec: int | None = Field(default=None, ge=5, le=120)
