@@ -17,6 +17,43 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Create enum types via raw SQL with IF NOT EXISTS to avoid conflicts
+    # with SQLAlchemy model-level enum auto-creation in asyncpg.
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE questionbanktype AS ENUM (
+                'driving', 'exam_prep', 'psychotechnic', 'general_culture'
+            );
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$;
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE questionbankstatus AS ENUM ('draft', 'published', 'archived');
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$;
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE questiondifficulty AS ENUM ('easy', 'medium', 'hard');
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$;
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE testmode AS ENUM ('exam', 'training', 'review');
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$;
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE qbankaudiostatus AS ENUM (
+                'pending', 'generating', 'ready', 'failed'
+            );
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$;
+    """)
+
     op.create_table(
         "question_banks",
         sa.Column("id", sa.Uuid(), primary_key=True),
@@ -29,30 +66,24 @@ def upgrade() -> None:
         ),
         sa.Column("title", sa.String(500), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
-        sa.Column(
-            "bank_type",
-            sa.Enum(
-                "driving",
-                "exam_prep",
-                "psychotechnic",
-                "general_culture",
-                name="questionbanktype",
-                create_type=True,
-            ),
-            nullable=False,
-        ),
+        sa.Column("bank_type", sa.VARCHAR(50), nullable=False),
         sa.Column("language", sa.String(5), server_default="fr", nullable=False),
         sa.Column("time_per_question_sec", sa.Integer(), server_default="25", nullable=False),
         sa.Column("passing_score", sa.Float(), server_default="80.0", nullable=False),
-        sa.Column(
-            "status",
-            sa.Enum("draft", "published", "archived", name="questionbankstatus", create_type=False),
-            server_default="draft",
-            nullable=False,
-        ),
+        sa.Column("status", sa.VARCHAR(50), server_default="draft", nullable=False),
         sa.Column("created_by", sa.Uuid(), sa.ForeignKey("users.id"), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+
+    # Cast columns to their enum types
+    op.execute(
+        "ALTER TABLE question_banks ALTER COLUMN bank_type TYPE questionbanktype"
+        " USING bank_type::questionbanktype"
+    )
+    op.execute(
+        "ALTER TABLE question_banks ALTER COLUMN status TYPE questionbankstatus"
+        " USING status::questionbankstatus"
     )
 
     op.create_table(
@@ -75,13 +106,12 @@ def upgrade() -> None:
         sa.Column("source_page", sa.Integer(), nullable=True),
         sa.Column("source_pdf_name", sa.String(), nullable=True),
         sa.Column("category", sa.String(100), nullable=True),
-        sa.Column(
-            "difficulty",
-            sa.Enum("easy", "medium", "hard", name="questiondifficulty", create_type=False),
-            server_default="medium",
-            nullable=False,
-        ),
+        sa.Column("difficulty", sa.VARCHAR(50), server_default="medium", nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+    op.execute(
+        "ALTER TABLE qbank_questions ALTER COLUMN difficulty TYPE questiondifficulty"
+        " USING difficulty::questiondifficulty"
     )
 
     op.create_table(
@@ -98,21 +128,13 @@ def upgrade() -> None:
         sa.Column("storage_key", sa.String(), nullable=True),
         sa.Column("storage_url", sa.String(), nullable=True),
         sa.Column("duration_seconds", sa.Integer(), nullable=True),
-        sa.Column(
-            "status",
-            sa.Enum(
-                "pending",
-                "generating",
-                "ready",
-                "failed",
-                name="qbankaudiostatus",
-                create_type=True,
-            ),
-            server_default="pending",
-            nullable=False,
-        ),
+        sa.Column("status", sa.VARCHAR(50), server_default="pending", nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.UniqueConstraint("question_id", "language", name="uq_qbank_question_audio_lang"),
+    )
+    op.execute(
+        "ALTER TABLE qbank_question_audio ALTER COLUMN status TYPE qbankaudiostatus"
+        " USING status::qbankaudiostatus"
     )
 
     op.create_table(
@@ -126,11 +148,7 @@ def upgrade() -> None:
             index=True,
         ),
         sa.Column("title", sa.String(500), nullable=False),
-        sa.Column(
-            "mode",
-            sa.Enum("exam", "training", "review", name="testmode", create_type=False),
-            nullable=False,
-        ),
+        sa.Column("mode", sa.VARCHAR(50), nullable=False),
         sa.Column("question_count", sa.Integer(), nullable=True),
         sa.Column("shuffle_questions", sa.Boolean(), server_default="true", nullable=False),
         sa.Column("time_per_question_sec", sa.Integer(), nullable=True),
@@ -140,6 +158,7 @@ def upgrade() -> None:
         sa.Column("created_by", sa.Uuid(), sa.ForeignKey("users.id"), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
+    op.execute("ALTER TABLE qbank_tests ALTER COLUMN mode TYPE testmode USING mode::testmode")
 
     op.create_table(
         "qbank_test_attempts",
