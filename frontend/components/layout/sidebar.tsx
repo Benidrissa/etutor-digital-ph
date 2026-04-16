@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth";
 import { useQueryClient } from "@tanstack/react-query";
-import { getCurriculumContext, onCurriculumContextChange } from "@/lib/curriculum-context";
+import { getCurriculumContext, onCurriculumContextChange, type CurriculumContextValue } from "@/lib/curriculum-context";
 
 function getUserRole(): string | null {
   if (typeof window === "undefined") return null;
@@ -51,19 +51,19 @@ export function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
-  const [curriculumSlug, setCurriculumSlug] = useState<string | null>(null);
+  const [curriculumCtx, setCurriculumCtx] = useState<CurriculumContextValue | null>(null);
 
   useEffect(() => {
     startTransition(() => {
       setUserRole(getUserRole());
-      setCurriculumSlug(getCurriculumContext());
+      setCurriculumCtx(getCurriculumContext());
     });
   }, [pathname]);
 
   useEffect(() => {
     return onCurriculumContextChange(() => {
       startTransition(() => {
-        setCurriculumSlug(getCurriculumContext());
+        setCurriculumCtx(getCurriculumContext());
       });
     });
   }, []);
@@ -81,16 +81,18 @@ export function Sidebar() {
 
   const navItems = [
     {
-      href: curriculumSlug
-        ? `/${locale}/dashboard?curriculum=${curriculumSlug}`
+      href: curriculumCtx
+        ? `/${locale}/dashboard?curriculum=${curriculumCtx.slug}`
         : `/${locale}/dashboard`,
       label: t("dashboard"),
       icon: Home,
       description: t("dashboardDescription")
     },
     {
-      href: curriculumSlug
-        ? `/${locale}/curricula/${curriculumSlug}`
+      href: curriculumCtx
+        ? curriculumCtx.orgSlug
+          ? `/${locale}/org/${curriculumCtx.orgSlug}/curricula/${curriculumCtx.slug}`
+          : `/${locale}/curricula/${curriculumCtx.slug}`
         : `/${locale}/courses`,
       label: t("courses"),
       icon: GraduationCap,
