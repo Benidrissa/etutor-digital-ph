@@ -4,7 +4,8 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -57,7 +58,7 @@ class Certificate(Base):
     completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     pdf_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     status: Mapped[str] = mapped_column(
-        Enum("valid", "revoked", name="certificatestatus", create_type=False),
+        postgresql.ENUM("valid", "revoked", name="certificatestatus", create_type=False),
         server_default="valid",
     )
     metadata_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
