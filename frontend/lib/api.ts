@@ -1470,3 +1470,80 @@ export async function downloadCertificatePdf(certificateId: string): Promise<Blo
 export async function verifyCertificate(code: string): Promise<CertificateVerifyResponse> {
   return apiFetch<CertificateVerifyResponse>(`/api/v1/verify/${code}`);
 }
+
+// Question Bank API
+export interface QBankQuestion {
+  id: string;
+  image_url: string | null;
+  question_text: string;
+  options: string[];
+  category: string | null;
+  difficulty: string;
+}
+
+export interface QBankTestStartResponse {
+  test_id: string;
+  title: string;
+  mode: string;
+  time_per_question_sec: number;
+  show_feedback: boolean;
+  questions: QBankQuestion[];
+  total_questions: number;
+}
+
+export interface QBankTestAttemptResponse {
+  id: string;
+  test_id: string;
+  score: number;
+  total_questions: number;
+  correct_answers: number;
+  time_taken_sec: number;
+  passed: boolean;
+  category_breakdown: Record<string, { correct: number; total: number }> | null;
+  attempted_at: string;
+  attempt_number: number;
+}
+
+export interface QBankReviewQuestion {
+  id: string;
+  image_url: string | null;
+  question_text: string;
+  options: string[];
+  correct_answer_indices: number[];
+  explanation: string | null;
+  category: string | null;
+  user_selected: number[] | null;
+  is_correct: boolean | null;
+}
+
+export interface QBankReviewResponse {
+  test_id: string;
+  attempt_id: string;
+  score: number;
+  passed: boolean;
+  questions: QBankReviewQuestion[];
+}
+
+export async function startQBankTest(testId: string): Promise<QBankTestStartResponse> {
+  return apiFetch<QBankTestStartResponse>(`/api/v1/qbank/tests/${testId}/start`);
+}
+
+export async function submitQBankTest(
+  testId: string,
+  answers: Record<string, { selected: number[]; time_sec: number }>
+): Promise<QBankTestAttemptResponse> {
+  return apiFetch<QBankTestAttemptResponse>(`/api/v1/qbank/tests/${testId}/submit`, {
+    method: "POST",
+    body: JSON.stringify({ answers }),
+  });
+}
+
+export async function getQBankTestHistory(testId: string): Promise<QBankTestAttemptResponse[]> {
+  return apiFetch<QBankTestAttemptResponse[]>(`/api/v1/qbank/tests/${testId}/history`);
+}
+
+export async function getQBankTestReview(
+  testId: string, attemptId: string
+): Promise<QBankReviewResponse> {
+  return apiFetch<QBankReviewResponse>(`/api/v1/qbank/tests/${testId}/review/${attemptId}`);
+}
