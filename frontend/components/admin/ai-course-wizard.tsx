@@ -188,6 +188,7 @@ export function AICourseWizard({
   const [selectedDomains, setSelectedDomains] = useState<string[]>([]);
   const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
   const [selectedAudience, setSelectedAudience] = useState<string[]>([]);
+  const [taxonomyError, setTaxonomyError] = useState(false);
   const [isSavingObjectives, setIsSavingObjectives] = useState(false);
 
   // AI proposal state
@@ -243,10 +244,19 @@ export function AICourseWizard({
 
   useEffect(() => {
     getCourseTaxonomy().then((tax) => {
-      setDomainOptions(tax.domains);
-      setLevelOptions(tax.levels);
-      setAudienceOptions(tax.audience_types);
-    }).catch(() => {});
+      const domains = tax.domains ?? [];
+      const levels = tax.levels ?? [];
+      const audienceTypes = tax.audience_types ?? [];
+      setDomainOptions(domains);
+      setLevelOptions(levels);
+      setAudienceOptions(audienceTypes);
+      if (domains.length === 0 && levels.length === 0 && audienceTypes.length === 0) {
+        setTaxonomyError(true);
+      }
+    }).catch((err) => {
+      console.error("[ai-course-wizard] Failed to load taxonomy:", err);
+      setTaxonomyError(true);
+    });
   }, []);
 
   // ── Hydrate on resume ─────────────────────────────────────────────
@@ -1029,6 +1039,15 @@ export function AICourseWizard({
                       rows={4}
                     />
                   </div>
+
+                  {taxonomyError && (
+                    <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      {locale === "fr"
+                        ? "Impossible de charger les catégories. Rechargez la page ou continuez sans."
+                        : "Could not load categories. Reload the page or continue without."}
+                    </div>
+                  )}
 
                   {[
                     { label: tAi("objectives.domain"), options: domainOptions, selected: selectedDomains, setSelected: setSelectedDomains },
