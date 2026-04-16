@@ -1979,5 +1979,23 @@
     "signedBy": "Signé par",
     "copyLink": "Copier le lien de vérification",
     "linkCopied": "Lien copié !"
+  },
+  "qbank": {
+    "loading": "Chargement du test...",
+    "question": "Question {current} sur {total}",
+    "timeRemaining": "{seconds}s",
+    "submitTest": "Terminer le test",
+    "nextQuestion": "Question suivante",
+    "previousQuestion": "Question précédente",
+    "score": "Score",
+    "passed": "Réussi",
+    "failed": "Échoué",
+    "correct": "Correct !",
+    "incorrect": "Incorrect",
+    "retake": "Recommencer",
+    "reviewAnswers": "Revoir les réponses",
+    "categoryBreakdown": "Résultats par catégorie",
+    "timeTaken": "Temps total : {seconds}s",
+    "noQuestions": "Aucune question disponible"
   }
 }
