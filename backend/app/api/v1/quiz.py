@@ -7,7 +7,7 @@ from uuid import UUID
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.claude_service import ClaudeService
@@ -992,6 +992,68 @@ async def submit_summative_assessment_attempt(
             correct_answers=correct_count,
             module_unlocked=module_unlocked,
         )
+
+        # Auto-trigger certificate issuance on course completion (#769)
+        if passed and module_unlocked and assessment_content.module_id:
+            try:
+                from app.domain.models.course import UserCourseEnrollment
+                from app.domain.models.module import Module as ModuleModel
+                from app.domain.services.certificate_service import CertificateService
+
+                mod_result = await session.execute(
+                    select(ModuleModel.course_id).where(
+                        ModuleModel.id == assessment_content.module_id
+                    )
+                )
+                course_id = mod_result.scalar_one_or_none()
+                if course_id:
+                    cert_svc = CertificateService(session)
+                    is_complete, _, _ = await cert_svc.check_course_completion(
+                        user_id, course_id
+                    )
+                    if is_complete:
+                        # Mark enrollment as completed
+                        await session.execute(
+                            update(UserCourseEnrollment)
+                            .where(
+                                UserCourseEnrollment.user_id == user_id,
+                                UserCourseEnrollment.course_id == course_id,
+                            )
+                            .values(status="completed", completion_pct=100.0)
+                        )
+                        # Issue certificate (idempotent — skips if already exists)
+                        template = await cert_svc.get_template(course_id)
+                        if template and template.is_active:
+                            cert = await cert_svc.issue_certificate(user_id, course_id)
+                            # Generate PDF in background (non-blocking best-effort)
+                            try:
+                                from app.domain.models.user import User
+                                from app.domain.services.certificate_pdf_service import (
+                                    CertificatePDFService,
+                                )
+
+                                user_obj = await session.get(User, user_id)
+                                if user_obj and not cert.pdf_url:
+                                    pdf_svc = CertificatePDFService()
+                                    await pdf_svc.generate_and_store(
+                                        cert, template, cert.course, user_obj, session,
+                                        language=current_user.preferred_language or "fr",
+                                    )
+                            except Exception as pdf_err:
+                                logger.warning(
+                                    "certificate_pdf_generation_failed (non-fatal)",
+                                    error=str(pdf_err),
+                                )
+                        await session.commit()
+                        logger.info(
+                            "course_completed_certificate_issued",
+                            user_id=str(user_id),
+                            course_id=str(course_id),
+                        )
+            except Exception as cert_err:
+                logger.warning(
+                    "certificate_auto_trigger_failed (non-fatal)", error=str(cert_err)
+                )
 
         return response
 
