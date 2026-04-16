@@ -1388,3 +1388,85 @@ export async function exportOrgCsv(orgId: string): Promise<string> {
   });
   return res.text();
 }
+
+// ── Certificate Types ─────────────────────────────────────────────
+
+export interface CertificateTemplateResponse {
+  id: string;
+  course_id: string;
+  title_fr: string;
+  title_en: string;
+  organization_name: string | null;
+  signatory_name: string | null;
+  signatory_title: string | null;
+  logo_url: string | null;
+  additional_text_fr: string | null;
+  additional_text_en: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CertificateListItem {
+  id: string;
+  course_id: string;
+  course_title_fr: string;
+  course_title_en: string;
+  verification_code: string;
+  average_score: number;
+  completed_at: string;
+  issued_at: string;
+  status: string;
+}
+
+export interface CertificateVerifyResponse {
+  valid: boolean;
+  learner_name: string | null;
+  course_title_fr: string | null;
+  course_title_en: string | null;
+  completion_date: string | null;
+  average_score: number | null;
+  organization_name: string | null;
+  signatory_name: string | null;
+  status: string | null;
+}
+
+// ── Certificate API Functions ─────────────────────────────────────
+
+export async function getCertificateTemplate(courseId: string): Promise<CertificateTemplateResponse> {
+  return apiFetch<CertificateTemplateResponse>(`/api/v1/expert/courses/${courseId}/certificate-template`);
+}
+
+export async function upsertCertificateTemplate(
+  courseId: string,
+  data: Partial<CertificateTemplateResponse>
+): Promise<CertificateTemplateResponse> {
+  return apiFetch<CertificateTemplateResponse>(`/api/v1/expert/courses/${courseId}/certificate-template`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getMyCertificates(): Promise<CertificateListItem[]> {
+  return apiFetch<CertificateListItem[]>("/api/v1/certificates");
+}
+
+export async function downloadCertificatePdf(certificateId: string): Promise<Blob> {
+  const headers: Record<string, string> = {};
+  if (typeof window !== "undefined") {
+    try {
+      const { authClient } = await import("./auth");
+      const token = await authClient.getValidToken();
+      headers["Authorization"] = `Bearer ${token}`;
+    } catch {
+      // proceed without auth
+    }
+  }
+  const res = await fetch(`${API_BASE}/api/v1/certificates/${certificateId}/download`, { headers });
+  if (!res.ok) throw new ApiError("Download failed", res.status);
+  return res.blob();
+}
+
+export async function verifyCertificate(code: string): Promise<CertificateVerifyResponse> {
+  return apiFetch<CertificateVerifyResponse>(`/api/v1/verify/${code}`);
+}
