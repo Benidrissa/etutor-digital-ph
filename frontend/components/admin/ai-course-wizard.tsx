@@ -600,7 +600,7 @@ export function AICourseWizard({
           return;
         }
 
-        if (status.task?.state === "SUCCESS") {
+        if (status.task?.state === "SUCCESS" || status.task?.state === "COMPLETE") {
           // Modules may be in meta.modules (during task) or status.modules (from DB)
           const modules = Array.isArray(meta.modules)
             ? meta.modules
@@ -677,7 +677,7 @@ export function AICourseWizard({
           if (staleSince > 60 * 1000) setIndexStaleWarning(true);
         }
 
-        if (status.task?.state === "SUCCESS") {
+        if (status.task?.state === "SUCCESS" || status.task?.state === "COMPLETE") {
           setIndexStatus({ indexed: true, chunks_indexed: status.chunks_indexed, images_indexed: status.images_indexed, task: status.task });
           setIsIndexing(false);
           setIndexStaleWarning(false);
