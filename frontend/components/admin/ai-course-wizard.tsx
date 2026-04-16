@@ -614,6 +614,23 @@ export function AICourseWizard({
             setGeneratedModules(modules as GeneratedModule[]);
           }
           setIsGenerating(false);
+
+          // Auto-trigger RAG indexation after successful generation
+          if (!isIndexing && courseId) {
+            try {
+              const idxStatus = await getIndexStatusApi(courseId);
+              if (!idxStatus.indexed) {
+                const idxResult = await triggerIndexation(courseId);
+                setTaskId(idxResult.task_id);
+                setIsIndexing(true);
+                lastIndexProgressTimeRef.current = Date.now();
+              } else {
+                setIndexStatus({ indexed: true, chunks_indexed: idxStatus.chunks_indexed, images_indexed: idxStatus.images_indexed, task: idxStatus.task });
+              }
+            } catch {
+              // indexation auto-trigger is best-effort
+            }
+          }
           return;
         }
 
