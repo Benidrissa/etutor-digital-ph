@@ -455,7 +455,7 @@ class ProgressService:
                     "module_id": module_id,
                     "current_unit_id": current_unit_id,
                     "language": "fr",
-                    "country": "SN",
+                    "country": "CI",
                     "level": 1,
                 },
                 priority=3,

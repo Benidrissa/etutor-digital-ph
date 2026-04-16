@@ -657,7 +657,7 @@ async def get_upcoming_reviews(
 async def get_module_flashcards(
     module_id: str,
     language: str = "fr",
-    country: str = "SN",
+    country: str = "CI",
     level: int = 1,
     current_user: User = Depends(require_active_subscription),
     flashcard_service: FlashcardGenerationService = Depends(_get_flashcard_generation_service),
@@ -672,7 +672,7 @@ async def get_module_flashcards(
     **Parameters:**
     - **module_id**: Module identifier (code like "M01" or UUID string)
     - **language**: Content language ("fr" or "en"), defaults to "fr"
-    - **country**: Country context for examples (ISO 2-letter code), defaults to "SN"
+    - **country**: Country context for examples (ISO 2-letter code), defaults to "CI"
     - **level**: User's competency level (1-4), defaults to 1
 
     **Generation:**

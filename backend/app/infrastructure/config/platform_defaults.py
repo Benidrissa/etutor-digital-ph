@@ -1051,7 +1051,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "{{\n"
             '  "introduction": "string — 2-3 short sentences with a fun fact or question",\n'
             '  "concepts": [\n'
-            '    "string — each element is a paragraph with a story or analogy (3-4 total, markdown)"\n'
+            '    "string — paragraph with story/analogy (3-4, markdown)"\n'
             "  ],\n"
             '  "aof_example": "string — West African story example (1-2 paragraphs, markdown)",\n'
             '  "synthesis": "string — summary with encouraging message (markdown)",\n'
@@ -1577,7 +1577,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
     SettingDef(
         "content-preload-default-country",
         "ai",
-        "SN",
+        "CI",
         "string",
         "Default country for publish-time preloading",
         "ISO country code used when pre-generating content at publish time (no learner context).",
