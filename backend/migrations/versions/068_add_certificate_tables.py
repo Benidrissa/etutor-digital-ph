@@ -20,10 +20,12 @@ def _create_enum_if_not_exists(name: str, values: list[str]) -> None:
     """Create a PostgreSQL enum type only if it doesn't already exist."""
     conn = op.get_bind()
     vals = ", ".join(f"'{v}'" for v in values)
-    conn.execute(sa.text(
-        f"DO $$ BEGIN CREATE TYPE {name} AS ENUM ({vals}); "
-        f"EXCEPTION WHEN duplicate_object THEN NULL; END $$"
-    ))
+    conn.execute(
+        sa.text(
+            f"DO $$ BEGIN CREATE TYPE {name} AS ENUM ({vals}); "
+            f"EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+        )
+    )
 
 
 def upgrade() -> None:
