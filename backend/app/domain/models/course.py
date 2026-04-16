@@ -11,6 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.domain.models.base import Base
 
 if TYPE_CHECKING:
+    from app.domain.models.certificate import Certificate, CertificateTemplate
     from app.domain.models.course_resource import CourseResource
     from app.domain.models.module import Module
     from app.domain.models.preassessment import CoursePreAssessment
@@ -65,6 +66,12 @@ class Course(Base):
         secondary="course_taxonomy", lazy="selectin"
     )
     preassessments: Mapped[list[CoursePreAssessment]] = relationship(
+        back_populates="course", passive_deletes=True
+    )
+    certificate_template: Mapped[CertificateTemplate | None] = relationship(
+        back_populates="course", uselist=False, passive_deletes=True
+    )
+    certificates: Mapped[list[Certificate]] = relationship(
         back_populates="course", passive_deletes=True
     )
 

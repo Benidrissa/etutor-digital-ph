@@ -2,6 +2,7 @@ from app.domain.models.activation_code import ActivationCode, ActivationCodeRede
 from app.domain.models.audit_log import AuditLog
 from app.domain.models.auth import MagicLink, RefreshToken, TOTPSecret
 from app.domain.models.base import Base
+from app.domain.models.certificate import Certificate, CertificateTemplate
 from app.domain.models.content import GeneratedContent
 from app.domain.models.conversation import TutorConversation
 from app.domain.models.course import Course, UserCourseEnrollment
@@ -56,6 +57,8 @@ __all__ = [
     "ActivationCodeRedemption",
     "AuditLog",
     "Base",
+    "Certificate",
+    "CertificateTemplate",
     "Course",
     "CoursePreAssessment",
     "CourseResource",
