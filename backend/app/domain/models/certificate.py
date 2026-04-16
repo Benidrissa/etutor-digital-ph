@@ -57,7 +57,8 @@ class Certificate(Base):
     completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     pdf_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     status: Mapped[str] = mapped_column(
-        Enum("valid", "revoked", name="certificatestatus"), server_default="valid"
+        Enum("valid", "revoked", name="certificatestatus", create_type=False),
+        server_default="valid",
     )
     metadata_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
