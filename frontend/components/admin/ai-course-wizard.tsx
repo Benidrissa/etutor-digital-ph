@@ -154,6 +154,7 @@ interface AICourseWizardProps {
   onCourseCreated: () => void;
   resumeCourseId?: string;
   resumeCreationStep?: string;
+  organizationId?: string;
 }
 
 export function AICourseWizard({
@@ -161,6 +162,7 @@ export function AICourseWizard({
   onCourseCreated,
   resumeCourseId,
   resumeCreationStep,
+  organizationId,
 }: AICourseWizardProps) {
   const t = useTranslations("AdminCourses.wizard");
   const tAi = useTranslations("AdminCourses.aiWizard");
@@ -428,6 +430,7 @@ export function AICourseWizard({
         title_fr: "Nouveau cours (AI)",
         title_en: "New course (AI)",
         creation_mode: "ai_assisted",
+        organization_id: organizationId,
       });
       setCourseId(course.id);
 

@@ -1310,6 +1310,20 @@ export async function createOrgCurriculum(orgId: string, data: {
   });
 }
 
+export async function fetchOrgCourses(orgId: string): Promise<{
+  id: string;
+  slug: string;
+  title_fr: string;
+  title_en: string;
+  status: string;
+  creation_mode: string;
+  creation_step: string;
+  created_at: string;
+  cover_image_url?: string;
+}[]> {
+  return apiFetch(`/api/v1/organizations/${orgId}/courses`);
+}
+
 export async function setOrgCurriculumCourses(
   orgId: string,
   curriculumId: string,

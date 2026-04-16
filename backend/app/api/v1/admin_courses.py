@@ -53,6 +53,7 @@ class CreateCourseRequest(BaseModel):
     price_credits: int = 0
     creation_mode: str = "legacy"
     objectives_json: dict | None = None
+    organization_id: str | None = None
 
 
 class UpdateCourseRequest(BaseModel):
@@ -227,6 +228,7 @@ async def create_course(
         preassessment_enabled=request.preassessment_enabled,
         visibility=request.visibility,
         price_credits=request.price_credits,
+        organization_id=uuid.UUID(request.organization_id) if request.organization_id else None,
     )
     db.add(course)
     await db.commit()
