@@ -215,6 +215,21 @@ class TestTier1Confidence:
         # Missing the "exactly one correct answer" +0.3 bonus
         assert score < CONFIDENCE_THRESHOLD + 0.2
 
+    def test_partial_parse_is_penalized(self):
+        """Cluster scanner saw 2 blocks but only 1 parsed → halve the score."""
+        questions = [("What should you do?", ["Option A long", "Option B long"], [1])]
+        full = _tier1_confidence(questions, has_image=True)
+        partial = _tier1_confidence(questions, has_image=True, cluster_count=2)
+        assert partial == pytest.approx(full * 0.5)
+        # The halving must drop a "perfect" slide below the escalation threshold
+        assert partial < CONFIDENCE_THRESHOLD
+
+    def test_matching_cluster_count_is_not_penalized(self):
+        questions = [("What should you do?", ["Option A long", "Option B long"], [1])]
+        baseline = _tier1_confidence(questions, has_image=True)
+        same = _tier1_confidence(questions, has_image=True, cluster_count=1)
+        assert baseline == pytest.approx(same)
+
 
 class TestExtractTier1EndToEnd:
     """Drive the whole Tier 1 path with a real synthetic PDF."""
