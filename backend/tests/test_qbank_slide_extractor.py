@@ -19,6 +19,7 @@ from app.ai.qbank_slide_extractor import (
     _cluster_into_questions,
     _extract_tier1,
     _flatten_spans,
+    _infer_category,
     _is_green,
     _parse_question_cluster,
     _tier1_confidence,
@@ -200,6 +201,80 @@ class TestParseQuestionCluster:
         assert correct == [1]
 
 
+class TestInferCategory:
+    """Keyword-based category classification used by Tier 1."""
+
+    def test_signalisation_panneau_stop(self):
+        assert (
+            _infer_category("Que signifie ce panneau STOP ?", ["Je passe", "Je m'arrête"])
+            == "signalisation"
+        )
+
+    def test_priorite_carrefour(self):
+        assert (
+            _infer_category(
+                "Au carrefour, qui a la priorité ?",
+                ["Le véhicule de droite", "Moi"],
+            )
+            == "priorite"
+        )
+
+    def test_securite_ceinture(self):
+        assert (
+            _infer_category(
+                "La ceinture de sécurité est-elle obligatoire ?",
+                ["Oui", "Non"],
+            )
+            == "securite"
+        )
+
+    def test_stationnement_parking(self):
+        assert (
+            _infer_category(
+                "Où puis-je stationner ?",
+                ["Sur le trottoir", "Dans un parking"],
+            )
+            == "stationnement"
+        )
+
+    def test_vitesse_km_h(self):
+        assert (
+            _infer_category(
+                "Quelle est la vitesse maximale en ville ?",
+                ["30 km/h", "50 km/h"],
+            )
+            == "vitesse"
+        )
+
+    def test_pieton_passage(self):
+        assert (
+            _infer_category(
+                "Un piéton s'engage sur le passage, que faites-vous ?",
+                ["Je le laisse passer", "Je klaxonne"],
+            )
+            == "pieton"
+        )
+
+    def test_cycliste_velo(self):
+        assert (
+            _infer_category(
+                "Vous doublez un cycliste, quelle distance latérale ?",
+                ["1 mètre", "50 cm"],
+            )
+            == "cycliste"
+        )
+
+    def test_unknown_falls_back_to_general(self):
+        assert _infer_category("Quelle est la capitale ?", ["Paris", "Lyon"]) == "general"
+
+    def test_diacritic_insensitive(self):
+        # No diacritics on "priorite" → still matches "priorité" in input
+        assert _infer_category("Priorité à droite", ["Oui", "Non"]) == "priorite"
+
+    def test_uppercase_insensitive(self):
+        assert _infer_category("PANNEAU STOP", ["A", "B"]) == "signalisation"
+
+
 class TestTier1Confidence:
     def test_no_questions_is_zero(self):
         assert _tier1_confidence([], has_image=True) == 0.0
@@ -214,6 +289,21 @@ class TestTier1Confidence:
         score = _tier1_confidence(questions, has_image=True)
         # Missing the "exactly one correct answer" +0.3 bonus
         assert score < CONFIDENCE_THRESHOLD + 0.2
+
+    def test_partial_parse_is_penalized(self):
+        """Cluster scanner saw 2 blocks but only 1 parsed → halve the score."""
+        questions = [("What should you do?", ["Option A long", "Option B long"], [1])]
+        full = _tier1_confidence(questions, has_image=True)
+        partial = _tier1_confidence(questions, has_image=True, cluster_count=2)
+        assert partial == pytest.approx(full * 0.5)
+        # The halving must drop a "perfect" slide below the escalation threshold
+        assert partial < CONFIDENCE_THRESHOLD
+
+    def test_matching_cluster_count_is_not_penalized(self):
+        questions = [("What should you do?", ["Option A long", "Option B long"], [1])]
+        baseline = _tier1_confidence(questions, has_image=True)
+        same = _tier1_confidence(questions, has_image=True, cluster_count=1)
+        assert baseline == pytest.approx(same)
 
 
 class TestExtractTier1EndToEnd:
@@ -243,6 +333,8 @@ class TestExtractTier1EndToEnd:
         assert "stop sign" in q.question_text.lower()
         assert len(q.options) == 2
         assert q.correct_indices == [1]
+        # "stop" is a signalisation keyword → category should be set, not None
+        assert q.category == "signalisation"
         assert confidence >= CONFIDENCE_THRESHOLD
 
     def test_blank_page_has_zero_confidence(self, tmp_path: Path):

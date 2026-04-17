@@ -23,6 +23,7 @@ import base64
 import io
 import json
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -49,6 +50,95 @@ QUESTION_CLUSTER_GAP_PT = 40.0
 
 # Regex for option labels: "A.", "A)", "a.", "1.", "1)"
 OPTION_LABEL_RE = re.compile(r"^\s*([A-Da-d]|[1-4])[\.\)]\s+")
+
+# FR keyword hints per category. Matched case- and diacritic-insensitively so
+# "priorité" and "priorite" both match the "priorite" key. Used by Tier 1 to
+# set a best-guess category without an AI call. Tier 3 (Vision) still classifies
+# via the model prompt.
+CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "signalisation": (
+        "panneau",
+        "signal",
+        "feu",
+        "feux",
+        "stop",
+        "ceder",
+        "marquage",
+        "ligne continue",
+        "ligne discontinue",
+    ),
+    "priorite": (
+        "priorite",
+        "ceder le passage",
+        "intersection",
+        "carrefour",
+        "rond-point",
+        "rond point",
+        "giratoire",
+    ),
+    "securite": (
+        "ceinture",
+        "casque",
+        "airbag",
+        "securite",
+        "distance de securite",
+        "alcool",
+        "telephone",
+        "fatigue",
+    ),
+    "stationnement": (
+        "stationner",
+        "stationnement",
+        "garer",
+        "parking",
+        "arret",
+    ),
+    "vitesse": (
+        "vitesse",
+        "km/h",
+        "kilometres",
+        "ralentir",
+        "acceler",
+        "freinage",
+    ),
+    "pieton": (
+        "pieton",
+        "passage pieton",
+        "trottoir",
+    ),
+    "cycliste": (
+        "cycliste",
+        "velo",
+        "piste cyclable",
+        "bicyclette",
+    ),
+}
+
+
+def _normalize_for_match(text: str) -> str:
+    """Lowercase + strip diacritics for substring matching."""
+    nfkd = unicodedata.normalize("NFKD", text.lower())
+    return "".join(ch for ch in nfkd if not unicodedata.combining(ch))
+
+
+def _infer_category(question_text: str, options: list[str]) -> str:
+    """Heuristic category classifier for Tier 1.
+
+    Scans the question text and option texts for keyword hits from
+    CATEGORY_KEYWORDS. Returns the category with the most hits, or "general" if
+    no keywords match. Matching is case- and diacritic-insensitive.
+    """
+    haystack = _normalize_for_match(" ".join([question_text, *options]))
+
+    best_category = "general"
+    best_hits = 0
+    for category, keywords in CATEGORY_KEYWORDS.items():
+        hits = sum(1 for kw in keywords if kw in haystack)
+        if hits > best_hits:
+            best_hits = hits
+            best_category = category
+    return best_category
+
 
 EXTRACTION_SYSTEM_PROMPT = """You are analyzing a driving school exam or test preparation slide.
 Extract ALL questions from this slide image. Each slide may contain 1 or 2 questions.
@@ -267,8 +357,20 @@ def _parse_question_cluster(cluster: list[dict]) -> tuple[str, list[str], list[i
     return question_text, options, correct_indices
 
 
-def _tier1_confidence(questions: list[tuple[str, list[str], list[int]]], has_image: bool) -> float:
-    """Score how confident we are in the Tier 1 extraction (0.0 - 1.0)."""
+def _tier1_confidence(
+    questions: list[tuple[str, list[str], list[int]]],
+    has_image: bool,
+    cluster_count: int | None = None,
+) -> float:
+    """Score how confident we are in the Tier 1 extraction (0.0 - 1.0).
+
+    If cluster_count is provided and exceeds the number of successfully parsed
+    questions, the score is halved — this guards against the case where the
+    slide has 2 question clusters but only 1 parses cleanly (irregular second
+    question). Without the penalty, the "looks perfect" score from the single
+    surviving question could keep Tier 1 above the threshold and silently drop
+    the second question.
+    """
     if not questions:
         return 0.0
 
@@ -288,6 +390,12 @@ def _tier1_confidence(questions: list[tuple[str, list[str], list[int]]], has_ima
     # Options within a question have consistent length (not single-char OCR junk)
     if all(all(len(o) >= 2 for o in opts) for _, opts, _ in questions):
         score += 0.1
+
+    # Penalty: if the cluster scanner found more question-shaped blocks than we
+    # successfully parsed, halve the score to force a Vision escalation.
+    if cluster_count is not None and cluster_count > len(questions):
+        score *= 0.5
+
     return min(score, 1.0)
 
 
@@ -352,7 +460,7 @@ def _extract_tier1(
         webp_bytes, width, height = _convert_to_webp(png_bytes)
         has_image = False
 
-    confidence = _tier1_confidence(parsed, has_image)
+    confidence = _tier1_confidence(parsed, has_image, cluster_count=len(clusters))
 
     questions = [
         ExtractedSlideQuestion(
@@ -360,7 +468,7 @@ def _extract_tier1(
             options=opts,
             correct_indices=ci,
             explanation=None,  # Tier 1 does not generate explanations
-            category=None,  # Tier 1 does not classify categories
+            category=_infer_category(qt, opts),
             page_number=page_number,
             image_bytes=webp_bytes,
             image_width=width,
