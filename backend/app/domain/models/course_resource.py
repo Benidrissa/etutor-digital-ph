@@ -13,6 +13,11 @@ from app.domain.models.base import Base
 if TYPE_CHECKING:
     from app.domain.models.course import Course
 
+EXTRACTION_STATUS_PENDING = "pending"
+EXTRACTION_STATUS_EXTRACTING = "extracting"
+EXTRACTION_STATUS_DONE = "done"
+EXTRACTION_STATUS_FAILED = "failed"
+
 
 class CourseResource(Base):
     __tablename__ = "course_resources"
@@ -33,5 +38,8 @@ class CourseResource(Base):
     summary_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     summary_model: Mapped[str | None] = mapped_column(String(50), nullable=True)
     summary_status: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    extraction_status: Mapped[str] = mapped_column(
+        String(10), server_default="done", nullable=False
+    )
 
     course: Mapped[Course] = relationship(back_populates="resources")

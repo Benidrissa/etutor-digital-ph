@@ -23,6 +23,7 @@ celery_app = Celery(
         "app.tasks.image_indexation",
         "app.tasks.preassessment_generation",
         "app.tasks.rag_indexation",
+        "app.tasks.resource_extraction",
         "app.tasks.syllabus_generation",
         "app.tasks.subscription",
         "app.tasks.sms_relay",

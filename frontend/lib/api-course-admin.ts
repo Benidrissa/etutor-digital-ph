@@ -7,11 +7,14 @@ import { authClient } from "@/lib/auth";
 
 // ── Shared types ──────────────────────────────────────────────────────
 
+export type ExtractionStatus = "pending" | "extracting" | "done" | "failed";
+
 export interface UploadedFile {
   name: string;
   size_bytes: number;
   status: "uploading" | "uploaded" | "error";
   error?: string;
+  extraction_status?: ExtractionStatus;
 }
 
 export interface CourseInfo {
@@ -137,7 +140,7 @@ export async function deleteCourseResource(
 
 export async function getCourseResources(
   courseId: string
-): Promise<{ files: Array<{ name: string; size_bytes: number }> }> {
+): Promise<{ files: Array<{ name: string; size_bytes: number; extraction_status?: ExtractionStatus }> }> {
   return apiFetch(`/api/v1/admin/courses/${courseId}/resources`);
 }
 
