@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +23,7 @@ interface Props {
 const DIFFICULTIES: QBankDifficulty[] = ["easy", "medium", "hard"];
 
 export function QBankQuestionEditor({ question, onSaved, onDeleted }: Props) {
+  const t = useTranslations("qbank");
   const [text, setText] = useState(question.question_text);
   const [options, setOptions] = useState([...question.options]);
   const [correct, setCorrect] = useState<number[]>([...question.correct_answer_indices]);
@@ -81,7 +83,7 @@ export function QBankQuestionEditor({ question, onSaved, onDeleted }: Props) {
   }
 
   async function handleDelete() {
-    if (!confirm("Delete this question? This cannot be undone.")) return;
+    if (!confirm(t("confirmDeleteQuestion"))) return;
     setDeleting(true);
     setError(null);
     try {
@@ -109,7 +111,7 @@ export function QBankQuestionEditor({ question, onSaved, onDeleted }: Props) {
       )}
 
       <div className="space-y-2">
-        <Label>Question</Label>
+        <Label>{t("fieldQuestion")}</Label>
         <textarea
           value={text}
           onChange={(e) => {
@@ -122,7 +124,7 @@ export function QBankQuestionEditor({ question, onSaved, onDeleted }: Props) {
       </div>
 
       <div className="space-y-2">
-        <Label>Options (check the correct one(s))</Label>
+        <Label>{t("fieldOptions")}</Label>
         {options.map((opt, idx) => (
           <div key={idx} className="flex items-center gap-2">
             <input
@@ -140,7 +142,7 @@ export function QBankQuestionEditor({ question, onSaved, onDeleted }: Props) {
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor={`cat-${question.id}`}>Category</Label>
+          <Label htmlFor={`cat-${question.id}`}>{t("fieldCategory")}</Label>
           <Input
             id={`cat-${question.id}`}
             value={category}
@@ -151,7 +153,7 @@ export function QBankQuestionEditor({ question, onSaved, onDeleted }: Props) {
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`diff-${question.id}`}>Difficulty</Label>
+          <Label htmlFor={`diff-${question.id}`}>{t("fieldDifficulty")}</Label>
           <select
             id={`diff-${question.id}`}
             value={difficulty}
@@ -171,7 +173,7 @@ export function QBankQuestionEditor({ question, onSaved, onDeleted }: Props) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor={`exp-${question.id}`}>Explanation (optional)</Label>
+        <Label htmlFor={`exp-${question.id}`}>{t("fieldExplanation")}</Label>
         <textarea
           id={`exp-${question.id}`}
           value={explanation}
@@ -194,11 +196,11 @@ export function QBankQuestionEditor({ question, onSaved, onDeleted }: Props) {
           disabled={deleting || saving}
         >
           {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-          Delete
+          {t("delete")}
         </Button>
         <Button type="button" onClick={handleSave} disabled={!dirty || saving}>
           {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Save changes
+          {t("saveChanges")}
         </Button>
       </div>
     </div>
