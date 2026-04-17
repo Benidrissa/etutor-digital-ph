@@ -1547,3 +1547,223 @@ export async function getQBankTestReview(
 ): Promise<QBankReviewResponse> {
   return apiFetch<QBankReviewResponse>(`/api/v1/qbank/tests/${testId}/review/${attemptId}`);
 }
+
+// ---------------------------------------------------------------------------
+// QBank management (org admin) — #1504
+// ---------------------------------------------------------------------------
+
+export type QBankType = "driving" | "exam_prep" | "psychotechnic" | "general_culture";
+export type QBankStatus = "draft" | "published" | "archived";
+export type QBankDifficulty = "easy" | "medium" | "hard";
+export type QBankTestMode = "exam" | "training" | "review";
+
+export interface QBankBank {
+  id: string;
+  organization_id: string;
+  title: string;
+  description: string | null;
+  bank_type: QBankType;
+  language: string;
+  time_per_question_sec: number;
+  passing_score: number;
+  status: QBankStatus;
+  question_count: number;
+  test_count: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QBankBankCreate {
+  organization_id: string;
+  title: string;
+  description?: string | null;
+  bank_type: QBankType;
+  language?: string;
+  time_per_question_sec?: number;
+  passing_score?: number;
+}
+
+export interface QBankBankUpdate {
+  title?: string;
+  description?: string | null;
+  language?: string;
+  time_per_question_sec?: number;
+  passing_score?: number;
+  status?: QBankStatus;
+}
+
+export interface QBankQuestionFull {
+  id: string;
+  question_bank_id: string;
+  order_index: number;
+  image_url: string | null;
+  question_text: string;
+  options: string[];
+  correct_answer_indices: number[];
+  explanation: string | null;
+  source_page: number | null;
+  source_pdf_name: string | null;
+  category: string | null;
+  difficulty: QBankDifficulty;
+  created_at: string;
+}
+
+export interface QBankQuestionList {
+  questions: QBankQuestionFull[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export interface QBankQuestionUpdate {
+  question_text?: string;
+  options?: string[];
+  correct_answer_indices?: number[];
+  explanation?: string | null;
+  category?: string | null;
+  difficulty?: QBankDifficulty;
+}
+
+export interface QBankTestConfig {
+  id: string;
+  question_bank_id: string;
+  title: string;
+  mode: QBankTestMode;
+  question_count: number | null;
+  shuffle_questions: boolean;
+  time_per_question_sec: number | null;
+  show_feedback: boolean;
+  filter_categories: string[] | null;
+  filter_failed_only: boolean;
+  created_by: string;
+  created_at: string;
+}
+
+export interface QBankTestCreate {
+  question_bank_id: string;
+  title: string;
+  mode: QBankTestMode;
+  question_count?: number | null;
+  shuffle_questions?: boolean;
+  time_per_question_sec?: number | null;
+  show_feedback?: boolean;
+  filter_categories?: string[] | null;
+  filter_failed_only?: boolean;
+}
+
+export interface QBankProcessingStatus {
+  task_id: string;
+  bank_id: string;
+  status: string;
+  result?: { bank_id: string; questions_created: number; errors: unknown[] };
+  error?: string;
+}
+
+export async function listQBankBanks(orgId: string): Promise<QBankBank[]> {
+  return apiFetch<QBankBank[]>(`/api/v1/qbank/banks?org_id=${orgId}`);
+}
+
+export async function createQBankBank(body: QBankBankCreate): Promise<QBankBank> {
+  return apiFetch<QBankBank>(`/api/v1/qbank/banks`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function getQBankBank(bankId: string): Promise<QBankBank> {
+  return apiFetch<QBankBank>(`/api/v1/qbank/banks/${bankId}`);
+}
+
+export async function updateQBankBank(
+  bankId: string,
+  body: QBankBankUpdate
+): Promise<QBankBank> {
+  return apiFetch<QBankBank>(`/api/v1/qbank/banks/${bankId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteQBankBank(bankId: string): Promise<void> {
+  return apiFetch<void>(`/api/v1/qbank/banks/${bankId}`, { method: "DELETE" });
+}
+
+export async function listQBankQuestions(
+  bankId: string,
+  page = 1,
+  perPage = 50
+): Promise<QBankQuestionList> {
+  return apiFetch<QBankQuestionList>(
+    `/api/v1/qbank/banks/${bankId}/questions?page=${page}&per_page=${perPage}`
+  );
+}
+
+export async function updateQBankQuestion(
+  questionId: string,
+  body: QBankQuestionUpdate
+): Promise<QBankQuestionFull> {
+  return apiFetch<QBankQuestionFull>(`/api/v1/qbank/questions/${questionId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteQBankQuestion(questionId: string): Promise<void> {
+  return apiFetch<void>(`/api/v1/qbank/questions/${questionId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function listQBankTests(bankId: string): Promise<QBankTestConfig[]> {
+  return apiFetch<QBankTestConfig[]>(`/api/v1/qbank/tests?bank_id=${bankId}`);
+}
+
+export async function createQBankTest(body: QBankTestCreate): Promise<QBankTestConfig> {
+  return apiFetch<QBankTestConfig>(`/api/v1/qbank/tests`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function uploadQBankPdf(
+  bankId: string,
+  file: File
+): Promise<{ task_id: string; bank_id: string; filename: string; status: string }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const headers: Record<string, string> = {};
+  if (typeof window !== "undefined") {
+    try {
+      const { authClient } = await import("./auth");
+      const token = await authClient.getValidToken();
+      headers["Authorization"] = `Bearer ${token}`;
+    } catch {
+      // no auth header if no token
+    }
+  }
+  const res = await fetch(`${API_BASE}/api/v1/qbank/banks/${bankId}/upload-pdf`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+  if (!res.ok) {
+    let message = `API error: ${res.status}`;
+    try {
+      const body = await res.json();
+      if (typeof body?.detail === "string") message = body.detail;
+      else if (body?.detail?.message) message = body.detail.message;
+    } catch { /* ignore */ }
+    throw new ApiError(message, res.status);
+  }
+  return res.json();
+}
+
+export async function getQBankProcessingStatus(
+  bankId: string,
+  taskId: string
+): Promise<QBankProcessingStatus> {
+  return apiFetch<QBankProcessingStatus>(
+    `/api/v1/qbank/banks/${bankId}/processing-status?task_id=${taskId}`
+  );
+}
