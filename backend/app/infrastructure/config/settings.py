@@ -77,7 +77,7 @@ class Settings(BaseSettings):
     upload_max_pdf_tokens: int = 5000
     upload_max_csv_rows: int = 20
 
-    # Meta MMS TTS sidecar (Moore / Dioula / Bambara)
+    # Meta MMS TTS sidecar (Moore / Dioula / Bambara) — see #1503.
     mms_tts_url: str = "http://mms-tts:5050"
     mms_tts_timeout_seconds: float = 60.0
 

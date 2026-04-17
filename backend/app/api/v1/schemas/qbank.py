@@ -265,3 +265,23 @@ class StudentProgressResponse(BaseModel):
     latest_score: float
     trend: str
     weakest_categories: list[CategoryPassRate]
+
+
+# ---------------------------------------------------------------------------
+# Audio
+# ---------------------------------------------------------------------------
+
+
+class AudioStatusResponse(BaseModel):
+    question_id: str
+    language: str
+    status: str
+    storage_url: str | None = None
+    duration_seconds: int | None = None
+
+
+class AudioGenerateResponse(BaseModel):
+    task_id: str
+    bank_id: str
+    language: str
+    status: str = "processing"
