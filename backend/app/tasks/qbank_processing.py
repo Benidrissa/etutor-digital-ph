@@ -142,3 +142,43 @@ async def _process_pdf_async(task, bank_id: str, pdf_filename: str) -> dict:
         "questions_created": created,
         "errors": errors,
     }
+
+
+@celery_app.task(
+    base=QBankTask,
+    bind=True,
+    name="qbank.generate_audio",
+    max_retries=2,
+    default_retry_delay=60,
+    soft_time_limit=900,
+    time_limit=960,
+    rate_limit="5/m",
+)
+def generate_qbank_audio_task(self, bank_id: str, language: str) -> dict:
+    """Generate TTS audio for every question in a bank, one language at a time."""
+    return asyncio.get_event_loop().run_until_complete(_generate_audio_async(bank_id, language))
+
+
+async def _generate_audio_async(bank_id: str, language: str) -> dict:
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.domain.services.qbank_audio_service import QBankAudioService
+    from app.infrastructure.config.settings import settings
+
+    engine = create_async_engine(settings.database_url, echo=False)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    service = QBankAudioService()
+
+    async with session_factory() as session:
+        try:
+            result = await service.batch_generate(session, uuid.UUID(bank_id), language)
+        finally:
+            await engine.dispose()
+
+    logger.info(
+        "qbank audio batch complete",
+        bank_id=bank_id,
+        language=language,
+        result=result,
+    )
+    return result

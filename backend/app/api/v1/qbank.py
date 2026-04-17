@@ -11,6 +11,8 @@ from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from app.api.deps import get_db_session
 from app.api.deps_local_auth import AuthenticatedUser, get_current_user
 from app.api.v1.schemas.qbank import (
+    AudioGenerateResponse,
+    AudioStatusResponse,
     BankAnalyticsResponse,
     BankStudentsResponse,
     QuestionBankCreate,
@@ -31,12 +33,14 @@ from app.api.v1.schemas.qbank import (
     TestUpdate,
 )
 from app.domain.services.qbank_analytics_service import QBankAnalyticsService
+from app.domain.services.qbank_audio_service import QBankAudioService
 from app.domain.services.qbank_service import QBankService
 
 router = APIRouter(prefix="/qbank", tags=["Question Bank"])
 
 _svc = QBankService()
 _analytics = QBankAnalyticsService()
+_audio = QBankAudioService()
 
 
 # ---------------------------------------------------------------------------
@@ -509,3 +513,86 @@ async def get_student_progress(
 ):
     """Individual student progress. Students may only view their own record."""
     return await _analytics.get_student_progress(db, bank_id, user_id, uuid.UUID(current_user.id))
+
+
+# ---------------------------------------------------------------------------
+# Audio generation
+# ---------------------------------------------------------------------------
+
+
+def _audio_response(row, question_id: uuid.UUID, language: str) -> AudioStatusResponse:
+    if row is None:
+        return AudioStatusResponse(
+            question_id=str(question_id),
+            language=language,
+            status="pending",
+        )
+    return AudioStatusResponse(
+        question_id=str(question_id),
+        language=language,
+        status=row.status.value if hasattr(row.status, "value") else row.status,
+        storage_url=row.storage_url,
+        duration_seconds=row.duration_seconds,
+    )
+
+
+@router.post(
+    "/banks/{bank_id}/audio/generate",
+    response_model=AudioGenerateResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def generate_bank_audio(
+    bank_id: uuid.UUID,
+    language: str = Query(..., pattern=r"^(fr|mos|dyu|bam)$"),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db=Depends(get_db_session),
+):
+    """Kick off a batch audio-generation task for every question in a bank."""
+    from app.domain.services.organization_service import OrganizationService
+    from app.tasks.qbank_processing import generate_qbank_audio_task
+
+    bank = await _svc.get_bank(db, bank_id)
+    await OrganizationService().require_org_role(
+        db, bank.organization_id, uuid.UUID(current_user.id)
+    )
+    task = generate_qbank_audio_task.delay(str(bank_id), language)
+    return AudioGenerateResponse(task_id=task.id, bank_id=str(bank_id), language=language)
+
+
+@router.post(
+    "/questions/{question_id}/audio",
+    response_model=AudioStatusResponse,
+)
+async def upload_question_audio(
+    question_id: uuid.UUID,
+    language: str = Query(..., pattern=r"^(fr|mos|dyu|bam)$"),
+    file: UploadFile = File(...),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db=Depends(get_db_session),
+):
+    """Manual fallback: org admin uploads a pre-recorded audio file."""
+    from fastapi import HTTPException
+
+    if not file.content_type or not file.content_type.startswith("audio/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Expected an audio file.",
+        )
+    data = await file.read()
+    row = await _audio.store_uploaded_audio(db, question_id, language, data, file.content_type)
+    return _audio_response(row, question_id, language)
+
+
+@router.get(
+    "/questions/{question_id}/audio",
+    response_model=AudioStatusResponse,
+)
+async def get_question_audio(
+    question_id: uuid.UUID,
+    lang: str = Query(..., pattern=r"^(fr|mos|dyu|bam)$"),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db=Depends(get_db_session),
+):
+    """Return the audio URL + status for one question/language."""
+    row = await _audio.get_audio_status(db, question_id, lang)
+    return _audio_response(row, question_id, lang)
