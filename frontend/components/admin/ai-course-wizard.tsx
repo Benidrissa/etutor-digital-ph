@@ -62,6 +62,8 @@ import { getCourseTaxonomy, type TaxonomyItem } from "@/lib/api";
 import { SyllabusVisualEditor } from "@/components/admin/syllabus-visual-editor";
 import { LessonPreviewStep } from "@/components/admin/lesson-preview-step";
 
+const EXTRACTING_STATUSES = new Set(["pending", "extracting"]);
+
 // ── Step types ────────────────────────────────────────────────────────
 
 type AIWizardStep =
@@ -217,6 +219,9 @@ export function AICourseWizard({
   const [regenerateError, setRegenerateError] = useState<string | null>(null);
   const [showFreshConfirm, setShowFreshConfirm] = useState(false);
 
+  // Extraction polling state (tracks background PDF extraction)
+  const extractionPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Indexation state
   const [taskId, setTaskId] = useState<string | null>(null);
   const [indexStatus, setIndexStatus] = useState<IndexStatus | null>(null);
@@ -324,6 +329,7 @@ export function AICourseWizard({
           name: f.name,
           size_bytes: f.size_bytes,
           status: "uploaded" as const,
+          extraction_status: f.extraction_status,
         }));
         setFiles((prev) => {
           const localNames = new Set(prev.map((f) => f.name));
@@ -353,24 +359,14 @@ export function AICourseWizard({
         return;
       }
       setFiles((prev) =>
-        prev.map((f) => (f.name === file.name ? { ...f, status: "uploaded" as const } : f))
+        prev.map((f) =>
+          f.name === file.name
+            ? { ...f, status: "uploaded" as const, extraction_status: "pending" as const }
+            : f
+        )
       );
-
-      // Check if backend auto-triggered indexation (AI-assisted mode)
-      if (!isIndexing) {
-        try {
-          const status = await getIndexStatusApi(courseId);
-          if (status.task && ["PENDING", "STARTED", "RETRY"].includes(status.task.state)) {
-            setTaskId(status.task.id ?? null);
-            setIsIndexing(true);
-            lastIndexProgressTimeRef.current = Date.now();
-          }
-        } catch {
-          // ignore — indexation check is best-effort
-        }
-      }
     },
-    [courseId, isIndexing]
+    [courseId]
   );
 
   const handleFiles = useCallback(
@@ -724,6 +720,72 @@ export function AICourseWizard({
     };
   }, [courseId, isIndexing, taskId, t, queryClient]);
 
+  // ── Extraction polling (background PDF extraction) ─────────────────
+  // Depend on a stable key derived from file statuses, not the full files
+  // array — otherwise every setFiles call would re-run this effect and
+  // constantly tear down + restart the timeout.
+  const extractionKey = files
+    .map((f) => `${f.name}:${f.status}:${f.extraction_status ?? ""}`)
+    .join("|");
+
+  useEffect(() => {
+    const hasExtracting = files.some(
+      (f) => f.status === "uploaded" && f.extraction_status && EXTRACTING_STATUSES.has(f.extraction_status)
+    );
+    if (!courseId || !hasExtracting) {
+      if (extractionPollRef.current) clearTimeout(extractionPollRef.current);
+      return;
+    }
+
+    const poll = async () => {
+      try {
+        const data = await getCourseResources(courseId);
+        const byName: Record<string, string> = {};
+        for (const f of data.files ?? []) {
+          byName[f.name] = f.extraction_status ?? "done";
+        }
+        setFiles((prev) =>
+          prev.map((f) => {
+            const serverStatus = byName[f.name];
+            if (serverStatus !== undefined && serverStatus !== f.extraction_status) {
+              return { ...f, extraction_status: serverStatus as UploadedFile["extraction_status"] };
+            }
+            return f;
+          })
+        );
+        const stillExtracting = (data.files ?? []).some((f) =>
+          EXTRACTING_STATUSES.has(f.extraction_status ?? "done")
+        );
+        if (stillExtracting) {
+          extractionPollRef.current = setTimeout(poll, 3000);
+        } else {
+          if (!isIndexing) {
+            try {
+              const status = await getIndexStatusApi(courseId);
+              if (status.task && ["PENDING", "STARTED", "RETRY"].includes(status.task.state)) {
+                setTaskId(status.task.id ?? null);
+                setIsIndexing(true);
+                lastIndexProgressTimeRef.current = Date.now();
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
+      } catch {
+        extractionPollRef.current = setTimeout(poll, 5000);
+      }
+    };
+
+    extractionPollRef.current = setTimeout(poll, 2000);
+    return () => {
+      if (extractionPollRef.current) clearTimeout(extractionPollRef.current);
+    };
+    // extractionKey captures the meaningful shape of files for this effect;
+    // files is intentionally referenced inside but not a dep to avoid churn.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseId, extractionKey, isIndexing]);
+
   const cancelIndexation = useCallback(async () => {
     if (!courseId) return;
     if (pollRef.current) clearTimeout(pollRef.current);
@@ -986,7 +1048,18 @@ export function AICourseWizard({
                         {f.status === "uploading" && (
                           <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                         )}
-                        {f.status === "uploaded" && <CheckCircle2 className="h-4 w-4 text-green-600" />}
+                        {f.status === "uploaded" && f.extraction_status && EXTRACTING_STATUSES.has(f.extraction_status) && (
+                          <span title={t("upload.extracting")} className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <div className="h-3 w-3 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+                            {t("upload.extracting")}
+                          </span>
+                        )}
+                        {f.status === "uploaded" && (!f.extraction_status || f.extraction_status === "done") && (
+                          <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        )}
+                        {f.status === "uploaded" && f.extraction_status === "failed" && (
+                          <span title={t("upload.extractionFailed")}><AlertCircle className="h-4 w-4 text-destructive" /></span>
+                        )}
                         {f.status === "error" && (
                           <span title={f.error}><AlertCircle className="h-4 w-4 text-destructive" /></span>
                         )}

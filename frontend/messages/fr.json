@@ -1372,7 +1372,9 @@
         "uploadError": "Erreur lors du téléversement",
         "remove": "Supprimer",
         "noFiles": "Aucune ressource téléversée",
-        "atLeastOne": "Téléversez au moins un PDF avant de continuer."
+        "atLeastOne": "Téléversez au moins un PDF avant de continuer.",
+        "extracting": "Extraction en cours…",
+        "extractionFailed": "Échec de l'extraction"
       },
       "info": {
         "title": "Informations du cours",

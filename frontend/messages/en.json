@@ -1372,7 +1372,9 @@
         "uploadError": "Upload error",
         "remove": "Remove",
         "noFiles": "No resources uploaded",
-        "atLeastOne": "Upload at least one PDF before continuing."
+        "atLeastOne": "Upload at least one PDF before continuing.",
+        "extracting": "Extracting…",
+        "extractionFailed": "Extraction failed"
       },
       "info": {
         "title": "Course information",

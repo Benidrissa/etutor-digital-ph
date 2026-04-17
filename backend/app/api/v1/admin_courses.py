@@ -1,6 +1,5 @@
 """Admin endpoints for course management (CRUD, publish, RAG indexation)."""
 
-import hashlib
 import re
 import shutil
 import uuid
@@ -1242,6 +1241,13 @@ async def list_course_resources(
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
 
+    from app.domain.models.course_resource import CourseResource
+
+    db_resources_result = await db.execute(
+        select(CourseResource).where(CourseResource.course_id == course_id)
+    )
+    db_resources = {r.filename: r for r in db_resources_result.scalars().all()}
+
     course_dir = UPLOAD_DIR / str(course_id)
     if not course_dir.exists():
         return {"course_id": str(course_id), "files": []}
@@ -1249,11 +1255,14 @@ async def list_course_resources(
     files = []
     for f in sorted(course_dir.glob("*.pdf")):
         stat = f.stat()
+        stem = f.stem
+        db_res = db_resources.get(stem)
         files.append(
             {
                 "name": f.name,
                 "size_bytes": stat.st_size,
                 "uploaded_at": datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
+                "extraction_status": db_res.extraction_status if db_res else "done",
             }
         )
 
@@ -1269,13 +1278,9 @@ async def upload_course_resource(
 ) -> dict:
     """Upload a PDF resource for a course.
 
-    Performs upload-time text extraction and validation:
-    - Extracts text + TOC using PyMuPDF.
-    - If the PDF exceeds the upload-max-pdf-chars threshold, auto-splits at chapter
-      boundaries (TOC) or page ranges, saving each part as a separate CourseResource.
-    - Small PDFs are saved as a single CourseResource.
-
-    File is also stored in uploads/course_resources/{course_id}/ for RAG indexation.
+    Validates the file, saves bytes to disk, creates a CourseResource row in
+    "pending" state, and enqueues extract_course_resource to run extraction +
+    optional chapter split in the background. Returns 201 immediately.
     """
     result = await db.execute(select(Course).where(Course.id == course_id))
     course = result.scalar_one_or_none()
@@ -1311,127 +1316,45 @@ async def upload_course_resource(
     dest = course_dir / safe_name
     dest.write_bytes(data)
 
-    from app.domain.services.platform_settings_service import SettingsCache
+    from app.domain.models.course_resource import (
+        EXTRACTION_STATUS_PENDING,
+        CourseResource,
+    )
+    from app.tasks.resource_extraction import extract_course_resource
 
-    cache = SettingsCache.instance()
-    max_pdf_chars = int(cache.get("upload-max-pdf-chars") or 2_500_000)
-
-    resources_created: list[dict] = []
-    try:
-        import fitz
-
-        from app.domain.models.course_resource import CourseResource
-
-        doc = fitz.open(stream=data, filetype="pdf")
-        toc = doc.get_toc()
-        pages_text = []
-        for page in doc:
-            page_text = page.get_text().strip()
-            if page_text:
-                pages_text.append(page_text)
-        doc.close()
-        full_text = "\n\n".join(pages_text)
-        total_chars = len(full_text)
-
-        if total_chars <= max_pdf_chars:
-            toc_str = ""
-            if toc:
-                toc_lines = [f"{'  ' * (lvl - 1)}{title}" for lvl, title, _ in toc]
-                toc_str = "\n".join(toc_lines[:100])
-                full_text = f"TABLE OF CONTENTS:\n{toc_str}\n\nCONTENT:\n{full_text}"
-
-            resource = CourseResource(
-                course_id=course_id,
-                filename=Path(safe_name).stem,
-                parent_filename=None,
-                raw_text=full_text,
-                toc_json=toc or None,
-                char_count=len(full_text),
-                content_hash=hashlib.sha256(full_text.encode("utf-8")).hexdigest(),
-            )
-            db.add(resource)
-            resources_created.append({"filename": resource.filename, "chars": len(full_text)})
-            logger.info(
-                "Course resource extracted and saved",
-                course_id=str(course_id),
-                filename=safe_name,
-                chars=len(full_text),
-                parts=1,
-            )
-        else:
-            from app.ai.pdf_summarizer import split_pdf_by_chapters
-
-            parts = split_pdf_by_chapters(full_text, toc, max_pdf_chars)
-            parent_stem = Path(safe_name).stem
-
-            for idx, (_part_title, part_text) in enumerate(parts):
-                part_filename = f"{parent_stem}_part{idx + 1}"
-                resource = CourseResource(
-                    course_id=course_id,
-                    filename=part_filename,
-                    parent_filename=parent_stem,
-                    raw_text=part_text,
-                    toc_json=toc or None,
-                    char_count=len(part_text),
-                    content_hash=hashlib.sha256(part_text.encode("utf-8")).hexdigest(),
-                )
-                db.add(resource)
-                resources_created.append({"filename": part_filename, "chars": len(part_text)})
-
-            logger.info(
-                "Oversized PDF auto-split into chapter groups",
-                course_id=str(course_id),
-                filename=safe_name,
-                total_chars=total_chars,
-                max_pdf_chars=max_pdf_chars,
-                parts=len(parts),
-            )
-
-    except Exception as extract_exc:
-        logger.warning(
-            "PDF text extraction failed at upload time (non-blocking)",
-            course_id=str(course_id),
-            filename=safe_name,
-            error=str(extract_exc),
-        )
+    resource = CourseResource(
+        course_id=course_id,
+        filename=Path(safe_name).stem,
+        parent_filename=None,
+        raw_text="",
+        char_count=0,
+        extraction_status=EXTRACTION_STATUS_PENDING,
+    )
+    db.add(resource)
 
     if course.creation_step == "upload":
         course.creation_step = "info"
 
     await db.commit()
+    await db.refresh(resource)
+
+    extract_course_resource.delay(str(resource.id))
 
     logger.info(
-        "Course resource uploaded",
+        "Course resource uploaded — extraction enqueued",
         course_id=str(course_id),
         filename=safe_name,
         size_bytes=len(data),
+        resource_id=str(resource.id),
         admin_id=current_user.id,
-        resources_created=len(resources_created),
     )
-
-    # Auto-trigger RAG indexation for AI-assisted courses
-    if (
-        course.creation_mode == "ai_assisted"
-        and course.rag_collection_id
-        and (
-            not course.indexation_task_id
-            or AsyncResult(course.indexation_task_id).state in ("SUCCESS", "FAILURE", "REVOKED")
-        )
-    ):
-        task = index_course_resources.delay(str(course_id), course.rag_collection_id)
-        course.indexation_task_id = task.id
-        await db.commit()
-        logger.info(
-            "Auto-triggered RAG indexation for AI-assisted course",
-            course_id=str(course_id),
-            task_id=task.id,
-        )
 
     return {
         "course_id": str(course_id),
         "name": safe_name,
         "size_bytes": len(data),
-        "resources_created": resources_created,
+        "resource_id": str(resource.id),
+        "extraction_status": EXTRACTION_STATUS_PENDING,
     }
 
 
