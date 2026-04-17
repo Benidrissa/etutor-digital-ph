@@ -5,7 +5,7 @@ import uuid
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -749,6 +749,7 @@ async def can_attempt_summative_assessment(
 )
 async def submit_summative_assessment_attempt(
     request: QuizAttemptRequest,
+    http_request: Request,
     session: AsyncSession = Depends(get_db),
     current_user: AuthenticatedUser = Depends(require_active_subscription),
 ) -> SummativeAssessmentResponse:
@@ -1032,6 +1033,10 @@ async def submit_summative_assessment_attempt(
 
                                 user_obj = await session.get(User, user_id)
                                 if user_obj and not cert.pdf_url:
+                                    from app.api.v1.certificates import (
+                                        frontend_url_from_request,
+                                    )
+
                                     pdf_svc = CertificatePDFService()
                                     await pdf_svc.generate_and_store(
                                         cert,
@@ -1040,6 +1045,7 @@ async def submit_summative_assessment_attempt(
                                         user_obj,
                                         session,
                                         language=current_user.preferred_language or "fr",
+                                        frontend_url=frontend_url_from_request(http_request),
                                     )
                             except Exception as pdf_err:
                                 logger.warning(
