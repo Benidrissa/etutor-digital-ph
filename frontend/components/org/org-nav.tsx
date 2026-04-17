@@ -12,6 +12,7 @@ import {
   BarChart3,
   Users,
   Library,
+  ClipboardList,
 } from "lucide-react";
 
 export function OrgNav() {
@@ -27,6 +28,7 @@ export function OrgNav() {
     { href: base, label: t("dashboard"), icon: LayoutDashboard },
     { href: `${base}/courses`, label: "Courses", icon: GraduationCap },
     { href: `${base}/curricula`, label: t("curricula"), icon: Library },
+    { href: `${base}/qbank`, label: "Question Banks", icon: ClipboardList },
     { href: `${base}/codes`, label: t("codes"), icon: QrCode },
     { href: `${base}/reports`, label: t("reports"), icon: BarChart3 },
     { href: `${base}/members`, label: t("members"), icon: Users },

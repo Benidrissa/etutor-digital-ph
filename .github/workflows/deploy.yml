@@ -10,6 +10,21 @@ env:
   FRONTEND_IMAGE: ghcr.io/benidrissa/etutor-digital-ph/frontend
 
 jobs:
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      mms_tts: ${{ steps.filter.outputs.mms_tts }}
+    steps:
+      - uses: actions/checkout@v6
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            mms_tts:
+              - 'infrastructure/mms-tts/**'
+              - '.github/workflows/deploy.yml'
+
   test:
     name: Lint & Test
     runs-on: ubuntu-latest
@@ -63,6 +78,42 @@ jobs:
           npm ci
           npm run lint
           npm run build
+
+  build-mms-tts:
+    name: Build & Push mms-tts
+    needs: [test, changes]
+    if: needs.changes.outputs.mms_tts == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/benidrissa/etutor-digital-ph/mms-tts
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest
+      - name: Build and push mms-tts sidecar
+        uses: docker/build-push-action@v6
+        with:
+          context: ./infrastructure/mms-tts
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=ghcr.io/benidrissa/etutor-digital-ph/mms-tts:buildcache
+          cache-to: type=registry,ref=ghcr.io/benidrissa/etutor-digital-ph/mms-tts:buildcache,mode=max
 
   build-and-push:
     name: Build & Push (${{ matrix.service }})
@@ -142,7 +193,11 @@ jobs:
 
   deploy:
     name: Deploy to Server
-    needs: build-and-push
+    needs: [build-and-push, build-mms-tts]
+    if: |
+      always()
+      && needs.build-and-push.result == 'success'
+      && (needs.build-mms-tts.result == 'success' || needs.build-mms-tts.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -212,7 +267,7 @@ jobs:
             EOF
 
             # Pull new images (only changed layers transferred)
-            docker compose pull backend frontend
+            docker compose pull backend frontend mms-tts
 
             # Restart services
             docker compose up -d

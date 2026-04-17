@@ -1,12 +1,16 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import type { QBankTestAttemptResponse } from '@/lib/api';
+import {
+  getQBankTestHistory,
+  type QBankTestAttemptResponse,
+} from '@/lib/api';
 
 interface QBankTestResultsProps {
   attempt: QBankTestAttemptResponse;
@@ -16,8 +20,18 @@ interface QBankTestResultsProps {
 export function QBankTestResults({ attempt, testId }: QBankTestResultsProps) {
   const t = useTranslations('qbank');
   const router = useRouter();
+  const [history, setHistory] = useState<QBankTestAttemptResponse[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getQBankTestHistory(testId)
+      .then((h) => { if (!cancelled) setHistory(h); })
+      .catch(() => { if (!cancelled) setHistory([]); });
+    return () => { cancelled = true; };
+  }, [testId]);
 
   const scorePercent = Math.round(attempt.score);
+  const priorAttempts = (history ?? []).filter((a) => a.id !== attempt.id);
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col items-center gap-6 px-4 py-6">
@@ -76,6 +90,36 @@ export function QBankTestResults({ attempt, testId }: QBankTestResultsProps) {
                 </div>
               );
             })}
+          </CardContent>
+        </Card>
+      )}
+
+      {priorAttempts.length > 0 && (
+        <Card className="w-full">
+          <CardHeader>
+            <CardTitle>{t('attemptHistory')}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {priorAttempts
+              .slice()
+              .sort((a, b) => b.attempt_number - a.attempt_number)
+              .slice(0, 5)
+              .map((a) => (
+                <div
+                  key={a.id}
+                  className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm"
+                >
+                  <span className="text-muted-foreground">
+                    #{a.attempt_number} · {new Date(a.attempted_at).toLocaleDateString()}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{Math.round(a.score)}%</span>
+                    <Badge variant={a.passed ? 'default' : 'destructive'}>
+                      {a.passed ? t('passed') : t('failed')}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
           </CardContent>
         </Card>
       )}

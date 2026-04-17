@@ -193,3 +193,95 @@ class TestReviewResponse(BaseModel):
     score: float
     passed: bool
     questions: list[TestReviewQuestion]
+
+
+# ---------------------------------------------------------------------------
+# Analytics
+# ---------------------------------------------------------------------------
+
+
+class ScoreBucket(BaseModel):
+    bucket: str
+    range: list[int]
+    count: int
+
+
+class CategoryPassRate(BaseModel):
+    category: str
+    correct: int
+    total: int
+    pass_rate: float
+    weak: bool
+
+
+class AttemptsOverTimePoint(BaseModel):
+    date: str
+    count: int
+
+
+class BankAnalyticsResponse(BaseModel):
+    bank_id: str
+    total_attempts: int
+    unique_students: int
+    average_score: float
+    pass_rate: float
+    average_time_per_question_sec: float
+    score_distribution: list[ScoreBucket]
+    category_pass_rates: list[CategoryPassRate]
+    attempts_over_time: list[AttemptsOverTimePoint]
+
+
+class BankStudentRow(BaseModel):
+    user_id: str
+    email: str | None = None
+    name: str | None = None
+    attempt_count: int
+    average_score: float
+    pass_count: int
+    last_attempt_at: str | None = None
+
+
+class BankStudentsResponse(BaseModel):
+    bank_id: str
+    students: list[BankStudentRow]
+
+
+class StudentAttemptRow(BaseModel):
+    id: str
+    test_id: str
+    score: float
+    passed: bool
+    attempted_at: str
+    attempt_number: int
+    time_taken_sec: int
+
+
+class StudentProgressResponse(BaseModel):
+    bank_id: str
+    user_id: str
+    attempt_count: int
+    attempts: list[StudentAttemptRow]
+    best_score: float
+    latest_score: float
+    trend: str
+    weakest_categories: list[CategoryPassRate]
+
+
+# ---------------------------------------------------------------------------
+# Audio
+# ---------------------------------------------------------------------------
+
+
+class AudioStatusResponse(BaseModel):
+    question_id: str
+    language: str
+    status: str
+    storage_url: str | None = None
+    duration_seconds: int | None = None
+
+
+class AudioGenerateResponse(BaseModel):
+    task_id: str
+    bank_id: str
+    language: str
+    status: str = "processing"
