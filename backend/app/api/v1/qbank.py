@@ -11,12 +11,15 @@ from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from app.api.deps import get_db_session
 from app.api.deps_local_auth import AuthenticatedUser, get_current_user
 from app.api.v1.schemas.qbank import (
+    BankAnalyticsResponse,
+    BankStudentsResponse,
     QuestionBankCreate,
     QuestionBankResponse,
     QuestionBankUpdate,
     QuestionListResponse,
     QuestionResponse,
     QuestionUpdate,
+    StudentProgressResponse,
     TestAttemptResponse,
     TestCreate,
     TestResponse,
@@ -27,11 +30,13 @@ from app.api.v1.schemas.qbank import (
     TestSubmitRequest,
     TestUpdate,
 )
+from app.domain.services.qbank_analytics_service import QBankAnalyticsService
 from app.domain.services.qbank_service import QBankService
 
 router = APIRouter(prefix="/qbank", tags=["Question Bank"])
 
 _svc = QBankService()
+_analytics = QBankAnalyticsService()
 
 
 # ---------------------------------------------------------------------------
@@ -464,3 +469,43 @@ async def processing_status(
         else:
             response["error"] = str(result.result)
     return response
+
+
+# ---------------------------------------------------------------------------
+# Analytics (org reporting)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/banks/{bank_id}/analytics", response_model=BankAnalyticsResponse)
+async def get_bank_analytics(
+    bank_id: uuid.UUID,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db=Depends(get_db_session),
+):
+    """Org admin dashboard: aggregate metrics across all attempts in a bank."""
+    return await _analytics.get_bank_analytics(db, bank_id, uuid.UUID(current_user.id))
+
+
+@router.get("/banks/{bank_id}/students", response_model=BankStudentsResponse)
+async def get_bank_students(
+    bank_id: uuid.UUID,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db=Depends(get_db_session),
+):
+    """Org admin: per-student roll-up (attempt count, avg score, pass count)."""
+    students = await _analytics.get_bank_students(db, bank_id, uuid.UUID(current_user.id))
+    return BankStudentsResponse(bank_id=str(bank_id), students=students)
+
+
+@router.get(
+    "/banks/{bank_id}/students/{user_id}",
+    response_model=StudentProgressResponse,
+)
+async def get_student_progress(
+    bank_id: uuid.UUID,
+    user_id: uuid.UUID,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db=Depends(get_db_session),
+):
+    """Individual student progress. Students may only view their own record."""
+    return await _analytics.get_student_progress(db, bank_id, user_id, uuid.UUID(current_user.id))
