@@ -29,6 +29,26 @@ services:
       timeout: 5s
       retries: 5
 
+  mms-tts:
+    build:
+      context: ./infrastructure/mms-tts
+      dockerfile: Dockerfile
+    container_name: santepublique-mms-tts
+    ports:
+      - "5050:5050"
+    volumes:
+      - mms_models:/models
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5050/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 180s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
   backend:
     build:
       context: ./backend
@@ -40,6 +60,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       APP_ENV: development
       CORS_ORIGINS: http://localhost:3000
+      MMS_TTS_URL: http://mms-tts:5050
     ports:
       - "8000:8000"
     volumes:
@@ -61,3 +82,4 @@ volumes:
   pgdata:
   redisdata:
   uploads_data:
+  mms_models:

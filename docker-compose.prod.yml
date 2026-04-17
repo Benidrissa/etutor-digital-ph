@@ -29,6 +29,25 @@ services:
       timeout: 5s
       retries: 5
 
+  mms-tts:
+    image: ghcr.io/benidrissa/etutor-digital-ph/mms-tts:latest
+    container_name: etutor-mms-tts
+    volumes:
+      - mms_models:/models
+    networks:
+      - etutor-data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5050/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 180s
+      retries: 3
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
   backend:
     image: ghcr.io/benidrissa/etutor-digital-ph/backend:latest
     container_name: etutor-backend
@@ -48,6 +67,7 @@ services:
       MINIO_BUCKET_MEDIA: ${MINIO_BUCKET_MEDIA:-santepublique-media}
       SMS_RELAY_API_KEY: ${SMS_RELAY_API_KEY}
       SMS_RELAY_TRUSTED_SENDERS: ${SMS_RELAY_TRUSTED_SENDERS}
+      MMS_TTS_URL: ${MMS_TTS_URL:-http://mms-tts:5050}
     volumes:
       - ./config:/app/config
       - ./resources:/app/resources
@@ -126,6 +146,7 @@ services:
       MINIO_BUCKET_MEDIA: ${MINIO_BUCKET_MEDIA:-santepublique-media}
       SMS_RELAY_API_KEY: ${SMS_RELAY_API_KEY}
       SMS_RELAY_TRUSTED_SENDERS: ${SMS_RELAY_TRUSTED_SENDERS}
+      MMS_TTS_URL: ${MMS_TTS_URL:-http://mms-tts:5050}
     volumes:
       - ./config:/app/config
       - ./resources:/app/resources
@@ -161,6 +182,7 @@ volumes:
   redisdata:
   uploads:
   minio_data:
+  mms_models:
 
 networks:
   etutor-data:

@@ -80,6 +80,9 @@ jobs:
           - service: frontend
             context: ./frontend
             image: ghcr.io/benidrissa/etutor-digital-ph/frontend
+          - service: mms-tts
+            context: ./infrastructure/mms-tts
+            image: ghcr.io/benidrissa/etutor-digital-ph/mms-tts
     steps:
       - uses: actions/checkout@v6
 
@@ -104,6 +107,17 @@ jobs:
 
       - name: Build and push backend
         if: matrix.service == 'backend'
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ matrix.image }}:buildcache
+          cache-to: type=registry,ref=${{ matrix.image }}:buildcache,mode=max
+
+      - name: Build and push mms-tts sidecar
+        if: matrix.service == 'mms-tts'
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
@@ -212,7 +226,7 @@ jobs:
             EOF
 
             # Pull new images (only changed layers transferred)
-            docker compose pull backend frontend
+            docker compose pull backend frontend mms-tts
 
             # Restart services
             docker compose up -d
