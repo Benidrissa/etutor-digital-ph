@@ -10,6 +10,7 @@ const PUBLIC_PATTERNS = [
   /^\/(fr|en)\/(login|register|register-options|register-totp|register-email-otp|register-password|magic-link|forgot-password)(\/.*)*/,
   /^\/(fr|en)\/courses(\/[^/]+)?$/,
   /^\/(fr|en)\/about$/,
+  /^\/(fr|en)\/verify\/[^/]+$/,
   /^\/api\//,
   /^\/_next\//,
   /^\/favicon\.ico$/,
