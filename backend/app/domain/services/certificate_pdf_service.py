@@ -32,16 +32,26 @@ _FONT_REGULAR = _FONT_DIR / "DejaVuSans.ttf"
 _FONT_BOLD = _FONT_DIR / "DejaVuSans-Bold.ttf"
 
 
-def _register_fonts() -> str:
-    """Register DejaVu fonts with ReportLab. Returns the font family name."""
+def _register_fonts() -> tuple[str, str]:
+    """Register fonts with ReportLab. Falls back to Helvetica if DejaVu unavailable.
+
+    Returns: (regular_font_name, bold_font_name)
+    """
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
 
-    family = "DejaVu"
-    if family not in pdfmetrics.getRegisteredFontNames():
-        pdfmetrics.registerFont(TTFont("DejaVu", str(_FONT_REGULAR)))
-        pdfmetrics.registerFont(TTFont("DejaVu-Bold", str(_FONT_BOLD)))
-    return family
+    if "DejaVu" in pdfmetrics.getRegisteredFontNames():
+        return "DejaVu", "DejaVu-Bold"
+
+    if _FONT_REGULAR.exists() and _FONT_BOLD.exists():
+        try:
+            pdfmetrics.registerFont(TTFont("DejaVu", str(_FONT_REGULAR)))
+            pdfmetrics.registerFont(TTFont("DejaVu-Bold", str(_FONT_BOLD)))
+            return "DejaVu", "DejaVu-Bold"
+        except Exception:
+            logger.warning("DejaVu font registration failed, falling back to Helvetica")
+
+    return "Helvetica", "Helvetica-Bold"
 
 
 def _render_pdf(
@@ -54,7 +64,7 @@ def _render_pdf(
     """Synchronous PDF rendering using ReportLab canvas. Returns PDF bytes."""
     from reportlab.pdfgen.canvas import Canvas
 
-    _register_fonts()
+    font_regular, font_bold = _register_fonts()
 
     buf = io.BytesIO()
     c = Canvas(buf, pagesize=(PAGE_W, PAGE_H))
@@ -85,13 +95,13 @@ def _render_pdf(
 
     # ── Platform name ──────────────────────────────────────────
     y = PAGE_H - 70
-    c.setFont("DejaVu-Bold", 14)
+    c.setFont(font_bold, 14)
     c.setFillColorRGB(*COLOR_TEAL)
     c.drawCentredString(PAGE_W / 2, y, "SIRA")
 
     # ── Title ──────────────────────────────────────────────────
     y -= 35
-    c.setFont("DejaVu-Bold", 26)
+    c.setFont(font_bold, 26)
     c.setFillColorRGB(*COLOR_TEAL)
     if language == "fr":
         c.drawCentredString(PAGE_W / 2, y, "CERTIFICAT DE REUSSITE")
@@ -100,7 +110,7 @@ def _render_pdf(
 
     # ── Subtitle ───────────────────────────────────────────────
     y -= 22
-    c.setFont("DejaVu", 10)
+    c.setFont(font_regular, 10)
     c.setFillColorRGB(*COLOR_GRAY)
     if language == "fr":
         c.drawCentredString(PAGE_W / 2, y, "Ce certificat est decerne a")
@@ -109,7 +119,7 @@ def _render_pdf(
 
     # ── Learner name ───────────────────────────────────────────
     y -= 38
-    c.setFont("DejaVu-Bold", 24)
+    c.setFont(font_bold, 24)
     c.setFillColorRGB(*COLOR_DARK)
     learner_name = user.name or user.email or "Learner"
     c.drawCentredString(PAGE_W / 2, y, learner_name)
@@ -122,7 +132,7 @@ def _render_pdf(
 
     # ── Course completion text ─────────────────────────────────
     y -= 25
-    c.setFont("DejaVu", 11)
+    c.setFont(font_regular, 11)
     c.setFillColorRGB(*COLOR_GRAY)
     if language == "fr":
         c.drawCentredString(PAGE_W / 2, y, "Pour avoir complete avec succes le cours")
@@ -131,7 +141,7 @@ def _render_pdf(
 
     # ── Course title ───────────────────────────────────────────
     y -= 30
-    c.setFont("DejaVu-Bold", 16)
+    c.setFont(font_bold, 16)
     c.setFillColorRGB(*COLOR_TEAL)
     course_title = course.title_fr if language == "fr" else course.title_en
     # Truncate very long titles
@@ -141,7 +151,7 @@ def _render_pdf(
 
     # ── Score & date ───────────────────────────────────────────
     y -= 30
-    c.setFont("DejaVu", 10)
+    c.setFont(font_regular, 10)
     c.setFillColorRGB(*COLOR_DARK)
     score_text = f"Score: {certificate.average_score:.0f}%"
     date_str = certificate.completed_at.strftime("%d/%m/%Y") if certificate.completed_at else ""
@@ -153,7 +163,7 @@ def _render_pdf(
     additional = template.additional_text_fr if language == "fr" else template.additional_text_en
     if additional:
         y -= 22
-        c.setFont("DejaVu", 9)
+        c.setFont(font_regular, 9)
         c.setFillColorRGB(*COLOR_GRAY)
         if len(additional) > 100:
             additional = additional[:97] + "..."
@@ -162,17 +172,17 @@ def _render_pdf(
     # ── Organization & Signatory (left side) ───────────────────
     y_bottom = 85
     if template.organization_name:
-        c.setFont("DejaVu", 9)
+        c.setFont(font_regular, 9)
         c.setFillColorRGB(*COLOR_GRAY)
         c.drawString(60, y_bottom + 40, template.organization_name)
 
     if template.signatory_name:
-        c.setFont("DejaVu-Bold", 10)
+        c.setFont(font_bold, 10)
         c.setFillColorRGB(*COLOR_DARK)
         c.drawString(60, y_bottom + 20, template.signatory_name)
 
     if template.signatory_title:
-        c.setFont("DejaVu", 9)
+        c.setFont(font_regular, 9)
         c.setFillColorRGB(*COLOR_GRAY)
         c.drawString(60, y_bottom + 5, template.signatory_title)
 
@@ -209,7 +219,7 @@ def _render_pdf(
         logger.warning("QR code generation failed, skipping")
 
     # ── Verification code footer ───────────────────────────────
-    c.setFont("DejaVu", 8)
+    c.setFont(font_regular, 8)
     c.setFillColorRGB(*COLOR_GRAY)
     c.drawCentredString(PAGE_W / 2, margin + 12, f"Verification: {certificate.verification_code}")
     c.drawCentredString(PAGE_W / 2, margin + 2, verification_url)
