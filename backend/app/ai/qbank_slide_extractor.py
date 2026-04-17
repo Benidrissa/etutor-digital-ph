@@ -139,6 +139,7 @@ def _infer_category(question_text: str, options: list[str]) -> str:
             best_category = category
     return best_category
 
+
 EXTRACTION_SYSTEM_PROMPT = """You are analyzing a driving school exam or test preparation slide.
 Extract ALL questions from this slide image. Each slide may contain 1 or 2 questions.
 
