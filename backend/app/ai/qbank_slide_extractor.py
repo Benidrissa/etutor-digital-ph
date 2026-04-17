@@ -23,6 +23,7 @@ import base64
 import io
 import json
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -49,6 +50,94 @@ QUESTION_CLUSTER_GAP_PT = 40.0
 
 # Regex for option labels: "A.", "A)", "a.", "1.", "1)"
 OPTION_LABEL_RE = re.compile(r"^\s*([A-Da-d]|[1-4])[\.\)]\s+")
+
+# FR keyword hints per category. Matched case- and diacritic-insensitively so
+# "priorité" and "priorite" both match the "priorite" key. Used by Tier 1 to
+# set a best-guess category without an AI call. Tier 3 (Vision) still classifies
+# via the model prompt.
+CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "signalisation": (
+        "panneau",
+        "signal",
+        "feu",
+        "feux",
+        "stop",
+        "ceder",
+        "marquage",
+        "ligne continue",
+        "ligne discontinue",
+    ),
+    "priorite": (
+        "priorite",
+        "ceder le passage",
+        "intersection",
+        "carrefour",
+        "rond-point",
+        "rond point",
+        "giratoire",
+    ),
+    "securite": (
+        "ceinture",
+        "casque",
+        "airbag",
+        "securite",
+        "distance de securite",
+        "alcool",
+        "telephone",
+        "fatigue",
+    ),
+    "stationnement": (
+        "stationner",
+        "stationnement",
+        "garer",
+        "parking",
+        "arret",
+    ),
+    "vitesse": (
+        "vitesse",
+        "km/h",
+        "kilometres",
+        "ralentir",
+        "acceler",
+        "freinage",
+    ),
+    "pieton": (
+        "pieton",
+        "passage pieton",
+        "trottoir",
+    ),
+    "cycliste": (
+        "cycliste",
+        "velo",
+        "piste cyclable",
+        "bicyclette",
+    ),
+}
+
+
+def _normalize_for_match(text: str) -> str:
+    """Lowercase + strip diacritics for substring matching."""
+    nfkd = unicodedata.normalize("NFKD", text.lower())
+    return "".join(ch for ch in nfkd if not unicodedata.combining(ch))
+
+
+def _infer_category(question_text: str, options: list[str]) -> str:
+    """Heuristic category classifier for Tier 1.
+
+    Scans the question text and option texts for keyword hits from
+    CATEGORY_KEYWORDS. Returns the category with the most hits, or "general" if
+    no keywords match. Matching is case- and diacritic-insensitive.
+    """
+    haystack = _normalize_for_match(" ".join([question_text, *options]))
+
+    best_category = "general"
+    best_hits = 0
+    for category, keywords in CATEGORY_KEYWORDS.items():
+        hits = sum(1 for kw in keywords if kw in haystack)
+        if hits > best_hits:
+            best_hits = hits
+            best_category = category
+    return best_category
 
 EXTRACTION_SYSTEM_PROMPT = """You are analyzing a driving school exam or test preparation slide.
 Extract ALL questions from this slide image. Each slide may contain 1 or 2 questions.
@@ -360,7 +449,7 @@ def _extract_tier1(
             options=opts,
             correct_indices=ci,
             explanation=None,  # Tier 1 does not generate explanations
-            category=None,  # Tier 1 does not classify categories
+            category=_infer_category(qt, opts),
             page_number=page_number,
             image_bytes=webp_bytes,
             image_width=width,
