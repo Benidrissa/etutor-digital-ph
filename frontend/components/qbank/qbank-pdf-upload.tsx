@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { AlertCircle, CheckCircle2, FileText, Loader2, Upload } from "lucide-react";
 import {
   getQBankProcessingStatus,
@@ -18,6 +19,7 @@ type Phase = "idle" | "uploading" | "processing" | "done" | "error";
 const POLL_INTERVAL_MS = 3000;
 
 export function QBankPdfUpload({ bankId, onProcessed }: Props) {
+  const t = useTranslations("qbank");
   const [phase, setPhase] = useState<Phase>("idle");
   const [taskId, setTaskId] = useState<string | null>(null);
   const [filename, setFilename] = useState<string | null>(null);
@@ -30,7 +32,7 @@ export function QBankPdfUpload({ bankId, onProcessed }: Props) {
     async (file: File) => {
       if (file.type !== "application/pdf") {
         setPhase("error");
-        setMessage("Only PDF files are accepted.");
+        setMessage(t("uploadOnlyPdf"));
         return;
       }
       setPhase("uploading");
@@ -45,7 +47,7 @@ export function QBankPdfUpload({ bankId, onProcessed }: Props) {
         setMessage(err instanceof Error ? err.message : "Upload failed");
       }
     },
-    [bankId]
+    [bankId, t]
   );
 
   useEffect(() => {
@@ -103,10 +105,8 @@ export function QBankPdfUpload({ bankId, onProcessed }: Props) {
         }`}
       >
         <Upload className="mb-2 h-8 w-8 text-gray-400" />
-        <p className="text-sm font-medium">Drop a PDF here or click to select</p>
-        <p className="text-xs text-muted-foreground">
-          Slides with an image + question + options per page
-        </p>
+        <p className="text-sm font-medium">{t("uploadDropHere")}</p>
+        <p className="text-xs text-muted-foreground">{t("uploadHint")}</p>
         <input
           ref={fileInputRef}
           type="file"
@@ -127,7 +127,7 @@ export function QBankPdfUpload({ bankId, onProcessed }: Props) {
           {phase === "uploading" && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
           {phase === "processing" && (
             <span className="flex items-center gap-1 text-xs text-blue-600">
-              <Loader2 className="h-3 w-3 animate-spin" /> Extracting…
+              <Loader2 className="h-3 w-3 animate-spin" /> {t("uploadExtracting")}
             </span>
           )}
           {phase === "done" && <CheckCircle2 className="h-4 w-4 text-green-600" />}
@@ -137,11 +137,13 @@ export function QBankPdfUpload({ bankId, onProcessed }: Props) {
 
       {phase === "done" && status?.result && (
         <p className="text-sm text-green-700">
-          Extracted {status.result.questions_created} question(s)
-          {Array.isArray(status.result.errors) && status.result.errors.length > 0
-            ? ` with ${status.result.errors.length} warning(s)`
-            : ""}
-          .
+          {t("uploadExtractedCount", {
+            count: status.result.questions_created,
+            warnings:
+              Array.isArray(status.result.errors) && status.result.errors.length > 0
+                ? t("uploadWithWarnings", { count: status.result.errors.length })
+                : "",
+          })}
         </p>
       )}
 

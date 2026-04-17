@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,13 +17,14 @@ interface Props {
   bankId: string;
 }
 
-const MODES: { value: QBankTestMode; label: string }[] = [
-  { value: "exam", label: "Exam (timed, no feedback)" },
-  { value: "training", label: "Training (feedback + review)" },
-  { value: "review", label: "Review (all answers visible)" },
+const MODES: { value: QBankTestMode; key: string }[] = [
+  { value: "exam", key: "modeExam" },
+  { value: "training", key: "modeTraining" },
+  { value: "review", key: "modeReview" },
 ];
 
 export function QBankTestConfigList({ bankId }: Props) {
+  const t = useTranslations("qbank");
   const [tests, setTests] = useState<QBankTestConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -69,24 +71,24 @@ export function QBankTestConfigList({ bankId }: Props) {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-medium">Tests</h2>
+      <h2 className="text-lg font-medium">{t("testsHeader")}</h2>
       {loading ? (
         <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
       ) : tests.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No tests configured yet.</p>
+        <p className="text-sm text-muted-foreground">{t("noTests")}</p>
       ) : (
         <ul className="space-y-2">
-          {tests.map((t) => (
+          {tests.map((test) => (
             <li
-              key={t.id}
+              key={test.id}
               className="flex items-center justify-between gap-3 rounded-md border bg-white p-3 text-sm"
             >
               <div>
-                <span className="font-medium">{t.title}</span>
-                <span className="ml-2 text-xs uppercase text-muted-foreground">{t.mode}</span>
+                <span className="font-medium">{test.title}</span>
+                <span className="ml-2 text-xs uppercase text-muted-foreground">{test.mode}</span>
               </div>
               <span className="text-xs text-muted-foreground">
-                {t.question_count ?? "all"} q · {t.time_per_question_sec ?? "default"} s · {t.shuffle_questions ? "shuffled" : "ordered"}
+                {test.question_count ?? "all"} q · {test.time_per_question_sec ?? "default"} s · {test.shuffle_questions ? "shuffled" : "ordered"}
               </span>
             </li>
           ))}
@@ -94,10 +96,10 @@ export function QBankTestConfigList({ bankId }: Props) {
       )}
 
       <form onSubmit={handleCreate} className="space-y-3 rounded-md border bg-gray-50 p-4">
-        <h3 className="text-sm font-medium">New test</h3>
+        <h3 className="text-sm font-medium">{t("newTest")}</h3>
 
         <div className="space-y-2">
-          <Label htmlFor="test-title">Title</Label>
+          <Label htmlFor="test-title">{t("fieldTitle")}</Label>
           <Input
             id="test-title"
             value={title}
@@ -109,7 +111,7 @@ export function QBankTestConfigList({ bankId }: Props) {
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="test-mode">Mode</Label>
+            <Label htmlFor="test-mode">{t("fieldMode")}</Label>
             <select
               id="test-mode"
               value={mode}
@@ -118,13 +120,13 @@ export function QBankTestConfigList({ bankId }: Props) {
             >
               {MODES.map((m) => (
                 <option key={m.value} value={m.value}>
-                  {m.label}
+                  {t(m.key)}
                 </option>
               ))}
             </select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="test-count">Question count (blank = all)</Label>
+            <Label htmlFor="test-count">{t("fieldQuestionCount")}</Label>
             <Input
               id="test-count"
               type="number"
@@ -135,7 +137,7 @@ export function QBankTestConfigList({ bankId }: Props) {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="test-time">Override time/question (seconds)</Label>
+            <Label htmlFor="test-time">{t("fieldTimeOverride")}</Label>
             <Input
               id="test-time"
               type="number"
@@ -154,7 +156,7 @@ export function QBankTestConfigList({ bankId }: Props) {
                 checked={shuffle}
                 onChange={(e) => setShuffle(e.target.checked)}
               />
-              Shuffle questions
+              {t("shuffleQuestions")}
             </label>
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -162,7 +164,7 @@ export function QBankTestConfigList({ bankId }: Props) {
                 checked={showFeedback}
                 onChange={(e) => setShowFeedback(e.target.checked)}
               />
-              Show feedback after each answer
+              {t("showFeedback")}
             </label>
           </div>
         </div>
@@ -176,7 +178,7 @@ export function QBankTestConfigList({ bankId }: Props) {
             ) : (
               <Plus className="mr-2 h-4 w-4" />
             )}
-            Create test
+            {t("createTest")}
           </Button>
         </div>
       </form>

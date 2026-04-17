@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Loader2 } from "lucide-react";
@@ -12,15 +12,16 @@ import { useOrg } from "@/components/org/org-context";
 import { QBankPdfUpload } from "@/components/qbank/qbank-pdf-upload";
 import { createQBankBank, type QBankBank, type QBankType } from "@/lib/api";
 
-const BANK_TYPES: { value: QBankType; label: string }[] = [
-  { value: "driving", label: "Driving school" },
-  { value: "exam_prep", label: "Exam prep" },
-  { value: "psychotechnic", label: "Psychotechnic" },
-  { value: "general_culture", label: "General culture" },
+const BANK_TYPES: { value: QBankType; key: string }[] = [
+  { value: "driving", key: "typeDriving" },
+  { value: "exam_prep", key: "typeExamPrep" },
+  { value: "psychotechnic", key: "typePsychotechnic" },
+  { value: "general_culture", key: "typeGeneralCulture" },
 ];
 
 export function QBankCreateClient() {
   const locale = useLocale();
+  const t = useTranslations("qbank");
   const router = useRouter();
   const { org } = useOrg();
   const [submitting, setSubmitting] = useState(false);
@@ -66,14 +67,14 @@ export function QBankCreateClient() {
         href={base}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-gray-900"
       >
-        <ArrowLeft className="h-4 w-4" /> Back to banks
+        <ArrowLeft className="h-4 w-4" /> {t("backToBanks")}
       </Link>
-      <h1 className="text-2xl font-semibold">Create question bank</h1>
+      <h1 className="text-2xl font-semibold">{t("createBank")}</h1>
 
       {!bank ? (
         <form onSubmit={handleCreate} className="space-y-4 rounded-lg border bg-white p-5">
           <div className="space-y-2">
-            <Label htmlFor="title">Title</Label>
+            <Label htmlFor="title">{t("fieldTitle")}</Label>
             <Input
               id="title"
               value={title}
@@ -85,7 +86,7 @@ export function QBankCreateClient() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="description">{t("fieldDescription")}</Label>
             <textarea
               id="description"
               value={description}
@@ -97,22 +98,22 @@ export function QBankCreateClient() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="type">Type</Label>
+              <Label htmlFor="type">{t("fieldType")}</Label>
               <select
                 id="type"
                 value={bankType}
                 onChange={(e) => setBankType(e.target.value as QBankType)}
                 className="w-full rounded-md border px-3 py-2 text-sm"
               >
-                {BANK_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
+                {BANK_TYPES.map((bt) => (
+                  <option key={bt.value} value={bt.value}>
+                    {t(bt.key)}
                   </option>
                 ))}
               </select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="language">Language</Label>
+              <Label htmlFor="language">{t("fieldLanguage")}</Label>
               <select
                 id="language"
                 value={language}
@@ -124,7 +125,7 @@ export function QBankCreateClient() {
               </select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="time">Time per question (seconds)</Label>
+              <Label htmlFor="time">{t("fieldTimePerQuestion")}</Label>
               <Input
                 id="time"
                 type="number"
@@ -135,7 +136,7 @@ export function QBankCreateClient() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="passing">Passing score (%)</Label>
+              <Label htmlFor="passing">{t("fieldPassingScore")}</Label>
               <Input
                 id="passing"
                 type="number"
@@ -151,20 +152,17 @@ export function QBankCreateClient() {
 
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => router.push(base)}>
-              Cancel
+              {t("cancel")}
             </Button>
             <Button type="submit" disabled={submitting}>
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Create bank
+              {t("createBankAction")}
             </Button>
           </div>
         </form>
       ) : (
         <div className="space-y-4 rounded-lg border bg-white p-5">
-          <p className="text-sm">
-            Bank <span className="font-medium">{bank.title}</span> created. Now upload a PDF to
-            extract questions.
-          </p>
+          <p className="text-sm">{t("bankCreatedUploadPdf", { title: bank.title })}</p>
           <QBankPdfUpload
             bankId={bank.id}
             onProcessed={(res) => {
@@ -174,7 +172,7 @@ export function QBankCreateClient() {
             }}
           />
           <div className="flex justify-end">
-            <Button onClick={() => router.push(`${base}/${bank.id}`)}>Open bank</Button>
+            <Button onClick={() => router.push(`${base}/${bank.id}`)}>{t("openBank")}</Button>
           </div>
         </div>
       )}

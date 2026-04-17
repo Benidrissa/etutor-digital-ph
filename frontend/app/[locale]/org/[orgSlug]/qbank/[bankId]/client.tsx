@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,8 +24,15 @@ interface Props {
 
 const PAGE_SIZE = 20;
 
+const STATUS_KEY: Record<"draft" | "published" | "archived", string> = {
+  draft: "statusDraft",
+  published: "statusPublished",
+  archived: "statusArchived",
+};
+
 export function QBankDetailClient({ bankId }: Props) {
   const locale = useLocale();
+  const t = useTranslations("qbank");
   const { org } = useOrg();
   const [bank, setBank] = useState<QBankBank | null>(null);
   const [questions, setQuestions] = useState<QBankQuestionFull[]>([]);
@@ -107,30 +114,30 @@ export function QBankDetailClient({ bankId }: Props) {
         href={base}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-gray-900"
       >
-        <ArrowLeft className="h-4 w-4" /> Back to banks
+        <ArrowLeft className="h-4 w-4" /> {t("backToBanks")}
       </Link>
 
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-semibold">{bank.title}</h1>
-            <Badge>{bank.status}</Badge>
+            <Badge>{t(STATUS_KEY[bank.status])}</Badge>
           </div>
           {bank.description && (
             <p className="mt-1 text-sm text-muted-foreground">{bank.description}</p>
           )}
           <p className="mt-2 text-xs text-muted-foreground">
-            {total} {total === 1 ? "question" : "questions"} · {bank.time_per_question_sec}s per Q · {bank.passing_score}% to pass · {bank.language.toUpperCase()}
+            {t("questionCount", { count: total })} · {t("timePerQSuffix", { seconds: bank.time_per_question_sec })} · {bank.passing_score}% · {bank.language.toUpperCase()}
           </p>
         </div>
         <Button onClick={togglePublished} disabled={publishing} variant="outline">
           {publishing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {bank.status === "published" ? "Unpublish" : "Publish"}
+          {bank.status === "published" ? t("unpublish") : t("publish")}
         </Button>
       </header>
 
       <section className="space-y-3 rounded-lg border bg-white p-4">
-        <h2 className="text-lg font-medium">Add more questions</h2>
+        <h2 className="text-lg font-medium">{t("addMoreQuestions")}</h2>
         <QBankPdfUpload
           bankId={bankId}
           onProcessed={(res) => {
@@ -141,15 +148,15 @@ export function QBankDetailClient({ bankId }: Props) {
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-medium">Questions</h2>
+          <h2 className="text-lg font-medium">{t("questionsHeader")}</h2>
           {categories.length > 0 && (
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
               className="rounded-md border px-3 py-1.5 text-sm"
-              aria-label="Filter by category"
+              aria-label={t("filterByCategory")}
             >
-              <option value="all">All categories</option>
+              <option value="all">{t("allCategories")}</option>
               {categories.map((c) => (
                 <option key={c} value={c}>
                   {c}
@@ -161,7 +168,7 @@ export function QBankDetailClient({ bankId }: Props) {
 
         {visibleQuestions.length === 0 ? (
           <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-            No questions yet. Upload a PDF above to extract some.
+            {t("noQuestionsYet")}
           </p>
         ) : (
           <ul className="space-y-4">
@@ -190,10 +197,10 @@ export function QBankDetailClient({ bankId }: Props) {
               disabled={page === 1}
               onClick={() => void loadQuestions(page - 1)}
             >
-              Previous
+              {t("previous")}
             </Button>
             <span className="text-sm text-muted-foreground">
-              Page {page} / {totalPages}
+              {t("pagePosition", { page, total: totalPages })}
             </span>
             <Button
               variant="outline"
@@ -201,7 +208,7 @@ export function QBankDetailClient({ bankId }: Props) {
               disabled={page >= totalPages}
               onClick={() => void loadQuestions(page + 1)}
             >
-              Next
+              {t("next")}
             </Button>
           </div>
         )}
