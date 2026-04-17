@@ -1998,6 +1998,9 @@
     "reviewAnswers": "Revoir les réponses",
     "categoryBreakdown": "Résultats par catégorie",
     "timeTaken": "Temps total : {seconds}s",
-    "noQuestions": "Aucune question disponible"
+    "noQuestions": "Aucune question disponible",
+    "showIncorrectOnly": "Afficher uniquement les erreurs",
+    "noIncorrect": "Aucune réponse incorrecte à revoir.",
+    "attemptHistory": "Tentatives précédentes"
   }
 }

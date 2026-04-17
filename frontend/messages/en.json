@@ -1998,6 +1998,9 @@
     "reviewAnswers": "Review Answers",
     "categoryBreakdown": "Results by Category",
     "timeTaken": "Total time: {seconds}s",
-    "noQuestions": "No questions available"
+    "noQuestions": "No questions available",
+    "showIncorrectOnly": "Show incorrect only",
+    "noIncorrect": "No incorrect answers to review.",
+    "attemptHistory": "Previous attempts"
   }
 }
