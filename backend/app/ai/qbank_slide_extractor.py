@@ -357,8 +357,20 @@ def _parse_question_cluster(cluster: list[dict]) -> tuple[str, list[str], list[i
     return question_text, options, correct_indices
 
 
-def _tier1_confidence(questions: list[tuple[str, list[str], list[int]]], has_image: bool) -> float:
-    """Score how confident we are in the Tier 1 extraction (0.0 - 1.0)."""
+def _tier1_confidence(
+    questions: list[tuple[str, list[str], list[int]]],
+    has_image: bool,
+    cluster_count: int | None = None,
+) -> float:
+    """Score how confident we are in the Tier 1 extraction (0.0 - 1.0).
+
+    If cluster_count is provided and exceeds the number of successfully parsed
+    questions, the score is halved — this guards against the case where the
+    slide has 2 question clusters but only 1 parses cleanly (irregular second
+    question). Without the penalty, the "looks perfect" score from the single
+    surviving question could keep Tier 1 above the threshold and silently drop
+    the second question.
+    """
     if not questions:
         return 0.0
 
@@ -378,6 +390,12 @@ def _tier1_confidence(questions: list[tuple[str, list[str], list[int]]], has_ima
     # Options within a question have consistent length (not single-char OCR junk)
     if all(all(len(o) >= 2 for o in opts) for _, opts, _ in questions):
         score += 0.1
+
+    # Penalty: if the cluster scanner found more question-shaped blocks than we
+    # successfully parsed, halve the score to force a Vision escalation.
+    if cluster_count is not None and cluster_count > len(questions):
+        score *= 0.5
+
     return min(score, 1.0)
 
 
@@ -442,7 +460,7 @@ def _extract_tier1(
         webp_bytes, width, height = _convert_to_webp(png_bytes)
         has_image = False
 
-    confidence = _tier1_confidence(parsed, has_image)
+    confidence = _tier1_confidence(parsed, has_image, cluster_count=len(clusters))
 
     questions = [
         ExtractedSlideQuestion(
