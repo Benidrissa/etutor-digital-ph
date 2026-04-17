@@ -932,7 +932,8 @@
   "Roles": {
     "user": "Utilisateur",
     "expert": "Expert",
-    "admin": "Administrateur"
+    "admin": "Administrateur",
+    "sub_admin": "Sous-administrateur"
   },
   "Admin": {
     "courses": {
