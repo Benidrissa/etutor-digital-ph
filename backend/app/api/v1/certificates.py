@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
@@ -28,6 +28,23 @@ router = APIRouter(tags=["Certificates"])
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def frontend_url_from_request(request: Request) -> str:
+    """Derive the public frontend URL from the incoming request.
+
+    Prefers Traefik-set X-Forwarded-* headers, falls back to request.url,
+    then to settings.frontend_url. Returns URL without trailing slash.
+    """
+    from app.infrastructure.config.settings import settings
+
+    proto = request.headers.get("x-forwarded-proto")
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    if proto and host:
+        return f"{proto}://{host}".rstrip("/")
+    if host:
+        return f"{request.url.scheme}://{host}".rstrip("/")
+    return settings.frontend_url.rstrip("/")
 
 
 def _template_to_response(t) -> CertificateTemplateResponse:
@@ -164,6 +181,7 @@ async def get_certificate_detail(
 @router.get("/certificates/{certificate_id}/download")
 async def download_certificate_pdf(
     certificate_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db_session),
     current_user: AuthenticatedUser = Depends(get_current_user),
 ):
@@ -210,7 +228,10 @@ async def download_certificate_pdf(
 
     pdf_svc = CertificatePDFService()
     language = current_user.preferred_language or "fr"
-    await pdf_svc.generate_and_store(cert, cert.template, cert.course, user, db, language)
+    frontend_url = frontend_url_from_request(request)
+    await pdf_svc.generate_and_store(
+        cert, cert.template, cert.course, user, db, language, frontend_url=frontend_url
+    )
 
     # Now download the freshly generated PDF
     from app.infrastructure.storage.s3 import S3StorageService

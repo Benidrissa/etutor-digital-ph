@@ -60,6 +60,7 @@ def _render_pdf(
     course: Course,
     user: User,
     language: str,
+    frontend_url: str,
 ) -> bytes:
     """Synchronous PDF rendering using ReportLab canvas. Returns PDF bytes."""
     from reportlab.pdfgen.canvas import Canvas
@@ -192,7 +193,7 @@ def _render_pdf(
     c.line(60, y_bottom + 15, 250, y_bottom + 15)
 
     # ── QR code (right side) ───────────────────────────────────
-    verification_url = f"{settings.frontend_url}/verify/{certificate.verification_code}"
+    verification_url = f"{frontend_url.rstrip('/')}/verify/{certificate.verification_code}"
     try:
         import qrcode
 
@@ -238,9 +239,16 @@ class CertificatePDFService:
         course: Course,
         user: User,
         language: str = "fr",
+        frontend_url: str | None = None,
     ) -> bytes:
-        """Generate certificate PDF bytes. Runs ReportLab in a thread pool."""
-        return await asyncio.to_thread(_render_pdf, certificate, template, course, user, language)
+        """Generate certificate PDF bytes. Runs ReportLab in a thread pool.
+
+        If frontend_url is None, falls back to settings.frontend_url (for background jobs).
+        """
+        resolved_url = frontend_url or settings.frontend_url
+        return await asyncio.to_thread(
+            _render_pdf, certificate, template, course, user, language, resolved_url
+        )
 
     async def generate_and_store(
         self,
@@ -250,12 +258,15 @@ class CertificatePDFService:
         user: User,
         db: AsyncSession,
         language: str = "fr",
+        frontend_url: str | None = None,
     ) -> str:
         """Generate PDF, upload to MinIO, update certificate record.
 
         Returns the public URL of the stored PDF.
         """
-        pdf_bytes = await self.generate_pdf(certificate, template, course, user, language)
+        pdf_bytes = await self.generate_pdf(
+            certificate, template, course, user, language, frontend_url
+        )
 
         # Upload to MinIO
         storage = S3StorageService()
