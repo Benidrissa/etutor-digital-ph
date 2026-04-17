@@ -721,6 +721,12 @@ export function AICourseWizard({
   }, [courseId, isIndexing, taskId, t, queryClient]);
 
   // ── Extraction polling (background PDF extraction) ─────────────────
+  // Depend on a stable key derived from file statuses, not the full files
+  // array — otherwise every setFiles call would re-run this effect and
+  // constantly tear down + restart the timeout.
+  const extractionKey = files
+    .map((f) => `${f.name}:${f.status}:${f.extraction_status ?? ""}`)
+    .join("|");
 
   useEffect(() => {
     const hasExtracting = files.some(
@@ -775,7 +781,10 @@ export function AICourseWizard({
     return () => {
       if (extractionPollRef.current) clearTimeout(extractionPollRef.current);
     };
-  }, [courseId, files, isIndexing]);
+    // extractionKey captures the meaningful shape of files for this effect;
+    // files is intentionally referenced inside but not a dep to avoid churn.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseId, extractionKey, isIndexing]);
 
   const cancelIndexation = useCallback(async () => {
     if (!courseId) return;

@@ -5,22 +5,44 @@ import uuid
 from pathlib import Path
 
 import structlog
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
 from app.domain.models.course_resource import (
     EXTRACTION_STATUS_DONE,
     EXTRACTION_STATUS_EXTRACTING,
     EXTRACTION_STATUS_FAILED,
 )
+from app.infrastructure.config.settings import settings
 from app.tasks.celery_app import celery_app
 
 logger = structlog.get_logger(__name__)
 
 UPLOAD_DIR = Path("uploads/course_resources")
 
+_engine = create_engine(settings.database_url_sync, pool_pre_ping=True, pool_size=2, max_overflow=0)
+
+
+def _mark_failed(resource_id: str) -> None:
+    from app.domain.models.course_resource import CourseResource
+
+    try:
+        with Session(_engine) as session:
+            res = session.get(CourseResource, uuid.UUID(resource_id))
+            if res:
+                res.extraction_status = EXTRACTION_STATUS_FAILED
+                session.commit()
+    except Exception as mark_exc:
+        logger.warning(
+            "extract_course_resource: could not mark failed",
+            resource_id=resource_id,
+            error=str(mark_exc),
+        )
+
 
 @celery_app.task(
     bind=True,
-    autoretry_for=(Exception,),
+    autoretry_for=(OSError,),
     retry_kwargs={"max_retries": 3, "countdown": 30},
     time_limit=600,
     soft_time_limit=540,
@@ -35,19 +57,11 @@ def extract_course_resource(self, resource_id: str) -> dict:
     row(s) with the extracted text, then chains index_course_resources if the
     course is in AI-assisted mode and has a rag_collection_id.
     """
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import Session
-
     from app.domain.models.course import Course
     from app.domain.models.course_resource import CourseResource
-    from app.infrastructure.config.settings import settings
-
-    engine = create_engine(
-        settings.database_url_sync, pool_pre_ping=True, pool_size=2, max_overflow=0
-    )
 
     try:
-        with Session(engine) as session:
+        with Session(_engine) as session:
             resource = session.get(CourseResource, uuid.UUID(resource_id))
             if resource is None:
                 logger.warning(
@@ -89,11 +103,7 @@ def extract_course_resource(self, resource_id: str) -> dict:
                 resource_id=resource_id,
                 path=str(pdf_path),
             )
-            with Session(engine) as session:
-                res = session.get(CourseResource, uuid.UUID(resource_id))
-                if res:
-                    res.extraction_status = EXTRACTION_STATUS_FAILED
-                    session.commit()
+            _mark_failed(resource_id)
             return {"status": "file_not_found"}
 
         data = pdf_path.read_bytes()
@@ -118,7 +128,7 @@ def extract_course_resource(self, resource_id: str) -> dict:
 
         new_resource_ids: list[str] = []
 
-        with Session(engine) as session:
+        with Session(_engine) as session:
             resource = session.get(CourseResource, uuid.UUID(resource_id))
             if resource is None:
                 return {"status": "not_found"}
@@ -184,7 +194,7 @@ def extract_course_resource(self, resource_id: str) -> dict:
                     total_chars=total_chars,
                 )
 
-        with Session(engine) as session:
+        with Session(_engine) as session:
             course = session.get(Course, uuid.UUID(course_id))
             if course and course.creation_mode == "ai_assisted" and course.rag_collection_id:
                 from celery.result import AsyncResult
@@ -211,24 +221,14 @@ def extract_course_resource(self, resource_id: str) -> dict:
             "course_id": course_id,
         }
 
+    except OSError:
+        _mark_failed(resource_id)
+        raise
     except Exception as exc:
         logger.error(
             "extract_course_resource: failed",
             resource_id=resource_id,
             error=str(exc),
         )
-        try:
-            with Session(engine) as session:
-                res = session.get(CourseResource, uuid.UUID(resource_id))
-                if res:
-                    res.extraction_status = EXTRACTION_STATUS_FAILED
-                    session.commit()
-        except Exception as mark_exc:
-            logger.warning(
-                "extract_course_resource: could not mark failed",
-                resource_id=resource_id,
-                error=str(mark_exc),
-            )
+        _mark_failed(resource_id)
         raise
-    finally:
-        engine.dispose()
