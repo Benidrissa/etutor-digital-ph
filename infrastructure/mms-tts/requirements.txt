@@ -1,0 +1,7 @@
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+transformers==4.47.1
+torch==2.5.1
+scipy==1.14.1
+numpy==1.26.4
+pydub==0.25.1
