@@ -2069,6 +2069,22 @@
     "uploadOnlyPdf": "Seuls les fichiers PDF sont acceptés.",
     "uploadExtracting": "Extraction…",
     "uploadExtractedCount": "{count} question(s) extraite(s){warnings}.",
-    "uploadWithWarnings": " avec {count} avertissement(s)"
+    "uploadWithWarnings": " avec {count} avertissement(s)",
+    "audio": {
+      "label": "Audio de la question",
+      "languagePickerLabel": "Langue de l’audio",
+      "pillAriaLabel": "Écouter en {language}",
+      "loading": "Chargement de l’audio…",
+      "notReady": "L’audio est en cours de préparation pour cette langue.",
+      "failed": "La génération audio a échoué pour cette langue.",
+      "error": "Impossible de charger l’audio.",
+      "unsupported": "Votre navigateur ne prend pas en charge l’élément audio."
+    },
+    "audioLanguages": {
+      "fr": "Français",
+      "mos": "Mooré",
+      "dyu": "Dioula",
+      "bam": "Bambara"
+    }
   }
-}
+}\n

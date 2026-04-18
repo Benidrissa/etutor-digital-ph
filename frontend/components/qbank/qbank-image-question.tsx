@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
+import { QBankAudioPlayer } from '@/components/qbank/qbank-audio-player';
 import type { QBankQuestion } from '@/lib/api';
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
@@ -70,6 +71,8 @@ export function QBankImageQuestion({
           />
         </div>
       )}
+
+      <QBankAudioPlayer questionId={question.id} />
 
       <p className="text-base font-medium leading-relaxed">{question.question_text}</p>
 
