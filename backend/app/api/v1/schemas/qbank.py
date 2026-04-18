@@ -281,7 +281,6 @@ class AudioStatusResponse(BaseModel):
     question_id: str
     language: str
     status: str
-    storage_url: str | None = None
     duration_seconds: int | None = None
 
 
