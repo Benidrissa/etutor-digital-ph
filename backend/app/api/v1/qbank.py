@@ -633,7 +633,6 @@ async def get_question_audio(
 @router.get("/questions/{question_id}/image")
 async def get_question_image(
     question_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
     """Stream a qbank question's webp image from MinIO via the backend.
@@ -643,6 +642,11 @@ async def get_question_image(
     from browsers. This endpoint reuses the same pattern as the lesson audio
     streamer and serves the bytes with a long-lived cache header — the
     storage_key includes order_index so the URL is stable per question.
+
+    No auth: <img> tags cannot attach an Authorization header, and the frontend
+    embeds these URLs straight into src attributes. The unguessable question
+    UUID is the capability, matching the pattern in source_images.get_image_data
+    and lesson_audio.get_audio_data (#1628).
     """
     question = await db.get(QBankQuestion, question_id)
     if question is None or not question.image_storage_key:
