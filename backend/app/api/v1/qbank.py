@@ -737,6 +737,61 @@ async def get_question_translation(
     )
 
 
+@router.get("/debug/nllb-probe")
+async def debug_nllb_probe(
+    text: str = Query(..., min_length=1, max_length=500),
+    target: str = Query(..., pattern=r"^(mos|dyu|bam|ful)$"),
+    source: str = Query("fr", pattern=r"^(fr|en|ar|pt|es)$"),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+):
+    """Probe the NLLB sidecar directly with raw text and return the response.
+
+    Diagnostic for #1696: when stored translations are missing, we need
+    to see whether the sidecar is returning empty strings, raising, or
+    producing valid text. The endpoint bypasses the service layer and
+    storage so it reveals the raw model output per invocation.
+    """
+    import httpx
+
+    from app.infrastructure.config.settings import settings
+    from app.integrations.nllb_translate import (
+        SOURCE_CODES,
+        TARGET_CODES,
+    )
+
+    src_code = SOURCE_CODES.get(source, "fra_Latn")
+    tgt_code = TARGET_CODES[target]
+
+    base_url = settings.nllb_url.rstrip("/")
+    try:
+        async with httpx.AsyncClient(timeout=settings.nllb_timeout_seconds) as client:
+            health = await client.get(f"{base_url}/health")
+            translate = await client.post(
+                f"{base_url}/translate",
+                json={"texts": [text], "src": src_code, "tgt": tgt_code},
+            )
+    except httpx.HTTPError as exc:
+        return {
+            "error": f"sidecar unreachable: {exc}",
+            "base_url": base_url,
+        }
+
+    return {
+        "base_url": base_url,
+        "src": src_code,
+        "tgt": tgt_code,
+        "input": text,
+        "health_status": health.status_code,
+        "health_body": health.json()
+        if health.headers.get("content-type", "").startswith("application/json")
+        else health.text[:300],
+        "translate_status": translate.status_code,
+        "translate_body": translate.json()
+        if translate.headers.get("content-type", "").startswith("application/json")
+        else translate.text[:500],
+    }
+
+
 @router.post(
     "/questions/{question_id}/audio",
     response_model=AudioStatusResponse,
