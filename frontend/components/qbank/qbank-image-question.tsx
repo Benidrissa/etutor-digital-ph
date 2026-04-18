@@ -10,6 +10,12 @@ const OPTION_LABELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
 interface QBankImageQuestionProps {
   question: QBankQuestion;
+  /**
+   * Pre-fetched audio URLs keyed by language. Populated from
+   * TestStartResponse.audio so the player can mount the <audio>
+   * element without a per-question round-trip (#1674).
+   */
+  preloadedAudio?: Record<string, string>;
   selectedIndices: number[];
   onToggle: (index: number) => void;
   showFeedback: boolean;
@@ -31,6 +37,7 @@ function selectionIsCorrect(
 
 export function QBankImageQuestion({
   question,
+  preloadedAudio,
   selectedIndices,
   onToggle,
   showFeedback,
@@ -56,9 +63,12 @@ export function QBankImageQuestion({
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-2 sm:gap-3">
       {question.image_url && (
-        <div className="relative h-[300px] w-full overflow-hidden rounded-lg bg-muted">
+        // Height is capped to a fraction of the viewport so the options
+        // stay in view on phones (iPhone SE → 813px desktop). object-contain
+        // keeps the full illustration visible regardless of aspect ratio.
+        <div className="relative h-[30dvh] max-h-[360px] min-h-[160px] w-full overflow-hidden rounded-lg bg-muted sm:h-[38dvh]">
           <Image
             src={question.image_url}
             alt={question.question_text}
@@ -72,13 +82,18 @@ export function QBankImageQuestion({
         </div>
       )}
 
-      <QBankAudioPlayer questionId={question.id} />
+      <QBankAudioPlayer
+        questionId={question.id}
+        preloadedUrls={preloadedAudio}
+      />
 
-      <p className="text-base font-medium leading-relaxed">{question.question_text}</p>
+      <p className="text-sm font-medium leading-snug sm:text-base">
+        {question.question_text}
+      </p>
 
       {showFeedback && hasSelection && (
         <div className={cn(
-          'rounded-lg px-3 py-2 text-sm font-medium',
+          'rounded-lg px-3 py-1.5 text-sm font-medium',
           isAnswerCorrect
             ? 'bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-300'
             : 'bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300'
@@ -87,7 +102,7 @@ export function QBankImageQuestion({
         </div>
       )}
 
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-1.5 sm:gap-2">
         {question.options.map((option, index) => {
           const isSelected = selectedIndices.includes(index);
           return (
@@ -96,13 +111,13 @@ export function QBankImageQuestion({
               onClick={() => onToggle(index)}
               disabled={showFeedback}
               className={cn(
-                'flex min-h-[44px] items-center gap-3 rounded-lg border-2 px-4 py-3 text-left transition-colors',
+                'flex min-h-11 items-center gap-3 rounded-lg border-2 px-3 py-2 text-left transition-colors sm:px-4 sm:py-3',
                 getOptionStyle(index),
                 'disabled:cursor-default'
               )}
             >
               <span className={cn(
-                'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-sm font-semibold',
+                'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-sm font-semibold sm:h-8 sm:w-8',
                 isSelected
                   ? 'border-primary bg-primary text-primary-foreground'
                   : 'border-muted-foreground/30'

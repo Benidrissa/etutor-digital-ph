@@ -154,6 +154,12 @@ class TestStartResponse(BaseModel):
     show_feedback: bool
     questions: list[TestStartQuestion]
     total_questions: int
+    # Pre-fetched audio URLs: ``{question_id: {language: url}}``. Only
+    # entries with ``status == "ready"`` are included; missing keys mean
+    # the client should fall back to polling ``/questions/{id}/audio``.
+    # Preloading these on the client lets the learner start hearing the
+    # question within the timer window without a per-question round-trip.
+    audio: dict[str, dict[str, str]] = Field(default_factory=dict)
 
 
 class TestSubmitRequest(BaseModel):

@@ -1,8 +1,10 @@
 """Async HTTP client for the Meta MMS TTS sidecar service.
 
 The sidecar is a separate Docker service (see infrastructure/mms-tts) that
-wraps facebook/mms-tts-{mos,dyu,bam} models and returns OGG/Opus audio. We
-call it over plain HTTP from the backend and the Celery worker.
+wraps facebook/mms-tts-{mos,dyu,bam,ffm} models and returns OGG/Opus audio.
+``ful`` is exposed to the backend and frontend; the sidecar maps it to the
+``ffm`` (Maasina Fulfulde) VITS model. We call it over plain HTTP from the
+backend and the Celery worker.
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ from app.infrastructure.config.settings import settings
 
 logger = structlog.get_logger(__name__)
 
-SUPPORTED_LANGUAGES = {"mos", "dyu", "bam"}
+SUPPORTED_LANGUAGES = {"mos", "dyu", "bam", "ful"}
 
 
 class MMSTTSError(Exception):

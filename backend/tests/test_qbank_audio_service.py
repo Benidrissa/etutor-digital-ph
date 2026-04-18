@@ -15,6 +15,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.domain.services.qbank_audio_service import (
+    SUPPORTED_LANGUAGES,
     QBankAudioService,
     build_audio_script,
     estimate_duration_seconds,
@@ -39,7 +40,12 @@ def test_build_audio_script_french_prefix():
 
 def test_build_audio_script_mms_languages_use_native_prefix():
     q = _FakeQuestion("Question", ["A", "B"])
-    for lang, prefix in [("mos", "Tʋʋmde"), ("dyu", "Sugandili"), ("bam", "Sugandili")]:
+    for lang, prefix in [
+        ("mos", "Tʋʋmde"),
+        ("dyu", "Sugandili"),
+        ("bam", "Sugandili"),
+        ("ful", "Suɓaande"),
+    ]:
         script = build_audio_script(q, lang)
         assert f"{prefix} A" in script
         assert f"{prefix} B" in script
@@ -77,3 +83,11 @@ async def test_synthesize_dispatches_mms_languages_to_client():
     out = await svc._synthesize_bytes("lakala", "dyu")
     assert out == b"OGG"
     fake_mms.synthesize.assert_awaited_once_with("lakala", "dyu")
+
+
+def test_supported_languages_is_non_empty_tuple():
+    # Pregeneration loops over this tuple, so it must stay iterable and
+    # contain at least French (the baseline).
+    assert isinstance(SUPPORTED_LANGUAGES, tuple)
+    assert "fr" in SUPPORTED_LANGUAGES
+    assert all(isinstance(lang, str) for lang in SUPPORTED_LANGUAGES)

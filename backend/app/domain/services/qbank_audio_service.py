@@ -32,7 +32,13 @@ from app.integrations.mms_tts import MMSTTSClient, MMSTTSError
 
 logger = structlog.get_logger(__name__)
 
-SupportedLanguage = Literal["fr", "mos", "dyu", "bam"]
+SupportedLanguage = Literal["fr", "mos", "dyu", "bam", "ful"]
+
+# Canonical list of languages audio is generated for. Pregeneration loops
+# over this tuple when a bank is published so every (question, language)
+# pair has a ready clip by the time a learner starts a test (#1674).
+SUPPORTED_LANGUAGES: tuple[str, ...] = ("fr", "mos", "dyu", "bam", "ful")
+
 OPUS_CONTENT_TYPE = "audio/ogg"
 OPUS_BYTES_PER_SECOND = 6 * 1024  # matches LessonAudioService._estimate_duration
 
@@ -48,6 +54,7 @@ def build_audio_script(question: QBankQuestion, language: str) -> str:
         "mos": "Tʋʋmde",  # Moore: "task/choice"
         "dyu": "Sugandili",  # Dioula/Jula: "choice"
         "bam": "Sugandili",  # Bambara: "choice"
+        "ful": "Suɓaande",  # Fulfulde: "choice"
     }
     prefix = prefixes.get(language, "Option")
     parts = [question.question_text.strip()]
@@ -179,8 +186,15 @@ class QBankAudioService:
         db: AsyncSession,
         bank_id: uuid.UUID,
         language: str,
+        *,
+        skip_ready: bool = True,
     ) -> dict:
-        """Generate audio for every question in a bank. Intended for Celery."""
+        """Generate audio for every question in a bank. Intended for Celery.
+
+        Idempotent by default: questions whose ``(question, language)`` row
+        is already ``ready`` are skipped so republishing or retrying a
+        bank doesn't re-bill TTS for clips that already exist (#1674).
+        """
         bank = await db.get(QuestionBank, bank_id)
         if bank is None:
             raise HTTPException(
@@ -198,9 +212,25 @@ class QBankAudioService:
             .all()
         )
 
+        ready_question_ids: set[uuid.UUID] = set()
+        if skip_ready and questions:
+            existing = await db.execute(
+                select(QBankQuestionAudio).where(
+                    QBankQuestionAudio.question_id.in_([q.id for q in questions]),
+                    QBankQuestionAudio.language == language,
+                    QBankQuestionAudio.status == QBankAudioStatus.ready,
+                )
+            )
+            ready_question_ids = {row.question_id for row in existing.scalars()}
+
         ready = 0
         failed = 0
+        skipped = 0
         for q in questions:
+            if q.id in ready_question_ids:
+                skipped += 1
+                ready += 1  # Already-ready clips still count as ready.
+                continue
             row = await self.generate_question_audio(db, q.id, language)
             if row.status == QBankAudioStatus.ready:
                 ready += 1
@@ -211,9 +241,27 @@ class QBankAudioService:
             "bank_id": str(bank_id),
             "language": language,
             "total": len(questions),
+            "skipped": skipped,
             "ready": ready,
             "failed": failed,
         }
+
+    async def invalidate_question(
+        self,
+        db: AsyncSession,
+        question_id: uuid.UUID,
+    ) -> None:
+        """Drop every cached audio row for a question.
+
+        Called when a question's text or options change — the stored
+        clip no longer matches the script and must be regenerated.
+        """
+        await db.execute(
+            QBankQuestionAudio.__table__.delete().where(
+                QBankQuestionAudio.question_id == question_id,
+            )
+        )
+        await db.commit()
 
     async def store_uploaded_audio(
         self,
