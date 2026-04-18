@@ -72,11 +72,11 @@ export function QBankAudioPlayer({ questionId, defaultLanguage }: QBankAudioPlay
   }, [language]);
 
   return (
-    <div className="flex flex-col gap-2" aria-label={t('audio.label')}>
+    <div className="flex flex-col gap-1.5 sm:gap-2" aria-label={t('audio.label')}>
       <div
         role="radiogroup"
         aria-label={t('audio.languagePickerLabel')}
-        className="flex flex-wrap gap-2"
+        className="flex flex-wrap gap-1.5 sm:gap-2"
       >
         {LANGUAGES.map((lang) => {
           const isSelected = lang === language;
@@ -88,8 +88,11 @@ export function QBankAudioPlayer({ questionId, defaultLanguage }: QBankAudioPlay
               aria-checked={isSelected}
               aria-label={t('audio.pillAriaLabel', { language: tLang(lang) })}
               onClick={() => setLanguage(lang)}
+              // min-h-9 on mobile keeps the pills compact so the 4-5
+              // language row fits next to the image; bumps to min-h-11
+              // on sm+ where there is room for WCAG touch targets.
               className={cn(
-                'min-h-11 min-w-16 rounded-full border px-4 py-1.5 text-sm font-medium transition-colors',
+                'min-h-9 rounded-full border px-3 py-1 text-xs font-medium transition-colors sm:min-h-11 sm:px-4 sm:py-1.5 sm:text-sm',
                 isSelected
                   ? 'border-primary bg-primary text-primary-foreground'
                   : 'border-border bg-background hover:border-primary/50'
@@ -107,14 +110,6 @@ export function QBankAudioPlayer({ questionId, defaultLanguage }: QBankAudioPlay
         </p>
       )}
 
-      {!error && !status && (
-        <p className="text-xs text-muted-foreground">{t('audio.loading')}</p>
-      )}
-
-      {status && (status.status === 'pending' || status.status === 'generating') && (
-        <p className="text-xs text-muted-foreground">{t('audio.notReady')}</p>
-      )}
-
       {status?.status === 'failed' && (
         <p className="text-xs text-destructive" role="alert">{t('audio.failed')}</p>
       )}
@@ -125,11 +120,16 @@ export function QBankAudioPlayer({ questionId, defaultLanguage }: QBankAudioPlay
           src={status.audio_url}
           controls
           preload="none"
-          className="w-full"
+          className="h-9 w-full sm:h-10"
         >
           {t('audio.unsupported')}
         </audio>
       )}
+
+      {/* The "loading" and "notReady" states are intentionally silent on
+          the test-taker to avoid eating vertical space while the learner
+          is under a timer. Audio availability is communicated by whether
+          the <audio> element renders at all. */}
     </div>
   );
 }

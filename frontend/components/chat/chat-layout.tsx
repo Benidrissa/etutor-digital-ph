@@ -12,12 +12,16 @@ function ChatUIComponents() {
     ? pathname.split('/modules/')[1]?.split('/')[0]
     : undefined;
 
-  // Hide floating button when already on the tutor page
+  // Hide floating button on screens where it would overlap the primary
+  // action (tutor page, qbank test-taker where the sticky footer already
+  // holds the Valider / Terminer button).
   const isOnTutorPage = pathname.endsWith('/tutor');
+  const isOnQbankTest = /\/qbank\/tests\/[^/]+$/.test(pathname);
+  const hideFab = isOnTutorPage || isOnQbankTest;
 
   return (
     <>
-      {!isOnTutorPage && <FloatingChatButton onClick={openChat} />}
+      {!hideFab && <FloatingChatButton onClick={openChat} />}
       <ChatPanel 
         isOpen={isOpen} 
         onClose={closeChat}
