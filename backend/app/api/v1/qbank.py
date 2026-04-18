@@ -77,8 +77,8 @@ def _audio_url_for(
 ) -> str | None:
     """Build a browser-reachable proxy URL for a question's audio clip.
 
-    Driving-school banks ship audio in fr/mos/dyu/bam (required so
-    learners who can't read can still take the test). The DB column
+    Driving-school banks ship audio in fr/mos/dyu/bam/ful (required
+    so learners who can't read can still take the test). The DB column
     stores ``http://minio:9000/...`` which the browser can't reach —
     same pattern as ``_image_url_for``. Returns ``None`` when the audio
     row has no bytes yet (pending/failed states).

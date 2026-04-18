@@ -1571,7 +1571,7 @@ export async function getQBankTestReview(
 
 // Question audio — backend streams OGG/Opus from MinIO via a proxy (#1658).
 // The status poll returns `audio_url` only when `status === "ready"`.
-export type QBankAudioLanguage = "fr" | "mos" | "dyu" | "bam";
+export type QBankAudioLanguage = "fr" | "mos" | "dyu" | "bam" | "ful";
 
 export type QBankAudioReadiness =
   | "pending"
