@@ -2,10 +2,21 @@ import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 import { withSentryConfig } from "@sentry/nextjs";
 import createBundleAnalyzer from "@next/bundle-analyzer";
+import withSerwistInit from "@serwist/next";
 
 const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
 const withBundleAnalyzer = createBundleAnalyzer({
   enabled: process.env.ANALYZE === "true",
+});
+
+// Wires sw.ts → /public/sw.js at build time. Required for PWA registration;
+// without this the standalone build ships with no service worker and offline
+// mode silently fails (see issue #1615).
+const withSerwist = withSerwistInit({
+  swSrc: "sw.ts",
+  swDest: "public/sw.js",
+  reloadOnOnline: true,
+  disable: process.env.NODE_ENV === "development",
 });
 
 const nextConfig: NextConfig = {
@@ -108,7 +119,7 @@ const nextConfig: NextConfig = {
 };
 
 export default withSentryConfig(
-  withBundleAnalyzer(withNextIntl(nextConfig)),
+  withSerwist(withBundleAnalyzer(withNextIntl(nextConfig))),
   {
     org: process.env.SENTRY_ORG,
     project: process.env.SENTRY_PROJECT,
