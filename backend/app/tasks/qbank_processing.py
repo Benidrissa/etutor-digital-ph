@@ -45,9 +45,7 @@ def process_qbank_pdf(
     2. Store images in MinIO
     3. Create QBankQuestion rows in the database
     """
-    return asyncio.get_event_loop().run_until_complete(
-        _process_pdf_async(self, bank_id, pdf_filename)
-    )
+    return asyncio.run(_process_pdf_async(self, bank_id, pdf_filename))
 
 
 async def _process_pdf_async(task, bank_id: str, pdf_filename: str) -> dict:
@@ -93,15 +91,14 @@ async def _process_pdf_async(task, bank_id: str, pdf_filename: str) -> dict:
 
         for idx, q in enumerate(extracted):
             try:
-                # Upload image to MinIO
+                # Upload image to MinIO directly — we're already in an async
+                # context, so await the coroutine. A previous nested
+                # run_until_complete call crashed with "no current event loop".
                 storage_key = f"qbank/{bank_id}/images/{next_order + idx}.webp"
-                # Run async upload in sync context
-                image_url = asyncio.get_event_loop().run_until_complete(
-                    storage.upload_bytes(
-                        key=storage_key,
-                        data=q.image_bytes,
-                        content_type="image/webp",
-                    )
+                image_url = await storage.upload_bytes(
+                    key=storage_key,
+                    data=q.image_bytes,
+                    content_type="image/webp",
                 )
 
                 question = QBankQuestion(
@@ -156,7 +153,7 @@ async def _process_pdf_async(task, bank_id: str, pdf_filename: str) -> dict:
 )
 def generate_qbank_audio_task(self, bank_id: str, language: str) -> dict:
     """Generate TTS audio for every question in a bank, one language at a time."""
-    return asyncio.get_event_loop().run_until_complete(_generate_audio_async(bank_id, language))
+    return asyncio.run(_generate_audio_async(bank_id, language))
 
 
 async def _generate_audio_async(bank_id: str, language: str) -> dict:
