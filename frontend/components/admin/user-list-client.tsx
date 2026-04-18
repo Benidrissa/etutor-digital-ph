@@ -303,17 +303,16 @@ export function UserListClient() {
           />
         </div>
 
-        <select
+        {/* Free-text country filter — the former hardcoded W. African list
+            was tenant-inappropriate for the generalised platform (#1620). */}
+        <input
+          type="text"
           className="min-h-11 rounded-md border border-input bg-background px-3 py-2 text-sm"
           value={country}
           onChange={(e) => { setCountry(e.target.value); setOffset(0); }}
+          placeholder={t("filterCountry")}
           aria-label={t("filterCountry")}
-        >
-          <option value="">{t("allCountries")}</option>
-          {["benin", "burkina-faso", "cote-divoire", "ghana", "mali", "niger", "nigeria", "senegal", "togo"].map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
+        />
 
         <select
           className="min-h-11 rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -336,6 +335,7 @@ export function UserListClient() {
           <option value="">{t("allRoles")}</option>
           <option value="user">{tRoles("user")}</option>
           <option value="expert">{tRoles("expert")}</option>
+          <option value="sub_admin">{tRoles("sub_admin")}</option>
           <option value="admin">{tRoles("admin")}</option>
         </select>
 
