@@ -516,7 +516,7 @@ class TestDallEFallbackOptimization:
                 mock_openai_cls.assert_not_called()
 
         assert result.status == "ready"
-        assert source_img.storage_url in (result.image_url or "")
+        assert result.image_url == f"/api/v1/source-images/{source_img.id}/data"
 
     async def test_dalle_called_when_no_source_image(
         self, service, mock_session, mock_claude_response
@@ -567,7 +567,7 @@ class TestDallEFallbackOptimization:
     async def test_source_image_url_used_when_available(
         self, service, mock_session, mock_claude_response
     ):
-        """Source image's storage_url must be used as image_url."""
+        """Source image resolves to the backend proxy URL — not the internal MinIO URL."""
         from app.domain.models.content import GeneratedContent
 
         source_img = _make_source_image(
@@ -604,7 +604,7 @@ class TestDallEFallbackOptimization:
                     session=mock_session,
                 )
 
-        assert result.image_url == "https://cdn.example.com/figures/fig1.webp"
+        assert result.image_url == f"/api/v1/source-images/{source_img.id}/data"
         assert result.format == "webp"
 
 
