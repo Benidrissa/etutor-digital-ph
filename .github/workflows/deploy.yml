@@ -304,3 +304,167 @@ jobs:
             # Drop the GHCR credential so the server doesn't carry a stale
             # token between deploys — the next run authenticates fresh.
             docker logout ghcr.io
+
+  deploy-production:
+    name: Deploy to Production
+    needs: [build-and-push, build-mms-tts]
+    if: |
+      always()
+      && needs.build-and-push.result == 'success'
+      && (needs.build-mms-tts.result == 'success' || needs.build-mms-tts.result == 'skipped')
+      && github.event_name == 'workflow_dispatch'
+      && github.event.inputs.environment == 'production'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Rsync compose file
+        env:
+          DEPLOY_KEY: ${{ secrets.PROD_DEPLOY_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H 94.250.201.110 >> ~/.ssh/known_hosts
+          # Prefer a prod-specific compose file if one exists in the repo,
+          # otherwise fall back to the shared one.
+          if [ -f docker-compose.prod.sira-donnia.yml ]; then
+            COMPOSE_SRC=docker-compose.prod.sira-donnia.yml
+          else
+            COMPOSE_SRC=docker-compose.prod.yml
+          fi
+          rsync -avz -e "ssh -i ~/.ssh/deploy_key" \
+            "$COMPOSE_SRC" \
+            deploy@94.250.201.110:~/etutor/docker-compose.yml
+
+      - name: Validate required prod secrets
+        run: |
+          # PROD_DEPLOY_SSH_KEY is the only hard requirement — staging's
+          # DEPLOY_SSH_KEY can't reach 94.250.201.110. Everything else
+          # falls back to the staging secret if PROD_* isn't set.
+          missing=""
+          [ -z "${{ secrets.PROD_DEPLOY_SSH_KEY }}" ] && missing="$missing PROD_DEPLOY_SSH_KEY"
+          [ -z "${{ secrets.PROD_POSTGRES_PASSWORD || secrets.POSTGRES_PASSWORD }}" ] && missing="$missing POSTGRES_PASSWORD (set PROD_POSTGRES_PASSWORD or fallback POSTGRES_PASSWORD)"
+          [ -z "${{ secrets.PROD_ANTHROPIC_API_KEY || secrets.ANTHROPIC_API_KEY }}" ] && missing="$missing ANTHROPIC_API_KEY (set PROD_ANTHROPIC_API_KEY or fallback ANTHROPIC_API_KEY)"
+          [ -z "${{ secrets.PROD_OPENAI_API_KEY || secrets.OPENAI_API_KEY }}" ] && missing="$missing OPENAI_API_KEY (set PROD_OPENAI_API_KEY or fallback OPENAI_API_KEY)"
+          [ -z "${{ secrets.PROD_GOOGLE_API_KEY || secrets.GOOGLE_API_KEY }}" ] && missing="$missing GOOGLE_API_KEY (set PROD_GOOGLE_API_KEY or fallback GOOGLE_API_KEY)"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required production secrets:$missing"
+            exit 1
+          fi
+          echo "Prod secret pre-flight: OK"
+          # Soft-optional (observability, etc). Log a warning if absent.
+          [ -z "${{ secrets.PROD_SENTRY_DSN || secrets.SENTRY_DSN }}" ] && echo "::warning::SENTRY_DSN not set — backend Sentry disabled on prod"
+          [ -z "${{ secrets.PROD_NEXT_PUBLIC_POSTHOG_KEY || secrets.NEXT_PUBLIC_POSTHOG_KEY }}" ] && echo "::warning::POSTHOG_KEY not set — frontend analytics disabled on prod"
+
+      - name: Deploy on production server
+        uses: appleboy/ssh-action@v1
+        env:
+          # PROD_* takes precedence; staging secret is the fallback so the
+          # deploy isn't blocked on key rotation day (see PR #1668 discussion).
+          # If you've issued dedicated prod keys, set the PROD_* variants and
+          # they'll override the staging values. Secrets with no PROD_*
+          # counterpart (SENTRY_DSN, NEXT_PUBLIC_*, POSTHOG_*) are left empty
+          # when absent — observability just degrades gracefully.
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          POSTGRES_PASSWORD: ${{ secrets.PROD_POSTGRES_PASSWORD || secrets.POSTGRES_PASSWORD }}
+          ANTHROPIC_API_KEY: ${{ secrets.PROD_ANTHROPIC_API_KEY || secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.PROD_OPENAI_API_KEY || secrets.OPENAI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.PROD_GOOGLE_API_KEY || secrets.GOOGLE_API_KEY }}
+          SENTRY_DSN: ${{ secrets.PROD_SENTRY_DSN || secrets.SENTRY_DSN }}
+          NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.PROD_NEXT_PUBLIC_SENTRY_DSN || secrets.NEXT_PUBLIC_SENTRY_DSN }}
+          NEXT_PUBLIC_POSTHOG_KEY: ${{ secrets.PROD_NEXT_PUBLIC_POSTHOG_KEY || secrets.NEXT_PUBLIC_POSTHOG_KEY }}
+          NEXT_PUBLIC_POSTHOG_HOST: ${{ secrets.PROD_NEXT_PUBLIC_POSTHOG_HOST || secrets.NEXT_PUBLIC_POSTHOG_HOST }}
+          SMS_RELAY_API_KEY: ${{ secrets.PROD_SMS_RELAY_API_KEY || secrets.SMS_RELAY_API_KEY }}
+          SMS_RELAY_TRUSTED_SENDERS: ${{ secrets.PROD_SMS_RELAY_TRUSTED_SENDERS || secrets.SMS_RELAY_TRUSTED_SENDERS }}
+          MINIO_ACCESS_KEY: ${{ secrets.PROD_MINIO_ACCESS_KEY || secrets.MINIO_ACCESS_KEY }}
+          MINIO_SECRET_KEY: ${{ secrets.PROD_MINIO_SECRET_KEY || secrets.MINIO_SECRET_KEY }}
+          DEPLOY_SHA: ${{ github.sha }}
+        with:
+          host: 94.250.201.110
+          username: deploy
+          # SSH key for the prod host — MUST be set explicitly as PROD_*
+          # (staging DEPLOY_SSH_KEY won't have access to 94.250.201.110).
+          key: ${{ secrets.PROD_DEPLOY_SSH_KEY }}
+          envs: GHCR_USER,GHCR_TOKEN,POSTGRES_PASSWORD,ANTHROPIC_API_KEY,OPENAI_API_KEY,GOOGLE_API_KEY,SENTRY_DSN,NEXT_PUBLIC_SENTRY_DSN,NEXT_PUBLIC_POSTHOG_KEY,NEXT_PUBLIC_POSTHOG_HOST,SMS_RELAY_API_KEY,SMS_RELAY_TRUSTED_SENDERS,MINIO_ACCESS_KEY,MINIO_SECRET_KEY,DEPLOY_SHA
+          script: |
+            set -e
+            cd ~/etutor
+
+            # Fresh GHCR login every deploy, same pattern as staging (#1651).
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+            cat > .env << EOF
+            POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+            ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+            OPENAI_API_KEY=${OPENAI_API_KEY}
+            GOOGLE_API_KEY=${GOOGLE_API_KEY}
+            SENTRY_DSN=${SENTRY_DSN}
+            NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN}
+            NEXT_PUBLIC_POSTHOG_KEY=${NEXT_PUBLIC_POSTHOG_KEY}
+            NEXT_PUBLIC_POSTHOG_HOST=${NEXT_PUBLIC_POSTHOG_HOST}
+            SMS_RELAY_API_KEY=${SMS_RELAY_API_KEY}
+            SMS_RELAY_TRUSTED_SENDERS=${SMS_RELAY_TRUSTED_SENDERS}
+            MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+            MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+            EOF
+
+            # Pull new images. mms-tts is an optional sidecar (audio TTS);
+            # its pull currently fails on a ghcr permissions issue tracked
+            # elsewhere. Don't let that block the backend/frontend rollout.
+            docker compose pull backend frontend
+            docker compose pull mms-tts || echo "::warning::mms-tts pull failed, continuing with existing image"
+
+            docker compose up -d
+
+            sleep 10
+            echo "Running database migrations..."
+            docker compose exec -T -e PYTHONPATH=/app backend uv run alembic upgrade head
+            echo "Migrations completed successfully."
+            docker compose up -d --force-recreate backend
+            sleep 15
+
+            echo "${DEPLOY_SHA}" > .deploy-sha
+
+            sleep 15
+            docker compose ps
+
+            docker image prune -f
+            docker logout ghcr.io
+
+      - name: Rollout to existing prod tenants
+        if: success()
+        uses: appleboy/ssh-action@v1
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          host: 94.250.201.110
+          username: deploy
+          key: ${{ secrets.PROD_DEPLOY_SSH_KEY }}
+          envs: GHCR_USER,GHCR_TOKEN
+          script: |
+            set -e
+            # #1571 part 2: tenants pull `:latest` at provisioning time and
+            # then freeze. After a platform deploy, refresh every tenant so
+            # they pick up the new backend/frontend images.
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            TENANT_ROOT="$HOME/tenants"
+            if [ ! -d "$TENANT_ROOT" ]; then
+              echo "::notice::No $TENANT_ROOT directory — skipping tenant rollout (no existing tenants)."
+              docker logout ghcr.io
+              exit 0
+            fi
+            for tenant_dir in "$TENANT_ROOT"/*/; do
+              [ -f "$tenant_dir/docker-compose.yml" ] || continue
+              slug=$(basename "$tenant_dir")
+              echo "--- Refreshing tenant: $slug ---"
+              (cd "$tenant_dir" && docker compose pull backend frontend && docker compose up -d) \
+                || echo "::warning::Tenant $slug rollout failed — continuing with others"
+            done
+            docker logout ghcr.io
+            echo "Tenant rollout complete."
