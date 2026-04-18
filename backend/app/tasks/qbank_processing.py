@@ -232,9 +232,7 @@ async def _translate_bank_async(bank_id: str, target_language: str) -> dict:
 
     async with session_factory() as session:
         try:
-            result = await service.translate_bank(
-                session, uuid.UUID(bank_id), target_language
-            )
+            result = await service.translate_bank(session, uuid.UUID(bank_id), target_language)
         finally:
             await engine.dispose()
 

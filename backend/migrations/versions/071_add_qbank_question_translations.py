@@ -59,9 +59,7 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.UniqueConstraint(
-            "question_id", "language", name="uq_qbank_question_translation_lang"
-        ),
+        sa.UniqueConstraint("question_id", "language", name="uq_qbank_question_translation_lang"),
     )
 
 

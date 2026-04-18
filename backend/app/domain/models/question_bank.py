@@ -213,9 +213,7 @@ class QBankQuestionTranslation(Base):
 
     __tablename__ = "qbank_question_translations"
     __table_args__ = (
-        UniqueConstraint(
-            "question_id", "language", name="uq_qbank_question_translation_lang"
-        ),
+        UniqueConstraint("question_id", "language", name="uq_qbank_question_translation_lang"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -229,15 +227,11 @@ class QBankQuestionTranslation(Base):
     question_text: Mapped[str] = mapped_column(Text, nullable=False)
     options: Mapped[list] = mapped_column(JSON, nullable=False)
     explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
-    translator: Mapped[str] = mapped_column(
-        String(64), server_default="nllb-200-distilled-600M"
-    )
+    translator: Mapped[str] = mapped_column(String(64), server_default="nllb-200-distilled-600M")
     reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

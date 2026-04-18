@@ -104,9 +104,7 @@ class QBankTranslationService:
             texts.append(question.explanation)
 
         try:
-            translated = await self._nllb.translate_batch(
-                texts, source_language, target_language
-            )
+            translated = await self._nllb.translate_batch(texts, source_language, target_language)
         except NLLBError as exc:
             logger.warning(
                 "NLLB translation failed; downstream will use source text",
@@ -163,10 +161,14 @@ class QBankTranslationService:
             }
 
         questions = (
-            await db.execute(
-                select(QBankQuestion).where(QBankQuestion.question_bank_id == bank_id)
+            (
+                await db.execute(
+                    select(QBankQuestion).where(QBankQuestion.question_bank_id == bank_id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         translated = 0
         skipped = 0

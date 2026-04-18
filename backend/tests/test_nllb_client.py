@@ -102,9 +102,7 @@ async def test_translate_batch_preserves_empty_gaps():
         client = NLLBClient(base_url="http://nllb:8000")
         # Index 1 is an empty option — must be filtered on send and
         # restored as "" in the output so option letter mapping holds.
-        out = await client.translate_batch(
-            ["question text", "", "opt2"], "fr", "mos"
-        )
+        out = await client.translate_batch(["question text", "", "opt2"], "fr", "mos")
         # Confirm the wire request excluded the empty string.
         _, kwargs = mock_post.await_args.args, mock_post.await_args.kwargs
         assert kwargs["json"]["texts"] == ["question text", "opt2"]

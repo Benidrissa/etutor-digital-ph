@@ -94,9 +94,7 @@ class NLLBClient:
                 raise NLLBError(f"NLLB sidecar unreachable: {exc}") from exc
 
         if resp.status_code != 200:
-            raise NLLBError(
-                f"NLLB sidecar returned {resp.status_code}: {resp.text[:200]}"
-            )
+            raise NLLBError(f"NLLB sidecar returned {resp.status_code}: {resp.text[:200]}")
         data = resp.json()
         translation = data.get("translation")
         if not translation:
@@ -111,9 +109,7 @@ class NLLBClient:
         )
         return translation
 
-    async def translate_batch(
-        self, texts: list[str], src: str, tgt: str
-    ) -> list[str]:
+    async def translate_batch(self, texts: list[str], src: str, tgt: str) -> list[str]:
         """Translate multiple strings in one call — preferred for bulk jobs
         since the sidecar does NLLB tokenization + beam search once.
         """
@@ -144,18 +140,15 @@ class NLLBClient:
                 raise NLLBError(f"NLLB sidecar unreachable: {exc}") from exc
 
         if resp.status_code != 200:
-            raise NLLBError(
-                f"NLLB sidecar returned {resp.status_code}: {resp.text[:200]}"
-            )
+            raise NLLBError(f"NLLB sidecar returned {resp.status_code}: {resp.text[:200]}")
         translations = resp.json().get("translations", [])
         if len(translations) != len(indexed):
             raise NLLBError(
-                f"NLLB batch returned {len(translations)} items for "
-                f"{len(indexed)} inputs"
+                f"NLLB batch returned {len(translations)} items for {len(indexed)} inputs"
             )
 
         out = list(texts)
-        for (i, _), translated in zip(indexed, translations):
+        for (i, _), translated in zip(indexed, translations, strict=True):
             out[i] = translated
         return out
 

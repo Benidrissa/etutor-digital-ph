@@ -28,8 +28,8 @@ from app.domain.models.question_bank import (
     QuestionBank,
 )
 from app.domain.services.qbank_translation_service import (
-    QBankTranslationService,
     TRANSLATE_LANGUAGES,
+    QBankTranslationService,
 )
 from app.infrastructure.config.settings import settings
 from app.infrastructure.storage.s3 import S3StorageService
