@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { useTranslations } from 'next-intl';
 import { X } from 'lucide-react';
-/* eslint-disable @next/next/no-img-element */
 import { API_BASE } from '@/lib/api';
 import type { SourceImageMeta } from '@/lib/api';
 
@@ -45,9 +45,16 @@ export function SourceImage({
           aria-label={t('viewFullscreen')}
           onClick={() => setIsFullscreen(true)}
         >
-          <img
+          <Image
             src={imageUrl}
             alt={altText}
+            // Upstream WebP dimensions vary per figure; 1024×768 is the ceiling
+            // for the source library. Next uses this to compute the srcset
+            // ladder (deviceSizes in next.config.ts); CSS (w-full h-auto)
+            // lets the browser size it against the 768px max-width container.
+            width={1024}
+            height={768}
+            sizes="(max-width: 768px) 100vw, 768px"
             loading="lazy"
             className={`w-full h-auto object-contain rounded-lg transition-opacity duration-300 ${
               isVisible ? 'opacity-100' : 'opacity-0'
@@ -86,11 +93,15 @@ export function SourceImage({
             <X className="w-5 h-5" aria-hidden="true" />
           </button>
 
-          <img
+          <Image
             src={imageUrl}
             alt={altText}
-            className="max-w-full max-h-[80vh] object-contain rounded-lg"
+            width={1920}
+            height={1080}
+            sizes="100vw"
+            className="max-w-full max-h-[80vh] w-auto h-auto object-contain rounded-lg"
             onClick={(e) => e.stopPropagation()}
+            priority
           />
 
           {figureLabel && (
