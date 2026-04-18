@@ -150,12 +150,23 @@ async def translate(req: TranslateRequest) -> TranslateResponse:
 
         # ``inference_mode`` disables autograd tracking, reducing memory
         # and modest speedup vs ``no_grad`` on CPU.
+        #
+        # Decoding knobs for low-resource languages: greedy decoding on
+        # distilled-600M produces degenerate repetition loops for
+        # mos/dyu/bam/ful (empirical: "A mi mi mi mi..." for single
+        # words, "kẽnd n kẽnd n kẽnd" mid-sentence). Small beam search
+        # + no-repeat-ngram + repetition_penalty clean that up with
+        # ~3-4x slower inference — acceptable since translation is
+        # pregenerated offline per bank publish.
         with torch.inference_mode():
             generated = model.generate(
                 **inputs,
                 forced_bos_token_id=tgt_id,
                 max_new_tokens=MAX_NEW_TOKENS,
-                num_beams=1,
+                num_beams=4,
+                no_repeat_ngram_size=3,
+                repetition_penalty=1.2,
+                early_stopping=True,
             )
         translations = tokenizer.batch_decode(generated, skip_special_tokens=True)
         elapsed_ms = int((time.monotonic() - started) * 1000)
