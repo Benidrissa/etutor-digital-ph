@@ -14,11 +14,13 @@ texts in one forward pass.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import time
 from contextlib import asynccontextmanager
 
+import torch
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -26,7 +28,15 @@ from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
 MAX_INPUT_CHARS = 2000
 MAX_TEXTS_PER_BATCH = 32
-MAX_NEW_TOKENS = 256
+# Short qbank content rarely needs more than ~80 output tokens. A high cap
+# only slows greedy decoding by running past EOS on CPU.
+MAX_NEW_TOKENS = 96
+
+# Serialize generate() calls — PyTorch model forward passes aren't
+# thread-safe in single-worker uvicorn, and without a queue cap a
+# spike of concurrent /translate requests pins the CPU and makes
+# /health time out alongside them.
+_GENERATE_SEMAPHORE = asyncio.Semaphore(1)
 
 # NLLB source/target codes for the qbank pipeline. The sidecar itself is
 # source-agnostic (NLLB-200 handles 200+ languages); the backend picks
@@ -121,15 +131,6 @@ async def translate(req: TranslateRequest) -> TranslateResponse:
     model = _BUNDLE.model
     tokenizer.src_lang = req.src
 
-    started = time.monotonic()
-    inputs = tokenizer(
-        req.texts,
-        return_tensors="pt",
-        padding=True,
-        truncation=True,
-        max_length=MAX_INPUT_CHARS,
-    )
-
     # NLLB forced_bos_token_id selects the target language at generation
     # time. ``convert_tokens_to_ids`` is the supported way to retrieve it
     # across transformers versions.
@@ -137,14 +138,27 @@ async def translate(req: TranslateRequest) -> TranslateResponse:
     if tgt_id is None or tgt_id == tokenizer.unk_token_id:
         raise HTTPException(status_code=400, detail=f"unknown target lang: {req.tgt}")
 
-    generated = model.generate(
-        **inputs,
-        forced_bos_token_id=tgt_id,
-        max_new_tokens=MAX_NEW_TOKENS,
-        num_beams=1,
-    )
-    translations = tokenizer.batch_decode(generated, skip_special_tokens=True)
-    elapsed_ms = int((time.monotonic() - started) * 1000)
+    async with _GENERATE_SEMAPHORE:
+        started = time.monotonic()
+        inputs = tokenizer(
+            req.texts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=MAX_INPUT_CHARS,
+        )
+
+        # ``inference_mode`` disables autograd tracking, reducing memory
+        # and modest speedup vs ``no_grad`` on CPU.
+        with torch.inference_mode():
+            generated = model.generate(
+                **inputs,
+                forced_bos_token_id=tgt_id,
+                max_new_tokens=MAX_NEW_TOKENS,
+                num_beams=1,
+            )
+        translations = tokenizer.batch_decode(generated, skip_special_tokens=True)
+        elapsed_ms = int((time.monotonic() - started) * 1000)
 
     logger.info(
         "translate src=%s tgt=%s batch=%d elapsed_ms=%d",

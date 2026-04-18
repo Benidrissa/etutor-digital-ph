@@ -95,9 +95,11 @@ class Settings(BaseSettings):
     mms_tts_timeout_seconds: float = 60.0
 
     # Meta NLLB-200 translation sidecar — translates French qbank text
-    # into mos/dyu/bam/ful before MMS TTS synthesizes (#1690).
+    # into mos/dyu/bam/ful before MMS TTS synthesizes (#1690). CPU
+    # inference of distilled-600M is slow; timeout must cover worst-
+    # case 96-token greedy decode under load.
     nllb_url: str = "http://nllb:5060"
-    nllb_timeout_seconds: float = 60.0
+    nllb_timeout_seconds: float = 180.0
     nllb_model: str = "distilled-600M"
 
     # MinIO / S3-compatible object storage
