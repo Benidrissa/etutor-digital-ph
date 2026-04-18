@@ -12,6 +12,8 @@ import {
   BookOpen,
   User,
   X,
+  ListChecks,
+  Library,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { startTransition, useState, useEffect, useRef } from "react";
@@ -80,6 +82,18 @@ export function BottomNav() {
   ];
 
   const moreItems = [
+    {
+      href: `/${locale}/qbank`,
+      label: t("qbank"),
+      icon: ListChecks,
+      description: t("qbankDescription"),
+    },
+    {
+      href: `/${locale}/curricula`,
+      label: t("curricula"),
+      icon: Library,
+      description: t("curriculaDescription"),
+    },
     {
       href: `/${locale}/modules`,
       label: t("modules"),

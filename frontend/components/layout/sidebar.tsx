@@ -19,6 +19,8 @@ import {
   ShieldCheck,
   Wallet,
   Award,
+  ListChecks,
+  Library,
 } from "lucide-react";
 import { LocaleSwitcher } from "@/components/shared/locale-switcher";
 import { Button } from "@/components/ui/button";
@@ -98,6 +100,18 @@ export function Sidebar() {
       label: t("courses"),
       icon: GraduationCap,
       description: t("coursesDescription")
+    },
+    {
+      href: `/${locale}/qbank`,
+      label: t("qbank"),
+      icon: ListChecks,
+      description: t("qbankDescription")
+    },
+    {
+      href: `/${locale}/curricula`,
+      label: t("curricula"),
+      icon: Library,
+      description: t("curriculaDescription")
     },
     {
       href: `/${locale}/modules`,

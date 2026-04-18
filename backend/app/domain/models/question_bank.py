@@ -40,6 +40,11 @@ class QuestionBankStatus(enum.StrEnum):
     archived = "archived"
 
 
+class QuestionBankVisibility(enum.StrEnum):
+    org_only = "org_only"
+    public = "public"
+
+
 class QuestionDifficulty(enum.StrEnum):
     easy = "easy"
     medium = "medium"
@@ -78,6 +83,11 @@ class QuestionBank(Base):
         Enum(QuestionBankStatus, name="questionbankstatus"),
         server_default="draft",
         default=QuestionBankStatus.draft,
+    )
+    visibility: Mapped[QuestionBankVisibility] = mapped_column(
+        String(10),
+        server_default=QuestionBankVisibility.org_only.value,
+        default=QuestionBankVisibility.org_only,
     )
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

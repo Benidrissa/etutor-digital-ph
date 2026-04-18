@@ -93,6 +93,7 @@ def _audio_url_for(
 
 
 def _bank_response(bank, question_count: int = 0, test_count: int = 0):
+    visibility = getattr(bank, "visibility", "org_only") or "org_only"
     return QuestionBankResponse(
         id=str(bank.id),
         organization_id=str(bank.organization_id),
@@ -103,6 +104,7 @@ def _bank_response(bank, question_count: int = 0, test_count: int = 0):
         time_per_question_sec=bank.time_per_question_sec,
         passing_score=bank.passing_score,
         status=bank.status.value if hasattr(bank.status, "value") else bank.status,
+        visibility=visibility.value if hasattr(visibility, "value") else visibility,
         question_count=question_count,
         test_count=test_count,
         created_by=str(bank.created_by),
@@ -185,6 +187,7 @@ async def create_bank(
         language=body.language,
         time_per_question_sec=body.time_per_question_sec,
         passing_score=body.passing_score,
+        visibility=body.visibility,
         created_by=uuid.UUID(current_user.id),
     )
     return _bank_response(bank)
@@ -197,6 +200,18 @@ async def list_banks(
     db=Depends(get_db_session),
 ):
     items = await _svc.list_org_banks(db, org_id)
+    return [
+        _bank_response(item["bank"], item["question_count"], item["test_count"]) for item in items
+    ]
+
+
+@router.get("/banks/accessible", response_model=list[QuestionBankResponse])
+async def list_accessible_banks(
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db=Depends(get_db_session),
+):
+    """Banks the caller can take across all their orgs + any public published bank."""
+    items = await _svc.list_accessible_banks(db, uuid.UUID(current_user.id))
     return [
         _bank_response(item["bank"], item["question_count"], item["test_count"]) for item in items
     ]

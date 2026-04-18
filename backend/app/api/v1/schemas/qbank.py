@@ -19,6 +19,7 @@ class QuestionBankCreate(BaseModel):
     language: str = Field(default="fr", max_length=5)
     time_per_question_sec: int = Field(default=25, ge=5, le=120)
     passing_score: float = Field(default=80.0, ge=0, le=100)
+    visibility: str = Field(default="org_only", pattern=r"^(org_only|public)$")
 
 
 class QuestionBankUpdate(BaseModel):
@@ -28,6 +29,7 @@ class QuestionBankUpdate(BaseModel):
     time_per_question_sec: int | None = Field(default=None, ge=5, le=120)
     passing_score: float | None = Field(default=None, ge=0, le=100)
     status: str | None = Field(default=None, pattern=r"^(draft|published|archived)$")
+    visibility: str | None = Field(default=None, pattern=r"^(org_only|public)$")
 
 
 class QuestionBankResponse(BaseModel):
@@ -40,6 +42,7 @@ class QuestionBankResponse(BaseModel):
     time_per_question_sec: int
     passing_score: float
     status: str
+    visibility: str = "org_only"
     question_count: int = 0
     test_count: int = 0
     created_by: str

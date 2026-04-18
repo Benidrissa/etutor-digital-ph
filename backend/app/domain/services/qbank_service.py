@@ -11,12 +11,14 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.models.organization import OrgMemberRole
+from app.domain.models.organization import OrganizationMember, OrgMemberRole
 from app.domain.models.question_bank import (
     QBankQuestion,
     QBankTest,
     QBankTestAttempt,
     QuestionBank,
+    QuestionBankStatus,
+    QuestionBankVisibility,
 )
 from app.domain.services.organization_service import OrganizationService
 
@@ -66,6 +68,7 @@ class QBankService:
         language: str = "fr",
         time_per_question_sec: int = 25,
         passing_score: float = 80.0,
+        visibility: str = "org_only",
     ) -> QuestionBank:
         await _org_svc.require_org_role(
             db,
@@ -82,6 +85,7 @@ class QBankService:
             language=language,
             time_per_question_sec=time_per_question_sec,
             passing_score=passing_score,
+            visibility=visibility,
             created_by=created_by,
         )
         db.add(bank)
@@ -105,6 +109,38 @@ class QBankService:
             .order_by(QuestionBank.created_at.desc())
         )
         banks = result.scalars().all()
+        return await self._decorate_banks(db, list(banks))
+
+    async def list_accessible_banks(
+        self,
+        db: AsyncSession,
+        user_id: uuid.UUID,
+    ) -> list[dict]:
+        """Banks the user can take: union of (banks in user's orgs, any status)
+        and (public + published banks in any org).
+
+        Drives the top-level ``/qbank`` list (#1692).
+        """
+        member_org_ids_q = select(OrganizationMember.organization_id).where(
+            OrganizationMember.user_id == user_id
+        )
+        result = await db.execute(
+            select(QuestionBank)
+            .where(
+                (QuestionBank.organization_id.in_(member_org_ids_q))
+                | (
+                    (QuestionBank.visibility == QuestionBankVisibility.public.value)
+                    & (QuestionBank.status == QuestionBankStatus.published)
+                )
+            )
+            .order_by(QuestionBank.created_at.desc())
+        )
+        banks = result.scalars().unique().all()
+        return await self._decorate_banks(db, list(banks))
+
+    async def _decorate_banks(
+        self, db: AsyncSession, banks: list[QuestionBank]
+    ) -> list[dict]:
         out = []
         for bank in banks:
             q_count = await db.scalar(
@@ -148,6 +184,7 @@ class QBankService:
             "time_per_question_sec",
             "passing_score",
             "status",
+            "visibility",
         }
         previous_status = bank.status.value if hasattr(bank.status, "value") else bank.status
         for key, value in fields.items():

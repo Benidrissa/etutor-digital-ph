@@ -1609,6 +1609,7 @@ export async function getQBankQuestionAudio(
 
 export type QBankType = "driving" | "exam_prep" | "psychotechnic" | "general_culture";
 export type QBankStatus = "draft" | "published" | "archived";
+export type QBankVisibility = "org_only" | "public";
 export type QBankDifficulty = "easy" | "medium" | "hard";
 export type QBankTestMode = "exam" | "training" | "review";
 
@@ -1622,6 +1623,7 @@ export interface QBankBank {
   time_per_question_sec: number;
   passing_score: number;
   status: QBankStatus;
+  visibility: QBankVisibility;
   question_count: number;
   test_count: number;
   created_by: string;
@@ -1637,6 +1639,7 @@ export interface QBankBankCreate {
   language?: string;
   time_per_question_sec?: number;
   passing_score?: number;
+  visibility?: QBankVisibility;
 }
 
 export interface QBankBankUpdate {
@@ -1646,6 +1649,7 @@ export interface QBankBankUpdate {
   time_per_question_sec?: number;
   passing_score?: number;
   status?: QBankStatus;
+  visibility?: QBankVisibility;
 }
 
 export interface QBankQuestionFull {
@@ -1717,6 +1721,15 @@ export interface QBankProcessingStatus {
 
 export async function listQBankBanks(orgId: string): Promise<QBankBank[]> {
   return apiFetch<QBankBank[]>(`/api/v1/qbank/banks?org_id=${orgId}`);
+}
+
+/**
+ * Top-level qbank list for the authenticated user — union of banks in orgs
+ * the user belongs to plus any public + published bank across the platform.
+ * Backs the `/qbank` nav entry (#1692).
+ */
+export async function listAccessibleQBankBanks(): Promise<QBankBank[]> {
+  return apiFetch<QBankBank[]>(`/api/v1/qbank/banks/accessible`);
 }
 
 export async function createQBankBank(body: QBankBankCreate): Promise<QBankBank> {
