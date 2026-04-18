@@ -630,15 +630,65 @@ async def generate_bank_audio(
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
-    """Kick off a batch audio-generation task for every question in a bank."""
+    """Kick off a batch audio-generation task for every question in a bank.
+
+    For non-source languages (mos/dyu/bam/ful) chain translate→audio so
+    MMS TTS receives native-language text (#1690).
+    """
+    from celery import chain as celery_chain
+
     from app.domain.services.organization_service import OrganizationService
-    from app.tasks.qbank_processing import generate_qbank_audio_task
+    from app.domain.services.qbank_translation_service import TARGET_LANGUAGES
+    from app.tasks.qbank_processing import (
+        generate_qbank_audio_task,
+        translate_qbank_bank_task,
+    )
 
     bank = await _svc.get_bank(db, bank_id)
     await OrganizationService().require_org_role(
         db, bank.organization_id, uuid.UUID(current_user.id)
     )
-    task = generate_qbank_audio_task.delay(str(bank_id), language)
+    if language in TARGET_LANGUAGES:
+        task = celery_chain(
+            translate_qbank_bank_task.si(str(bank_id), language),
+            generate_qbank_audio_task.si(str(bank_id), language),
+        ).apply_async()
+    else:
+        task = generate_qbank_audio_task.delay(str(bank_id), language)
+    return AudioGenerateResponse(task_id=task.id, bank_id=str(bank_id), language=language)
+
+
+@router.post(
+    "/banks/{bank_id}/translations/backfill",
+    response_model=AudioGenerateResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def backfill_bank_translations(
+    bank_id: uuid.UUID,
+    language: str = Query(..., pattern=r"^(mos|dyu|bam|ful)$"),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db=Depends(get_db_session),
+):
+    """Backfill NLLB translations for an existing bank, then re-generate audio.
+
+    Idempotent: questions already translated are skipped (#1690).
+    """
+    from celery import chain as celery_chain
+
+    from app.domain.services.organization_service import OrganizationService
+    from app.tasks.qbank_processing import (
+        generate_qbank_audio_task,
+        translate_qbank_bank_task,
+    )
+
+    bank = await _svc.get_bank(db, bank_id)
+    await OrganizationService().require_org_role(
+        db, bank.organization_id, uuid.UUID(current_user.id)
+    )
+    task = celery_chain(
+        translate_qbank_bank_task.si(str(bank_id), language),
+        generate_qbank_audio_task.si(str(bank_id), language),
+    ).apply_async()
     return AudioGenerateResponse(task_id=task.id, bank_id=str(bank_id), language=language)
 
 

@@ -48,6 +48,28 @@ services:
         limits:
           memory: 4G
 
+  nllb:
+    # NLLB-200 translation sidecar (#1690). Loads facebook/nllb-200-
+    # distilled-600M (~2.4 GB RAM) and translates French qbank text to
+    # mos/dyu/bam/ful before the MMS sidecar synthesizes audio.
+    image: ghcr.io/benidrissa/etutor-digital-ph/nllb:latest
+    container_name: etutor-nllb
+    volumes:
+      - nllb_models:/models
+    networks:
+      - etutor-data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5060/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 240s
+      retries: 3
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
   backend:
     image: ghcr.io/benidrissa/etutor-digital-ph/backend:latest
     container_name: etutor-backend
@@ -68,6 +90,7 @@ services:
       SMS_RELAY_API_KEY: ${SMS_RELAY_API_KEY}
       SMS_RELAY_TRUSTED_SENDERS: ${SMS_RELAY_TRUSTED_SENDERS}
       MMS_TTS_URL: ${MMS_TTS_URL:-http://mms-tts:5050}
+      NLLB_URL: ${NLLB_URL:-http://nllb:5060}
     volumes:
       - ./config:/app/config
       - ./resources:/app/resources
@@ -147,6 +170,7 @@ services:
       SMS_RELAY_API_KEY: ${SMS_RELAY_API_KEY}
       SMS_RELAY_TRUSTED_SENDERS: ${SMS_RELAY_TRUSTED_SENDERS}
       MMS_TTS_URL: ${MMS_TTS_URL:-http://mms-tts:5050}
+      NLLB_URL: ${NLLB_URL:-http://nllb:5060}
     volumes:
       - ./config:/app/config
       - ./resources:/app/resources
@@ -183,6 +207,7 @@ volumes:
   uploads:
   minio_data:
   mms_models:
+  nllb_models:
 
 networks:
   etutor-data:

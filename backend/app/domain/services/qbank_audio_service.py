@@ -24,11 +24,13 @@ from app.domain.models.question_bank import (
     QBankAudioStatus,
     QBankQuestion,
     QBankQuestionAudio,
+    QBankQuestionTranslation,
     QuestionBank,
 )
 from app.infrastructure.config.settings import settings
 from app.infrastructure.storage.s3 import S3StorageService
 from app.integrations.mms_tts import MMSTTSClient, MMSTTSError
+from app.integrations.nllb_translate import NLLBTranslateError
 
 logger = structlog.get_logger(__name__)
 
@@ -43,11 +45,21 @@ OPUS_CONTENT_TYPE = "audio/ogg"
 OPUS_BYTES_PER_SECOND = 6 * 1024  # matches LessonAudioService._estimate_duration
 
 
-def build_audio_script(question: QBankQuestion, language: str) -> str:
+def build_audio_script(
+    question: QBankQuestion,
+    language: str,
+    translation: QBankQuestionTranslation | None = None,
+) -> str:
     """Return the text that should be spoken for a question.
 
     Prepends the option label in the speaker's language so the TTS reads
     "Option A: ..." in French and the native prefix in MMS languages.
+
+    When ``translation`` is provided (#1690), its translated question_text
+    and options are used instead of the source-language ones. Without it
+    the raw ``question.question_text`` falls through, which is correct
+    for ``fr`` (source) but produces gibberish if fed into an MMS model
+    for mos/dyu/bam/ful.
     """
     prefixes = {
         "fr": "Option",
@@ -57,8 +69,16 @@ def build_audio_script(question: QBankQuestion, language: str) -> str:
         "ful": "Suɓaande",  # Fulfulde: "choice"
     }
     prefix = prefixes.get(language, "Option")
-    parts = [question.question_text.strip()]
-    for idx, opt in enumerate(question.options or []):
+
+    if translation is not None:
+        q_text = (translation.question_text or "").strip()
+        options = list(translation.options or [])
+    else:
+        q_text = (question.question_text or "").strip()
+        options = list(question.options or [])
+
+    parts = [q_text]
+    for idx, opt in enumerate(options):
         letter = chr(ord("A") + idx)
         parts.append(f"{prefix} {letter}: {opt}")
     return ". ".join(p for p in parts if p).strip() + "."
@@ -136,6 +156,9 @@ class QBankAudioService:
     ) -> QBankQuestionAudio:
         """Generate audio for a single question in one language.
 
+        For non-source languages (mos/dyu/bam/ful), translates the
+        question + options via NLLB first so the MMS sidecar receives
+        native-language text and produces intelligible speech (#1690).
         Sets status ``generating`` while running and ``ready`` / ``failed``
         afterwards so the frontend poll endpoint can reflect progress.
         """
@@ -145,8 +168,33 @@ class QBankAudioService:
 
         await self._upsert_audio_row(db, question_id, language, status=QBankAudioStatus.generating)
 
+        # Translate FR → target before TTS for all non-source languages.
+        # Translation fetch is idempotent; on NLLB failure we mark audio
+        # as failed rather than falling back to French-in-MMS (the broken
+        # behavior that shipped in #1670 and was fixed by #1681/#1690).
+        translation: QBankQuestionTranslation | None = None
+        if language != "fr":
+            from app.domain.services.qbank_translation_service import (
+                QBankTranslationService,
+            )
+
+            try:
+                translation = await QBankTranslationService().ensure_translation(
+                    db, question_id, language
+                )
+            except NLLBTranslateError as exc:
+                logger.warning(
+                    "NLLB translation failed",
+                    question_id=str(question_id),
+                    language=language,
+                    error=str(exc),
+                )
+                return await self._upsert_audio_row(
+                    db, question_id, language, status=QBankAudioStatus.failed
+                )
+
         try:
-            script = build_audio_script(question, language)
+            script = build_audio_script(question, language, translation=translation)
             audio_bytes = await self._synthesize_bytes(script, language)
             key = self._storage_key(question.question_bank_id, question_id, language)
             url = await self._storage.upload_bytes(

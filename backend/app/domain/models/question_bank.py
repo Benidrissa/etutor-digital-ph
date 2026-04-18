@@ -149,6 +149,39 @@ class QBankQuestionAudio(Base):
     question: Mapped[QBankQuestion] = relationship(back_populates="audio_files")
 
 
+class QBankQuestionTranslation(Base):
+    """Native-language translation of a qbank question + its options.
+
+    NLLB-200 translates French source text to mos/dyu/bam/ful and stores
+    the result so audio regenerations don't re-bill translations and
+    admins can correct low-resource outputs without them being
+    overwritten (#1690). One row per ``(question_id, language)``.
+    """
+
+    __tablename__ = "qbank_question_translations"
+    __table_args__ = (
+        UniqueConstraint("question_id", "language", name="uq_qbank_question_translation_lang"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    question_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("qbank_questions.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    language: Mapped[str] = mapped_column(String(10), nullable=False)
+    question_text: Mapped[str] = mapped_column(Text, nullable=False)
+    options: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    source_model: Mapped[str] = mapped_column(String(50), nullable=False)
+    edited_by_admin: Mapped[bool] = mapped_column(Boolean, server_default="false", default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
 class QBankTest(Base):
     __tablename__ = "qbank_tests"
 

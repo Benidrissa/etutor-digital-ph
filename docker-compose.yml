@@ -49,6 +49,29 @@ services:
         limits:
           memory: 4G
 
+  nllb:
+    # NLLB-200 translation sidecar. Translates French qbank text into
+    # mos/dyu/bam/ful before MMS TTS synthesizes audio (#1690). Loads
+    # facebook/nllb-200-distilled-600M once at startup (~2.4 GB in RAM).
+    build:
+      context: ./infrastructure/nllb
+      dockerfile: Dockerfile
+    container_name: santepublique-nllb
+    ports:
+      - "5060:5060"
+    volumes:
+      - nllb_models:/models
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5060/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 240s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
   backend:
     build:
       context: ./backend
@@ -83,3 +106,4 @@ volumes:
   redisdata:
   uploads_data:
   mms_models:
+  nllb_models:
