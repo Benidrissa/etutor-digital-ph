@@ -199,6 +199,9 @@ jobs:
       && needs.build-and-push.result == 'success'
       && (needs.build-mms-tts.result == 'success' || needs.build-mms-tts.result == 'skipped')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read       # needed for docker pull ghcr.io/... (#1651)
     steps:
       - uses: actions/checkout@v6
 
@@ -228,6 +231,8 @@ jobs:
       - name: Deploy on server
         uses: appleboy/ssh-action@v1
         env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -245,10 +250,16 @@ jobs:
           host: 167.86.115.58
           username: deploy
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: POSTGRES_PASSWORD,ANTHROPIC_API_KEY,OPENAI_API_KEY,GOOGLE_API_KEY,SENTRY_DSN,NEXT_PUBLIC_SENTRY_DSN,NEXT_PUBLIC_POSTHOG_KEY,NEXT_PUBLIC_POSTHOG_HOST,SMS_RELAY_API_KEY,SMS_RELAY_TRUSTED_SENDERS,MINIO_ACCESS_KEY,MINIO_SECRET_KEY,DEPLOY_SHA
+          envs: GHCR_USER,GHCR_TOKEN,POSTGRES_PASSWORD,ANTHROPIC_API_KEY,OPENAI_API_KEY,GOOGLE_API_KEY,SENTRY_DSN,NEXT_PUBLIC_SENTRY_DSN,NEXT_PUBLIC_POSTHOG_KEY,NEXT_PUBLIC_POSTHOG_HOST,SMS_RELAY_API_KEY,SMS_RELAY_TRUSTED_SENDERS,MINIO_ACCESS_KEY,MINIO_SECRET_KEY,DEPLOY_SHA
           script: |
             set -e
             cd ~/etutor
+
+            # Authenticate to GHCR with the runner's fresh GITHUB_TOKEN (#1651).
+            # Replaces the server-side cached credential that kept going stale —
+            # the old workflow silently assumed a one-time docker login set
+            # years ago and left us blind when the token rotated.
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 
             # Write .env
             cat > .env << EOF
@@ -289,3 +300,7 @@ jobs:
 
             # Cleanup old images
             docker image prune -f
+
+            # Drop the GHCR credential so the server doesn't carry a stale
+            # token between deploys — the next run authenticates fresh.
+            docker logout ghcr.io
