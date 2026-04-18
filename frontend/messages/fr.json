@@ -1580,6 +1580,9 @@
         "description": "Générez des aperçus de leçons, vérifiez le contenu et modifiez avant la publication. Les leçons modifiées seront verrouillées et servies depuis le cache.",
         "skipHint": "Cette étape est optionnelle. Cliquez sur Suivant pour passer à la publication."
       },
+      "publish": {
+        "ragMissing": "L'indexation RAG n'est pas terminée — 0 fragment de contenu indexé. Lancez l'indexation avant de publier afin que le tuteur IA puisse citer vos ressources."
+      },
       "skipToPublish": "Passer à la publication"
     },
     "syllabusEditor": {

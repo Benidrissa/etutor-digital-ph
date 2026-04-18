@@ -208,6 +208,7 @@ def extract_course_resource(self, resource_id: str) -> dict:
 
                     task = index_course_resources.delay(course_id, course.rag_collection_id)
                     course.indexation_task_id = task.id
+                    course.creation_step = "indexing"
                     session.commit()
                     logger.info(
                         "extract_course_resource: chained indexation",
