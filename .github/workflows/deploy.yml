@@ -3,6 +3,16 @@ name: Deploy
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment (production requires manual dispatch)"
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - production
 
 env:
   REGISTRY: ghcr.io
