@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, patch
 
 import pymupdf
 import pytest
+from PIL import Image
 
 from app.ai.qbank_slide_extractor import (
     CONFIDENCE_THRESHOLD,
@@ -30,7 +31,6 @@ from app.ai.qbank_slide_extractor import (
     _tier1_confidence,
     extract_questions_from_pdf,
 )
-from PIL import Image
 
 # PyMuPDF uses RGB floats in (0-1) for insert_text; the stored span color is int.
 GREEN = (0, 0.6, 0)
