@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import type { QBankQuestion } from '@/lib/api';
@@ -56,13 +57,16 @@ export function QBankImageQuestion({
   return (
     <div className="flex flex-col gap-4">
       {question.image_url && (
-        <div className="relative w-full overflow-hidden rounded-lg bg-muted">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+        <div className="relative h-[300px] w-full overflow-hidden rounded-lg bg-muted">
+          <Image
             src={question.image_url}
             alt={question.question_text}
-            className="w-full h-auto max-h-[300px] object-contain"
+            fill
+            // Player container tops out at max-w-2xl (42rem = 672px).
+            sizes="(max-width: 768px) 100vw, 42rem"
+            className="object-contain"
             onLoad={onImageLoad}
+            priority
           />
         </div>
       )}
