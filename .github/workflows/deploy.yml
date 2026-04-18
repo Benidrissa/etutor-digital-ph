@@ -206,11 +206,16 @@ jobs:
         env:
           DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
+          set -o pipefail
           mkdir -p ~/.ssh
           echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H 167.86.115.58 >> ~/.ssh/known_hosts
-          rsync -avz -e "ssh -i ~/.ssh/deploy_key" \
+          # -T bounds the scan; otherwise a stalled sshd banner hangs until action timeout.
+          ssh-keyscan -T 10 -H 167.86.115.58 >> ~/.ssh/known_hosts
+          # -v on rsync + ConnectTimeout on ssh ensure the stderr reason (timeout, auth,
+          # host key) lands in the action log instead of a bare "exit code 1" (see #1613).
+          rsync -avvz \
+            -e "ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 -o ServerAliveInterval=10" \
             docker-compose.prod.yml \
             deploy@167.86.115.58:~/etutor/docker-compose.yml
 
