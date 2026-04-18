@@ -815,18 +815,25 @@ async def debug_nllb_probe(
     except Exception as exc:
         result["mms_dns_error"] = f"{type(exc).__name__}: {exc}"
 
-    # NLLB health + translate probe
+    # NLLB health + translate probe. The translate side needs a long
+    # timeout — CPU greedy decode on distilled-600M can push past 60s
+    # when several requests are backed up behind the sidecar's single
+    # generate worker.
+    import time as _time
+
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=180.0) as client:
             health = await client.get(f"{base_url}/health")
             result["nllb_health_status"] = health.status_code
             result["nllb_health_body"] = health.text[:300]
+            t_start = _time.monotonic()
             translate = await client.post(
                 f"{base_url}/translate",
                 json={"texts": [text], "src": src_code, "tgt": tgt_code},
             )
             result["nllb_translate_status"] = translate.status_code
             result["nllb_translate_body"] = translate.text[:500]
+            result["nllb_translate_elapsed_ms"] = int((_time.monotonic() - t_start) * 1000)
     except Exception as exc:
         result["nllb_error"] = f"{type(exc).__name__}: {exc!r}"
 
