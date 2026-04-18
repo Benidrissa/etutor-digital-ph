@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useBranding } from '@/lib/settings-context';
 import { X } from 'lucide-react';
 
 interface BeforeInstallPromptEvent extends Event {
@@ -15,6 +16,7 @@ interface BeforeInstallPromptEvent extends Event {
 
 export function InstallPrompt() {
   const t = useTranslations('PWA');
+  const branding = useBranding();
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
 
@@ -95,7 +97,7 @@ export function InstallPrompt() {
         </CardHeader>
         <CardContent className="pt-2">
           <p className="text-sm text-green-800 mb-3">
-            {t('installDescription')}
+            {t('installDescription', { appName: branding.app_name })}
           </p>
           <div className="flex gap-2">
             <Button

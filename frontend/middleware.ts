@@ -18,6 +18,7 @@ const PUBLIC_PATTERNS = [
   /^\/icon-.*\.(svg|png)$/,
   /^\/sw\.js$/,
   /^\/offline\.html$/,
+  /^\/manifest\.webmanifest$/,
   /^\/.well-known\//,
 ];
 
@@ -70,5 +71,5 @@ export default function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/(fr|en)/:path*", "/((?!_next|favicon.ico|manifest.json|icon-|sw.js|offline\\.html|.well-known|.*\\.(?:png|jpg|jpeg|gif|webp|ico|pdf)).*)"],
+  matcher: ["/", "/(fr|en)/:path*", "/((?!_next|favicon.ico|manifest.webmanifest|icon-|sw.js|offline\\.html|.well-known|.*\\.(?:png|jpg|jpeg|gif|webp|ico|pdf)).*)"],
 };

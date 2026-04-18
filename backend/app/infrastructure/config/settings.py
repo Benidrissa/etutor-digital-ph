@@ -24,7 +24,7 @@ class Settings(BaseSettings):
 
     # Email Service
     resend_api_key: str = ""
-    from_email: str = "noreply@santepublique-aof.org"
+    from_email: str = "noreply@sira.local"
     frontend_url: str = "http://localhost:3000"
 
     # Anthropic Claude API
@@ -49,6 +49,19 @@ class Settings(BaseSettings):
     app_env: str = "development"
     cors_origins: str = "http://localhost:3000"
     api_v1_prefix: str = "/api/v1"
+    app_version: str = "0.1.0"
+    api_service_name: str = "sira-api"
+
+    # Branding — tenant-overridable via env at provisioning time. Defaults are
+    # generic so no pre-generalization copy leaks. See issue #1618.
+    app_name: str = "Sira"
+    app_short_name: str = "Sira"
+    app_description_fr: str = "Plateforme d'apprentissage adaptative"
+    app_description_en: str = "Adaptive learning platform"
+    app_tagline_fr: str = "Apprenez à votre rythme"
+    app_tagline_en: str = "Learn at your own pace"
+    app_theme_color: str = "#22c55e"
+    openapi_description: str = ""  # empty → fall back to app_description_en
 
     # Subscription webhook
     subscription_webhook_secret: str = ""

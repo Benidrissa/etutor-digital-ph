@@ -30,7 +30,7 @@ if settings.sentry_dsn:
     sentry_sdk.init(
         dsn=settings.sentry_dsn,
         environment=settings.app_env,
-        release="santepublique-aof-backend@0.1.0",
+        release=f"{settings.api_service_name}@{settings.app_version}",
         traces_sample_rate=settings.sentry_traces_sample_rate,
         profiles_sample_rate=settings.sentry_profiles_sample_rate,
         send_default_pii=False,
@@ -71,9 +71,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Sira API",
-    description="Adaptive bilingual learning platform for public health in West Africa",
-    version="0.1.0",
+    title=f"{settings.app_name} API",
+    description=settings.openapi_description or settings.app_description_en,
+    version=settings.app_version,
     lifespan=lifespan,
 )
 
@@ -95,7 +95,7 @@ app.add_middleware(RateLimitMiddleware, global_rate_limit=100)
 # Root health check
 @app.get("/health")
 async def root_health() -> dict[str, str]:
-    return {"status": "healthy", "service": "santepublique-aof-api"}
+    return {"status": "healthy", "service": settings.api_service_name}
 
 
 # API v1 routes

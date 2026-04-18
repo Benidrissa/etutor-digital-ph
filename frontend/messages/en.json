@@ -7,7 +7,7 @@
   },
   "PWA": {
     "installTitle": "Install App",
-    "installDescription": "Add Tutor to your home screen for quick access and an optimized experience.",
+    "installDescription": "Add {appName} to your home screen for quick access and an optimized experience.",
     "install": "Install",
     "later": "Later"
   },
@@ -328,8 +328,8 @@
   },
   "ChatTutor": {
     "title": "AI Tutor",
-    "tutorPageDescription": "Get personalized help with your public health studies from your AI tutor",
-    "placeholder": "Ask me anything about public health...",
+    "tutorPageDescription": "Get personalized help with your studies from your AI tutor",
+    "placeholder": "Ask me a question about your courses...",
     "send": "Send",
     "typing": "The tutor is typing...",
     "offline": "Tutor is offline",
@@ -484,7 +484,7 @@
     },
     "step2": {
       "title": "Select Your Country",
-      "description": "Choose your West African country for localized content",
+      "description": "Choose your country for localized content",
       "selectCountry": "Select your country",
       "countries": {
         "benin": "Benin",
@@ -1938,7 +1938,7 @@
     "trustTitle": "Trust & Compliance",
     "trustEncryption": "Your data is encrypted and stored securely.",
     "trustCompliance": "Compliant with GDPR and data protection laws of Senegal, Ghana, Nigeria, and Côte d'Ivoire.",
-    "trustGlobal": "Designed for learners worldwide, optimized for West Africa.",
+    "trustGlobal": "Designed for learners worldwide.",
     "contactTitle": "Contact",
     "contactEmail": "info@sira-donnia.com",
     "contactCta": "Questions, partnerships, or feedback — we'd love to hear from you.",
