@@ -287,7 +287,9 @@ class TutorService:
             ):
                 conversation.compacted_context = session_ctx.previous_compact
                 session.add(conversation)
-                await session.flush()
+                # Commit here too so the compacted_context is visible to the
+                # follow-up GET the frontend fires on the yielded id (#1625).
+                await session.commit()
 
             yield {
                 "type": "conversation_id",
@@ -885,7 +887,14 @@ class TutorService:
         conversation_id: uuid.UUID | None,
         session: AsyncSession,
     ) -> TutorConversation:
-        """Get existing conversation or create a new one."""
+        """Get existing conversation or create a new one.
+
+        Newly-created conversations are committed before the helper returns
+        so that the streaming endpoint can safely yield the `conversation_id`
+        to the client without racing a follow-up GET on a different session
+        (#1625). `expire_on_commit=False` on the session factory keeps the
+        Python object usable after commit.
+        """
         if isinstance(user_id, str):
             user_id = uuid.UUID(user_id)
 
@@ -907,7 +916,7 @@ class TutorService:
             created_at=datetime.utcnow(),
         )
         session.add(conversation)
-        await session.flush()
+        await session.commit()
 
         return conversation
 
