@@ -1,3 +1,6 @@
+import type { Branding } from "./branding";
+import { DEFAULT_BRANDING } from "./branding";
+
 /**
  * API_BASE resolves to:
  * - Server-side (SSR): BACKEND_URL for direct container-to-container calls,
@@ -748,9 +751,21 @@ export interface SettingsByCategory {
   settings: PlatformSetting[];
 }
 
+export interface PublicConfig {
+  settings: Record<string, unknown>;
+  branding: Branding;
+}
+
+export async function getPublicConfig(): Promise<PublicConfig> {
+  const res = await apiFetch<{ settings: Record<string, unknown>; branding?: Branding }>(
+    "/api/v1/settings/public",
+  );
+  return { settings: res.settings, branding: res.branding ?? DEFAULT_BRANDING };
+}
+
 export async function getPublicSettings(): Promise<Record<string, unknown>> {
-  const res = await apiFetch<{ settings: Record<string, unknown> }>("/api/v1/settings/public");
-  return res.settings;
+  const { settings } = await getPublicConfig();
+  return settings;
 }
 
 export async function getAdminSettings(): Promise<SettingsByCategory[]> {

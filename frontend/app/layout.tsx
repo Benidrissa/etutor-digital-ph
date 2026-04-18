@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import "katex/dist/katex.min.css";
+import { getServerBranding } from "@/lib/branding";
 
 const inter = Inter({
   variable: "--font-sans",
@@ -19,41 +20,46 @@ const jetbrainsMono = JetBrains_Mono({
   preload: false,
 });
 
-export const metadata: Metadata = {
-  title: "Tutor",
-  description:
-    "Plateforme d'apprentissage adaptative en santé publique pour l'Afrique de l'Ouest",
-  manifest: "/manifest.json",
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "default",
-    title: "Tutor",
-  },
-  formatDetection: {
-    telephone: false,
-  },
-  themeColor: "#22c55e",
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const branding = await getServerBranding();
+  return {
+    title: {
+      default: branding.app_name,
+      template: `%s · ${branding.app_name}`,
+    },
+    description: branding.app_description_en,
+    manifest: "/manifest.webmanifest",
+    appleWebApp: {
+      capable: true,
+      statusBarStyle: "default",
+      title: branding.app_short_name,
+    },
+    formatDetection: {
+      telephone: false,
+    },
+    themeColor: branding.theme_color,
+    viewport: {
+      width: "device-width",
+      initialScale: 1,
+      maximumScale: 1,
+      userScalable: false,
+    },
+  };
+}
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const branding = await getServerBranding();
   return (
     <html className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <head>
-        {/* Apple iOS splash screen icons */}
         <link rel="apple-touch-startup-image" href="/icon-512x512.svg" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="Tutor" />
+        <meta name="apple-mobile-web-app-title" content={branding.app_short_name} />
       </head>
       <body className="min-h-dvh bg-background font-sans text-foreground antialiased">
         {children}

@@ -7,7 +7,7 @@
   },
   "PWA": {
     "installTitle": "Installer l'application",
-    "installDescription": "Ajoutez Tutor à votre écran d'accueil pour un accès rapide et une expérience optimisée.",
+    "installDescription": "Ajoutez {appName} à votre écran d'accueil pour un accès rapide et une expérience optimisée.",
     "install": "Installer",
     "later": "Plus tard"
   },
@@ -328,8 +328,8 @@
   },
   "ChatTutor": {
     "title": "Tuteur IA",
-    "tutorPageDescription": "Obtenez une aide personnalisée pour vos études en santé publique grâce à votre tuteur IA",
-    "placeholder": "Demandez-moi n'importe quoi sur la santé publique...",
+    "tutorPageDescription": "Obtenez une aide personnalisée pour vos études grâce à votre tuteur IA",
+    "placeholder": "Posez-moi une question sur vos cours...",
     "send": "Envoyer",
     "typing": "Le tuteur écrit...",
     "offline": "Tuteur hors ligne",
@@ -484,7 +484,7 @@
     },
     "step2": {
       "title": "Sélectionnez Votre Pays",
-      "description": "Choisissez votre pays d'Afrique de l'Ouest pour un contenu localisé",
+      "description": "Choisissez votre pays pour un contenu localisé",
       "selectCountry": "Sélectionnez votre pays",
       "countries": {
         "benin": "Bénin",
@@ -1938,7 +1938,7 @@
     "trustTitle": "Confiance et conformité",
     "trustEncryption": "Vos données sont chiffrées et stockées en toute sécurité.",
     "trustCompliance": "Conforme au RGPD et aux lois de protection des données du Sénégal, du Ghana, du Nigeria et de la Côte d'Ivoire.",
-    "trustGlobal": "Conçu pour les apprenants du monde entier, optimisé pour l'Afrique de l'Ouest.",
+    "trustGlobal": "Conçu pour les apprenants du monde entier.",
     "contactTitle": "Contact",
     "contactEmail": "info@sira-donnia.com",
     "contactCta": "Questions, partenariats ou retours — nous serions ravis de vous entendre.",
