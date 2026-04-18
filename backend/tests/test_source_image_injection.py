@@ -34,7 +34,6 @@ def _make_image_meta(
     figure_number="1.3",
     caption="Steps in the Marketing Process",
     image_type="diagram",
-    storage_url="https://cdn.example.com/img/test.webp",
     alt_text_fr="Diagramme",
     alt_text_en="Diagram",
 ):
@@ -43,7 +42,6 @@ def _make_image_meta(
         "figure_number": figure_number,
         "caption": caption,
         "image_type": image_type,
-        "storage_url": storage_url,
         "alt_text_fr": alt_text_fr,
         "alt_text_en": alt_text_en,
     }
@@ -146,7 +144,6 @@ class TestSourceImageRefSchema:
             figure_number="1.3",
             caption="Test caption",
             image_type="diagram",
-            storage_url="https://cdn.example.com/img.webp",
             alt_text_fr="Diagramme",
             alt_text_en="Diagram",
         )
@@ -156,7 +153,6 @@ class TestSourceImageRefSchema:
         ref = SourceImageRef(id=str(uuid.uuid4()), image_type="photo")
         assert ref.figure_number is None
         assert ref.caption is None
-        assert ref.storage_url is None
         assert ref.alt_text_fr is None
         assert ref.alt_text_en is None
 
@@ -265,7 +261,6 @@ class TestExtractSourceImageRefs:
             figure_number="3.1",
             caption="A diagram",
             image_type="diagram",
-            storage_url="https://cdn.example.com/x.webp",
             alt_text_fr="Diag FR",
             alt_text_en="Diag EN",
         )
@@ -274,6 +269,5 @@ class TestExtractSourceImageRefs:
         assert result[0].figure_number == "3.1"
         assert result[0].caption == "A diagram"
         assert result[0].image_type == "diagram"
-        assert result[0].storage_url == "https://cdn.example.com/x.webp"
         assert result[0].alt_text_fr == "Diag FR"
         assert result[0].alt_text_en == "Diag EN"

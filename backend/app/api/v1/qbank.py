@@ -558,7 +558,6 @@ def _audio_response(row, question_id: uuid.UUID, language: str) -> AudioStatusRe
         question_id=str(question_id),
         language=language,
         status=row.status.value if hasattr(row.status, "value") else row.status,
-        storage_url=row.storage_url,
         duration_seconds=row.duration_seconds,
     )
 

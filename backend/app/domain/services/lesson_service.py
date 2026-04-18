@@ -787,7 +787,6 @@ class LessonGenerationService:
                         caption_en=img.get("caption"),
                         attribution=img.get("attribution"),
                         image_type=img.get("image_type") or "unknown",
-                        storage_url=img.get("storage_url"),
                         alt_text_fr=img.get("alt_text_fr"),
                         alt_text_en=img.get("alt_text_en"),
                     )

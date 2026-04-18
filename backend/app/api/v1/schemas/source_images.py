@@ -17,7 +17,6 @@ class SourceImageMetadataResponse(BaseModel):
     chapter: str | None = None
     width: int | None = None
     height: int | None = None
-    storage_url: str | None = None
     alt_text_fr: str | None = None
     alt_text_en: str | None = None
 

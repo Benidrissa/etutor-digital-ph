@@ -41,7 +41,6 @@ class SourceImageRef(BaseModel):
     image_type: str = Field(
         ..., description="Image type: diagram, photo, chart, formula, icon, unknown"
     )
-    storage_url: str | None = Field(None, description="CDN URL to the image")
     alt_text_fr: str | None = Field(None, description="French alt text")
     alt_text_en: str | None = Field(None, description="English alt text")
 
