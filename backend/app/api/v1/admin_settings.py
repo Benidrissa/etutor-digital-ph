@@ -38,6 +38,7 @@ def _current_branding() -> BrandingConfig:
         theme_color=app_settings.app_theme_color,
     )
 
+
 logger = get_logger(__name__)
 router = APIRouter(tags=["Settings"])
 _svc = PlatformSettingsService()
