@@ -626,7 +626,7 @@ def _audio_response(
 )
 async def generate_bank_audio(
     bank_id: uuid.UUID,
-    language: str = Query(..., pattern=r"^(fr|mos|dyu|bam)$"),
+    language: str = Query(..., pattern=r"^(fr|mos|dyu|bam|ful)$"),
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
@@ -649,7 +649,7 @@ async def generate_bank_audio(
 async def upload_question_audio(
     question_id: uuid.UUID,
     request: Request,
-    language: str = Query(..., pattern=r"^(fr|mos|dyu|bam)$"),
+    language: str = Query(..., pattern=r"^(fr|mos|dyu|bam|ful)$"),
     file: UploadFile = File(...),
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
@@ -674,7 +674,7 @@ async def upload_question_audio(
 async def get_question_audio(
     question_id: uuid.UUID,
     request: Request,
-    lang: str = Query(..., pattern=r"^(fr|mos|dyu|bam)$"),
+    lang: str = Query(..., pattern=r"^(fr|mos|dyu|bam|ful)$"),
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
