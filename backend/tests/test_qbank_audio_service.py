@@ -39,7 +39,12 @@ def test_build_audio_script_french_prefix():
 
 def test_build_audio_script_mms_languages_use_native_prefix():
     q = _FakeQuestion("Question", ["A", "B"])
-    for lang, prefix in [("mos", "Tʋʋmde"), ("dyu", "Sugandili"), ("bam", "Sugandili")]:
+    for lang, prefix in [
+        ("mos", "Tʋʋmde"),
+        ("dyu", "Sugandili"),
+        ("bam", "Sugandili"),
+        ("ful", "Suɓaande"),
+    ]:
         script = build_audio_script(q, lang)
         assert f"{prefix} A" in script
         assert f"{prefix} B" in script

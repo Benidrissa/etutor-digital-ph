@@ -32,7 +32,7 @@ from app.integrations.mms_tts import MMSTTSClient, MMSTTSError
 
 logger = structlog.get_logger(__name__)
 
-SupportedLanguage = Literal["fr", "mos", "dyu", "bam"]
+SupportedLanguage = Literal["fr", "mos", "dyu", "bam", "ful"]
 OPUS_CONTENT_TYPE = "audio/ogg"
 OPUS_BYTES_PER_SECOND = 6 * 1024  # matches LessonAudioService._estimate_duration
 
@@ -48,6 +48,7 @@ def build_audio_script(question: QBankQuestion, language: str) -> str:
         "mos": "Tʋʋmde",  # Moore: "task/choice"
         "dyu": "Sugandili",  # Dioula/Jula: "choice"
         "bam": "Sugandili",  # Bambara: "choice"
+        "ful": "Suɓaande",  # Fulfulde: "choice"
     }
     prefix = prefixes.get(language, "Option")
     parts = [question.question_text.strip()]

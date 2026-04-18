@@ -9,7 +9,7 @@ import {
   type QBankQuestionAudioStatus,
 } from '@/lib/api';
 
-const LANGUAGES: QBankAudioLanguage[] = ['fr', 'mos', 'dyu', 'bam'];
+const LANGUAGES: QBankAudioLanguage[] = ['fr', 'mos', 'dyu', 'bam', 'ful'];
 const STORAGE_KEY = 'qbank-audio-lang';
 
 interface QBankAudioPlayerProps {
@@ -19,12 +19,12 @@ interface QBankAudioPlayerProps {
 }
 
 /**
- * Per-question audio player with a language picker (fr/mos/dyu/bam).
+ * Per-question audio player with a language picker (fr/mos/dyu/bam/ful).
  *
  * Driving-school learners who can't read rely on this — the audio is
  * the primary way they answer the question. We don't hide it behind a
- * preferences toggle: the four language pills are always visible and
- * the last selection persists across questions via localStorage (#1659).
+ * preferences toggle: the language pills are always visible and the
+ * last selection persists across questions via localStorage (#1659, #1670).
  */
 export function QBankAudioPlayer({ questionId, defaultLanguage }: QBankAudioPlayerProps) {
   const t = useTranslations('qbank');

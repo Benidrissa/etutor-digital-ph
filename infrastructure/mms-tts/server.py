@@ -1,8 +1,13 @@
-"""Meta MMS TTS HTTP server for Moore, Dioula, and Bambara.
+"""Meta MMS TTS HTTP server for Moore, Dioula, Bambara, and Fulfulde.
 
-Preloads Hugging Face `facebook/mms-tts-{mos,dyu,bam}` VITS models on startup and
-serves synthesized speech as OGG/Opus over HTTP. Opus at ~24 kbps keeps a
-30-second clip under ~100 KB, which matters for 2G/3G West African networks.
+Preloads Hugging Face `facebook/mms-tts-{mos,dyu,bam,ffm}` VITS models on
+startup and serves synthesized speech as OGG/Opus over HTTP. Opus at
+~24 kbps keeps a 30-second clip under ~100 KB, which matters for 2G/3G
+West African networks.
+
+``ful`` is exposed as the public language code for Fulfulde; internally
+we load Meta's ``ffm`` (Maasina Fulfulde) VITS model, which matches the
+variant spoken in Burkina Faso / Mali — our primary audience.
 """
 from __future__ import annotations
 
@@ -22,8 +27,18 @@ from pydub import AudioSegment
 from scipy.io import wavfile
 from transformers import AutoTokenizer, VitsModel
 
-SUPPORTED_LANGUAGES = ("mos", "dyu", "bam")
-Language = Literal["mos", "dyu", "bam"]
+SUPPORTED_LANGUAGES = ("mos", "dyu", "bam", "ful")
+Language = Literal["mos", "dyu", "bam", "ful"]
+
+# Map public language codes to the Hugging Face model suffix. Meta ships
+# Fulfulde as variant-specific checkpoints (ffm, fuv, fuh, ...); we pick
+# ``ffm`` (Maasina) for the West African driving-school audience.
+MODEL_SUFFIX: dict[str, str] = {
+    "mos": "mos",
+    "dyu": "dyu",
+    "bam": "bam",
+    "ful": "ffm",
+}
 
 MAX_TEXT_CHARS = 2000
 OPUS_BITRATE = "24k"
@@ -45,8 +60,9 @@ _MODELS: dict[str, _ModelBundle] = {}
 
 
 def _load_model(lang: str) -> _ModelBundle:
-    model_id = f"facebook/mms-tts-{lang}"
-    logger.info("loading %s", model_id)
+    suffix = MODEL_SUFFIX.get(lang, lang)
+    model_id = f"facebook/mms-tts-{suffix}"
+    logger.info("loading %s (public code=%s)", model_id, lang)
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     model = VitsModel.from_pretrained(model_id)
     model.eval()
