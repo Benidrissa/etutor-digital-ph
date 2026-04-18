@@ -643,6 +643,34 @@ async def generate_bank_audio(
 
 
 @router.post(
+    "/banks/{bank_id}/translate",
+    response_model=AudioGenerateResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def translate_bank(
+    bank_id: uuid.UUID,
+    language: str = Query(..., pattern=r"^(mos|dyu|bam)$"),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db=Depends(get_db_session),
+):
+    """Translate every question in a bank to ``language`` via NLLB (#1694).
+
+    Cached per (question, language) with a content-hash invalidator so
+    republishing an unchanged bank is free. Returns the Celery task id
+    — reuses ``AudioGenerateResponse`` since the shape is the same.
+    """
+    from app.domain.services.organization_service import OrganizationService
+    from app.tasks.qbank_processing import translate_qbank_task
+
+    bank = await _svc.get_bank(db, bank_id)
+    await OrganizationService().require_org_role(
+        db, bank.organization_id, uuid.UUID(current_user.id)
+    )
+    task = translate_qbank_task.delay(str(bank_id), language)
+    return AudioGenerateResponse(task_id=task.id, bank_id=str(bank_id), language=language)
+
+
+@router.post(
     "/questions/{question_id}/audio",
     response_model=AudioStatusResponse,
 )

@@ -91,3 +91,43 @@ def test_supported_languages_is_non_empty_tuple():
     assert isinstance(SUPPORTED_LANGUAGES, tuple)
     assert "fr" in SUPPORTED_LANGUAGES
     assert all(isinstance(lang, str) for lang in SUPPORTED_LANGUAGES)
+
+
+class _FakeTranslation:
+    def __init__(self, text: str, options: list[str]):
+        self.question_text = text
+        self.options = options
+
+
+def test_build_audio_script_uses_translation_when_provided():
+    """With a translation row, question_text and options come from the
+    translated content — the option PREFIX still stays in the speaker's
+    language so "Tʋʋmde A: ..." reads as a Moore sentence (#1694)."""
+    q = _FakeQuestion(
+        "Que signifie ce panneau ?",
+        ["Stop", "Céder le passage", "Danger"],
+    )
+    translation = _FakeTranslation(
+        "Tagem sɛbga bʋko la bʋgo?",
+        ["Zĩigi", "Kõ sori", "Yɛlga"],
+    )
+    script = build_audio_script(q, "mos", translation=translation)
+    # French source must NOT appear — the whole point of translation is
+    # that MMS-TTS pronounces Moore words, not French transliterations.
+    assert "Que signifie" not in script
+    assert "Stop" not in script
+    assert "Céder" not in script
+    # Translated content must appear, with Moore prefix.
+    assert script.startswith("Tagem sɛbga")
+    assert "Tʋʋmde A: Zĩigi" in script
+    assert "Tʋʋmde B: Kõ sori" in script
+    assert "Tʋʋmde C: Yɛlga" in script
+
+
+def test_build_audio_script_falls_back_to_source_when_translation_none():
+    """When NLLB is unreachable the translation is None — we must still
+    produce a playable script in the source language rather than crash."""
+    q = _FakeQuestion("Question source", ["A", "B"])
+    script = build_audio_script(q, "mos", translation=None)
+    assert script.startswith("Question source")
+    assert "Tʋʋmde A: A" in script

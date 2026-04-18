@@ -123,6 +123,9 @@ class QBankQuestion(Base):
     audio_files: Mapped[list[QBankQuestionAudio]] = relationship(
         back_populates="question", cascade="all, delete-orphan"
     )
+    translations: Mapped[list[QBankQuestionTranslation]] = relationship(
+        back_populates="question", cascade="all, delete-orphan"
+    )
 
 
 class QBankQuestionAudio(Base):
@@ -196,3 +199,47 @@ class QBankTestAttempt(Base):
 
     test: Mapped[QBankTest] = relationship(back_populates="attempts")
     user: Mapped[User] = relationship(foreign_keys=[user_id])
+
+
+class QBankQuestionTranslation(Base):
+    """Cached NLLB-200 translations of qbank question content (#1694).
+
+    One row per (question_id, language). ``source_hash`` is a sha256 of
+    the concatenated source question_text + options + explanation, used
+    to detect when the source has changed and the cached translation is
+    stale. ``reviewed_by`` is set when a human admin has approved the
+    machine translation for publication.
+    """
+
+    __tablename__ = "qbank_question_translations"
+    __table_args__ = (
+        UniqueConstraint(
+            "question_id", "language", name="uq_qbank_question_translation_lang"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    question_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("qbank_questions.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    language: Mapped[str] = mapped_column(String(10), nullable=False)
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    question_text: Mapped[str] = mapped_column(Text, nullable=False)
+    options: Mapped[list] = mapped_column(JSON, nullable=False)
+    explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    translator: Mapped[str] = mapped_column(
+        String(64), server_default="nllb-200-distilled-600M"
+    )
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    question: Mapped[QBankQuestion] = relationship(back_populates="translations")

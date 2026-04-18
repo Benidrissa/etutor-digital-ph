@@ -255,8 +255,15 @@ class QBankService:
 
         if should_invalidate_audio:
             from app.domain.services.qbank_audio_service import QBankAudioService
+            from app.domain.services.qbank_translation_service import (
+                QBankTranslationService,
+            )
 
             await QBankAudioService().invalidate_question(db, question_id)
+            # Also drop cached NLLB translations — the source text has
+            # changed, so the translated question_text/options no longer
+            # match what the audio pipeline will synthesize (#1694).
+            await QBankTranslationService().invalidate_question(db, question_id)
             _enqueue_pregenerate_audio(question.question_bank_id)
 
         return question

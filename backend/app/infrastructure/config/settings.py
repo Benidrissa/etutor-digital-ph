@@ -94,6 +94,13 @@ class Settings(BaseSettings):
     mms_tts_url: str = "http://mms-tts:5050"
     mms_tts_timeout_seconds: float = 60.0
 
+    # Meta NLLB-200-distilled-600M shared translation sidecar (#1694).
+    # Translates QBank question_text/options from fr -> mos/dyu/bam before
+    # MMS-TTS synthesis so local-language audio is actually local-language
+    # content, not French phonemes played by a Moore/Dyula/Bambara voice.
+    nllb_url: str = "http://nllb:8000"
+    nllb_timeout_seconds: float = 60.0
+
     # MinIO / S3-compatible object storage
     minio_endpoint: str = "http://localhost:9000"
     minio_access_key: str = ""

@@ -197,3 +197,51 @@ async def _generate_audio_async(bank_id: str, language: str) -> dict:
         result=result,
     )
     return result
+
+
+@celery_app.task(
+    base=QBankTask,
+    bind=True,
+    name="qbank.translate_bank",
+    max_retries=2,
+    default_retry_delay=60,
+    soft_time_limit=900,
+    time_limit=960,
+    rate_limit="5/m",
+)
+def translate_qbank_task(self, bank_id: str, target_language: str) -> dict:
+    """Translate every question in a bank into ``target_language`` via NLLB (#1694).
+
+    Kept separate from the audio task so admins can pre-translate and
+    review before audio synthesis if they want. The audio task also
+    translates lazily on demand, so this task is optional for the happy
+    path — run it to front-load the NLLB cost during authoring.
+    """
+    return asyncio.run(_translate_bank_async(bank_id, target_language))
+
+
+async def _translate_bank_async(bank_id: str, target_language: str) -> dict:
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.domain.services.qbank_translation_service import QBankTranslationService
+    from app.infrastructure.config.settings import settings
+
+    engine = create_async_engine(settings.database_url, echo=False)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    service = QBankTranslationService()
+
+    async with session_factory() as session:
+        try:
+            result = await service.translate_bank(
+                session, uuid.UUID(bank_id), target_language
+            )
+        finally:
+            await engine.dispose()
+
+    logger.info(
+        "qbank translate batch complete",
+        bank_id=bank_id,
+        language=target_language,
+        result=result,
+    )
+    return result
