@@ -2069,6 +2069,22 @@
     "uploadOnlyPdf": "Only PDF files are accepted.",
     "uploadExtracting": "Extracting…",
     "uploadExtractedCount": "Extracted {count} question(s){warnings}.",
-    "uploadWithWarnings": " with {count} warning(s)"
+    "uploadWithWarnings": " with {count} warning(s)",
+    "audio": {
+      "label": "Question audio",
+      "languagePickerLabel": "Audio language",
+      "pillAriaLabel": "Listen in {language}",
+      "loading": "Loading audio…",
+      "notReady": "Audio is being prepared for this language.",
+      "failed": "Audio generation failed for this language.",
+      "error": "Unable to load audio.",
+      "unsupported": "Your browser does not support the audio element."
+    },
+    "audioLanguages": {
+      "fr": "French",
+      "mos": "Mooré",
+      "dyu": "Dioula",
+      "bam": "Bambara"
+    }
   }
-}
+}\n

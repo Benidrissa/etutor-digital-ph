@@ -1569,6 +1569,33 @@ export async function getQBankTestReview(
   return apiFetch<QBankReviewResponse>(`/api/v1/qbank/tests/${testId}/review/${attemptId}`);
 }
 
+// Question audio — backend streams OGG/Opus from MinIO via a proxy (#1658).
+// The status poll returns `audio_url` only when `status === "ready"`.
+export type QBankAudioLanguage = "fr" | "mos" | "dyu" | "bam";
+
+export type QBankAudioReadiness =
+  | "pending"
+  | "generating"
+  | "ready"
+  | "failed";
+
+export interface QBankQuestionAudioStatus {
+  question_id: string;
+  language: QBankAudioLanguage;
+  status: QBankAudioReadiness;
+  audio_url: string | null;
+  duration_seconds: number | null;
+}
+
+export async function getQBankQuestionAudio(
+  questionId: string,
+  language: QBankAudioLanguage,
+): Promise<QBankQuestionAudioStatus> {
+  return apiFetch<QBankQuestionAudioStatus>(
+    `/api/v1/qbank/questions/${questionId}/audio?lang=${language}`,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // QBank management (org admin) — #1504
 // ---------------------------------------------------------------------------
