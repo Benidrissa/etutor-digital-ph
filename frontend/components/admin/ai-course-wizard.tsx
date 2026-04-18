@@ -311,7 +311,31 @@ export function AICourseWizard({
             setStep("generate");
           }
         } else if (resumeCreationStep === "indexing" || resumeCreationStep === "indexed") {
-          setStep("publish");
+          // creation_step alone is not trustworthy — the auto-chain may have
+          // dispatched but silently failed, leaving chunks_indexed=0. Fetch
+          // actual status and route based on real state.
+          try {
+            const status = await getIndexStatusApi(resumeCourseId);
+            setIndexStatus({
+              indexed: status.indexed,
+              chunks_indexed: status.chunks_indexed,
+              images_indexed: status.images_indexed,
+              task: status.task,
+            });
+            const taskState = status.task?.state;
+            if (taskState && ["PENDING", "STARTED", "RETRY"].includes(taskState)) {
+              setTaskId(status.task?.id ?? null);
+              setIsIndexing(true);
+              lastIndexProgressTimeRef.current = Date.now();
+              setStep("syllabus_edit");
+            } else if (status.chunks_indexed > 0) {
+              setStep("publish");
+            } else {
+              setStep("syllabus_edit");
+            }
+          } catch {
+            setStep("syllabus_edit");
+          }
         } else if (resumeCreationStep === "published") {
           setStep("publish");
         }
@@ -822,7 +846,7 @@ export function AICourseWizard({
   // ── Publish ───────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (step !== "publish" || !courseId) return;
+    if (step !== "publish" || !courseId || isIndexing) return;
     setIsFetchingPublishSummary(true);
     Promise.all([
       getAdminCourse(courseId),
@@ -838,7 +862,7 @@ export function AICourseWizard({
       })
       .catch(() => {})
       .finally(() => setIsFetchingPublishSummary(false));
-  }, [step, courseId]);
+  }, [step, courseId, isIndexing]);
 
   const publishCourse = useCallback(async () => {
     if (!courseId) return;
@@ -1545,7 +1569,39 @@ export function AICourseWizard({
                         {publishError}
                       </div>
                     )}
-                    <Button onClick={publishCourse} className="w-full min-h-11" disabled={isPublishing}>
+                    {!isFetchingPublishSummary && (publishSummaryIndexStatus?.chunks_indexed ?? 0) === 0 && (
+                      <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-3 text-sm text-amber-900 dark:border-amber-600/40 dark:bg-amber-950/30 dark:text-amber-200">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                          <p>{tAi("publish.ragMissing")}</p>
+                        </div>
+                        {isIndexing ? (
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <div className="h-4 w-4 animate-spin rounded-full border-2 border-amber-700 border-t-transparent shrink-0" />
+                              <p className="text-sm">
+                                {taskProg ? getStepLabel(taskProg.step) : t("index.taskPending")}
+                              </p>
+                            </div>
+                            <Progress value={progressValue} className="h-2" />
+                          </div>
+                        ) : (
+                          <Button onClick={startIndexation} className="w-full min-h-11" variant="outline">
+                            <Database className="mr-2 h-4 w-4" />
+                            {t("index.button")}
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                    <Button
+                      onClick={publishCourse}
+                      className="w-full min-h-11"
+                      disabled={
+                        isPublishing ||
+                        isIndexing ||
+                        (publishSummaryIndexStatus?.chunks_indexed ?? 0) === 0
+                      }
+                    >
                       {isPublishing ? (
                         <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
                       ) : (

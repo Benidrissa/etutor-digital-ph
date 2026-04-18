@@ -1580,6 +1580,9 @@
         "description": "Generate lesson previews, review content, and edit before publishing. Edited lessons will be locked and served from cache.",
         "skipHint": "This step is optional. Click Next to skip to publishing."
       },
+      "publish": {
+        "ragMissing": "RAG indexation has not completed — 0 content fragments indexed. Run indexation before publishing so the AI tutor can cite your resources."
+      },
       "skipToPublish": "Skip to Publish"
     },
     "syllabusEditor": {
