@@ -6,7 +6,8 @@ import uuid
 from pathlib import Path
 
 from celery.result import AsyncResult
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_db_session
 from app.api.deps_local_auth import AuthenticatedUser, get_current_user
@@ -32,9 +33,11 @@ from app.api.v1.schemas.qbank import (
     TestSubmitRequest,
     TestUpdate,
 )
+from app.domain.models.question_bank import QBankQuestion
 from app.domain.services.qbank_analytics_service import QBankAnalyticsService
 from app.domain.services.qbank_audio_service import QBankAudioService
 from app.domain.services.qbank_service import QBankService
+from app.infrastructure.storage.s3 import S3StorageService
 
 router = APIRouter(prefix="/qbank", tags=["Question Bank"])
 
@@ -46,6 +49,24 @@ _audio = QBankAudioService()
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _image_url_for(request: Request, question_id, storage_key: str | None) -> str | None:
+    """Build a browser-reachable URL for a question image.
+
+    The DB-stored ``image_url`` column targets the internal Docker hostname
+    ``http://minio:9000/...`` which the browser cannot reach. We derive a proxy
+    URL on every request from the inbound host headers (matching the pattern
+    used by the certificate-PDF download in #1590). Returns ``None`` when the
+    question has no image stored.
+    """
+    if not storage_key:
+        return None
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    if not host:
+        return None
+    return f"{proto}://{host}/api/v1/qbank/questions/{question_id}/image"
 
 
 def _bank_response(bank, question_count: int = 0, test_count: int = 0):
@@ -67,12 +88,12 @@ def _bank_response(bank, question_count: int = 0, test_count: int = 0):
     )
 
 
-def _question_response(q):
+def _question_response(q, request: Request):
     return QuestionResponse(
         id=str(q.id),
         question_bank_id=str(q.question_bank_id),
         order_index=q.order_index,
-        image_url=q.image_url,
+        image_url=_image_url_for(request, q.id, q.image_storage_key),
         question_text=q.question_text,
         options=q.options,
         correct_answer_indices=q.correct_answer_indices,
@@ -200,6 +221,7 @@ async def delete_bank(
 )
 async def list_questions(
     bank_id: uuid.UUID,
+    request: Request,
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=200),
     current_user: AuthenticatedUser = Depends(get_current_user),
@@ -207,7 +229,7 @@ async def list_questions(
 ):
     data = await _svc.list_questions(db, bank_id, page, per_page)
     return QuestionListResponse(
-        questions=[_question_response(q) for q in data["questions"]],
+        questions=[_question_response(q, request) for q in data["questions"]],
         total=data["total"],
         page=data["page"],
         per_page=data["per_page"],
@@ -218,12 +240,13 @@ async def list_questions(
 async def update_question(
     question_id: uuid.UUID,
     body: QuestionUpdate,
+    request: Request,
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
     updates = body.model_dump(exclude_unset=True)
     q = await _svc.update_question(db, question_id, uuid.UUID(current_user.id), **updates)
-    return _question_response(q)
+    return _question_response(q, request)
 
 
 @router.delete(
@@ -308,6 +331,7 @@ async def delete_test(
 @router.get("/tests/{test_id}/start", response_model=TestStartResponse)
 async def start_test(
     test_id: uuid.UUID,
+    request: Request,
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
@@ -316,7 +340,7 @@ async def start_test(
     questions = [
         TestStartQuestion(
             id=str(q.id),
-            image_url=q.image_url,
+            image_url=_image_url_for(request, q.id, q.image_storage_key),
             question_text=q.question_text,
             options=q.options,
             category=q.category,
@@ -370,6 +394,7 @@ async def get_history(
 async def get_review(
     test_id: uuid.UUID,
     attempt_id: uuid.UUID,
+    request: Request,
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
@@ -378,7 +403,9 @@ async def get_review(
     review_questions = [
         TestReviewQuestion(
             id=str(item["question"].id),
-            image_url=item["question"].image_url,
+            image_url=_image_url_for(
+                request, item["question"].id, item["question"].image_storage_key
+            ),
             question_text=item["question"].question_text,
             options=item["question"].options,
             correct_answer_indices=item["question"].correct_answer_indices,
@@ -596,3 +623,37 @@ async def get_question_audio(
     """Return the audio URL + status for one question/language."""
     row = await _audio.get_audio_status(db, question_id, lang)
     return _audio_response(row, question_id, lang)
+
+
+# ---------------------------------------------------------------------------
+# Image proxy — streams question images from MinIO (internal) to the browser
+# ---------------------------------------------------------------------------
+
+
+@router.get("/questions/{question_id}/image")
+async def get_question_image(
+    question_id: uuid.UUID,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db=Depends(get_db_session),
+):
+    """Stream a qbank question's webp image from MinIO via the backend.
+
+    MinIO only lives on the internal Docker network (no Traefik label), so the
+    storage_url column targets ``http://minio:9000/...`` which is unreachable
+    from browsers. This endpoint reuses the same pattern as the lesson audio
+    streamer and serves the bytes with a long-lived cache header — the
+    storage_key includes order_index so the URL is stable per question.
+    """
+    question = await db.get(QBankQuestion, question_id)
+    if question is None or not question.image_storage_key:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Question image not found."
+        )
+
+    storage = S3StorageService()
+    data = await storage.download_bytes(question.image_storage_key)
+    return StreamingResponse(
+        iter([data]),
+        media_type="image/webp",
+        headers={"Cache-Control": "public, max-age=86400, immutable"},
+    )
