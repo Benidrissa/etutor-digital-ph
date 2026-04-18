@@ -86,13 +86,28 @@ class QBankTranslationService:
             if existing.edited_by_admin:
                 # Don't clobber manual overrides even if they look empty.
                 return existing
-            # Stale row from an NLLB glitch (#1696). Drop and re-translate.
+            # Stale row from an NLLB glitch (#1696). Drop the translation
+            # AND the old audio — otherwise audio pregen will skip the
+            # now-orphaned audio row (status=ready) that was synthesized
+            # from the empty text, and the learner keeps hearing garbage.
             logger.warning(
                 "dropping empty qbank translation row",
                 question_id=str(question_id),
                 language=language,
             )
             await db.delete(existing)
+            # Invalidate the paired audio row so batch_generate regenerates it.
+            from app.domain.models.question_bank import QBankQuestionAudio
+
+            audio_row = await db.execute(
+                select(QBankQuestionAudio).where(
+                    QBankQuestionAudio.question_id == question_id,
+                    QBankQuestionAudio.language == language,
+                )
+            )
+            audio_existing = audio_row.scalar_one_or_none()
+            if audio_existing is not None:
+                await db.delete(audio_existing)
             await db.commit()
 
         question = await db.get(QBankQuestion, question_id)
