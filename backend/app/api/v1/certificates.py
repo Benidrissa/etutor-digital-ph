@@ -263,9 +263,12 @@ async def verify_certificate(
     svc = CertificateService(db)
     cert = await svc.verify_certificate(verification_code)
     if not cert:
+        # Keep the detail a plain JSON-serializable dict. Passing the full
+        # response model's dump here previously escaped through the error
+        # serializer and produced a plain-text 500 on unknown codes (#1624).
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=CertificateVerifyResponse(valid=False).model_dump(),
+            detail={"error": "certificate_not_found"},
         )
 
     # Load user name
