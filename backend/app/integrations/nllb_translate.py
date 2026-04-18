@@ -115,6 +115,19 @@ class NLLBTranslateClient:
         if not isinstance(translations, list) or len(translations) != len(texts):
             raise NLLBTranslateError("NLLB sidecar returned malformed translations array")
 
+        # Guard against silently-broken output: NLLB occasionally returns
+        # empty strings for edge-case inputs (newlines, trailing colons,
+        # repeated punctuation). Persisting those as translations makes
+        # MMS TTS speak only the "Option A: Option B:" prefix padding
+        # and the bug looks identical to the original gibberish (#1696).
+        for idx, translated in enumerate(translations):
+            if not translated or not translated.strip():
+                raise NLLBTranslateError(
+                    f"NLLB returned empty translation for entry {idx} "
+                    f"(target={target}, input_snippet={texts[idx][:60]!r}); "
+                    f"full response: {payload!r}"
+                )
+
         logger.info(
             "NLLB translate",
             target=target,

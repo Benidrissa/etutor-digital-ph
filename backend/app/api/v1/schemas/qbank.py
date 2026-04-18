@@ -300,3 +300,19 @@ class AudioGenerateResponse(BaseModel):
     bank_id: str
     language: str
     status: str = "processing"
+
+
+# ---------------------------------------------------------------------------
+# Translations (#1696 debug view)
+# ---------------------------------------------------------------------------
+
+
+class TranslationResponse(BaseModel):
+    question_id: str
+    language: str
+    question_text: str
+    options: list[str]
+    source_model: str
+    edited_by_admin: bool
+    created_at: str
+    updated_at: str

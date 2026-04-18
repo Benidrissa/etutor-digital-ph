@@ -65,17 +65,35 @@ class QBankTranslationService:
     ) -> QBankQuestionTranslation:
         """Translate ``question_id`` into ``language`` if not already stored.
 
-        Idempotent: if a row exists (including admin-edited ones) it's
-        returned as-is. Raises ``HTTPException`` 404 for unknown questions
-        and ``NLLBTranslateError`` for transport failures — callers mark
-        the audio row ``failed`` in that case.
+        Idempotent: if a non-empty row exists (including admin-edited ones)
+        it's returned as-is. Empty / whitespace-only stored rows are treated
+        as garbage (see #1696 — NLLB sometimes returns \"\") and dropped so
+        the retry produces real translations. Raises ``HTTPException`` 404
+        for unknown questions and ``NLLBTranslateError`` for transport
+        failures — callers mark the audio row ``failed`` in that case.
         """
         if language not in TARGET_LANGUAGES:
             raise ValueError(f"ensure_translation called with non-target language: {language}")
 
         existing = await self.get_translation(db, question_id, language)
         if existing is not None:
-            return existing
+            question_text_ok = bool((existing.question_text or "").strip())
+            options_ok = all(
+                isinstance(opt, str) and opt.strip() for opt in (existing.options or [])
+            )
+            if question_text_ok and options_ok:
+                return existing
+            if existing.edited_by_admin:
+                # Don't clobber manual overrides even if they look empty.
+                return existing
+            # Stale row from an NLLB glitch (#1696). Drop and re-translate.
+            logger.warning(
+                "dropping empty qbank translation row",
+                question_id=str(question_id),
+                language=language,
+            )
+            await db.delete(existing)
+            await db.commit()
 
         question = await db.get(QBankQuestion, question_id)
         if question is None:
@@ -88,9 +106,26 @@ class QBankTranslationService:
         source_code = resolve_source_code(bank.language if bank else None)
 
         # Translate question_text + each option in one batch round-trip.
-        source_texts = [question.question_text or ""]
+        # Sanitize the source text first: NLLB chokes on embedded newlines
+        # and trailing colons, sometimes returning "" for the whole entry
+        # (root cause of #1696). Replacing \\n with ". " and stripping
+        # trailing colons preserves meaning and avoids the edge case.
+        def _sanitize(text: str) -> str:
+            cleaned = (text or "").replace("\r\n", "\n").replace("\n", ". ")
+            cleaned = cleaned.strip().rstrip(":").strip()
+            return cleaned
+
+        source_texts = [_sanitize(question.question_text or "")]
         options = list(question.options or [])
-        source_texts.extend(options)
+        source_texts.extend(_sanitize(opt) for opt in options)
+
+        # Guard: NLLB rejects empty inputs and will trip our batch-level
+        # empty-check. If the sanitize dropped everything, there's nothing
+        # to translate — fail loudly so the caller marks audio failed.
+        if any(not t for t in source_texts):
+            raise NLLBTranslateError(
+                f"qbank question {question_id} has an empty field after sanitize; cannot translate."
+            )
 
         translations = await self._nllb.translate_batch(
             texts=source_texts,
@@ -148,12 +183,21 @@ class QBankTranslationService:
         existing_ids: set[uuid.UUID] = set()
         if questions:
             existing_rows = await db.execute(
-                select(QBankQuestionTranslation.question_id).where(
+                select(QBankQuestionTranslation).where(
                     QBankQuestionTranslation.question_id.in_([q.id for q in questions]),
                     QBankQuestionTranslation.language == language,
                 )
             )
-            existing_ids = {row for row in existing_rows.scalars()}
+            for row in existing_rows.scalars():
+                # Only treat a row as "done" if it actually has content
+                # or was explicitly edited by an admin. Empty auto-
+                # generated rows (#1696) must be re-translated.
+                has_text = bool((row.question_text or "").strip())
+                has_options = all(
+                    isinstance(opt, str) and opt.strip() for opt in (row.options or [])
+                )
+                if (has_text and has_options) or row.edited_by_admin:
+                    existing_ids.add(row.question_id)
 
         translated = 0
         skipped = 0

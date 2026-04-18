@@ -32,6 +32,7 @@ from app.api.v1.schemas.qbank import (
     TestStartResponse,
     TestSubmitRequest,
     TestUpdate,
+    TranslationResponse,
 )
 from app.domain.models.question_bank import QBankQuestion
 from app.domain.services.qbank_analytics_service import QBankAnalyticsService
@@ -690,6 +691,50 @@ async def backfill_bank_translations(
         generate_qbank_audio_task.si(str(bank_id), language),
     ).apply_async()
     return AudioGenerateResponse(task_id=task.id, bank_id=str(bank_id), language=language)
+
+
+@router.get(
+    "/questions/{question_id}/translations/{language}",
+    response_model=TranslationResponse,
+)
+async def get_question_translation(
+    question_id: uuid.UUID,
+    language: str,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db=Depends(get_db_session),
+):
+    """Return the stored NLLB translation for a (question, language).
+
+    Diagnostic endpoint added in #1696 so we can verify whether stored
+    translations contain real native-language text or empty strings.
+    Returns 404 when no translation row exists (e.g. for ``lang=fr``
+    which is the source and never has a row, or for questions that
+    haven't been translated yet).
+    """
+    if language not in ("mos", "dyu", "bam", "ful"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported target language: {language}",
+        )
+
+    from app.domain.services.qbank_translation_service import QBankTranslationService
+
+    row = await QBankTranslationService().get_translation(db, question_id, language)
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No translation stored for this (question, language).",
+        )
+    return TranslationResponse(
+        question_id=str(row.question_id),
+        language=row.language,
+        question_text=row.question_text,
+        options=list(row.options or []),
+        source_model=row.source_model,
+        edited_by_admin=row.edited_by_admin,
+        created_at=row.created_at.isoformat(),
+        updated_at=row.updated_at.isoformat(),
+    )
 
 
 @router.post(
