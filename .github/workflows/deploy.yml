@@ -342,38 +342,53 @@ jobs:
 
       - name: Validate required prod secrets
         run: |
+          # PROD_DEPLOY_SSH_KEY is the only hard requirement — staging's
+          # DEPLOY_SSH_KEY can't reach 94.250.201.110. Everything else
+          # falls back to the staging secret if PROD_* isn't set.
           missing=""
-          [ -z "${{ secrets.PROD_ANTHROPIC_API_KEY }}" ] && missing="$missing PROD_ANTHROPIC_API_KEY"
-          [ -z "${{ secrets.PROD_OPENAI_API_KEY }}" ] && missing="$missing PROD_OPENAI_API_KEY"
-          [ -z "${{ secrets.PROD_GOOGLE_API_KEY }}" ] && missing="$missing PROD_GOOGLE_API_KEY"
           [ -z "${{ secrets.PROD_DEPLOY_SSH_KEY }}" ] && missing="$missing PROD_DEPLOY_SSH_KEY"
-          [ -z "${{ secrets.PROD_POSTGRES_PASSWORD }}" ] && missing="$missing PROD_POSTGRES_PASSWORD"
+          [ -z "${{ secrets.PROD_POSTGRES_PASSWORD || secrets.POSTGRES_PASSWORD }}" ] && missing="$missing POSTGRES_PASSWORD (set PROD_POSTGRES_PASSWORD or fallback POSTGRES_PASSWORD)"
+          [ -z "${{ secrets.PROD_ANTHROPIC_API_KEY || secrets.ANTHROPIC_API_KEY }}" ] && missing="$missing ANTHROPIC_API_KEY (set PROD_ANTHROPIC_API_KEY or fallback ANTHROPIC_API_KEY)"
+          [ -z "${{ secrets.PROD_OPENAI_API_KEY || secrets.OPENAI_API_KEY }}" ] && missing="$missing OPENAI_API_KEY (set PROD_OPENAI_API_KEY or fallback OPENAI_API_KEY)"
+          [ -z "${{ secrets.PROD_GOOGLE_API_KEY || secrets.GOOGLE_API_KEY }}" ] && missing="$missing GOOGLE_API_KEY (set PROD_GOOGLE_API_KEY or fallback GOOGLE_API_KEY)"
           if [ -n "$missing" ]; then
             echo "::error::Missing required production secrets:$missing"
             exit 1
           fi
+          echo "Prod secret pre-flight: OK"
+          # Soft-optional (observability, etc). Log a warning if absent.
+          [ -z "${{ secrets.PROD_SENTRY_DSN || secrets.SENTRY_DSN }}" ] && echo "::warning::SENTRY_DSN not set — backend Sentry disabled on prod"
+          [ -z "${{ secrets.PROD_NEXT_PUBLIC_POSTHOG_KEY || secrets.NEXT_PUBLIC_POSTHOG_KEY }}" ] && echo "::warning::POSTHOG_KEY not set — frontend analytics disabled on prod"
 
       - name: Deploy on production server
         uses: appleboy/ssh-action@v1
         env:
+          # PROD_* takes precedence; staging secret is the fallback so the
+          # deploy isn't blocked on key rotation day (see PR #1668 discussion).
+          # If you've issued dedicated prod keys, set the PROD_* variants and
+          # they'll override the staging values. Secrets with no PROD_*
+          # counterpart (SENTRY_DSN, NEXT_PUBLIC_*, POSTHOG_*) are left empty
+          # when absent — observability just degrades gracefully.
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          POSTGRES_PASSWORD: ${{ secrets.PROD_POSTGRES_PASSWORD }}
-          ANTHROPIC_API_KEY: ${{ secrets.PROD_ANTHROPIC_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.PROD_OPENAI_API_KEY }}
-          GOOGLE_API_KEY: ${{ secrets.PROD_GOOGLE_API_KEY }}
-          SENTRY_DSN: ${{ secrets.PROD_SENTRY_DSN }}
-          NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.PROD_NEXT_PUBLIC_SENTRY_DSN }}
-          NEXT_PUBLIC_POSTHOG_KEY: ${{ secrets.PROD_NEXT_PUBLIC_POSTHOG_KEY }}
-          NEXT_PUBLIC_POSTHOG_HOST: ${{ secrets.PROD_NEXT_PUBLIC_POSTHOG_HOST }}
-          SMS_RELAY_API_KEY: ${{ secrets.PROD_SMS_RELAY_API_KEY }}
-          SMS_RELAY_TRUSTED_SENDERS: ${{ secrets.PROD_SMS_RELAY_TRUSTED_SENDERS }}
-          MINIO_ACCESS_KEY: ${{ secrets.PROD_MINIO_ACCESS_KEY }}
-          MINIO_SECRET_KEY: ${{ secrets.PROD_MINIO_SECRET_KEY }}
+          POSTGRES_PASSWORD: ${{ secrets.PROD_POSTGRES_PASSWORD || secrets.POSTGRES_PASSWORD }}
+          ANTHROPIC_API_KEY: ${{ secrets.PROD_ANTHROPIC_API_KEY || secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.PROD_OPENAI_API_KEY || secrets.OPENAI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.PROD_GOOGLE_API_KEY || secrets.GOOGLE_API_KEY }}
+          SENTRY_DSN: ${{ secrets.PROD_SENTRY_DSN || secrets.SENTRY_DSN }}
+          NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.PROD_NEXT_PUBLIC_SENTRY_DSN || secrets.NEXT_PUBLIC_SENTRY_DSN }}
+          NEXT_PUBLIC_POSTHOG_KEY: ${{ secrets.PROD_NEXT_PUBLIC_POSTHOG_KEY || secrets.NEXT_PUBLIC_POSTHOG_KEY }}
+          NEXT_PUBLIC_POSTHOG_HOST: ${{ secrets.PROD_NEXT_PUBLIC_POSTHOG_HOST || secrets.NEXT_PUBLIC_POSTHOG_HOST }}
+          SMS_RELAY_API_KEY: ${{ secrets.PROD_SMS_RELAY_API_KEY || secrets.SMS_RELAY_API_KEY }}
+          SMS_RELAY_TRUSTED_SENDERS: ${{ secrets.PROD_SMS_RELAY_TRUSTED_SENDERS || secrets.SMS_RELAY_TRUSTED_SENDERS }}
+          MINIO_ACCESS_KEY: ${{ secrets.PROD_MINIO_ACCESS_KEY || secrets.MINIO_ACCESS_KEY }}
+          MINIO_SECRET_KEY: ${{ secrets.PROD_MINIO_SECRET_KEY || secrets.MINIO_SECRET_KEY }}
           DEPLOY_SHA: ${{ github.sha }}
         with:
           host: 94.250.201.110
           username: deploy
+          # SSH key for the prod host — MUST be set explicitly as PROD_*
+          # (staging DEPLOY_SSH_KEY won't have access to 94.250.201.110).
           key: ${{ secrets.PROD_DEPLOY_SSH_KEY }}
           envs: GHCR_USER,GHCR_TOKEN,POSTGRES_PASSWORD,ANTHROPIC_API_KEY,OPENAI_API_KEY,GOOGLE_API_KEY,SENTRY_DSN,NEXT_PUBLIC_SENTRY_DSN,NEXT_PUBLIC_POSTHOG_KEY,NEXT_PUBLIC_POSTHOG_HOST,SMS_RELAY_API_KEY,SMS_RELAY_TRUSTED_SENDERS,MINIO_ACCESS_KEY,MINIO_SECRET_KEY,DEPLOY_SHA
           script: |
