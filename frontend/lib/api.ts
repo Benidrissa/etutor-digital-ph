@@ -1494,6 +1494,12 @@ export interface QBankQuestion {
   options: string[];
   category: string | null;
   difficulty: string;
+  /**
+   * Populated only when the test is in training mode with show_feedback=true.
+   * Lets the player draw "Correct"/"Incorrect" without a per-click round-trip.
+   * Undefined in exam mode so devtools users can't peek the answer key. (#1632)
+   */
+  correct_answer_indices?: number[] | null;
 }
 
 export interface QBankTestStartResponse {

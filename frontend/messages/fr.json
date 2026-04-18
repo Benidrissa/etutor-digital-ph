@@ -1990,6 +1990,7 @@
     "question": "Question {current} sur {total}",
     "timeRemaining": "{seconds}s",
     "submitTest": "Terminer le test",
+    "validate": "Valider",
     "nextQuestion": "Question suivante",
     "previousQuestion": "Question précédente",
     "score": "Score",

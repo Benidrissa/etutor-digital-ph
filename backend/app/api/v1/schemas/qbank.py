@@ -139,6 +139,11 @@ class TestStartQuestion(BaseModel):
     options: list[str]
     category: str | None = None
     difficulty: str
+    # Populated only when the test is in training mode with show_feedback=True,
+    # so the client can draw a "Correct"/"Incorrect" banner without a round-trip
+    # per answer. Kept None for exam mode so network-tab inspection doesn't leak
+    # the answer key (#1632).
+    correct_answer_indices: list[int] | None = None
 
 
 class TestStartResponse(BaseModel):

@@ -68,34 +68,64 @@ export function QBankTestPlayer({ testId }: QBankTestPlayerProps) {
     }
   }, [testData, currentIndex]);
 
-  const handleSelect = useCallback((optionIndex: number) => {
+  // Toggle an option in the current question's selection. Multi-answer questions
+  // need to accumulate picks before scoring — training-mode feedback is deferred
+  // to an explicit "Valider" step rather than firing on first click (#1632).
+  const handleToggle = useCallback((optionIndex: number) => {
     if (!currentQuestion || showingFeedback) return;
 
     const timeSec = recordTime();
-    setAnswers((prev) => ({
-      ...prev,
-      [currentQuestion.id]: { selected: [optionIndex], time_sec: timeSec },
-    }));
+    setAnswers((prev) => {
+      const existing = prev[currentQuestion.id]?.selected ?? [];
+      const next = existing.includes(optionIndex)
+        ? existing.filter((i) => i !== optionIndex)
+        : [...existing, optionIndex];
+      return {
+        ...prev,
+        [currentQuestion.id]: { selected: next, time_sec: timeSec },
+      };
+    });
+  }, [currentQuestion, showingFeedback, recordTime]);
 
-    if (testData?.mode === 'training' && testData.show_feedback) {
-      setTimerRunning(false);
-      setShowingFeedback(true);
-    }
-  }, [currentQuestion, showingFeedback, recordTime, testData]);
+  // Commit the training-mode answer: stop the timer and reveal the correct set.
+  // "Question suivante" then unlocks normally via the existing flow.
+  const handleValidate = useCallback(() => {
+    if (!currentQuestion) return;
+    const timeSec = recordTime();
+    setAnswers((prev) => {
+      const existing = prev[currentQuestion.id];
+      if (!existing) return prev;
+      return {
+        ...prev,
+        [currentQuestion.id]: { ...existing, time_sec: timeSec },
+      };
+    });
+    setTimerRunning(false);
+    setShowingFeedback(true);
+  }, [currentQuestion, recordTime]);
 
   const handleTimerExpire = useCallback(() => {
     if (!currentQuestion) return;
     const timeSec = recordTime();
+    const hadAnswer = Boolean(answers[currentQuestion.id]);
     setAnswers((prev) => {
       if (prev[currentQuestion.id]) return prev;
       return { ...prev, [currentQuestion.id]: { selected: [], time_sec: timeSec } };
     });
     setTimerRunning(false);
 
+    // In training+feedback mode, if the learner had already picked something,
+    // lock in what they have and reveal the correct set instead of skipping.
+    // Otherwise (no pick, or exam mode) advance like before.
+    if (testData?.mode === 'training' && testData.show_feedback && hadAnswer) {
+      setShowingFeedback(true);
+      return;
+    }
+
     if (testData && currentIndex < testData.questions.length - 1) {
       setTimeout(() => goToNext(), 500);
     }
-  }, [currentQuestion, recordTime, testData, currentIndex, goToNext]);
+  }, [currentQuestion, recordTime, testData, currentIndex, goToNext, answers]);
 
   const handleSubmit = useCallback(async () => {
     if (!testData) return;
@@ -162,10 +192,18 @@ export function QBankTestPlayer({ testId }: QBankTestPlayerProps) {
 
   const totalQuestions = testData.questions.length;
   const progressPercent = ((currentIndex + 1) / totalQuestions) * 100;
-  const selectedOption = answers[currentQuestion.id]?.selected[0] ?? null;
+  const selectedIndices = answers[currentQuestion.id]?.selected ?? [];
+  const hasSelection = selectedIndices.length > 0;
   const isLastQuestion = currentIndex === totalQuestions - 1;
   const isExamMode = testData.mode === 'exam';
+  const isTrainingWithFeedback =
+    testData.mode === 'training' && testData.show_feedback;
   const hasTimer = testData.time_per_question_sec > 0 && testData.mode !== 'review';
+  // correct_answer_indices is only on the payload in training+feedback mode.
+  // Review mode doesn't need it (that page fetches its own review data).
+  const correctIndices = isTrainingWithFeedback
+    ? (currentQuestion.correct_answer_indices ?? undefined)
+    : undefined;
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-4">
@@ -193,10 +231,10 @@ export function QBankTestPlayer({ testId }: QBankTestPlayerProps) {
 
       <QBankImageQuestion
         question={currentQuestion}
-        selectedOption={selectedOption}
-        onSelect={handleSelect}
+        selectedIndices={selectedIndices}
+        onToggle={handleToggle}
         showFeedback={showingFeedback || testData.mode === 'review'}
-        correctIndices={testData.mode === 'review' ? [] : undefined}
+        correctIndices={correctIndices}
         onImageLoad={() => {
           if (hasTimer && !showingFeedback) {
             setTimerRunning(true);
@@ -216,6 +254,17 @@ export function QBankTestPlayer({ testId }: QBankTestPlayerProps) {
           </Button>
         )}
 
+        {/* Training + show_feedback: commit the selection explicitly before advancing.
+            Lets the learner pick every correct option on multi-answer questions. */}
+        {isTrainingWithFeedback && !showingFeedback && hasSelection && (
+          <Button
+            className="min-h-[44px] flex-1"
+            onClick={handleValidate}
+          >
+            {t('validate')}
+          </Button>
+        )}
+
         {showingFeedback && !isLastQuestion && (
           <Button
             className="min-h-[44px] flex-1"
@@ -225,7 +274,7 @@ export function QBankTestPlayer({ testId }: QBankTestPlayerProps) {
           </Button>
         )}
 
-        {!showingFeedback && !isExamMode && selectedOption !== null && !isLastQuestion && (
+        {!showingFeedback && !isExamMode && !isTrainingWithFeedback && hasSelection && !isLastQuestion && (
           <Button
             className="min-h-[44px] flex-1"
             onClick={goToNext}
@@ -234,7 +283,7 @@ export function QBankTestPlayer({ testId }: QBankTestPlayerProps) {
           </Button>
         )}
 
-        {isExamMode && !isLastQuestion && selectedOption !== null && (
+        {isExamMode && !isLastQuestion && hasSelection && (
           <Button
             className="min-h-[44px] flex-1"
             onClick={goToNext}
@@ -243,7 +292,7 @@ export function QBankTestPlayer({ testId }: QBankTestPlayerProps) {
           </Button>
         )}
 
-        {((isLastQuestion && selectedOption !== null && !showingFeedback) ||
+        {((isLastQuestion && hasSelection && !showingFeedback && !isTrainingWithFeedback) ||
           (isLastQuestion && showingFeedback)) && (
           <Button
             className={cn('min-h-[44px]', isExamMode ? 'w-full' : 'flex-1')}

@@ -337,6 +337,11 @@ async def start_test(
 ):
     data = await _svc.start_test(db, test_id, uuid.UUID(current_user.id))
     test = data["test"]
+    # Training mode with show_feedback relies on the client knowing the answer
+    # key so it can show per-question "Correct/Incorrect" without an extra
+    # round-trip. In exam mode the key stays server-side (#1632).
+    mode_value = test.mode.value if hasattr(test.mode, "value") else test.mode
+    expose_answers = mode_value == "training" and test.show_feedback
     questions = [
         TestStartQuestion(
             id=str(q.id),
@@ -345,6 +350,7 @@ async def start_test(
             options=q.options,
             category=q.category,
             difficulty=q.difficulty.value if hasattr(q.difficulty, "value") else q.difficulty,
+            correct_answer_indices=q.correct_answer_indices if expose_answers else None,
         )
         for q in data["questions"]
     ]
@@ -352,7 +358,7 @@ async def start_test(
     return TestStartResponse(
         test_id=str(test.id),
         title=test.title,
-        mode=test.mode.value if hasattr(test.mode, "value") else test.mode,
+        mode=mode_value,
         time_per_question_sec=data["time_per_question_sec"],
         show_feedback=test.show_feedback,
         questions=questions,
