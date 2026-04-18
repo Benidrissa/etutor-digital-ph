@@ -14,7 +14,8 @@ from app.ai.claude_service import ClaudeService
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.api.deps import get_db
-from app.api.deps_local_auth import require_active_subscription
+from app.api.deps_local_auth import get_current_user, require_active_subscription
+from app.domain.services.subscription_service import SubscriptionService
 from app.api.v1.schemas.content import FlashcardSetResponse
 from app.api.v1.schemas.flashcards import (
     FlashcardDueResponse,
@@ -513,7 +514,7 @@ async def complete_flashcard_session(
     },
 )
 async def get_upcoming_reviews(
-    current_user: User = Depends(require_active_subscription),
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> UpcomingReviewsResponse:
     """
@@ -521,6 +522,11 @@ async def get_upcoming_reviews(
 
     Returns the next 5 review sessions with module information and card counts.
     Used for the dashboard upcoming reviews widget.
+
+    **Subscription behaviour:** this endpoint is an informational dashboard
+    widget, not gated content. Non-subscribed users get a `200 []` empty
+    response so the dashboard renders a neutral empty state instead of a
+    red error banner (issue #1626).
 
     **Features:**
     - Groups cards by review date and module
@@ -534,6 +540,18 @@ async def get_upcoming_reviews(
     - Includes all info needed for widget display
     """
     try:
+        # Non-subscribed users see an empty state, not a 403.
+        subscription = await SubscriptionService().get_active_subscription(
+            current_user.id, session
+        )
+        if subscription is None:
+            return UpcomingReviewsResponse(
+                user_id=current_user.id,
+                today_due_count=0,
+                has_due_cards=False,
+                upcoming_sessions=[],
+            )
+
         logger.info("Fetching upcoming reviews", user_id=str(current_user.id))
 
         now = datetime.utcnow()
