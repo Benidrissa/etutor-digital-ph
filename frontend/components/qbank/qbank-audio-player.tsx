@@ -43,8 +43,9 @@ export function QBankAudioPlayer({ questionId, defaultLanguage }: QBankAudioPlay
     let cancelled = false;
     // Old-state resets moved into the callbacks: sync setStates inside an
     // effect body cascade re-renders and trip the no-sync-set-state lint
-    // rule. The brief flicker of stale status on question/language change
-    // is acceptable — it's replaced atomically when the fetch resolves.
+    // rule (#1666). The brief flicker of stale status on question/language
+    // change is acceptable — it's replaced atomically when the fetch
+    // resolves.
     getQBankQuestionAudio(questionId, language)
       .then((s) => {
         if (cancelled) return;
