@@ -247,8 +247,10 @@ export function AICourseWizard({
 
   // ── Load taxonomy ──────────────────────────────────────────────────
 
-  useEffect(() => {
-    getCourseTaxonomy().then((tax) => {
+  const loadTaxonomy = useCallback(async () => {
+    setTaxonomyError(false);
+    try {
+      const tax = await getCourseTaxonomy();
       const domains = tax.domains ?? [];
       const levels = tax.levels ?? [];
       const audienceTypes = tax.audience_types ?? [];
@@ -258,11 +260,15 @@ export function AICourseWizard({
       if (domains.length === 0 && levels.length === 0 && audienceTypes.length === 0) {
         setTaxonomyError(true);
       }
-    }).catch((err) => {
+    } catch (err) {
       console.error("[ai-course-wizard] Failed to load taxonomy:", err);
       setTaxonomyError(true);
-    });
+    }
   }, []);
+
+  useEffect(() => {
+    loadTaxonomy();
+  }, [loadTaxonomy]);
 
   // ── Hydrate on resume ─────────────────────────────────────────────
 
@@ -1114,11 +1120,22 @@ export function AICourseWizard({
                   </div>
 
                   {taxonomyError && (
-                    <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                      <AlertCircle className="h-4 w-4 shrink-0" />
-                      {locale === "fr"
-                        ? "Impossible de charger les catégories. Rechargez la page ou continuez sans."
-                        : "Could not load categories. Reload the page or continue without."}
+                    <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4 shrink-0" />
+                        {locale === "fr"
+                          ? "Impossible de charger les catégories. Réessayez ou continuez sans."
+                          : "Could not load categories. Retry or continue without."}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 shrink-0"
+                        onClick={() => loadTaxonomy()}
+                      >
+                        {locale === "fr" ? "Réessayer" : "Retry"}
+                      </Button>
                     </div>
                   )}
 
