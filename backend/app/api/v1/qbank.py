@@ -762,34 +762,57 @@ async def debug_nllb_probe(
     src_code = SOURCE_CODES.get(source, "fra_Latn")
     tgt_code = TARGET_CODES[target]
 
+    import socket
+
     base_url = settings.nllb_url.rstrip("/")
+    mms_url = settings.mms_tts_url.rstrip("/")
+    result = {
+        "nllb_base_url": base_url,
+        "mms_base_url": mms_url,
+        "src": src_code,
+        "tgt": tgt_code,
+        "input": text,
+    }
+
+    # DNS resolution step — if the container hostname can't even resolve,
+    # Docker network config is wrong.
+    host = base_url.replace("http://", "").replace("https://", "").split(":")[0]
     try:
-        async with httpx.AsyncClient(timeout=settings.nllb_timeout_seconds) as client:
+        result["nllb_dns"] = socket.gethostbyname(host)
+    except Exception as exc:
+        result["nllb_dns_error"] = f"{type(exc).__name__}: {exc}"
+
+    mms_host = mms_url.replace("http://", "").replace("https://", "").split(":")[0]
+    try:
+        result["mms_dns"] = socket.gethostbyname(mms_host)
+    except Exception as exc:
+        result["mms_dns_error"] = f"{type(exc).__name__}: {exc}"
+
+    # NLLB health + translate probe
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             health = await client.get(f"{base_url}/health")
+            result["nllb_health_status"] = health.status_code
+            result["nllb_health_body"] = health.text[:300]
             translate = await client.post(
                 f"{base_url}/translate",
                 json={"texts": [text], "src": src_code, "tgt": tgt_code},
             )
-    except httpx.HTTPError as exc:
-        return {
-            "error": f"sidecar unreachable: {exc}",
-            "base_url": base_url,
-        }
+            result["nllb_translate_status"] = translate.status_code
+            result["nllb_translate_body"] = translate.text[:500]
+    except Exception as exc:
+        result["nllb_error"] = f"{type(exc).__name__}: {exc!r}"
 
-    return {
-        "base_url": base_url,
-        "src": src_code,
-        "tgt": tgt_code,
-        "input": text,
-        "health_status": health.status_code,
-        "health_body": health.json()
-        if health.headers.get("content-type", "").startswith("application/json")
-        else health.text[:300],
-        "translate_status": translate.status_code,
-        "translate_body": translate.json()
-        if translate.headers.get("content-type", "").startswith("application/json")
-        else translate.text[:500],
-    }
+    # MMS /health probe as a control — we know it works today.
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            mms_health = await client.get(f"{mms_url}/health")
+            result["mms_health_status"] = mms_health.status_code
+            result["mms_health_body"] = mms_health.text[:200]
+    except Exception as exc:
+        result["mms_error"] = f"{type(exc).__name__}: {exc!r}"
+
+    return result
 
 
 @router.post(
