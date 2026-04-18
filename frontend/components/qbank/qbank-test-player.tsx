@@ -29,6 +29,24 @@ const AUTO_ADVANCE_MS = 700;
 // correct answer and the explanation before moving on.
 const AUTO_ADVANCE_FEEDBACK_MS = 2000;
 
+const AUDIO_PREF_STORAGE_KEY = 'qbank-audio-lang';
+const DEFAULT_AUDIO_LANG = 'fr';
+
+function preloadAudioClips(data: QBankTestStartResponse): void {
+  if (typeof window === 'undefined') return;
+  const audioMap = data.audio ?? {};
+  const saved = window.localStorage.getItem(AUDIO_PREF_STORAGE_KEY);
+  const activeLang = saved && saved.length > 0 ? saved : DEFAULT_AUDIO_LANG;
+  for (const question of data.questions) {
+    const url = audioMap[question.id]?.[activeLang];
+    if (!url) continue;
+    const preloader = new Audio();
+    preloader.preload = 'auto';
+    preloader.src = url;
+    preloader.load();
+  }
+}
+
 export function QBankTestPlayer({ testId }: QBankTestPlayerProps) {
   const t = useTranslations('qbank');
   const [phase, setPhase] = useState<Phase>('loading');
@@ -52,6 +70,10 @@ export function QBankTestPlayer({ testId }: QBankTestPlayerProps) {
         if (data.mode === 'exam') {
           setTimerRunning(true);
         }
+        // Warm the browser's HTTP cache for the active-language audio of
+        // every question so playback starts within the timer window
+        // regardless of network speed (#1674).
+        preloadAudioClips(data);
       })
       .catch((err) => {
         setError(err.message || 'Failed to load test');
@@ -307,6 +329,7 @@ export function QBankTestPlayer({ testId }: QBankTestPlayerProps) {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <QBankImageQuestion
           question={currentQuestion}
+          preloadedAudio={testData.audio?.[currentQuestion.id]}
           selectedIndices={selectedIndices}
           onToggle={handleToggle}
           showFeedback={showingFeedback || testData.mode === 'review'}

@@ -358,6 +358,10 @@ async def start_test(
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
+    from sqlalchemy import select
+
+    from app.domain.models.question_bank import QBankAudioStatus, QBankQuestionAudio
+
     data = await _svc.start_test(db, test_id, uuid.UUID(current_user.id))
     test = data["test"]
     # Training mode with show_feedback relies on the client knowing the answer
@@ -378,6 +382,23 @@ async def start_test(
         for q in data["questions"]
     ]
 
+    # Preload ready audio URLs for every (question, language) pair so the
+    # client can warm its HTTP cache before the timer starts (#1674).
+    audio_map: dict[str, dict[str, str]] = {}
+    question_ids = [q.id for q in data["questions"]]
+    if question_ids:
+        audio_rows = await db.execute(
+            select(QBankQuestionAudio).where(
+                QBankQuestionAudio.question_id.in_(question_ids),
+                QBankQuestionAudio.status == QBankAudioStatus.ready,
+            )
+        )
+        for row in audio_rows.scalars():
+            url = _audio_url_for(request, row.question_id, row.language, row.storage_key)
+            if url is None:
+                continue
+            audio_map.setdefault(str(row.question_id), {})[row.language] = url
+
     return TestStartResponse(
         test_id=str(test.id),
         title=test.title,
@@ -386,6 +407,7 @@ async def start_test(
         show_feedback=test.show_feedback,
         questions=questions,
         total_questions=len(questions),
+        audio=audio_map,
     )
 
 

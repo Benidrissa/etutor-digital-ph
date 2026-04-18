@@ -25,6 +25,30 @@ logger = structlog.get_logger(__name__)
 _org_svc = OrganizationService()
 
 
+def _enqueue_pregenerate_audio(bank_id: uuid.UUID) -> None:
+    """Fire a Celery task per supported language to pregenerate audio.
+
+    Kept as a module-level helper so it can be called from ``update_bank``
+    (publish transition) and ``update_question`` (text change) without
+    creating a service cycle. Imports are local so this module stays
+    safe to import in contexts where Celery isn't wired up (e.g. tests
+    that patch the task).
+    """
+    from app.domain.services.qbank_audio_service import SUPPORTED_LANGUAGES
+    from app.tasks.qbank_processing import generate_qbank_audio_task
+
+    for language in SUPPORTED_LANGUAGES:
+        try:
+            generate_qbank_audio_task.delay(str(bank_id), language)
+        except Exception as exc:
+            logger.warning(
+                "failed to enqueue qbank audio pregeneration",
+                bank_id=str(bank_id),
+                language=language,
+                error=str(exc),
+            )
+
+
 class QBankService:
     # ------------------------------------------------------------------
     # Question Bank CRUD
@@ -125,11 +149,19 @@ class QBankService:
             "passing_score",
             "status",
         }
+        previous_status = bank.status.value if hasattr(bank.status, "value") else bank.status
         for key, value in fields.items():
             if key in allowed and value is not None:
                 setattr(bank, key, value)
         await db.commit()
         await db.refresh(bank)
+
+        # Publish transition fires audio pregeneration for every supported
+        # language so learners never wait on the timer for TTS (#1674).
+        new_status = bank.status.value if hasattr(bank.status, "value") else bank.status
+        if previous_status != "published" and new_status == "published":
+            _enqueue_pregenerate_audio(bank_id)
+
         return bank
 
     async def delete_bank(
@@ -208,11 +240,25 @@ class QBankService:
             "category",
             "difficulty",
         }
+        # Changes to the spoken text or option list make the cached TTS
+        # clips stale — drop them and re-enqueue generation downstream.
+        invalidating_keys = {"question_text", "options"}
+        should_invalidate_audio = any(
+            key in invalidating_keys and value is not None and value != getattr(question, key, None)
+            for key, value in fields.items()
+        )
         for key, value in fields.items():
             if key in allowed and value is not None:
                 setattr(question, key, value)
         await db.commit()
         await db.refresh(question)
+
+        if should_invalidate_audio:
+            from app.domain.services.qbank_audio_service import QBankAudioService
+
+            await QBankAudioService().invalidate_question(db, question_id)
+            _enqueue_pregenerate_audio(question.question_bank_id)
+
         return question
 
     async def delete_question(

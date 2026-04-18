@@ -16,6 +16,13 @@ interface QBankAudioPlayerProps {
   questionId: string;
   /** Preferred default when nothing is in localStorage yet (e.g. bank.language). */
   defaultLanguage?: QBankAudioLanguage;
+  /**
+   * Pre-fetched audio URLs keyed by language. When a URL exists here
+   * we mount the <audio> element directly instead of polling the
+   * status endpoint — saves a round-trip per question/language switch
+   * and is the fast path once pregeneration has run (#1674).
+   */
+  preloadedUrls?: Record<string, string>;
 }
 
 /**
@@ -26,7 +33,11 @@ interface QBankAudioPlayerProps {
  * preferences toggle: the language pills are always visible and the
  * last selection persists across questions via localStorage (#1659, #1670).
  */
-export function QBankAudioPlayer({ questionId, defaultLanguage }: QBankAudioPlayerProps) {
+export function QBankAudioPlayer({
+  questionId,
+  defaultLanguage,
+  preloadedUrls,
+}: QBankAudioPlayerProps) {
   const t = useTranslations('qbank');
   const tLang = useTranslations('qbank.audioLanguages');
   const [language, setLanguage] = useState<QBankAudioLanguage>(() => {
@@ -39,7 +50,14 @@ export function QBankAudioPlayer({ questionId, defaultLanguage }: QBankAudioPlay
   const [error, setError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
+  const preloadedUrl = preloadedUrls?.[language];
+
   useEffect(() => {
+    // Fast path: test-start gave us a ready URL for this language, so
+    // we derive the status in render and skip the network call entirely
+    // (#1674). No setState here — the derived status below covers it.
+    if (preloadedUrl) return;
+
     let cancelled = false;
     // Old-state resets moved into the callbacks: sync setStates inside an
     // effect body cascade re-renders and trip the no-sync-set-state lint
@@ -58,7 +76,20 @@ export function QBankAudioPlayer({ questionId, defaultLanguage }: QBankAudioPlay
         setError(err instanceof Error ? err.message : 'Audio fetch failed');
       });
     return () => { cancelled = true; };
-  }, [questionId, language]);
+  }, [questionId, language, preloadedUrl]);
+
+  // Derived status: preloaded URL wins over any cached fetch result so
+  // the <audio> element mounts synchronously on the first render.
+  const effectiveStatus: QBankQuestionAudioStatus | null = preloadedUrl
+    ? {
+        question_id: questionId,
+        language,
+        status: 'ready',
+        audio_url: preloadedUrl,
+        duration_seconds: null,
+      }
+    : status;
+  const effectiveError = preloadedUrl ? null : error;
 
   // Persist the learner's chosen language across questions.
   useEffect(() => {
@@ -104,22 +135,22 @@ export function QBankAudioPlayer({ questionId, defaultLanguage }: QBankAudioPlay
         })}
       </div>
 
-      {error && (
+      {effectiveError && (
         <p className="text-xs text-destructive" role="alert">
           {t('audio.error')}
         </p>
       )}
 
-      {status?.status === 'failed' && (
+      {effectiveStatus?.status === 'failed' && (
         <p className="text-xs text-destructive" role="alert">{t('audio.failed')}</p>
       )}
 
-      {status?.status === 'ready' && status.audio_url && (
+      {effectiveStatus?.status === 'ready' && effectiveStatus.audio_url && (
         <audio
           ref={audioRef}
-          src={status.audio_url}
+          src={effectiveStatus.audio_url}
           controls
-          preload="none"
+          preload="auto"
           className="h-9 w-full sm:h-10"
         >
           {t('audio.unsupported')}

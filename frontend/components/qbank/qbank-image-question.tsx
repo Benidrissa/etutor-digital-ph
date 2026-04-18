@@ -10,6 +10,12 @@ const OPTION_LABELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
 interface QBankImageQuestionProps {
   question: QBankQuestion;
+  /**
+   * Pre-fetched audio URLs keyed by language. Populated from
+   * TestStartResponse.audio so the player can mount the <audio>
+   * element without a per-question round-trip (#1674).
+   */
+  preloadedAudio?: Record<string, string>;
   selectedIndices: number[];
   onToggle: (index: number) => void;
   showFeedback: boolean;
@@ -31,6 +37,7 @@ function selectionIsCorrect(
 
 export function QBankImageQuestion({
   question,
+  preloadedAudio,
   selectedIndices,
   onToggle,
   showFeedback,
@@ -75,7 +82,10 @@ export function QBankImageQuestion({
         </div>
       )}
 
-      <QBankAudioPlayer questionId={question.id} />
+      <QBankAudioPlayer
+        questionId={question.id}
+        preloadedUrls={preloadedAudio}
+      />
 
       <p className="text-sm font-medium leading-snug sm:text-base">
         {question.question_text}

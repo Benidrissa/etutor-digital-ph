@@ -1510,6 +1510,13 @@ export interface QBankTestStartResponse {
   show_feedback: boolean;
   questions: QBankQuestion[];
   total_questions: number;
+  /**
+   * Pre-fetched audio URLs: {question_id: {language: url}}. Only
+   * (question, language) pairs whose TTS clip is ready are populated.
+   * Missing entries mean the client should fall back to polling
+   * /api/v1/qbank/questions/{id}/audio (#1674).
+   */
+  audio?: Record<string, Record<string, string>>;
 }
 
 export interface QBankTestAttemptResponse {

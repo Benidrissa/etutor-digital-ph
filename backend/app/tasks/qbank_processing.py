@@ -134,6 +134,24 @@ async def _process_pdf_async(task, bank_id: str, pdf_filename: str) -> dict:
         questions_created=created,
         errors_count=len(errors),
     )
+
+    # Fire audio pregeneration for every supported language so the first
+    # learner to take a test doesn't wait on the MMS sidecar (#1674).
+    # Skipped when no questions were added — nothing to synthesize.
+    if created:
+        from app.domain.services.qbank_audio_service import SUPPORTED_LANGUAGES
+
+        for language in SUPPORTED_LANGUAGES:
+            try:
+                generate_qbank_audio_task.delay(bank_id, language)
+            except Exception as exc:
+                logger.warning(
+                    "failed to enqueue post-extract audio pregeneration",
+                    bank_id=bank_id,
+                    language=language,
+                    error=str(exc),
+                )
+
     return {
         "bank_id": bank_id,
         "questions_created": created,
