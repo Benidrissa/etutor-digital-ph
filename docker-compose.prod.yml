@@ -68,7 +68,12 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4G
+          # distilled-600M ~2.4 GB FP32 weights + transformers runtime +
+          # activations during generate() easily exceeds 4 GB on first
+          # forward pass, triggering container OOM + restart loop that
+          # makes /health time out (#1696 follow-up). 8 GB covers load
+          # + peak generate comfortably.
+          memory: 8G
 
   backend:
     image: ghcr.io/benidrissa/etutor-digital-ph/backend:latest
