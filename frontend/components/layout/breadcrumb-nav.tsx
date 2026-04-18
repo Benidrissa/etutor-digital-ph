@@ -66,8 +66,13 @@ export function BreadcrumbNav() {
       let label = segment;
       const href = `/${locale}/${pathSegments.slice(0, i + 1).join('/')}`;
 
-      // Map segments to readable labels
+      // Map segments to readable labels — i18n the known static segments
+      // so FR users don't see "Courses" and so dynamic slugs aren't just
+      // title-cased with dashes preserved (#1621).
       switch (segment) {
+        case 'courses':
+          label = t("courses");
+          break;
         case 'modules':
           label = t("modules");
           break;
@@ -89,6 +94,24 @@ export function BreadcrumbNav() {
         case 'case-study':
           label = t("caseStudy");
           break;
+        case 'profile':
+          label = t("profile");
+          break;
+        case 'subscribe':
+          label = t("subscribe");
+          break;
+        case 'admin':
+          label = t("admin");
+          break;
+        case 'certificates':
+          label = t("certificates");
+          break;
+        case 'curricula':
+          label = t("curricula");
+          break;
+        case 'organizations':
+          label = t("organizations");
+          break;
         default:
           // Resolve UUIDs to readable names (e.g., module titles)
           if (UUID_RE.test(segment) && moduleNames[segment]) {
@@ -97,7 +120,13 @@ export function BreadcrumbNav() {
             // Skip showing raw UUIDs — will resolve on next render
             continue;
           } else {
-            label = segment.charAt(0).toUpperCase() + segment.slice(1);
+            // Prettify slugs: `new-course-ai` → `New Course Ai` instead of
+            // `New-course-ai`. Course title lookup would be nicer but needs
+            // a dedicated get-course-by-slug fetcher — deferred.
+            label = segment
+              .split('-')
+              .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+              .join(' ');
           }
       }
 
