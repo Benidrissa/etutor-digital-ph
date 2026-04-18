@@ -15,7 +15,6 @@ from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.api.deps import get_db
 from app.api.deps_local_auth import get_current_user, require_active_subscription
-from app.domain.services.subscription_service import SubscriptionService
 from app.api.v1.schemas.content import FlashcardSetResponse
 from app.api.v1.schemas.flashcards import (
     FlashcardDueResponse,
@@ -32,6 +31,7 @@ from app.domain.models.user import User
 from app.domain.services.analytics_service import AnalyticsService
 from app.domain.services.flashcard_service import FlashcardGenerationService
 from app.domain.services.platform_settings_service import SettingsCache
+from app.domain.services.subscription_service import SubscriptionService
 from app.infrastructure.config.settings import get_settings
 
 logger = structlog.get_logger()
@@ -541,9 +541,7 @@ async def get_upcoming_reviews(
     """
     try:
         # Non-subscribed users see an empty state, not a 403.
-        subscription = await SubscriptionService().get_active_subscription(
-            current_user.id, session
-        )
+        subscription = await SubscriptionService().get_active_subscription(current_user.id, session)
         if subscription is None:
             return UpcomingReviewsResponse(
                 user_id=current_user.id,
