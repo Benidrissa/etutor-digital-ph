@@ -49,6 +49,14 @@ const nextConfig: NextConfig = {
         hostname: "api.elearning.portfolio2.kimbetien.com",
         pathname: "/api/**",
       },
+      // Production wildcard for tenants provisioned under *.sira-donnia.org.
+      // Covers same-origin `<tenant>.tenant.sira-donnia.org/api/**` *and*
+      // the direct `api.<tenant>.tenant.sira-donnia.org` subdomain.
+      {
+        protocol: "https",
+        hostname: "**.sira-donnia.org",
+        pathname: "/**",
+      },
     ],
   },
 
