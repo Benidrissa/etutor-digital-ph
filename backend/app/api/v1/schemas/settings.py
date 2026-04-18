@@ -32,8 +32,19 @@ class SettingsByCategoryResponse(BaseModel):
     settings: list[SettingResponse]
 
 
+class BrandingConfig(BaseModel):
+    app_name: str
+    app_short_name: str
+    app_description_fr: str
+    app_description_en: str
+    tagline_fr: str
+    tagline_en: str
+    theme_color: str
+
+
 class PublicSettingsResponse(BaseModel):
     settings: dict[str, Any]
+    branding: BrandingConfig
 
 
 class ResetCategoryResponse(BaseModel):

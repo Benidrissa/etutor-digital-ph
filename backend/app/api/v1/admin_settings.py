@@ -13,8 +13,10 @@ from app.domain.models.audit_log import AdminAction, AuditLog
 from app.domain.models.user import UserRole
 from app.domain.services.platform_settings_service import PlatformSettingsService
 from app.infrastructure.config.platform_defaults import CATEGORIES
+from app.infrastructure.config.settings import settings as app_settings
 
 from .schemas.settings import (
+    BrandingConfig,
     PublicSettingsResponse,
     ResetCategoryResponse,
     SettingResetRequest,
@@ -23,6 +25,20 @@ from .schemas.settings import (
     SettingUpdateRequest,
 )
 
+
+def _current_branding() -> BrandingConfig:
+    """Build the tenant's branding payload from env-driven settings."""
+    return BrandingConfig(
+        app_name=app_settings.app_name,
+        app_short_name=app_settings.app_short_name,
+        app_description_fr=app_settings.app_description_fr,
+        app_description_en=app_settings.app_description_en,
+        tagline_fr=app_settings.app_tagline_fr,
+        tagline_en=app_settings.app_tagline_en,
+        theme_color=app_settings.app_theme_color,
+    )
+
+
 logger = get_logger(__name__)
 router = APIRouter(tags=["Settings"])
 _svc = PlatformSettingsService()
@@ -30,7 +46,10 @@ _svc = PlatformSettingsService()
 
 @router.get("/settings/public", response_model=PublicSettingsResponse)
 async def get_public_settings():
-    return PublicSettingsResponse(settings=await _svc.get_all_public())
+    return PublicSettingsResponse(
+        settings=await _svc.get_all_public(),
+        branding=_current_branding(),
+    )
 
 
 @router.get("/admin/settings", response_model=list[SettingsByCategoryResponse])
