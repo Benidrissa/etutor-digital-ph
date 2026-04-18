@@ -137,13 +137,24 @@ async def _process_pdf_async(task, bank_id: str, pdf_filename: str) -> dict:
 
     # Fire audio pregeneration for every supported language so the first
     # learner to take a test doesn't wait on the MMS sidecar (#1674).
-    # Skipped when no questions were added — nothing to synthesize.
+    # For non-source languages, chain translate→audio so MMS receives
+    # native-language text rather than French (#1690). Skipped when no
+    # questions were added — nothing to translate or synthesize.
     if created:
+        from celery import chain as celery_chain
+
         from app.domain.services.qbank_audio_service import SUPPORTED_LANGUAGES
+        from app.domain.services.qbank_translation_service import TARGET_LANGUAGES
 
         for language in SUPPORTED_LANGUAGES:
             try:
-                generate_qbank_audio_task.delay(bank_id, language)
+                if language in TARGET_LANGUAGES:
+                    celery_chain(
+                        translate_qbank_bank_task.si(bank_id, language),
+                        generate_qbank_audio_task.si(bank_id, language),
+                    ).apply_async()
+                else:
+                    generate_qbank_audio_task.delay(bank_id, language)
             except Exception as exc:
                 logger.warning(
                     "failed to enqueue post-extract audio pregeneration",
@@ -192,6 +203,53 @@ async def _generate_audio_async(bank_id: str, language: str) -> dict:
 
     logger.info(
         "qbank audio batch complete",
+        bank_id=bank_id,
+        language=language,
+        result=result,
+    )
+    return result
+
+
+@celery_app.task(
+    base=QBankTask,
+    bind=True,
+    name="qbank.translate",
+    max_retries=2,
+    default_retry_delay=60,
+    soft_time_limit=600,
+    time_limit=660,
+    rate_limit="5/m",
+)
+def translate_qbank_bank_task(self, bank_id: str, language: str) -> dict:
+    """Translate every question in a bank into ``language`` via NLLB (#1690).
+
+    Runs *before* ``generate_qbank_audio_task`` in the pregeneration chain
+    so MMS TTS receives native-language text and produces intelligible
+    audio rather than French-with-target-phonology gibberish.
+    """
+    return asyncio.run(_translate_bank_async(bank_id, language))
+
+
+async def _translate_bank_async(bank_id: str, language: str) -> dict:
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.domain.services.qbank_translation_service import (
+        QBankTranslationService,
+    )
+    from app.infrastructure.config.settings import settings
+
+    engine = create_async_engine(settings.database_url, echo=False)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    service = QBankTranslationService()
+
+    async with session_factory() as session:
+        try:
+            result = await service.batch_translate_bank(session, uuid.UUID(bank_id), language)
+        finally:
+            await engine.dispose()
+
+    logger.info(
+        "qbank translation batch complete",
         bank_id=bank_id,
         language=language,
         result=result,

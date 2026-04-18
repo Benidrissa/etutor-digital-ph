@@ -12,6 +12,35 @@ import {
 const LANGUAGES: QBankAudioLanguage[] = ['fr', 'mos', 'dyu', 'bam', 'ful'];
 const STORAGE_KEY = 'qbank-audio-lang';
 
+// Per-language pill colors so non-literate learners can identify the
+// active language by color instead of reading its name (#1690 follow-up).
+// Kept hue-distant to tolerate red/green color-blindness via saturation.
+// Active state uses the bg-* + text-white combo; inactive uses ring-*
+// on the border so the identity cue still shows through.
+const LANGUAGE_COLORS: Record<QBankAudioLanguage, { active: string; inactive: string }> = {
+  fr: {
+    active: 'border-blue-600 bg-blue-600 text-white',
+    inactive: 'border-blue-600/40 text-blue-700 hover:border-blue-600 dark:text-blue-300',
+  },
+  mos: {
+    active: 'border-red-600 bg-red-600 text-white',
+    inactive: 'border-red-600/40 text-red-700 hover:border-red-600 dark:text-red-300',
+  },
+  dyu: {
+    active: 'border-green-600 bg-green-600 text-white',
+    inactive: 'border-green-600/40 text-green-700 hover:border-green-600 dark:text-green-300',
+  },
+  bam: {
+    active: 'border-yellow-600 bg-yellow-600 text-white',
+    inactive: 'border-yellow-600/40 text-yellow-700 hover:border-yellow-600 dark:text-yellow-300',
+  },
+  ful: {
+    active: 'border-purple-600 bg-purple-600 text-white',
+    inactive:
+      'border-purple-600/40 text-purple-700 hover:border-purple-600 dark:text-purple-300',
+  },
+};
+
 interface QBankAudioPlayerProps {
   questionId: string;
   /** Preferred default when nothing is in localStorage yet (e.g. bank.language). */
@@ -123,10 +152,10 @@ export function QBankAudioPlayer({
               // language row fits next to the image; bumps to min-h-11
               // on sm+ where there is room for WCAG touch targets.
               className={cn(
-                'min-h-9 rounded-full border px-3 py-1 text-xs font-medium transition-colors sm:min-h-11 sm:px-4 sm:py-1.5 sm:text-sm',
+                'min-h-9 rounded-full border-2 bg-background px-3 py-1 text-xs font-medium transition-colors sm:min-h-11 sm:px-4 sm:py-1.5 sm:text-sm',
                 isSelected
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'border-border bg-background hover:border-primary/50'
+                  ? LANGUAGE_COLORS[lang].active
+                  : LANGUAGE_COLORS[lang].inactive,
               )}
             >
               {tLang(lang)}

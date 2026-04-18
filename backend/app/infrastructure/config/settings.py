@@ -94,6 +94,12 @@ class Settings(BaseSettings):
     mms_tts_url: str = "http://mms-tts:5050"
     mms_tts_timeout_seconds: float = 60.0
 
+    # Meta NLLB-200 translation sidecar — translates French qbank text
+    # into mos/dyu/bam/ful before MMS TTS synthesizes (#1690).
+    nllb_url: str = "http://nllb:5060"
+    nllb_timeout_seconds: float = 60.0
+    nllb_model: str = "distilled-600M"
+
     # MinIO / S3-compatible object storage
     minio_endpoint: str = "http://localhost:9000"
     minio_access_key: str = ""
