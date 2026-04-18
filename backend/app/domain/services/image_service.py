@@ -103,9 +103,7 @@ class ImageGenerationService:
             source_img = await self._find_source_image(lesson_id, session)
             if source_img is not None:
                 image_record.status = "ready"
-                image_record.image_url = (
-                    source_img.storage_url or f"/api/v1/source-images/{source_img.id}/data"
-                )
+                image_record.image_url = f"/api/v1/source-images/{source_img.id}/data"
                 image_record.alt_text_fr = source_img.alt_text_fr or (
                     f"Figure {source_img.figure_number}" if source_img.figure_number else concept
                 )
