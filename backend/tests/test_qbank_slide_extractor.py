@@ -15,16 +15,22 @@ import pytest
 
 from app.ai.qbank_slide_extractor import (
     CONFIDENCE_THRESHOLD,
+    DEFAULT_ILLUSTRATION_RATIO,
+    MAX_ILLUSTRATION_RATIO,
+    MIN_ILLUSTRATION_RATIO,
     ExtractedSlideQuestion,
     _cluster_into_questions,
+    _crop_to_illustration,
     _extract_tier1,
     _flatten_spans,
+    _illustration_crop_ratio,
     _infer_category,
     _is_green,
     _parse_question_cluster,
     _tier1_confidence,
     extract_questions_from_pdf,
 )
+from PIL import Image
 
 # PyMuPDF uses RGB floats in (0-1) for insert_text; the stored span color is int.
 GREEN = (0, 0.6, 0)
@@ -420,3 +426,72 @@ class TestExtractQuestionsFromPdf:
     async def test_missing_pdf_raises(self, tmp_path: Path):
         with pytest.raises(FileNotFoundError):
             await extract_questions_from_pdf(tmp_path / "does-not-exist.pdf")
+
+
+def _solid_png_bytes(width: int, height: int) -> bytes:
+    import io
+
+    img = Image.new("RGB", (width, height), color=(255, 0, 0))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+class TestIllustrationCrop:
+    def test_crop_reduces_height_by_default_ratio(self):
+        src = _solid_png_bytes(400, 1000)
+        webp, w, h = _crop_to_illustration(src, crop_ratio=0.5)
+        assert w == 400
+        assert h == 500
+        assert webp[:4] == b"RIFF"  # WebP container magic
+
+    def test_crop_clamps_below_minimum(self):
+        src = _solid_png_bytes(200, 1000)
+        _webp, _w, h = _crop_to_illustration(src, crop_ratio=0.05)
+        # 0.05 is below MIN, so clamped to MIN_ILLUSTRATION_RATIO.
+        assert h == int(1000 * MIN_ILLUSTRATION_RATIO)
+
+    def test_crop_clamps_above_maximum(self):
+        src = _solid_png_bytes(200, 1000)
+        _webp, _w, h = _crop_to_illustration(src, crop_ratio=0.99)
+        assert h == int(1000 * MAX_ILLUSTRATION_RATIO)
+
+    def test_crop_respects_max_width(self):
+        # Wider than WEBP_MAX_WIDTH (1024): both crop and width cap apply.
+        src = _solid_png_bytes(2048, 1000)
+        _webp, w, h = _crop_to_illustration(src, crop_ratio=0.6)
+        assert w == 1024
+        # Height is cropped (0.6 * 1000 = 600), then scaled by 1024/2048 = 0.5
+        assert h == 300
+
+    def test_ratio_falls_back_when_page_has_no_text(self, tmp_path: Path):
+        doc = pymupdf.open()
+        doc.new_page(width=595, height=842)
+        ratio = _illustration_crop_ratio(doc[0])
+        doc.close()
+        assert ratio == DEFAULT_ILLUSTRATION_RATIO
+
+    def test_ratio_uses_topmost_question_span(self, tmp_path: Path):
+        # Page with a header near the top and a question block halfway down.
+        pdf = tmp_path / "slide.pdf"
+        doc = pymupdf.open()
+        page = doc.new_page(width=595, height=842)
+        # Header (short) — should be ignored.
+        page.insert_text((72, 30), "Question 01", fontsize=10, color=BLACK)
+        # Actual question at y=500 on a 842pt page → 500/842 ≈ 0.594
+        page.insert_text(
+            (72, 500),
+            "Je peux faire un arret ici ?",
+            fontsize=12,
+            color=BLACK,
+        )
+        doc.save(str(pdf))
+        doc.close()
+
+        doc = pymupdf.open(str(pdf))
+        ratio = _illustration_crop_ratio(doc[0])
+        doc.close()
+
+        # PyMuPDF baseline y differs from insert y by the font height; just
+        # assert the ratio falls in the expected middle band below the header.
+        assert 0.4 < ratio < 0.7
