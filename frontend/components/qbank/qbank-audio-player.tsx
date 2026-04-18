@@ -41,12 +41,21 @@ export function QBankAudioPlayer({ questionId, defaultLanguage }: QBankAudioPlay
 
   useEffect(() => {
     let cancelled = false;
-    setStatus(null);
-    setError(null);
+    // Old-state resets moved into the callbacks: sync setStates inside an
+    // effect body cascade re-renders and trip the no-sync-set-state lint
+    // rule (#1666). The brief flicker of stale status on question/language
+    // change is acceptable — it's replaced atomically when the fetch
+    // resolves.
     getQBankQuestionAudio(questionId, language)
-      .then((s) => { if (!cancelled) setStatus(s); })
+      .then((s) => {
+        if (cancelled) return;
+        setError(null);
+        setStatus(s);
+      })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Audio fetch failed');
+        if (cancelled) return;
+        setStatus(null);
+        setError(err instanceof Error ? err.message : 'Audio fetch failed');
       });
     return () => { cancelled = true; };
   }, [questionId, language]);
