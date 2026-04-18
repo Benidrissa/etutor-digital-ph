@@ -121,8 +121,11 @@ export function ChatPanel({
     }
   }, [activeCourseId]);
 
-  // Fetch enrolled courses for course selector
+  // Fetch enrolled courses for course selector. Skip for anonymous visitors
+  // so /courses (public catalog) doesn't fire a 401 into every visitor's
+  // console (#1622) — there's nothing to enroll-list for logged-out users.
   useEffect(() => {
+    if (!authClient.isAuthenticated()) return;
     getMyEnrollments({ orderBy: 'last_accessed', limit: 3 })
       .then((courses) => {
         setEnrolledCourses(courses);
@@ -135,6 +138,9 @@ export function ChatPanel({
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    // Same reasoning as the enrollments fetch above — anonymous visitors
+    // shouldn't see a 401 in console for a tutor stats call they can't use.
+    if (!authClient.isAuthenticated()) return;
     fetchTutorStats()
       .then((stats) => {
         setMaxDailyUsage(stats.daily_messages_limit);
