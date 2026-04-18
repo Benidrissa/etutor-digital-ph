@@ -281,6 +281,11 @@ class AudioStatusResponse(BaseModel):
     question_id: str
     language: str
     status: str
+    # Browser-reachable proxy URL served by the backend — populated only when
+    # status == "ready" and the audio row has bytes in MinIO. The raw
+    # storage_url is never returned because MinIO is on a private network
+    # (guardrail: backend/tests/test_no_minio_leaks_in_schemas.py).
+    audio_url: str | None = None
     duration_seconds: int | None = None
 
 
