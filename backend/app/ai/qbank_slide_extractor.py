@@ -545,9 +545,7 @@ def _extract_tier1(
         raw_bytes, _, _, covers_full_page = embedded
         if covers_full_page:
             # Embedded image IS the whole slide (text baked in) — crop it.
-            webp_bytes, width, height = _crop_to_illustration(
-                raw_bytes, crop_ratio=crop_ratio
-            )
+            webp_bytes, width, height = _crop_to_illustration(raw_bytes, crop_ratio=crop_ratio)
         else:
             # Already a standalone illustration — keep as-is.
             webp_bytes, width, height = _convert_to_webp(raw_bytes)
@@ -556,9 +554,7 @@ def _extract_tier1(
         # Fall back to rasterizing the whole page and cropping to the
         # illustration region so baked-in question text is dropped (#1669).
         png_bytes = _rasterize_page(page)
-        webp_bytes, width, height = _crop_to_illustration(
-            png_bytes, crop_ratio=crop_ratio
-        )
+        webp_bytes, width, height = _crop_to_illustration(png_bytes, crop_ratio=crop_ratio)
         has_image = False
 
     confidence = _tier1_confidence(parsed, has_image, cluster_count=len(clusters))
@@ -596,9 +592,7 @@ async def _extract_tier3_vision(
     # the stored image is cropped to the illustration region so the test-taker
     # doesn't duplicate the question text visually (#1669).
     crop_ratio = _illustration_crop_ratio(page)
-    webp_bytes, width, height = _crop_to_illustration(
-        png_bytes, crop_ratio=crop_ratio
-    )
+    webp_bytes, width, height = _crop_to_illustration(png_bytes, crop_ratio=crop_ratio)
 
     b64_image = base64.b64encode(png_bytes).decode("utf-8")
     response = await claude.client.messages.create(
