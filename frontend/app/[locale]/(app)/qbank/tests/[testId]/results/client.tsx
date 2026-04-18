@@ -120,8 +120,8 @@ export function QBankTestResultsPage({ testId, attemptId }: QBankTestResultsPage
                   category: currentQuestion.category,
                   difficulty: '',
                 }}
-                selectedOption={currentQuestion.user_selected?.[0] ?? null}
-                onSelect={() => {}}
+                selectedIndices={currentQuestion.user_selected ?? []}
+                onToggle={() => {}}
                 showFeedback={true}
                 correctIndices={currentQuestion.correct_answer_indices}
               />
