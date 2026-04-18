@@ -17,7 +17,7 @@ class QuestionBankCreate(BaseModel):
     description: str | None = None
     bank_type: str = Field(..., pattern=r"^(driving|exam_prep|psychotechnic|general_culture)$")
     language: str = Field(default="fr", max_length=5)
-    time_per_question_sec: int = Field(default=25, ge=5, le=120)
+    time_per_question_sec: int = Field(default=60, ge=5, le=120)
     passing_score: float = Field(default=80.0, ge=0, le=100)
 
 

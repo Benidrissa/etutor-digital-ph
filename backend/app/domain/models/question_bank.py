@@ -72,7 +72,7 @@ class QuestionBank(Base):
         Enum(QuestionBankType, name="questionbanktype"), nullable=False
     )
     language: Mapped[str] = mapped_column(String(5), server_default="fr", default="fr")
-    time_per_question_sec: Mapped[int] = mapped_column(Integer, server_default="25", default=25)
+    time_per_question_sec: Mapped[int] = mapped_column(Integer, server_default="60", default=60)
     passing_score: Mapped[float] = mapped_column(Float, server_default="80.0", default=80.0)
     status: Mapped[QuestionBankStatus] = mapped_column(
         Enum(QuestionBankStatus, name="questionbankstatus"),

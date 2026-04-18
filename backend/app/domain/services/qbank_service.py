@@ -64,7 +64,7 @@ class QBankService:
         created_by: uuid.UUID,
         description: str | None = None,
         language: str = "fr",
-        time_per_question_sec: int = 25,
+        time_per_question_sec: int = 60,
         passing_score: float = 80.0,
     ) -> QuestionBank:
         await _org_svc.require_org_role(
