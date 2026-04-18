@@ -102,6 +102,7 @@ export function LessonImage({ lessonId, language }: LessonImageProps) {
             height={512}
             loading="lazy"
             sizes="(max-width: 640px) 100vw, 512px"
+            unoptimized
             className={`w-full h-auto object-cover rounded-lg transition-opacity duration-300 ${
               isVisible ? 'opacity-100' : 'opacity-0'
             }`}
@@ -134,6 +135,7 @@ export function LessonImage({ lessonId, language }: LessonImageProps) {
             width={512}
             height={512}
             sizes="(max-width: 640px) 100vw, 512px"
+            unoptimized
             className="max-w-full max-h-full object-contain rounded-lg"
             onClick={(e) => e.stopPropagation()}
           />
