@@ -230,6 +230,80 @@ def _convert_to_webp(
     return buf.getvalue(), img.width, img.height
 
 
+# Fallback crop ratio when the page has no text layer (fully scanned slides).
+# Driving-school layouts reliably place the illustration in the top ~55%.
+DEFAULT_ILLUSTRATION_RATIO = 0.55
+
+# Clamp the crop ratio so we never cut off the illustration or keep too much
+# of the text block.
+MIN_ILLUSTRATION_RATIO = 0.3
+MAX_ILLUSTRATION_RATIO = 0.75
+
+# Text spans shorter than this are treated as headers (e.g. "Question 01")
+# and ignored when picking the question-text top boundary.
+HEADER_SPAN_MAX_LEN = 12
+
+# Skip spans whose top is in the first ~10% of the page height — those are
+# page headers, not the question block.
+TOP_MARGIN_IGNORE_RATIO = 0.1
+
+
+def _illustration_crop_ratio(page: pymupdf.Page) -> float:
+    """Return the fraction of the page height that contains the illustration.
+
+    For slides where the question/options text sits below the photo, this is
+    the y-coordinate of the topmost question-looking text span divided by
+    the page height. Falls back to ``DEFAULT_ILLUSTRATION_RATIO`` when no
+    text layer is present (scanned slides).
+    """
+    spans = _flatten_spans(page.get_text("dict"))
+    page_h = max(float(page.rect.height), 1.0)
+    if not spans:
+        return DEFAULT_ILLUSTRATION_RATIO
+
+    for span in spans:
+        text = span["text"].strip()
+        if len(text) < HEADER_SPAN_MAX_LEN:
+            continue
+        y0 = float(span["bbox"][1])
+        if y0 / page_h < TOP_MARGIN_IGNORE_RATIO:
+            continue
+        # Leave 2% padding above the text so we don't clip the illustration.
+        ratio = (y0 / page_h) - 0.02
+        return max(MIN_ILLUSTRATION_RATIO, min(MAX_ILLUSTRATION_RATIO, ratio))
+    return DEFAULT_ILLUSTRATION_RATIO
+
+
+def _crop_to_illustration(
+    image_bytes: bytes,
+    max_width: int = WEBP_MAX_WIDTH,
+    crop_ratio: float = DEFAULT_ILLUSTRATION_RATIO,
+) -> tuple[bytes, int, int]:
+    """Crop a full-slide raster to the illustration region and encode as WebP.
+
+    Driving-school PDFs frequently ship each slide as one image with the
+    question text and options baked in. The frontend renders the extracted
+    text separately, so keeping the text in the image duplicates the same
+    information twice (#1669). This helper drops the bottom of the image.
+    """
+    img = Image.open(io.BytesIO(image_bytes))
+    if img.mode not in ("RGB",):
+        img = img.convert("RGB")
+
+    crop_ratio = max(MIN_ILLUSTRATION_RATIO, min(MAX_ILLUSTRATION_RATIO, crop_ratio))
+    new_h = max(1, int(img.height * crop_ratio))
+    img = img.crop((0, 0, img.width, new_h))
+
+    if img.width > max_width:
+        ratio = max_width / img.width
+        new_height = max(1, int(img.height * ratio))
+        img = img.resize((max_width, new_height), Image.LANCZOS)
+
+    buf = io.BytesIO()
+    img.save(buf, format="WEBP", quality=WEBP_QUALITY)
+    return buf.getvalue(), img.width, img.height
+
+
 # -----------------------------------------------------------------------------
 # Tier 1 — PyMuPDF text + color extraction (free)
 # -----------------------------------------------------------------------------
@@ -401,13 +475,21 @@ def _tier1_confidence(
 
 def _find_largest_embedded_image(
     page: pymupdf.Page, doc: pymupdf.Document
-) -> tuple[bytes, int, int] | None:
-    """Return (png_bytes, width, height) of the largest embedded raster image on the page."""
+) -> tuple[bytes, int, int, bool] | None:
+    """Return ``(png_bytes, width, height, covers_full_page)`` for the largest
+    embedded raster image on the page, or ``None`` when the page has none.
+
+    ``covers_full_page`` is ``True`` when the image's placement on the page
+    covers at least 85% of the page area — a strong signal that this image
+    is a full-slide raster (with question text baked in) rather than a
+    standalone illustration photo.
+    """
     images = page.get_images(full=True)
     if not images:
         return None
 
-    best: tuple[bytes, int, int] | None = None
+    page_area = max(float(page.rect.width * page.rect.height), 1.0)
+    best: tuple[bytes, int, int, bool] | None = None
     best_area = 0
     for img_info in images:
         xref = img_info[0]
@@ -418,9 +500,17 @@ def _find_largest_embedded_image(
         width = extracted.get("width", 0)
         height = extracted.get("height", 0)
         area = width * height
-        if area > best_area and extracted.get("image"):
-            best = (extracted["image"], width, height)
-            best_area = area
+        if area <= best_area or not extracted.get("image"):
+            continue
+        covers_full_page = False
+        try:
+            bbox = page.get_image_bbox(img_info)
+            bbox_area = float(bbox.width * bbox.height)
+            covers_full_page = bbox_area / page_area >= 0.85
+        except Exception:
+            pass
+        best = (extracted["image"], width, height, covers_full_page)
+        best_area = area
     return best
 
 
@@ -449,15 +539,22 @@ def _extract_tier1(
         return [], 0.0
 
     # Get the situation image: prefer the largest embedded image.
+    crop_ratio = _illustration_crop_ratio(page)
     embedded = _find_largest_embedded_image(page, doc)
     if embedded is not None:
-        raw_bytes, _, _ = embedded
-        webp_bytes, width, height = _convert_to_webp(raw_bytes)
+        raw_bytes, _, _, covers_full_page = embedded
+        if covers_full_page:
+            # Embedded image IS the whole slide (text baked in) — crop it.
+            webp_bytes, width, height = _crop_to_illustration(raw_bytes, crop_ratio=crop_ratio)
+        else:
+            # Already a standalone illustration — keep as-is.
+            webp_bytes, width, height = _convert_to_webp(raw_bytes)
         has_image = True
     else:
-        # Fall back to rasterizing the whole page — the frontend gets the full slide.
+        # Fall back to rasterizing the whole page and cropping to the
+        # illustration region so baked-in question text is dropped (#1669).
         png_bytes = _rasterize_page(page)
-        webp_bytes, width, height = _convert_to_webp(png_bytes)
+        webp_bytes, width, height = _crop_to_illustration(png_bytes, crop_ratio=crop_ratio)
         has_image = False
 
     confidence = _tier1_confidence(parsed, has_image, cluster_count=len(clusters))
@@ -491,7 +588,11 @@ async def _extract_tier3_vision(
 ) -> list[ExtractedSlideQuestion]:
     """Tier 3: send the rasterized page to Claude Vision and parse the response."""
     png_bytes = _rasterize_page(page)
-    webp_bytes, width, height = _convert_to_webp(png_bytes)
+    # Vision needs the whole slide (question + options text) to read the page;
+    # the stored image is cropped to the illustration region so the test-taker
+    # doesn't duplicate the question text visually (#1669).
+    crop_ratio = _illustration_crop_ratio(page)
+    webp_bytes, width, height = _crop_to_illustration(png_bytes, crop_ratio=crop_ratio)
 
     b64_image = base64.b64encode(png_bytes).decode("utf-8")
     response = await claude.client.messages.create(
