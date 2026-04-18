@@ -89,9 +89,7 @@ def _audio_url_for(
     host = request.headers.get("x-forwarded-host") or request.headers.get("host")
     if not host:
         return None
-    return (
-        f"{proto}://{host}/api/v1/qbank/questions/{question_id}/audio/{language}/data"
-    )
+    return f"{proto}://{host}/api/v1/qbank/questions/{question_id}/audio/{language}/data"
 
 
 def _bank_response(bank, question_count: int = 0, test_count: int = 0):
