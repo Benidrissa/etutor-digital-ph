@@ -30,14 +30,15 @@ from transformers import AutoTokenizer, VitsModel
 SUPPORTED_LANGUAGES = ("mos", "dyu", "bam", "ful")
 Language = Literal["mos", "dyu", "bam", "ful"]
 
-# Map public language codes to the Hugging Face model suffix. Meta ships
-# Fulfulde as variant-specific checkpoints (ffm, fuv, fuh, ...); we pick
-# ``ffm`` (Maasina) for the West African driving-school audience.
+# Map public language codes to the Hugging Face model suffix. The public
+# ``facebook/mms-tts-{code}`` page returns 200 for ``mos``, ``dyu``, ``bam``,
+# and ``ful`` directly — the earlier ``ffm`` mapping (#1670) 401'd on HF
+# and crashed the sidecar lifespan, taking down mos/dyu/bam with it.
 MODEL_SUFFIX: dict[str, str] = {
     "mos": "mos",
     "dyu": "dyu",
     "bam": "bam",
-    "ful": "ffm",
+    "ful": "ful",
 }
 
 MAX_TEXT_CHARS = 2000
@@ -71,12 +72,22 @@ def _load_model(lang: str) -> _ModelBundle:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    langs = [l for l in os.getenv("MMS_LANGUAGES", ",".join(SUPPORTED_LANGUAGES)).split(",") if l]
+    langs = [lang for lang in os.getenv(
+        "MMS_LANGUAGES", ",".join(SUPPORTED_LANGUAGES)
+    ).split(",") if lang]
     for lang in langs:
         if lang not in SUPPORTED_LANGUAGES:
             logger.warning("skipping unsupported language: %s", lang)
             continue
-        _MODELS[lang] = _load_model(lang)
+        # Per-language load failures must not crash the whole sidecar —
+        # otherwise adding a new language that isn't on HuggingFace yet
+        # takes down every other language too (root cause of the #1670
+        # deploy incident). Log and continue; /synthesize returns 400
+        # for any language that isn't in _MODELS.
+        try:
+            _MODELS[lang] = _load_model(lang)
+        except Exception as exc:
+            logger.exception("failed to load mms-tts model lang=%s: %s", lang, exc)
     logger.info("loaded models: %s", list(_MODELS.keys()))
     yield
     _MODELS.clear()
