@@ -138,9 +138,7 @@ class QBankService:
         banks = result.scalars().unique().all()
         return await self._decorate_banks(db, list(banks))
 
-    async def _decorate_banks(
-        self, db: AsyncSession, banks: list[QuestionBank]
-    ) -> list[dict]:
+    async def _decorate_banks(self, db: AsyncSession, banks: list[QuestionBank]) -> list[dict]:
         out = []
         for bank in banks:
             q_count = await db.scalar(
