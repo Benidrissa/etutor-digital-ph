@@ -164,6 +164,13 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=ghcr.io/benidrissa/etutor-digital-ph/nllb:buildcache
           cache-to: type=registry,ref=ghcr.io/benidrissa/etutor-digital-ph/nllb:buildcache,mode=max
+          # gh_token: used by the Dockerfile to pull the pinned
+          # sira-nllb-distill release asset (ct2_int8.tar.gz) from the
+          # cross-repo private release via the GitHub API. The default
+          # GITHUB_TOKEN cannot read another user-owned private repo, so
+          # we need a PAT stored as NLLB_ARTIFACT_READ_TOKEN.
+          secrets: |
+            gh_token=${{ secrets.NLLB_ARTIFACT_READ_TOKEN }}
 
   build-and-push:
     name: Build & Push (${{ matrix.service }})
