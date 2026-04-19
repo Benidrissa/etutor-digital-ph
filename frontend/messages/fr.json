@@ -50,7 +50,9 @@
     "certificates": "Certificats",
     "certificatesDescription": "Consultez vos certificats obtenus",
     "qbank": "Banques de questions",
-    "qbankDescription": "Entraînez-vous sur les banques de questions de vos organisations"
+    "qbankDescription": "Entraînez-vous sur les banques de questions de vos organisations",
+    "qbankTests": "Tests de révision",
+    "qbankTestsDescription": "Lancez directement un test depuis la liste disponible"
   },
   "Auth": {
     "login": "Se connecter",
@@ -2017,6 +2019,15 @@
     "discoveryIntro": "Banques de questions publiées de toutes vos organisations.",
     "discoveryEmpty": "Aucune banque de questions publiée pour l'instant. Rejoignez une organisation ou demandez à votre admin d'en publier une.",
     "discoveryOrgLink": "Ouvrir l'organisation",
+    "testsDiscoveryTitle": "Tests de révision",
+    "testsDiscoveryIntro": "Lancez n'importe quel test disponible dans vos banques, sans avoir à fouiller.",
+    "testsDiscoveryEmpty": "Aucun test disponible pour l'instant. Demandez à votre admin de publier une banque.",
+    "startTest": "Démarrer",
+    "mode": {
+      "exam": "Examen",
+      "training": "Entraînement",
+      "review": "Révision"
+    },
     "filterAllTypes": "Tous les types",
     "perQuestion": "question",
     "typeDriving": "Auto-école",
