@@ -50,7 +50,9 @@
     "certificates": "Certificates",
     "certificatesDescription": "View your earned certificates",
     "qbank": "Question Banks",
-    "qbankDescription": "Practice question banks from your organizations"
+    "qbankDescription": "Practice question banks from your organizations",
+    "qbankTests": "Practice tests",
+    "qbankTestsDescription": "Jump straight into an available test"
   },
   "Auth": {
     "login": "Sign in",
@@ -2017,6 +2019,15 @@
     "discoveryIntro": "Published question banks from every organization you belong to.",
     "discoveryEmpty": "No published question banks are available yet. Join an organization or ask your admin to publish one.",
     "discoveryOrgLink": "Open organization",
+    "testsDiscoveryTitle": "Practice tests",
+    "testsDiscoveryIntro": "Jump straight into any available test without drilling through banks.",
+    "testsDiscoveryEmpty": "No tests are available yet. Ask your admin to publish a bank.",
+    "startTest": "Start",
+    "mode": {
+      "exam": "Exam",
+      "training": "Training",
+      "review": "Review"
+    },
     "filterAllTypes": "All types",
     "perQuestion": "question",
     "typeDriving": "Driving school",

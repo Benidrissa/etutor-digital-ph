@@ -10,13 +10,19 @@ import { DEFAULT_BRANDING } from "./branding";
  */
 export const API_BASE =
   typeof window === "undefined"
-    ? process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+    ? process.env.BACKEND_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      "http://localhost:8000"
     : process.env.NEXT_PUBLIC_API_URL || "";
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number, public code?: string) {
+  constructor(
+    message: string,
+    public status: number,
+    public code?: string,
+  ) {
     super(message);
-    this.name = 'ApiError';
+    this.name = "ApiError";
   }
 }
 
@@ -90,20 +96,24 @@ export async function getCourses(filters?: {
   curriculum?: string;
 }): Promise<CourseResponse[]> {
   const params = new URLSearchParams();
-  if (filters?.course_domain) params.set("course_domain", filters.course_domain);
+  if (filters?.course_domain)
+    params.set("course_domain", filters.course_domain);
   if (filters?.course_level) params.set("course_level", filters.course_level);
-  if (filters?.audience_type) params.set("audience_type", filters.audience_type);
+  if (filters?.audience_type)
+    params.set("audience_type", filters.audience_type);
   if (filters?.search) params.set("search", filters.search);
   if (filters?.curriculum) params.set("curriculum", filters.curriculum);
   const qs = params.toString();
   return apiFetch<CourseResponse[]>(`/api/v1/courses${qs ? `?${qs}` : ""}`);
 }
 
-export async function enrollInCourse(courseId: string): Promise<EnrollmentResponse> {
+export async function enrollInCourse(
+  courseId: string,
+): Promise<EnrollmentResponse> {
   const { authClient } = await import("./auth");
   return authClient.authenticatedFetch<EnrollmentResponse>(
     `/api/v1/courses/${courseId}/enroll`,
-    { method: "POST" }
+    { method: "POST" },
   );
 }
 
@@ -111,7 +121,7 @@ export async function enrollInCourse(courseId: string): Promise<EnrollmentRespon
 export async function getAdminTaxonomy(): Promise<TaxonomyAdminResponse> {
   const { authClient } = await import("./auth");
   return authClient.authenticatedFetch<TaxonomyAdminResponse>(
-    "/api/v1/admin/taxonomy"
+    "/api/v1/admin/taxonomy",
   );
 }
 
@@ -125,40 +135,44 @@ export async function createTaxonomyCategory(data: {
   const { authClient } = await import("./auth");
   return authClient.authenticatedFetch<TaxonomyCategoryAdmin>(
     "/api/v1/admin/taxonomy",
-    { method: "POST", body: JSON.stringify(data) }
+    { method: "POST", body: JSON.stringify(data) },
   );
 }
 
 export async function updateTaxonomyCategory(
   id: string,
-  data: Partial<{ label_fr: string; label_en: string; sort_order: number; is_active: boolean }>
+  data: Partial<{
+    label_fr: string;
+    label_en: string;
+    sort_order: number;
+    is_active: boolean;
+  }>,
 ): Promise<TaxonomyCategoryAdmin> {
   const { authClient } = await import("./auth");
   return authClient.authenticatedFetch<TaxonomyCategoryAdmin>(
     `/api/v1/admin/taxonomy/${id}`,
-    { method: "PATCH", body: JSON.stringify(data) }
+    { method: "PATCH", body: JSON.stringify(data) },
   );
 }
 
 export async function deleteTaxonomyCategory(id: string): Promise<void> {
   const { authClient } = await import("./auth");
-  await authClient.authenticatedFetch(
-    `/api/v1/admin/taxonomy/${id}`,
-    { method: "DELETE" }
-  );
+  await authClient.authenticatedFetch(`/api/v1/admin/taxonomy/${id}`, {
+    method: "DELETE",
+  });
 }
 
 export async function getMyEnrollments(opts?: {
-  orderBy?: 'last_accessed';
+  orderBy?: "last_accessed";
   limit?: number;
 }): Promise<CourseWithEnrollment[]> {
   const { authClient } = await import("./auth");
   const params = new URLSearchParams();
-  if (opts?.orderBy) params.set('order_by', opts.orderBy);
-  if (opts?.limit) params.set('limit', String(opts.limit));
+  if (opts?.orderBy) params.set("order_by", opts.orderBy);
+  if (opts?.limit) params.set("limit", String(opts.limit));
   const qs = params.toString();
   return authClient.authenticatedFetch<CourseWithEnrollment[]>(
-    `/api/v1/courses/my-enrollments${qs ? `?${qs}` : ''}`
+    `/api/v1/courses/my-enrollments${qs ? `?${qs}` : ""}`,
   );
 }
 
@@ -189,7 +203,7 @@ export interface UnitProgressDetail {
   description_en?: string;
   estimated_minutes: number;
   order_index: number;
-  unit_type?: 'lesson' | 'quiz' | 'case-study';
+  unit_type?: "lesson" | "quiz" | "case-study";
   status: "pending" | "in_progress" | "completed";
 }
 
@@ -219,14 +233,18 @@ export interface LessonAccessRequest {
 }
 
 // Progress API Functions
-export async function getModuleProgress(moduleId: string): Promise<ModuleProgressResponse> {
+export async function getModuleProgress(
+  moduleId: string,
+): Promise<ModuleProgressResponse> {
   const { authClient } = await import("./auth");
   return authClient.authenticatedFetch<ModuleProgressResponse>(
-    `/api/v1/progress/modules/${moduleId}`
+    `/api/v1/progress/modules/${moduleId}`,
   );
 }
 
-export async function getAllModuleProgress(courseId?: string): Promise<ModuleProgressResponse[]> {
+export async function getAllModuleProgress(
+  courseId?: string,
+): Promise<ModuleProgressResponse[]> {
   const { authClient } = await import("./auth");
   const url = courseId
     ? `/api/v1/progress/modules?course_id=${encodeURIComponent(courseId)}`
@@ -235,11 +253,11 @@ export async function getAllModuleProgress(courseId?: string): Promise<ModulePro
 }
 
 export async function getModuleDetailWithProgress(
-  moduleId: string
+  moduleId: string,
 ): Promise<ModuleDetailWithProgressResponse> {
   const { authClient } = await import("./auth");
   return authClient.authenticatedFetch<ModuleDetailWithProgressResponse>(
-    `/api/v1/progress/modules/${moduleId}/detail`
+    `/api/v1/progress/modules/${moduleId}/detail`,
   );
 }
 
@@ -252,7 +270,7 @@ export interface PublicUnitDetail {
   description_en?: string;
   estimated_minutes: number;
   order_index: number;
-  unit_type?: 'lesson' | 'quiz' | 'case-study';
+  unit_type?: "lesson" | "quiz" | "case-study";
 }
 
 export interface ModuleUnitsResponse {
@@ -270,23 +288,30 @@ export interface ModuleUnitsResponse {
   units: PublicUnitDetail[];
 }
 
-export async function getModuleUnits(moduleId: string): Promise<ModuleUnitsResponse> {
-  return apiFetch<ModuleUnitsResponse>(`/api/v1/content/modules/${moduleId}/units`);
+export async function getModuleUnits(
+  moduleId: string,
+): Promise<ModuleUnitsResponse> {
+  return apiFetch<ModuleUnitsResponse>(
+    `/api/v1/content/modules/${moduleId}/units`,
+  );
 }
 
 export async function trackLessonAccess(
-  request: LessonAccessRequest
+  request: LessonAccessRequest,
 ): Promise<ModuleProgressResponse> {
   const { authClient } = await import("./auth");
-  return authClient.authenticatedFetch<ModuleProgressResponse>("/api/v1/progress/lesson-access", {
-    method: "POST",
-    body: JSON.stringify(request),
-  });
+  return authClient.authenticatedFetch<ModuleProgressResponse>(
+    "/api/v1/progress/lesson-access",
+    {
+      method: "POST",
+      body: JSON.stringify(request),
+    },
+  );
 }
 
 export async function apiFetch<T>(
   path: string,
-  options?: RequestInit
+  options?: RequestInit,
 ): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -313,7 +338,7 @@ export async function apiFetch<T>(
     try {
       const body = await res.json();
       if (body?.detail?.message) message = body.detail.message;
-      else if (typeof body?.detail === 'string') message = body.detail;
+      else if (typeof body?.detail === "string") message = body.detail;
       if (body?.detail?.code) code = body.detail.code;
     } catch {
       // ignore parse errors — keep the status-code message
@@ -328,7 +353,7 @@ export async function apiFetch<T>(
 export const fetchApi = apiFetch;
 
 // Lesson Image API Types
-export type LessonImageStatus = 'pending' | 'generating' | 'ready' | 'failed';
+export type LessonImageStatus = "pending" | "generating" | "ready" | "failed";
 
 export interface LessonImageResponse {
   lesson_id: string;
@@ -355,11 +380,15 @@ interface _ApiLessonImagesListResponse {
   total: number;
 }
 
-export async function getLessonImageStatus(lessonId: string): Promise<LessonImageResponse> {
-  const data = await apiFetch<_ApiLessonImagesListResponse>(`/api/v1/images/lesson/${lessonId}`);
+export async function getLessonImageStatus(
+  lessonId: string,
+): Promise<LessonImageResponse> {
+  const data = await apiFetch<_ApiLessonImagesListResponse>(
+    `/api/v1/images/lesson/${lessonId}`,
+  );
   const first = data.images[0];
   if (!first) {
-    return { lesson_id: lessonId, status: 'pending' };
+    return { lesson_id: lessonId, status: "pending" };
   }
   return {
     lesson_id: first.lesson_id,
@@ -372,7 +401,7 @@ export async function getLessonImageStatus(lessonId: string): Promise<LessonImag
 }
 
 // Lesson Audio API Types
-export type LessonAudioStatus = 'pending' | 'generating' | 'ready' | 'failed';
+export type LessonAudioStatus = "pending" | "generating" | "ready" | "failed";
 
 export interface LessonAudioResponse {
   lesson_id: string;
@@ -396,11 +425,15 @@ interface _ApiLessonAudioListResponse {
   total: number;
 }
 
-export async function getLessonAudioStatus(lessonId: string): Promise<LessonAudioResponse> {
-  const data = await apiFetch<_ApiLessonAudioListResponse>(`/api/v1/audio/lesson/${lessonId}`);
+export async function getLessonAudioStatus(
+  lessonId: string,
+): Promise<LessonAudioResponse> {
+  const data = await apiFetch<_ApiLessonAudioListResponse>(
+    `/api/v1/audio/lesson/${lessonId}`,
+  );
   const first = data.audio[0];
   if (!first) {
-    return { lesson_id: lessonId, status: 'pending' };
+    return { lesson_id: lessonId, status: "pending" };
   }
   return {
     lesson_id: first.lesson_id,
@@ -421,19 +454,23 @@ export interface DashboardStats {
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
-  const { authClient } = await import('./auth');
-  
+  const { authClient } = await import("./auth");
+
   // Get user's timezone offset for accurate streak calculations
   const timezoneOffset = -new Date().getTimezoneOffset() / 60; // Convert to hours
-  const offsetString = timezoneOffset >= 0 ? 
-    `+${timezoneOffset.toString().padStart(2, '0')}:00` : 
-    `${timezoneOffset.toString().padStart(3, '0')}:00`;
+  const offsetString =
+    timezoneOffset >= 0
+      ? `+${timezoneOffset.toString().padStart(2, "0")}:00`
+      : `${timezoneOffset.toString().padStart(3, "0")}:00`;
 
-  return authClient.authenticatedFetch<DashboardStats>("/api/v1/dashboard/stats", {
-    headers: {
-      "X-Timezone-Offset": offsetString,
+  return authClient.authenticatedFetch<DashboardStats>(
+    "/api/v1/dashboard/stats",
+    {
+      headers: {
+        "X-Timezone-Offset": offsetString,
+      },
     },
-  });
+  );
 }
 
 export interface UpcomingReviewSession {
@@ -451,8 +488,10 @@ export interface UpcomingReviewsResponse {
 }
 
 export async function getUpcomingReviews(): Promise<UpcomingReviewsResponse> {
-  const { authClient } = await import('./auth');
-  return authClient.authenticatedFetch<UpcomingReviewsResponse>("/api/v1/flashcards/upcoming");
+  const { authClient } = await import("./auth");
+  return authClient.authenticatedFetch<UpcomingReviewsResponse>(
+    "/api/v1/flashcards/upcoming",
+  );
 }
 
 export interface FlashcardSetResponse {
@@ -469,10 +508,10 @@ export async function generateModuleFlashcards(params: {
   language: string;
   level?: number;
 }): Promise<FlashcardSetResponse> {
-  const { authClient } = await import('./auth');
+  const { authClient } = await import("./auth");
   const level = params.level ?? 1;
   return authClient.authenticatedFetch<FlashcardSetResponse>(
-    `/api/v1/flashcards/modules/${params.moduleId}?language=${params.language}&level=${level}`
+    `/api/v1/flashcards/modules/${params.moduleId}?language=${params.language}&level=${level}`,
   );
 }
 
@@ -571,7 +610,7 @@ export async function getQuiz(quizId: string): Promise<Quiz> {
 }
 
 export async function submitQuizAttempt(
-  request: QuizAttemptRequest
+  request: QuizAttemptRequest,
 ): Promise<QuizAttemptResponse> {
   return apiFetch<QuizAttemptResponse>("/api/v1/quiz/attempt", {
     method: "POST",
@@ -614,10 +653,10 @@ export interface UnitQuizValidationStatus {
 
 export async function checkUnitQuizPassed(
   moduleId: string,
-  unitId: string
+  unitId: string,
 ): Promise<UnitQuizValidationStatus> {
   return apiFetch<UnitQuizValidationStatus>(
-    `/api/v1/quiz/attempts/status?module_id=${encodeURIComponent(moduleId)}&unit_id=${encodeURIComponent(unitId)}`
+    `/api/v1/quiz/attempts/status?module_id=${encodeURIComponent(moduleId)}&unit_id=${encodeURIComponent(unitId)}`,
   );
 }
 
@@ -641,20 +680,23 @@ export async function generateSummativeAssessment(params: {
 }
 
 export async function canAttemptSummativeAssessment(
-  moduleId: string
+  moduleId: string,
 ): Promise<SummativeAssessmentAttemptCheck> {
   return apiFetch<SummativeAssessmentAttemptCheck>(
-    `/api/v1/quiz/summative/${moduleId}/can-attempt`
+    `/api/v1/quiz/summative/${moduleId}/can-attempt`,
   );
 }
 
 export async function submitSummativeAssessmentAttempt(
-  request: QuizAttemptRequest
+  request: QuizAttemptRequest,
 ): Promise<SummativeAssessmentResponse> {
-  return apiFetch<SummativeAssessmentResponse>("/api/v1/quiz/summative/attempt", {
-    method: "POST",
-    body: JSON.stringify(request),
-  });
+  return apiFetch<SummativeAssessmentResponse>(
+    "/api/v1/quiz/summative/attempt",
+    {
+      method: "POST",
+      body: JSON.stringify(request),
+    },
+  );
 }
 
 // ── Source Image (PDF extraction) API ─────────────────────────
@@ -675,7 +717,7 @@ export interface LessonResponse {
   id: string;
   module_id: string;
   unit_id: string;
-  language: 'fr' | 'en';
+  language: "fr" | "en";
   level: number;
   country_context: string;
   content: {
@@ -692,8 +734,8 @@ export interface LessonResponse {
 
 // ── Module Media API ──────────────────────────────────────────
 
-export type MediaType = 'audio' | 'video';
-export type MediaStatus = 'pending' | 'generating' | 'ready' | 'failed';
+export type MediaType = "audio" | "video";
+export type MediaStatus = "pending" | "generating" | "ready" | "failed";
 
 export interface ModuleMediaResponse {
   id: string;
@@ -712,23 +754,36 @@ export interface GenerateModuleMediaRequest {
   language: string;
 }
 
-export async function getModuleMedia(moduleId: string): Promise<ModuleMediaResponse[]> {
+export async function getModuleMedia(
+  moduleId: string,
+): Promise<ModuleMediaResponse[]> {
   return apiFetch<ModuleMediaResponse[]>(`/api/v1/modules/${moduleId}/media`);
 }
 
 export async function generateModuleMedia(
   moduleId: string,
   mediaType: MediaType,
-  language: string
+  language: string,
 ): Promise<ModuleMediaResponse> {
-  return apiFetch<ModuleMediaResponse>(`/api/v1/modules/${moduleId}/media/generate`, {
-    method: 'POST',
-    body: JSON.stringify({ media_type: mediaType, language } satisfies GenerateModuleMediaRequest),
-  });
+  return apiFetch<ModuleMediaResponse>(
+    `/api/v1/modules/${moduleId}/media/generate`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        media_type: mediaType,
+        language,
+      } satisfies GenerateModuleMediaRequest),
+    },
+  );
 }
 
-export async function deleteModuleMedia(moduleId: string, mediaId: string): Promise<void> {
-  await apiFetch<void>(`/api/v1/modules/${moduleId}/media/${mediaId}`, { method: 'DELETE' });
+export async function deleteModuleMedia(
+  moduleId: string,
+  mediaId: string,
+): Promise<void> {
+  await apiFetch<void>(`/api/v1/modules/${moduleId}/media/${mediaId}`, {
+    method: "DELETE",
+  });
 }
 
 // ── Platform Settings ─────────────────────────────────────────
@@ -757,9 +812,10 @@ export interface PublicConfig {
 }
 
 export async function getPublicConfig(): Promise<PublicConfig> {
-  const res = await apiFetch<{ settings: Record<string, unknown>; branding?: Branding }>(
-    "/api/v1/settings/public",
-  );
+  const res = await apiFetch<{
+    settings: Record<string, unknown>;
+    branding?: Branding;
+  }>("/api/v1/settings/public");
   return { settings: res.settings, branding: res.branding ?? DEFAULT_BRANDING };
 }
 
@@ -772,7 +828,10 @@ export async function getAdminSettings(): Promise<SettingsByCategory[]> {
   return apiFetch<SettingsByCategory[]>("/api/v1/admin/settings");
 }
 
-export async function updateSetting(key: string, value: unknown): Promise<PlatformSetting> {
+export async function updateSetting(
+  key: string,
+  value: unknown,
+): Promise<PlatformSetting> {
   return apiFetch<PlatformSetting>("/api/v1/admin/settings/update", {
     method: "POST",
     body: JSON.stringify({ key, value }),
@@ -787,9 +846,11 @@ export async function resetSetting(key: string): Promise<PlatformSetting> {
 }
 
 export async function resetSettingCategory(
-  category: string
+  category: string,
 ): Promise<{ category: string; reset_count: number }> {
-  return apiFetch(`/api/v1/admin/settings/reset-category/${category}`, { method: "POST" });
+  return apiFetch(`/api/v1/admin/settings/reset-category/${category}`, {
+    method: "POST",
+  });
 }
 
 // ── Curricula API ─────────────────────────────────────────────
@@ -822,7 +883,15 @@ export interface CurriculumAdminResponse {
   visibility: "public" | "private";
   created_by?: string;
   course_count: number;
-  courses?: Array<{ id: string; slug: string; title_fr: string; title_en: string; status: string; module_count: number; estimated_hours: number }>;
+  courses?: Array<{
+    id: string;
+    slug: string;
+    title_fr: string;
+    title_en: string;
+    status: string;
+    module_count: number;
+    estimated_hours: number;
+  }>;
   created_at: string;
   published_at?: string;
 }
@@ -843,22 +912,34 @@ export async function getCurricula(): Promise<CurriculumPublicResponse[]> {
   return apiFetch<CurriculumPublicResponse[]>("/api/v1/curricula");
 }
 
-export async function getCurriculumBySlug(slug: string): Promise<CurriculumPublicDetailResponse> {
+export async function getCurriculumBySlug(
+  slug: string,
+): Promise<CurriculumPublicDetailResponse> {
   return apiFetch<CurriculumPublicDetailResponse>(`/api/v1/curricula/${slug}`);
 }
 
-export async function getCoursesByCurriculum(curriculumSlug: string): Promise<CourseResponse[]> {
-  return apiFetch<CourseResponse[]>(`/api/v1/courses?curriculum=${encodeURIComponent(curriculumSlug)}`);
+export async function getCoursesByCurriculum(
+  curriculumSlug: string,
+): Promise<CourseResponse[]> {
+  return apiFetch<CourseResponse[]>(
+    `/api/v1/courses?curriculum=${encodeURIComponent(curriculumSlug)}`,
+  );
 }
 
 export async function getAdminCurricula(): Promise<CurriculumAdminResponse[]> {
   const { authClient } = await import("./auth");
-  return authClient.authenticatedFetch<CurriculumAdminResponse[]>("/api/v1/admin/curricula");
+  return authClient.authenticatedFetch<CurriculumAdminResponse[]>(
+    "/api/v1/admin/curricula",
+  );
 }
 
-export async function getAdminCurriculum(id: string): Promise<CurriculumAdminDetailResponse> {
+export async function getAdminCurriculum(
+  id: string,
+): Promise<CurriculumAdminDetailResponse> {
   const { authClient } = await import("./auth");
-  return authClient.authenticatedFetch<CurriculumAdminDetailResponse>(`/api/v1/admin/curricula/${id}`);
+  return authClient.authenticatedFetch<CurriculumAdminDetailResponse>(
+    `/api/v1/admin/curricula/${id}`,
+  );
 }
 
 export async function createAdminCurriculum(data: {
@@ -869,10 +950,13 @@ export async function createAdminCurriculum(data: {
   cover_image_url?: string;
 }): Promise<CurriculumAdminDetailResponse> {
   const { authClient } = await import("./auth");
-  return authClient.authenticatedFetch<CurriculumAdminDetailResponse>("/api/v1/admin/curricula", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
+  return authClient.authenticatedFetch<CurriculumAdminDetailResponse>(
+    "/api/v1/admin/curricula",
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+  );
 }
 
 export async function updateAdminCurriculum(
@@ -883,53 +967,68 @@ export async function updateAdminCurriculum(
     description_fr: string;
     description_en: string;
     cover_image_url: string;
-  }>
+  }>,
 ): Promise<CurriculumAdminDetailResponse> {
   const { authClient } = await import("./auth");
-  return authClient.authenticatedFetch<CurriculumAdminDetailResponse>(`/api/v1/admin/curricula/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(data),
-  });
+  return authClient.authenticatedFetch<CurriculumAdminDetailResponse>(
+    `/api/v1/admin/curricula/${id}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    },
+  );
 }
 
-export async function publishAdminCurriculum(id: string): Promise<CurriculumAdminDetailResponse> {
+export async function publishAdminCurriculum(
+  id: string,
+): Promise<CurriculumAdminDetailResponse> {
   const { authClient } = await import("./auth");
-  return authClient.authenticatedFetch<CurriculumAdminDetailResponse>(`/api/v1/admin/curricula/${id}/publish`, {
-    method: "POST",
-  });
+  return authClient.authenticatedFetch<CurriculumAdminDetailResponse>(
+    `/api/v1/admin/curricula/${id}/publish`,
+    {
+      method: "POST",
+    },
+  );
 }
 
-export async function archiveAdminCurriculum(id: string): Promise<CurriculumAdminDetailResponse> {
+export async function archiveAdminCurriculum(
+  id: string,
+): Promise<CurriculumAdminDetailResponse> {
   const { authClient } = await import("./auth");
-  return authClient.authenticatedFetch<CurriculumAdminDetailResponse>(`/api/v1/admin/curricula/${id}/archive`, {
-    method: "POST",
-  });
+  return authClient.authenticatedFetch<CurriculumAdminDetailResponse>(
+    `/api/v1/admin/curricula/${id}/archive`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export async function deleteAdminCurriculum(id: string): Promise<void> {
   const { authClient } = await import("./auth");
-  await authClient.authenticatedFetch(`/api/v1/admin/curricula/${id}`, { method: "DELETE" });
+  await authClient.authenticatedFetch(`/api/v1/admin/curricula/${id}`, {
+    method: "DELETE",
+  });
 }
 
 export async function assignCurriculumCourses(
   curriculumId: string,
-  courseIds: string[]
+  courseIds: string[],
 ): Promise<CurriculumAdminDetailResponse> {
   const { authClient } = await import("./auth");
   return authClient.authenticatedFetch<CurriculumAdminDetailResponse>(
     `/api/v1/admin/curricula/${curriculumId}/courses`,
-    { method: "PUT", body: JSON.stringify({ course_ids: courseIds }) }
+    { method: "PUT", body: JSON.stringify({ course_ids: courseIds }) },
   );
 }
 
 export async function setCurriculumVisibility(
   curriculumId: string,
-  visibility: "public" | "private"
+  visibility: "public" | "private",
 ): Promise<CurriculumAdminDetailResponse> {
   const { authClient } = await import("./auth");
   return authClient.authenticatedFetch<CurriculumAdminDetailResponse>(
     `/api/v1/admin/curricula/${curriculumId}/visibility`,
-    { method: "POST", body: JSON.stringify({ visibility }) }
+    { method: "POST", body: JSON.stringify({ visibility }) },
   );
 }
 
@@ -943,32 +1042,34 @@ export interface CurriculumAccessEntry {
   granted_at: string;
 }
 
-export async function getCurriculumAccess(curriculumId: string): Promise<CurriculumAccessEntry[]> {
+export async function getCurriculumAccess(
+  curriculumId: string,
+): Promise<CurriculumAccessEntry[]> {
   const { authClient } = await import("./auth");
   return authClient.authenticatedFetch<CurriculumAccessEntry[]>(
-    `/api/v1/admin/curricula/${curriculumId}/access`
+    `/api/v1/admin/curricula/${curriculumId}/access`,
   );
 }
 
 export async function grantCurriculumAccess(
   curriculumId: string,
-  data: { user_id?: string; group_id?: string }
+  data: { user_id?: string; group_id?: string },
 ): Promise<CurriculumAccessEntry> {
   const { authClient } = await import("./auth");
   return authClient.authenticatedFetch<CurriculumAccessEntry>(
     `/api/v1/admin/curricula/${curriculumId}/access`,
-    { method: "POST", body: JSON.stringify(data) }
+    { method: "POST", body: JSON.stringify(data) },
   );
 }
 
 export async function revokeCurriculumAccess(
   curriculumId: string,
-  accessId: string
+  accessId: string,
 ): Promise<void> {
   const { authClient } = await import("./auth");
   await authClient.authenticatedFetch(
     `/api/v1/admin/curricula/${curriculumId}/access/${accessId}`,
-    { method: "DELETE" }
+    { method: "DELETE" },
   );
 }
 
@@ -999,7 +1100,9 @@ interface GroupDetailResponse extends UserGroupResponse {
 
 export async function getAdminGroups(): Promise<UserGroupResponse[]> {
   const { authClient } = await import("./auth");
-  return authClient.authenticatedFetch<UserGroupResponse[]>("/api/v1/admin/groups");
+  return authClient.authenticatedFetch<UserGroupResponse[]>(
+    "/api/v1/admin/groups",
+  );
 }
 
 export async function createAdminGroup(data: {
@@ -1007,52 +1110,76 @@ export async function createAdminGroup(data: {
   description?: string;
 }): Promise<UserGroupResponse> {
   const { authClient } = await import("./auth");
-  return authClient.authenticatedFetch<UserGroupResponse>("/api/v1/admin/groups", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
+  return authClient.authenticatedFetch<UserGroupResponse>(
+    "/api/v1/admin/groups",
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+  );
 }
 
 export async function updateAdminGroup(
   id: string,
-  data: { name?: string; description?: string }
+  data: { name?: string; description?: string },
 ): Promise<UserGroupResponse> {
   const { authClient } = await import("./auth");
-  return authClient.authenticatedFetch<UserGroupResponse>(`/api/v1/admin/groups/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(data),
-  });
+  return authClient.authenticatedFetch<UserGroupResponse>(
+    `/api/v1/admin/groups/${id}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    },
+  );
 }
 
 export async function deleteAdminGroup(id: string): Promise<void> {
   const { authClient } = await import("./auth");
-  await authClient.authenticatedFetch(`/api/v1/admin/groups/${id}`, { method: "DELETE" });
+  await authClient.authenticatedFetch(`/api/v1/admin/groups/${id}`, {
+    method: "DELETE",
+  });
 }
 
-export async function getAdminGroupMembers(groupId: string): Promise<UserGroupMember[]> {
+export async function getAdminGroupMembers(
+  groupId: string,
+): Promise<UserGroupMember[]> {
   const { authClient } = await import("./auth");
-  const detail = await authClient.authenticatedFetch<GroupDetailResponse>(`/api/v1/admin/groups/${groupId}`);
+  const detail = await authClient.authenticatedFetch<GroupDetailResponse>(
+    `/api/v1/admin/groups/${groupId}`,
+  );
   return detail.members.map((m) => ({
     user_id: m.user_id,
-    email: m.user_email ?? '',
+    email: m.user_email ?? "",
     name: m.user_name,
     joined_at: m.added_at,
   }));
 }
 
-export async function addGroupMember(groupId: string, userId: string): Promise<void> {
+export async function addGroupMember(
+  groupId: string,
+  userId: string,
+): Promise<void> {
   const { authClient } = await import("./auth");
-  await authClient.authenticatedFetch(`/api/v1/admin/groups/${groupId}/members`, {
-    method: "POST",
-    body: JSON.stringify({ user_id: userId }),
-  });
+  await authClient.authenticatedFetch(
+    `/api/v1/admin/groups/${groupId}/members`,
+    {
+      method: "POST",
+      body: JSON.stringify({ user_id: userId }),
+    },
+  );
 }
 
-export async function removeGroupMember(groupId: string, userId: string): Promise<void> {
+export async function removeGroupMember(
+  groupId: string,
+  userId: string,
+): Promise<void> {
   const { authClient } = await import("./auth");
-  await authClient.authenticatedFetch(`/api/v1/admin/groups/${groupId}/members/${userId}`, {
-    method: "DELETE",
-  });
+  await authClient.authenticatedFetch(
+    `/api/v1/admin/groups/${groupId}/members/${userId}`,
+    {
+      method: "DELETE",
+    },
+  );
 }
 
 // ── Expert Activation Codes API ───────────────────────────────
@@ -1079,7 +1206,7 @@ export interface CodeRedemptionResponse {
 export async function generateActivationCodes(
   courseId: string,
   count: number,
-  maxUses?: number
+  maxUses?: number,
 ): Promise<ActivationCodeResponse[]> {
   const { authClient } = await import("./auth");
   return authClient.authenticatedFetch<ActivationCodeResponse[]>(
@@ -1087,28 +1214,33 @@ export async function generateActivationCodes(
     {
       method: "POST",
       body: JSON.stringify({ count, max_uses: maxUses ?? null }),
-    }
+    },
   );
 }
 
-export async function getActivationCodes(courseId: string): Promise<ActivationCodeResponse[]> {
+export async function getActivationCodes(
+  courseId: string,
+): Promise<ActivationCodeResponse[]> {
   const { authClient } = await import("./auth");
   return authClient.authenticatedFetch<ActivationCodeResponse[]>(
-    `/api/v1/expert/courses/${courseId}/codes`
+    `/api/v1/expert/courses/${courseId}/codes`,
   );
 }
 
 export async function getCodeRedemptions(
   courseId: string,
-  codeId: string
+  codeId: string,
 ): Promise<CodeRedemptionResponse[]> {
   const { authClient } = await import("./auth");
   return authClient.authenticatedFetch<CodeRedemptionResponse[]>(
-    `/api/v1/expert/courses/${courseId}/codes/${codeId}/redemptions`
+    `/api/v1/expert/courses/${courseId}/codes/${codeId}/redemptions`,
   );
 }
 
-export async function getCodeQR(courseId: string, codeId: string): Promise<Blob> {
+export async function getCodeQR(
+  courseId: string,
+  codeId: string,
+): Promise<Blob> {
   const { authClient } = await import("./auth");
   const token = await authClient.getValidToken();
   const res = await fetch(
@@ -1117,7 +1249,7 @@ export async function getCodeQR(courseId: string, codeId: string): Promise<Blob>
       headers: {
         Authorization: `Bearer ${token}`,
       },
-    }
+    },
   );
   if (!res.ok) throw new ApiError(`API error: ${res.status}`, res.status);
   return res.blob();
@@ -1126,7 +1258,7 @@ export async function getCodeQR(courseId: string, codeId: string): Promise<Blob>
 export async function manualActivate(
   courseId: string,
   codeId: string,
-  learnerEmail: string
+  learnerEmail: string,
 ): Promise<{ message: string }> {
   const { authClient } = await import("./auth");
   return authClient.authenticatedFetch<{ message: string }>(
@@ -1134,7 +1266,7 @@ export async function manualActivate(
     {
       method: "POST",
       body: JSON.stringify({ learner_email: learnerEmail }),
-    }
+    },
   );
 }
 
@@ -1181,17 +1313,21 @@ export interface ActivationRedeemResponse {
   enrolled?: boolean;
 }
 
-export async function previewActivationCode(code: string): Promise<ActivationPreviewResponse> {
-  return apiFetch<ActivationPreviewResponse>(`/api/v1/activate/${encodeURIComponent(code)}/preview`);
+export async function previewActivationCode(
+  code: string,
+): Promise<ActivationPreviewResponse> {
+  return apiFetch<ActivationPreviewResponse>(
+    `/api/v1/activate/${encodeURIComponent(code)}/preview`,
+  );
 }
 
 export async function redeemActivationCode(
   code: string,
-  method: "code" | "qr"
+  method: "code" | "qr",
 ): Promise<ActivationRedeemResponse> {
   return apiFetch<ActivationRedeemResponse>(
     `/api/v1/activate/${encodeURIComponent(code)}/redeem`,
-    { method: "POST", body: JSON.stringify({ method }) }
+    { method: "POST", body: JSON.stringify({ method }) },
   );
 }
 
@@ -1289,64 +1425,87 @@ export async function fetchOrgMembers(orgId: string): Promise<OrgMember[]> {
   return apiFetch<OrgMember[]>(`/api/v1/organizations/${orgId}/members`);
 }
 
-export async function addOrgMember(orgId: string, email: string, role: string): Promise<OrgMember> {
+export async function addOrgMember(
+  orgId: string,
+  email: string,
+  role: string,
+): Promise<OrgMember> {
   return apiFetch<OrgMember>(`/api/v1/organizations/${orgId}/members`, {
     method: "POST",
     body: JSON.stringify({ email, role }),
   });
 }
 
-export async function removeOrgMember(orgId: string, userId: string): Promise<void> {
+export async function removeOrgMember(
+  orgId: string,
+  userId: string,
+): Promise<void> {
   return apiFetch<void>(`/api/v1/organizations/${orgId}/members/${userId}`, {
     method: "DELETE",
   });
 }
 
 // Organization Credits
-export async function fetchOrgCredits(orgId: string): Promise<{ balance: number }> {
-  return apiFetch<{ balance: number }>(`/api/v1/organizations/${orgId}/credits`);
+export async function fetchOrgCredits(
+  orgId: string,
+): Promise<{ balance: number }> {
+  return apiFetch<{ balance: number }>(
+    `/api/v1/organizations/${orgId}/credits`,
+  );
 }
 
 // Organization Curricula
-export async function fetchOrgCurricula(orgId: string): Promise<OrgCurriculumResponse[]> {
-  return apiFetch<OrgCurriculumResponse[]>(`/api/v1/organizations/${orgId}/curricula`);
+export async function fetchOrgCurricula(
+  orgId: string,
+): Promise<OrgCurriculumResponse[]> {
+  return apiFetch<OrgCurriculumResponse[]>(
+    `/api/v1/organizations/${orgId}/curricula`,
+  );
 }
 
-export async function createOrgCurriculum(orgId: string, data: {
-  title_fr: string;
-  title_en: string;
-  slug: string;
-  description_fr?: string;
-  description_en?: string;
-}): Promise<OrgCurriculumResponse> {
-  return apiFetch<OrgCurriculumResponse>(`/api/v1/organizations/${orgId}/curricula`, {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
+export async function createOrgCurriculum(
+  orgId: string,
+  data: {
+    title_fr: string;
+    title_en: string;
+    slug: string;
+    description_fr?: string;
+    description_en?: string;
+  },
+): Promise<OrgCurriculumResponse> {
+  return apiFetch<OrgCurriculumResponse>(
+    `/api/v1/organizations/${orgId}/curricula`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+  );
 }
 
-export async function fetchOrgCourses(orgId: string): Promise<{
-  id: string;
-  slug: string;
-  title_fr: string;
-  title_en: string;
-  status: string;
-  creation_mode: string;
-  creation_step: string;
-  created_at: string;
-  cover_image_url?: string;
-}[]> {
+export async function fetchOrgCourses(orgId: string): Promise<
+  {
+    id: string;
+    slug: string;
+    title_fr: string;
+    title_en: string;
+    status: string;
+    creation_mode: string;
+    creation_step: string;
+    created_at: string;
+    cover_image_url?: string;
+  }[]
+> {
   return apiFetch(`/api/v1/organizations/${orgId}/courses`);
 }
 
 export async function setOrgCurriculumCourses(
   orgId: string,
   curriculumId: string,
-  courseIds: string[]
+  courseIds: string[],
 ): Promise<OrgCurriculumResponse> {
   return apiFetch<OrgCurriculumResponse>(
     `/api/v1/organizations/${orgId}/curricula/${curriculumId}/courses`,
-    { method: "PUT", body: JSON.stringify({ course_ids: courseIds }) }
+    { method: "PUT", body: JSON.stringify({ course_ids: courseIds }) },
   );
 }
 
@@ -1355,22 +1514,31 @@ export async function fetchOrgCodes(orgId: string): Promise<OrgCodeResponse[]> {
   return apiFetch<OrgCodeResponse[]>(`/api/v1/organizations/${orgId}/codes`);
 }
 
-export async function generateOrgCodes(orgId: string, data: {
-  curriculum_id?: string;
-  course_id?: string;
-  count: number;
-  max_uses?: number;
-}): Promise<OrgCodeResponse[]> {
+export async function generateOrgCodes(
+  orgId: string,
+  data: {
+    curriculum_id?: string;
+    course_id?: string;
+    count: number;
+    max_uses?: number;
+  },
+): Promise<OrgCodeResponse[]> {
   return apiFetch<OrgCodeResponse[]>(`/api/v1/organizations/${orgId}/codes`, {
     method: "POST",
     body: JSON.stringify(data),
   });
 }
 
-export async function revokeOrgCode(orgId: string, codeId: string): Promise<void> {
-  return apiFetch<void>(`/api/v1/organizations/${orgId}/codes/${codeId}/revoke`, {
-    method: "POST",
-  });
+export async function revokeOrgCode(
+  orgId: string,
+  codeId: string,
+): Promise<void> {
+  return apiFetch<void>(
+    `/api/v1/organizations/${orgId}/codes/${codeId}/revoke`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 // Organization Reports
@@ -1378,29 +1546,36 @@ export async function fetchOrgSummary(orgId: string): Promise<OrgSummary> {
   return apiFetch<OrgSummary>(`/api/v1/organizations/${orgId}/reports/summary`);
 }
 
-export async function fetchOrgLearners(orgId: string, params?: {
-  curriculum_id?: string;
-  course_id?: string;
-  limit?: number;
-  offset?: number;
-}): Promise<LearnerProgress[]> {
+export async function fetchOrgLearners(
+  orgId: string,
+  params?: {
+    curriculum_id?: string;
+    course_id?: string;
+    limit?: number;
+    offset?: number;
+  },
+): Promise<LearnerProgress[]> {
   const searchParams = new URLSearchParams();
-  if (params?.curriculum_id) searchParams.set("curriculum_id", params.curriculum_id);
+  if (params?.curriculum_id)
+    searchParams.set("curriculum_id", params.curriculum_id);
   if (params?.course_id) searchParams.set("course_id", params.course_id);
   if (params?.limit) searchParams.set("limit", String(params.limit));
   if (params?.offset) searchParams.set("offset", String(params.offset));
   const qs = searchParams.toString();
   return apiFetch<LearnerProgress[]>(
-    `/api/v1/organizations/${orgId}/reports/learners${qs ? `?${qs}` : ""}`
+    `/api/v1/organizations/${orgId}/reports/learners${qs ? `?${qs}` : ""}`,
   );
 }
 
 export async function exportOrgCsv(orgId: string): Promise<string> {
-  const res = await fetch(`${API_BASE}/api/v1/organizations/${orgId}/reports/export`, {
-    headers: {
-      Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+  const res = await fetch(
+    `${API_BASE}/api/v1/organizations/${orgId}/reports/export`,
+    {
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+      },
     },
-  });
+  );
   return res.text();
 }
 
@@ -1448,25 +1623,34 @@ export interface CertificateVerifyResponse {
 
 // ── Certificate API Functions ─────────────────────────────────────
 
-export async function getCertificateTemplate(courseId: string): Promise<CertificateTemplateResponse> {
-  return apiFetch<CertificateTemplateResponse>(`/api/v1/expert/courses/${courseId}/certificate-template`);
+export async function getCertificateTemplate(
+  courseId: string,
+): Promise<CertificateTemplateResponse> {
+  return apiFetch<CertificateTemplateResponse>(
+    `/api/v1/expert/courses/${courseId}/certificate-template`,
+  );
 }
 
 export async function upsertCertificateTemplate(
   courseId: string,
-  data: Partial<CertificateTemplateResponse>
+  data: Partial<CertificateTemplateResponse>,
 ): Promise<CertificateTemplateResponse> {
-  return apiFetch<CertificateTemplateResponse>(`/api/v1/expert/courses/${courseId}/certificate-template`, {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
+  return apiFetch<CertificateTemplateResponse>(
+    `/api/v1/expert/courses/${courseId}/certificate-template`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+  );
 }
 
 export async function getMyCertificates(): Promise<CertificateListItem[]> {
   return apiFetch<CertificateListItem[]>("/api/v1/certificates");
 }
 
-export async function downloadCertificatePdf(certificateId: string): Promise<Blob> {
+export async function downloadCertificatePdf(
+  certificateId: string,
+): Promise<Blob> {
   const headers: Record<string, string> = {};
   if (typeof window !== "undefined") {
     try {
@@ -1477,12 +1661,17 @@ export async function downloadCertificatePdf(certificateId: string): Promise<Blo
       // proceed without auth
     }
   }
-  const res = await fetch(`${API_BASE}/api/v1/certificates/${certificateId}/download`, { headers });
+  const res = await fetch(
+    `${API_BASE}/api/v1/certificates/${certificateId}/download`,
+    { headers },
+  );
   if (!res.ok) throw new ApiError("Download failed", res.status);
   return res.blob();
 }
 
-export async function verifyCertificate(code: string): Promise<CertificateVerifyResponse> {
+export async function verifyCertificate(
+  code: string,
+): Promise<CertificateVerifyResponse> {
   return apiFetch<CertificateVerifyResponse>(`/api/v1/verify/${code}`);
 }
 
@@ -1552,39 +1741,49 @@ export interface QBankReviewResponse {
   questions: QBankReviewQuestion[];
 }
 
-export async function startQBankTest(testId: string): Promise<QBankTestStartResponse> {
-  return apiFetch<QBankTestStartResponse>(`/api/v1/qbank/tests/${testId}/start`);
+export async function startQBankTest(
+  testId: string,
+): Promise<QBankTestStartResponse> {
+  return apiFetch<QBankTestStartResponse>(
+    `/api/v1/qbank/tests/${testId}/start`,
+  );
 }
 
 export async function submitQBankTest(
   testId: string,
-  answers: Record<string, { selected: number[]; time_sec: number }>
+  answers: Record<string, { selected: number[]; time_sec: number }>,
 ): Promise<QBankTestAttemptResponse> {
-  return apiFetch<QBankTestAttemptResponse>(`/api/v1/qbank/tests/${testId}/submit`, {
-    method: "POST",
-    body: JSON.stringify({ answers }),
-  });
+  return apiFetch<QBankTestAttemptResponse>(
+    `/api/v1/qbank/tests/${testId}/submit`,
+    {
+      method: "POST",
+      body: JSON.stringify({ answers }),
+    },
+  );
 }
 
-export async function getQBankTestHistory(testId: string): Promise<QBankTestAttemptResponse[]> {
-  return apiFetch<QBankTestAttemptResponse[]>(`/api/v1/qbank/tests/${testId}/history`);
+export async function getQBankTestHistory(
+  testId: string,
+): Promise<QBankTestAttemptResponse[]> {
+  return apiFetch<QBankTestAttemptResponse[]>(
+    `/api/v1/qbank/tests/${testId}/history`,
+  );
 }
 
 export async function getQBankTestReview(
-  testId: string, attemptId: string
+  testId: string,
+  attemptId: string,
 ): Promise<QBankReviewResponse> {
-  return apiFetch<QBankReviewResponse>(`/api/v1/qbank/tests/${testId}/review/${attemptId}`);
+  return apiFetch<QBankReviewResponse>(
+    `/api/v1/qbank/tests/${testId}/review/${attemptId}`,
+  );
 }
 
 // Question audio — backend streams OGG/Opus from MinIO via a proxy (#1658).
 // The status poll returns `audio_url` only when `status === "ready"`.
 export type QBankAudioLanguage = "fr" | "mos" | "dyu" | "bam" | "ful";
 
-export type QBankAudioReadiness =
-  | "pending"
-  | "generating"
-  | "ready"
-  | "failed";
+export type QBankAudioReadiness = "pending" | "generating" | "ready" | "failed";
 
 export interface QBankQuestionAudioStatus {
   question_id: string;
@@ -1607,7 +1806,11 @@ export async function getQBankQuestionAudio(
 // QBank management (org admin) — #1504
 // ---------------------------------------------------------------------------
 
-export type QBankType = "driving" | "exam_prep" | "psychotechnic" | "general_culture";
+export type QBankType =
+  | "driving"
+  | "exam_prep"
+  | "psychotechnic"
+  | "general_culture";
 export type QBankStatus = "draft" | "published" | "archived";
 export type QBankDifficulty = "easy" | "medium" | "hard";
 export type QBankTestMode = "exam" | "training" | "review";
@@ -1730,7 +1933,32 @@ export async function listAccessibleQBanks(options?: {
   return apiFetch<QBankBank[]>(`/api/v1/qbank/banks/accessible${qs}`);
 }
 
-export async function createQBankBank(body: QBankBankCreate): Promise<QBankBank> {
+/** A test the learner can take, with enough bank context to render without
+ * drilling into the bank. Powers the /qbank/tests discovery page (#1732). */
+export interface AccessibleQBankTest {
+  id: string;
+  question_bank_id: string;
+  title: string;
+  mode: "exam" | "training" | "review" | string;
+  question_count: number | null;
+  time_per_question_sec: number | null;
+  show_feedback: boolean;
+  created_at: string;
+  bank_title: string | null;
+  bank_language: string | null;
+  bank_org_name: string | null;
+  bank_org_slug: string | null;
+}
+
+/** Flat list of every test the learner can take across accessible banks
+ * (#1732). Cross-org, published-only, grouped client-side by bank. */
+export async function listAccessibleTests(): Promise<AccessibleQBankTest[]> {
+  return apiFetch<AccessibleQBankTest[]>(`/api/v1/qbank/tests/accessible`);
+}
+
+export async function createQBankBank(
+  body: QBankBankCreate,
+): Promise<QBankBank> {
   return apiFetch<QBankBank>(`/api/v1/qbank/banks`, {
     method: "POST",
     body: JSON.stringify(body),
@@ -1743,7 +1971,7 @@ export async function getQBankBank(bankId: string): Promise<QBankBank> {
 
 export async function updateQBankBank(
   bankId: string,
-  body: QBankBankUpdate
+  body: QBankBankUpdate,
 ): Promise<QBankBank> {
   return apiFetch<QBankBank>(`/api/v1/qbank/banks/${bankId}`, {
     method: "PATCH",
@@ -1758,16 +1986,16 @@ export async function deleteQBankBank(bankId: string): Promise<void> {
 export async function listQBankQuestions(
   bankId: string,
   page = 1,
-  perPage = 50
+  perPage = 50,
 ): Promise<QBankQuestionList> {
   return apiFetch<QBankQuestionList>(
-    `/api/v1/qbank/banks/${bankId}/questions?page=${page}&per_page=${perPage}`
+    `/api/v1/qbank/banks/${bankId}/questions?page=${page}&per_page=${perPage}`,
   );
 }
 
 export async function updateQBankQuestion(
   questionId: string,
-  body: QBankQuestionUpdate
+  body: QBankQuestionUpdate,
 ): Promise<QBankQuestionFull> {
   return apiFetch<QBankQuestionFull>(`/api/v1/qbank/questions/${questionId}`, {
     method: "PATCH",
@@ -1781,11 +2009,15 @@ export async function deleteQBankQuestion(questionId: string): Promise<void> {
   });
 }
 
-export async function listQBankTests(bankId: string): Promise<QBankTestConfig[]> {
+export async function listQBankTests(
+  bankId: string,
+): Promise<QBankTestConfig[]> {
   return apiFetch<QBankTestConfig[]>(`/api/v1/qbank/tests?bank_id=${bankId}`);
 }
 
-export async function createQBankTest(body: QBankTestCreate): Promise<QBankTestConfig> {
+export async function createQBankTest(
+  body: QBankTestCreate,
+): Promise<QBankTestConfig> {
   return apiFetch<QBankTestConfig>(`/api/v1/qbank/tests`, {
     method: "POST",
     body: JSON.stringify(body),
@@ -1794,8 +2026,13 @@ export async function createQBankTest(body: QBankTestCreate): Promise<QBankTestC
 
 export async function uploadQBankPdf(
   bankId: string,
-  file: File
-): Promise<{ task_id: string; bank_id: string; filename: string; status: string }> {
+  file: File,
+): Promise<{
+  task_id: string;
+  bank_id: string;
+  filename: string;
+  status: string;
+}> {
   const formData = new FormData();
   formData.append("file", file);
   const headers: Record<string, string> = {};
@@ -1808,18 +2045,23 @@ export async function uploadQBankPdf(
       // no auth header if no token
     }
   }
-  const res = await fetch(`${API_BASE}/api/v1/qbank/banks/${bankId}/upload-pdf`, {
-    method: "POST",
-    headers,
-    body: formData,
-  });
+  const res = await fetch(
+    `${API_BASE}/api/v1/qbank/banks/${bankId}/upload-pdf`,
+    {
+      method: "POST",
+      headers,
+      body: formData,
+    },
+  );
   if (!res.ok) {
     let message = `API error: ${res.status}`;
     try {
       const body = await res.json();
       if (typeof body?.detail === "string") message = body.detail;
       else if (body?.detail?.message) message = body.detail.message;
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     throw new ApiError(message, res.status);
   }
   return res.json();
@@ -1827,9 +2069,9 @@ export async function uploadQBankPdf(
 
 export async function getQBankProcessingStatus(
   bankId: string,
-  taskId: string
+  taskId: string,
 ): Promise<QBankProcessingStatus> {
   return apiFetch<QBankProcessingStatus>(
-    `/api/v1/qbank/banks/${bankId}/processing-status?task_id=${taskId}`
+    `/api/v1/qbank/banks/${bankId}/processing-status?task_id=${taskId}`,
   );
 }

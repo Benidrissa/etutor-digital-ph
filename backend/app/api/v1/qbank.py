@@ -12,6 +12,7 @@ from fastapi.responses import StreamingResponse
 from app.api.deps import get_db_session
 from app.api.deps_local_auth import AuthenticatedUser, get_current_user
 from app.api.v1.schemas.qbank import (
+    AccessibleTestResponse,
     AudioGenerateResponse,
     AudioStatusResponse,
     BankAnalyticsResponse,
@@ -252,6 +253,40 @@ async def list_accessible_banks(
     )
     return [
         _bank_response(item["bank"], item["question_count"], item["test_count"]) for item in items
+    ]
+
+
+@router.get("/tests/accessible", response_model=list[AccessibleTestResponse])
+async def list_accessible_tests(
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db=Depends(get_db_session),
+):
+    """Flat list of every test the learner can take across accessible banks.
+
+    Powers the top-level "Tests" discovery page (#1732). Learners don't
+    have to drill into a bank to see its tests — this endpoint returns
+    everything they're eligible for in one call, grouped client-side by
+    bank. Published-only (inherited from ``list_accessible_banks``).
+    """
+    items = await _svc.list_accessible_tests(db, uuid.UUID(current_user.id))
+    return [
+        AccessibleTestResponse(
+            id=str(item["test"].id),
+            question_bank_id=str(item["test"].question_bank_id),
+            title=item["test"].title,
+            mode=item["test"].mode.value
+            if hasattr(item["test"].mode, "value")
+            else item["test"].mode,
+            question_count=item["test"].question_count,
+            time_per_question_sec=item["test"].time_per_question_sec,
+            show_feedback=item["test"].show_feedback,
+            created_at=item["test"].created_at.isoformat(),
+            bank_title=item["bank_title"],
+            bank_language=item["bank_language"],
+            bank_org_name=item["bank_org_name"],
+            bank_org_slug=item["bank_org_slug"],
+        )
+        for item in items
     ]
 
 

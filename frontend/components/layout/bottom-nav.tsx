@@ -9,6 +9,7 @@ import {
   CreditCard,
   Bot,
   Brain,
+  ListChecks,
   MoreHorizontal,
   BookOpen,
   User,
@@ -16,14 +17,19 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { startTransition, useState, useEffect, useRef } from "react";
-import { getCurriculumContext, onCurriculumContextChange, type CurriculumContextValue } from "@/lib/curriculum-context";
+import {
+  getCurriculumContext,
+  onCurriculumContextChange,
+  type CurriculumContextValue,
+} from "@/lib/curriculum-context";
 
 export function BottomNav() {
   const t = useTranslations("Navigation");
   const pathname = usePathname();
   const locale = useLocale();
   const [moreOpen, setMoreOpen] = useState(false);
-  const [curriculumCtx, setCurriculumCtx] = useState<CurriculumContextValue | null>(null);
+  const [curriculumCtx, setCurriculumCtx] =
+    useState<CurriculumContextValue | null>(null);
   const moreRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -88,6 +94,12 @@ export function BottomNav() {
       description: t("modulesDescription"),
     },
     {
+      href: `/${locale}/qbank/tests`,
+      label: t("qbankTests"),
+      icon: ListChecks,
+      description: t("qbankTestsDescription"),
+    },
+    {
       href: `/${locale}/qbank`,
       label: t("qbank"),
       icon: Brain,
@@ -137,7 +149,7 @@ export function BottomNav() {
                     "flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-md px-2 py-3 text-xs transition-colors",
                     isActive
                       ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
                   )}
                   aria-label={item.description}
                   aria-current={isActive ? "page" : undefined}
@@ -171,22 +183,19 @@ export function BottomNav() {
                   "flex min-h-11 min-w-11 flex-1 flex-col items-center justify-center py-2 text-xs transition-colors",
                   isActive
                     ? "text-primary"
-                    : "text-muted-foreground hover:text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
                 aria-label={item.description}
                 aria-current={isActive ? "page" : undefined}
               >
                 <Icon
-                  className={cn(
-                    "h-5 w-5 mb-1",
-                    isActive && "text-primary"
-                  )}
+                  className={cn("h-5 w-5 mb-1", isActive && "text-primary")}
                   aria-hidden="true"
                 />
                 <span
                   className={cn(
                     "text-xs",
-                    isActive && "text-primary font-medium"
+                    isActive && "text-primary font-medium",
                   )}
                 >
                   {item.label}
@@ -198,9 +207,9 @@ export function BottomNav() {
           <button
             className={cn(
               "flex min-h-11 min-w-11 flex-1 flex-col items-center justify-center py-2 text-xs transition-colors",
-              (moreOpen || isMoreActive)
+              moreOpen || isMoreActive
                 ? "text-primary"
-                : "text-muted-foreground hover:text-foreground"
+                : "text-muted-foreground hover:text-foreground",
             )}
             onClick={() => setMoreOpen((prev) => !prev)}
             aria-label={t("moreMenuLabel")}
@@ -210,14 +219,14 @@ export function BottomNav() {
             <MoreHorizontal
               className={cn(
                 "h-5 w-5 mb-1",
-                (moreOpen || isMoreActive) && "text-primary"
+                (moreOpen || isMoreActive) && "text-primary",
               )}
               aria-hidden="true"
             />
             <span
               className={cn(
                 "text-xs",
-                (moreOpen || isMoreActive) && "text-primary font-medium"
+                (moreOpen || isMoreActive) && "text-primary font-medium",
               )}
             >
               {t("more")}

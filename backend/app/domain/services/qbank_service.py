@@ -183,6 +183,60 @@ class QBankService:
 
         return await self._enrich_banks(db, banks)
 
+    async def list_accessible_tests(
+        self,
+        db: AsyncSession,
+        user_id: uuid.UUID,
+    ) -> list[dict]:
+        """Return tests the user can take, flattened across accessible banks.
+
+        Uses ``list_accessible_banks`` (published-only) to find every bank
+        the user has org-level access to, then loads the tests under each.
+        Returns one dict per test with enough bank context for the
+        learner-facing "Tests I can take" page (#1732) to render without a
+        drill-through.
+        """
+        from sqlalchemy.orm import selectinload
+
+        bank_rows = await self.list_accessible_banks(db, user_id)
+        if not bank_rows:
+            return []
+
+        bank_ids = [row["bank"].id for row in bank_rows]
+        banks_by_id = {row["bank"].id: row["bank"] for row in bank_rows}
+
+        tests = (
+            (
+                await db.execute(
+                    select(QBankTest)
+                    .where(QBankTest.question_bank_id.in_(bank_ids))
+                    .options(
+                        selectinload(QBankTest.question_bank).selectinload(
+                            QuestionBank.organization
+                        )
+                    )
+                    .order_by(QBankTest.created_at.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        out: list[dict] = []
+        for test in tests:
+            bank = test.question_bank or banks_by_id.get(test.question_bank_id)
+            org = getattr(bank, "organization", None) if bank else None
+            out.append(
+                {
+                    "test": test,
+                    "bank_title": bank.title if bank else None,
+                    "bank_language": bank.language if bank else None,
+                    "bank_org_name": org.name if org else None,
+                    "bank_org_slug": org.slug if org else None,
+                }
+            )
+        return out
+
     async def _enrich_banks(self, db: AsyncSession, banks: list[QuestionBank]) -> list[dict]:
         """Attach question + test counts to a list of banks."""
         out = []
