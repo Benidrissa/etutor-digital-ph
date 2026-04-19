@@ -11,6 +11,7 @@ import {
   CreditCard,
   Bot,
   Brain,
+  ListChecks,
   User,
   ChevronLeft,
   ChevronRight,
@@ -26,7 +27,11 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth";
 import { useQueryClient } from "@tanstack/react-query";
-import { getCurriculumContext, onCurriculumContextChange, type CurriculumContextValue } from "@/lib/curriculum-context";
+import {
+  getCurriculumContext,
+  onCurriculumContextChange,
+  type CurriculumContextValue,
+} from "@/lib/curriculum-context";
 
 function getUserRole(): string | null {
   if (typeof window === "undefined") return null;
@@ -53,7 +58,8 @@ export function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
-  const [curriculumCtx, setCurriculumCtx] = useState<CurriculumContextValue | null>(null);
+  const [curriculumCtx, setCurriculumCtx] =
+    useState<CurriculumContextValue | null>(null);
 
   useEffect(() => {
     startTransition(() => {
@@ -88,7 +94,7 @@ export function Sidebar() {
         : `/${locale}/dashboard`,
       label: t("dashboard"),
       icon: Home,
-      description: t("dashboardDescription")
+      description: t("dashboardDescription"),
     },
     {
       href: curriculumCtx
@@ -98,49 +104,55 @@ export function Sidebar() {
         : `/${locale}/courses`,
       label: t("courses"),
       icon: GraduationCap,
-      description: t("coursesDescription")
+      description: t("coursesDescription"),
     },
     {
       href: `/${locale}/modules`,
       label: t("modules"),
       icon: BookOpen,
-      description: t("modulesDescription")
+      description: t("modulesDescription"),
     },
     {
       href: `/${locale}/flashcards`,
       label: t("flashcards"),
       icon: CreditCard,
-      description: t("flashcardsDescription")
+      description: t("flashcardsDescription"),
+    },
+    {
+      href: `/${locale}/qbank/tests`,
+      label: t("qbankTests"),
+      icon: ListChecks,
+      description: t("qbankTestsDescription"),
     },
     {
       href: `/${locale}/qbank`,
       label: t("qbank"),
       icon: Brain,
-      description: t("qbankDescription")
+      description: t("qbankDescription"),
     },
     {
       href: `/${locale}/certificates`,
       label: t("certificates"),
       icon: Award,
-      description: t("certificatesDescription")
+      description: t("certificatesDescription"),
     },
     {
       href: `/${locale}/tutor`,
       label: t("tutor"),
       icon: Bot,
-      description: t("tutorDescription")
+      description: t("tutorDescription"),
     },
     {
       href: `/${locale}/profile`,
       label: t("profile"),
       icon: User,
-      description: t("profileDescription")
+      description: t("profileDescription"),
     },
     {
       href: `/${locale}/subscribe`,
       label: t("subscribe"),
       icon: Wallet,
-      description: t("subscribeDescription")
+      description: t("subscribeDescription"),
     },
     ...(userRole === "admin" || userRole === "sub_admin"
       ? [
@@ -152,7 +164,9 @@ export function Sidebar() {
           },
         ]
       : []),
-    ...(userRole === "admin" || userRole === "sub_admin" || userRole === "expert"
+    ...(userRole === "admin" ||
+    userRole === "sub_admin" ||
+    userRole === "expert"
       ? [
           {
             href: `/${locale}/admin/users`,
@@ -165,18 +179,20 @@ export function Sidebar() {
   ];
 
   return (
-    <aside 
+    <aside
       className={cn(
         "hidden shrink-0 border-r bg-card md:flex md:flex-col transition-all duration-300",
-        isCollapsed ? "w-16" : "w-60"
+        isCollapsed ? "w-16" : "w-60",
       )}
       role="navigation"
       aria-label={t("desktopNavigation")}
     >
-      <div className={cn(
-        "flex h-14 items-center border-b",
-        isCollapsed ? "px-2 justify-center" : "px-4 justify-between"
-      )}>
+      <div
+        className={cn(
+          "flex h-14 items-center border-b",
+          isCollapsed ? "px-2 justify-center" : "px-4 justify-between",
+        )}
+      >
         {!isCollapsed && (
           <span className="text-sm font-semibold truncate">
             {tCommon("appName")}
@@ -196,12 +212,12 @@ export function Sidebar() {
           )}
         </Button>
       </div>
-      
+
       <nav className="flex flex-col gap-1 p-2 flex-1">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname.includes(item.href);
-          
+
           return (
             <Link
               key={item.href}
@@ -211,24 +227,19 @@ export function Sidebar() {
                 isActive
                   ? "bg-accent text-accent-foreground"
                   : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-                isCollapsed && "justify-center px-2"
+                isCollapsed && "justify-center px-2",
               )}
               title={isCollapsed ? item.description : undefined}
               aria-label={item.description}
               aria-current={isActive ? "page" : undefined}
             >
-              <Icon 
-                className="h-4 w-4 shrink-0" 
-                aria-hidden="true"
-              />
-              {!isCollapsed && (
-                <span className="truncate">{item.label}</span>
-              )}
+              <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+              {!isCollapsed && <span className="truncate">{item.label}</span>}
             </Link>
           );
         })}
       </nav>
-      
+
       <div className="border-t p-2">
         {!isCollapsed ? (
           <div className="space-y-1 p-2">

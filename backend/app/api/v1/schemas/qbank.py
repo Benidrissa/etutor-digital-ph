@@ -133,6 +133,27 @@ class TestResponse(BaseModel):
     created_at: str
 
 
+class AccessibleTestResponse(BaseModel):
+    """A test returned by ``/tests/accessible`` for the learner-facing
+    "Tests I can take" page (#1732). Wraps ``TestResponse`` plus enough
+    bank/org context so the learner page can group tests by bank
+    without a second round-trip per test.
+    """
+
+    id: str
+    question_bank_id: str
+    title: str
+    mode: str
+    question_count: int | None = None
+    time_per_question_sec: int | None = None
+    show_feedback: bool
+    created_at: str
+    bank_title: str | None = None
+    bank_language: str | None = None
+    bank_org_name: str | None = None
+    bank_org_slug: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Test Session (taking a test)
 # ---------------------------------------------------------------------------
