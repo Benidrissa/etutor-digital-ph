@@ -78,6 +78,7 @@ async def _process_pdf_async(task, bank_id: str, pdf_filename: str) -> dict:
     errors = []
     created = 0
 
+    created_question_ids: list[str] = []
     with Session(engine) as session:
         # Get current max order_index for this bank
         from sqlalchemy import func, select
@@ -115,6 +116,8 @@ async def _process_pdf_async(task, bank_id: str, pdf_filename: str) -> dict:
                     category=q.category,
                 )
                 session.add(question)
+                session.flush()  # populate question.id before commit
+                created_question_ids.append(str(question.id))
                 created += 1
 
             except Exception as e:
@@ -135,24 +138,21 @@ async def _process_pdf_async(task, bank_id: str, pdf_filename: str) -> dict:
         errors_count=len(errors),
     )
 
-    # Fire audio pregeneration for every supported language so the first
-    # learner to take a test doesn't wait on the MMS sidecar (#1674).
-    # For non-source languages, chain translate→audio so MMS receives
-    # native-language text rather than French (#1690). Skipped when no
-    # questions were added — nothing to translate or synthesize.
+    # Fire audio pregeneration for every supported language (#1674).
+    # Per-question fan-out (#1708): each non-FR (question, language)
+    # pair becomes its own task, so MMS synthesis for question K can
+    # start as soon as NLLB translation for K is done — no more waiting
+    # for the whole bank to finish translating. French has no
+    # translation step, so it uses the single bank-level task.
     if created:
-        from celery import chain as celery_chain
-
         from app.domain.services.qbank_audio_service import SUPPORTED_LANGUAGES
         from app.domain.services.qbank_translation_service import TARGET_LANGUAGES
 
         for language in SUPPORTED_LANGUAGES:
             try:
                 if language in TARGET_LANGUAGES:
-                    celery_chain(
-                        translate_qbank_bank_task.si(bank_id, language),
-                        generate_qbank_audio_task.si(bank_id, language),
-                    ).apply_async()
+                    for qid in created_question_ids:
+                        translate_and_synthesize_question_task.delay(qid, language)
                 else:
                     generate_qbank_audio_task.delay(bank_id, language)
             except Exception as exc:
@@ -255,3 +255,64 @@ async def _translate_bank_async(bank_id: str, language: str) -> dict:
         result=result,
     )
     return result
+
+
+@celery_app.task(
+    base=QBankTask,
+    bind=True,
+    name="qbank.translate_and_synthesize_question",
+    max_retries=2,
+    default_retry_delay=60,
+    soft_time_limit=600,
+    time_limit=660,
+    rate_limit="20/m",
+)
+def translate_and_synthesize_question_task(self, question_id: str, language: str) -> dict:
+    """Translate one (question, language) pair then synthesize its audio (#1708).
+
+    Per-question fan-out replaces the old bank-level translate→audio
+    chain: as soon as NLLB finishes a single question's translation,
+    the paired MMS synthesis starts for that question, in parallel with
+    NLLB translating the next question. On a multi-worker Celery pool
+    this serializes only on the sidecar side (NLLB semaphore=1, MMS
+    semaphore=2) instead of on the whole 11-question batch.
+    """
+    return asyncio.run(_translate_and_synthesize_question_async(question_id, language))
+
+
+async def _translate_and_synthesize_question_async(question_id: str, language: str) -> dict:
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.domain.services.qbank_audio_service import QBankAudioService
+    from app.domain.services.qbank_translation_service import (
+        QBankTranslationService,
+    )
+    from app.infrastructure.config.settings import settings
+
+    qid = uuid.UUID(question_id)
+    engine = create_async_engine(settings.database_url, echo=False)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    try:
+        async with session_factory() as session:
+            await QBankTranslationService().ensure_translation(session, qid, language)
+        async with session_factory() as session:
+            audio_row = await QBankAudioService().generate_question_audio(session, qid, language)
+    finally:
+        await engine.dispose()
+
+    logger.info(
+        "qbank translate+synth complete",
+        question_id=question_id,
+        language=language,
+        audio_status=audio_row.status.value
+        if hasattr(audio_row.status, "value")
+        else str(audio_row.status),
+    )
+    return {
+        "question_id": question_id,
+        "language": language,
+        "audio_status": audio_row.status.value
+        if hasattr(audio_row.status, "value")
+        else str(audio_row.status),
+    }

@@ -708,23 +708,18 @@ async def backfill_bank_translations(
 ):
     """Backfill NLLB translations for an existing bank, then re-generate audio.
 
-    Before dispatching the translate→audio chain, delete every
-    ``QBankQuestionAudio`` row for ``(bank_id, language)``. Otherwise
-    ``batch_generate``'s ``skip_ready`` gate keeps stale pre-NLLB audio
-    (French text synthesized with target-language phonology = the
-    original gibberish from #1670/#1693) in place forever (#1696).
-    With the audio rows gone, the audio task re-synthesizes using the
-    fresh translation.
+    Delete every stale ``QBankQuestionAudio`` row for
+    ``(bank_id, language)`` up front, then fan out one
+    ``translate_and_synthesize_question_task`` per question (#1708).
+    Per-question tasks let MMS synthesis for question K run in parallel
+    with NLLB translating question K+1 instead of waiting for the whole
+    bank to finish translating.
     """
-    from celery import chain as celery_chain
     from sqlalchemy import select
 
     from app.domain.models.question_bank import QBankQuestion, QBankQuestionAudio
     from app.domain.services.organization_service import OrganizationService
-    from app.tasks.qbank_processing import (
-        generate_qbank_audio_task,
-        translate_qbank_bank_task,
-    )
+    from app.tasks.qbank_processing import translate_and_synthesize_question_task
 
     bank = await _svc.get_bank(db, bank_id)
     await OrganizationService().require_org_role(
@@ -749,11 +744,19 @@ async def backfill_bank_translations(
         )
         await db.commit()
 
-    task = celery_chain(
-        translate_qbank_bank_task.si(str(bank_id), language),
-        generate_qbank_audio_task.si(str(bank_id), language),
-    ).apply_async()
-    return AudioGenerateResponse(task_id=task.id, bank_id=str(bank_id), language=language)
+    task_ids: list[str] = []
+    for qid in question_ids:
+        task = translate_and_synthesize_question_task.delay(str(qid), language)
+        task_ids.append(task.id)
+
+    # Return the first task id for compatibility with the existing
+    # AudioGenerateResponse shape; callers that want full tracking can
+    # poll per-question audio status instead.
+    return AudioGenerateResponse(
+        task_id=task_ids[0] if task_ids else "",
+        bank_id=str(bank_id),
+        language=language,
+    )
 
 
 @router.get(

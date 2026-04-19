@@ -25,37 +25,43 @@ logger = structlog.get_logger(__name__)
 _org_svc = OrganizationService()
 
 
-def _enqueue_pregenerate_audio(bank_id: uuid.UUID) -> None:
-    """Fire a Celery task per supported language to pregenerate audio.
+async def _enqueue_pregenerate_audio(db: AsyncSession, bank_id: uuid.UUID) -> None:
+    """Fan-out Celery tasks to translate + synthesize audio (#1708).
 
-    For non-source languages (mos/dyu/bam/ful), chain
-    ``translate_qbank_bank_task`` → ``generate_qbank_audio_task`` so MMS
-    TTS receives native-language text rather than French (#1690). French
-    still runs audio-only since it's the source.
+    Per-question fan-out: for each non-FR target language, enqueue one
+    ``translate_and_synthesize_question_task`` per question. NLLB still
+    serializes (single sidecar worker), but MMS synthesis for question
+    K can now run in parallel with NLLB translating question K+1, and
+    different languages can progress concurrently rather than waiting
+    for a bank-level chain. French skips translation and uses the
+    existing bank-level audio task.
 
-    Kept as a module-level helper so it can be called from ``update_bank``
-    (publish transition) and ``update_question`` (text change) without
-    creating a service cycle. Imports are local so this module stays
-    safe to import in contexts where Celery isn't wired up (e.g. tests
-    that patch the task).
+    Imports are local so this module stays safe to import in contexts
+    where Celery isn't wired up (tests that patch the task).
     """
-    from celery import chain as celery_chain
-
     from app.domain.services.qbank_audio_service import SUPPORTED_LANGUAGES
     from app.domain.services.qbank_translation_service import TARGET_LANGUAGES
     from app.tasks.qbank_processing import (
         generate_qbank_audio_task,
-        translate_qbank_bank_task,
+        translate_and_synthesize_question_task,
     )
 
     bank_id_str = str(bank_id)
+    question_ids = (
+        (
+            await db.execute(
+                select(QBankQuestion.id).where(QBankQuestion.question_bank_id == bank_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
     for language in SUPPORTED_LANGUAGES:
         try:
             if language in TARGET_LANGUAGES:
-                celery_chain(
-                    translate_qbank_bank_task.si(bank_id_str, language),
-                    generate_qbank_audio_task.si(bank_id_str, language),
-                ).apply_async()
+                for qid in question_ids:
+                    translate_and_synthesize_question_task.delay(str(qid), language)
             else:
                 generate_qbank_audio_task.delay(bank_id_str, language)
         except Exception as exc:
@@ -234,7 +240,7 @@ class QBankService:
         # language so learners never wait on the timer for TTS (#1674).
         new_status = bank.status.value if hasattr(bank.status, "value") else bank.status
         if previous_status != "published" and new_status == "published":
-            _enqueue_pregenerate_audio(bank_id)
+            await _enqueue_pregenerate_audio(db, bank_id)
 
         return bank
 
@@ -339,7 +345,7 @@ class QBankService:
             # will trigger fresh NLLB calls for dropped rows (#1690).
             await QBankAudioService().invalidate_question(db, question_id)
             await QBankTranslationService().invalidate_question(db, question_id)
-            _enqueue_pregenerate_audio(question.question_bank_id)
+            await _enqueue_pregenerate_audio(db, question.question_bank_id)
 
         return question
 
