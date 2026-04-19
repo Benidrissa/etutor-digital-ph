@@ -18,6 +18,7 @@ from app.domain.services.qbank_audio_service import (
     SUPPORTED_LANGUAGES,
     QBankAudioService,
     build_audio_script,
+    build_audio_segments,
     estimate_duration_seconds,
 )
 
@@ -38,24 +39,25 @@ def test_build_audio_script_french_prefix():
     assert script.endswith(".")
 
 
-def test_build_audio_script_mms_languages_use_native_prefix():
-    # MMS VITS vocab is lowercase-only, no punctuation. build_audio_script
-    # normalizes so the prefix ends up lowercase and the A/B label too.
+def test_build_audio_script_mms_languages_use_ordinal_word_labels():
+    # MMS VITS vocab is lowercase-only, no punctuation, and can't
+    # distinguish single-letter labels "a" / "b" when pronounced. We use
+    # native ordinal words instead so the listener hears a clear
+    # difference between options (#1719).
     q = _FakeQuestion("Question", ["A", "B"])
-    for lang, prefix in [
-        ("mos", "tʋʋmde"),
-        ("dyu", "sugandili"),
-        ("bam", "sugandili"),
-        ("ful", "suɓaande"),
-    ]:
+    expectations = [
+        ("mos", "tʋʋmde", "pipi", "yiibu"),
+        ("dyu", "sugandili", "kelen", "fila"),
+        ("bam", "sugandili", "kelen", "fila"),
+        ("ful", "suɓaande", "goo", "ɗiɗi"),
+    ]
+    for lang, prefix, ord1, ord2 in expectations:
         script = build_audio_script(q, lang)
-        assert f"{prefix} a" in script
-        assert f"{prefix} b" in script
+        assert f"{prefix} {ord1}" in script
+        assert f"{prefix} {ord2}" in script
         # No punctuation the MMS tokenizer cannot encode.
-        assert "?" not in script
-        assert "." not in script
-        assert ":" not in script
-        assert "," not in script
+        for bad in ("?", ".", ":", ",", ";", "!"):
+            assert bad not in script
         # No uppercase letters either.
         assert script == script.lower()
 
@@ -77,6 +79,38 @@ def test_build_audio_script_mms_strips_punctuation_from_translation():
     assert script == script.lower()
     # Collapsed spaces — no double spaces.
     assert "  " not in script
+    # Ordinal labels used instead of letters.
+    assert "sugandili kelen" in script
+    assert "sugandili fila" in script
+
+
+def test_build_audio_segments_dyu_splits_question_and_options():
+    """Each sentence becomes its own segment so we can splice silence."""
+    from types import SimpleNamespace
+
+    q = _FakeQuestion("QUE T'INDIQUE CE PANNEAU ?", ["Oui.", "Non."])
+    tr = SimpleNamespace(
+        question_text="I ka kan k'a kɛ cogo di o koo ɲɔgɔn na?",
+        options=["O ye mun lo yira i la?", "A b'a fɔ i ye."],
+    )
+    segments = build_audio_segments(q, "dyu", translation=tr)
+    # Question + 2 options → 3 segments.
+    assert len(segments) == 3
+    assert all(s == s.lower() for s in segments)
+    assert segments[0].startswith("i ka kan k'a kɛ")
+    assert segments[1].startswith("sugandili kelen")
+    assert segments[2].startswith("sugandili fila")
+    for s in segments:
+        for bad in ("?", ".", ":", ","):
+            assert bad not in s
+
+
+def test_build_audio_segments_fr_returns_single_blob():
+    q = _FakeQuestion("Question française", ["Oui", "Non"])
+    segments = build_audio_segments(q, "fr")
+    assert len(segments) == 1
+    assert "Option A: Oui" in segments[0]
+    assert "Option B: Non" in segments[0]
 
 
 def test_build_audio_script_handles_empty_options():

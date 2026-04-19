@@ -49,6 +49,33 @@ OPUS_BYTES_PER_SECOND = 6 * 1024  # matches LessonAudioService._estimate_duratio
 _MMS_PUNCT_RE = re.compile(r"[^\w\s'\-]+", flags=re.UNICODE)
 _MMS_SPACES_RE = re.compile(r"\s+")
 
+# Ordinal words for MMS option labels. Saying "a", "b", "c", "d" via MMS
+# produces either silence (single letters are not a pronounceable token
+# sequence) or a sound too subtle to distinguish options apart. Users
+# reported "no difference among options" on #1719. Replace letters with
+# native-language ordinal words MMS can pronounce clearly. French path
+# is untouched — OpenAI TTS handles "Option A/B/C" natively.
+# Sources: standard orthography from the MMS training corpora (vocab.json).
+# Fallback to number word if we somehow see a 5+ option question.
+_MMS_OPTION_ORDINALS: dict[str, tuple[str, ...]] = {
+    # Mooré (mos): numbers / ordinals
+    "mos": ("pipi", "yiibu", "tãabo", "naase", "nu"),
+    # Dioula (dyu): cardinal numbers used for ordering
+    "dyu": ("kelen", "fila", "saba", "naani", "duuru"),
+    # Bambara (bam): same root as Dioula
+    "bam": ("kelen", "fila", "saba", "naani", "duuru"),
+    # Fulfulde (ful)
+    "ful": ("goo", "ɗiɗi", "tati", "nayi", "jowi"),
+}
+# Silence between sentence segments when we splice per-sentence synth
+# (#1719 follow-up). 300 ms reads as a natural pause without being
+# perceived as a dropout.
+_SEGMENT_SILENCE_MS = 300
+# Split the script into sentences on the original punctuation BEFORE we
+# strip it for the MMS tokenizer. These are the natural boundaries where
+# we want the spliced silence to land.
+_SENTENCE_SPLIT_RE = re.compile(r"[.!?;]+\s*|\n+")
+
 
 def _normalize_for_mms(text: str) -> str:
     """Strip characters the Meta MMS VITS tokenizer can't encode (#1719).
@@ -71,6 +98,23 @@ def _normalize_for_mms(text: str) -> str:
     return _MMS_SPACES_RE.sub(" ", squashed).strip()
 
 
+def _option_label(language: str, idx: int) -> str:
+    """Return the spoken label for option at ``idx`` (0-based).
+
+    French uses the Latin letter (OpenAI TTS handles "A"/"B"/"C" fine).
+    MMS languages use a native ordinal word — saying "a"/"b" after MMS's
+    lowercase-normalize produces sub-audible output and users cannot
+    tell options apart (#1719). Falls back to the last ordinal if a
+    question has more options than we have ordinals cached.
+    """
+    if language == "fr":
+        return chr(ord("A") + idx)
+    ordinals = _MMS_OPTION_ORDINALS.get(language, ())
+    if not ordinals:
+        return str(idx + 1)
+    return ordinals[idx] if idx < len(ordinals) else ordinals[-1]
+
+
 def build_audio_script(
     question: QBankQuestion,
     language: str,
@@ -79,7 +123,8 @@ def build_audio_script(
     """Return the text that should be spoken for a question.
 
     Prepends the option label in the speaker's language so the TTS reads
-    "Option A: ..." in French and the native prefix in MMS languages.
+    "Option A: ..." in French and the native prefix + ordinal in MMS
+    languages ("sugandili kelen" for dyu option 1, etc.).
 
     When ``translation`` is provided (#1690), its translated question_text
     and options are used instead of the source-language ones. Without it
@@ -109,13 +154,65 @@ def build_audio_script(
 
     parts = [q_text]
     for idx, opt in enumerate(options):
-        letter = chr(ord("A") + idx)
-        parts.append(f"{prefix} {letter}: {opt}")
+        label = _option_label(language, idx)
+        parts.append(f"{prefix} {label}: {opt}")
     script = ". ".join(p for p in parts if p).strip() + "."
 
     if language != "fr":
         script = _normalize_for_mms(script)
     return script
+
+
+def build_audio_segments(
+    question: QBankQuestion,
+    language: str,
+    translation: QBankQuestionTranslation | None = None,
+) -> list[str]:
+    """Return a list of sentence-sized chunks for per-segment MMS synth.
+
+    MMS VITS models produce clearer prosody on short inputs and we want
+    an audible pause between the question and each option so the listener
+    can parse the structure (#1719). Each returned chunk is already
+    normalized for the MMS tokenizer.
+
+    French uses a single-blob path (OpenAI TTS is fine with long text);
+    for ``fr`` this returns a one-element list.
+    """
+    prefixes = {
+        "fr": "Option",
+        "mos": "Tʋʋmde",
+        "dyu": "Sugandili",
+        "bam": "Sugandili",
+        "ful": "Suɓaande",
+    }
+    prefix = prefixes.get(language, "Option")
+
+    if translation is not None:
+        q_text = (translation.question_text or "").strip()
+        options = list(translation.options or [])
+    else:
+        q_text = (question.question_text or "").strip()
+        options = list(question.options or [])
+
+    raw_segments: list[str] = []
+    # The question may itself contain multiple sentences (e.g. when the
+    # source French has line breaks collapsed into ". "); split on
+    # sentence-terminators before we strip them.
+    for sub in _SENTENCE_SPLIT_RE.split(q_text):
+        if sub.strip():
+            raw_segments.append(sub.strip())
+    for idx, opt in enumerate(options):
+        if not opt or not opt.strip():
+            continue
+        label = _option_label(language, idx)
+        raw_segments.append(f"{prefix} {label}: {opt.strip()}")
+
+    if language == "fr":
+        return [". ".join(raw_segments).strip() + "."] if raw_segments else []
+    # For MMS langs, normalize each segment individually. Empty results
+    # (e.g. a stray punctuation-only chunk) are dropped.
+    normalized = [_normalize_for_mms(s) for s in raw_segments]
+    return [s for s in normalized if s]
 
 
 def estimate_duration_seconds(audio_bytes: int) -> int:
@@ -182,6 +279,51 @@ class QBankAudioService:
             detail=f"Unsupported audio language: {language}",
         )
 
+    async def _synthesize_segments(self, segments: list[str], language: str) -> bytes:
+        """Synthesize each segment individually and splice with silence.
+
+        MMS VITS produces flatter prosody on long inputs, so we break the
+        question + options into one clip per sentence and concatenate
+        with 300ms silence between. This also restores the
+        "end of thought" cue that punctuation would have carried if MMS
+        tokenizers could encode it (#1719).
+
+        French takes the single-blob path — OpenAI TTS is fine with long
+        text and silence-splicing its output wouldn't pay off.
+        """
+        if not segments:
+            raise MMSTTSError("no segments to synthesize")
+        if language == "fr" or len(segments) == 1:
+            return await self._synthesize_bytes(segments[0], language)
+
+        # Per-segment MMS calls. Backend MMS client already has a
+        # Semaphore(2); we just call sequentially within one task to
+        # keep the sidecar from being overwhelmed.
+        clips: list[bytes] = []
+        for seg in segments:
+            clips.append(await self._mms.synthesize(seg, language))
+
+        # Splice via pydub — the MMS sidecar already uses pydub to
+        # encode WAV → Opus so the dep is available in this container.
+        import io
+
+        from pydub import AudioSegment
+
+        audio_parts = [AudioSegment.from_file(io.BytesIO(b), format="ogg") for b in clips]
+        silence = AudioSegment.silent(duration=_SEGMENT_SILENCE_MS)
+        combined = audio_parts[0]
+        for part in audio_parts[1:]:
+            combined = combined + silence + part
+        buf = io.BytesIO()
+        combined.export(
+            buf,
+            format="ogg",
+            codec="libopus",
+            bitrate="24k",
+            parameters=["-application", "voip"],
+        )
+        return buf.getvalue()
+
     async def generate_question_audio(
         self,
         db: AsyncSession,
@@ -228,8 +370,10 @@ class QBankAudioService:
                 )
 
         try:
-            script = build_audio_script(question, language, translation=translation)
-            audio_bytes = await self._synthesize_bytes(script, language)
+            segments = build_audio_segments(question, language, translation=translation)
+            if not segments:
+                raise ValueError("empty audio script")
+            audio_bytes = await self._synthesize_segments(segments, language)
             key = self._storage_key(question.question_bank_id, question_id, language)
             url = await self._storage.upload_bytes(
                 key=key, data=audio_bytes, content_type=OPUS_CONTENT_TYPE
