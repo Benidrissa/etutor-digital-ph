@@ -49,31 +49,28 @@ services:
           memory: 4G
 
   nllb:
-    # NLLB-200 translation sidecar (#1690). Loads facebook/nllb-200-
-    # distilled-600M (~2.4 GB RAM) and translates French qbank text to
-    # mos/dyu/bam/ful before the MMS sidecar synthesizes audio.
+    # NLLB translation sidecar — pruned + CT2 int8 artifact (#1709) replacing
+    # the original transformers + distilled-600M setup. The CT2 int8 model
+    # (~350 MB) is baked into the image at build time by
+    # infrastructure/nllb/Dockerfile pulling the pinned sira-nllb-distill
+    # release asset. No volume mount — a volume overlay on /models would
+    # hide the baked-in files (#1732 hotfix). ~600 MB RAM at runtime; 2G
+    # limit has headroom for batch translation.
     image: ghcr.io/benidrissa/etutor-digital-ph/nllb:latest
     container_name: etutor-nllb
-    volumes:
-      - nllb_models:/models
     networks:
       - etutor-data
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:5060/health"]
       interval: 30s
       timeout: 5s
-      start_period: 240s
+      start_period: 60s
       retries: 3
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          # distilled-600M ~2.4 GB FP32 weights + transformers runtime +
-          # activations during generate() easily exceeds 4 GB on first
-          # forward pass, triggering container OOM + restart loop that
-          # makes /health time out (#1696 follow-up). 8 GB covers load
-          # + peak generate comfortably.
-          memory: 8G
+          memory: 2G
 
   backend:
     image: ghcr.io/benidrissa/etutor-digital-ph/backend:latest
@@ -216,7 +213,8 @@ volumes:
   uploads:
   minio_data:
   mms_models:
-  nllb_models:
+  # nllb_models removed in #1732 — CT2 int8 artifact is baked into the image
+  # at build time; a volume here would hide the baked-in /models/nllb-ct2/.
 
 networks:
   etutor-data:
