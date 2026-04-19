@@ -1,4 +1,4 @@
-"""Raise qbank_question_banks.time_per_question_sec server_default 25 → 60.
+"""Raise question_banks.time_per_question_sec server_default 25 → 60.
 
 Revision ID: 071
 Revises: 070
@@ -29,19 +29,18 @@ depends_on = None
 
 def upgrade() -> None:
     op.alter_column(
-        "qbank_question_banks",
+        "question_banks",
         "time_per_question_sec",
         server_default=sa.text("60"),
     )
     op.execute(
-        "UPDATE qbank_question_banks SET time_per_question_sec = 60 "
-        "WHERE time_per_question_sec = 25"
+        "UPDATE question_banks SET time_per_question_sec = 60 WHERE time_per_question_sec = 25"
     )
 
 
 def downgrade() -> None:
     op.alter_column(
-        "qbank_question_banks",
+        "question_banks",
         "time_per_question_sec",
         server_default=sa.text("25"),
     )
