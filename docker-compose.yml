@@ -49,33 +49,33 @@ services:
         limits:
           memory: 4G
 
+  # Shared multi-tenant translation service. Translates French qbank text
+  # into mos/dyu/bam/ful before MMS TTS synthesizes audio (#1690, rewritten
+  # on CT2 int8 pruned artifact in #1709). The artifact is a vocab-pruned
+  # NLLB-200-distilled-600M restricted to fra/mos/dyu/bam/fuv — ~600 MB RAM
+  # vs the original ~2.4 GB, and 3–6s/translation on CPU vs the old ~30s.
   nllb:
-    # NLLB-200 translation sidecar. Translates French qbank text into
-    # mos/dyu/bam/ful before MMS TTS synthesizes audio (#1690). Loads
-    # facebook/nllb-200-distilled-600M once at startup (~2.4 GB in RAM).
     build:
       context: ./infrastructure/nllb
       dockerfile: Dockerfile
+      args:
+        NLLB_ARTIFACT_RELEASE_REPO: ${NLLB_ARTIFACT_RELEASE_REPO:-Benidrissa/sira-nllb-distill}
+        NLLB_ARTIFACT_RELEASE_TAG: ${NLLB_ARTIFACT_RELEASE_TAG:-v1.0.0}
     container_name: santepublique-nllb
     ports:
       - "5060:5060"
-    volumes:
-      - nllb_models:/models
+    # No nllb_models volume anymore: the artifact is baked into the image at
+    # build time (see Dockerfile), so there's nothing stateful to persist.
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:5060/health"]
       interval: 30s
       timeout: 5s
-      start_period: 240s
+      start_period: 60s  # CT2 loads from disk in seconds, not minutes
       retries: 3
     deploy:
       resources:
         limits:
-          # distilled-600M ~2.4 GB FP32 weights + transformers runtime +
-          # activations during generate() easily exceeds 4 GB on first
-          # forward pass, triggering container OOM + restart loop that
-          # makes /health time out (#1696 follow-up). 8 GB covers load
-          # + peak generate comfortably.
-          memory: 8G
+          memory: 2G
 
   backend:
     build:
@@ -111,4 +111,4 @@ volumes:
   redisdata:
   uploads_data:
   mms_models:
-  nllb_models:
+  # nllb_models removed in #1709 — CT2 int8 artifact is baked into the image

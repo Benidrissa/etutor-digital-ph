@@ -94,13 +94,22 @@ class Settings(BaseSettings):
     mms_tts_url: str = "http://mms-tts:5050"
     mms_tts_timeout_seconds: float = 60.0
 
-    # Meta NLLB-200 translation sidecar — translates French qbank text
-    # into mos/dyu/bam/ful before MMS TTS synthesizes (#1690). CPU
-    # inference of distilled-600M is slow; timeout must cover worst-
-    # case 96-token greedy decode under load.
+    # NLLB translation sidecar — pruned + CT2 int8 artifact (#1709) replacing
+    # the original transformers + distilled-600M setup (#1690, #1705). Port
+    # 5060 is the sidecar's inbound. Timeout kept at 180s to cover the
+    # worst-case CPU decode under load, even though CT2 int8 is much faster
+    # than the old transformers greedy path. nllb_model tracks which
+    # upstream model generation the artifact derives from, for telemetry.
     nllb_url: str = "http://nllb:5060"
     nllb_timeout_seconds: float = 180.0
     nllb_model: str = "distilled-600M"
+    # Artifact pin — docker-compose passes these to the sidecar Dockerfile
+    # at build time so the CT2 int8 tarball is baked into the image.
+    # Production overrides the tag via env when cutting a new release.
+    # Artifact is produced by the Benidrissa/sira-nllb-distill pipeline and
+    # published as ct2_int8.tar.gz on a GitHub release.
+    nllb_artifact_release_repo: str = "Benidrissa/sira-nllb-distill"
+    nllb_artifact_release_tag: str = "v1.0.0"
 
     # MinIO / S3-compatible object storage
     minio_endpoint: str = "http://localhost:9000"
