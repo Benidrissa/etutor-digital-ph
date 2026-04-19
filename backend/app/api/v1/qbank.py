@@ -94,9 +94,24 @@ def _audio_url_for(
 
 
 def _bank_response(bank, question_count: int = 0, test_count: int = 0):
+    # Org name/slug are populated only when the relationship is already
+    # loaded on the bank (e.g. the cross-org accessible-banks list).
+    # For single-bank endpoints where the relationship isn't eager-
+    # loaded, accessing it would trigger a detached-instance error, so
+    # fall back to None silently.
+    org_name = None
+    org_slug = None
+    try:
+        if getattr(bank, "organization", None) is not None:
+            org_name = bank.organization.name
+            org_slug = bank.organization.slug
+    except Exception:
+        pass
     return QuestionBankResponse(
         id=str(bank.id),
         organization_id=str(bank.organization_id),
+        organization_name=org_name,
+        organization_slug=org_slug,
         title=bank.title,
         description=bank.description,
         bank_type=bank.bank_type.value if hasattr(bank.bank_type, "value") else bank.bank_type,
@@ -198,6 +213,27 @@ async def list_banks(
     db=Depends(get_db_session),
 ):
     items = await _svc.list_org_banks(db, org_id)
+    return [
+        _bank_response(item["bank"], item["question_count"], item["test_count"]) for item in items
+    ]
+
+
+@router.get("/banks/accessible", response_model=list[QuestionBankResponse])
+async def list_accessible_banks(
+    include_drafts: bool = Query(False, description="Include draft banks (owner/admin view)."),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db=Depends(get_db_session),
+):
+    """Every question bank the user can reach across all their orgs (#1692).
+
+    Used by the top-level ``/fr/qbank`` discovery page so learners don't
+    have to drill Organizations → org → Question Banks for every bank
+    they might want to practice. Defaults to published banks only;
+    admins can set ``include_drafts=true`` for admin UIs.
+    """
+    items = await _svc.list_accessible_banks(
+        db, uuid.UUID(current_user.id), include_drafts=include_drafts
+    )
     return [
         _bank_response(item["bank"], item["question_count"], item["test_count"]) for item in items
     ]

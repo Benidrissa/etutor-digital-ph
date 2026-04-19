@@ -123,6 +123,62 @@ class QBankService:
             .order_by(QuestionBank.created_at.desc())
         )
         banks = result.scalars().all()
+        return await self._enrich_banks(db, banks)
+
+    async def list_accessible_banks(
+        self,
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        *,
+        include_drafts: bool = False,
+    ) -> list[dict]:
+        """Return banks across every org the user is a member of (#1692).
+
+        By default limits to ``status=published`` so learners don't see
+        banks admins are still editing. Admins can flip ``include_drafts``
+        when building an admin dashboard.
+        """
+        from sqlalchemy.orm import selectinload
+
+        from app.domain.models.organization import OrganizationMember
+        from app.domain.models.question_bank import QuestionBankStatus
+
+        user_orgs = (
+            (
+                await db.execute(
+                    select(OrganizationMember.organization_id).where(
+                        OrganizationMember.user_id == user_id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        if not user_orgs:
+            return []
+
+        filters = [QuestionBank.organization_id.in_(user_orgs)]
+        if not include_drafts:
+            filters.append(QuestionBank.status == QuestionBankStatus.published)
+
+        banks = (
+            (
+                await db.execute(
+                    select(QuestionBank)
+                    .where(*filters)
+                    .options(selectinload(QuestionBank.organization))
+                    .order_by(QuestionBank.created_at.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        return await self._enrich_banks(db, banks)
+
+    async def _enrich_banks(self, db: AsyncSession, banks: list[QuestionBank]) -> list[dict]:
+        """Attach question + test counts to a list of banks."""
         out = []
         for bank in banks:
             q_count = await db.scalar(

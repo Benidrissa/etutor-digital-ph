@@ -1615,6 +1615,9 @@ export type QBankTestMode = "exam" | "training" | "review";
 export interface QBankBank {
   id: string;
   organization_id: string;
+  /** Populated by the cross-org ``/banks/accessible`` endpoint (#1692). */
+  organization_name?: string | null;
+  organization_slug?: string | null;
   title: string;
   description: string | null;
   bank_type: QBankType;
@@ -1717,6 +1720,14 @@ export interface QBankProcessingStatus {
 
 export async function listQBankBanks(orgId: string): Promise<QBankBank[]> {
   return apiFetch<QBankBank[]>(`/api/v1/qbank/banks?org_id=${orgId}`);
+}
+
+/** Every qbank the current user can reach across all their orgs (#1692). */
+export async function listAccessibleQBanks(options?: {
+  includeDrafts?: boolean;
+}): Promise<QBankBank[]> {
+  const qs = options?.includeDrafts ? "?include_drafts=true" : "";
+  return apiFetch<QBankBank[]>(`/api/v1/qbank/banks/accessible${qs}`);
 }
 
 export async function createQBankBank(body: QBankBankCreate): Promise<QBankBank> {

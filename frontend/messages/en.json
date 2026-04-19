@@ -48,7 +48,9 @@
     "organizations": "Organizations",
     "organizationsDescription": "Manage your organizations",
     "certificates": "Certificates",
-    "certificatesDescription": "View your earned certificates"
+    "certificatesDescription": "View your earned certificates",
+    "qbank": "Question Banks",
+    "qbankDescription": "Practice question banks from your organizations"
   },
   "Auth": {
     "login": "Sign in",
@@ -2012,6 +2014,11 @@
     "newBank": "New bank",
     "allTypes": "All types",
     "noBanks": "No question banks yet. Create one to get started.",
+    "discoveryIntro": "Published question banks from every organization you belong to.",
+    "discoveryEmpty": "No published question banks are available yet. Join an organization or ask your admin to publish one.",
+    "discoveryOrgLink": "Open organization",
+    "filterAllTypes": "All types",
+    "perQuestion": "question",
     "typeDriving": "Driving school",
     "typeExamPrep": "Exam prep",
     "typePsychotechnic": "Psychotechnic",

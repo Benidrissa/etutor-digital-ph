@@ -10,6 +10,7 @@ import {
   GraduationCap,
   CreditCard,
   Bot,
+  Brain,
   User,
   ChevronLeft,
   ChevronRight,
@@ -110,6 +111,12 @@ export function Sidebar() {
       label: t("flashcards"),
       icon: CreditCard,
       description: t("flashcardsDescription")
+    },
+    {
+      href: `/${locale}/qbank`,
+      label: t("qbank"),
+      icon: Brain,
+      description: t("qbankDescription")
     },
     {
       href: `/${locale}/certificates`,

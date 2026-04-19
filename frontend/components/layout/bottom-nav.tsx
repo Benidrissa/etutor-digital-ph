@@ -8,6 +8,7 @@ import {
   GraduationCap,
   CreditCard,
   Bot,
+  Brain,
   MoreHorizontal,
   BookOpen,
   User,
@@ -85,6 +86,12 @@ export function BottomNav() {
       label: t("modules"),
       icon: BookOpen,
       description: t("modulesDescription"),
+    },
+    {
+      href: `/${locale}/qbank`,
+      label: t("qbank"),
+      icon: Brain,
+      description: t("qbankDescription"),
     },
     {
       href: `/${locale}/profile`,
