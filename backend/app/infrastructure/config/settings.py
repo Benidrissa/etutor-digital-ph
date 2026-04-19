@@ -92,7 +92,11 @@ class Settings(BaseSettings):
 
     # Meta MMS TTS sidecar (Moore / Dioula / Bambara) — see #1503.
     mms_tts_url: str = "http://mms-tts:5050"
-    mms_tts_timeout_seconds: float = 60.0
+    # 180s (matches nllb_timeout_seconds) — MMS-TTS synthesis on CPU for
+    # long question text can take 30–60s per call, and when multiple
+    # Celery workers hit the single-worker sidecar concurrently calls
+    # queue up and 60s hits before the request is served (#1732 follow-up).
+    mms_tts_timeout_seconds: float = 180.0
 
     # NLLB translation sidecar — pruned + CT2 int8 artifact (#1709) replacing
     # the original transformers + distilled-600M setup (#1690, #1705). Port
