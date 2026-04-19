@@ -157,7 +157,11 @@ services:
   celery-worker:
     image: ghcr.io/benidrissa/etutor-digital-ph/backend:latest
     container_name: etutor-celery-worker
-    command: uv run celery -A app.tasks.celery_app worker --loglevel=info
+    # --concurrency=4 lets per-question qbank tasks (#1708) fan out:
+    # translate(Qk) for language X can run on one worker while
+    # generate_audio(Qj) for language Y runs on another, bounded by
+    # sidecar semaphores (NLLB=1, MMS=2).
+    command: uv run celery -A app.tasks.celery_app worker --loglevel=info --concurrency=4
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/santepublique_aof
       REDIS_URL: redis://redis:6379/0
