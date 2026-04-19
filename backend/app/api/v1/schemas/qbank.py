@@ -33,6 +33,12 @@ class QuestionBankUpdate(BaseModel):
 class QuestionBankResponse(BaseModel):
     id: str
     organization_id: str
+    # ``organization_name`` + ``organization_slug`` are populated by
+    # ``_bank_response`` when the org relationship is preloaded. The
+    # cross-org discovery page (#1692) relies on these so the
+    # frontend doesn't need to fetch every org separately.
+    organization_name: str | None = None
+    organization_slug: str | None = None
     title: str
     description: str | None = None
     bank_type: str

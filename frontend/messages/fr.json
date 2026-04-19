@@ -48,7 +48,9 @@
     "organizations": "Organisations",
     "organizationsDescription": "Gérer vos organisations",
     "certificates": "Certificats",
-    "certificatesDescription": "Consultez vos certificats obtenus"
+    "certificatesDescription": "Consultez vos certificats obtenus",
+    "qbank": "Banques de questions",
+    "qbankDescription": "Entraînez-vous sur les banques de questions de vos organisations"
   },
   "Auth": {
     "login": "Se connecter",
@@ -2012,6 +2014,11 @@
     "newBank": "Nouvelle banque",
     "allTypes": "Tous les types",
     "noBanks": "Aucune banque de questions pour l'instant. Créez-en une pour commencer.",
+    "discoveryIntro": "Banques de questions publiées de toutes vos organisations.",
+    "discoveryEmpty": "Aucune banque de questions publiée pour l'instant. Rejoignez une organisation ou demandez à votre admin d'en publier une.",
+    "discoveryOrgLink": "Ouvrir l'organisation",
+    "filterAllTypes": "Tous les types",
+    "perQuestion": "question",
     "typeDriving": "Auto-école",
     "typeExamPrep": "Préparation aux examens",
     "typePsychotechnic": "Psychotechnique",
