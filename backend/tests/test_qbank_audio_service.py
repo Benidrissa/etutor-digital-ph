@@ -39,16 +39,44 @@ def test_build_audio_script_french_prefix():
 
 
 def test_build_audio_script_mms_languages_use_native_prefix():
+    # MMS VITS vocab is lowercase-only, no punctuation. build_audio_script
+    # normalizes so the prefix ends up lowercase and the A/B label too.
     q = _FakeQuestion("Question", ["A", "B"])
     for lang, prefix in [
-        ("mos", "Tʋʋmde"),
-        ("dyu", "Sugandili"),
-        ("bam", "Sugandili"),
-        ("ful", "Suɓaande"),
+        ("mos", "tʋʋmde"),
+        ("dyu", "sugandili"),
+        ("bam", "sugandili"),
+        ("ful", "suɓaande"),
     ]:
         script = build_audio_script(q, lang)
-        assert f"{prefix} A" in script
-        assert f"{prefix} B" in script
+        assert f"{prefix} a" in script
+        assert f"{prefix} b" in script
+        # No punctuation the MMS tokenizer cannot encode.
+        assert "?" not in script
+        assert "." not in script
+        assert ":" not in script
+        assert "," not in script
+        # No uppercase letters either.
+        assert script == script.lower()
+
+
+def test_build_audio_script_mms_strips_punctuation_from_translation():
+    """Real-world case: stored dyu translation has `?` and `'` etc."""
+    from types import SimpleNamespace
+
+    q = _FakeQuestion("QUE T'INDIQUE CE PANNEAU ?", ["Oui.", "Non."])
+    tr = SimpleNamespace(
+        question_text="I ka kan k'a kɛ cogo di o koo ɲɔgɔn na?",
+        options=["O ye mun lo yira i la?", "A b'a fɔ i ye."],
+    )
+    script = build_audio_script(q, "dyu", translation=tr)
+    # Apostrophe survives (in MMS vocab); question mark stripped to space.
+    assert "k'a" in script
+    assert "ɲɔgɔn" in script
+    assert "?" not in script
+    assert script == script.lower()
+    # Collapsed spaces — no double spaces.
+    assert "  " not in script
 
 
 def test_build_audio_script_handles_empty_options():

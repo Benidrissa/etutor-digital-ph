@@ -1,15 +1,24 @@
-"""Meta NLLB-200 translation HTTP server.
+"""NLLB translation HTTP server — CTranslate2 int8, vocab-pruned artifact.
 
 Translates short driving-school qbank texts from French to four low-resource
 West African languages: Mooré (mos_Latn), Dioula (dyu_Latn), Bambara
-(bam_Latn), and Fulfulde — Western Niger variant (fuh_Latn). Pairs with the
-MMS TTS sidecar: translate here first, synthesize audio there. MMS is
-monolingual TTS and will pronounce French syllables with the target
-phonology if fed raw French; this service fixes that (#1690).
+(bam_Latn), and Fulfulde — Nigerian variant (fuv_Latn). Pairs with the
+MMS TTS sidecar: translate here first, synthesize audio there.
 
-Model: ``facebook/nllb-200-distilled-600M`` (~2.4 GB RAM). Preloads the
-model once on startup and keeps it hot. Batch translate up to ~10 short
-texts in one forward pass.
+Replaces the earlier transformers + torch implementation with a CTranslate2
+int8 pipeline (#1709). The artifact is a vocab-pruned fork of
+``facebook/nllb-200-distilled-600M`` restricted to {fra, mos, dyu, bam, fuv}
+and produced by the Benidrissa/sira-nllb-distill pipeline; see
+``infrastructure/nllb/Dockerfile`` for how it's baked into the image.
+
+HTTP contract is preserved bit-for-bit from the transformers era so
+``backend/app/integrations/nllb_translate.py`` doesn't change:
+    POST /translate  {texts, src, tgt}  ->  {translations, elapsed_ms}
+    GET  /health                         ->  {status, model_loaded, ...}
+
+Decoding knobs (beam, no_repeat_ngram, repetition_penalty, max_decoding_length)
+match what landed on dev to fix mos/dyu/bam/ful repetition loops (#1706 +
+#1712). CT2's Translator.translate_batch() accepts all of them natively.
 """
 
 from __future__ import annotations
@@ -19,29 +28,41 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-import torch
+import ctranslate2
+import sentencepiece as spm
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+
+MODEL_DIR = Path(os.getenv("NLLB_MODEL_DIR", "/models/nllb-ct2"))
+SP_MODEL_PATH = MODEL_DIR / "sentencepiece.bpe.model"
 
 MAX_INPUT_CHARS = 2000
 MAX_TEXTS_PER_BATCH = 32
 # Short qbank content rarely needs more than ~80 output tokens. A high cap
-# only slows greedy decoding by running past EOS on CPU.
+# only slows decoding by running past EOS on CPU.
 MAX_NEW_TOKENS = 96
 
-# Serialize generate() calls — PyTorch model forward passes aren't
-# thread-safe in single-worker uvicorn, and without a queue cap a
-# spike of concurrent /translate requests pins the CPU and makes
-# /health time out alongside them.
-_GENERATE_SEMAPHORE = asyncio.Semaphore(1)
+# Decoding parameters — greedy (beam=1) with no_repeat_ngram + repetition
+# penalty to prevent degenerate loops on mos/dyu/bam/ful. beam=4 was too
+# slow on the old transformers path (#1712), but may be worth revisiting
+# on CT2 int8; leave greedy for now to match dev's shipping settings.
+BEAM_SIZE = int(os.getenv("NLLB_BEAM_SIZE", "1"))
+NO_REPEAT_NGRAM_SIZE = 3
+REPETITION_PENALTY = 1.2
 
-# NLLB source/target codes for the qbank pipeline. The sidecar itself is
-# source-agnostic (NLLB-200 handles 200+ languages); the backend picks
-# the right source code per bank and sends it here. These constants are
-# only used for the ``/health`` payload and input validation reporting.
+COMPUTE_TYPE = os.getenv("NLLB_COMPUTE_TYPE", "int8")
+INTER_THREADS = int(os.getenv("NLLB_INTER_THREADS", "1"))
+INTRA_THREADS = int(os.getenv("NLLB_INTRA_THREADS", "0"))  # 0 = auto
+
+# Serialize translate_batch() calls — CT2 is thread-safe but concurrent
+# Python callers under a single-worker uvicorn still pin the CPU. Keeping
+# the same semaphore pattern as the transformers version (#1705) prevents
+# a spike of concurrent /translate requests from making /health time out.
+_TRANSLATE_SEMAPHORE = asyncio.Semaphore(1)
+
 DEFAULT_SOURCE = "fra_Latn"
 SUPPORTED_TARGETS = ("mos_Latn", "dyu_Latn", "bam_Latn", "fuv_Latn")
 
@@ -50,44 +71,48 @@ logger = logging.getLogger("nllb")
 
 
 class _Bundle:
-    __slots__ = ("model", "tokenizer")
+    __slots__ = ("translator", "sp")
 
-    def __init__(self, model, tokenizer):
-        self.model = model
-        self.tokenizer = tokenizer
+    def __init__(self, translator: ctranslate2.Translator, sp: spm.SentencePieceProcessor):
+        self.translator = translator
+        self.sp = sp
 
 
 _BUNDLE: _Bundle | None = None
 
 
-def _load_model() -> _Bundle:
-    model_id = os.getenv("NLLB_MODEL_ID", "facebook/nllb-200-distilled-600M")
-    logger.info("loading %s", model_id)
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_id)
-    model.eval()
-    return _Bundle(model=model, tokenizer=tokenizer)
+def _load() -> _Bundle:
+    logger.info("loading CT2 model from %s (compute_type=%s)", MODEL_DIR, COMPUTE_TYPE)
+    translator = ctranslate2.Translator(
+        str(MODEL_DIR),
+        device="cpu",
+        compute_type=COMPUTE_TYPE,
+        inter_threads=INTER_THREADS,
+        intra_threads=INTRA_THREADS,
+    )
+    sp = spm.SentencePieceProcessor()
+    sp.load(str(SP_MODEL_PATH))
+    logger.info("loaded CT2 model + SentencePiece (vocab=%d)", sp.get_piece_size())
+    return _Bundle(translator=translator, sp=sp)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     global _BUNDLE
-    # Per-language loading isn't a concept for NLLB — one model handles
-    # all 200+ target codes. If the model itself fails to download we
-    # log and keep the server alive so /health reflects the outage
-    # without taking the container into a crash loop (same resilience
-    # pattern as the MMS sidecar after #1681).
+    # Don't crash lifespan on load failure — /health will return 503
+    # until the container is restarted. Same resilience pattern as the
+    # MMS sidecar (#1681).
     try:
-        _BUNDLE = _load_model()
+        _BUNDLE = _load()
         logger.info("nllb model loaded")
     except Exception as exc:
-        logger.exception("failed to load nllb model: %s", exc)
+        logger.exception("failed to load nllb ct2 model: %s", exc)
         _BUNDLE = None
     yield
     _BUNDLE = None
 
 
-app = FastAPI(title="NLLB Translation Sidecar", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="NLLB Translation Sidecar (CT2 int8)", version="2.0.0", lifespan=lifespan)
 
 
 class TranslateRequest(BaseModel):
@@ -108,11 +133,25 @@ async def health() -> JSONResponse:
         {
             "status": "ok" if loaded else "degraded",
             "model_loaded": loaded,
+            "model_dir": str(MODEL_DIR),
+            "compute_type": COMPUTE_TYPE,
             "supported_targets": list(SUPPORTED_TARGETS),
             "default_source": DEFAULT_SOURCE,
         },
         status_code=200 if loaded else 503,
     )
+
+
+def _encode(sp: spm.SentencePieceProcessor, text: str, src: str) -> list[str]:
+    # NLLB source-side format: [src_lang, *sp_pieces, </s>]
+    return [src, *sp.encode_as_pieces(text), "</s>"]
+
+
+def _decode(sp: spm.SentencePieceProcessor, tokens: list[str], tgt: str) -> str:
+    # Strip the forced target-language prefix CT2 echoes back.
+    if tokens and tokens[0] == tgt:
+        tokens = tokens[1:]
+    return sp.decode(tokens)
 
 
 @app.post("/translate", response_model=TranslateResponse)
@@ -127,48 +166,26 @@ async def translate(req: TranslateRequest) -> TranslateResponse:
                 detail=f"input text exceeds {MAX_INPUT_CHARS} characters",
             )
 
-    tokenizer = _BUNDLE.tokenizer
-    model = _BUNDLE.model
-    tokenizer.src_lang = req.src
+    sp = _BUNDLE.sp
+    translator = _BUNDLE.translator
 
-    # NLLB forced_bos_token_id selects the target language at generation
-    # time. ``convert_tokens_to_ids`` is the supported way to retrieve it
-    # across transformers versions.
-    tgt_id = tokenizer.convert_tokens_to_ids(req.tgt)
-    if tgt_id is None or tgt_id == tokenizer.unk_token_id:
+    # Validate tgt is a pruned language code the tokenizer knows.
+    if sp.piece_to_id(req.tgt) == sp.unk_id():
         raise HTTPException(status_code=400, detail=f"unknown target lang: {req.tgt}")
 
-    async with _GENERATE_SEMAPHORE:
+    async with _TRANSLATE_SEMAPHORE:
         started = time.monotonic()
-        inputs = tokenizer(
-            req.texts,
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-            max_length=MAX_INPUT_CHARS,
+        batch = [_encode(sp, t, req.src) for t in req.texts]
+        target_prefix = [[req.tgt]] * len(batch)
+        results = translator.translate_batch(
+            batch,
+            target_prefix=target_prefix,
+            max_decoding_length=MAX_NEW_TOKENS,
+            beam_size=BEAM_SIZE,
+            no_repeat_ngram_size=NO_REPEAT_NGRAM_SIZE,
+            repetition_penalty=REPETITION_PENALTY,
         )
-
-        # ``inference_mode`` disables autograd tracking, reducing memory
-        # and modest speedup vs ``no_grad`` on CPU.
-        #
-        # Decoding knobs for low-resource languages: greedy decoding on
-        # distilled-600M produces degenerate repetition loops for
-        # mos/dyu/bam/ful ("A mi mi mi..."). no_repeat_ngram_size +
-        # repetition_penalty alone prevent those loops; beam search
-        # adds marginal quality but 4x decode cost. On CPU this makes
-        # the serial Semaphore(1) throughput unusable for bank
-        # backfills, so drop to greedy (#1711).
-        with torch.inference_mode():
-            generated = model.generate(
-                **inputs,
-                forced_bos_token_id=tgt_id,
-                max_new_tokens=MAX_NEW_TOKENS,
-                num_beams=1,
-                no_repeat_ngram_size=3,
-                repetition_penalty=1.2,
-                early_stopping=True,
-            )
-        translations = tokenizer.batch_decode(generated, skip_special_tokens=True)
+        translations = [_decode(sp, r.hypotheses[0], req.tgt) for r in results]
         elapsed_ms = int((time.monotonic() - started) * 1000)
 
     logger.info(

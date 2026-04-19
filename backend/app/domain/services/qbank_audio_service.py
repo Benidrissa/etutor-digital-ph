@@ -12,6 +12,7 @@ them. File size target is ~50 KB per 30s clip (Opus @ 24 kbps).
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Literal
 
@@ -45,6 +46,31 @@ OPUS_CONTENT_TYPE = "audio/ogg"
 OPUS_BYTES_PER_SECOND = 6 * 1024  # matches LessonAudioService._estimate_duration
 
 
+_MMS_PUNCT_RE = re.compile(r"[^\w\s'\-]+", flags=re.UNICODE)
+_MMS_SPACES_RE = re.compile(r"\s+")
+
+
+def _normalize_for_mms(text: str) -> str:
+    """Strip characters the Meta MMS VITS tokenizer can't encode (#1719).
+
+    facebook/mms-tts-{mos,dyu,bam,ful} have 32-token character vocabs:
+    lowercase letters, a few language-specific diacritics (ɛ, ɔ, ɲ, ŋ,
+    ɓ, ɗ, ʋ, ã, ẽ, ĩ, õ, ũ…), plus ``'``, ``-``, space. Anything else —
+    including ``? . , : ; !`` and uppercase — becomes an ``<unk>`` token
+    that the model renders as noise or silence. VITS learns prosody from
+    the ``add_blank`` pad tokens the tokenizer interleaves between
+    characters, so stripping punctuation doesn't hurt intelligibility.
+
+    This normalization replaces every non-word, non-hyphen, non-apostrophe
+    character with a single space and collapses repeats. Uppercase is
+    handled by the tokenizer itself (``normalize_text`` lowercases), but
+    we do it here too for clarity in logs.
+    """
+    lowered = (text or "").lower()
+    squashed = _MMS_PUNCT_RE.sub(" ", lowered)
+    return _MMS_SPACES_RE.sub(" ", squashed).strip()
+
+
 def build_audio_script(
     question: QBankQuestion,
     language: str,
@@ -60,6 +86,10 @@ def build_audio_script(
     the raw ``question.question_text`` falls through, which is correct
     for ``fr`` (source) but produces gibberish if fed into an MMS model
     for mos/dyu/bam/ful.
+
+    For MMS target languages the final script is passed through
+    ``_normalize_for_mms`` so the per-language character vocab sees only
+    tokens it can encode (#1719).
     """
     prefixes = {
         "fr": "Option",
@@ -81,7 +111,11 @@ def build_audio_script(
     for idx, opt in enumerate(options):
         letter = chr(ord("A") + idx)
         parts.append(f"{prefix} {letter}: {opt}")
-    return ". ".join(p for p in parts if p).strip() + "."
+    script = ". ".join(p for p in parts if p).strip() + "."
+
+    if language != "fr":
+        script = _normalize_for_mms(script)
+    return script
 
 
 def estimate_duration_seconds(audio_bytes: int) -> int:
