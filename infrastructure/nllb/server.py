@@ -169,9 +169,15 @@ async def translate(req: TranslateRequest) -> TranslateResponse:
     sp = _BUNDLE.sp
     translator = _BUNDLE.translator
 
-    # Validate tgt is a pruned language code the tokenizer knows.
-    if sp.piece_to_id(req.tgt) == sp.unk_id():
-        raise HTTPException(status_code=400, detail=f"unknown target lang: {req.tgt}")
+    # Validate tgt against the pruned artifact's kept languages. Language
+    # codes live in the CT2-extended vocabulary, not the raw SentencePiece
+    # model, so probing the SP vocab always returns unk_id — whitelist-check
+    # instead. (#1709 hotfix: the SP probe rejected every valid target.)
+    if req.tgt not in SUPPORTED_TARGETS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unsupported target lang {req.tgt}; expected one of {list(SUPPORTED_TARGETS)}",
+        )
 
     async with _TRANSLATE_SEMAPHORE:
         started = time.monotonic()
