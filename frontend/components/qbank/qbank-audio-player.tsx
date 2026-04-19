@@ -1,43 +1,56 @@
-'use client';
+"use client";
 
-import { useEffect, useRef, useState } from 'react';
-import { useTranslations } from 'next-intl';
-import { cn } from '@/lib/utils';
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
+import { cn } from "@/lib/utils";
 import {
   getQBankQuestionAudio,
   type QBankAudioLanguage,
   type QBankQuestionAudioStatus,
-} from '@/lib/api';
+} from "@/lib/api";
 
-const LANGUAGES: QBankAudioLanguage[] = ['fr', 'mos', 'dyu', 'bam', 'ful'];
-const STORAGE_KEY = 'qbank-audio-lang';
+const LANGUAGES: QBankAudioLanguage[] = ["fr", "mos", "dyu", "bam", "ful"];
+const STORAGE_KEY = "qbank-audio-lang";
+const RATE_STORAGE_KEY = "qbank-audio-rate";
+// Once the learner has pressed play on any question's audio, subsequent
+// questions should auto-play without them having to tap again — the audio
+// is the only way a non-literate user can parse the question and the timer
+// is running (#1714).
+const AUTOPLAY_STORAGE_KEY = "qbank-audio-autoplay";
 
 // Per-language pill colors so non-literate learners can identify the
 // active language by color instead of reading its name (#1690 follow-up).
 // Kept hue-distant to tolerate red/green color-blindness via saturation.
 // Active state uses the bg-* + text-white combo; inactive uses ring-*
 // on the border so the identity cue still shows through.
-const LANGUAGE_COLORS: Record<QBankAudioLanguage, { active: string; inactive: string }> = {
+const LANGUAGE_COLORS: Record<
+  QBankAudioLanguage,
+  { active: string; inactive: string }
+> = {
   fr: {
-    active: 'border-blue-600 bg-blue-600 text-white',
-    inactive: 'border-blue-600/40 text-blue-700 hover:border-blue-600 dark:text-blue-300',
+    active: "border-blue-600 bg-blue-600 text-white",
+    inactive:
+      "border-blue-600/40 text-blue-700 hover:border-blue-600 dark:text-blue-300",
   },
   mos: {
-    active: 'border-red-600 bg-red-600 text-white',
-    inactive: 'border-red-600/40 text-red-700 hover:border-red-600 dark:text-red-300',
+    active: "border-red-600 bg-red-600 text-white",
+    inactive:
+      "border-red-600/40 text-red-700 hover:border-red-600 dark:text-red-300",
   },
   dyu: {
-    active: 'border-green-600 bg-green-600 text-white',
-    inactive: 'border-green-600/40 text-green-700 hover:border-green-600 dark:text-green-300',
+    active: "border-green-600 bg-green-600 text-white",
+    inactive:
+      "border-green-600/40 text-green-700 hover:border-green-600 dark:text-green-300",
   },
   bam: {
-    active: 'border-yellow-600 bg-yellow-600 text-white',
-    inactive: 'border-yellow-600/40 text-yellow-700 hover:border-yellow-600 dark:text-yellow-300',
+    active: "border-yellow-600 bg-yellow-600 text-white",
+    inactive:
+      "border-yellow-600/40 text-yellow-700 hover:border-yellow-600 dark:text-yellow-300",
   },
   ful: {
-    active: 'border-purple-600 bg-purple-600 text-white',
+    active: "border-purple-600 bg-purple-600 text-white",
     inactive:
-      'border-purple-600/40 text-purple-700 hover:border-purple-600 dark:text-purple-300',
+      "border-purple-600/40 text-purple-700 hover:border-purple-600 dark:text-purple-300",
   },
 };
 
@@ -67,13 +80,15 @@ export function QBankAudioPlayer({
   defaultLanguage,
   preloadedUrls,
 }: QBankAudioPlayerProps) {
-  const t = useTranslations('qbank');
-  const tLang = useTranslations('qbank.audioLanguages');
+  const t = useTranslations("qbank");
+  const tLang = useTranslations("qbank.audioLanguages");
   const [language, setLanguage] = useState<QBankAudioLanguage>(() => {
-    if (typeof window === 'undefined') return defaultLanguage ?? 'fr';
-    const saved = window.localStorage.getItem(STORAGE_KEY) as QBankAudioLanguage | null;
+    if (typeof window === "undefined") return defaultLanguage ?? "fr";
+    const saved = window.localStorage.getItem(
+      STORAGE_KEY,
+    ) as QBankAudioLanguage | null;
     if (saved && LANGUAGES.includes(saved)) return saved;
-    return defaultLanguage ?? 'fr';
+    return defaultLanguage ?? "fr";
   });
   const [status, setStatus] = useState<QBankQuestionAudioStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -102,9 +117,11 @@ export function QBankAudioPlayer({
       .catch((err) => {
         if (cancelled) return;
         setStatus(null);
-        setError(err instanceof Error ? err.message : 'Audio fetch failed');
+        setError(err instanceof Error ? err.message : "Audio fetch failed");
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [questionId, language, preloadedUrl]);
 
   // Derived status: preloaded URL wins over any cached fetch result so
@@ -113,7 +130,7 @@ export function QBankAudioPlayer({
     ? {
         question_id: questionId,
         language,
-        status: 'ready',
+        status: "ready",
         audio_url: preloadedUrl,
         duration_seconds: null,
       }
@@ -122,7 +139,7 @@ export function QBankAudioPlayer({
 
   // Persist the learner's chosen language across questions.
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     window.localStorage.setItem(STORAGE_KEY, language);
   }, [language]);
 
@@ -131,11 +148,48 @@ export function QBankAudioPlayer({
     if (audioRef.current) audioRef.current.pause();
   }, [language]);
 
+  // When the <audio> element mounts with a ready clip, restore the saved
+  // playback rate and (if the learner has played audio in this session)
+  // auto-play so they don't have to press play on every question (#1714).
+  const audioUrl =
+    effectiveStatus?.status === "ready" ? effectiveStatus.audio_url : null;
+  useEffect(() => {
+    const el = audioRef.current;
+    if (!el || !audioUrl) return;
+    const savedRate = Number(
+      window.localStorage.getItem(RATE_STORAGE_KEY) ?? "1",
+    );
+    if (Number.isFinite(savedRate) && savedRate > 0)
+      el.playbackRate = savedRate;
+    if (window.localStorage.getItem(AUTOPLAY_STORAGE_KEY) === "1") {
+      // .play() may reject if the browser blocks autoplay before any user
+      // gesture — swallow so the element still renders with a play button.
+      el.play().catch(() => {});
+    }
+  }, [audioUrl]);
+
+  const handleRateChange = useCallback(
+    (e: React.SyntheticEvent<HTMLAudioElement>) => {
+      window.localStorage.setItem(
+        RATE_STORAGE_KEY,
+        String(e.currentTarget.playbackRate),
+      );
+    },
+    [],
+  );
+
+  const handleFirstPlay = useCallback(() => {
+    window.localStorage.setItem(AUTOPLAY_STORAGE_KEY, "1");
+  }, []);
+
   return (
-    <div className="flex flex-col gap-1.5 sm:gap-2" aria-label={t('audio.label')}>
+    <div
+      className="flex flex-col gap-1.5 sm:gap-2"
+      aria-label={t("audio.label")}
+    >
       <div
         role="radiogroup"
-        aria-label={t('audio.languagePickerLabel')}
+        aria-label={t("audio.languagePickerLabel")}
         className="flex flex-wrap gap-1.5 sm:gap-2"
       >
         {LANGUAGES.map((lang) => {
@@ -146,13 +200,13 @@ export function QBankAudioPlayer({
               type="button"
               role="radio"
               aria-checked={isSelected}
-              aria-label={t('audio.pillAriaLabel', { language: tLang(lang) })}
+              aria-label={t("audio.pillAriaLabel", { language: tLang(lang) })}
               onClick={() => setLanguage(lang)}
               // min-h-9 on mobile keeps the pills compact so the 4-5
               // language row fits next to the image; bumps to min-h-11
               // on sm+ where there is room for WCAG touch targets.
               className={cn(
-                'min-h-9 rounded-full border-2 bg-background px-3 py-1 text-xs font-medium transition-colors sm:min-h-11 sm:px-4 sm:py-1.5 sm:text-sm',
+                "min-h-9 rounded-full border-2 bg-background px-3 py-1 text-xs font-medium transition-colors sm:min-h-11 sm:px-4 sm:py-1.5 sm:text-sm",
                 isSelected
                   ? LANGUAGE_COLORS[lang].active
                   : LANGUAGE_COLORS[lang].inactive,
@@ -166,23 +220,27 @@ export function QBankAudioPlayer({
 
       {effectiveError && (
         <p className="text-xs text-destructive" role="alert">
-          {t('audio.error')}
+          {t("audio.error")}
         </p>
       )}
 
-      {effectiveStatus?.status === 'failed' && (
-        <p className="text-xs text-destructive" role="alert">{t('audio.failed')}</p>
+      {effectiveStatus?.status === "failed" && (
+        <p className="text-xs text-destructive" role="alert">
+          {t("audio.failed")}
+        </p>
       )}
 
-      {effectiveStatus?.status === 'ready' && effectiveStatus.audio_url && (
+      {effectiveStatus?.status === "ready" && effectiveStatus.audio_url && (
         <audio
           ref={audioRef}
           src={effectiveStatus.audio_url}
           controls
           preload="auto"
           className="h-9 w-full sm:h-10"
+          onPlay={handleFirstPlay}
+          onRateChange={handleRateChange}
         >
-          {t('audio.unsupported')}
+          {t("audio.unsupported")}
         </audio>
       )}
 
