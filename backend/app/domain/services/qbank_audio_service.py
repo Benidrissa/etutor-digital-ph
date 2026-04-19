@@ -290,11 +290,29 @@ class QBankAudioService:
 
         French takes the single-blob path — OpenAI TTS is fine with long
         text and silence-splicing its output wouldn't pay off.
+
+        Splicing uses pydub (+ ffmpeg). If either isn't available in the
+        runtime image (the backend container ships without ffmpeg today),
+        gracefully fall back to a single MMS call on the joined
+        segments — the ordinal labels and punctuation normalization still
+        take effect, just without the explicit inter-segment silence.
         """
         if not segments:
             raise MMSTTSError("no segments to synthesize")
         if language == "fr" or len(segments) == 1:
             return await self._synthesize_bytes(segments[0], language)
+
+        try:
+            import io
+
+            from pydub import AudioSegment
+        except ImportError:
+            logger.info(
+                "pydub unavailable; falling back to single-blob MMS call",
+                language=language,
+                segments=len(segments),
+            )
+            return await self._synthesize_bytes(" ".join(segments), language)
 
         # Per-segment MMS calls. Backend MMS client already has a
         # Semaphore(2); we just call sequentially within one task to
@@ -303,26 +321,31 @@ class QBankAudioService:
         for seg in segments:
             clips.append(await self._mms.synthesize(seg, language))
 
-        # Splice via pydub — the MMS sidecar already uses pydub to
-        # encode WAV → Opus so the dep is available in this container.
-        import io
-
-        from pydub import AudioSegment
-
-        audio_parts = [AudioSegment.from_file(io.BytesIO(b), format="ogg") for b in clips]
-        silence = AudioSegment.silent(duration=_SEGMENT_SILENCE_MS)
-        combined = audio_parts[0]
-        for part in audio_parts[1:]:
-            combined = combined + silence + part
-        buf = io.BytesIO()
-        combined.export(
-            buf,
-            format="ogg",
-            codec="libopus",
-            bitrate="24k",
-            parameters=["-application", "voip"],
-        )
-        return buf.getvalue()
+        try:
+            audio_parts = [AudioSegment.from_file(io.BytesIO(b), format="ogg") for b in clips]
+            silence = AudioSegment.silent(duration=_SEGMENT_SILENCE_MS)
+            combined = audio_parts[0]
+            for part in audio_parts[1:]:
+                combined = combined + silence + part
+            buf = io.BytesIO()
+            combined.export(
+                buf,
+                format="ogg",
+                codec="libopus",
+                bitrate="24k",
+                parameters=["-application", "voip"],
+            )
+            return buf.getvalue()
+        except FileNotFoundError as exc:
+            # pydub is installed but ffmpeg/libopus isn't — same
+            # fallback. Log once so we can track how often this path
+            # runs in prod.
+            logger.warning(
+                "pydub splice failed (likely missing ffmpeg); using joined single call",
+                language=language,
+                error=str(exc),
+            )
+            return await self._synthesize_bytes(" ".join(segments), language)
 
     async def generate_question_audio(
         self,
