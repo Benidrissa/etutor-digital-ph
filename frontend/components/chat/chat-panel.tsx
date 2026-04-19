@@ -124,18 +124,23 @@ export function ChatPanel({
   // Fetch enrolled courses for course selector. Skip for anonymous visitors
   // so /courses (public catalog) doesn't fire a 401 into every visitor's
   // console (#1622) — there's nothing to enroll-list for logged-out users.
-  useEffect(() => {
+  const refreshEnrolledCourses = useCallback(async () => {
     if (!authClient.isAuthenticated()) return;
-    getMyEnrollments({ orderBy: 'last_accessed', limit: 3 })
-      .then((courses) => {
-        setEnrolledCourses(courses);
-        // Auto-select first course if none set
-        if (!activeCourseId && courses.length > 0) {
-          setActiveCourseId(courses[0].id);
-        }
-      })
-      .catch(() => {});
-  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+    try {
+      const courses = await getMyEnrollments({ orderBy: 'last_accessed', limit: 3 });
+      setEnrolledCourses(courses);
+      setActiveCourseId((current) => {
+        if (current && courses.some((c) => c.id === current)) return current;
+        return courses[0]?.id ?? current;
+      });
+    } catch {
+      // silent — matches prior behavior
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshEnrolledCourses();
+  }, [refreshEnrolledCourses]);
 
   useEffect(() => {
     // Same reasoning as the enrollments fetch above — anonymous visitors
@@ -335,6 +340,7 @@ export function ChatPanel({
                 const finishedConvId = chunk.data.conversation_id as string;
                 invalidateConversationCache(finishedConvId);
                 invalidateConversationsCache();
+                void refreshEnrolledCourses();
                 if (typeof chunk.data?.remaining_messages === 'number') {
                   const remaining = chunk.data.remaining_messages as number;
                   setCurrentUsage(maxDailyUsage - remaining);
