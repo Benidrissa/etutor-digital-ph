@@ -3,17 +3,15 @@ import { DEFAULT_BRANDING } from "./branding";
 
 /**
  * API_BASE resolves to:
- * - Server-side (SSR): BACKEND_URL for direct container-to-container calls,
- *   falls back to NEXT_PUBLIC_API_URL, then localhost.
- * - Client-side (browser): NEXT_PUBLIC_API_URL for direct calls to the
- *   backend via Traefik, falls back to empty string (relative URLs).
+ * - Server-side (SSR): BACKEND_URL for direct container-to-container calls.
+ * - Client-side (browser): empty string — calls go to the same Next.js origin
+ *   and next.config.ts rewrites `/api/*` to BACKEND_URL. Keeps one image
+ *   portable across envs (#1742).
  */
 export const API_BASE =
   typeof window === "undefined"
-    ? process.env.BACKEND_URL ||
-      process.env.NEXT_PUBLIC_API_URL ||
-      "http://localhost:8000"
-    : process.env.NEXT_PUBLIC_API_URL || "";
+    ? process.env.BACKEND_URL || "http://localhost:8000"
+    : "";
 
 export class ApiError extends Error {
   constructor(
