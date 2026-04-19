@@ -75,6 +75,7 @@ def _audio_url_for(
     question_id,
     language: str,
     storage_key: str | None,
+    version: object | None = None,
 ) -> str | None:
     """Build a browser-reachable proxy URL for a question's audio clip.
 
@@ -83,6 +84,13 @@ def _audio_url_for(
     stores ``http://minio:9000/...`` which the browser can't reach —
     same pattern as ``_image_url_for``. Returns ``None`` when the audio
     row has no bytes yet (pending/failed states).
+
+    ``version`` is appended as ``?v=<unix-ts>`` so the URL changes when
+    the underlying audio row gets regenerated (typical during a
+    translation backfill). Without it, browsers serve the cached opus
+    bytes forever — even after an operator wipes + re-synthesizes the
+    audio — because the stable URL hits HTTP cache (#1719 follow-up).
+    Accepts a datetime, int, or ``None`` (returns the unbusted URL).
     """
     if not storage_key:
         return None
@@ -90,7 +98,15 @@ def _audio_url_for(
     host = request.headers.get("x-forwarded-host") or request.headers.get("host")
     if not host:
         return None
-    return f"{proto}://{host}/api/v1/qbank/questions/{question_id}/audio/{language}/data"
+    base = f"{proto}://{host}/api/v1/qbank/questions/{question_id}/audio/{language}/data"
+    if version is None:
+        return base
+    # Accept datetime (preferred — use unix timestamp for compactness) or raw int/str.
+    try:
+        v = int(version.timestamp()) if hasattr(version, "timestamp") else int(version)
+    except (TypeError, ValueError):
+        v = str(version)
+    return f"{base}?v={v}"
 
 
 def _bank_response(bank, question_count: int = 0, test_count: int = 0):
@@ -431,7 +447,13 @@ async def start_test(
             )
         )
         for row in audio_rows.scalars():
-            url = _audio_url_for(request, row.question_id, row.language, row.storage_key)
+            url = _audio_url_for(
+                request,
+                row.question_id,
+                row.language,
+                row.storage_key,
+                version=row.created_at,
+            )
             if url is None:
                 continue
             audio_map.setdefault(str(row.question_id), {})[row.language] = url
@@ -651,7 +673,13 @@ def _audio_response(
         question_id=str(question_id),
         language=language,
         status=row.status.value if hasattr(row.status, "value") else row.status,
-        audio_url=_audio_url_for(request, question_id, language, row.storage_key),
+        audio_url=_audio_url_for(
+            request,
+            question_id,
+            language,
+            row.storage_key,
+            version=row.created_at,
+        ),
         duration_seconds=row.duration_seconds,
     )
 
