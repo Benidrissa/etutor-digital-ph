@@ -16,6 +16,10 @@ class EmailService:
         self.from_email = settings.from_email or "noreply@santepublique-aof.org"
         self.frontend_url = settings.frontend_url or "https://app.santepublique-aof.org"
 
+    @staticmethod
+    def _is_synthetic(email: str) -> bool:
+        return email.endswith("@sira.app")
+
     async def send_magic_link(self, email: str, magic_token: str, language: str = "fr") -> bool:
         """Send a magic link for account recovery.
 
@@ -27,6 +31,8 @@ class EmailService:
         Returns:
             True if email was sent successfully, False otherwise
         """
+        if self._is_synthetic(email):
+            return False
         try:
             magic_url = f"{self.frontend_url}/auth/magic-link?token={magic_token}"
 
@@ -119,6 +125,8 @@ class EmailService:
         Returns:
             True if email was sent successfully, False otherwise
         """
+        if self._is_synthetic(email):
+            return False
         try:
             dashboard_url = f"{self.frontend_url}/dashboard"
 
@@ -236,6 +244,8 @@ class EmailService:
         Returns:
             True if email was sent successfully, False otherwise
         """
+        if self._is_synthetic(email):
+            return False
         try:
             if language == "en":
                 if purpose == "registration":
