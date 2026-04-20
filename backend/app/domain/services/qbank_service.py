@@ -11,18 +11,14 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.models.organization import OrgMemberRole
 from app.domain.models.question_bank import (
     QBankQuestion,
     QBankTest,
     QBankTestAttempt,
     QuestionBank,
 )
-from app.domain.services.organization_service import OrganizationService
 
 logger = structlog.get_logger(__name__)
-
-_org_svc = OrganizationService()
 
 
 async def _enqueue_pregenerate_audio(db: AsyncSession, bank_id: uuid.UUID) -> None:
@@ -92,14 +88,6 @@ class QBankService:
         passing_score: float = 80.0,
         visibility: str = "org_restricted",
     ) -> QuestionBank:
-        if visibility == "org_restricted":
-            await _org_svc.require_org_role(
-                db,
-                organization_id,
-                created_by,
-                OrgMemberRole.owner,
-                OrgMemberRole.admin,
-            )
         bank = QuestionBank(
             organization_id=organization_id,
             visibility=visibility,
@@ -298,13 +286,6 @@ class QBankService:
         **fields,
     ) -> QuestionBank:
         bank = await self.get_bank(db, bank_id)
-        await _org_svc.require_org_role(
-            db,
-            bank.organization_id,
-            actor_id,
-            OrgMemberRole.owner,
-            OrgMemberRole.admin,
-        )
         allowed = {
             "title",
             "description",
@@ -312,6 +293,7 @@ class QBankService:
             "time_per_question_sec",
             "passing_score",
             "status",
+            "visibility",
         }
         previous_status = bank.status.value if hasattr(bank.status, "value") else bank.status
         for key, value in fields.items():
@@ -335,13 +317,6 @@ class QBankService:
         actor_id: uuid.UUID,
     ) -> None:
         bank = await self.get_bank(db, bank_id)
-        await _org_svc.require_org_role(
-            db,
-            bank.organization_id,
-            actor_id,
-            OrgMemberRole.owner,
-            OrgMemberRole.admin,
-        )
         await db.delete(bank)
         await db.commit()
 
@@ -388,14 +363,7 @@ class QBankService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Question not found.",
             )
-        bank = await self.get_bank(db, question.question_bank_id)
-        await _org_svc.require_org_role(
-            db,
-            bank.organization_id,
-            actor_id,
-            OrgMemberRole.owner,
-            OrgMemberRole.admin,
-        )
+        await self.get_bank(db, question.question_bank_id)
         allowed = {
             "question_text",
             "options",
@@ -445,14 +413,7 @@ class QBankService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Question not found.",
             )
-        bank = await self.get_bank(db, question.question_bank_id)
-        await _org_svc.require_org_role(
-            db,
-            bank.organization_id,
-            actor_id,
-            OrgMemberRole.owner,
-            OrgMemberRole.admin,
-        )
+        await self.get_bank(db, question.question_bank_id)
         await db.delete(question)
         await db.commit()
 
@@ -475,14 +436,7 @@ class QBankService:
         filter_categories: list[str] | None = None,
         filter_failed_only: bool = False,
     ) -> QBankTest:
-        bank = await self.get_bank(db, question_bank_id)
-        await _org_svc.require_org_role(
-            db,
-            bank.organization_id,
-            created_by,
-            OrgMemberRole.owner,
-            OrgMemberRole.admin,
-        )
+        await self.get_bank(db, question_bank_id)
         test = QBankTest(
             question_bank_id=question_bank_id,
             title=title,
@@ -525,14 +479,7 @@ class QBankService:
         **fields,
     ) -> QBankTest:
         test = await self.get_test(db, test_id)
-        bank = await self.get_bank(db, test.question_bank_id)
-        await _org_svc.require_org_role(
-            db,
-            bank.organization_id,
-            actor_id,
-            OrgMemberRole.owner,
-            OrgMemberRole.admin,
-        )
+        await self.get_bank(db, test.question_bank_id)
         allowed = {
             "title",
             "mode",
@@ -557,14 +504,7 @@ class QBankService:
         actor_id: uuid.UUID,
     ) -> None:
         test = await self.get_test(db, test_id)
-        bank = await self.get_bank(db, test.question_bank_id)
-        await _org_svc.require_org_role(
-            db,
-            bank.organization_id,
-            actor_id,
-            OrgMemberRole.owner,
-            OrgMemberRole.admin,
-        )
+        await self.get_bank(db, test.question_bank_id)
         await db.delete(test)
         await db.commit()
 

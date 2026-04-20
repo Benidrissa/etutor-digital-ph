@@ -17,13 +17,14 @@ import { QBankAudioManager } from "./qbank-audio-manager";
 
 interface Props {
   question: QBankQuestionFull;
+  canEdit?: boolean;
   onSaved: (updated: QBankQuestionFull) => void;
   onDeleted: (id: string) => void;
 }
 
 const DIFFICULTIES: QBankDifficulty[] = ["easy", "medium", "hard"];
 
-export function QBankQuestionEditor({ question, onSaved, onDeleted }: Props) {
+export function QBankQuestionEditor({ question, canEdit = true, onSaved, onDeleted }: Props) {
   const t = useTranslations("qbank");
   const [text, setText] = useState(question.question_text);
   const [options, setOptions] = useState([...question.options]);
@@ -187,25 +188,27 @@ export function QBankQuestionEditor({ question, onSaved, onDeleted }: Props) {
         />
       </div>
 
-      <QBankAudioManager questionId={question.id} />
+      <QBankAudioManager questionId={question.id} canEdit={canEdit} />
 
       {error && <p className="text-sm text-red-700">{error}</p>}
 
-      <div className="flex justify-between">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={handleDelete}
-          disabled={deleting || saving}
-        >
-          {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-          {t("delete")}
-        </Button>
-        <Button type="button" onClick={handleSave} disabled={!dirty || saving}>
-          {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {t("saveChanges")}
-        </Button>
-      </div>
+      {canEdit && (
+        <div className="flex justify-between">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleDelete}
+            disabled={deleting || saving}
+          >
+            {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+            {t("delete")}
+          </Button>
+          <Button type="button" onClick={handleSave} disabled={!dirty || saving}>
+            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {t("saveChanges")}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

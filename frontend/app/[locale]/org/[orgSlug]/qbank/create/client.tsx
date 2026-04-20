@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useOrg } from "@/components/org/org-context";
+import { useCurrentUser } from "@/lib/hooks/use-current-user";
+import { canEditBank, type OrgRole } from "@/lib/permissions";
 import { QBankPdfUpload } from "@/components/qbank/qbank-pdf-upload";
 import { createQBankBank, type QBankBank, type QBankType } from "@/lib/api";
 
@@ -23,7 +25,9 @@ export function QBankCreateClient() {
   const locale = useLocale();
   const t = useTranslations("qbank");
   const router = useRouter();
-  const { org } = useOrg();
+  const { org, role, loading: orgLoading } = useOrg();
+  const currentUser = useCurrentUser();
+  const isEditor = canEditBank(role as OrgRole, currentUser?.role);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [bank, setBank] = useState<QBankBank | null>(null);
@@ -35,8 +39,16 @@ export function QBankCreateClient() {
   const [timePerQuestion, setTimePerQuestion] = useState(25);
   const [passingScore, setPassingScore] = useState(80);
 
-  if (!org) return null;
-  const base = `/${locale}/org/${org.slug}/qbank`;
+  const base = org ? `/${locale}/org/${org.slug}/qbank` : null;
+
+  useEffect(() => {
+    if (!orgLoading && base && !isEditor) {
+      router.replace(base);
+    }
+  }, [orgLoading, isEditor, base, router]);
+
+  if (!org || !base) return null;
+  if (!isEditor) return null;
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();

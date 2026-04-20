@@ -403,3 +403,18 @@ class OrganizationService:
                 detail=f"Requires role: {', '.join(r.value for r in allowed_roles)}.",
             )
         return member
+
+    async def get_member_or_none(
+        self,
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        user_id: uuid.UUID,
+    ) -> OrganizationMember | None:
+        """Non-raising variant of require_org_role — returns None if not a member."""
+        result = await db.execute(
+            select(OrganizationMember).where(
+                OrganizationMember.organization_id == org_id,
+                OrganizationMember.user_id == user_id,
+            )
+        )
+        return result.scalar_one_or_none()

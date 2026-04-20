@@ -198,6 +198,55 @@ def _attempt_response(a):
     )
 
 
+async def _require_org_editor(
+    org_id,
+    current_user: AuthenticatedUser,
+    db,
+) -> None:
+    """Raise 403 unless the caller can edit banks that belong to ``org_id``.
+
+    Allowed:
+    - Platform admin or sub_admin (always).
+    - Platform expert who is any org member.
+    - Org owner or admin (any platform role).
+    Blocks:
+    - Non-members, viewers with a plain "user" platform role.
+    - Any non-admin creating/editing a bank with no org (public bank).
+    """
+    from app.domain.services.organization_service import OrganizationService
+
+    if current_user.role in ("admin", "sub_admin"):
+        return
+    if org_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only platform admins can manage public question banks.",
+        )
+    member = await OrganizationService().get_member_or_none(
+        db,
+        org_id if isinstance(org_id, uuid.UUID) else uuid.UUID(str(org_id)),
+        uuid.UUID(current_user.id),
+    )
+    if member is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not a member of this organisation.",
+        )
+    if current_user.role == "expert":
+        return
+    member_role = member.role.value if hasattr(member.role, "value") else member.role
+    if member_role not in ("owner", "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Org owner or admin rights required to manage this question bank.",
+        )
+
+
+async def _require_bank_editor(bank, current_user: AuthenticatedUser, db) -> None:
+    """Convenience wrapper around ``_require_org_editor`` for an existing bank."""
+    await _require_org_editor(bank.organization_id, current_user, db)
+
+
 # ---------------------------------------------------------------------------
 # Question Bank CRUD
 # ---------------------------------------------------------------------------
@@ -218,6 +267,8 @@ async def create_bank(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only platform admins can create public question banks.",
         )
+    if body.visibility != "public":
+        await _require_org_editor(body.organization_id, current_user, db)
     bank = await _svc.create_bank(
         db,
         organization_id=body.organization_id,
@@ -239,6 +290,17 @@ async def list_banks(
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
+    if current_user.role not in ("admin", "sub_admin"):
+        from app.domain.services.organization_service import OrganizationService
+
+        member = await OrganizationService().get_member_or_none(
+            db, org_id, uuid.UUID(current_user.id)
+        )
+        if member is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not a member of this organisation.",
+            )
     items = await _svc.list_org_banks(db, org_id)
     return [
         _bank_response(item["bank"], item["question_count"], item["test_count"]) for item in items
@@ -307,6 +369,15 @@ async def get_bank(
     db=Depends(get_db_session),
 ):
     bank = await _svc.get_bank(db, bank_id)
+    bank_status = bank.status.value if hasattr(bank.status, "value") else bank.status
+    if bank_status == "draft":
+        try:
+            await _require_bank_editor(bank, current_user, db)
+        except HTTPException:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Question bank not found.",
+            )
     return _bank_response(bank)
 
 
@@ -317,7 +388,14 @@ async def update_bank(
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
+    existing = await _svc.get_bank(db, bank_id)
+    await _require_bank_editor(existing, current_user, db)
     updates = body.model_dump(exclude_unset=True)
+    if updates.get("visibility") == "public" and current_user.role not in ("admin", "sub_admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only platform admins can make a question bank public.",
+        )
     bank = await _svc.update_bank(db, bank_id, uuid.UUID(current_user.id), **updates)
     return _bank_response(bank)
 
@@ -328,6 +406,8 @@ async def delete_bank(
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
+    bank = await _svc.get_bank(db, bank_id)
+    await _require_bank_editor(bank, current_user, db)
     await _svc.delete_bank(db, bank_id, uuid.UUID(current_user.id))
 
 
@@ -365,6 +445,11 @@ async def update_question(
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
+    existing_q = await db.get(QBankQuestion, question_id)
+    if existing_q is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Question not found.")
+    bank = await _svc.get_bank(db, existing_q.question_bank_id)
+    await _require_bank_editor(bank, current_user, db)
     updates = body.model_dump(exclude_unset=True)
     q = await _svc.update_question(db, question_id, uuid.UUID(current_user.id), **updates)
     return _question_response(q, request)
@@ -379,6 +464,11 @@ async def delete_question(
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
+    existing_q = await db.get(QBankQuestion, question_id)
+    if existing_q is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Question not found.")
+    bank = await _svc.get_bank(db, existing_q.question_bank_id)
+    await _require_bank_editor(bank, current_user, db)
     await _svc.delete_question(db, question_id, uuid.UUID(current_user.id))
 
 
@@ -397,6 +487,8 @@ async def create_test(
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
+    bank = await _svc.get_bank(db, body.question_bank_id)
+    await _require_bank_editor(bank, current_user, db)
     test = await _svc.create_test(
         db,
         question_bank_id=body.question_bank_id,
@@ -430,6 +522,13 @@ async def update_test(
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
+    from app.domain.models.question_bank import QBankTest
+
+    test_obj = await db.get(QBankTest, test_id)
+    if test_obj is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Test not found.")
+    bank = await _svc.get_bank(db, test_obj.question_bank_id)
+    await _require_bank_editor(bank, current_user, db)
     updates = body.model_dump(exclude_unset=True)
     test = await _svc.update_test(db, test_id, uuid.UUID(current_user.id), **updates)
     return _test_response(test)
@@ -441,6 +540,13 @@ async def delete_test(
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
+    from app.domain.models.question_bank import QBankTest
+
+    test_obj = await db.get(QBankTest, test_id)
+    if test_obj is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Test not found.")
+    bank = await _svc.get_bank(db, test_obj.question_bank_id)
+    await _require_bank_editor(bank, current_user, db)
     await _svc.delete_test(db, test_id, uuid.UUID(current_user.id))
 
 
@@ -598,16 +704,10 @@ async def upload_pdf(
     db=Depends(get_db_session),
 ):
     """Upload a PDF to extract image-based MCQ questions from slides."""
-    from app.domain.services.organization_service import OrganizationService
     from app.tasks.qbank_processing import process_qbank_pdf
 
     bank = await _svc.get_bank(db, bank_id)
-    org_svc = OrganizationService()
-    await org_svc.require_org_role(
-        db,
-        bank.organization_id,
-        uuid.UUID(current_user.id),
-    )
+    await _require_bank_editor(bank, current_user, db)
 
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         from fastapi import HTTPException
@@ -669,6 +769,8 @@ async def get_bank_analytics(
     db=Depends(get_db_session),
 ):
     """Org admin dashboard: aggregate metrics across all attempts in a bank."""
+    bank = await _svc.get_bank(db, bank_id)
+    await _require_bank_editor(bank, current_user, db)
     return await _analytics.get_bank_analytics(db, bank_id, uuid.UUID(current_user.id))
 
 
@@ -679,6 +781,8 @@ async def get_bank_students(
     db=Depends(get_db_session),
 ):
     """Org admin: per-student roll-up (attempt count, avg score, pass count)."""
+    bank = await _svc.get_bank(db, bank_id)
+    await _require_bank_editor(bank, current_user, db)
     students = await _analytics.get_bank_students(db, bank_id, uuid.UUID(current_user.id))
     return BankStudentsResponse(bank_id=str(bank_id), students=students)
 
@@ -693,7 +797,16 @@ async def get_student_progress(
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
-    """Individual student progress. Students may only view their own record."""
+    """Individual student progress. Editors see any student; others only own."""
+    bank = await _svc.get_bank(db, bank_id)
+    try:
+        await _require_bank_editor(bank, current_user, db)
+    except HTTPException:
+        if str(user_id) != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You may only view your own progress.",
+            )
     return await _analytics.get_student_progress(db, bank_id, user_id, uuid.UUID(current_user.id))
 
 
@@ -754,7 +867,6 @@ async def generate_bank_audio(
     """
     from celery import chain as celery_chain
 
-    from app.domain.services.organization_service import OrganizationService
     from app.domain.services.qbank_translation_service import TARGET_LANGUAGES
     from app.tasks.qbank_processing import (
         generate_qbank_audio_task,
@@ -762,9 +874,7 @@ async def generate_bank_audio(
     )
 
     bank = await _svc.get_bank(db, bank_id)
-    await OrganizationService().require_org_role(
-        db, bank.organization_id, uuid.UUID(current_user.id)
-    )
+    await _require_bank_editor(bank, current_user, db)
     if language in TARGET_LANGUAGES:
         task = celery_chain(
             translate_qbank_bank_task.si(str(bank_id), language),
@@ -802,13 +912,10 @@ async def backfill_bank_translations(
         QBankQuestion,
         QBankQuestionAudio,
     )
-    from app.domain.services.organization_service import OrganizationService
     from app.tasks.qbank_processing import translate_and_synthesize_question_task
 
     bank = await _svc.get_bank(db, bank_id)
-    await OrganizationService().require_org_role(
-        db, bank.organization_id, uuid.UUID(current_user.id)
-    )
+    await _require_bank_editor(bank, current_user, db)
 
     question_ids = (
         (
@@ -1039,8 +1146,6 @@ async def upload_question_audio(
     so subsequent TTS batch runs skip it — the editor's recording is
     the source of truth until they explicitly delete it.
     """
-    from app.domain.services.organization_service import OrganizationService
-
     q = await db.get(QBankQuestion, question_id)
     if q is None:
         raise HTTPException(
@@ -1048,9 +1153,7 @@ async def upload_question_audio(
             detail="Question not found.",
         )
     bank = await _svc.get_bank(db, q.question_bank_id)
-    await OrganizationService().require_org_role(
-        db, bank.organization_id, uuid.UUID(current_user.id)
-    )
+    await _require_bank_editor(bank, current_user, db)
 
     content_type = (file.content_type or "").split(";")[0].strip().lower()
     if content_type not in _MANUAL_AUDIO_MIME_ALLOWLIST:
@@ -1092,8 +1195,6 @@ async def delete_question_audio(
     clip clears the slot so the next batch or per-question TTS call can
     repopulate it. Same org-role guard as upload.
     """
-    from app.domain.services.organization_service import OrganizationService
-
     q = await db.get(QBankQuestion, question_id)
     if q is None:
         raise HTTPException(
@@ -1101,9 +1202,7 @@ async def delete_question_audio(
             detail="Question not found.",
         )
     bank = await _svc.get_bank(db, q.question_bank_id)
-    await OrganizationService().require_org_role(
-        db, bank.organization_id, uuid.UUID(current_user.id)
-    )
+    await _require_bank_editor(bank, current_user, db)
     await _audio.delete_question_audio(db, question_id, language)
 
 
