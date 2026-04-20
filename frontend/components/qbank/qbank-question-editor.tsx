@@ -13,6 +13,7 @@ import {
   type QBankDifficulty,
   type QBankQuestionFull,
 } from "@/lib/api";
+import { QBankAudioManager } from "./qbank-audio-manager";
 
 interface Props {
   question: QBankQuestionFull;
@@ -185,6 +186,8 @@ export function QBankQuestionEditor({ question, onSaved, onDeleted }: Props) {
           className="w-full rounded-md border px-3 py-2 text-sm"
         />
       </div>
+
+      <QBankAudioManager questionId={question.id} />
 
       {error && <p className="text-sm text-red-700">{error}</p>}
 

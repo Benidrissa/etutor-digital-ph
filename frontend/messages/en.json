@@ -2104,6 +2104,22 @@
       "dyu": "Dioula",
       "bam": "Bambara",
       "ful": "Fulfulde"
-    }
+    },
+    "audioSectionLabel": "Audio (per language)",
+    "audioNoClip": "No clip for this language — TTS will be generated or record one now.",
+    "audioGenerating": "Generating…",
+    "audioRecord": "Record",
+    "audioStopRecording": "Stop",
+    "audioUpload": "Upload file",
+    "audioDelete": "Delete",
+    "audioDeleteConfirm": "Delete this audio? TTS will regenerate on the next batch.",
+    "audioRecordEmpty": "Empty recording.",
+    "audioRecordFailed": "Could not record.",
+    "audioMicDenied": "Microphone denied. Grant access in your browser.",
+    "audioRecordUnsupported": "Recording isn't available in this browser — use file upload.",
+    "audioUnsupportedType": "Unsupported file type.",
+    "audioTooLarge": "File too large (max 5 MB).",
+    "audioSourceManual": "Manual",
+    "audioSourceTts": "TTS"
   }
-}\n
+}

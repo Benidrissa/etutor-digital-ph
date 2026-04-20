@@ -320,6 +320,11 @@ class AudioStatusResponse(BaseModel):
     # (guardrail: backend/tests/test_no_minio_leaks_in_schemas.py).
     audio_url: str | None = None
     duration_seconds: int | None = None
+    # ``tts`` for OpenAI/MMS-generated clips, ``manual`` for clips the
+    # editor recorded or uploaded via the question-bank form (#1747).
+    # Defaults to ``tts`` so existing clients continue to render the
+    # TTS-only UI until they're updated.
+    source: str = "tts"
 
 
 class AudioGenerateResponse(BaseModel):
