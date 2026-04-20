@@ -329,14 +329,14 @@ jobs:
             docker compose pull nllb || echo "::warning::nllb pull failed, continuing with existing image"
 
             # Restart services
-            docker compose up -d
+            docker compose up -d --remove-orphans
 
             # Run database migrations — fail deploy if migrations fail
             sleep 10
             echo "Running database migrations..."
             docker compose exec -T -e PYTHONPATH=/app backend uv run alembic upgrade head
             echo "Migrations completed successfully."
-            docker compose up -d --force-recreate backend
+            docker compose up -d --remove-orphans --force-recreate backend
             sleep 15
 
             # Record deploy SHA
@@ -469,13 +469,13 @@ jobs:
             docker compose pull mms-tts || echo "::warning::mms-tts pull failed, continuing with existing image"
             docker compose pull nllb || echo "::warning::nllb pull failed, continuing with existing image"
 
-            docker compose up -d
+            docker compose up -d --remove-orphans
 
             sleep 10
             echo "Running database migrations..."
             docker compose exec -T -e PYTHONPATH=/app backend uv run alembic upgrade head
             echo "Migrations completed successfully."
-            docker compose up -d --force-recreate backend
+            docker compose up -d --remove-orphans --force-recreate backend
             sleep 15
 
             echo "${DEPLOY_SHA}" > .deploy-sha
