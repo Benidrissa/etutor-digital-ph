@@ -124,11 +124,15 @@ def _bank_response(bank, question_count: int = 0, test_count: int = 0):
             org_slug = bank.organization.slug
     except Exception:
         pass
+    visibility = bank.visibility
+    if hasattr(visibility, "value"):
+        visibility = visibility.value
     return QuestionBankResponse(
         id=str(bank.id),
-        organization_id=str(bank.organization_id),
+        organization_id=str(bank.organization_id) if bank.organization_id is not None else None,
         organization_name=org_name,
         organization_slug=org_slug,
+        visibility=visibility,
         title=bank.title,
         description=bank.description,
         bank_type=bank.bank_type.value if hasattr(bank.bank_type, "value") else bank.bank_type,
@@ -209,6 +213,11 @@ async def create_bank(
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
+    if body.visibility == "public" and current_user.role not in ("admin", "sub_admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only platform admins can create public question banks.",
+        )
     bank = await _svc.create_bank(
         db,
         organization_id=body.organization_id,
@@ -219,6 +228,7 @@ async def create_bank(
         time_per_question_sec=body.time_per_question_sec,
         passing_score=body.passing_score,
         created_by=uuid.UUID(current_user.id),
+        visibility=body.visibility,
     )
     return _bank_response(bank)
 

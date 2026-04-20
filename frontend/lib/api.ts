@@ -1877,13 +1877,15 @@ export type QBankType =
 export type QBankStatus = "draft" | "published" | "archived";
 export type QBankDifficulty = "easy" | "medium" | "hard";
 export type QBankTestMode = "exam" | "training" | "review";
+export type QBankVisibility = "public" | "org_restricted";
 
 export interface QBankBank {
   id: string;
-  organization_id: string;
+  organization_id: string | null;
   /** Populated by the cross-org ``/banks/accessible`` endpoint (#1692). */
   organization_name?: string | null;
   organization_slug?: string | null;
+  visibility: QBankVisibility;
   title: string;
   description: string | null;
   bank_type: QBankType;
@@ -1899,7 +1901,8 @@ export interface QBankBank {
 }
 
 export interface QBankBankCreate {
-  organization_id: string;
+  organization_id?: string | null;
+  visibility?: QBankVisibility;
   title: string;
   description?: string | null;
   bank_type: QBankType;
@@ -1915,6 +1918,7 @@ export interface QBankBankUpdate {
   time_per_question_sec?: number;
   passing_score?: number;
   status?: QBankStatus;
+  visibility?: QBankVisibility;
 }
 
 export interface QBankQuestionFull {

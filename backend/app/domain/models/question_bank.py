@@ -71,12 +71,22 @@ class QBankAudioSource(enum.StrEnum):
     manual = "manual"
 
 
+class QBankVisibility(enum.StrEnum):
+    public = "public"
+    org_restricted = "org_restricted"
+
+
 class QuestionBank(Base):
     __tablename__ = "question_banks"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    organization_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("organizations.id", ondelete="CASCADE"), index=True, nullable=False
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    visibility: Mapped[QBankVisibility] = mapped_column(
+        Enum(QBankVisibility, name="qbankvisibility"),
+        server_default="org_restricted",
+        default=QBankVisibility.org_restricted,
     )
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -97,7 +107,7 @@ class QuestionBank(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
-    organization: Mapped[Organization] = relationship(foreign_keys=[organization_id])
+    organization: Mapped[Organization | None] = relationship(foreign_keys=[organization_id])
     creator: Mapped[User] = relationship(foreign_keys=[created_by])
     questions: Mapped[list[QBankQuestion]] = relationship(
         back_populates="question_bank", cascade="all, delete-orphan"
