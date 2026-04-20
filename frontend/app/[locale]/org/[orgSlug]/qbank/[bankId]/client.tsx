@@ -7,6 +7,8 @@ import { ArrowLeft, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useOrg } from "@/components/org/org-context";
+import { useCurrentUser } from "@/lib/hooks/use-current-user";
+import { canEditBank, type OrgRole } from "@/lib/permissions";
 import { QBankPdfUpload } from "@/components/qbank/qbank-pdf-upload";
 import { QBankQuestionEditor } from "@/components/qbank/qbank-question-editor";
 import { QBankTestConfigList } from "@/components/qbank/qbank-test-config";
@@ -33,7 +35,9 @@ const STATUS_KEY: Record<"draft" | "published" | "archived", string> = {
 export function QBankDetailClient({ bankId }: Props) {
   const locale = useLocale();
   const t = useTranslations("qbank");
-  const { org } = useOrg();
+  const { org, role } = useOrg();
+  const currentUser = useCurrentUser();
+  const isEditor = canEditBank(role as OrgRole, currentUser?.role);
   const [bank, setBank] = useState<QBankBank | null>(null);
   const [questions, setQuestions] = useState<QBankQuestionFull[]>([]);
   const [total, setTotal] = useState(0);
@@ -130,21 +134,25 @@ export function QBankDetailClient({ bankId }: Props) {
             {t("questionCount", { count: total })} · {t("timePerQSuffix", { seconds: bank.time_per_question_sec })} · {bank.passing_score}% · {bank.language.toUpperCase()}
           </p>
         </div>
-        <Button onClick={togglePublished} disabled={publishing} variant="outline">
-          {publishing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {bank.status === "published" ? t("unpublish") : t("publish")}
-        </Button>
+        {isEditor && (
+          <Button onClick={togglePublished} disabled={publishing} variant="outline">
+            {publishing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {bank.status === "published" ? t("unpublish") : t("publish")}
+          </Button>
+        )}
       </header>
 
-      <section className="space-y-3 rounded-lg border bg-white p-4">
-        <h2 className="text-lg font-medium">{t("addMoreQuestions")}</h2>
-        <QBankPdfUpload
-          bankId={bankId}
-          onProcessed={(res) => {
-            if (res.status === "success") void loadQuestions(1);
-          }}
-        />
-      </section>
+      {isEditor && (
+        <section className="space-y-3 rounded-lg border bg-white p-4">
+          <h2 className="text-lg font-medium">{t("addMoreQuestions")}</h2>
+          <QBankPdfUpload
+            bankId={bankId}
+            onProcessed={(res) => {
+              if (res.status === "success") void loadQuestions(1);
+            }}
+          />
+        </section>
+      )}
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -176,6 +184,7 @@ export function QBankDetailClient({ bankId }: Props) {
               <li key={q.id}>
                 <QBankQuestionEditor
                   question={q}
+                  canEdit={isEditor}
                   onSaved={(updated) =>
                     setQuestions((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
                   }
@@ -215,7 +224,7 @@ export function QBankDetailClient({ bankId }: Props) {
       </section>
 
       <section className="rounded-lg border bg-white p-4">
-        <QBankTestConfigList bankId={bankId} />
+        <QBankTestConfigList bankId={bankId} canEdit={isEditor} />
       </section>
     </div>
   );

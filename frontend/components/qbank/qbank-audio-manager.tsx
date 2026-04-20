@@ -34,6 +34,7 @@ const ACCEPTED_MIME = [
 
 interface Props {
   questionId: string;
+  canEdit?: boolean;
 }
 
 /**
@@ -45,7 +46,7 @@ interface Props {
  * Falls back gracefully when MediaRecorder isn't available (older
  * Safari, insecure origin) — only the Upload button is shown.
  */
-export function QBankAudioManager({ questionId }: Props) {
+export function QBankAudioManager({ questionId, canEdit = true }: Props) {
   const t = useTranslations("qbank");
   const tLang = useTranslations("qbank.audioLanguages");
   const [language, setLanguage] = useState<QBankAudioLanguage>("fr");
@@ -214,6 +215,8 @@ export function QBankAudioManager({ questionId }: Props) {
 
   const audioUrl = status?.audio_url ?? null;
   const source = status?.source ?? "tts";
+
+  if (!canEdit) return null;
 
   return (
     <div className="space-y-3 rounded-md border bg-gray-50 p-3">
