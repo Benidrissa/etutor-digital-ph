@@ -1,5 +1,6 @@
 """API endpoints for AI tutor functionality."""
 
+import io
 import json
 import uuid
 from datetime import datetime
@@ -8,8 +9,10 @@ from typing import Any
 
 import structlog
 from anthropic import AsyncAnthropic
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
+from openai import AsyncOpenAI
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.rag.embeddings import EmbeddingService
@@ -119,6 +122,94 @@ async def upload_file(
         size_bytes=processed.size_bytes,
         expires_at=processed.expires_at,
     )
+
+
+class TranscribeResponse(BaseModel):
+    transcript: str
+
+
+_ALLOWED_AUDIO_MIME_PREFIXES = ("audio/",)
+_MAX_AUDIO_BYTES = 10 * 1024 * 1024  # 10 MB — Whisper hard limit is 25 MB
+_WHISPER_MODEL = "whisper-1"
+
+
+@router.post("/transcribe", response_model=TranscribeResponse)
+async def transcribe_audio(
+    audio: UploadFile = File(...),
+    locale: str = Form("en"),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> TranscribeResponse:
+    """Transcribe a short audio recording to text via OpenAI Whisper.
+
+    Used by the tutor chat mic button (push-to-talk). The transcript is returned
+    to the client, which then submits it through the normal /tutor/chat flow.
+    """
+    settings = get_settings()
+    if not settings.openai_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Transcription is not configured.",
+        )
+
+    mime_type = audio.content_type or ""
+    if not mime_type.startswith(_ALLOWED_AUDIO_MIME_PREFIXES):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Only audio uploads are supported.",
+        )
+
+    data = await audio.read()
+    if not data:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Empty audio payload.",
+        )
+    if len(data) > _MAX_AUDIO_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Audio recording too large (max 10 MB).",
+        )
+
+    filename = audio.filename or "recording.webm"
+    language = (locale or "en").split("-")[0].lower()
+    if language not in {"en", "fr"}:
+        language = "en"
+
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    buffer = io.BytesIO(data)
+    buffer.name = filename
+
+    try:
+        result = await client.audio.transcriptions.create(
+            model=_WHISPER_MODEL,
+            file=buffer,
+            language=language,
+            response_format="text",
+        )
+    except Exception as exc:
+        logger.warning(
+            "Whisper transcription failed",
+            error=str(exc),
+            user_id=str(current_user.id),
+            size_bytes=len(data),
+            mime_type=mime_type,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Transcription failed. Please try again.",
+        ) from exc
+
+    transcript = (result if isinstance(result, str) else getattr(result, "text", "")).strip()
+
+    logger.info(
+        "Audio transcribed",
+        user_id=str(current_user.id),
+        size_bytes=len(data),
+        duration_chars=len(transcript),
+        language=language,
+    )
+
+    return TranscribeResponse(transcript=transcript)
 
 
 @router.post("/chat", response_model=None)
