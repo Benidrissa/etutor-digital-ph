@@ -2032,6 +2032,7 @@
     "discoveryIntro": "Banques de questions publiées de toutes vos organisations.",
     "discoveryEmpty": "Aucune banque de questions publiée pour l'instant. Rejoignez une organisation ou demandez à votre admin d'en publier une.",
     "discoveryOrgLink": "Ouvrir l'organisation",
+    "publicSection": "Banques publiques",
     "testsDiscoveryTitle": "Tests de révision",
     "testsDiscoveryIntro": "Lancez n'importe quel test disponible dans vos banques, sans avoir à fouiller.",
     "testsDiscoveryEmpty": "Aucun test disponible pour l'instant. Demandez à votre admin de publier une banque.",

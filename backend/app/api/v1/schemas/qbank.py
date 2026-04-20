@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # ---------------------------------------------------------------------------
 # Question Bank
@@ -12,13 +12,20 @@ from pydantic import BaseModel, Field
 
 
 class QuestionBankCreate(BaseModel):
-    organization_id: UUID
+    organization_id: UUID | None = None
+    visibility: str = Field(default="org_restricted", pattern=r"^(public|org_restricted)$")
     title: str = Field(..., min_length=2, max_length=500)
     description: str | None = None
     bank_type: str = Field(..., pattern=r"^(driving|exam_prep|psychotechnic|general_culture)$")
     language: str = Field(default="fr", max_length=5)
     time_per_question_sec: int = Field(default=60, ge=5, le=120)
     passing_score: float = Field(default=80.0, ge=0, le=100)
+
+    @model_validator(mode="after")
+    def _org_required_for_org_restricted(self) -> "QuestionBankCreate":
+        if self.visibility == "org_restricted" and self.organization_id is None:
+            raise ValueError("organization_id is required when visibility is org_restricted")
+        return self
 
 
 class QuestionBankUpdate(BaseModel):
@@ -28,17 +35,19 @@ class QuestionBankUpdate(BaseModel):
     time_per_question_sec: int | None = Field(default=None, ge=5, le=120)
     passing_score: float | None = Field(default=None, ge=0, le=100)
     status: str | None = Field(default=None, pattern=r"^(draft|published|archived)$")
+    visibility: str | None = Field(default=None, pattern=r"^(public|org_restricted)$")
 
 
 class QuestionBankResponse(BaseModel):
     id: str
-    organization_id: str
+    organization_id: str | None = None
     # ``organization_name`` + ``organization_slug`` are populated by
     # ``_bank_response`` when the org relationship is preloaded. The
     # cross-org discovery page (#1692) relies on these so the
     # frontend doesn't need to fetch every org separately.
     organization_name: str | None = None
     organization_slug: str | None = None
+    visibility: str = "org_restricted"
     title: str
     description: str | None = None
     bank_type: str
