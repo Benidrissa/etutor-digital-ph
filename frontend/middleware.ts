@@ -67,6 +67,11 @@ export default function middleware(request: NextRequest) {
     }
   }
 
+  // API routes are proxied by next.config.ts rewrites — skip i18n middleware.
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
+
   return intlMiddleware(request);
 }
 
