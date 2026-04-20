@@ -22,7 +22,7 @@ class QuestionBankCreate(BaseModel):
     passing_score: float = Field(default=80.0, ge=0, le=100)
 
     @model_validator(mode="after")
-    def _org_required_for_org_restricted(self) -> "QuestionBankCreate":
+    def _org_required_for_org_restricted(self) -> QuestionBankCreate:
         if self.visibility == "org_restricted" and self.organization_id is None:
             raise ValueError("organization_id is required when visibility is org_restricted")
         return self
