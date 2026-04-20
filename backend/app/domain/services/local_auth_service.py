@@ -844,13 +844,13 @@ class LocalAuthService:
         """
         try:
             is_email = "@" in identifier
-            email: str | None = identifier if is_email else None
             phone: str | None = identifier if not is_email else None
+            email: str | None = identifier if is_email else f"{phone}@sira.app"
 
             existing_user = await self.db.scalar(
                 select(User).where(
                     or_(
-                        User.email == email if email else False,
+                        User.email == email,
                         User.phone_number == phone if phone else False,
                     )
                 )
