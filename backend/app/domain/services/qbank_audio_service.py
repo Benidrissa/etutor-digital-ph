@@ -22,6 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.models.question_bank import (
+    QBankAudioSource,
     QBankAudioStatus,
     QBankQuestion,
     QBankQuestionAudio,
@@ -237,7 +238,14 @@ class QBankAudioService:
         language: str,
         **updates: object,
     ) -> QBankQuestionAudio:
-        """Create or update the (question, language) audio row."""
+        """Create or update the (question, language) audio row.
+
+        Callers in the TTS generation path pass ``_skip_manual=True`` so
+        we return the existing manual row unchanged instead of flipping
+        it back to ``tts``/``generating`` — protects human recordings
+        from being overwritten on the next pregeneration pass (#1747).
+        """
+        skip_manual = bool(updates.pop("_skip_manual", False))
         existing = await db.execute(
             select(QBankQuestionAudio).where(
                 QBankQuestionAudio.question_id == question_id,
@@ -245,6 +253,8 @@ class QBankAudioService:
             )
         )
         row = existing.scalar_one_or_none()
+        if row is not None and skip_manual and row.source == QBankAudioSource.manual:
+            return row
         if row is None:
             row = QBankQuestionAudio(question_id=question_id, language=language)
             db.add(row)
@@ -365,7 +375,20 @@ class QBankAudioService:
         if question is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Question not found.")
 
-        await self._upsert_audio_row(db, question_id, language, status=QBankAudioStatus.generating)
+        # Short-circuit if the editor already uploaded a manual clip for
+        # this (question, language) — the existing recording takes
+        # precedence over anything TTS would produce (#1747).
+        existing = await self.get_audio_status(db, question_id, language)
+        if existing is not None and existing.source == QBankAudioSource.manual:
+            return existing
+
+        await self._upsert_audio_row(
+            db,
+            question_id,
+            language,
+            status=QBankAudioStatus.generating,
+            _skip_manual=True,
+        )
 
         # Translate FR → target before TTS for all non-source languages.
         # Translation fetch is idempotent; on NLLB failure we mark audio
@@ -389,7 +412,11 @@ class QBankAudioService:
                     error=str(exc),
                 )
                 return await self._upsert_audio_row(
-                    db, question_id, language, status=QBankAudioStatus.failed
+                    db,
+                    question_id,
+                    language,
+                    status=QBankAudioStatus.failed,
+                    _skip_manual=True,
                 )
 
         try:
@@ -408,6 +435,7 @@ class QBankAudioService:
                 question_id,
                 language,
                 status=QBankAudioStatus.failed,
+                _skip_manual=True,
             )
         except Exception as exc:
             logger.exception(
@@ -417,7 +445,11 @@ class QBankAudioService:
                 error=str(exc),
             )
             return await self._upsert_audio_row(
-                db, question_id, language, status=QBankAudioStatus.failed
+                db,
+                question_id,
+                language,
+                status=QBankAudioStatus.failed,
+                _skip_manual=True,
             )
 
         return await self._upsert_audio_row(
@@ -428,6 +460,9 @@ class QBankAudioService:
             storage_url=url,
             duration_seconds=estimate_duration_seconds(len(audio_bytes)),
             status=QBankAudioStatus.ready,
+            source=QBankAudioSource.tts,
+            content_type=OPUS_CONTENT_TYPE,
+            _skip_manual=True,
         )
 
     async def batch_generate(
@@ -462,23 +497,33 @@ class QBankAudioService:
         )
 
         ready_question_ids: set[uuid.UUID] = set()
-        if skip_ready and questions:
+        manual_question_ids: set[uuid.UUID] = set()
+        if questions:
             existing = await db.execute(
                 select(QBankQuestionAudio).where(
                     QBankQuestionAudio.question_id.in_([q.id for q in questions]),
                     QBankQuestionAudio.language == language,
-                    QBankQuestionAudio.status == QBankAudioStatus.ready,
                 )
             )
-            ready_question_ids = {row.question_id for row in existing.scalars()}
+            for row in existing.scalars():
+                if row.source == QBankAudioSource.manual:
+                    # Editor-provided clip — never touched by TTS batch (#1747).
+                    manual_question_ids.add(row.question_id)
+                elif skip_ready and row.status == QBankAudioStatus.ready:
+                    ready_question_ids.add(row.question_id)
 
         ready = 0
         failed = 0
         skipped = 0
+        manual = 0
         for q in questions:
+            if q.id in manual_question_ids:
+                manual += 1
+                ready += 1  # Manual clips are always considered ready.
+                continue
             if q.id in ready_question_ids:
                 skipped += 1
-                ready += 1  # Already-ready clips still count as ready.
+                ready += 1  # Already-ready TTS clips still count as ready.
                 continue
             row = await self.generate_question_audio(db, q.id, language)
             if row.status == QBankAudioStatus.ready:
@@ -491,6 +536,7 @@ class QBankAudioService:
             "language": language,
             "total": len(questions),
             "skipped": skipped,
+            "manual": manual,
             "ready": ready,
             "failed": failed,
         }
@@ -500,14 +546,51 @@ class QBankAudioService:
         db: AsyncSession,
         question_id: uuid.UUID,
     ) -> None:
-        """Drop every cached audio row for a question.
+        """Drop every cached TTS audio row for a question.
 
         Called when a question's text or options change — the stored
         clip no longer matches the script and must be regenerated.
+        Manual recordings are preserved: the editor chose that take
+        deliberately and we'd rather play outdated audio than silently
+        discard a human recording (#1747). The editor can delete the
+        manual row explicitly via the admin UI if needed.
         """
         await db.execute(
             QBankQuestionAudio.__table__.delete().where(
                 QBankQuestionAudio.question_id == question_id,
+                QBankQuestionAudio.source != QBankAudioSource.manual,
+            )
+        )
+        await db.commit()
+
+    async def delete_question_audio(
+        self,
+        db: AsyncSession,
+        question_id: uuid.UUID,
+        language: str,
+    ) -> None:
+        """Remove a single (question, language) audio row and its MinIO object.
+
+        Lets an editor clear a manual recording so the TTS pipeline can
+        refill the slot on the next generate/backfill (#1747).
+        """
+        row = await self.get_audio_status(db, question_id, language)
+        if row is None:
+            return
+        if row.storage_key:
+            try:
+                await self._storage.delete_object(row.storage_key)
+            except Exception as exc:
+                logger.warning(
+                    "failed to delete audio object from storage",
+                    question_id=str(question_id),
+                    language=language,
+                    key=row.storage_key,
+                    error=str(exc),
+                )
+        await db.execute(
+            QBankQuestionAudio.__table__.delete().where(
+                QBankQuestionAudio.id == row.id,
             )
         )
         await db.commit()
@@ -520,7 +603,13 @@ class QBankAudioService:
         audio_bytes: bytes,
         content_type: str,
     ) -> QBankQuestionAudio:
-        """Handle the manual-upload fallback from the admin UI."""
+        """Store a human-recorded or file-uploaded clip (#1747).
+
+        Marks the row ``source='manual'`` so subsequent TTS batch runs
+        skip it. The original MIME is persisted so the playback endpoint
+        can return the right Content-Type — editors may upload webm,
+        mp3, m4a or wav in addition to OGG/Opus.
+        """
         question = await db.get(QBankQuestion, question_id)
         if question is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Question not found.")
@@ -534,6 +623,8 @@ class QBankAudioService:
             storage_url=url,
             duration_seconds=estimate_duration_seconds(len(audio_bytes)),
             status=QBankAudioStatus.ready,
+            source=QBankAudioSource.manual,
+            content_type=content_type,
         )
 
     async def get_audio_status(

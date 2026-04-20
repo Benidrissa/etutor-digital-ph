@@ -1783,12 +1783,20 @@ export type QBankAudioLanguage = "fr" | "mos" | "dyu" | "bam" | "ful";
 
 export type QBankAudioReadiness = "pending" | "generating" | "ready" | "failed";
 
+export type QBankAudioSource = "tts" | "manual";
+
 export interface QBankQuestionAudioStatus {
   question_id: string;
   language: QBankAudioLanguage;
   status: QBankAudioReadiness;
   audio_url: string | null;
   duration_seconds: number | null;
+  /**
+   * ``manual`` when the editor uploaded/recorded the clip; ``tts`` for
+   * everything auto-generated. Defaults to ``tts`` for backend responses
+   * that predate #1747.
+   */
+  source?: QBankAudioSource;
 }
 
 export async function getQBankQuestionAudio(
@@ -1797,6 +1805,63 @@ export async function getQBankQuestionAudio(
 ): Promise<QBankQuestionAudioStatus> {
   return apiFetch<QBankQuestionAudioStatus>(
     `/api/v1/qbank/questions/${questionId}/audio?lang=${language}`,
+  );
+}
+
+/**
+ * Upload a manual audio clip (recorded or chosen from disk) to replace
+ * the TTS output for one (question, language) pair (#1747). Bypasses
+ * ``apiFetch`` because that helper always sets ``Content-Type:
+ * application/json``, which would clobber the multipart boundary the
+ * browser needs to set.
+ */
+export async function uploadQBankQuestionAudio(
+  questionId: string,
+  language: QBankAudioLanguage,
+  file: Blob,
+  filename?: string,
+): Promise<QBankQuestionAudioStatus> {
+  const form = new FormData();
+  form.append("file", file, filename ?? `audio-${language}`);
+  const headers: Record<string, string> = {};
+  if (typeof window !== "undefined") {
+    try {
+      const { authClient } = await import("./auth");
+      const token = await authClient.getValidToken();
+      headers["Authorization"] = `Bearer ${token}`;
+    } catch {
+      // unauthenticated — backend will 401
+    }
+  }
+  const res = await fetch(
+    `${API_BASE}/api/v1/qbank/questions/${questionId}/audio?language=${language}`,
+    { method: "POST", headers, body: form },
+  );
+  if (!res.ok) {
+    let message = `API error: ${res.status}`;
+    try {
+      const body = await res.json();
+      if (typeof body?.detail === "string") message = body.detail;
+      else if (body?.detail?.message) message = body.detail.message;
+    } catch {
+      /* ignore */
+    }
+    throw new ApiError(message, res.status);
+  }
+  return res.json();
+}
+
+/**
+ * Remove the (question, language) audio row — used to clear a manual
+ * clip so the next TTS batch can repopulate the slot (#1747).
+ */
+export async function deleteQBankQuestionAudio(
+  questionId: string,
+  language: QBankAudioLanguage,
+): Promise<void> {
+  await apiFetch<void>(
+    `/api/v1/qbank/questions/${questionId}/audio?language=${language}`,
+    { method: "DELETE" },
   );
 }
 

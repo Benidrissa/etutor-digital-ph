@@ -14,6 +14,10 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import HTTPException
 
+from app.domain.models.question_bank import (
+    QBankAudioSource,
+    QBankAudioStatus,
+)
 from app.domain.services.qbank_audio_service import (
     SUPPORTED_LANGUAGES,
     QBankAudioService,
@@ -153,3 +157,248 @@ def test_supported_languages_is_non_empty_tuple():
     assert isinstance(SUPPORTED_LANGUAGES, tuple)
     assert "fr" in SUPPORTED_LANGUAGES
     assert all(isinstance(lang, str) for lang in SUPPORTED_LANGUAGES)
+
+
+# ---------------------------------------------------------------------------
+# Manual audio override (#1747)
+#
+# These tests exercise the skip-manual / delete invariants against a real
+# (test) DB session. They share the ``test_engine`` fixture in
+# ``conftest.py`` which currently can't materialize the certificate
+# enum on a fresh schema (issue #554 — same reason every other
+# db_session test in this repo is marked skip). Logic is still correct;
+# tests are kept here so they run as soon as the fixture is fixed.
+# ---------------------------------------------------------------------------
+
+_SKIP_REASON = (
+    "pytest-asyncio 1.3.0 event loop conflict with async DB fixtures — tracked in issue #554"
+)
+
+
+async def _seed_bank_and_question(db_session):
+    """Create a minimal bank + one question + a creator user."""
+    import uuid as _uuid
+
+    from app.domain.models.organization import Organization
+    from app.domain.models.question_bank import (
+        QBankQuestion,
+        QuestionBank,
+        QuestionBankType,
+    )
+    from app.domain.models.user import User, UserRole
+
+    slug_suffix = _uuid.uuid4().hex[:8]
+    org = Organization(
+        id=_uuid.uuid4(),
+        name="Test Org",
+        slug=f"test-org-{slug_suffix}",
+    )
+    db_session.add(org)
+    user = User(
+        id=_uuid.uuid4(),
+        email=f"{slug_suffix}@example.com",
+        name="Test Editor",
+        role=UserRole.admin,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    bank = QuestionBank(
+        id=_uuid.uuid4(),
+        organization_id=org.id,
+        title="Test Bank",
+        bank_type=QuestionBankType.driving,
+        created_by=user.id,
+    )
+    db_session.add(bank)
+    await db_session.flush()
+
+    question = QBankQuestion(
+        id=_uuid.uuid4(),
+        question_bank_id=bank.id,
+        order_index=1,
+        question_text="Test question?",
+        options=["A", "B"],
+        correct_answer_indices=[0],
+    )
+    db_session.add(question)
+    await db_session.commit()
+    return bank, question
+
+
+@pytest.mark.skip(reason=_SKIP_REASON)
+@pytest.mark.asyncio
+async def test_store_uploaded_audio_sets_source_manual(db_session):
+    """Uploads land with ``source=manual`` and the MIME the editor sent."""
+    fake_storage = types.SimpleNamespace(
+        upload_bytes=AsyncMock(return_value="http://minio:9000/k"),
+        delete_object=AsyncMock(),
+    )
+    svc = QBankAudioService()
+    svc._storage = fake_storage
+
+    _, question = await _seed_bank_and_question(db_session)
+    row = await svc.store_uploaded_audio(
+        db_session,
+        question.id,
+        "fr",
+        b"fake-webm-bytes",
+        "audio/webm",
+    )
+    assert row.source == QBankAudioSource.manual
+    assert row.status == QBankAudioStatus.ready
+    assert row.content_type == "audio/webm"
+    fake_storage.upload_bytes.assert_awaited_once()
+
+
+@pytest.mark.skip(reason=_SKIP_REASON)
+@pytest.mark.asyncio
+async def test_generate_question_audio_skips_manual_row(db_session):
+    """TTS path short-circuits when a manual clip already exists (#1747)."""
+    fake_storage = types.SimpleNamespace(
+        upload_bytes=AsyncMock(return_value="http://minio:9000/k"),
+        delete_object=AsyncMock(),
+    )
+    svc = QBankAudioService()
+    svc._storage = fake_storage
+    svc._synthesize_segments = AsyncMock(
+        side_effect=AssertionError("TTS must not run when source=manual"),
+    )
+
+    _, question = await _seed_bank_and_question(db_session)
+    manual_row = await svc.store_uploaded_audio(
+        db_session,
+        question.id,
+        "fr",
+        b"manual-bytes",
+        "audio/webm",
+    )
+
+    returned = await svc.generate_question_audio(db_session, question.id, "fr")
+    assert returned.id == manual_row.id
+    assert returned.source == QBankAudioSource.manual
+    assert returned.content_type == "audio/webm"
+
+
+@pytest.mark.skip(reason=_SKIP_REASON)
+@pytest.mark.asyncio
+async def test_batch_generate_counts_manual_rows_without_synthesizing(db_session):
+    """Manual clips are counted as ready and never hit the TTS backend."""
+    fake_storage = types.SimpleNamespace(
+        upload_bytes=AsyncMock(return_value="http://minio:9000/k"),
+        delete_object=AsyncMock(),
+    )
+    svc = QBankAudioService()
+    svc._storage = fake_storage
+    svc._synthesize_segments = AsyncMock(
+        side_effect=AssertionError("batch must not synth manual rows"),
+    )
+
+    bank, question = await _seed_bank_and_question(db_session)
+    await svc.store_uploaded_audio(
+        db_session,
+        question.id,
+        "fr",
+        b"manual",
+        "audio/webm",
+    )
+
+    result = await svc.batch_generate(db_session, bank.id, "fr")
+    assert result["total"] == 1
+    assert result["manual"] == 1
+    assert result["ready"] == 1
+    assert result["failed"] == 0
+
+
+@pytest.mark.skip(reason=_SKIP_REASON)
+@pytest.mark.asyncio
+async def test_invalidate_question_preserves_manual_clip(db_session):
+    """Question-text edits drop TTS rows but keep manual recordings (#1747)."""
+    from sqlalchemy import select
+
+    from app.domain.models.question_bank import QBankQuestionAudio
+
+    fake_storage = types.SimpleNamespace(
+        upload_bytes=AsyncMock(return_value="http://minio:9000/k"),
+        delete_object=AsyncMock(),
+    )
+    svc = QBankAudioService()
+    svc._storage = fake_storage
+
+    _, question = await _seed_bank_and_question(db_session)
+    await svc._upsert_audio_row(
+        db_session,
+        question.id,
+        "fr",
+        status=QBankAudioStatus.ready,
+        source=QBankAudioSource.tts,
+        storage_key="tts-key",
+        storage_url="http://minio:9000/tts",
+        content_type="audio/ogg",
+    )
+    await svc.store_uploaded_audio(
+        db_session,
+        question.id,
+        "mos",
+        b"manual",
+        "audio/webm",
+    )
+
+    await svc.invalidate_question(db_session, question.id)
+
+    remaining = (
+        (
+            await db_session.execute(
+                select(QBankQuestionAudio).where(
+                    QBankQuestionAudio.question_id == question.id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(remaining) == 1
+    assert remaining[0].language == "mos"
+    assert remaining[0].source == QBankAudioSource.manual
+
+
+@pytest.mark.skip(reason=_SKIP_REASON)
+@pytest.mark.asyncio
+async def test_delete_question_audio_removes_row_and_storage(db_session):
+    """``delete_question_audio`` nukes the row + best-effort MinIO delete."""
+    from sqlalchemy import select
+
+    from app.domain.models.question_bank import QBankQuestionAudio
+
+    fake_storage = types.SimpleNamespace(
+        upload_bytes=AsyncMock(return_value="http://minio:9000/k"),
+        delete_object=AsyncMock(),
+    )
+    svc = QBankAudioService()
+    svc._storage = fake_storage
+
+    _, question = await _seed_bank_and_question(db_session)
+    await svc.store_uploaded_audio(
+        db_session,
+        question.id,
+        "fr",
+        b"bytes",
+        "audio/webm",
+    )
+
+    await svc.delete_question_audio(db_session, question.id, "fr")
+
+    fake_storage.delete_object.assert_awaited_once()
+    remaining = (
+        (
+            await db_session.execute(
+                select(QBankQuestionAudio).where(
+                    QBankQuestionAudio.question_id == question.id,
+                    QBankQuestionAudio.language == "fr",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert remaining == []

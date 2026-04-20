@@ -59,6 +59,18 @@ class QBankAudioStatus(enum.StrEnum):
     failed = "failed"
 
 
+class QBankAudioSource(enum.StrEnum):
+    """Distinguishes TTS-generated clips from human recordings/uploads.
+
+    Manual rows (``manual``) are skipped by batch TTS regeneration so an
+    editor's recording is never silently overwritten by a re-publish or
+    backfill (#1747). Default for every existing row is ``tts``.
+    """
+
+    tts = "tts"
+    manual = "manual"
+
+
 class QuestionBank(Base):
     __tablename__ = "question_banks"
 
@@ -144,7 +156,22 @@ class QBankQuestionAudio(Base):
         server_default="pending",
         default=QBankAudioStatus.pending,
     )
+    source: Mapped[QBankAudioSource] = mapped_column(
+        Enum(QBankAudioSource, name="qbankaudiosource"),
+        server_default="tts",
+        default=QBankAudioSource.tts,
+    )
+    # Actual MIME stored in MinIO — TTS clips are always ``audio/ogg``
+    # (Opus) but manual uploads can be webm, mp3, m4a, wav, or ogg; the
+    # playback endpoint needs the real value to hand the browser a
+    # Content-Type it can decode (#1747).
+    content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
 
     question: Mapped[QBankQuestion] = relationship(back_populates="audio_files")
 

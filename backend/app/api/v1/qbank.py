@@ -704,6 +704,12 @@ def _audio_response(
             language=language,
             status="pending",
         )
+    # Bust the HTTP cache whenever the clip is replaced (TTS regen, manual
+    # upload, delete+re-record). ``updated_at`` flips on every UPDATE; for
+    # legacy rows inserted before #1747 it simply equals ``created_at``.
+    version = getattr(row, "updated_at", None) or row.created_at
+    source = getattr(row, "source", None)
+    source_value = source.value if hasattr(source, "value") else (source or "tts")
     return AudioStatusResponse(
         question_id=str(question_id),
         language=language,
@@ -713,9 +719,10 @@ def _audio_response(
             question_id,
             language,
             row.storage_key,
-            version=row.created_at,
+            version=version,
         ),
         duration_seconds=row.duration_seconds,
+        source=source_value,
     )
 
 
@@ -780,7 +787,11 @@ async def backfill_bank_translations(
     """
     from sqlalchemy import select
 
-    from app.domain.models.question_bank import QBankQuestion, QBankQuestionAudio
+    from app.domain.models.question_bank import (
+        QBankAudioSource,
+        QBankQuestion,
+        QBankQuestionAudio,
+    )
     from app.domain.services.organization_service import OrganizationService
     from app.tasks.qbank_processing import translate_and_synthesize_question_task
 
@@ -799,16 +810,37 @@ async def backfill_bank_translations(
         .all()
     )
     if question_ids:
+        # Wipe only TTS rows — manual recordings from editors are
+        # preserved so a backfill never silently drops an intentional
+        # human take (#1747).
         await db.execute(
             QBankQuestionAudio.__table__.delete().where(
                 QBankQuestionAudio.question_id.in_(question_ids),
                 QBankQuestionAudio.language == language,
+                QBankQuestionAudio.source != QBankAudioSource.manual,
             )
         )
         await db.commit()
 
+    manual_qids = (
+        (
+            await db.execute(
+                select(QBankQuestionAudio.question_id).where(
+                    QBankQuestionAudio.question_id.in_(question_ids),
+                    QBankQuestionAudio.language == language,
+                    QBankQuestionAudio.source == QBankAudioSource.manual,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    manual_qid_set = set(manual_qids)
+
     task_ids: list[str] = []
     for qid in question_ids:
+        if qid in manual_qid_set:
+            continue
         task = translate_and_synthesize_question_task.delay(str(qid), language)
         task_ids.append(task.id)
 
@@ -951,6 +983,33 @@ async def debug_nllb_probe(
     return result
 
 
+# MIME types accepted for manual audio uploads. Browser MediaRecorder
+# emits webm/opus on Chrome + mp4 on Safari; file-picker uploads may be
+# mp3, wav, m4a, or ogg. Anything outside this set is rejected with 415
+# so operators don't accidentally store text files or videos (#1747).
+_MANUAL_AUDIO_MIME_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "audio/webm",
+        "audio/ogg",
+        "audio/opus",
+        "audio/mpeg",
+        "audio/mp3",
+        "audio/mp4",
+        "audio/x-m4a",
+        "audio/m4a",
+        "audio/aac",
+        "audio/wav",
+        "audio/wave",
+        "audio/x-wav",
+    }
+)
+
+# 5 MB cap: a 30-60s voice recording at mid-quality VBR is typically
+# <1 MB; 5 MB leaves plenty of headroom for long questions or wav
+# uploads, while still bounding memory per-request (#1747).
+_MANUAL_AUDIO_MAX_BYTES = 5 * 1024 * 1024
+
+
 @router.post(
     "/questions/{question_id}/audio",
     response_model=AudioStatusResponse,
@@ -963,17 +1022,79 @@ async def upload_question_audio(
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ):
-    """Manual fallback: org admin uploads a pre-recorded audio file."""
-    from fastapi import HTTPException
+    """Store a manual recording/upload, replacing TTS for this (Q, lang) (#1747).
 
-    if not file.content_type or not file.content_type.startswith("audio/"):
+    Guards: org-role required (same as other qbank write endpoints),
+    MIME allowlist, 5 MB size cap. The row is marked ``source='manual'``
+    so subsequent TTS batch runs skip it — the editor's recording is
+    the source of truth until they explicitly delete it.
+    """
+    from app.domain.services.organization_service import OrganizationService
+
+    q = await db.get(QBankQuestion, question_id)
+    if q is None:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Expected an audio file.",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Question not found.",
+        )
+    bank = await _svc.get_bank(db, q.question_bank_id)
+    await OrganizationService().require_org_role(
+        db, bank.organization_id, uuid.UUID(current_user.id)
+    )
+
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    if content_type not in _MANUAL_AUDIO_MIME_ALLOWLIST:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=(
+                "Unsupported audio MIME. Allowed: "
+                + ", ".join(sorted(_MANUAL_AUDIO_MIME_ALLOWLIST))
+            ),
         )
     data = await file.read()
-    row = await _audio.store_uploaded_audio(db, question_id, language, data, file.content_type)
+    if len(data) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Empty audio file.",
+        )
+    if len(data) > _MANUAL_AUDIO_MAX_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Audio file exceeds {_MANUAL_AUDIO_MAX_BYTES // (1024 * 1024)} MB limit.",
+        )
+    row = await _audio.store_uploaded_audio(db, question_id, language, data, content_type)
     return _audio_response(row, question_id, language, request)
+
+
+@router.delete(
+    "/questions/{question_id}/audio",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_question_audio(
+    question_id: uuid.UUID,
+    language: str = Query(..., pattern=r"^(fr|mos|dyu|bam|ful)$"),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db=Depends(get_db_session),
+):
+    """Remove one (question, language) audio row + its MinIO blob (#1747).
+
+    Used by the admin form's "Revert to TTS" button: deleting the manual
+    clip clears the slot so the next batch or per-question TTS call can
+    repopulate it. Same org-role guard as upload.
+    """
+    from app.domain.services.organization_service import OrganizationService
+
+    q = await db.get(QBankQuestion, question_id)
+    if q is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Question not found.",
+        )
+    bank = await _svc.get_bank(db, q.question_bank_id)
+    await OrganizationService().require_org_role(
+        db, bank.organization_id, uuid.UUID(current_user.id)
+    )
+    await _audio.delete_question_audio(db, question_id, language)
 
 
 @router.get(
@@ -1027,9 +1148,12 @@ async def get_question_audio_data(
 
     storage = S3StorageService()
     data = await storage.download_bytes(row.storage_key)
+    # Manual uploads may be webm/mp3/m4a/wav, not just Opus/OGG. Fall
+    # back to ``audio/ogg`` for pre-#1747 rows with no content_type.
+    media_type = getattr(row, "content_type", None) or "audio/ogg"
     return StreamingResponse(
         iter([data]),
-        media_type="audio/ogg",
+        media_type=media_type,
         headers={"Cache-Control": "public, max-age=86400, immutable"},
     )
 
