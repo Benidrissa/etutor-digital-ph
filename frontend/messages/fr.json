@@ -2104,6 +2104,22 @@
       "dyu": "Dioula",
       "bam": "Bambara",
       "ful": "Fulfulde"
-    }
+    },
+    "audioSectionLabel": "Audio (par langue)",
+    "audioNoClip": "Aucun clip pour cette langue — TTS sera généré ou enregistrez‑en un.",
+    "audioGenerating": "Génération en cours…",
+    "audioRecord": "Enregistrer",
+    "audioStopRecording": "Arrêter",
+    "audioUpload": "Importer un fichier",
+    "audioDelete": "Supprimer",
+    "audioDeleteConfirm": "Supprimer cet audio ? Le TTS sera régénéré au prochain traitement.",
+    "audioRecordEmpty": "Enregistrement vide.",
+    "audioRecordFailed": "Enregistrement impossible.",
+    "audioMicDenied": "Microphone refusé. Autorisez l’accès dans le navigateur.",
+    "audioRecordUnsupported": "L’enregistrement n’est pas disponible dans ce navigateur ; utilisez l’import de fichier.",
+    "audioUnsupportedType": "Type de fichier non pris en charge.",
+    "audioTooLarge": "Fichier trop volumineux (maximum 5 Mo).",
+    "audioSourceManual": "Manuel",
+    "audioSourceTts": "TTS"
   }
-}\n
+}
