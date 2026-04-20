@@ -189,17 +189,9 @@ export function BottomNav() {
                 aria-current={isActive ? "page" : undefined}
               >
                 <Icon
-                  className={cn("h-5 w-5 mb-1", isActive && "text-primary")}
+                  className={cn("h-5 w-5", isActive && "text-primary")}
                   aria-hidden="true"
                 />
-                <span
-                  className={cn(
-                    "text-xs",
-                    isActive && "text-primary font-medium",
-                  )}
-                >
-                  {item.label}
-                </span>
               </Link>
             );
           })}
@@ -218,19 +210,11 @@ export function BottomNav() {
           >
             <MoreHorizontal
               className={cn(
-                "h-5 w-5 mb-1",
+                "h-5 w-5",
                 (moreOpen || isMoreActive) && "text-primary",
               )}
               aria-hidden="true"
             />
-            <span
-              className={cn(
-                "text-xs",
-                (moreOpen || isMoreActive) && "text-primary font-medium",
-              )}
-            >
-              {t("more")}
-            </span>
           </button>
         </div>
       </nav>
