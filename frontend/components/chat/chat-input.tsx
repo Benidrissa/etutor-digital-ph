@@ -439,37 +439,6 @@ export function ChatInput({ onSendMessage, disabled = false, placeholder, conver
           </Button>
         </div>
 
-        <Button
-          type="button"
-          variant={isRecording ? 'destructive' : 'ghost'}
-          size="icon"
-          className="min-h-[44px] min-w-[44px] shrink-0"
-          aria-label={
-            isRecording
-              ? t('voice.releaseToSend')
-              : isTranscribing
-                ? t('voice.transcribing')
-                : t('voice.holdToTalk')
-          }
-          aria-pressed={isRecording}
-          disabled={disabled || isTranscribing}
-          onPointerDown={(e) => {
-            e.preventDefault();
-            startRecording();
-          }}
-          onPointerUp={() => stopRecording(false)}
-          onPointerLeave={() => {
-            if (isRecording) stopRecording(false);
-          }}
-          onPointerCancel={() => stopRecording(true)}
-        >
-          {isTranscribing ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Mic className={cn('h-4 w-4', isRecording && 'animate-pulse')} />
-          )}
-        </Button>
-
         <div className="flex-1 relative">
           <textarea
             ref={textareaRef}
