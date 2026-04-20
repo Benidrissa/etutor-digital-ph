@@ -709,9 +709,7 @@ def _audio_response(
     # legacy rows inserted before #1747 it simply equals ``created_at``.
     version = getattr(row, "updated_at", None) or row.created_at
     source = getattr(row, "source", None)
-    source_value = (
-        source.value if hasattr(source, "value") else (source or "tts")
-    )
+    source_value = source.value if hasattr(source, "value") else (source or "tts")
     return AudioStatusResponse(
         question_id=str(question_id),
         language=language,
@@ -989,20 +987,22 @@ async def debug_nllb_probe(
 # emits webm/opus on Chrome + mp4 on Safari; file-picker uploads may be
 # mp3, wav, m4a, or ogg. Anything outside this set is rejected with 415
 # so operators don't accidentally store text files or videos (#1747).
-_MANUAL_AUDIO_MIME_ALLOWLIST: frozenset[str] = frozenset({
-    "audio/webm",
-    "audio/ogg",
-    "audio/opus",
-    "audio/mpeg",
-    "audio/mp3",
-    "audio/mp4",
-    "audio/x-m4a",
-    "audio/m4a",
-    "audio/aac",
-    "audio/wav",
-    "audio/wave",
-    "audio/x-wav",
-})
+_MANUAL_AUDIO_MIME_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "audio/webm",
+        "audio/ogg",
+        "audio/opus",
+        "audio/mpeg",
+        "audio/mp3",
+        "audio/mp4",
+        "audio/x-m4a",
+        "audio/m4a",
+        "audio/aac",
+        "audio/wav",
+        "audio/wave",
+        "audio/x-wav",
+    }
+)
 
 # 5 MB cap: a 30-60s voice recording at mid-quality VBR is typically
 # <1 MB; 5 MB leaves plenty of headroom for long questions or wav
@@ -1062,9 +1062,7 @@ async def upload_question_audio(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"Audio file exceeds {_MANUAL_AUDIO_MAX_BYTES // (1024 * 1024)} MB limit.",
         )
-    row = await _audio.store_uploaded_audio(
-        db, question_id, language, data, content_type
-    )
+    row = await _audio.store_uploaded_audio(db, question_id, language, data, content_type)
     return _audio_response(row, question_id, language, request)
 
 

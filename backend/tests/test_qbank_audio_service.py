@@ -332,12 +332,16 @@ async def test_invalidate_question_preserves_manual_clip(db_session):
     await svc.invalidate_question(db_session, question.id)
 
     remaining = (
-        await db_session.execute(
-            select(QBankQuestionAudio).where(
-                QBankQuestionAudio.question_id == question.id,
+        (
+            await db_session.execute(
+                select(QBankQuestionAudio).where(
+                    QBankQuestionAudio.question_id == question.id,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(remaining) == 1
     assert remaining[0].language == "mos"
     assert remaining[0].source == QBankAudioSource.manual
@@ -370,11 +374,15 @@ async def test_delete_question_audio_removes_row_and_storage(db_session):
 
     fake_storage.delete_object.assert_awaited_once()
     remaining = (
-        await db_session.execute(
-            select(QBankQuestionAudio).where(
-                QBankQuestionAudio.question_id == question.id,
-                QBankQuestionAudio.language == "fr",
+        (
+            await db_session.execute(
+                select(QBankQuestionAudio).where(
+                    QBankQuestionAudio.question_id == question.id,
+                    QBankQuestionAudio.language == "fr",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert remaining == []
