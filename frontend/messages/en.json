@@ -410,6 +410,19 @@
       "fileCard": "{name} ({size})",
       "captureCamera": "Take a photo",
       "acceptedTypes": "Images, PDF, CSV, XLSX, TXT, DOCX (max 10 MB)"
+    },
+    "voice": {
+      "holdToTalk": "Hold to talk",
+      "releaseToSend": "Release to send",
+      "transcribing": "Transcribing...",
+      "permissionDenied": "Microphone access denied. Enable it in your browser settings.",
+      "noMicrophone": "No microphone detected.",
+      "unsupported": "Voice input is not supported on this device.",
+      "unavailable": "Voice transcription is temporarily unavailable.",
+      "failed": "Could not transcribe audio. Please try again.",
+      "tooShort": "Recording too short. Hold the button and speak.",
+      "tooLarge": "Recording too long (max 10 MB).",
+      "noSpeech": "No speech detected. Try again."
     }
   },
   "Flashcards": {

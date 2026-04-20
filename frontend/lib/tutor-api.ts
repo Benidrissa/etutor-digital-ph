@@ -11,6 +11,43 @@ export interface UploadedFile {
   expires_at: string;
 }
 
+export async function transcribeAudio(
+  audio: Blob,
+  locale: string = 'en'
+): Promise<string> {
+  const token = await authClient.getValidToken();
+  const formData = new FormData();
+  const filename = audio.type.includes('mp4')
+    ? 'recording.m4a'
+    : audio.type.includes('ogg')
+      ? 'recording.ogg'
+      : audio.type.includes('wav')
+        ? 'recording.wav'
+        : 'recording.webm';
+  formData.append('audio', audio, filename);
+  formData.append('locale', locale);
+
+  const response = await fetch(`${API_BASE}/api/v1/tutor/transcribe`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    if (response.status === 413) throw new Error('RECORDING_TOO_LARGE');
+    if (response.status === 503) throw new Error('TRANSCRIBE_UNAVAILABLE');
+    try {
+      const err = await response.json();
+      throw new Error(err.detail || 'Transcription failed');
+    } catch {
+      throw new Error(`Transcription failed: ${response.status}`);
+    }
+  }
+
+  const data = (await response.json()) as { transcript: string };
+  return (data.transcript || '').trim();
+}
+
 export async function uploadTutorFile(
   file: File,
   onProgress?: (percent: number) => void

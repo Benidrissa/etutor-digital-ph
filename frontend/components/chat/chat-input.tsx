@@ -1,12 +1,29 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useTranslations } from 'next-intl';
-import { Send, Paperclip } from 'lucide-react';
+import { useTranslations, useLocale } from 'next-intl';
+import { Send, Paperclip, Mic, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { uploadTutorFile, saveDraft, loadDraft, clearDraft } from '@/lib/tutor-api';
+import {
+  uploadTutorFile,
+  saveDraft,
+  loadDraft,
+  clearDraft,
+  transcribeAudio,
+} from '@/lib/tutor-api';
 import { FilePreview, type PendingFile } from '@/components/chat/file-preview';
+
+function pickRecorderMimeType(): string {
+  if (typeof MediaRecorder === 'undefined') return '';
+  const candidates = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4',
+    'audio/ogg;codecs=opus',
+  ];
+  return candidates.find((t) => MediaRecorder.isTypeSupported(t)) ?? '';
+}
 
 const ACCEPTED_TYPES = [
   'image/png',
@@ -43,14 +60,22 @@ function generateLocalId(): string {
 
 export function ChatInput({ onSendMessage, disabled = false, placeholder, conversationId = null }: ChatInputProps) {
   const t = useTranslations('ChatTutor');
+  const locale = useLocale();
   const [message, setMessage] = useState(() => loadDraft(conversationId));
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const conversationIdRef = useRef<string | null>(conversationId);
   const messageRef = useRef(message);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const recordingAbortedRef = useRef(false);
 
   useEffect(() => {
     conversationIdRef.current = conversationId;
@@ -191,6 +216,108 @@ export function ChatInput({ onSendMessage, disabled = false, placeholder, conver
     e.target.value = '';
   };
 
+  const stopAudioStream = useCallback(() => {
+    audioStreamRef.current?.getTracks().forEach((track) => track.stop());
+    audioStreamRef.current = null;
+  }, []);
+
+  const startRecording = useCallback(async () => {
+    if (disabled || isRecording || isTranscribing) return;
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      setMicError(t('voice.unsupported'));
+      return;
+    }
+    if (typeof MediaRecorder === 'undefined') {
+      setMicError(t('voice.unsupported'));
+      return;
+    }
+
+    setMicError(null);
+    recordingAbortedRef.current = false;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true },
+      });
+      audioStreamRef.current = stream;
+
+      const mimeType = pickRecorderMimeType();
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+
+      recorder.onstop = async () => {
+        const chunks = audioChunksRef.current;
+        audioChunksRef.current = [];
+        stopAudioStream();
+        mediaRecorderRef.current = null;
+        setIsRecording(false);
+
+        if (recordingAbortedRef.current || chunks.length === 0) return;
+
+        const audioBlob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+        if (audioBlob.size < 1000) {
+          setMicError(t('voice.tooShort'));
+          return;
+        }
+
+        setIsTranscribing(true);
+        try {
+          const transcript = await transcribeAudio(audioBlob, locale);
+          if (transcript) {
+            setMessage((prev) => (prev ? `${prev.trimEnd()} ${transcript}` : transcript));
+            textareaRef.current?.focus();
+          } else {
+            setMicError(t('voice.noSpeech'));
+          }
+        } catch (err) {
+          const code = err instanceof Error ? err.message : '';
+          if (code === 'RECORDING_TOO_LARGE') setMicError(t('voice.tooLarge'));
+          else if (code === 'TRANSCRIBE_UNAVAILABLE') setMicError(t('voice.unavailable'));
+          else setMicError(t('voice.failed'));
+        } finally {
+          setIsTranscribing(false);
+        }
+      };
+
+      recorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      stopAudioStream();
+      mediaRecorderRef.current = null;
+      setIsRecording(false);
+      const name = err instanceof Error ? err.name : '';
+      if (name === 'NotAllowedError' || name === 'SecurityError') {
+        setMicError(t('voice.permissionDenied'));
+      } else if (name === 'NotFoundError') {
+        setMicError(t('voice.noMicrophone'));
+      } else {
+        setMicError(t('voice.failed'));
+      }
+    }
+  }, [disabled, isRecording, isTranscribing, locale, stopAudioStream, t]);
+
+  const stopRecording = useCallback((abort = false) => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder) return;
+    recordingAbortedRef.current = abort;
+    if (recorder.state !== 'inactive') recorder.stop();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      recordingAbortedRef.current = true;
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+      stopAudioStream();
+    };
+  }, [stopAudioStream]);
+
   const handleRemoveFile = (localId: string) => {
     setPendingFiles((prev) => {
       const removed = prev.find((f) => f.localId === localId);
@@ -245,6 +372,16 @@ export function ChatInput({ onSendMessage, disabled = false, placeholder, conver
         </div>
       )}
 
+      {micError && (
+        <div
+          role="alert"
+          className="px-4 pt-2 text-xs text-destructive"
+          onClick={() => setMicError(null)}
+        >
+          {micError}
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="flex items-end gap-2 p-4">
         <input
           ref={fileInputRef}
@@ -267,6 +404,37 @@ export function ChatInput({ onSendMessage, disabled = false, placeholder, conver
           onClick={() => fileInputRef.current?.click()}
         >
           <Paperclip className="h-4 w-4" />
+        </Button>
+
+        <Button
+          type="button"
+          variant={isRecording ? 'destructive' : 'ghost'}
+          size="icon"
+          className="min-h-[44px] min-w-[44px] shrink-0"
+          aria-label={
+            isRecording
+              ? t('voice.releaseToSend')
+              : isTranscribing
+                ? t('voice.transcribing')
+                : t('voice.holdToTalk')
+          }
+          aria-pressed={isRecording}
+          disabled={disabled || isTranscribing}
+          onPointerDown={(e) => {
+            e.preventDefault();
+            startRecording();
+          }}
+          onPointerUp={() => stopRecording(false)}
+          onPointerLeave={() => {
+            if (isRecording) stopRecording(false);
+          }}
+          onPointerCancel={() => stopRecording(true)}
+        >
+          {isTranscribing ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Mic className={cn('h-4 w-4', isRecording && 'animate-pulse')} />
+          )}
         </Button>
 
         <div className="flex-1 relative">
