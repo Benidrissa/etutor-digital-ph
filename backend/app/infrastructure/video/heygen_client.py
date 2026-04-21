@@ -39,6 +39,8 @@ logger = structlog.get_logger(__name__)
 _BASE_URL = "https://api.heygen.com"
 _CREATE_PATH = "/v2/video/generate"
 _STATUS_PATH = "/v2/video_status.get"
+_AGENT_CREATE_PATH = "/v3/video-agents"
+_V3_STATUS_PATH_TEMPLATE = "/v3/videos/{video_id}"
 
 
 class HeyGenError(RuntimeError):
@@ -205,15 +207,69 @@ class HeyGenClient:
         )
         return CreateVideoResult(provider_video_id=str(video_id))
 
-    async def get_video(self, video_id: str) -> VideoStatus:
-        """Fetch current status of a previously-dispatched video."""
+    async def create_video_agent(
+        self,
+        *,
+        prompt: str,
+        language: str,
+        callback_url: str | None = None,
+    ) -> CreateVideoResult:
+        """Dispatch a Video Agent job — avatar/voice auto-picked.
+
+        Use this when the tenant hasn't seeded explicit avatar/voice
+        IDs; HeyGen's agent picks both from the prompt. Costs roughly
+        double a Direct Video call but keeps the feature zero-config
+        for fresh tenants. See ``/docs/choosing-the-right-video-api``.
+        """
+        if not prompt.strip():
+            raise HeyGenBadRequestError("prompt is empty")
+
+        body: dict = {"prompt": prompt}
+        if callback_url:
+            body["callback_url"] = callback_url
 
         async def _call() -> httpx.Response:
-            return await self._request(
-                "GET",
-                _STATUS_PATH,
-                params={"video_id": video_id},
-            )
+            return await self._request("POST", _AGENT_CREATE_PATH, json=body)
+
+        response = await _retry_transient(_call)
+        data = response.json() or {}
+        inner = data.get("data") or {}
+        video_id = inner.get("video_id") or data.get("video_id")
+        if not video_id:
+            raise HeyGenError(f"HeyGen agent create returned no video_id: {data!r}")
+        logger.info(
+            "heygen.create_video_agent.dispatched",
+            video_id=video_id,
+            language=language,
+            prompt_chars=len(prompt),
+        )
+        return CreateVideoResult(provider_video_id=str(video_id))
+
+    async def get_video(self, video_id: str, *, api_version: str = "v2") -> VideoStatus:
+        """Fetch current status of a previously-dispatched video.
+
+        ``api_version`` selects the status endpoint: ``"v2"`` for
+        Direct Video (``/v2/video_status.get``) and ``"v3-agent"``
+        for Video Agent (``/v3/videos/{id}``). The two response
+        shapes differ slightly; we normalise both into the same
+        ``VideoStatus``.
+        """
+
+        if api_version == "v3-agent":
+
+            async def _call() -> httpx.Response:
+                return await self._request(
+                    "GET",
+                    _V3_STATUS_PATH_TEMPLATE.format(video_id=video_id),
+                )
+        else:
+
+            async def _call() -> httpx.Response:
+                return await self._request(
+                    "GET",
+                    _STATUS_PATH,
+                    params={"video_id": video_id},
+                )
 
         response = await _retry_transient(_call)
         data = response.json() or {}
@@ -228,10 +284,16 @@ class HeyGenClient:
             "failed": "failed",
             "error": "failed",
         }.get(raw_status, raw_status or "pending")
+        # v3 uses ``video_url`` per docs; v2 also returns ``video_url``.
+        # Accept ``url`` as an additional fallback in case either
+        # surface renames the field in a future minor revision.
+        video_url = (
+            inner.get("video_url") or inner.get("url") or data.get("video_url") or data.get("url")
+        )
         return VideoStatus(
             provider_video_id=video_id,
             status=mapped,
-            video_url=inner.get("video_url"),
+            video_url=video_url,
             error=inner.get("error") or inner.get("message"),
         )
 

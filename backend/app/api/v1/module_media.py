@@ -123,25 +123,17 @@ async def generate_module_media(
         )
 
     # Video summaries are admin-gated behind a platform-settings flag
-    # so tenants can opt in after signing the HeyGen DPA. The flag is
-    # editable from the admin Settings page without a redeploy.
-    # See issue #1791.
+    # so tenants can opt in after signing the HeyGen DPA. Avatar and
+    # voice IDs are OPTIONAL (issue #1798): when either is missing the
+    # service falls back to HeyGen's Video Agent (v3/video-agents),
+    # which auto-picks both from the narration. The admin Settings
+    # page can still seed explicit IDs for branded, predictable output.
     if be_type == "video_summary":
         _cache = SettingsCache.instance()
         if not _cache.get("video-summary-feature-enabled", False):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="video_summary feature is disabled",
-            )
-        avatar_id = _cache.get("video-summary-default-avatar-id", "") or ""
-        voice_key = (
-            "video-summary-voice-id-fr" if request.language == "fr" else "video-summary-voice-id-en"
-        )
-        voice_id = _cache.get(voice_key, "") or ""
-        if not avatar_id.strip() or not voice_id.strip():
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=("video_summary is enabled but HeyGen avatar/voice IDs are not configured"),
             )
 
     # Check for existing ready or in-progress media

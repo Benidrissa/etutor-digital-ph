@@ -91,3 +91,57 @@ def test_truncate_falls_back_to_ellipsis_when_no_terminator():
     out = _truncate_at_sentence(text, max_chars=50)
     assert len(out) <= 51  # + ellipsis char
     assert out.endswith("…")
+
+
+def test_kids_prompt_differs_from_adult():
+    """A kids video should not read like a professional-audience video.
+
+    The kids branch is routed via ``is_kids`` and is expected to
+    surface child-appropriate cues (age range, encouragement, 'Try
+    this at home') that the adult branch never emits.
+    """
+    adult = _build_video_system_prompt(
+        language="en",
+        domain_labels=["Health Sciences"],
+        audience_labels=["Practicing nurse"],
+        level_labels=["Expert"],
+        course_title="Clinical epidemiology",
+        max_chars=2000,
+    )
+    kids = _build_video_system_prompt(
+        language="en",
+        domain_labels=["Health Sciences"],
+        audience_labels=["Primary school"],
+        level_labels=["Beginner"],
+        course_title="Clinical epidemiology",
+        max_chars=2000,
+        is_kids=True,
+        age_range="6-10",
+    )
+    assert adult != kids
+    # Kids-only markers.
+    assert "children aged 6-10" in kids
+    assert "Try this at home" in kids
+    assert "'Let's remember'" in kids
+    # Adult-only marker.
+    assert "authoritative" not in kids.lower() or "warm-educator" in kids
+    assert "Practicing nurse" not in kids  # kids branch ignores the adult-labels
+    # Kids branch pins voice_tone to warm-educator.
+    assert "warm-educator" in kids
+
+
+def test_kids_prompt_defaults_age_range_when_unset():
+    """Missing age_range falls back to a sensible 6-12 default."""
+    kids = _build_video_system_prompt(
+        language="fr",
+        domain_labels=[],
+        audience_labels=[],
+        level_labels=[],
+        course_title="Maths",
+        max_chars=1500,
+        is_kids=True,
+        age_range="",
+    )
+    assert "6-12" in kids
+    # Language still flows through.
+    assert "French" in kids
