@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
+import httpx
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -651,6 +652,10 @@ class MediaSummaryService:
                 max_chars=max_chars,
             )
 
+            # callback_url is optional: when empty (the common
+            # multi-tenant case), the Celery-beat poller drives the
+            # generating→ready transition instead of relying on
+            # HeyGen push. See issue #1796.
             callback_url = self._heygen_callback_url()
             client = heygen_client or HeyGenClient()
             owns_client = heygen_client is None
@@ -739,10 +744,17 @@ class MediaSummaryService:
         )
         return result.scalar_one_or_none()
 
-    def _heygen_callback_url(self) -> str:
+    def _heygen_callback_url(self) -> str | None:
+        """Return the webhook callback URL, or ``None`` if unset.
+
+        When empty the poller in ``app/tasks/heygen_poll.py`` drives
+        completion — HeyGen doesn't need to know our URL. This is the
+        default path for multi-tenant deployments that don't share a
+        single public hostname (#1796).
+        """
         base = (settings.heygen_callback_base_url or "").rstrip("/")
         if not base:
-            raise RuntimeError("HEYGEN_CALLBACK_BASE_URL is not configured")
+            return None
         return f"{base}/api/v1/webhooks/heygen"
 
     async def _generate_video_script(
@@ -878,3 +890,111 @@ def _truncate_at_sentence(text: str, max_chars: int) -> str:
         if idx >= int(max_chars * 0.6):
             return window[: idx + 1].rstrip()
     return window.rstrip() + "…"
+
+
+def is_web_ready_mp4(data: bytes) -> bool:
+    """Sniff the ISO-BMFF ``ftyp`` box to confirm a browser-playable MP4.
+
+    HeyGen v2 consistently returns H.264/AAC MP4, which every modern
+    browser plays natively. We still check the first 12 bytes so a
+    vendor change or a malformed download surfaces as a clear failure
+    instead of silently landing an unplayable object in MinIO.
+    Extension point: if a non-MP4 container ever appears here, a
+    follow-up will plug in an ffmpeg re-mux
+    (``-c copy -movflags +faststart``) to normalise back to MP4.
+    """
+    if len(data) < 12:
+        return False
+    # ISO-BMFF: bytes 4..7 carry the "ftyp" type box marker.
+    return data[4:8] == b"ftyp"
+
+
+async def finalize_video_summary(
+    record: ModuleMedia,
+    *,
+    video_url: str,
+    session: AsyncSession,
+    duration_hint: int | None = None,
+    storage: S3StorageService | None = None,
+    http_client: httpx.AsyncClient | None = None,
+) -> str:
+    """Download a rendered HeyGen MP4 and commit the ready row.
+
+    Shared by the Celery poller (``app/tasks/heygen_poll.py``) and the
+    opt-in webhook handler (``app/api/v1/webhooks.py``). On any
+    failure the row is flipped to ``failed`` with an
+    ``error_message`` and the exception is re-raised so callers can
+    surface it; on success the row lands ``ready`` with
+    ``storage_key/url/file_size_bytes/duration_seconds/generated_at``
+    populated and the function returns the terminal status string.
+    """
+    store = storage or S3StorageService()
+    try:
+        if http_client is None:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.get(video_url)
+                resp.raise_for_status()
+                video_bytes = resp.content
+        else:
+            resp = await http_client.get(video_url)
+            resp.raise_for_status()
+            video_bytes = resp.content
+    except Exception as exc:
+        record.status = "failed"
+        record.error_message = f"download failed: {exc}"
+        await session.commit()
+        logger.error(
+            "heygen.finalize.download_failed",
+            media_id=str(record.id),
+            provider_video_id=record.provider_video_id,
+            error=str(exc),
+        )
+        return "failed"
+
+    if not is_web_ready_mp4(video_bytes):
+        record.status = "failed"
+        record.error_message = "downloaded bytes are not a recognisable MP4 container"
+        await session.commit()
+        logger.error(
+            "heygen.finalize.unsupported_container",
+            media_id=str(record.id),
+            provider_video_id=record.provider_video_id,
+            first_bytes=video_bytes[:16].hex(),
+        )
+        return "failed"
+
+    storage_key = f"video/{record.module_id}/{record.language}/summary.mp4"
+    try:
+        storage_url = await store.upload_bytes(
+            key=storage_key,
+            data=video_bytes,
+            content_type="video/mp4",
+        )
+    except Exception as exc:
+        record.status = "failed"
+        record.error_message = f"upload failed: {exc}"
+        await session.commit()
+        logger.error(
+            "heygen.finalize.upload_failed",
+            media_id=str(record.id),
+            provider_video_id=record.provider_video_id,
+            error=str(exc),
+        )
+        return "failed"
+
+    record.status = "ready"
+    record.storage_key = storage_key
+    record.storage_url = storage_url
+    record.file_size_bytes = len(video_bytes)
+    if isinstance(duration_hint, (int, float)):
+        record.duration_seconds = int(duration_hint)
+    record.generated_at = datetime.utcnow()
+    await session.commit()
+
+    logger.info(
+        "heygen.finalize.ready",
+        media_id=str(record.id),
+        provider_video_id=record.provider_video_id,
+        bytes=len(video_bytes),
+    )
+    return "ready"

@@ -150,10 +150,17 @@ class HeyGenClient:
         script: str,
         avatar_id: str,
         voice_id: str,
-        callback_url: str,
         language: str,
+        callback_url: str | None = None,
     ) -> CreateVideoResult:
-        """Dispatch a new video job. Returns the HeyGen video_id."""
+        """Dispatch a new video job. Returns the HeyGen video_id.
+
+        ``callback_url`` is optional: when omitted, HeyGen won't push
+        a completion event and the caller is expected to poll
+        ``get_video`` to learn about the terminal status. This keeps
+        the client usable from multi-tenant deployments where there
+        is no single stable public URL to register.
+        """
         if not script.strip():
             raise HeyGenBadRequestError("script is empty")
         if not avatar_id:
@@ -161,7 +168,7 @@ class HeyGenClient:
         if not voice_id:
             raise HeyGenBadRequestError("voice_id is required")
 
-        body = {
+        body: dict = {
             "video_inputs": [
                 {
                     "character": {
@@ -175,9 +182,10 @@ class HeyGenClient:
                     },
                 }
             ],
-            "callback_url": callback_url,
             "caption": True,
         }
+        if callback_url:
+            body["callback_url"] = callback_url
 
         async def _call() -> httpx.Response:
             return await self._request("POST", _CREATE_PATH, json=body)

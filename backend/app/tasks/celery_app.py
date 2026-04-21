@@ -20,6 +20,7 @@ celery_app = Celery(
         "app.tasks.content_generation",
         "app.tasks.data_etl",
         "app.tasks.file_cleanup",
+        "app.tasks.heygen_poll",
         "app.tasks.image_indexation",
         "app.tasks.preassessment_generation",
         "app.tasks.qbank_processing",
@@ -78,6 +79,14 @@ celery_app.conf.beat_schedule = {
     "check-relay-heartbeat": {
         "task": "app.tasks.sms_relay.check_relay_heartbeat",
         "schedule": crontab(minute="*/15"),
+    },
+    # HeyGen video-summary poller (#1796). Every minute the task walks
+    # `ModuleMedia` rows still `generating` and asks HeyGen for their
+    # terminal status. Replaces the per-tenant webhook dance; no public
+    # ingress configuration is required to complete a video job.
+    "poll-heygen-videos": {
+        "task": "app.tasks.heygen_poll.poll_pending_heygen_videos",
+        "schedule": 60.0,
     },
 }
 
