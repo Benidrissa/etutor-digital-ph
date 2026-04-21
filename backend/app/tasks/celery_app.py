@@ -22,6 +22,7 @@ celery_app = Celery(
         "app.tasks.file_cleanup",
         "app.tasks.heygen_poll",
         "app.tasks.image_indexation",
+        "app.tasks.image_translation",
         "app.tasks.preassessment_generation",
         "app.tasks.qbank_processing",
         "app.tasks.rag_indexation",
