@@ -93,6 +93,9 @@ services:
       SMS_RELAY_TRUSTED_SENDERS: ${SMS_RELAY_TRUSTED_SENDERS}
       MMS_TTS_URL: http://mms-tts:5050
       NLLB_URL: http://nllb:5060
+      HEYGEN_API_KEY: ${HEYGEN_API_KEY}
+      HEYGEN_WEBHOOK_SECRET: ${HEYGEN_WEBHOOK_SECRET}
+      HEYGEN_CALLBACK_BASE_URL: ${HEYGEN_CALLBACK_BASE_URL}
     volumes:
       - ./config:/app/config
       - ./resources:/app/resources
@@ -177,6 +180,9 @@ services:
       SMS_RELAY_TRUSTED_SENDERS: ${SMS_RELAY_TRUSTED_SENDERS}
       MMS_TTS_URL: http://mms-tts:5050
       NLLB_URL: http://nllb:5060
+      HEYGEN_API_KEY: ${HEYGEN_API_KEY}
+      HEYGEN_WEBHOOK_SECRET: ${HEYGEN_WEBHOOK_SECRET}
+      HEYGEN_CALLBACK_BASE_URL: ${HEYGEN_CALLBACK_BASE_URL}
     volumes:
       - ./config:/app/config
       - ./resources:/app/resources
