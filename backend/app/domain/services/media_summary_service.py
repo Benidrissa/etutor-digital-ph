@@ -43,8 +43,7 @@ logger = structlog.get_logger(__name__)
 VIDEO_SCRIPT_TOOL = {
     "name": "save_video_script",
     "description": (
-        "Save the 3-minute lesson summary narration. "
-        "Call this exactly once with the full script."
+        "Save the 3-minute lesson summary narration. Call this exactly once with the full script."
     ),
     "input_schema": {
         "type": "object",
@@ -60,9 +59,7 @@ VIDEO_SCRIPT_TOOL = {
                     "authoritative-professional",
                     "peer-casual",
                 ],
-                "description": (
-                    "Pick the tone that matches the target audience."
-                ),
+                "description": ("Pick the tone that matches the target audience."),
             },
             "scenes": {
                 "type": "array",
@@ -87,9 +84,7 @@ VIDEO_SCRIPT_TOOL = {
 }
 
 
-def _labels_for(
-    course: Course | None, type_: str, language: str
-) -> list[str]:
+def _labels_for(course: Course | None, type_: str, language: str) -> list[str]:
     """Extract taxonomy labels of a given type for a course."""
     if course is None or not course.taxonomy_categories:
         return []
@@ -597,33 +592,21 @@ class MediaSummaryService:
             await session.flush()
 
         cache = SettingsCache.instance()
-        feature_enabled = bool(
-            cache.get("video-summary-feature-enabled", False)
-        )
+        feature_enabled = bool(cache.get("video-summary-feature-enabled", False))
         if not feature_enabled:
             record.status = "failed"
             record.error_message = "video_summary feature is disabled"
             await session.commit()
             raise RuntimeError("video_summary feature is disabled")
 
-        avatar_id = (
-            cache.get("video-summary-default-avatar-id", "") or ""
-        ).strip()
-        voice_key = (
-            "video-summary-voice-id-fr"
-            if language == "fr"
-            else "video-summary-voice-id-en"
-        )
+        avatar_id = (cache.get("video-summary-default-avatar-id", "") or "").strip()
+        voice_key = "video-summary-voice-id-fr" if language == "fr" else "video-summary-voice-id-en"
         voice_id = (cache.get(voice_key, "") or "").strip()
         if not avatar_id or not voice_id:
             record.status = "failed"
-            record.error_message = (
-                "HeyGen avatar_id or voice_id not configured"
-            )
+            record.error_message = "HeyGen avatar_id or voice_id not configured"
             await session.commit()
-            raise RuntimeError(
-                "HeyGen avatar_id or voice_id not configured"
-            )
+            raise RuntimeError("HeyGen avatar_id or voice_id not configured")
 
         max_chars = int(cache.get("video-summary-max-chars", 2000))
 
@@ -637,9 +620,7 @@ class MediaSummaryService:
 
             unit_titles = await self._fetch_unit_titles(module_id, session)
 
-            module_title = (
-                module.title_fr if language == "fr" else module.title_en
-            )
+            module_title = module.title_fr if language == "fr" else module.title_en
             query = f"{module_title} {' '.join(unit_titles[:5])}"
             rag_chunks = await self._fetch_rag_chunks(
                 query=query,
@@ -652,18 +633,13 @@ class MediaSummaryService:
             course = module.course
             course_title = None
             if course is not None:
-                course_title = (
-                    course.title_fr
-                    if language == "fr"
-                    else course.title_en
-                )
+                course_title = course.title_fr if language == "fr" else course.title_en
             domain_labels = _labels_for(course, "domain", language)
             audience_labels = _labels_for(course, "audience", language)
             level_labels = _labels_for(course, "level", language)
 
             script, script_metadata = await self._generate_video_script(
-                module_title=module_title
-                or f"Module {module.module_number}",
+                module_title=module_title or f"Module {module.module_number}",
                 language=language,
                 level=module.level,
                 unit_titles=unit_titles,
@@ -766,9 +742,7 @@ class MediaSummaryService:
     def _heygen_callback_url(self) -> str:
         base = (settings.heygen_callback_base_url or "").rstrip("/")
         if not base:
-            raise RuntimeError(
-                "HEYGEN_CALLBACK_BASE_URL is not configured"
-            )
+            raise RuntimeError("HEYGEN_CALLBACK_BASE_URL is not configured")
         return f"{base}/api/v1/webhooks/heygen"
 
     async def _generate_video_script(
@@ -801,11 +775,7 @@ class MediaSummaryService:
             course_title=course_title,
             max_chars=max_chars,
         )
-        unit_list = (
-            "\n".join(f"- {t}" for t in unit_titles)
-            if unit_titles
-            else "- (no units)"
-        )
+        unit_list = "\n".join(f"- {t}" for t in unit_titles) if unit_titles else "- (no units)"
         rag_context = _format_rag_context(rag_chunks)
         user_message = VIDEO_SUMMARY_USER_TEMPLATE.format(
             module_title=module_title,
@@ -836,8 +806,7 @@ class MediaSummaryService:
 
         if len(script) > max_chars:
             logger.warning(
-                "Video script still over cap after re-prompt — "
-                "truncating at sentence boundary",
+                "Video script still over cap after re-prompt — truncating at sentence boundary",
                 original_chars=len(script),
                 cap=max_chars,
             )
@@ -889,14 +858,10 @@ class MediaSummaryService:
                     "scenes": scenes,
                 }
                 if not script:
-                    raise ValueError(
-                        "Claude returned empty video script"
-                    )
+                    raise ValueError("Claude returned empty video script")
                 return script, metadata
 
-        raise ValueError(
-            "Claude did not invoke the save_video_script tool"
-        )
+        raise ValueError("Claude did not invoke the save_video_script tool")
 
 
 def _truncate_at_sentence(text: str, max_chars: int) -> str:

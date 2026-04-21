@@ -94,9 +94,7 @@ async def heygen_webhook(
         return {"status": "ignored", "reason": "missing video_id"}
 
     result = await db.execute(
-        select(ModuleMedia).where(
-            ModuleMedia.provider_video_id == str(video_id)
-        )
+        select(ModuleMedia).where(ModuleMedia.provider_video_id == str(video_id))
     )
     record = result.scalar_one_or_none()
     if record is None:
@@ -118,11 +116,7 @@ async def heygen_webhook(
 
     if event_type and "fail" in event_type.lower():
         record.status = "failed"
-        record.error_message = (
-            data.get("error")
-            or data.get("message")
-            or "heygen reported failure"
-        )
+        record.error_message = data.get("error") or data.get("message") or "heygen reported failure"
         await db.commit()
         logger.warning(
             "heygen.webhook.failed",
@@ -137,10 +131,7 @@ async def heygen_webhook(
     # accept ``video_url`` defensively in case the field is renamed
     # or the payload was produced by a future event shape.
     video_url = (
-        data.get("url")
-        or data.get("video_url")
-        or payload.get("url")
-        or payload.get("video_url")
+        data.get("url") or data.get("video_url") or payload.get("url") or payload.get("video_url")
     )
     if not video_url:
         try:
@@ -199,9 +190,7 @@ async def heygen_webhook(
         # object in MinIO. Fail loudly so follow-up can add ffmpeg
         # normalisation if this ever trips.
         record.status = "failed"
-        record.error_message = (
-            "downloaded bytes are not a recognisable MP4 container"
-        )
+        record.error_message = "downloaded bytes are not a recognisable MP4 container"
         await db.commit()
         logger.error(
             "heygen.webhook.unsupported_container",
@@ -215,9 +204,7 @@ async def heygen_webhook(
             "reason": "unsupported container",
         }
 
-    storage_key = (
-        f"video/{record.module_id}/{record.language}/summary.mp4"
-    )
+    storage_key = f"video/{record.module_id}/{record.language}/summary.mp4"
     try:
         storage = S3StorageService()
         storage_url = await storage.upload_bytes(

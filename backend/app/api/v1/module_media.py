@@ -133,22 +133,15 @@ async def generate_module_media(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="video_summary feature is disabled",
             )
-        avatar_id = (
-            _cache.get("video-summary-default-avatar-id", "") or ""
-        )
+        avatar_id = _cache.get("video-summary-default-avatar-id", "") or ""
         voice_key = (
-            "video-summary-voice-id-fr"
-            if request.language == "fr"
-            else "video-summary-voice-id-en"
+            "video-summary-voice-id-fr" if request.language == "fr" else "video-summary-voice-id-en"
         )
         voice_id = _cache.get(voice_key, "") or ""
         if not avatar_id.strip() or not voice_id.strip():
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=(
-                    "video_summary is enabled but HeyGen avatar/voice "
-                    "IDs are not configured"
-                ),
+                detail=("video_summary is enabled but HeyGen avatar/voice IDs are not configured"),
             )
 
     # Check for existing ready or in-progress media

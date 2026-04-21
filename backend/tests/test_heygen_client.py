@@ -31,9 +31,7 @@ def _settings(secret: str = "wh-secret", api_key: str = "ak"):
 
 
 def _sig(secret: str, body: bytes) -> str:
-    return hmac.new(
-        secret.encode("utf-8"), body, hashlib.sha256
-    ).hexdigest()
+    return hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
 
 
 def test_verify_signature_accepts_valid_hex():
@@ -59,20 +57,14 @@ def test_verify_signature_rejects_wrong_secret():
     client = HeyGenClient(settings=_settings(secret="right"))
     body = b"payload"
     wrong = _sig("wrong", body)
-    assert not client.verify_webhook_signature(
-        signature=wrong, raw_body=body
-    )
+    assert not client.verify_webhook_signature(signature=wrong, raw_body=body)
 
 
 def test_verify_signature_rejects_empty_secret_or_header():
     client = HeyGenClient(settings=_settings(secret=""))
-    assert not client.verify_webhook_signature(
-        signature="anything", raw_body=b"x"
-    )
+    assert not client.verify_webhook_signature(signature="anything", raw_body=b"x")
     client2 = HeyGenClient(settings=_settings(secret="s"))
-    assert not client2.verify_webhook_signature(
-        signature="", raw_body=b"x"
-    )
+    assert not client2.verify_webhook_signature(signature="", raw_body=b"x")
 
 
 def test_verify_signature_resists_tampered_body():
@@ -80,9 +72,7 @@ def test_verify_signature_resists_tampered_body():
     body = b'{"event":"avatar_video.success","video_id":"abc"}'
     sig = _sig("wh-secret", body)
     tampered = body.replace(b"abc", b"xyz")
-    assert not client.verify_webhook_signature(
-        signature=sig, raw_body=tampered
-    )
+    assert not client.verify_webhook_signature(signature=sig, raw_body=tampered)
 
 
 class _FakeHttp:
@@ -140,9 +130,7 @@ async def test_create_video_auth_error_surfaces():
 
 @pytest.mark.asyncio
 async def test_create_video_retries_on_5xx_then_succeeds(monkeypatch):
-    success = _make_response(
-        200, {"data": {"video_id": "vid-ok"}}
-    )
+    success = _make_response(200, {"data": {"video_id": "vid-ok"}})
     failing = _make_response(503, {"message": "upstream"})
 
     http = MagicMock()
@@ -172,9 +160,7 @@ async def test_create_video_retries_on_5xx_then_succeeds(monkeypatch):
 @pytest.mark.asyncio
 async def test_create_video_gives_up_after_max_attempts(monkeypatch):
     http = MagicMock()
-    http.request = AsyncMock(
-        return_value=_make_response(500, {"message": "boom"})
-    )
+    http.request = AsyncMock(return_value=_make_response(500, {"message": "boom"}))
     http.aclose = AsyncMock()
 
     async def _sleep(_s):

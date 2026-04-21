@@ -125,9 +125,7 @@ class HeyGenClient:
             "Content-Type": "application/json",
         }
 
-    async def _request(
-        self, method: str, path: str, **kwargs: object
-    ) -> httpx.Response:
+    async def _request(self, method: str, path: str, **kwargs: object) -> httpx.Response:
         if self._client is None:
             self._client = httpx.AsyncClient(timeout=30.0)
             self._owns_client = True
@@ -136,18 +134,14 @@ class HeyGenClient:
         )
         if response.status_code in (401, 403):
             raise HeyGenAuthError(
-                f"HeyGen auth failed ({response.status_code}): "
-                f"{response.text[:200]}"
+                f"HeyGen auth failed ({response.status_code}): {response.text[:200]}"
             )
         if 400 <= response.status_code < 500:
             raise HeyGenBadRequestError(
-                f"HeyGen rejected request ({response.status_code}): "
-                f"{response.text[:200]}"
+                f"HeyGen rejected request ({response.status_code}): {response.text[:200]}"
             )
         if response.status_code >= 500:
-            raise HeyGenTransientError(
-                f"HeyGen server error ({response.status_code})"
-            )
+            raise HeyGenTransientError(f"HeyGen server error ({response.status_code})")
         return response
 
     async def create_video(
@@ -193,9 +187,7 @@ class HeyGenClient:
         inner = data.get("data") or {}
         video_id = inner.get("video_id") or data.get("video_id")
         if not video_id:
-            raise HeyGenError(
-                f"HeyGen create returned no video_id: {data!r}"
-            )
+            raise HeyGenError(f"HeyGen create returned no video_id: {data!r}")
 
         logger.info(
             "heygen.create_video.dispatched",
@@ -235,9 +227,7 @@ class HeyGenClient:
             error=inner.get("error") or inner.get("message"),
         )
 
-    def verify_webhook_signature(
-        self, *, signature: str, raw_body: bytes
-    ) -> bool:
+    def verify_webhook_signature(self, *, signature: str, raw_body: bytes) -> bool:
         """Return True when the header's HMAC-SHA256 matches our secret.
 
         HeyGen signs the raw request body with the shared secret the
@@ -257,5 +247,5 @@ class HeyGenClient:
         # Some dashboards prefix the signature with "sha256=".
         candidate = signature.strip()
         if candidate.startswith("sha256="):
-            candidate = candidate[len("sha256="):]
+            candidate = candidate[len("sha256=") :]
         return hmac.compare_digest(expected, candidate)
