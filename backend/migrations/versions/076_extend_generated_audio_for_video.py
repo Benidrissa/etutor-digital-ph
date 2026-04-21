@@ -99,6 +99,33 @@ def upgrade() -> None:
         END $$;
         """
     )
+    # De-dupe before adding the 4-tuple unique constraint.
+    # Staging has rows with the same (module_id, unit_id, media_type,
+    # language) — the pre-existing 3-tuple constraint was dropped (or
+    # never enforced) at some point and duplicates accumulated. Keep
+    # the "best" row per group (prefer status='ready', then most
+    # recent created_at) and drop the rest so the ADD CONSTRAINT
+    # below can succeed. This is safe because the deleted rows are
+    # provably inferior duplicates; callers treat
+    # ``(module_id, unit_id, language)`` as the natural key anyway.
+    op.execute(
+        """
+        DELETE FROM generated_audio
+        WHERE id IN (
+            SELECT id FROM (
+                SELECT id,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY module_id, unit_id, media_type, language
+                           ORDER BY
+                               CASE WHEN status = 'ready' THEN 0 ELSE 1 END,
+                               created_at DESC
+                       ) AS rn
+                FROM generated_audio
+            ) ranked
+            WHERE ranked.rn > 1
+        )
+        """
+    )
     op.create_unique_constraint(
         "uq_generated_audio_module_unit_mediatype_lang",
         "generated_audio",
