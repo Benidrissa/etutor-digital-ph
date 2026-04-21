@@ -183,21 +183,21 @@ async def test_create_video_gives_up_after_max_attempts(monkeypatch):
 
 
 def test_is_web_ready_mp4_accepts_ftyp_header():
-    from app.api.v1.webhooks import _is_web_ready_mp4
+    from app.domain.services.media_summary_service import is_web_ready_mp4
 
     # Minimal ISO-BMFF: size(4) + "ftyp"(4) + brand(4) padding
     mp4_head = b"\x00\x00\x00\x18" + b"ftyp" + b"isom" + b"\x00" * 4
-    assert _is_web_ready_mp4(mp4_head + b"rest-of-file")
+    assert is_web_ready_mp4(mp4_head + b"rest-of-file")
 
 
 def test_is_web_ready_mp4_rejects_webm_and_junk():
-    from app.api.v1.webhooks import _is_web_ready_mp4
+    from app.domain.services.media_summary_service import is_web_ready_mp4
 
     # WebM / Matroska starts with 0x1A 0x45 0xDF 0xA3 — no ftyp box.
     webm_head = b"\x1a\x45\xdf\xa3" + b"\x00" * 20
-    assert not _is_web_ready_mp4(webm_head)
-    assert not _is_web_ready_mp4(b"")
-    assert not _is_web_ready_mp4(b"not a video")
+    assert not is_web_ready_mp4(webm_head)
+    assert not is_web_ready_mp4(b"")
+    assert not is_web_ready_mp4(b"not a video")
 
 
 @pytest.mark.asyncio
