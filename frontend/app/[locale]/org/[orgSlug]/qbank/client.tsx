@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { ClipboardList, Loader2, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useOrg } from "@/components/org/org-context";
+import { OrgQBankForbidden } from "@/components/org/org-forbidden";
 import { useCurrentUser } from "@/lib/hooks/use-current-user";
 import { canEditBank, type OrgRole } from "@/lib/permissions";
 import { listQBankBanks, type QBankBank, type QBankStatus, type QBankType } from "@/lib/api";
@@ -68,6 +69,10 @@ export function QBankListClient() {
 
   if (!org) {
     return <p className="text-muted-foreground">Organization not found.</p>;
+  }
+
+  if (!isEditor) {
+    return <OrgQBankForbidden />;
   }
 
   const filtered = typeFilter === "all" ? banks : banks.filter((b) => b.bank_type === typeFilter);

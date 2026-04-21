@@ -7,6 +7,7 @@ import { ArrowLeft, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useOrg } from "@/components/org/org-context";
+import { OrgQBankForbidden } from "@/components/org/org-forbidden";
 import { useCurrentUser } from "@/lib/hooks/use-current-user";
 import { canEditBank, type OrgRole } from "@/lib/permissions";
 import { QBankPdfUpload } from "@/components/qbank/qbank-pdf-upload";
@@ -86,6 +87,7 @@ export function QBankDetailClient({ bankId }: Props) {
   }
   if (error) return <p className="text-sm text-red-700">{error}</p>;
   if (!bank || !org) return null;
+  if (!isEditor) return <OrgQBankForbidden />;
 
   const base = `/${locale}/org/${org.slug}/qbank`;
   const categories = Array.from(
@@ -134,25 +136,21 @@ export function QBankDetailClient({ bankId }: Props) {
             {t("questionCount", { count: total })} · {t("timePerQSuffix", { seconds: bank.time_per_question_sec })} · {bank.passing_score}% · {bank.language.toUpperCase()}
           </p>
         </div>
-        {isEditor && (
-          <Button onClick={togglePublished} disabled={publishing} variant="outline">
-            {publishing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {bank.status === "published" ? t("unpublish") : t("publish")}
-          </Button>
-        )}
+        <Button onClick={togglePublished} disabled={publishing} variant="outline">
+          {publishing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {bank.status === "published" ? t("unpublish") : t("publish")}
+        </Button>
       </header>
 
-      {isEditor && (
-        <section className="space-y-3 rounded-lg border bg-white p-4">
-          <h2 className="text-lg font-medium">{t("addMoreQuestions")}</h2>
-          <QBankPdfUpload
-            bankId={bankId}
-            onProcessed={(res) => {
-              if (res.status === "success") void loadQuestions(1);
-            }}
-          />
-        </section>
-      )}
+      <section className="space-y-3 rounded-lg border bg-white p-4">
+        <h2 className="text-lg font-medium">{t("addMoreQuestions")}</h2>
+        <QBankPdfUpload
+          bankId={bankId}
+          onProcessed={(res) => {
+            if (res.status === "success") void loadQuestions(1);
+          }}
+        />
+      </section>
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
