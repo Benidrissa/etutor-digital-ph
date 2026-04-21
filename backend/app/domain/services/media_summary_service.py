@@ -107,16 +107,52 @@ def _build_video_system_prompt(
     level_labels: list[str],
     course_title: str | None,
     max_chars: int,
+    is_kids: bool = False,
+    age_range: str = "",
 ) -> str:
-    """Build a taxonomy-aware system prompt for the video script.
+    """Build a taxonomy- and audience-aware video script prompt.
 
-    The prompt is built to be *structurally* audience- and
-    course-field-aware: ignoring ``domain`` or ``audience`` is named
-    as a failure mode so the model cannot silently default to a
-    generic script. See issue #1791.
+    Two templates: adult register and a kids variant that mirrors
+    the tone of the existing ``ai-prompt-lesson-kids-system``
+    platform setting — short playful sentences, stories, child-
+    relatable examples. Selection is driven by ``is_kids``, which
+    callers derive from ``detect_audience(course)``. See #1798.
     """
     lang_label = "French" if language == "fr" else "English"
     domain = ", ".join(domain_labels) or (course_title or "the subject area")
+
+    if is_kids:
+        age_hint = age_range or "6-12"
+        return (
+            f"You write 3-minute narrated video summaries for young "
+            f"learners aged {age_hint} in West Africa.\n\n"
+            f"Output language: {lang_label}.\n"
+            f"Course field / domain: {domain}.\n"
+            f"Target audience: children aged {age_hint}.\n\n"
+            f"HARD CONSTRAINTS — your script MUST:\n"
+            f"1. Use short, simple sentences children of {age_hint} "
+            f"can follow out loud.\n"
+            f"2. Open with a concrete, child-friendly hook — a "
+            f"question, a fun fact, a tiny story — grounded in the "
+            f"domain ({domain}).\n"
+            f"3. Prefer comparisons and stories from daily life in "
+            f"West Africa (family, village, school, market, nature) "
+            f"over abstract definitions.\n"
+            f"4. Replace jargon with plain language. If a technical "
+            f"term is unavoidable, define it in the same sentence "
+            f"using a familiar comparison.\n"
+            f"5. End with a warm, encouraging 'Let's remember' "
+            f"sentence and one simple 'Try this at home' idea.\n"
+            f"6. Keep the concatenated narration under {max_chars} "
+            f"characters — this is a hard cap, not a target.\n"
+            f"7. Cover 3–6 scenes of self-contained spoken prose. "
+            f"No markdown, no bullet points, no headers, no stage "
+            f"directions, no source citations inside the narration.\n\n"
+            f"Call the `save_video_script` tool exactly once. The "
+            f"`voice_tone` should be `warm-educator` for this "
+            f"audience."
+        )
+
     audience = ", ".join(audience_labels) or "learners"
     level = ", ".join(level_labels) or "the assigned course level"
 
@@ -600,14 +636,16 @@ class MediaSummaryService:
             await session.commit()
             raise RuntimeError("video_summary feature is disabled")
 
+        # Avatar/voice are OPTIONAL (issue #1798). When both are seeded
+        # we use Direct Video (v2/video/generate) for predictable
+        # output. When either is missing we fall back to the Video
+        # Agent (v3/video-agents) which auto-picks avatar/voice from
+        # the narration — roughly 2x credits/min but zero-config for
+        # fresh tenants.
         avatar_id = (cache.get("video-summary-default-avatar-id", "") or "").strip()
         voice_key = "video-summary-voice-id-fr" if language == "fr" else "video-summary-voice-id-en"
         voice_id = (cache.get(voice_key, "") or "").strip()
-        if not avatar_id or not voice_id:
-            record.status = "failed"
-            record.error_message = "HeyGen avatar_id or voice_id not configured"
-            await session.commit()
-            raise RuntimeError("HeyGen avatar_id or voice_id not configured")
+        use_agent_mode = not (avatar_id and voice_id)
 
         max_chars = int(cache.get("video-summary-max-chars", 2000))
 
@@ -638,6 +676,10 @@ class MediaSummaryService:
             domain_labels = _labels_for(course, "domain", language)
             audience_labels = _labels_for(course, "audience", language)
             level_labels = _labels_for(course, "level", language)
+            audience_ctx = detect_audience(course)
+            age_range = (
+                f"{audience_ctx.age_min}-{audience_ctx.age_max}" if audience_ctx.is_kids else ""
+            )
 
             script, script_metadata = await self._generate_video_script(
                 module_title=module_title or f"Module {module.module_number}",
@@ -650,30 +692,44 @@ class MediaSummaryService:
                 audience_labels=audience_labels,
                 level_labels=level_labels,
                 max_chars=max_chars,
+                is_kids=audience_ctx.is_kids,
+                age_range=age_range,
             )
 
-            # callback_url is optional: when empty (the common
-            # multi-tenant case), the Celery-beat poller drives the
-            # generating→ready transition instead of relying on
-            # HeyGen push. See issue #1796.
+            # callback_url is optional (#1796): when empty the Celery
+            # poller drives the generating→ready transition.
             callback_url = self._heygen_callback_url()
             client = heygen_client or HeyGenClient()
             owns_client = heygen_client is None
             try:
-                result = await client.create_video(
-                    script=script,
-                    avatar_id=avatar_id,
-                    voice_id=voice_id,
-                    callback_url=callback_url,
-                    language=language,
-                )
+                if use_agent_mode:
+                    result = await client.create_video_agent(
+                        prompt=script,
+                        language=language,
+                        callback_url=callback_url,
+                    )
+                    api_version = "v3-agent"
+                else:
+                    result = await client.create_video(
+                        script=script,
+                        avatar_id=avatar_id,
+                        voice_id=voice_id,
+                        callback_url=callback_url,
+                        language=language,
+                    )
+                    api_version = "v2"
             finally:
                 if owns_client and client._client is not None:
                     await client._client.aclose()
 
             record.provider_video_id = result.provider_video_id
             record.script_text = script
-            record.media_metadata = script_metadata
+            # Persist the API version so the poller knows which status
+            # endpoint to hit for this row.
+            enriched_metadata = dict(script_metadata)
+            enriched_metadata["api_version"] = api_version
+            enriched_metadata["is_kids"] = audience_ctx.is_kids
+            record.media_metadata = enriched_metadata
             await session.commit()
 
             logger.info(
@@ -770,6 +826,8 @@ class MediaSummaryService:
         audience_labels: list[str],
         level_labels: list[str],
         max_chars: int,
+        is_kids: bool = False,
+        age_range: str = "",
     ) -> tuple[str, dict]:
         """Generate a HeyGen-ready narration script via Claude tool-use.
 
@@ -777,7 +835,8 @@ class MediaSummaryService:
         concatenated narration (≤ ``max_chars``) and ``metadata``
         captures the structured scene/tone information for later QA.
         Re-prompts once on overshoot, then truncates at a sentence
-        boundary as a last resort.
+        boundary as a last resort. ``is_kids`` + ``age_range`` route
+        to the kids-register system prompt (see #1798).
         """
         system_prompt = _build_video_system_prompt(
             language=language,
@@ -786,6 +845,8 @@ class MediaSummaryService:
             level_labels=level_labels,
             course_title=course_title,
             max_chars=max_chars,
+            is_kids=is_kids,
+            age_range=age_range,
         )
         unit_list = "\n".join(f"- {t}" for t in unit_titles) if unit_titles else "- (no units)"
         rag_context = _format_rag_context(rag_chunks)
