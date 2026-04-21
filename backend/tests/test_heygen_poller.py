@@ -2,7 +2,7 @@
 
 Covers the three terminal outcomes of ``_reconcile_one`` (ready,
 failed, timed_out), the "still generating" no-op path, and the
-shared ``finalize_video_summary`` helper that the webhook also
+shared ``finalize_lesson_video`` helper that the webhook also
 delegates to. DB interactions are stubbed with an in-memory session
 fake so we don't need a real Postgres.
 """
@@ -16,9 +16,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.domain.models.module_media import ModuleMedia
-from app.domain.services.media_summary_service import (
-    finalize_video_summary,
+from app.domain.models.generated_audio import GeneratedAudio
+from app.domain.services.lesson_video_service import (
+    finalize_lesson_video,
     is_web_ready_mp4,
 )
 from app.infrastructure.video import VideoStatus
@@ -72,12 +72,12 @@ def _make_record(
     status: str = "generating",
     provider_video_id: str = "vid-abc",
     created_at: datetime | None = None,
-) -> ModuleMedia:
-    """Build an in-memory ModuleMedia without touching the DB."""
-    record = ModuleMedia(
+) -> GeneratedAudio:
+    """Build an in-memory GeneratedAudio without touching the DB."""
+    record = GeneratedAudio(
         id=uuid.uuid4(),
         module_id=uuid.uuid4(),
-        media_type="video_summary",
+        media_type="video",
         language="en",
         status=status,
     )
@@ -103,7 +103,7 @@ def test_is_web_ready_mp4_rejects_non_mp4():
     assert not is_web_ready_mp4(b"\x1a\x45\xdf\xa3webm" + b"\x00" * 20)
 
 
-# ── finalize_video_summary ──────────────────────────────────────────
+# ── finalize_lesson_video ──────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -113,7 +113,7 @@ async def test_finalize_happy_path_sets_ready():
     storage = _FakeStorage()
     http = _FakeHttpClient(_FakeHttpResponse(_mp4_bytes(256)))
 
-    outcome = await finalize_video_summary(
+    outcome = await finalize_lesson_video(
         record,
         video_url="https://heygen.test/vid.mp4",
         session=session,  # type: ignore[arg-type]
@@ -139,7 +139,7 @@ async def test_finalize_rejects_non_mp4_container():
     session = _FakeSession()
     http = _FakeHttpClient(_FakeHttpResponse(b"not an mp4 file at all"))
 
-    outcome = await finalize_video_summary(
+    outcome = await finalize_lesson_video(
         record,
         video_url="https://heygen.test/vid.mp4",
         session=session,  # type: ignore[arg-type]
@@ -157,7 +157,7 @@ async def test_finalize_surfaces_download_error():
     session = _FakeSession()
     http = _FakeHttpClient(_FakeHttpResponse(b"", status_code=500))
 
-    outcome = await finalize_video_summary(
+    outcome = await finalize_lesson_video(
         record,
         video_url="https://heygen.test/vid.mp4",
         session=session,  # type: ignore[arg-type]
@@ -196,7 +196,7 @@ async def test_reconcile_completed_calls_finalize_and_returns_ready(
         return "ready"
 
     monkeypatch.setattr(
-        "app.tasks.heygen_poll.finalize_video_summary",
+        "app.tasks.heygen_poll.finalize_lesson_video",
         _fake_finalize,
     )
 

@@ -737,22 +737,13 @@
     "viewFullscreen": "Voir l'image en plein écran",
     "closeFullscreen": "Fermer le plein écran"
   },
-  "ModuleMediaPlayer": {
-    "listenToSummary": "Écouter le résumé",
-    "watchSummary": "Regarder le résumé",
-    "downloadMedia": "Télécharger",
-    "generateAudio": "Générer l'audio",
-    "generateVideo": "Générer la vidéo",
-    "mediaGenerating": "Génération en cours...",
-    "mediaReady": "Disponible",
-    "mediaNotAvailable": "Pas encore disponible",
-    "generating": "Génération en cours...",
-    "errorGenerating": "Échec de la génération. Veuillez réessayer.",
-    "errorLoading": "Erreur lors du chargement du média.",
-    "retry": "Réessayer",
-    "play": "Lire",
-    "pause": "Pause",
-    "duration": "{minutes}:{seconds}"
+  "LessonVideo": {
+    "watchSummary": "Regarder le résumé vidéo",
+    "generate": "Générer la vidéo",
+    "generating": "Génération en cours… (prête en 10–15 minutes en général)",
+    "notAvailable": "Pas encore de vidéo — cliquez sur Générer pour la créer.",
+    "generateError": "La génération vidéo a échoué. Veuillez réessayer.",
+    "featureDisabled": "Les résumés vidéo sont désactivés pour ce tenant."
   },
   "CaseStudyViewer": {
     "error": "Une erreur est survenue",
@@ -1684,16 +1675,6 @@
       "generating": "Audio en cours de génération",
       "ready": "Audio prêt",
       "failed": "Échec de la génération audio"
-    },
-    "generateVideo": "Générer le résumé vidéo",
-    "videoGenerateSuccess": "Génération vidéo démarrée (prête en 10–15 minutes en général)",
-    "videoGenerateError": "Échec du démarrage de la génération vidéo",
-    "videoAlreadyExists": "Une vidéo existe déjà pour ce module",
-    "videoStatus": {
-      "pending": "Vidéo en attente",
-      "generating": "Vidéo en cours de génération",
-      "ready": "Vidéo prête",
-      "failed": "Échec de la génération vidéo"
     }
   },
   "AuthGuard": {

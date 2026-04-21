@@ -16,7 +16,6 @@ from app.domain.models.generated_image import GeneratedImage
 from app.domain.models.learner_memory import LearnerMemory
 from app.domain.models.lesson_reading import LessonReading
 from app.domain.models.module import Module
-from app.domain.models.module_media import MediaStatus, MediaType, ModuleMedia
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.organization import Organization, OrganizationMember, OrgMemberRole
 from app.domain.models.preassessment import CoursePreAssessment
@@ -76,10 +75,7 @@ __all__ = [
     "TutorConversation",
     "FlashcardReview",
     "MagicLink",
-    "MediaStatus",
-    "MediaType",
     "Module",
-    "ModuleMedia",
     "ModuleUnit",
     "OrgMemberRole",
     "Organization",

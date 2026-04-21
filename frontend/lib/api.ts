@@ -730,58 +730,79 @@ export interface LessonResponse {
   source_image_refs?: SourceImageMeta[];
 }
 
-// ── Module Media API ──────────────────────────────────────────
+// ── Lesson Video API (#1802) ─────────────────────────────────
+// Per-lesson HeyGen video summaries, scoped the same way lesson
+// audio is (``module_id + unit_id + language``). Admin or learner
+// can trigger generation; the poller finalises the row when HeyGen
+// finishes rendering (~10 min P50).
 
-export type MediaType = "audio" | "video";
-export type MediaStatus = "pending" | "generating" | "ready" | "failed";
+export type LessonVideoStatus = "pending" | "generating" | "ready" | "failed";
 
-export interface ModuleMediaResponse {
-  id: string;
-  module_id: string;
-  media_type: MediaType;
-  language: string;
-  status: MediaStatus;
+export interface LessonVideoResponse {
+  lesson_id: string;
+  video_id?: string;
+  status: LessonVideoStatus;
   url?: string;
   duration_seconds?: number;
-  file_size_bytes?: number;
-  generated_at?: string;
 }
 
-export interface GenerateModuleMediaRequest {
-  media_type: MediaType;
-  language: string;
+interface _ApiLessonVideo {
+  video_id: string;
+  lesson_id: string;
+  status: LessonVideoStatus;
+  video_url: string | null;
+  duration_seconds: number | null;
+  file_size_bytes: number | null;
 }
 
-export async function getModuleMedia(
-  moduleId: string,
-): Promise<ModuleMediaResponse[]> {
-  return apiFetch<ModuleMediaResponse[]>(`/api/v1/modules/${moduleId}/media`);
+interface _ApiLessonVideoListResponse {
+  lesson_id: string;
+  video: _ApiLessonVideo[];
+  total: number;
 }
 
-export async function generateModuleMedia(
-  moduleId: string,
-  mediaType: MediaType,
-  language: string,
-): Promise<ModuleMediaResponse> {
-  return apiFetch<ModuleMediaResponse>(
-    `/api/v1/modules/${moduleId}/media/generate`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        media_type: mediaType,
-        language,
-      } satisfies GenerateModuleMediaRequest),
-    },
+interface _ApiGenerateLessonVideoResponse {
+  video_id: string;
+  status: LessonVideoStatus;
+  message: string;
+}
+
+export async function getLessonVideoStatus(
+  lessonId: string,
+): Promise<LessonVideoResponse> {
+  try {
+    const data = await apiFetch<_ApiLessonVideoListResponse>(
+      `/api/v1/video/lesson/${lessonId}`,
+    );
+    const first = data.video[0];
+    if (!first) {
+      return { lesson_id: lessonId, status: "pending" };
+    }
+    return {
+      lesson_id: first.lesson_id,
+      video_id: first.video_id,
+      status: first.status,
+      url: first.video_url ?? undefined,
+      duration_seconds: first.duration_seconds ?? undefined,
+    };
+  } catch (err: unknown) {
+    // 404 means "no video yet" — same semantics as audio; surface
+    // as ``pending`` so the UI can show a generate button.
+    const status = (err as { status?: number })?.status;
+    if (status === 404) {
+      return { lesson_id: lessonId, status: "pending" };
+    }
+    throw err;
+  }
+}
+
+export async function generateLessonVideo(
+  lessonId: string,
+): Promise<_ApiGenerateLessonVideoResponse> {
+  return apiFetch<_ApiGenerateLessonVideoResponse>(
+    `/api/v1/video/lesson/${lessonId}/generate`,
+    { method: "POST" },
   );
-}
-
-export async function deleteModuleMedia(
-  moduleId: string,
-  mediaId: string,
-): Promise<void> {
-  await apiFetch<void>(`/api/v1/modules/${moduleId}/media/${mediaId}`, {
-    method: "DELETE",
-  });
 }
 
 // ── Platform Settings ─────────────────────────────────────────

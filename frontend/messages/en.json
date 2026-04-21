@@ -737,22 +737,13 @@
     "viewFullscreen": "View image fullscreen",
     "closeFullscreen": "Close fullscreen"
   },
-  "ModuleMediaPlayer": {
-    "listenToSummary": "Listen to summary",
-    "watchSummary": "Watch summary",
-    "downloadMedia": "Download",
-    "generateAudio": "Generate audio",
-    "generateVideo": "Generate video",
-    "mediaGenerating": "Generating...",
-    "mediaReady": "Available",
-    "mediaNotAvailable": "Not yet available",
-    "generating": "Generation in progress...",
-    "errorGenerating": "Generation failed. Please try again.",
-    "errorLoading": "Error loading media.",
-    "retry": "Retry",
-    "play": "Play",
-    "pause": "Pause",
-    "duration": "{minutes}:{seconds}"
+  "LessonVideo": {
+    "watchSummary": "Watch video summary",
+    "generate": "Generate video",
+    "generating": "Generating video… (usually ready in 10–15 minutes)",
+    "notAvailable": "No video yet — click Generate to create one.",
+    "generateError": "Video generation failed. Please try again.",
+    "featureDisabled": "Video summaries are disabled for this tenant."
   },
   "CaseStudyViewer": {
     "error": "An error occurred",
@@ -1684,16 +1675,6 @@
       "generating": "Audio generating",
       "ready": "Audio ready",
       "failed": "Audio generation failed"
-    },
-    "generateVideo": "Generate video summary",
-    "videoGenerateSuccess": "Video generation started (usually ready in 10–15 minutes)",
-    "videoGenerateError": "Failed to start video generation",
-    "videoAlreadyExists": "Video already exists for this module",
-    "videoStatus": {
-      "pending": "Video pending",
-      "generating": "Video generating",
-      "ready": "Video ready",
-      "failed": "Video generation failed"
     }
   },
   "AuthGuard": {
