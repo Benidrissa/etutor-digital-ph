@@ -883,7 +883,10 @@ class LessonGenerationService:
             )
 
         try:
-            # Audio is shared per (module, unit, language) — skip if one already exists
+            # Audio is shared per (module, unit, language) — skip if one
+            # already exists. Filter by media_type='audio' so a sibling
+            # video row (same table since #1802) does not masquerade as
+            # audio and block dispatch. See issue #1802 regression notes.
             from app.domain.models.generated_audio import GeneratedAudio
 
             existing_audio = await session.execute(
@@ -892,6 +895,7 @@ class LessonGenerationService:
                     GeneratedAudio.module_id == cached_content.module_id,
                     GeneratedAudio.unit_id == lesson_response.unit_id,
                     GeneratedAudio.language == lesson_response.language,
+                    GeneratedAudio.media_type == "audio",
                 )
                 .limit(1)
             )

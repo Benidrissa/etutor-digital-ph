@@ -44,7 +44,10 @@ async def main(course_slug: str | None, dry_run: bool):
         # Build query: all "ready" audio, optionally filtered by course
         query = (
             select(GeneratedAudio)
-            .where(GeneratedAudio.status == "ready")
+            .where(
+                GeneratedAudio.status == "ready",
+                GeneratedAudio.media_type == "audio",
+            )
             .options(selectinload(GeneratedAudio.module))
         )
 

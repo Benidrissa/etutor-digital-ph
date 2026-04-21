@@ -81,12 +81,15 @@ async def get_lesson_audio(
             detail={"error": "lesson_not_found", "message": f"Lesson {lesson_id} not found"},
         )
 
-    # Query audio by (module_id, unit_id, language) — shared across all countries
+    # Query audio by (module_id, unit_id, language) — shared across all countries.
+    # Filter by media_type='audio' so video rows (same table since #1802)
+    # never leak into the audio UI response.
     result = await db.execute(
         select(GeneratedAudio).where(
             GeneratedAudio.module_id == lesson_meta.module_id,
             GeneratedAudio.unit_id == lesson_meta.unit_id,
             GeneratedAudio.language == lesson_meta.language,
+            GeneratedAudio.media_type == "audio",
         )
     )
     db_audio = result.scalars().all()
