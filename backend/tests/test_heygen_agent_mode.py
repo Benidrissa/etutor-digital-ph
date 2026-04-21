@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
-from app.domain.models.module_media import ModuleMedia
+from app.domain.models.generated_audio import GeneratedAudio
 from app.infrastructure.video import VideoStatus
 from app.infrastructure.video.heygen_client import (
     HeyGenBadRequestError,
@@ -63,11 +63,11 @@ def _make_record(
     *,
     api_version: str | None = None,
     provider_video_id: str = "vid-abc",
-) -> ModuleMedia:
-    record = ModuleMedia(
+) -> GeneratedAudio:
+    record = GeneratedAudio(
         id=uuid.uuid4(),
         module_id=uuid.uuid4(),
-        media_type="video_summary",
+        media_type="video",
         language="en",
         status="generating",
     )
@@ -250,7 +250,7 @@ async def test_reconcile_v3_row_uses_v3_api_version(monkeypatch):
         return "ready"
 
     monkeypatch.setattr(
-        "app.tasks.heygen_poll.finalize_video_summary",
+        "app.tasks.heygen_poll.finalize_lesson_video",
         _fake_finalize,
     )
 

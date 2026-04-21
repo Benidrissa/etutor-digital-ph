@@ -1,19 +1,18 @@
 """Celery-beat poller for HeyGen video-summary completion.
 
-Replaces the webhook-only flow (#1791) with polling (#1796). Every
-``HEYGEN_POLL_INTERVAL_SECONDS`` the task queries ``ModuleMedia``
-rows still in ``generating`` with a ``provider_video_id``, asks
-HeyGen for their terminal status, and either calls the shared
-``finalize_video_summary`` helper (on ``completed``) or flips the
-row to ``failed`` (on ``failed`` / >2h timeout). This removes the
-multi-tenant coupling that ``HEYGEN_CALLBACK_BASE_URL`` would
-require if every tenant had to register its own webhook URL.
+Walks the ``generated_audio`` table (the polymorphic per-lesson
+media cache) for rows with ``media_type='video'``,
+``status='generating'``, and a ``provider_video_id``. Asks HeyGen
+for the terminal status and either delegates to
+``finalize_lesson_video`` (on ``completed``) or flips the row to
+``failed`` (on HeyGen failure or the 2 h timeout guard).
 
-The webhook endpoint still exists as a dead code path: if a future
-single-tenant deployment wants event-driven completion, the
-operator can populate ``HEYGEN_CALLBACK_BASE_URL`` +
-``HEYGEN_WEBHOOK_SECRET`` and the existing handler takes over
-without any code changes.
+Scope history: #1791 shipped webhook-only completion, #1796
+switched to polling to avoid per-tenant ingress coupling, #1802
+rescoped from per-module (``module_media``) to per-lesson
+(``generated_audio``). The table rename is cosmetic-only work left
+for a follow-up; for now the poller addresses the legacy table by
+its current name.
 """
 
 from __future__ import annotations
@@ -29,8 +28,8 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.domain.models.module_media import ModuleMedia
-from app.domain.services.media_summary_service import finalize_video_summary
+from app.domain.models.generated_audio import GeneratedAudio
+from app.domain.services.lesson_video_service import finalize_lesson_video
 from app.infrastructure.config.settings import settings
 from app.infrastructure.video.heygen_client import (
     HeyGenAuthError,
@@ -80,13 +79,13 @@ def poll_pending_heygen_videos(self) -> dict:
         try:
             async with session_factory() as session:
                 result = await session.execute(
-                    select(ModuleMedia).where(
-                        ModuleMedia.media_type == "video_summary",
-                        ModuleMedia.status == "generating",
-                        ModuleMedia.provider_video_id.is_not(None),
+                    select(GeneratedAudio).where(
+                        GeneratedAudio.media_type == "video",
+                        GeneratedAudio.status == "generating",
+                        GeneratedAudio.provider_video_id.is_not(None),
                     )
                 )
-                rows: list[ModuleMedia] = list(result.scalars().all())
+                rows: list[GeneratedAudio] = list(result.scalars().all())
 
                 if not rows:
                     return summary
@@ -130,7 +129,7 @@ def poll_pending_heygen_videos(self) -> dict:
 
 async def _reconcile_one(
     *,
-    record: ModuleMedia,
+    record: GeneratedAudio,
     client: HeyGenClient,
     session: AsyncSession,
 ) -> str:
@@ -161,7 +160,7 @@ async def _reconcile_one(
             record.error_message = "heygen reported completed without a video_url"
             await session.commit()
             return "failed"
-        terminal = await finalize_video_summary(
+        terminal = await finalize_lesson_video(
             record,
             video_url=status.video_url,
             session=session,
@@ -177,7 +176,7 @@ async def _reconcile_one(
     return "still_pending"
 
 
-def _is_timed_out(record: ModuleMedia) -> bool:
+def _is_timed_out(record: GeneratedAudio) -> bool:
     """Return True when ``record.created_at`` is older than the cap."""
     created = record.created_at
     if created is None:
@@ -187,7 +186,7 @@ def _is_timed_out(record: ModuleMedia) -> bool:
     return datetime.now(UTC) - created > _GENERATING_TIMEOUT
 
 
-def _api_version_for(record: ModuleMedia) -> str:
+def _api_version_for(record: GeneratedAudio) -> str:
     """Read the HeyGen API version used when the row was created.
 
     Written to ``media_metadata.api_version`` by the service at
