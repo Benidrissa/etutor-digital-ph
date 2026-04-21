@@ -12,6 +12,7 @@ from app.api.deps import get_db as get_db_session
 from app.api.deps_local_auth import AuthenticatedUser, get_current_user, require_role
 from app.domain.models.module_media import ModuleMedia
 from app.domain.models.user import UserRole
+from app.domain.services.platform_settings_service import SettingsCache
 from app.infrastructure.storage.s3 import S3StorageService
 from app.tasks.content_generation import generate_media_summary
 
@@ -120,6 +121,35 @@ async def generate_module_media(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="language must be 'fr' or 'en'",
         )
+
+    # Video summaries are admin-gated behind a platform-settings flag
+    # so tenants can opt in after signing the HeyGen DPA. The flag is
+    # editable from the admin Settings page without a redeploy.
+    # See issue #1791.
+    if be_type == "video_summary":
+        _cache = SettingsCache.instance()
+        if not _cache.get("video-summary-feature-enabled", False):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="video_summary feature is disabled",
+            )
+        avatar_id = (
+            _cache.get("video-summary-default-avatar-id", "") or ""
+        )
+        voice_key = (
+            "video-summary-voice-id-fr"
+            if request.language == "fr"
+            else "video-summary-voice-id-en"
+        )
+        voice_id = _cache.get(voice_key, "") or ""
+        if not avatar_id.strip() or not voice_id.strip():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    "video_summary is enabled but HeyGen avatar/voice "
+                    "IDs are not configured"
+                ),
+            )
 
     # Check for existing ready or in-progress media
     existing = await db.execute(
