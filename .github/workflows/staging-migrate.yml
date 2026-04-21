@@ -1,0 +1,54 @@
+name: Staging Migrate
+
+# Manually runs ``alembic upgrade head`` on the staging DB, with
+# verbose output, when the normal deploy-driven migration step
+# silently no-ops. Surfaces the actual head before/after so we can
+# confirm the advance.
+#
+# Added during the #1802 rollout — staging's ``generated_audio``
+# ended up missing the columns migration 076 was supposed to add,
+# even though the deploy workflow logged "Migrations completed
+# successfully." This action is idempotent (alembic skips already-
+# applied revisions) so re-running it is safe.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  migrate:
+    name: Run alembic upgrade head on staging
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH and run alembic
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 167.86.115.58
+          username: deploy
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd ~/etutor
+            echo "=============================================="
+            echo "Before: alembic current"
+            echo "=============================================="
+            docker compose exec -T -e PYTHONPATH=/app backend \
+              uv run alembic current
+            echo
+            echo "=============================================="
+            echo "Running alembic upgrade head (verbose)"
+            echo "=============================================="
+            docker compose exec -T -e PYTHONPATH=/app backend \
+              uv run alembic -x verbose=true upgrade head
+            echo
+            echo "=============================================="
+            echo "After: alembic current"
+            echo "=============================================="
+            docker compose exec -T -e PYTHONPATH=/app backend \
+              uv run alembic current
+            echo
+            echo "=============================================="
+            echo "Restarting backend + celery-worker to pick up schema"
+            echo "=============================================="
+            docker compose restart backend celery-worker
+            sleep 10
+            docker compose ps backend celery-worker
