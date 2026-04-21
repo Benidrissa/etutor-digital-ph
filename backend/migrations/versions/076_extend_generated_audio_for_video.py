@@ -68,10 +68,36 @@ def upgrade() -> None:
 
     # Backfill is covered by the server_default; drop the old unique
     # constraint and replace it with the 4-tuple variant.
-    op.drop_constraint(
-        "uq_generated_audio_module_unit_lang",
-        "generated_audio",
-        type_="unique",
+    #
+    # Defensive drop: the constraint name baked into the model
+    # (``uq_generated_audio_module_unit_lang``) wasn't actually the
+    # name Postgres assigned on every environment — staging's DB
+    # ended up with a differently-named (or no) constraint for the
+    # legacy 3-tuple, so a plain ``op.drop_constraint`` fails with
+    # ``UndefinedObjectError``. Pulling the actual pg_constraint
+    # rows and dropping each by its live name keeps the migration
+    # idempotent across environments that drifted.
+    op.execute(
+        """
+        DO $$
+        DECLARE
+            c text;
+        BEGIN
+            FOR c IN
+                SELECT con.conname
+                FROM pg_constraint con
+                JOIN pg_class cls ON cls.oid = con.conrelid
+                WHERE cls.relname = 'generated_audio'
+                  AND con.contype = 'u'
+                  AND con.conname <> 'uq_generated_audio_module_unit_mediatype_lang'
+            LOOP
+                EXECUTE format(
+                    'ALTER TABLE generated_audio DROP CONSTRAINT %I',
+                    c
+                );
+            END LOOP;
+        END $$;
+        """
     )
     op.create_unique_constraint(
         "uq_generated_audio_module_unit_mediatype_lang",
