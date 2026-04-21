@@ -108,11 +108,16 @@ export function LessonVideo({ lessonId, language }: LessonVideoProps) {
         startPolling();
       }
     } catch (err: unknown) {
-      const s = (err as { status?: number })?.status;
-      if (s === 403) {
+      const e = err as { status?: number; message?: string };
+      if (e?.status === 403) {
         setError(t('featureDisabled'));
       } else {
-        setError(t('generateError'));
+        // Surface the HTTP status + server message when available so
+        // operators / testers can diagnose without opening devtools.
+        const parts = [t('generateError')];
+        if (e?.status) parts.push(`(HTTP ${e.status})`);
+        if (e?.message) parts.push(`— ${e.message}`);
+        setError(parts.join(' '));
       }
       setIsGenerating(false);
     }
