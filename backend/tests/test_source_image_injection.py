@@ -33,6 +33,8 @@ def _make_image_meta(
     img_id=None,
     figure_number="1.3",
     caption="Steps in the Marketing Process",
+    caption_fr=None,
+    caption_en=None,
     image_type="diagram",
     storage_url="https://cdn.example.com/img/test.webp",
     alt_text_fr="Diagramme",
@@ -42,6 +44,8 @@ def _make_image_meta(
         "id": str(img_id or uuid.uuid4()),
         "figure_number": figure_number,
         "caption": caption,
+        "caption_fr": caption_fr,
+        "caption_en": caption_en,
         "image_type": image_type,
         "storage_url": storage_url,
         "alt_text_fr": alt_text_fr,
@@ -277,3 +281,45 @@ class TestExtractSourceImageRefs:
         assert result[0].storage_url == "https://cdn.example.com/x.webp"
         assert result[0].alt_text_fr == "Diag FR"
         assert result[0].alt_text_en == "Diag EN"
+
+    async def test_caption_locale_prefers_translated_fields(self):
+        img_id = str(uuid.uuid4())
+        text = f"{{{{source_image:{img_id}}}}}"
+        img_meta = _make_image_meta(
+            img_id=uuid.UUID(img_id),
+            caption="Steps in the scientific method",
+            caption_fr="Étapes de la méthode scientifique",
+            caption_en="Steps in the scientific method",
+        )
+        linked = {uuid.uuid4(): [img_meta]}
+        result = await LessonGenerationService._extract_source_image_refs(text, linked)
+        assert result[0].caption_fr == "Étapes de la méthode scientifique"
+        assert result[0].caption_en == "Steps in the scientific method"
+
+    async def test_caption_locale_falls_back_to_raw_when_null(self):
+        img_id = str(uuid.uuid4())
+        text = f"{{{{source_image:{img_id}}}}}"
+        img_meta = _make_image_meta(
+            img_id=uuid.UUID(img_id),
+            caption="Raw caption",
+            caption_fr=None,
+            caption_en=None,
+        )
+        linked = {uuid.uuid4(): [img_meta]}
+        result = await LessonGenerationService._extract_source_image_refs(text, linked)
+        assert result[0].caption_fr == "Raw caption"
+        assert result[0].caption_en == "Raw caption"
+
+    async def test_caption_locale_partial_translation_mixed_with_fallback(self):
+        img_id = str(uuid.uuid4())
+        text = f"{{{{source_image:{img_id}}}}}"
+        img_meta = _make_image_meta(
+            img_id=uuid.UUID(img_id),
+            caption="Scientific method",
+            caption_fr="Méthode scientifique",
+            caption_en=None,
+        )
+        linked = {uuid.uuid4(): [img_meta]}
+        result = await LessonGenerationService._extract_source_image_refs(text, linked)
+        assert result[0].caption_fr == "Méthode scientifique"
+        assert result[0].caption_en == "Scientific method"
