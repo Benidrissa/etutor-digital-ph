@@ -34,6 +34,7 @@ export function LessonVideo({ lessonId, language }: LessonVideoProps) {
     'loading',
   );
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [videoId, setVideoId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -42,6 +43,7 @@ export function LessonVideo({ lessonId, language }: LessonVideoProps) {
     try {
       const data = await getLessonVideoStatus(lessonId);
       setStatus(data.status);
+      setVideoId(data.video_id ?? null);
       if (data.status === 'ready' && data.url) {
         const resolved = data.url.startsWith('/')
           ? `${API_BASE}${data.url}`
@@ -50,10 +52,11 @@ export function LessonVideo({ lessonId, language }: LessonVideoProps) {
       } else {
         setVideoUrl(null);
       }
-      return data.status;
+      return data;
     } catch {
       setStatus('error');
-      return 'error' as const;
+      setVideoId(null);
+      return null;
     }
   }, [lessonId]);
 
@@ -66,8 +69,9 @@ export function LessonVideo({ lessonId, language }: LessonVideoProps) {
         return;
       }
       attempts++;
-      const s = await refresh();
-      if (s === 'ready' || s === 'failed' || s === 'error') {
+      const data = await refresh();
+      const s = data?.status ?? 'error';
+      if (s === 'ready' || s === 'failed' || s === 'absent') {
         setIsGenerating(false);
         return;
       }
@@ -82,10 +86,16 @@ export function LessonVideo({ lessonId, language }: LessonVideoProps) {
     // itself resolves language from the lesson, so this is a belt-
     // and-suspenders refresh.
     void language;
-    refresh().then((s) => {
-      // Already-in-flight generation: pick up the poll loop so the UI
-      // transitions without the user clicking again.
-      if (s === 'generating' || s === 'pending') {
+    refresh().then((data) => {
+      // Only auto-resume polling when a real row exists and is in-
+      // flight. Guarding on ``data.video_id`` defends against every
+      // code path that surfaces a synthetic ``pending`` without an
+      // actual DB row (#1824): 404 → 'absent', empty list → old
+      // fallback, etc. No row → user must click Generate first.
+      if (
+        data?.video_id &&
+        (data.status === 'generating' || data.status === 'pending')
+      ) {
         setIsGenerating(true);
         startPolling();
       }
@@ -100,6 +110,7 @@ export function LessonVideo({ lessonId, language }: LessonVideoProps) {
     setError(null);
     try {
       const result = await generateLessonVideo(lessonId);
+      setVideoId(result.video_id);
       if (result.status === 'ready') {
         await refresh();
         setIsGenerating(false);
@@ -118,8 +129,13 @@ export function LessonVideo({ lessonId, language }: LessonVideoProps) {
     }
   };
 
+  // Only show the generating UI when a row actually exists (or we
+  // just clicked Generate). A synthetic ``pending`` without a row
+  // has bitten us twice (#1824); require ``videoId`` as the ground
+  // truth that a DB row was dispatched.
   const isActivelyGenerating =
-    isGenerating || status === 'generating' || status === 'pending';
+    isGenerating ||
+    (videoId !== null && (status === 'generating' || status === 'pending'));
 
   // Loading / error / pending / failed all fall through to the same
   // "no video yet" card so the learner always sees the Generate
