@@ -1684,6 +1684,16 @@
       "generating": "Audio en cours de génération",
       "ready": "Audio prêt",
       "failed": "Échec de la génération audio"
+    },
+    "generateVideo": "Générer le résumé vidéo",
+    "videoGenerateSuccess": "Génération vidéo démarrée (prête en 10–15 minutes en général)",
+    "videoGenerateError": "Échec du démarrage de la génération vidéo",
+    "videoAlreadyExists": "Une vidéo existe déjà pour ce module",
+    "videoStatus": {
+      "pending": "Vidéo en attente",
+      "generating": "Vidéo en cours de génération",
+      "ready": "Vidéo prête",
+      "failed": "Échec de la génération vidéo"
     }
   },
   "AuthGuard": {

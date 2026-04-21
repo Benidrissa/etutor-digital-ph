@@ -5,7 +5,18 @@ import { useLocale, useTranslations } from 'next-intl';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Clock, BookOpen, Layers, Edit2, Plus, Mic, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import {
+  Clock,
+  BookOpen,
+  Layers,
+  Edit2,
+  Plus,
+  Mic,
+  Video,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+} from 'lucide-react';
 import { generateModuleMedia, type MediaStatus } from '@/lib/api';
 
 export interface AdminModuleCardData {
@@ -31,7 +42,7 @@ interface AdminModuleCardProps {
   onEdit: (module: AdminModuleCardData) => void;
 }
 
-type AudioState = { status: MediaStatus } | null;
+type MediaRowState = { status: MediaStatus } | null;
 
 const LEVEL_LABELS: Record<number, { fr: string; en: string; color: string }> = {
   1: { fr: 'Débutant', en: 'Beginner', color: 'bg-green-100 text-green-800' },
@@ -43,8 +54,10 @@ const LEVEL_LABELS: Record<number, { fr: string; en: string; color: string }> = 
 export function AdminModuleCard({ module, onEdit }: AdminModuleCardProps) {
   const t = useTranslations('AdminSyllabus');
   const locale = useLocale() as 'fr' | 'en';
-  const [audioState, setAudioState] = useState<AudioState>(null);
-  const [generating, setGenerating] = useState(false);
+  const [audioState, setAudioState] = useState<MediaRowState>(null);
+  const [videoState, setVideoState] = useState<MediaRowState>(null);
+  const [generatingAudio, setGeneratingAudio] = useState(false);
+  const [generatingVideo, setGeneratingVideo] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
@@ -54,7 +67,7 @@ export function AdminModuleCard({ module, onEdit }: AdminModuleCardProps) {
   }, [toast]);
 
   async function handleGenerateAudio() {
-    setGenerating(true);
+    setGeneratingAudio(true);
     try {
       const result = await generateModuleMedia(module.id, 'audio', locale);
       setAudioState({ status: result.status });
@@ -67,7 +80,32 @@ export function AdminModuleCard({ module, onEdit }: AdminModuleCardProps) {
         setToast({ message: t('audioGenerateError'), type: 'error' });
       }
     } finally {
-      setGenerating(false);
+      setGeneratingAudio(false);
+    }
+  }
+
+  async function handleGenerateVideo() {
+    setGeneratingVideo(true);
+    try {
+      const result = await generateModuleMedia(module.id, 'video', locale);
+      setVideoState({ status: result.status });
+      setToast({ message: t('videoGenerateSuccess'), type: 'success' });
+    } catch (err: unknown) {
+      const status = (err as { status?: number })?.status;
+      if (status === 409) {
+        setToast({ message: t('videoAlreadyExists'), type: 'error' });
+      } else if (status === 403) {
+        // Feature flag off — surface a clearer message than the
+        // generic failure toast so the admin isn't left guessing.
+        setToast({
+          message: t('videoGenerateError'),
+          type: 'error',
+        });
+      } else {
+        setToast({ message: t('videoGenerateError'), type: 'error' });
+      }
+    } finally {
+      setGeneratingVideo(false);
     }
   }
 
@@ -119,13 +157,40 @@ export function AdminModuleCard({ module, onEdit }: AdminModuleCardProps) {
                 variant="ghost"
                 className="h-8 w-8"
                 onClick={handleGenerateAudio}
-                disabled={generating}
+                disabled={generatingAudio}
                 aria-label={t('generateAudio')}
               >
-                {generating ? (
+                {generatingAudio ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <Mic className="h-4 w-4" />
+                )}
+              </Button>
+            )}
+            {videoState && videoState.status === 'ready' ? (
+              <CheckCircle2
+                className="h-4 w-4 text-green-600"
+                aria-label={t('videoStatus.ready')}
+              />
+            ) : videoState &&
+              (videoState.status === 'generating' || videoState.status === 'pending') ? (
+              <Loader2
+                className="h-4 w-4 animate-spin text-blue-500"
+                aria-label={t(`videoStatus.${videoState.status}`)}
+              />
+            ) : (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8"
+                onClick={handleGenerateVideo}
+                disabled={generatingVideo}
+                aria-label={t('generateVideo')}
+              >
+                {generatingVideo ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Video className="h-4 w-4" />
                 )}
               </Button>
             )}

@@ -1684,6 +1684,16 @@
       "generating": "Audio generating",
       "ready": "Audio ready",
       "failed": "Audio generation failed"
+    },
+    "generateVideo": "Generate video summary",
+    "videoGenerateSuccess": "Video generation started (usually ready in 10–15 minutes)",
+    "videoGenerateError": "Failed to start video generation",
+    "videoAlreadyExists": "Video already exists for this module",
+    "videoStatus": {
+      "pending": "Video pending",
+      "generating": "Video generating",
+      "ready": "Video ready",
+      "failed": "Video generation failed"
     }
   },
   "AuthGuard": {
