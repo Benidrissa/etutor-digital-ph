@@ -97,6 +97,8 @@ export function QBankQuestionEditor({ question, canEdit = true, onSaved, onDelet
     }
   }
 
+  if (!canEdit) return null;
+
   return (
     <div className="space-y-4 rounded-lg border bg-white p-4">
       {question.image_url && (

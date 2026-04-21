@@ -154,6 +154,7 @@ export function QBankDetailClient({ bankId }: Props) {
         </section>
       )}
 
+      {isEditor && (
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-medium">{t("questionsHeader")}</h2>
@@ -222,10 +223,13 @@ export function QBankDetailClient({ bankId }: Props) {
           </div>
         )}
       </section>
+      )}
 
-      <section className="rounded-lg border bg-white p-4">
-        <QBankTestConfigList bankId={bankId} canEdit={isEditor} />
-      </section>
+      {isEditor && (
+        <section className="rounded-lg border bg-white p-4">
+          <QBankTestConfigList bankId={bankId} canEdit={isEditor} />
+        </section>
+      )}
     </div>
   );
 }
