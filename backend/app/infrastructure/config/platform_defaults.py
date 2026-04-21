@@ -1587,6 +1587,75 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "Default country for publish-time preloading",
         "ISO country code used when pre-generating content at publish time (no learner context).",
     ),
+    # ── Video Summaries (HeyGen) ───────────────────────────
+    # Per issue #1791: HeyGen-backed 3-min lesson summary videos.
+    # Narration cap defaults to 2000 chars (~2:40 at typical pace) so
+    # video length, cost, and pacing stay predictable. HeyGen itself
+    # accepts up to 5000; we keep 5000 as the upper bound so admins
+    # can loosen the cap without a redeploy.
+    SettingDef(
+        "video-summary-max-chars",
+        "video_summary",
+        2000,
+        "integer",
+        "Narration character cap",
+        (
+            "Hard cap on the concatenated narration script sent to HeyGen. "
+            "Default 2000 ≈ 400 words ≈ ~2:40 of narration. Upper bound is "
+            "HeyGen's own 5000-char input_text limit."
+        ),
+        {"min": 500, "max": 5000},
+    ),
+    SettingDef(
+        "video-summary-cost-credits",
+        "video_summary",
+        50,
+        "integer",
+        "Credit cost per generation",
+        (
+            "Credits debited when a lesson video summary is generated "
+            "(wired in a follow-up issue; recorded for reference today)."
+        ),
+        {"min": 0, "max": 100000},
+    ),
+    SettingDef(
+        "video-summary-default-avatar-id",
+        "video_summary",
+        "",
+        "string",
+        "Default HeyGen avatar ID",
+        (
+            "HeyGen stock avatar_id used for all generations until "
+            "per-domain overrides land. Operator sets this per environment."
+        ),
+    ),
+    SettingDef(
+        "video-summary-voice-id-fr",
+        "video_summary",
+        "",
+        "string",
+        "HeyGen voice ID — French",
+        "HeyGen voice_id used when language=fr.",
+    ),
+    SettingDef(
+        "video-summary-voice-id-en",
+        "video_summary",
+        "",
+        "string",
+        "HeyGen voice ID — English",
+        "HeyGen voice_id used when language=en.",
+    ),
+    SettingDef(
+        "video-summary-feature-enabled",
+        "video_summary",
+        False,
+        "boolean",
+        "Video summaries enabled",
+        (
+            "Master feature flag. When false the API returns 403 for "
+            "video summary generation requests."
+        ),
+    ),
     # ── Pagination ─────────────────────────────────────────
     SettingDef(
         "pagination-admin-default-limit",

@@ -66,6 +66,14 @@ class Settings(BaseSettings):
     # Subscription webhook
     subscription_webhook_secret: str = ""
 
+    # HeyGen (lesson summary video rendering) — see issue #1791.
+    # The API key is required to create videos; the webhook secret is used
+    # to HMAC-verify the async completion callback; the callback base URL is
+    # the public HTTPS origin where HeyGen can reach /api/v1/webhooks/heygen.
+    heygen_api_key: str = ""
+    heygen_webhook_secret: str = ""
+    heygen_callback_base_url: str = ""
+
     # SMS Relay
     sms_relay_api_key: str = ""
     sms_relay_alert_email: str = ""
