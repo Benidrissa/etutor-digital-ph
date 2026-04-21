@@ -78,9 +78,7 @@ class TestTranslateFigureCaption:
         }
         fenced = f"```json\n{json.dumps(payload)}\n```"
         client = _mock_client(fenced)
-        result = await translate_figure_caption(
-            caption="Diagram", client=client
-        )
+        result = await translate_figure_caption(caption="Diagram", client=client)
         assert result.caption_fr == "Diagramme"
 
     async def test_empty_caption_rejected_before_api_call(self):
