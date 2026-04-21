@@ -92,15 +92,18 @@ jobs:
 
             echo
             echo "=============================================="
-            echo "HEYGEN_* env in backend container"
+            echo "HEYGEN_* env presence (values redacted)"
             echo "=============================================="
-            docker compose exec -T backend env | grep -E '^HEYGEN_' || echo "(no HEYGEN_ vars in backend env — this is the bug)"
-
-            echo
-            echo "=============================================="
-            echo "HEYGEN_* env in celery-worker container"
-            echo "=============================================="
-            docker compose exec -T celery-worker env | grep -E '^HEYGEN_' || echo "(no HEYGEN_ vars in celery-worker env — this is the bug)"
+            for svc in backend celery-worker; do
+              echo "--- $svc ---"
+              docker compose exec -T "$svc" env \
+                | grep -E '^HEYGEN_' \
+                | awk -F= '{
+                    val_len = length($0) - length($1) - 1;
+                    printf "%s=<set, %d chars>\n", $1, val_len
+                  }' \
+                || echo "(no HEYGEN_ vars — propagation is broken)"
+            done
 
             echo
             echo "=============================================="
