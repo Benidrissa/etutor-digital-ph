@@ -736,7 +736,12 @@ export interface LessonResponse {
 // can trigger generation; the poller finalises the row when HeyGen
 // finishes rendering (~10 min P50).
 
-export type LessonVideoStatus = "pending" | "generating" | "ready" | "failed";
+export type LessonVideoStatus =
+  | "absent"
+  | "pending"
+  | "generating"
+  | "ready"
+  | "failed";
 
 export interface LessonVideoResponse {
   lesson_id: string;
@@ -786,11 +791,13 @@ export async function getLessonVideoStatus(
       duration_seconds: first.duration_seconds ?? undefined,
     };
   } catch (err: unknown) {
-    // 404 means "no video yet" — same semantics as audio; surface
-    // as ``pending`` so the UI can show a generate button.
+    // 404 means "no video row exists yet". Return the synthetic
+    // ``absent`` status so the UI can tell this apart from a real
+    // ``pending`` row and show the Generate button instead of
+    // auto-starting the poll loop. See #1824.
     const status = (err as { status?: number })?.status;
     if (status === 404) {
-      return { lesson_id: lessonId, status: "pending" };
+      return { lesson_id: lessonId, status: "absent" };
     }
     throw err;
   }
