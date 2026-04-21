@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useOrg } from "./org-context";
+import { useCurrentUser } from "@/lib/hooks/use-current-user";
+import { canEditBank, type OrgRole } from "@/lib/permissions";
 import {
   LayoutDashboard,
   BookOpen,
@@ -19,7 +21,9 @@ export function OrgNav() {
   const t = useTranslations("Organization");
   const locale = useLocale();
   const pathname = usePathname();
-  const { org } = useOrg();
+  const { org, role } = useOrg();
+  const currentUser = useCurrentUser();
+  const isEditor = canEditBank(role as OrgRole, currentUser?.role);
 
   if (!org) return null;
 
@@ -28,7 +32,9 @@ export function OrgNav() {
     { href: base, label: t("dashboard"), icon: LayoutDashboard },
     { href: `${base}/courses`, label: "Courses", icon: GraduationCap },
     { href: `${base}/curricula`, label: t("curricula"), icon: Library },
-    { href: `${base}/qbank`, label: "Question Banks", icon: ClipboardList },
+    ...(isEditor
+      ? [{ href: `${base}/qbank`, label: "Question Banks", icon: ClipboardList }]
+      : []),
     { href: `${base}/codes`, label: t("codes"), icon: QrCode },
     { href: `${base}/reports`, label: t("reports"), icon: BarChart3 },
     { href: `${base}/members`, label: t("members"), icon: Users },
