@@ -92,15 +92,18 @@ jobs:
 
             echo
             echo "=============================================="
-            echo "HEYGEN_* env in backend container"
+            echo "HEYGEN_* env presence (values redacted)"
             echo "=============================================="
-            docker compose exec -T backend env | grep -E '^HEYGEN_' || echo "(no HEYGEN_ vars in backend env — this is the bug)"
-
-            echo
-            echo "=============================================="
-            echo "HEYGEN_* env in celery-worker container"
-            echo "=============================================="
-            docker compose exec -T celery-worker env | grep -E '^HEYGEN_' || echo "(no HEYGEN_ vars in celery-worker env — this is the bug)"
+            for svc in backend celery-worker; do
+              echo "--- $svc ---"
+              docker compose exec -T "$svc" env \
+                | grep -E '^HEYGEN_' \
+                | awk -F= '{
+                    val_len = length($0) - length($1) - 1;
+                    printf "%s=<set, %d chars>\n", $1, val_len
+                  }' \
+                || echo "(no HEYGEN_ vars — propagation is broken)"
+            done
 
             echo
             echo "=============================================="
@@ -117,3 +120,23 @@ jobs:
             docker compose logs --tail=300 celery-worker 2>&1 \
               | grep -E 'generate_lesson_video|LessonVideoService|heygen\.|HeyGenAuthError|HeyGenError|video-summary' \
               | tail -30 || true
+
+            echo
+            echo "=============================================="
+            echo "Test lesson rows: generated_audio for M01-U01/U03"
+            echo "=============================================="
+            docker compose exec -T postgres \
+              psql -U postgres santepublique_aof \
+              -c "SELECT id, media_type, language, status, provider_video_id, error_message, created_at, generated_at
+                  FROM generated_audio
+                  WHERE module_id = 'aab749f1-fba3-45d3-bcff-e0f4f925475a'
+                    AND unit_id IN ('M01-U01', 'M01-U03')
+                  ORDER BY unit_id, media_type, created_at DESC" || true
+
+            echo
+            echo "=============================================="
+            echo "Celery: last 500 lines, broad task-lifecycle grep"
+            echo "=============================================="
+            docker compose logs --tail=500 celery-worker 2>&1 \
+              | grep -E 'Task (received|succeeded|failed)|generate_lesson_video|generate_lesson_audio|Traceback|ERROR/' \
+              | tail -80 || true

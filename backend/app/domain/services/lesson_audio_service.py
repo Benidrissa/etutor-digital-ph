@@ -129,6 +129,7 @@ class LessonAudioService:
             unit_id=unit_id,
             language=language,
             status="pending",
+            media_type="audio",
         )
         session.add(record)
         try:
@@ -240,6 +241,7 @@ class LessonAudioService:
                 GeneratedAudio.unit_id == unit_id,
                 GeneratedAudio.language == language,
                 GeneratedAudio.status == "ready",
+                GeneratedAudio.media_type == "audio",
             )
             .order_by(GeneratedAudio.created_at.desc())
             .limit(1)
