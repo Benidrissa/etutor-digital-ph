@@ -1,14 +1,13 @@
 """Unit tests for the ``backfill_image_translations`` Celery task (issue #1820).
 
-The task's logic lives in ``_run_backfill``. We exercise it directly with a
-mocked session factory and a mocked translator so the test stays fast and
-has no DB dependency.
+The task's real work lives in ``_run_backfill_with_factory``. We exercise
+that directly with an injected session factory and a mocked translator so
+the tests stay fast and have no DB dependency.
 """
 
 from __future__ import annotations
 
 import uuid
-from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.ai.translation.figure_translator import FigureTranslation
@@ -60,12 +59,23 @@ class _FakeSession:
         self.commits += 1
 
 
-def _patch_session_factory(session: _FakeSession):
-    @asynccontextmanager
-    async def _factory():
-        yield session
+class _FakeSessionFactory:
+    """Callable returning an async-context manager that yields a fake session."""
 
-    return patch.object(image_translation, "async_session_factory", _factory)
+    def __init__(self, session: _FakeSession):
+        self._session = session
+
+    def __call__(self):
+        session = self._session
+
+        class _Ctx:
+            async def __aenter__(self):
+                return session
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        return _Ctx()
 
 
 def _translation(fr: str = "fr", en: str = "en") -> FigureTranslation:
@@ -77,21 +87,22 @@ def _translation(fr: str = "fr", en: str = "en") -> FigureTranslation:
     )
 
 
-class TestRunBackfill:
+class TestRunBackfillWithFactory:
     async def test_dry_run_counts_without_calling_translator(self):
         rows = [_make_row(), _make_row()]
         session = _FakeSession(rows)
         task = MagicMock()
-        with (
-            _patch_session_factory(session),
-            patch.object(
-                image_translation,
-                "translate_figure_caption",
-                new=AsyncMock(return_value=_translation()),
-            ) as mock_tx,
-        ):
-            result = await image_translation._run_backfill(
-                task=task, rag_collection_id=None, limit=None, dry_run=True
+        with patch.object(
+            image_translation,
+            "translate_figure_caption",
+            new=AsyncMock(return_value=_translation()),
+        ) as mock_tx:
+            result = await image_translation._run_backfill_with_factory(
+                task=task,
+                rag_collection_id=None,
+                limit=None,
+                dry_run=True,
+                session_factory=_FakeSessionFactory(session),
             )
         assert result == {
             "status": "dry_run",
@@ -106,16 +117,17 @@ class TestRunBackfill:
         rows = [_make_row(), _make_row()]
         session = _FakeSession(rows)
         task = MagicMock()
-        with (
-            _patch_session_factory(session),
-            patch.object(
-                image_translation,
-                "translate_figure_caption",
-                new=AsyncMock(return_value=_translation()),
-            ) as mock_tx,
-        ):
-            result = await image_translation._run_backfill(
-                task=task, rag_collection_id=None, limit=None, dry_run=False
+        with patch.object(
+            image_translation,
+            "translate_figure_caption",
+            new=AsyncMock(return_value=_translation()),
+        ) as mock_tx:
+            result = await image_translation._run_backfill_with_factory(
+                task=task,
+                rag_collection_id=None,
+                limit=None,
+                dry_run=False,
+                session_factory=_FakeSessionFactory(session),
             )
         assert result["status"] == "complete"
         assert result["eligible"] == 2
@@ -133,20 +145,14 @@ class TestRunBackfill:
         rows = [_make_row(), _make_row(), _make_row()]
         session = _FakeSession(rows)
         task = MagicMock()
-
-        side_effects = [
-            _translation(),
-            ValueError("transient"),
-            _translation(),
-        ]
-        mock_tx = AsyncMock(side_effect=side_effects)
-
-        with (
-            _patch_session_factory(session),
-            patch.object(image_translation, "translate_figure_caption", new=mock_tx),
-        ):
-            result = await image_translation._run_backfill(
-                task=task, rag_collection_id=None, limit=None, dry_run=False
+        mock_tx = AsyncMock(side_effect=[_translation(), ValueError("transient"), _translation()])
+        with patch.object(image_translation, "translate_figure_caption", new=mock_tx):
+            result = await image_translation._run_backfill_with_factory(
+                task=task,
+                rag_collection_id=None,
+                limit=None,
+                dry_run=False,
+                session_factory=_FakeSessionFactory(session),
             )
         assert result == {
             "status": "complete",
@@ -161,16 +167,17 @@ class TestRunBackfill:
     async def test_empty_eligible_set_returns_noop(self):
         session = _FakeSession([])
         task = MagicMock()
-        with (
-            _patch_session_factory(session),
-            patch.object(
-                image_translation,
-                "translate_figure_caption",
-                new=AsyncMock(return_value=_translation()),
-            ) as mock_tx,
-        ):
-            result = await image_translation._run_backfill(
-                task=task, rag_collection_id=None, limit=None, dry_run=False
+        with patch.object(
+            image_translation,
+            "translate_figure_caption",
+            new=AsyncMock(return_value=_translation()),
+        ) as mock_tx:
+            result = await image_translation._run_backfill_with_factory(
+                task=task,
+                rag_collection_id=None,
+                limit=None,
+                dry_run=False,
+                session_factory=_FakeSessionFactory(session),
             )
         assert result["status"] == "noop"
         assert result["eligible"] == 0

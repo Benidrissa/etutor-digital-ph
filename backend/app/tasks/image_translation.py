@@ -20,10 +20,15 @@ import asyncio
 import structlog
 from celery import Task
 from sqlalchemy import func, or_, select
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from app.ai.translation import translate_figure_caption
 from app.domain.models.source_image import SourceImage
-from app.infrastructure.persistence.database import async_session_factory
+from app.infrastructure.config.settings import settings
 from app.tasks.celery_app import celery_app
 
 logger = structlog.get_logger(__name__)
@@ -82,7 +87,34 @@ async def _run_backfill(
     limit: int | None,
     dry_run: bool,
 ) -> dict:
-    async with async_session_factory() as session:
+    # The module-level engine in app.infrastructure.persistence.database is
+    # bound to whichever event loop first touches it. Celery wraps this task
+    # in asyncio.run(), which creates a fresh loop per invocation — the second
+    # call finds pooled connections attached to the first (now-closed) loop
+    # and raises "attached to a different loop" (#1827). Own the engine for
+    # the task's lifetime and dispose on exit.
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        return await _run_backfill_with_factory(
+            task=task,
+            rag_collection_id=rag_collection_id,
+            limit=limit,
+            dry_run=dry_run,
+            session_factory=session_factory,
+        )
+    finally:
+        await engine.dispose()
+
+
+async def _run_backfill_with_factory(
+    task: Task,
+    rag_collection_id: str | None,
+    limit: int | None,
+    dry_run: bool,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> dict:
+    async with session_factory() as session:
         stmt = select(SourceImage).where(
             SourceImage.caption.is_not(None),
             func.length(func.trim(SourceImage.caption)) > 0,
