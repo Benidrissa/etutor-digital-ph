@@ -1,4 +1,9 @@
-"""Audio summary generation service using Claude (script) + Gemini TTS (MP3)."""
+"""Audio and video summary generation service.
+
+Audio path: Claude (script) + OpenAI TTS (Opus/OGG) → MinIO.
+Video path: Claude (script, taxonomy-aware tool-use) + HeyGen
+(rendered MP4, webhook-driven completion) → MinIO. See issue #1791.
+"""
 
 from __future__ import annotations
 
@@ -14,13 +19,140 @@ from app.ai.claude_service import ClaudeService
 from app.ai.prompts.audience import detect_audience
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
+from app.domain.models.course import Course
 from app.domain.models.module import Module
 from app.domain.models.module_media import ModuleMedia
 from app.domain.models.module_unit import ModuleUnit
+from app.domain.services.platform_settings_service import SettingsCache
 from app.infrastructure.config.settings import settings
 from app.infrastructure.storage.s3 import S3StorageService
+from app.infrastructure.video.heygen_client import (
+    HeyGenClient,
+    HeyGenError,
+)
 
 logger = structlog.get_logger(__name__)
+
+
+# ── Video summary (HeyGen) ────────────────────────────────────────────
+
+# Anthropic tool schema: forces Claude to emit a structured narration
+# script that we can length-check and feed directly to HeyGen. Scenes
+# give us pacing metadata but only the concatenated narration is sent
+# to HeyGen as ``input_text``.
+VIDEO_SCRIPT_TOOL = {
+    "name": "save_video_script",
+    "description": (
+        "Save the 3-minute lesson summary narration. Call this exactly once with the full script."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "language": {
+                "type": "string",
+                "enum": ["fr", "en"],
+            },
+            "voice_tone": {
+                "type": "string",
+                "enum": [
+                    "warm-educator",
+                    "authoritative-professional",
+                    "peer-casual",
+                ],
+                "description": ("Pick the tone that matches the target audience."),
+            },
+            "scenes": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 6,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "narration": {"type": "string"},
+                        "duration_s": {
+                            "type": "integer",
+                            "minimum": 10,
+                            "maximum": 90,
+                        },
+                    },
+                    "required": ["narration", "duration_s"],
+                },
+            },
+        },
+        "required": ["language", "voice_tone", "scenes"],
+    },
+}
+
+
+def _labels_for(course: Course | None, type_: str, language: str) -> list[str]:
+    """Extract taxonomy labels of a given type for a course."""
+    if course is None or not course.taxonomy_categories:
+        return []
+    out: list[str] = []
+    for cat in course.taxonomy_categories:
+        if cat.type != type_ or not cat.is_active:
+            continue
+        label = cat.label_fr if language == "fr" else cat.label_en
+        if label:
+            out.append(label)
+    return out
+
+
+def _build_video_system_prompt(
+    *,
+    language: str,
+    domain_labels: list[str],
+    audience_labels: list[str],
+    level_labels: list[str],
+    course_title: str | None,
+    max_chars: int,
+) -> str:
+    """Build a taxonomy-aware system prompt for the video script.
+
+    The prompt is built to be *structurally* audience- and
+    course-field-aware: ignoring ``domain`` or ``audience`` is named
+    as a failure mode so the model cannot silently default to a
+    generic script. See issue #1791.
+    """
+    lang_label = "French" if language == "fr" else "English"
+    domain = ", ".join(domain_labels) or (course_title or "the subject area")
+    audience = ", ".join(audience_labels) or "learners"
+    level = ", ".join(level_labels) or "the assigned course level"
+
+    return (
+        f"You write 3-minute narrated video summaries for a "
+        f"learning platform.\n\n"
+        f"Output language: {lang_label}.\n"
+        f"Course field / domain: {domain}.\n"
+        f"Target audience: {audience}.\n"
+        f"Learner level: {level}.\n\n"
+        f"HARD CONSTRAINTS — your script MUST:\n"
+        f"1. Cite examples specific to the domain ({domain}). "
+        f"Ignoring the domain is a failure.\n"
+        f"2. Use register and framing appropriate for the audience "
+        f"({audience}). Writing a student script for a professional "
+        f"audience (or vice-versa) is a failure.\n"
+        f"3. Keep the concatenated narration under "
+        f"{max_chars} characters — this is a hard cap, not a target.\n"
+        f"4. Cover 3–6 scenes with natural pacing; each scene is a "
+        f"self-contained paragraph of spoken prose.\n"
+        f"5. Write plain spoken prose. No markdown, no bullet "
+        f"points, no headers, no stage directions, no source "
+        f"citations inside the narration.\n"
+        f"6. Do not repeat the title at the start; open with a "
+        f"concrete hook grounded in the domain.\n\n"
+        f"Call the `save_video_script` tool exactly once. Choose "
+        f"`voice_tone` to match the audience."
+    )
+
+
+VIDEO_SUMMARY_USER_TEMPLATE = (
+    "Module: {module_title}\n"
+    "Learner level (1=beginner, 4=expert): {level}\n\n"
+    "Units covered in this module:\n{unit_titles}\n\n"
+    "Reference material excerpts (RAG context):\n{rag_context}\n\n"
+    "Write the 3-minute narration script now."
+)
 
 
 def _build_audio_system_prompt(
@@ -415,3 +547,334 @@ class MediaSummaryService:
         """Estimate audio duration from OGG Opus file size (~48kbps speech)."""
         bytes_per_second = 6 * 1024
         return max(1, file_size_bytes // bytes_per_second)
+
+    # ── Video summary pipeline (HeyGen) ────────────────────────────
+
+    async def generate_video_summary(
+        self,
+        module_id: uuid.UUID,
+        language: str,
+        session: AsyncSession,
+        *,
+        heygen_client: HeyGenClient | None = None,
+    ) -> ModuleMedia:
+        """Dispatch a HeyGen video summary job.
+
+        Unlike audio generation, this method returns while the row is
+        still ``generating``: HeyGen renders asynchronously and the
+        completion webhook (``/api/v1/webhooks/heygen``) is
+        responsible for downloading the MP4 and flipping the row to
+        ``ready``. The returned ``ModuleMedia`` will have
+        ``provider_video_id`` populated so the webhook can match.
+        """
+        cached = await self._find_video_cached(module_id, language, session)
+        if cached is not None:
+            logger.info(
+                "Returning cached video summary",
+                module_id=str(module_id),
+                language=language,
+                media_id=str(cached.id),
+            )
+            return cached
+
+        pending = await self._find_video_pending(module_id, language, session)
+        if pending is not None:
+            record = pending
+        else:
+            record = ModuleMedia(
+                id=uuid.uuid4(),
+                module_id=module_id,
+                media_type="video_summary",
+                language=language,
+                status="pending",
+            )
+            session.add(record)
+            await session.flush()
+
+        cache = SettingsCache.instance()
+        feature_enabled = bool(cache.get("video-summary-feature-enabled", False))
+        if not feature_enabled:
+            record.status = "failed"
+            record.error_message = "video_summary feature is disabled"
+            await session.commit()
+            raise RuntimeError("video_summary feature is disabled")
+
+        avatar_id = (cache.get("video-summary-default-avatar-id", "") or "").strip()
+        voice_key = "video-summary-voice-id-fr" if language == "fr" else "video-summary-voice-id-en"
+        voice_id = (cache.get(voice_key, "") or "").strip()
+        if not avatar_id or not voice_id:
+            record.status = "failed"
+            record.error_message = "HeyGen avatar_id or voice_id not configured"
+            await session.commit()
+            raise RuntimeError("HeyGen avatar_id or voice_id not configured")
+
+        max_chars = int(cache.get("video-summary-max-chars", 2000))
+
+        try:
+            record.status = "generating"
+            await session.flush()
+
+            module = await self._fetch_module(module_id, session)
+            if module is None:
+                raise ValueError(f"Module {module_id} not found")
+
+            unit_titles = await self._fetch_unit_titles(module_id, session)
+
+            module_title = module.title_fr if language == "fr" else module.title_en
+            query = f"{module_title} {' '.join(unit_titles[:5])}"
+            rag_chunks = await self._fetch_rag_chunks(
+                query=query,
+                user_level=module.level,
+                user_language=language,
+                books_sources=self._resolve_books_sources(module),
+                session=session,
+            )
+
+            course = module.course
+            course_title = None
+            if course is not None:
+                course_title = course.title_fr if language == "fr" else course.title_en
+            domain_labels = _labels_for(course, "domain", language)
+            audience_labels = _labels_for(course, "audience", language)
+            level_labels = _labels_for(course, "level", language)
+
+            script, script_metadata = await self._generate_video_script(
+                module_title=module_title or f"Module {module.module_number}",
+                language=language,
+                level=module.level,
+                unit_titles=unit_titles,
+                rag_chunks=rag_chunks,
+                course_title=course_title,
+                domain_labels=domain_labels,
+                audience_labels=audience_labels,
+                level_labels=level_labels,
+                max_chars=max_chars,
+            )
+
+            callback_url = self._heygen_callback_url()
+            client = heygen_client or HeyGenClient()
+            owns_client = heygen_client is None
+            try:
+                result = await client.create_video(
+                    script=script,
+                    avatar_id=avatar_id,
+                    voice_id=voice_id,
+                    callback_url=callback_url,
+                    language=language,
+                )
+            finally:
+                if owns_client and client._client is not None:
+                    await client._client.aclose()
+
+            record.provider_video_id = result.provider_video_id
+            record.script_text = script
+            record.media_metadata = script_metadata
+            await session.commit()
+
+            logger.info(
+                "Video summary dispatched to HeyGen",
+                module_id=str(module_id),
+                language=language,
+                media_id=str(record.id),
+                provider_video_id=result.provider_video_id,
+                script_chars=len(script),
+            )
+
+        except HeyGenError as exc:
+            record.status = "failed"
+            record.error_message = f"heygen: {exc}"
+            await session.commit()
+            logger.error(
+                "HeyGen create_video failed",
+                module_id=str(module_id),
+                language=language,
+                media_id=str(record.id),
+                error=str(exc),
+            )
+            raise
+        except Exception as exc:
+            record.status = "failed"
+            record.error_message = str(exc)
+            await session.commit()
+            logger.error(
+                "Video summary generation failed",
+                module_id=str(module_id),
+                language=language,
+                media_id=str(record.id),
+                error=str(exc),
+            )
+            raise
+
+        return record
+
+    async def _find_video_cached(
+        self,
+        module_id: uuid.UUID,
+        language: str,
+        session: AsyncSession,
+    ) -> ModuleMedia | None:
+        result = await session.execute(
+            select(ModuleMedia).where(
+                ModuleMedia.module_id == module_id,
+                ModuleMedia.language == language,
+                ModuleMedia.media_type == "video_summary",
+                ModuleMedia.status == "ready",
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def _find_video_pending(
+        self,
+        module_id: uuid.UUID,
+        language: str,
+        session: AsyncSession,
+    ) -> ModuleMedia | None:
+        result = await session.execute(
+            select(ModuleMedia).where(
+                ModuleMedia.module_id == module_id,
+                ModuleMedia.language == language,
+                ModuleMedia.media_type == "video_summary",
+                ModuleMedia.status.in_(["pending", "generating"]),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    def _heygen_callback_url(self) -> str:
+        base = (settings.heygen_callback_base_url or "").rstrip("/")
+        if not base:
+            raise RuntimeError("HEYGEN_CALLBACK_BASE_URL is not configured")
+        return f"{base}/api/v1/webhooks/heygen"
+
+    async def _generate_video_script(
+        self,
+        *,
+        module_title: str,
+        language: str,
+        level: int,
+        unit_titles: list[str],
+        rag_chunks: list,
+        course_title: str | None,
+        domain_labels: list[str],
+        audience_labels: list[str],
+        level_labels: list[str],
+        max_chars: int,
+    ) -> tuple[str, dict]:
+        """Generate a HeyGen-ready narration script via Claude tool-use.
+
+        Returns ``(script, metadata)`` where ``script`` is the
+        concatenated narration (≤ ``max_chars``) and ``metadata``
+        captures the structured scene/tone information for later QA.
+        Re-prompts once on overshoot, then truncates at a sentence
+        boundary as a last resort.
+        """
+        system_prompt = _build_video_system_prompt(
+            language=language,
+            domain_labels=domain_labels,
+            audience_labels=audience_labels,
+            level_labels=level_labels,
+            course_title=course_title,
+            max_chars=max_chars,
+        )
+        unit_list = "\n".join(f"- {t}" for t in unit_titles) if unit_titles else "- (no units)"
+        rag_context = _format_rag_context(rag_chunks)
+        user_message = VIDEO_SUMMARY_USER_TEMPLATE.format(
+            module_title=module_title,
+            level=level,
+            unit_titles=unit_list,
+            rag_context=rag_context,
+        )
+
+        script, metadata = await self._call_video_tool(
+            system_prompt=system_prompt,
+            user_message=user_message,
+        )
+
+        if len(script) > max_chars:
+            # One re-prompt asking for a tighter version.
+            retry_user = (
+                user_message
+                + "\n\nYour previous attempt was "
+                + f"{len(script)} characters. Rewrite the script so "
+                + "the concatenated narration is strictly under "
+                + f"{max_chars} characters. Preserve the audience "
+                + "and domain framing."
+            )
+            script, metadata = await self._call_video_tool(
+                system_prompt=system_prompt,
+                user_message=retry_user,
+            )
+
+        if len(script) > max_chars:
+            logger.warning(
+                "Video script still over cap after re-prompt — truncating at sentence boundary",
+                original_chars=len(script),
+                cap=max_chars,
+            )
+            script = _truncate_at_sentence(script, max_chars)
+
+        return script, metadata
+
+    async def _call_video_tool(
+        self,
+        *,
+        system_prompt: str,
+        user_message: str,
+    ) -> tuple[str, dict]:
+        """Invoke Claude with the video-script tool; return (text, meta).
+
+        Uses the shared ``ClaudeService`` client for auth and timeout
+        configuration, then runs the tool-use call directly on
+        ``messages.stream`` so we can extract ``block.input`` without
+        fighting the plain-text ``generate_lesson_content`` helper.
+        """
+        anthropic_client = self._claude.client
+        model = "claude-sonnet-4-6"
+        async with anthropic_client.messages.stream(
+            model=model,
+            max_tokens=4000,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_message}],
+            tools=[VIDEO_SCRIPT_TOOL],
+            tool_choice={"type": "tool", "name": "save_video_script"},
+        ) as stream:
+            message = await stream.get_final_message()
+
+        for block in message.content:
+            if (
+                getattr(block, "type", None) == "tool_use"
+                and getattr(block, "name", None) == "save_video_script"
+            ):
+                payload = block.input or {}
+                scenes = payload.get("scenes") or []
+                narration_parts: list[str] = []
+                for scene in scenes:
+                    text = (scene.get("narration") or "").strip()
+                    if text:
+                        narration_parts.append(text)
+                script = " ".join(narration_parts).strip()
+                metadata = {
+                    "language": payload.get("language"),
+                    "voice_tone": payload.get("voice_tone"),
+                    "scenes": scenes,
+                }
+                if not script:
+                    raise ValueError("Claude returned empty video script")
+                return script, metadata
+
+        raise ValueError("Claude did not invoke the save_video_script tool")
+
+
+def _truncate_at_sentence(text: str, max_chars: int) -> str:
+    """Truncate ``text`` to ≤ ``max_chars`` at a sentence boundary.
+
+    Falls back to a hard slice with an ellipsis if no sentence
+    terminator is found within the allowed window.
+    """
+    if len(text) <= max_chars:
+        return text
+    window = text[:max_chars]
+    for terminator in (".", "!", "?"):
+        idx = window.rfind(terminator)
+        if idx >= int(max_chars * 0.6):
+            return window[: idx + 1].rstrip()
+    return window.rstrip() + "…"

@@ -1677,11 +1677,18 @@ def generate_media_summary(
                     retriever=retriever,
                     storage=S3StorageService(),
                 )
-                media = await service.generate_audio_summary(
-                    module_id=uuid.UUID(module_id),
-                    language=language,
-                    session=session,
-                )
+                if media_type == "video_summary":
+                    media = await service.generate_video_summary(
+                        module_id=uuid.UUID(module_id),
+                        language=language,
+                        session=session,
+                    )
+                else:
+                    media = await service.generate_audio_summary(
+                        module_id=uuid.UUID(module_id),
+                        language=language,
+                        session=session,
+                    )
                 return {"media_id": str(media.id), "status": media.status}
         finally:
             await engine.dispose()

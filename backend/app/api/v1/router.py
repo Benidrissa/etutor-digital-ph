@@ -37,6 +37,7 @@ from app.api.v1.source_images import router as source_images_router
 from app.api.v1.subscriptions import router as subscriptions_router
 from app.api.v1.tutor import router as tutor_router
 from app.api.v1.users import router as users_router
+from app.api.v1.webhooks import router as webhooks_router
 
 api_v1_router = APIRouter()
 api_v1_router.include_router(health_router)
@@ -72,3 +73,4 @@ api_v1_router.include_router(org_codes_router)
 api_v1_router.include_router(org_reports_router)
 api_v1_router.include_router(qbank_router)
 api_v1_router.include_router(certificates_router)
+api_v1_router.include_router(webhooks_router)

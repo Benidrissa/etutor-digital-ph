@@ -60,6 +60,7 @@ class ModuleMedia(Base):
     script_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     media_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    provider_video_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     generated_at: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
