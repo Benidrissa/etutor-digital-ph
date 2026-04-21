@@ -121,13 +121,10 @@ export function LessonVideo({ lessonId, language }: LessonVideoProps) {
   const isActivelyGenerating =
     isGenerating || status === 'generating' || status === 'pending';
 
-  if (status === 'loading' || status === 'error') {
-    // Keep the section fully invisible during the first fetch so the
-    // lesson page doesn't flash a loader the learner can't act on.
-    // Errors here are not fatal — just hide the row.
-    return null;
-  }
-
+  // Loading / error / pending / failed all fall through to the same
+  // "no video yet" card so the learner always sees the Generate
+  // button — hiding on error made the component invisible when the
+  // status fetch flaked (#1802 post-deploy regression).
   if (status === 'ready' && videoUrl) {
     return (
       <div className="flex flex-col gap-2">
