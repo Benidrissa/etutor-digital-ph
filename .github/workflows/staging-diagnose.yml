@@ -1,0 +1,91 @@
+name: Staging Diagnose
+
+# Read-only diagnostic action that SSHes into staging and dumps
+# alembic state, DB schema, and recent backend logs. No changes,
+# no restarts — just reads. Dispatched manually when the remote
+# state needs to be inspected without handing out shell access.
+#
+# Added during the #1802 rollout when the lesson-video endpoints
+# started 500-ing on authenticated calls and we couldn't confirm
+# whether migration 076 actually landed on staging. See
+# ``feedback_never_prod_without_green_staging`` memory for the
+# behavioural rule this workflow supports.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    name: Diagnose staging
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH into staging and dump state
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 167.86.115.58
+          username: deploy
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd ~/etutor
+            echo "=============================================="
+            echo "Container status"
+            echo "=============================================="
+            docker compose ps
+
+            echo
+            echo "=============================================="
+            echo "Alembic current head"
+            echo "=============================================="
+            docker compose exec -T -e PYTHONPATH=/app backend \
+              uv run alembic current || true
+
+            echo
+            echo "=============================================="
+            echo "generated_audio schema"
+            echo "=============================================="
+            docker compose exec -T postgres \
+              psql -U postgres santepublique_aof \
+              -c "\d generated_audio" || true
+
+            echo
+            echo "=============================================="
+            echo "module_media table (expected: does not exist after 077)"
+            echo "=============================================="
+            docker compose exec -T postgres \
+              psql -U postgres santepublique_aof \
+              -c "\d module_media" || true
+
+            echo
+            echo "=============================================="
+            echo "alembic_version row"
+            echo "=============================================="
+            docker compose exec -T postgres \
+              psql -U postgres santepublique_aof \
+              -c "SELECT * FROM alembic_version" || true
+
+            echo
+            echo "=============================================="
+            echo "Backend: last 100 lines, error-ish filtered"
+            echo "=============================================="
+            docker compose logs --tail=200 backend 2>&1 \
+              | grep -iE 'error|traceback|exception|undefinedcolumn|sqlalchemy\.exc|heygen|video' \
+              | tail -60 || true
+
+            echo
+            echo "=============================================="
+            echo "Celery worker: last 60 lines, error-ish filtered"
+            echo "=============================================="
+            docker compose logs --tail=200 celery-worker 2>&1 \
+              | grep -iE 'error|traceback|exception|received|succeeded|retry' \
+              | tail -60 || true
+
+            echo
+            echo "=============================================="
+            echo "Recent platform settings file"
+            echo "=============================================="
+            if [ -f config/platform_settings.json ]; then
+              cat config/platform_settings.json
+            else
+              echo "(no overrides file — defaults in use)"
+            fi
