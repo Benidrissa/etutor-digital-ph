@@ -89,3 +89,31 @@ jobs:
             else
               echo "(no overrides file — defaults in use)"
             fi
+
+            echo
+            echo "=============================================="
+            echo "HEYGEN_* env in backend container"
+            echo "=============================================="
+            docker compose exec -T backend env | grep -E '^HEYGEN_' || echo "(no HEYGEN_ vars in backend env — this is the bug)"
+
+            echo
+            echo "=============================================="
+            echo "HEYGEN_* env in celery-worker container"
+            echo "=============================================="
+            docker compose exec -T celery-worker env | grep -E '^HEYGEN_' || echo "(no HEYGEN_ vars in celery-worker env — this is the bug)"
+
+            echo
+            echo "=============================================="
+            echo "Any video rows in generated_audio?"
+            echo "=============================================="
+            docker compose exec -T postgres \
+              psql -U postgres santepublique_aof \
+              -c "SELECT id, module_id, unit_id, language, status, provider_video_id, error_message, created_at FROM generated_audio WHERE media_type = 'video' ORDER BY created_at DESC LIMIT 5" || true
+
+            echo
+            echo "=============================================="
+            echo "Celery: ALL generate_lesson_video mentions (last 300 lines)"
+            echo "=============================================="
+            docker compose logs --tail=300 celery-worker 2>&1 \
+              | grep -E 'generate_lesson_video|LessonVideoService|heygen\.|HeyGenAuthError|HeyGenError|video-summary' \
+              | tail -30 || true
