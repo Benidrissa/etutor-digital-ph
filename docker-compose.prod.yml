@@ -81,6 +81,7 @@ services:
       APP_ENV: production
       CORS_ORIGINS: https://etutor.elearning.portfolio2.kimbetien.com
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      HEYGEN_API_KEY: ${HEYGEN_API_KEY}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
       SENTRY_DSN: ${SENTRY_DSN}
@@ -165,6 +166,7 @@ services:
       APP_ENV: production
       CORS_ORIGINS: https://etutor.elearning.portfolio2.kimbetien.com
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      HEYGEN_API_KEY: ${HEYGEN_API_KEY}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
       SENTRY_DSN: ${SENTRY_DSN}
