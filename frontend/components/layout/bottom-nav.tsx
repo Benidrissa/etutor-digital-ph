@@ -23,6 +23,21 @@ import {
   type CurriculumContextValue,
 } from "@/lib/curriculum-context";
 
+function getUserRole(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const token = localStorage.getItem("access_token");
+    if (!token) return null;
+    const base64Url = token.split(".")[1];
+    if (!base64Url) return null;
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(atob(base64)) as Record<string, unknown>;
+    return typeof payload?.role === "string" ? payload.role : null;
+  } catch {
+    return null;
+  }
+}
+
 export function BottomNav() {
   const t = useTranslations("Navigation");
   const pathname = usePathname();
@@ -30,10 +45,14 @@ export function BottomNav() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [curriculumCtx, setCurriculumCtx] =
     useState<CurriculumContextValue | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const moreRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    startTransition(() => setCurriculumCtx(getCurriculumContext()));
+    startTransition(() => {
+      setCurriculumCtx(getCurriculumContext());
+      setUserRole(getUserRole());
+    });
   }, [pathname]);
 
   useEffect(() => {
@@ -99,12 +118,18 @@ export function BottomNav() {
       icon: ListChecks,
       description: t("qbankTestsDescription"),
     },
-    {
-      href: `/${locale}/qbank`,
-      label: t("qbank"),
-      icon: Brain,
-      description: t("qbankDescription"),
-    },
+    ...(userRole === "admin" ||
+    userRole === "sub_admin" ||
+    userRole === "expert"
+      ? [
+          {
+            href: `/${locale}/qbank`,
+            label: t("qbank"),
+            icon: Brain,
+            description: t("qbankDescription"),
+          },
+        ]
+      : []),
     {
       href: `/${locale}/profile`,
       label: t("profile"),
