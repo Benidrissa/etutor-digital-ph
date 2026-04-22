@@ -48,6 +48,44 @@ async def touch_course_interaction_by_module(
         await touch_course_interaction(db, user_id, course_id)
 
 
+async def rollup_course_completion(db: AsyncSession, user_id: UUID, course_id: UUID) -> float:
+    """Recompute user_course_enrollment.completion_pct as the avg of module pcts.
+
+    Modules without a progress row count as 0% (via outer join), so a course
+    with 8 modules and only 4 having any progress can never read above 50%.
+    Returns the rolled-up percentage. Caller is responsible for committing.
+    """
+    avg_result = await db.execute(
+        select(func.coalesce(func.avg(func.coalesce(UserModuleProgress.completion_pct, 0.0)), 0.0))
+        .select_from(Module)
+        .outerjoin(
+            UserModuleProgress,
+            (UserModuleProgress.module_id == Module.id) & (UserModuleProgress.user_id == user_id),
+        )
+        .where(Module.course_id == course_id)
+    )
+    avg_pct = float(avg_result.scalar() or 0.0)
+    await db.execute(
+        update(UserCourseEnrollment)
+        .where(
+            UserCourseEnrollment.user_id == user_id,
+            UserCourseEnrollment.course_id == course_id,
+        )
+        .values(completion_pct=round(avg_pct, 1))
+    )
+    return avg_pct
+
+
+async def rollup_course_completion_by_module(
+    db: AsyncSession, user_id: UUID, module_id: UUID
+) -> None:
+    """Resolve course from module, then roll up enrollment completion_pct."""
+    result = await db.execute(select(Module.course_id).where(Module.id == module_id))
+    course_id = result.scalar_one_or_none()
+    if course_id:
+        await rollup_course_completion(db, user_id, course_id)
+
+
 def _unlock_pct():
     return SettingsCache.instance().get("progress-unlock-threshold-pct", 80.0)
 
@@ -198,6 +236,9 @@ class ProgressService:
         )
         with contextlib.suppress(Exception):
             await touch_course_interaction_by_module(self.db, user_id, module_id)
+        with contextlib.suppress(Exception):
+            await rollup_course_completion_by_module(self.db, user_id, module_id)
+            await self.db.commit()
         return progress
 
     async def check_quiz_passed_for_unit(

@@ -3,12 +3,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/routing';
-import { ChevronLeft, Lock, BookOpen, CheckCircle, Clock } from 'lucide-react';
+import { ChevronLeft, Lock, BookOpen, CheckCircle, Clock, GraduationCap } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { getModuleDetailWithProgress, getModuleUnits, type ModuleDetailWithProgressResponse } from '@/lib/api';
+import {
+  canAttemptSummativeAssessment,
+  getModuleDetailWithProgress,
+  getModuleUnits,
+  type ModuleDetailWithProgressResponse,
+  type SummativeAssessmentAttemptCheck,
+} from '@/lib/api';
 import { track } from '@/lib/analytics';
 import { ModuleProgressOverlay } from '@/components/learning/module-progress-overlay';
 // ModuleMediaPlayer removed in #1802: per-module audio/video was
@@ -25,6 +31,7 @@ export function ModuleLockGate({ moduleId, language }: ModuleLockGateProps) {
   const t = useTranslations('ModuleOverview');
   const tCard = useTranslations('ModuleCard');
   const [moduleData, setModuleData] = useState<ModuleDetailWithProgressResponse | null>(null);
+  const [summativeStatus, setSummativeStatus] = useState<SummativeAssessmentAttemptCheck | null>(null);
   const [loading, setLoading] = useState(true);
   const unlockedTracked = useRef(false);
 
@@ -44,6 +51,13 @@ export function ModuleLockGate({ moduleId, language }: ModuleLockGateProps) {
               level: data.level,
             });
           }
+          // Eligibility lookup is best-effort; failures keep the CTA in the
+          // "available but unverified" state rather than hiding it entirely.
+          canAttemptSummativeAssessment(data.id)
+            .then((status) => {
+              if (!cancelled) setSummativeStatus(status);
+            })
+            .catch(() => undefined);
         }
       } catch {
         try {
@@ -206,6 +220,46 @@ export function ModuleLockGate({ moduleId, language }: ModuleLockGateProps) {
                 </Button>
               </Link>
             )}
+            {(() => {
+              const allUnitsDone = (moduleData?.completion_pct ?? 0) >= 100;
+              if (!allUnitsDone) return null;
+              if (summativeStatus?.reason === 'already_passed') {
+                return (
+                  <div className="rounded-lg border border-teal-200 bg-teal-50 p-3 text-sm text-teal-800">
+                    <div className="flex items-center">
+                      <CheckCircle className="w-4 h-4 mr-2 shrink-0" />
+                      <span>
+                        {t('summativeExamPassed', {
+                          score: Math.round(summativeStatus.last_attempt_score ?? 0),
+                        })}
+                      </span>
+                    </div>
+                  </div>
+                );
+              }
+              const cooldown = summativeStatus?.reason === 'cooldown_active';
+              const retryAt = summativeStatus?.next_retry_at
+                ? new Date(summativeStatus.next_retry_at).toLocaleString(language)
+                : null;
+              return (
+                <>
+                  <Link href={`/modules/${moduleId}/summative`} className="block">
+                    <Button
+                      className="w-full min-h-11 bg-amber-600 hover:bg-amber-700"
+                      disabled={cooldown}
+                    >
+                      <GraduationCap className="w-4 h-4 mr-2" />
+                      {t('takeSummativeExam')}
+                    </Button>
+                  </Link>
+                  {cooldown && retryAt && (
+                    <p className="text-xs text-stone-500 text-center">
+                      {t('summativeExamRetryAt', { time: retryAt })}
+                    </p>
+                  )}
+                </>
+              );
+            })()}
             <Link href={{ pathname: '/flashcards', query: { module: moduleId } }} className="block">
               <Button variant="outline" className="w-full min-h-11">
                 <BookOpen className="w-4 h-4 mr-2" />
