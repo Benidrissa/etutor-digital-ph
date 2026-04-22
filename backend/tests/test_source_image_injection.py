@@ -323,3 +323,141 @@ class TestExtractSourceImageRefs:
         result = await LessonGenerationService._extract_source_image_refs(text, linked)
         assert result[0].caption_fr == "Méthode scientifique"
         assert result[0].caption_en == "Scientific method"
+
+
+# ---------------------------------------------------------------------------
+# Tests: LessonGenerationService._rehydrate_source_image_refs
+# ---------------------------------------------------------------------------
+
+
+def _make_db_image(
+    img_id,
+    caption="English caption",
+    caption_fr=None,
+    caption_en=None,
+    alt_text_fr=None,
+    alt_text_en=None,
+    storage_url="https://cdn.example.com/x.webp",
+    figure_number="1.1",
+    image_type="diagram",
+    attribution=None,
+):
+    m = MagicMock()
+    m.id = img_id
+    m.caption = caption
+    m.caption_fr = caption_fr
+    m.caption_en = caption_en
+    m.alt_text_fr = alt_text_fr
+    m.alt_text_en = alt_text_en
+    m.storage_url = storage_url
+    m.figure_number = figure_number
+    m.image_type = image_type
+    m.attribution = attribution
+    return m
+
+
+class _FakeSession:
+    def __init__(self, rows):
+        self._rows = rows
+
+    async def execute(self, stmt):
+        result = MagicMock()
+        scalars = MagicMock()
+        scalars.all = MagicMock(return_value=list(self._rows))
+        result.scalars = MagicMock(return_value=scalars)
+        return result
+
+
+class TestRehydrateSourceImageRefs:
+    async def test_overlays_fresh_db_translations_over_cached_refs(self):
+        img_id = uuid.uuid4()
+        cached = [
+            {
+                "id": str(img_id),
+                "figure_number": "1.1",
+                "caption": "English caption",
+                "caption_fr": "English caption",
+                "caption_en": "English caption",
+                "image_type": "diagram",
+                "storage_url": "https://cdn.example.com/x.webp",
+                "alt_text_fr": None,
+                "alt_text_en": None,
+            }
+        ]
+        db_row = _make_db_image(
+            img_id,
+            caption="English caption",
+            caption_fr="Légende française",
+            caption_en="English caption",
+            alt_text_fr="Texte alt FR",
+            alt_text_en="Alt text EN",
+        )
+        session = _FakeSession([db_row])
+        out = await LessonGenerationService._rehydrate_source_image_refs(cached, session)
+        assert len(out) == 1
+        assert out[0].caption_fr == "Légende française"
+        assert out[0].caption_en == "English caption"
+        assert out[0].alt_text_fr == "Texte alt FR"
+        assert out[0].alt_text_en == "Alt text EN"
+
+    async def test_keeps_cached_values_when_db_row_not_found(self):
+        img_id = uuid.uuid4()
+        cached = [
+            {
+                "id": str(img_id),
+                "caption": "Cached only",
+                "caption_fr": "Cached only",
+                "caption_en": "Cached only",
+                "image_type": "diagram",
+            }
+        ]
+        session = _FakeSession([])  # DB returns nothing
+        out = await LessonGenerationService._rehydrate_source_image_refs(cached, session)
+        assert out[0].caption_fr == "Cached only"
+
+    async def test_falls_back_to_caption_when_db_locale_fields_still_null(self):
+        img_id = uuid.uuid4()
+        cached = [
+            {
+                "id": str(img_id),
+                "caption": "Pre-backfill",
+                "caption_fr": "Pre-backfill",
+                "caption_en": "Pre-backfill",
+                "image_type": "diagram",
+            }
+        ]
+        db_row = _make_db_image(
+            img_id,
+            caption="Pre-backfill",
+            caption_fr=None,
+            caption_en=None,
+        )
+        session = _FakeSession([db_row])
+        out = await LessonGenerationService._rehydrate_source_image_refs(cached, session)
+        assert out[0].caption_fr == "Pre-backfill"
+        assert out[0].caption_en == "Pre-backfill"
+
+    async def test_session_none_returns_refs_unchanged(self):
+        img_id = str(uuid.uuid4())
+        cached = [
+            {
+                "id": img_id,
+                "caption": "x",
+                "caption_fr": "x",
+                "caption_en": "x",
+                "image_type": "diagram",
+            }
+        ]
+        out = await LessonGenerationService._rehydrate_source_image_refs(cached, None)
+        assert len(out) == 1
+        assert out[0].id == img_id
+
+    async def test_skips_invalid_ref_entries(self):
+        cached = [
+            {"id": str(uuid.uuid4()), "image_type": "diagram"},
+            "not a dict",
+            {"id": "not-a-uuid", "image_type": "diagram"},
+        ]
+        session = _FakeSession([])
+        out = await LessonGenerationService._rehydrate_source_image_refs(cached, session)
+        assert len(out) == 2  # second entry skipped entirely; third parsed but no DB overlay

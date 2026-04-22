@@ -368,6 +368,60 @@ class LessonGenerationService:
                 event="error", data={"error": "generation_failed", "message": str(e)}
             )
 
+    @staticmethod
+    async def _rehydrate_source_image_refs(
+        raw_refs: list,
+        session: AsyncSession | None,
+    ) -> list[SourceImageRef]:
+        """Re-apply current DB values (especially FR/EN captions + alt text) to
+        cached ``source_image_refs`` before returning a cached lesson.
+
+        Lessons generated before the figure-translation backfill (#1820) baked
+        the raw English caption into both ``caption_fr`` and ``caption_en``.
+        Cached JSON can't know about later translations, so we hydrate the
+        per-locale fields from ``source_images`` on every read. Falls back to
+        the cached values when the row can no longer be found.
+        """
+        parsed: list[SourceImageRef] = []
+        ids: list[uuid.UUID] = []
+        for ref in raw_refs:
+            if not isinstance(ref, dict):
+                continue
+            parsed.append(SourceImageRef(**ref))
+            try:
+                ids.append(uuid.UUID(ref.get("id")))
+            except (TypeError, ValueError):
+                continue
+
+        if not parsed or session is None or not ids:
+            return parsed
+
+        rows = await session.execute(select(SourceImage).where(SourceImage.id.in_(ids)))
+        by_id = {str(r.id): r for r in rows.scalars().all()}
+
+        rehydrated: list[SourceImageRef] = []
+        for ref in parsed:
+            db_img = by_id.get(ref.id)
+            if db_img is None:
+                rehydrated.append(ref)
+                continue
+            caption = db_img.caption or ref.caption
+            rehydrated.append(
+                SourceImageRef(
+                    id=ref.id,
+                    figure_number=db_img.figure_number or ref.figure_number,
+                    caption=caption,
+                    caption_fr=db_img.caption_fr or caption,
+                    caption_en=db_img.caption_en or caption,
+                    attribution=db_img.attribution or ref.attribution,
+                    image_type=db_img.image_type or ref.image_type,
+                    storage_url=db_img.storage_url or ref.storage_url,
+                    alt_text_fr=db_img.alt_text_fr or ref.alt_text_fr,
+                    alt_text_en=db_img.alt_text_en or ref.alt_text_en,
+                )
+            )
+        return rehydrated
+
     async def _get_cached_lesson(
         self,
         module_id: uuid.UUID,
@@ -415,7 +469,7 @@ class LessonGenerationService:
 
         if cached_content:
             raw_refs = cached_content.content.get("source_image_refs", [])
-            source_image_refs = [SourceImageRef(**ref) for ref in raw_refs if isinstance(ref, dict)]
+            source_image_refs = await self._rehydrate_source_image_refs(raw_refs, session)
 
             content_dict = cached_content.content
             all_text_fields = " ".join(
