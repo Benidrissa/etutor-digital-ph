@@ -117,9 +117,7 @@ def _on_worker_process_init(**kwargs):
         SettingsCache.instance().refresh()
         logger.info("settings_cache.loaded_on_worker_process_init")
     except Exception as exc:
-        logger.warning(
-            "settings_cache.load_skipped_on_worker_process_init", error=str(exc)
-        )
+        logger.warning("settings_cache.load_skipped_on_worker_process_init", error=str(exc))
 
 
 if __name__ == "__main__":
