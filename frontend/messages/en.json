@@ -737,22 +737,13 @@
     "viewFullscreen": "View image fullscreen",
     "closeFullscreen": "Close fullscreen"
   },
-  "ModuleMediaPlayer": {
-    "listenToSummary": "Listen to summary",
-    "watchSummary": "Watch summary",
-    "downloadMedia": "Download",
-    "generateAudio": "Generate audio",
-    "generateVideo": "Generate video",
-    "mediaGenerating": "Generating...",
-    "mediaReady": "Available",
-    "mediaNotAvailable": "Not yet available",
-    "generating": "Generation in progress...",
-    "errorGenerating": "Generation failed. Please try again.",
-    "errorLoading": "Error loading media.",
-    "retry": "Retry",
-    "play": "Play",
-    "pause": "Pause",
-    "duration": "{minutes}:{seconds}"
+  "LessonVideo": {
+    "watchSummary": "Watch video summary",
+    "generate": "Generate video",
+    "generating": "Generating video… (usually ready in 10–15 minutes)",
+    "notAvailable": "No video yet — click Generate to create one.",
+    "generateError": "Video generation failed. Please try again.",
+    "featureDisabled": "Video summaries are disabled for this tenant."
   },
   "CaseStudyViewer": {
     "error": "An error occurred",
@@ -2029,9 +2020,10 @@
     "newBank": "New bank",
     "allTypes": "All types",
     "noBanks": "No question banks yet. Create one to get started.",
-    "discoveryIntro": "Published question banks from every organization you belong to.",
+    "discoveryIntro": "Published question banks — public banks and banks from your organizations.",
     "discoveryEmpty": "No published question banks are available yet. Join an organization or ask your admin to publish one.",
     "discoveryOrgLink": "Open organization",
+    "publicSection": "Public Banks",
     "testsDiscoveryTitle": "Practice tests",
     "testsDiscoveryIntro": "Jump straight into any available test without drilling through banks.",
     "testsDiscoveryEmpty": "No tests are available yet. Ask your admin to publish a bank.",

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { Brain, Building2, ClipboardList, Loader2 } from "lucide-react";
+import { Brain, Building2, ClipboardList, Globe, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
   listAccessibleQBanks,
@@ -58,25 +58,35 @@ export function QBankDiscoveryClient() {
     return banks.filter((b) => b.bank_type === typeFilter);
   }, [banks, typeFilter]);
 
-  // Group by organization so learners see which org owns each bank.
-  const groupedByOrg = useMemo(() => {
-    const groups: Record<
+  // Group by organization. Public banks (visibility==="public") go first
+  // under a synthetic "__public__" section; org-restricted banks follow,
+  // grouped by org alphabetically (#1782).
+  const { publicGroup, orgGroups } = useMemo(() => {
+    const pub: QBankBank[] = [];
+    const orgMap: Record<
       string,
       { orgId: string; orgName: string; orgSlug: string | null; banks: QBankBank[] }
     > = {};
     for (const bank of filtered) {
-      const key = bank.organization_id;
-      if (!groups[key]) {
-        groups[key] = {
-          orgId: bank.organization_id,
-          orgName: bank.organization_name ?? "—",
-          orgSlug: bank.organization_slug ?? null,
-          banks: [],
-        };
+      if (bank.visibility === "public" || bank.organization_id === null) {
+        pub.push(bank);
+      } else {
+        const key = bank.organization_id;
+        if (!orgMap[key]) {
+          orgMap[key] = {
+            orgId: bank.organization_id,
+            orgName: bank.organization_name ?? "—",
+            orgSlug: bank.organization_slug ?? null,
+            banks: [],
+          };
+        }
+        orgMap[key].banks.push(bank);
       }
-      groups[key].banks.push(bank);
     }
-    return Object.values(groups);
+    const sorted = Object.values(orgMap).sort((a, b) =>
+      a.orgName.localeCompare(b.orgName),
+    );
+    return { publicGroup: pub, orgGroups: sorted };
   }, [filtered]);
 
   return (
@@ -125,9 +135,18 @@ export function QBankDiscoveryClient() {
         </p>
       )}
 
-      {!loading && !error && groupedByOrg.length > 0 && (
+      {!loading && !error && (publicGroup.length > 0 || orgGroups.length > 0) && (
         <div className="space-y-6">
-          {groupedByOrg.map((group) => (
+          {publicGroup.length > 0 && (
+            <section className="space-y-2">
+              <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <Globe className="h-4 w-4" aria-hidden />
+                <span>{t("publicSection")}</span>
+              </div>
+              <BankGrid banks={publicGroup} locale={locale} orgSlug={null} t={t} />
+            </section>
+          )}
+          {orgGroups.map((group) => (
             <section key={group.orgId} className="space-y-2">
               <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 <Building2 className="h-4 w-4" aria-hidden />
@@ -141,54 +160,68 @@ export function QBankDiscoveryClient() {
                   </Link>
                 )}
               </div>
-              <ul className="grid gap-3 sm:grid-cols-2">
-                {group.banks.map((bank) => (
-                  <li key={bank.id}>
-                    <Link
-                      href={
-                        group.orgSlug
-                          ? `/${locale}/org/${group.orgSlug}/qbank/${bank.id}`
-                          : `/${locale}/qbank/banks/${bank.id}`
-                      }
-                      className="flex h-full flex-col gap-2 rounded-lg border bg-card p-4 transition-colors hover:border-primary/50 hover:bg-muted/50"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <h2 className="text-base font-semibold leading-snug">
-                          {bank.title}
-                        </h2>
-                        <Badge
-                          className={`${PILL_COLORS[bank.bank_type]} shrink-0`}
-                          variant="secondary"
-                        >
-                          {t(TYPE_KEY[bank.bank_type])}
-                        </Badge>
-                      </div>
-                      {bank.description && (
-                        <p className="line-clamp-2 text-xs text-muted-foreground">
-                          {bank.description}
-                        </p>
-                      )}
-                      <div className="mt-auto flex items-center gap-3 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <ClipboardList className="h-3.5 w-3.5" aria-hidden />
-                          {t("questionCount", { count: bank.question_count })}
-                        </span>
-                        <span>
-                          {t("testCount", { count: bank.test_count })}
-                        </span>
-                        <span>
-                          {bank.time_per_question_sec}s / {t("perQuestion")}
-                        </span>
-                      </div>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+              <BankGrid banks={group.banks} locale={locale} orgSlug={group.orgSlug} t={t} />
             </section>
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+function BankGrid({
+  banks,
+  locale,
+  orgSlug,
+  t,
+}: {
+  banks: QBankBank[];
+  locale: string;
+  orgSlug: string | null;
+  t: ReturnType<typeof useTranslations<"qbank">>;
+}) {
+  return (
+    <ul className="grid gap-3 sm:grid-cols-2">
+      {banks.map((bank) => (
+        <li key={bank.id}>
+          <Link
+            href={
+              orgSlug
+                ? `/${locale}/org/${orgSlug}/qbank/${bank.id}`
+                : `/${locale}/qbank/banks/${bank.id}`
+            }
+            className="flex h-full flex-col gap-2 rounded-lg border bg-card p-4 transition-colors hover:border-primary/50 hover:bg-muted/50"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <h2 className="text-base font-semibold leading-snug">
+                {bank.title}
+              </h2>
+              <Badge
+                className={`${PILL_COLORS[bank.bank_type]} shrink-0`}
+                variant="secondary"
+              >
+                {t(TYPE_KEY[bank.bank_type])}
+              </Badge>
+            </div>
+            {bank.description && (
+              <p className="line-clamp-2 text-xs text-muted-foreground">
+                {bank.description}
+              </p>
+            )}
+            <div className="mt-auto flex items-center gap-3 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <ClipboardList className="h-3.5 w-3.5" aria-hidden />
+                {t("questionCount", { count: bank.question_count })}
+              </span>
+              <span>{t("testCount", { count: bank.test_count })}</span>
+              <span>
+                {bank.time_per_question_sec}s / {t("perQuestion")}
+              </span>
+            </div>
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }
 

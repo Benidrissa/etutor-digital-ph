@@ -1,0 +1,225 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: etutor-postgres
+    environment:
+      POSTGRES_DB: santepublique_aof
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - etutor-data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: etutor-redis
+    volumes:
+      - redisdata:/data
+    networks:
+      - etutor-data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mms-tts:
+    image: ghcr.io/benidrissa/etutor-digital-ph/mms-tts:latest
+    container_name: etutor-mms-tts
+    volumes:
+      - mms_models:/models
+    networks:
+      - etutor-data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5050/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 180s
+      retries: 3
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+  nllb:
+    # NLLB translation sidecar — pruned + CT2 int8 artifact (#1709) replacing
+    # the original transformers + distilled-600M setup. The CT2 int8 model
+    # (~350 MB) is baked into the image at build time by
+    # infrastructure/nllb/Dockerfile pulling the pinned sira-nllb-distill
+    # release asset. No volume mount — a volume overlay on /models would
+    # hide the baked-in files (#1732 hotfix). ~600 MB RAM at runtime; 2G
+    # limit has headroom for batch translation.
+    image: ghcr.io/benidrissa/etutor-digital-ph/nllb:latest
+    container_name: etutor-nllb
+    networks:
+      - etutor-data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5060/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  backend:
+    image: ghcr.io/benidrissa/etutor-digital-ph/backend:latest
+    container_name: etutor-backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/santepublique_aof
+      REDIS_URL: redis://redis:6379/0
+      APP_ENV: production
+      CORS_ORIGINS: https://app.sira-donnia.org
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      HEYGEN_API_KEY: ${HEYGEN_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      SENTRY_DSN: ${SENTRY_DSN}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL}
+      MINIO_BUCKET_MEDIA: ${MINIO_BUCKET_MEDIA}
+      SMS_RELAY_API_KEY: ${SMS_RELAY_API_KEY}
+      SMS_RELAY_TRUSTED_SENDERS: ${SMS_RELAY_TRUSTED_SENDERS}
+      MMS_TTS_URL: http://mms-tts:5050
+      NLLB_URL: http://nllb:5060
+    volumes:
+      - ./config:/app/config
+      - ./resources:/app/resources
+      - uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    networks:
+      - etutor-data
+      - proxy
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxy
+      traefik.http.routers.etutor-api.rule: Host(`api.sira-donnia.org`)
+      traefik.http.routers.etutor-api.entrypoints: websecure
+      traefik.http.routers.etutor-api.tls.certresolver: letsencrypt
+      traefik.http.services.etutor-api.loadbalancer.server.port: "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  frontend:
+    image: ghcr.io/benidrissa/etutor-digital-ph/frontend:latest
+    container_name: etutor-frontend
+    environment:
+      BACKEND_URL: http://etutor-backend:8000
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+      NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN}
+      NEXT_PUBLIC_POSTHOG_KEY: ${NEXT_PUBLIC_POSTHOG_KEY}
+      NEXT_PUBLIC_POSTHOG_HOST: ${NEXT_PUBLIC_POSTHOG_HOST:-https://eu.i.posthog.com}
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - etutor-data
+      - proxy
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxy
+      traefik.http.routers.etutor-web.rule: Host(`app.sira-donnia.org`)
+      traefik.http.routers.etutor-web.entrypoints: websecure
+      traefik.http.routers.etutor-web.tls.certresolver: letsencrypt
+      traefik.http.services.etutor-web.loadbalancer.server.port: "3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/fr/dashboard').then(r => r.status < 500 ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  celery-worker:
+    image: ghcr.io/benidrissa/etutor-digital-ph/backend:latest
+    container_name: etutor-celery-worker
+    # --concurrency=4 lets per-question qbank tasks (#1708) fan out:
+    # translate(Qk) for language X can run on one worker while
+    # generate_audio(Qj) for language Y runs on another, bounded by
+    # sidecar semaphores (NLLB=1, MMS=2).
+    command: uv run celery -A app.tasks.celery_app worker --loglevel=info --concurrency=4
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/santepublique_aof
+      REDIS_URL: redis://redis:6379/0
+      APP_ENV: production
+      CORS_ORIGINS: https://app.sira-donnia.org
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      HEYGEN_API_KEY: ${HEYGEN_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      SENTRY_DSN: ${SENTRY_DSN}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL}
+      MINIO_BUCKET_MEDIA: ${MINIO_BUCKET_MEDIA}
+      SMS_RELAY_API_KEY: ${SMS_RELAY_API_KEY}
+      SMS_RELAY_TRUSTED_SENDERS: ${SMS_RELAY_TRUSTED_SENDERS}
+      MMS_TTS_URL: http://mms-tts:5050
+      NLLB_URL: http://nllb:5060
+    volumes:
+      - ./config:/app/config
+      - ./resources:/app/resources
+      - uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    networks:
+      - etutor-data
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    container_name: etutor-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    volumes:
+      - minio_data:/data
+    networks:
+      - etutor-data
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  uploads:
+  minio_data:
+  mms_models:
+  # nllb_models removed in #1732 — CT2 int8 artifact is baked into the image
+  # at build time; a volume here would hide the baked-in /models/nllb-ct2/.
+
+networks:
+  etutor-data:
+    driver: bridge
+  proxy:
+    external: true

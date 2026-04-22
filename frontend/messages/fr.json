@@ -737,22 +737,13 @@
     "viewFullscreen": "Voir l'image en plein écran",
     "closeFullscreen": "Fermer le plein écran"
   },
-  "ModuleMediaPlayer": {
-    "listenToSummary": "Écouter le résumé",
-    "watchSummary": "Regarder le résumé",
-    "downloadMedia": "Télécharger",
-    "generateAudio": "Générer l'audio",
-    "generateVideo": "Générer la vidéo",
-    "mediaGenerating": "Génération en cours...",
-    "mediaReady": "Disponible",
-    "mediaNotAvailable": "Pas encore disponible",
-    "generating": "Génération en cours...",
-    "errorGenerating": "Échec de la génération. Veuillez réessayer.",
-    "errorLoading": "Erreur lors du chargement du média.",
-    "retry": "Réessayer",
-    "play": "Lire",
-    "pause": "Pause",
-    "duration": "{minutes}:{seconds}"
+  "LessonVideo": {
+    "watchSummary": "Regarder le résumé vidéo",
+    "generate": "Générer la vidéo",
+    "generating": "Génération en cours… (prête en 10–15 minutes en général)",
+    "notAvailable": "Pas encore de vidéo — cliquez sur Générer pour la créer.",
+    "generateError": "La génération vidéo a échoué. Veuillez réessayer.",
+    "featureDisabled": "Les résumés vidéo sont désactivés pour ce tenant."
   },
   "CaseStudyViewer": {
     "error": "Une erreur est survenue",
@@ -2029,9 +2020,10 @@
     "newBank": "Nouvelle banque",
     "allTypes": "Tous les types",
     "noBanks": "Aucune banque de questions pour l'instant. Créez-en une pour commencer.",
-    "discoveryIntro": "Banques de questions publiées de toutes vos organisations.",
+    "discoveryIntro": "Banques de questions publiées — banques publiques et banques de vos organisations.",
     "discoveryEmpty": "Aucune banque de questions publiée pour l'instant. Rejoignez une organisation ou demandez à votre admin d'en publier une.",
     "discoveryOrgLink": "Ouvrir l'organisation",
+    "publicSection": "Banques publiques",
     "testsDiscoveryTitle": "Tests de révision",
     "testsDiscoveryIntro": "Lancez n'importe quel test disponible dans vos banques, sans avoir à fouiller.",
     "testsDiscoveryEmpty": "Aucun test disponible pour l'instant. Demandez à votre admin de publier une banque.",

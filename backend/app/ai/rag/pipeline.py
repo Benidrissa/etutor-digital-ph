@@ -12,6 +12,7 @@ from app.ai.rag.chunker import TextChunker, detect_language, extract_text_from_p
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.image_extractor import PDFImageExtractor
 from app.ai.rag.image_linker import ImageLinker
+from app.ai.translation import translate_figure_caption
 from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.source_image import SourceImage
 from app.infrastructure.persistence.database import async_session_factory
@@ -226,12 +227,37 @@ class RAGPipeline:
                         error=str(exc),
                     )
 
+            caption_fr: str | None = None
+            caption_en: str | None = None
+            alt_text_fr: str | None = None
+            alt_text_en: str | None = None
+            if img.caption and img.caption.strip():
+                try:
+                    translation = await translate_figure_caption(
+                        caption=img.caption,
+                        image_type=img.image_type,
+                        figure_number=img.figure_number,
+                    )
+                    caption_fr = translation.caption_fr
+                    caption_en = translation.caption_en
+                    alt_text_fr = translation.alt_text_fr
+                    alt_text_en = translation.alt_text_en
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to translate figure caption, storing without locale fields",
+                        source=source,
+                        figure_number=img.figure_number,
+                        error=str(exc),
+                    )
+
             db_image = SourceImage(
                 id=uuid4(),
                 source=source,
                 rag_collection_id=rag_collection_id,
                 figure_number=img.figure_number,
                 caption=img.caption,
+                caption_fr=caption_fr,
+                caption_en=caption_en,
                 attribution=img.attribution,
                 image_type=img.image_type,
                 page_number=img.page_number,
@@ -246,6 +272,8 @@ class RAGPipeline:
                 file_size_bytes=img.file_size_bytes,
                 original_format=img.original_format,
                 embedding=embedding,
+                alt_text_fr=alt_text_fr,
+                alt_text_en=alt_text_en,
             )
 
             session.add(db_image)

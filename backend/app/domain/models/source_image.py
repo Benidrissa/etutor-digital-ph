@@ -40,6 +40,8 @@ class SourceImage(Base):
     rag_collection_id: Mapped[str | None] = mapped_column(String, nullable=True)
     figure_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
     caption: Mapped[str | None] = mapped_column(Text, nullable=True)
+    caption_fr: Mapped[str | None] = mapped_column(Text, nullable=True)
+    caption_en: Mapped[str | None] = mapped_column(Text, nullable=True)
     attribution: Mapped[str | None] = mapped_column(Text, nullable=True)
     image_type: Mapped[str] = mapped_column(
         sa.Enum(
@@ -84,6 +86,8 @@ class SourceImage(Base):
             "rag_collection_id": self.rag_collection_id,
             "figure_number": self.figure_number,
             "caption": self.caption,
+            "caption_fr": self.caption_fr,
+            "caption_en": self.caption_en,
             "attribution": self.attribution,
             "image_type": self.image_type,
             "page_number": self.page_number,

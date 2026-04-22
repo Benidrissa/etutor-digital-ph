@@ -12,6 +12,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { LessonSkeleton } from './lesson-skeleton';
 import { LessonAudio } from './lesson-audio';
+import { LessonVideo } from './lesson-video';
 import { LessonImage } from './lesson-image';
 import { SourceImage } from './source-image';
 import { SourceCitations } from './source-citations';
@@ -476,6 +477,9 @@ export function LessonViewer({
 
       {/* Audio Summary */}
       <LessonAudio lessonId={lessonData.id} language={lessonData.language} />
+
+      {/* Video Summary (opt-in, HeyGen-rendered) */}
+      <LessonVideo lessonId={lessonData.id} language={lessonData.language} />
 
       {/* Main Content */}
       <Card className="mb-6">

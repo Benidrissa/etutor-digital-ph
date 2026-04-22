@@ -20,9 +20,12 @@ from app.api.v1.images import router as images_router
 from app.api.v1.lesson_audio import (
     router as lesson_audio_router,
 )
+from app.api.v1.lesson_video import router as lesson_video_router
 from app.api.v1.local_auth import router as local_auth_router
-from app.api.v1.module_media import router as module_media_router
 from app.api.v1.org_codes import router as org_codes_router
+
+# module_media + webhooks routers removed in #1802 — per-module video
+# was rescoped to per-lesson and the webhook path is obsolete.
 from app.api.v1.org_curricula import router as org_curricula_router
 from app.api.v1.org_reports import router as org_reports_router
 from app.api.v1.organizations import router as organizations_router
@@ -52,6 +55,7 @@ api_v1_router.include_router(flashcards_router)
 api_v1_router.include_router(tutor_router)
 api_v1_router.include_router(images_router)
 api_v1_router.include_router(lesson_audio_router)
+api_v1_router.include_router(lesson_video_router)
 api_v1_router.include_router(admin_router)
 api_v1_router.include_router(admin_settings_router)
 api_v1_router.include_router(admin_courses_router)
@@ -61,7 +65,6 @@ api_v1_router.include_router(admin_taxonomy_router)
 api_v1_router.include_router(courses_router)
 api_v1_router.include_router(curricula_router)
 api_v1_router.include_router(course_preassessment_router)
-api_v1_router.include_router(module_media_router)
 api_v1_router.include_router(sms_relay_router)
 api_v1_router.include_router(source_images_router)
 api_v1_router.include_router(subscriptions_router)

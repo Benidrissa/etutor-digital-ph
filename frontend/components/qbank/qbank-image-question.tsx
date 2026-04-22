@@ -78,6 +78,7 @@ export function QBankImageQuestion({
             className="object-contain"
             onLoad={onImageLoad}
             priority
+            unoptimized
           />
         </div>
       )}

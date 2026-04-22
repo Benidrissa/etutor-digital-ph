@@ -6,6 +6,9 @@ import { useLocale, useTranslations } from "next-intl";
 import { ClipboardList, Loader2, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useOrg } from "@/components/org/org-context";
+import { OrgQBankForbidden } from "@/components/org/org-forbidden";
+import { useCurrentUser } from "@/lib/hooks/use-current-user";
+import { canEditBank, type OrgRole } from "@/lib/permissions";
 import { listQBankBanks, type QBankBank, type QBankStatus, type QBankType } from "@/lib/api";
 
 const TYPE_KEY: Record<QBankType, string> = {
@@ -30,7 +33,9 @@ const STATUS_STYLES: Record<QBankStatus, string> = {
 export function QBankListClient() {
   const locale = useLocale();
   const t = useTranslations("qbank");
-  const { org, loading: orgLoading } = useOrg();
+  const { org, role, loading: orgLoading } = useOrg();
+  const currentUser = useCurrentUser();
+  const isEditor = canEditBank(role as OrgRole, currentUser?.role);
   const [banks, setBanks] = useState<QBankBank[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +71,10 @@ export function QBankListClient() {
     return <p className="text-muted-foreground">Organization not found.</p>;
   }
 
+  if (!isEditor) {
+    return <OrgQBankForbidden />;
+  }
+
   const filtered = typeFilter === "all" ? banks : banks.filter((b) => b.bank_type === typeFilter);
   const base = `/${locale}/org/${org.slug}/qbank`;
 
@@ -78,12 +87,14 @@ export function QBankListClient() {
           </h1>
           <p className="text-sm text-muted-foreground">{t("banksSubtitle")}</p>
         </div>
-        <Link
-          href={`${base}/create`}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/80"
-        >
-          <Plus className="h-4 w-4" /> {t("newBank")}
-        </Link>
+        {isEditor && (
+          <Link
+            href={`${base}/create`}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/80"
+          >
+            <Plus className="h-4 w-4" /> {t("newBank")}
+          </Link>
+        )}
       </header>
 
       <div className="flex flex-wrap gap-2">

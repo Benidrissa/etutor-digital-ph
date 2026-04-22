@@ -11,7 +11,9 @@ import { Badge } from '@/components/ui/badge';
 import { getModuleDetailWithProgress, getModuleUnits, type ModuleDetailWithProgressResponse } from '@/lib/api';
 import { track } from '@/lib/analytics';
 import { ModuleProgressOverlay } from '@/components/learning/module-progress-overlay';
-import { ModuleMediaPlayer } from '@/components/learning/module-media-player';
+// ModuleMediaPlayer removed in #1802: per-module audio/video was
+// rescoped to per-lesson. Lesson-level players are embedded in
+// lesson-viewer.tsx directly.
 import { DownloadModuleButton } from '@/components/learning/download-module-button';
 
 interface ModuleLockGateProps {
@@ -188,8 +190,6 @@ export function ModuleLockGate({ moduleId, language }: ModuleLockGateProps) {
 
       <div className="grid md:grid-cols-3 gap-8">
         <div className="md:col-span-2 space-y-8">
-          <ModuleMediaPlayer moduleId={moduleId} language={language} />
-
           <ModuleProgressOverlay
             moduleId={moduleId}
             staticCompletionPercentage={moduleData?.completion_pct ?? 0}

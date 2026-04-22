@@ -76,14 +76,22 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
 
-    # Cast columns to their enum types
+    # Cast columns to their enum types. Columns that were created with a
+    # server_default need the DEFAULT dropped first because Postgres will
+    # not auto-cast a VARCHAR default expression to an enum — only the
+    # column data is covered by the USING clause. Re-set the DEFAULT as an
+    # enum-typed literal after the type change.
     op.execute(
         "ALTER TABLE question_banks ALTER COLUMN bank_type TYPE questionbanktype"
         " USING bank_type::questionbanktype"
     )
+    op.execute("ALTER TABLE question_banks ALTER COLUMN status DROP DEFAULT")
     op.execute(
         "ALTER TABLE question_banks ALTER COLUMN status TYPE questionbankstatus"
         " USING status::questionbankstatus"
+    )
+    op.execute(
+        "ALTER TABLE question_banks ALTER COLUMN status SET DEFAULT 'draft'::questionbankstatus"
     )
 
     op.create_table(
@@ -109,9 +117,14 @@ def upgrade() -> None:
         sa.Column("difficulty", sa.VARCHAR(50), server_default="medium", nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
+    op.execute("ALTER TABLE qbank_questions ALTER COLUMN difficulty DROP DEFAULT")
     op.execute(
         "ALTER TABLE qbank_questions ALTER COLUMN difficulty TYPE questiondifficulty"
         " USING difficulty::questiondifficulty"
+    )
+    op.execute(
+        "ALTER TABLE qbank_questions ALTER COLUMN difficulty SET DEFAULT"
+        " 'medium'::questiondifficulty"
     )
 
     op.create_table(
@@ -132,9 +145,14 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.UniqueConstraint("question_id", "language", name="uq_qbank_question_audio_lang"),
     )
+    op.execute("ALTER TABLE qbank_question_audio ALTER COLUMN status DROP DEFAULT")
     op.execute(
         "ALTER TABLE qbank_question_audio ALTER COLUMN status TYPE qbankaudiostatus"
         " USING status::qbankaudiostatus"
+    )
+    op.execute(
+        "ALTER TABLE qbank_question_audio ALTER COLUMN status SET DEFAULT"
+        " 'pending'::qbankaudiostatus"
     )
 
     op.create_table(

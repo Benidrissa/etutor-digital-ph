@@ -15,6 +15,7 @@ import {
 
 interface Props {
   bankId: string;
+  canEdit?: boolean;
 }
 
 const MODES: { value: QBankTestMode; key: string }[] = [
@@ -23,7 +24,7 @@ const MODES: { value: QBankTestMode; key: string }[] = [
   { value: "review", key: "modeReview" },
 ];
 
-export function QBankTestConfigList({ bankId }: Props) {
+export function QBankTestConfigList({ bankId, canEdit = true }: Props) {
   const t = useTranslations("qbank");
   const [tests, setTests] = useState<QBankTestConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,7 +96,7 @@ export function QBankTestConfigList({ bankId }: Props) {
         </ul>
       )}
 
-      <form onSubmit={handleCreate} className="space-y-3 rounded-md border bg-gray-50 p-4">
+      {canEdit && <form onSubmit={handleCreate} className="space-y-3 rounded-md border bg-gray-50 p-4">
         <h3 className="text-sm font-medium">{t("newTest")}</h3>
 
         <div className="space-y-2">
@@ -181,7 +182,7 @@ export function QBankTestConfigList({ bankId }: Props) {
             {t("createTest")}
           </Button>
         </div>
-      </form>
+      </form>}
     </div>
   );
 }

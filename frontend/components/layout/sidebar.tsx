@@ -124,12 +124,18 @@ export function Sidebar() {
       icon: ListChecks,
       description: t("qbankTestsDescription"),
     },
-    {
-      href: `/${locale}/qbank`,
-      label: t("qbank"),
-      icon: Brain,
-      description: t("qbankDescription"),
-    },
+    ...(userRole === "admin" ||
+    userRole === "sub_admin" ||
+    userRole === "expert"
+      ? [
+          {
+            href: `/${locale}/qbank`,
+            label: t("qbank"),
+            icon: Brain,
+            description: t("qbankDescription"),
+          },
+        ]
+      : []),
     {
       href: `/${locale}/certificates`,
       label: t("certificates"),
