@@ -1,0 +1,139 @@
+name: Staging Trigger Video
+
+# Manually dispatch a lesson-video generation on staging without
+# going through the frontend. Looks up the lesson by
+# (module_id, unit_id, language) and fires the Celery task directly,
+# bypassing the Generate-button UI path entirely. Use this to smoke-
+# test the HeyGen pipeline in isolation while a frontend bug is
+# holding up the button.
+
+on:
+  workflow_dispatch:
+    inputs:
+      module_id:
+        description: "Module UUID"
+        required: true
+        default: "aab749f1-fba3-45d3-bcff-e0f4f925475a"
+      unit_id:
+        description: "Unit id (e.g. M01-U01)"
+        required: true
+        default: "M01-U01"
+      language:
+        description: "fr or en"
+        required: true
+        default: "fr"
+
+jobs:
+  trigger:
+    name: Trigger video generation on staging
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH into staging and dispatch
+        uses: appleboy/ssh-action@v1
+        env:
+          MODULE_ID: ${{ inputs.module_id }}
+          UNIT_ID: ${{ inputs.unit_id }}
+          LANGUAGE: ${{ inputs.language }}
+        with:
+          host: 167.86.115.58
+          username: deploy
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: MODULE_ID,UNIT_ID,LANGUAGE
+          script: |
+            set -e
+            cd ~/etutor
+            echo "=============================================="
+            echo "Looking up lesson_id for ($MODULE_ID, $UNIT_ID, $LANGUAGE)"
+            echo "=============================================="
+            LESSON_ID=$(docker compose exec -T postgres \
+              psql -U postgres santepublique_aof -t -A \
+              -c "SELECT id FROM generated_content
+                  WHERE module_id = '$MODULE_ID'
+                    AND content->>'unit_id' = '$UNIT_ID'
+                    AND language = '$LANGUAGE'
+                  ORDER BY created_at DESC
+                  LIMIT 1")
+            LESSON_ID=$(echo "$LESSON_ID" | tr -d '[:space:]')
+            if [ -z "$LESSON_ID" ]; then
+              echo "ERROR: no lesson found for the given module/unit/language"
+              exit 1
+            fi
+            echo "lesson_id = $LESSON_ID"
+
+            echo
+            echo "=============================================="
+            echo "Fetching lesson text + existing row check"
+            echo "=============================================="
+            docker compose exec -T postgres \
+              psql -U postgres santepublique_aof \
+              -c "SELECT id, media_type, status, provider_video_id, error_message
+                  FROM generated_audio
+                  WHERE module_id = '$MODULE_ID'
+                    AND unit_id = '$UNIT_ID'
+                    AND media_type = 'video'
+                    AND language = '$LANGUAGE'" || true
+
+            echo
+            echo "=============================================="
+            echo "Dispatching generate_lesson_video Celery task"
+            echo "=============================================="
+            docker compose exec -T backend python -c "
+            import json
+            import asyncio
+            from sqlalchemy import select
+            from app.infrastructure.persistence.database import async_session_factory
+            from app.domain.models.content import GeneratedContent
+            from app.domain.services.lesson_service import extract_lesson_text
+            from app.tasks.content_generation import generate_lesson_video
+
+            async def main():
+                async with async_session_factory() as s:
+                    row = await s.execute(
+                        select(
+                            GeneratedContent.id,
+                            GeneratedContent.module_id,
+                            GeneratedContent.language,
+                            GeneratedContent.content,
+                        ).where(GeneratedContent.id == '$LESSON_ID')
+                    )
+                    r = row.first()
+                    if not r:
+                        print('LESSON NOT FOUND'); return
+                    lesson_text = extract_lesson_text(r.content or {})
+                    print(f'lesson_text length = {len(lesson_text)}')
+                    print(f'unit_id = {(r.content or {}).get(\"unit_id\")}')
+                    t = generate_lesson_video.delay(
+                        str(r.id),
+                        str(r.module_id),
+                        (r.content or {}).get('unit_id') or '$UNIT_ID',
+                        r.language,
+                        lesson_text,
+                    )
+                    print(f'DISPATCHED: task_id={t.id}')
+
+            asyncio.run(main())
+            "
+
+            echo
+            echo "=============================================="
+            echo "Celery: next 30s of lifecycle for this task"
+            echo "=============================================="
+            sleep 30
+            docker compose logs --tail=200 celery-worker 2>&1 \
+              | grep -E 'generate_lesson_video|LessonVideoService|heygen\.|HeyGenError|video' \
+              | tail -40 || true
+
+            echo
+            echo "=============================================="
+            echo "Post-dispatch row state"
+            echo "=============================================="
+            docker compose exec -T postgres \
+              psql -U postgres santepublique_aof \
+              -c "SELECT id, media_type, status, provider_video_id, error_message, created_at
+                  FROM generated_audio
+                  WHERE module_id = '$MODULE_ID'
+                    AND unit_id = '$UNIT_ID'
+                    AND media_type = 'video'
+                    AND language = '$LANGUAGE'
+                  ORDER BY created_at DESC
+                  LIMIT 3" || true
