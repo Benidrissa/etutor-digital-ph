@@ -1,5 +1,5 @@
 import { getTranslations, getLocale } from 'next-intl/server';
-import { Link } from '@/i18n/routing';
+import { Link, redirect } from '@/i18n/routing';
 import { ChevronLeft } from 'lucide-react';
 import { getModuleUnits } from '@/lib/api';
 import { QuizPageClient } from './quiz-page-client';
@@ -13,6 +13,14 @@ export default async function QuizPage({ params, searchParams }: QuizPageProps) 
   const { moduleId } = await params;
   const { unit } = await searchParams;
   const locale = await getLocale();
+
+  // The summative assessment lives on its own page with the right submission
+  // endpoint; the regular quiz page would record an inert quiz_attempts row
+  // and never trigger certificate logic.
+  if (unit === 'summative') {
+    redirect({ href: `/modules/${moduleId}/summative`, locale });
+  }
+
   const t = await getTranslations('QuizPage');
 
   const unitId = unit || 'unit-1';

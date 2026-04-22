@@ -361,6 +361,34 @@ class QuizService:
                 system_prompt, user_message, "quiz"
             )
 
+            # Summative quizzes have a hard requirement on question count
+            # (a 10-Q "summative" defeats the purpose of a final exam).
+            # If Claude undercounts, retry once with a stronger nudge.
+            if unit_id == "summative":
+                got = len(response.get("questions") or [])
+                if got < num_questions:
+                    logger.warning(
+                        "Summative undercount, retrying with stronger nudge",
+                        expected=num_questions,
+                        got=got,
+                    )
+                    retry_message = (
+                        f"Your previous response returned only {got} questions, but {num_questions} "
+                        f"are REQUIRED for this summative assessment. Generate the full quiz again "
+                        f"with EXACTLY {num_questions} questions covering all the units listed above. "
+                        f"Do not abbreviate or summarize.\n\n" + user_message
+                    )
+                    response = await self.claude_service.generate_structured_content(
+                        system_prompt, retry_message, "quiz"
+                    )
+                    final_got = len(response.get("questions") or [])
+                    if final_got < num_questions:
+                        logger.error(
+                            "Summative still undercount after retry",
+                            expected=num_questions,
+                            got=final_got,
+                        )
+
             # Validate and normalize the parsed dict from Claude
             quiz_data = self._validate_and_normalize_quiz(
                 response, unit_id, num_questions, is_kids=audience_ctx.is_kids
