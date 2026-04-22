@@ -392,25 +392,35 @@ class LessonVideoService:
                 max_chars=max_chars,
             )
 
-            avatar_id = (cache.get("video-summary-default-avatar-id", "") or "").strip()
+            brand_image_url = (cache.get("video-summary-brand-image-url", "") or "").strip()
             voice_key = (
                 "video-summary-voice-id-fr" if language == "fr" else "video-summary-voice-id-en"
             )
             voice_id = (cache.get(voice_key, "") or "").strip()
-            use_agent_mode = not (avatar_id and voice_id)
+            avatar_id = (cache.get("video-summary-default-avatar-id", "") or "").strip()
+
+            # Preferred path: content-focused (no avatar) via /v3/videos.
+            # Requires the admin-configured brand background + a voice_id
+            # for narration. Legacy v2 avatar path is kept for tenants
+            # that haven't migrated; Video Agents is the no-config last
+            # resort (uses an avatar, pre-#1854 behaviour).
+            use_content_mode = bool(brand_image_url and voice_id)
+            use_v2_avatar_mode = not use_content_mode and bool(avatar_id and voice_id)
 
             callback_url = self._heygen_callback_url()
             client = heygen_client or HeyGenClient()
             owns_client = heygen_client is None
             try:
-                if use_agent_mode:
-                    result = await client.create_video_agent(
-                        prompt=script,
+                if use_content_mode:
+                    result = await client.create_content_video(
+                        script=script,
+                        voice_id=voice_id,
+                        image_url=brand_image_url,
                         language=language,
                         callback_url=callback_url,
                     )
-                    api_version = "v3-agent"
-                else:
+                    api_version = "v3"
+                elif use_v2_avatar_mode:
                     result = await client.create_video(
                         script=script,
                         avatar_id=avatar_id,
@@ -419,6 +429,13 @@ class LessonVideoService:
                         language=language,
                     )
                     api_version = "v2"
+                else:
+                    result = await client.create_video_agent(
+                        prompt=script,
+                        language=language,
+                        callback_url=callback_url,
+                    )
+                    api_version = "v3-agent"
             finally:
                 if owns_client and client._client is not None:
                     await client._client.aclose()
