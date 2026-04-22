@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 
+import httpx
 import structlog
 from celery import Task
 from sqlalchemy import func, or_, select
@@ -26,7 +27,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.ai.translation import translate_figure_caption
+from app.ai.translation import classify_figure, translate_figure_caption
 from app.domain.models.source_image import SourceImage
 from app.infrastructure.config.settings import settings
 from app.tasks.celery_app import celery_app
@@ -211,5 +212,185 @@ async def _run_backfill_with_factory(
             "status": "complete",
             "eligible": total,
             "translated": translated,
+            "failed": failed,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 slice 2 (#1844) — figure-kind classifier backfill
+# ---------------------------------------------------------------------------
+
+
+class FigureClassificationTask(Task):
+    """Celery base for the figure-kind classifier backfill."""
+
+    def on_success(self, retval, task_id, args, kwargs):
+        logger.info("Figure-kind backfill completed", task_id=task_id, result=retval)
+
+    def on_failure(self, exc, task_id, args, kwargs, einfo):
+        logger.error("Figure-kind backfill failed", task_id=task_id, exception=str(exc))
+
+
+@celery_app.task(
+    bind=True,
+    base=FigureClassificationTask,
+    time_limit=3600,
+    soft_time_limit=3300,
+    ignore_result=True,
+    acks_late=False,
+)
+def backfill_figure_kinds(
+    self,
+    rag_collection_id: str | None = None,
+    limit: int | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Classify ``source_images`` rows that have no ``figure_kind`` yet.
+
+    Args:
+        rag_collection_id: Limit backfill to a single course's RAG collection.
+            None processes every eligible row across all courses.
+        limit: Maximum number of rows to process in this invocation.
+        dry_run: If True, count eligible rows and log a preview but do not
+            call Claude or write to the DB.
+    """
+    return asyncio.run(
+        _run_kind_backfill(
+            task=self,
+            rag_collection_id=rag_collection_id,
+            limit=limit,
+            dry_run=dry_run,
+        )
+    )
+
+
+async def _run_kind_backfill(
+    task: Task,
+    rag_collection_id: str | None,
+    limit: int | None,
+    dry_run: bool,
+) -> dict:
+    # Same task-scoped engine pattern as _run_backfill — each asyncio.run()
+    # invocation gets its own pool bound to its own loop (#1827).
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        return await _run_kind_backfill_with_factory(
+            task=task,
+            rag_collection_id=rag_collection_id,
+            limit=limit,
+            dry_run=dry_run,
+            session_factory=session_factory,
+        )
+    finally:
+        await engine.dispose()
+
+
+async def _run_kind_backfill_with_factory(
+    task: Task,
+    rag_collection_id: str | None,
+    limit: int | None,
+    dry_run: bool,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> dict:
+    async with session_factory() as session:
+        stmt = select(SourceImage).where(
+            SourceImage.figure_kind.is_(None),
+            SourceImage.storage_url.is_not(None),
+        )
+        if rag_collection_id is not None:
+            stmt = stmt.where(SourceImage.rag_collection_id == rag_collection_id)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+
+        rows = (await session.execute(stmt)).scalars().all()
+        total = len(rows)
+
+        logger.info(
+            "Figure-kind backfill: eligible rows",
+            total=total,
+            rag_collection_id=rag_collection_id,
+            dry_run=dry_run,
+        )
+
+        task.update_state(
+            state="CLASSIFYING",
+            meta={
+                "step": "classifying",
+                "total": total,
+                "processed": 0,
+                "classified": 0,
+                "failed": 0,
+            },
+        )
+
+        if dry_run or total == 0:
+            return {
+                "status": "dry_run" if dry_run else "noop",
+                "eligible": total,
+                "classified": 0,
+                "failed": 0,
+            }
+
+        classified = 0
+        failed = 0
+        pending_commit = 0
+
+        async with httpx.AsyncClient(timeout=30.0) as http:
+            for idx, img in enumerate(rows):
+                try:
+                    upstream = await http.get(img.storage_url)
+                    upstream.raise_for_status()
+                    image_bytes = upstream.content
+                except Exception as exc:
+                    failed += 1
+                    logger.warning(
+                        "Failed to fetch image bytes for classification, skipping",
+                        source_image_id=str(img.id),
+                        storage_url=img.storage_url,
+                        error=str(exc),
+                    )
+                    continue
+
+                try:
+                    classification = await classify_figure(image_bytes=image_bytes)
+                except Exception as exc:
+                    failed += 1
+                    logger.warning(
+                        "Classification failed for source image, skipping",
+                        source_image_id=str(img.id),
+                        figure_number=img.figure_number,
+                        error=str(exc),
+                    )
+                    continue
+
+                img.figure_kind = classification.kind
+                session.add(img)
+                classified += 1
+                pending_commit += 1
+
+                if pending_commit >= _COMMIT_EVERY:
+                    await session.commit()
+                    pending_commit = 0
+
+                if (idx + 1) % 10 == 0 or idx + 1 == total:
+                    task.update_state(
+                        state="CLASSIFYING",
+                        meta={
+                            "step": "classifying",
+                            "total": total,
+                            "processed": idx + 1,
+                            "classified": classified,
+                            "failed": failed,
+                        },
+                    )
+
+        if pending_commit:
+            await session.commit()
+
+        return {
+            "status": "complete",
+            "eligible": total,
+            "classified": classified,
             "failed": failed,
         }

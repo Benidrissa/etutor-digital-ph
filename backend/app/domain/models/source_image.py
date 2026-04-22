@@ -72,6 +72,7 @@ class SourceImage(Base):
     embedding: Mapped[list[float] | None] = mapped_column(ARRAY(Float), nullable=True)
     alt_text_fr: Mapped[str | None] = mapped_column(Text, nullable=True)
     alt_text_en: Mapped[str | None] = mapped_column(Text, nullable=True)
+    figure_kind: Mapped[str | None] = mapped_column(Text, nullable=True)
     semantic_tags: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
@@ -107,6 +108,7 @@ class SourceImage(Base):
             "original_format": self.original_format,
             "alt_text_fr": self.alt_text_fr,
             "alt_text_en": self.alt_text_en,
+            "figure_kind": self.figure_kind,
             "semantic_tags": self.semantic_tags,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
