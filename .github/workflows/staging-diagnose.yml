@@ -140,3 +140,17 @@ jobs:
             docker compose logs --tail=500 celery-worker 2>&1 \
               | grep -E 'Task (received|succeeded|failed)|generate_lesson_video|generate_lesson_audio|Traceback|ERROR/' \
               | tail -80 || true
+
+            echo
+            echo "=============================================="
+            echo "Celery worker actual command (docker inspect)"
+            echo "=============================================="
+            docker inspect etutor-celery-worker --format '{{ join .Config.Cmd " " }}' || true
+
+            echo
+            echo "=============================================="
+            echo "Celery: boot banner + beat mentions (head 80 lines)"
+            echo "=============================================="
+            docker compose logs celery-worker 2>&1 \
+              | grep -iE 'beat|scheduler|celery@|concurrency|poll-heygen|sending due|ready\.' \
+              | tail -40 || true
