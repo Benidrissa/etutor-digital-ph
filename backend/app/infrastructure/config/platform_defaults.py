@@ -1596,13 +1596,16 @@ SETTING_DEFINITIONS: list[SettingDef] = [
     SettingDef(
         "video-summary-max-chars",
         "video_summary",
-        2000,
+        1200,
         "integer",
         "Narration character cap",
         (
             "Hard cap on the concatenated narration script sent to HeyGen. "
-            "Default 2000 ≈ 400 words ≈ ~2:40 of narration. Upper bound is "
-            "HeyGen's own 5000-char input_text limit."
+            "Default 1200 ≈ 240 words ≈ ~90 s of narration, tuned for "
+            "mobile-first, low-bandwidth delivery: shorter clips mean "
+            "faster HeyGen renders and smaller MP4s over 2G/3G. Raise it "
+            "if tenants want longer summaries; upper bound is HeyGen's own "
+            "5000-char input_text limit."
         ),
         {"min": 500, "max": 5000},
     ),
@@ -1661,14 +1664,15 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "video_summary",
         "",
         "string",
-        "Video background image URL (16:9)",
+        "Video background image URL (9:16)",
         (
-            "Publicly reachable URL of a 1280×720 PNG/JPG used as the "
-            "background for every lesson video. HeyGen renders the "
-            "narration voice over this still image with synced captions "
-            "— no talking avatar — so the final video stays uniform, "
-            "720p 16:9, and focused on the lesson content rather than "
-            "a presenter. A default Sira-branded image ships at "
+            "Publicly reachable URL of a 720×1280 portrait PNG/JPG used "
+            "as the background for every lesson video. HeyGen renders "
+            "the narration voice over this still image with synced "
+            "captions — no talking avatar — so the final video stays "
+            "uniform, 720p 9:16 (mobile-first portrait), and focused "
+            "on the lesson content rather than a presenter. A default "
+            "Sira-branded portrait image ships at "
             "``/images/video-summary-background.png`` on the frontend; "
             "set this to e.g. "
             "``https://etutor.elearning.portfolio2.kimbetien.com"

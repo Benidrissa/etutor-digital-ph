@@ -52,7 +52,7 @@ logger = structlog.get_logger(__name__)
 VIDEO_SCRIPT_TOOL = {
     "name": "save_video_script",
     "description": (
-        "Save the 3-minute lesson summary narration. Call this exactly once with the full script."
+        "Save the short lesson summary narration. Call this exactly once with the full script."
     ),
     "input_schema": {
         "type": "object",
@@ -109,7 +109,7 @@ def _build_video_system_prompt(
     if is_kids:
         age_hint = age_range or "6-12"
         return (
-            f"You write 3-minute narrated video summaries for young "
+            f"You write short narrated video summaries for young "
             f"learners aged {age_hint} in West Africa.\n\n"
             f"Output language: {lang_label}.\n"
             f"Course field / domain: {domain}.\n"
@@ -140,7 +140,7 @@ def _build_video_system_prompt(
     level_label = f"level {level}/4" if level else "the assigned course level"
 
     return (
-        f"You write 3-minute narrated video summaries for a learning "
+        f"You write short narrated video summaries for a learning "
         f"platform.\n\n"
         f"Output language: {lang_label}.\n"
         f"Course field / domain: {domain}.\n"
@@ -171,7 +171,7 @@ LESSON_VIDEO_USER_TEMPLATE = (
     "Learner level (1=beginner, 4=expert): {level}\n\n"
     "Lesson content to summarize (use this as the source of truth):\n\n"
     "{lesson_content}\n\n"
-    "Write the 3-minute narration script now."
+    "Write the short narration script now."
 )
 
 
