@@ -317,10 +317,17 @@ async def get_video_status(
 )
 async def get_video_data(
     video_id: UUID,
-    _current_user: AuthenticatedUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    """Proxy the MP4 bytes from MinIO (internal URL not browser-reachable)."""
+    """Proxy the MP4 bytes from MinIO (internal URL not browser-reachable).
+
+    Public (no ``get_current_user``) because native ``<video src=...>``
+    elements do not send ``Authorization`` headers. Mirrors the audio
+    ``/{audio_id}/data`` contract. Access control is upstream: the
+    lesson-video rows themselves are only written by authenticated
+    dispatches, and the ``status='ready'`` + ``media_type='video'``
+    gates prevent serving in-progress or non-video rows.
+    """
     result = await db.execute(
         select(GeneratedAudio).where(
             GeneratedAudio.id == video_id,
