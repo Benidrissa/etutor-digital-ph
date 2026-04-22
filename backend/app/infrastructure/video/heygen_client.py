@@ -40,6 +40,7 @@ _BASE_URL = "https://api.heygen.com"
 _CREATE_PATH = "/v2/video/generate"
 _STATUS_PATH = "/v2/video_status.get"
 _AGENT_CREATE_PATH = "/v3/video-agents"
+_V3_CREATE_PATH = "/v3/videos"
 _V3_STATUS_PATH_TEMPLATE = "/v3/videos/{video_id}"
 
 
@@ -204,6 +205,68 @@ class HeyGenClient:
             video_id=video_id,
             language=language,
             script_chars=len(script),
+        )
+        return CreateVideoResult(provider_video_id=str(video_id))
+
+    async def create_content_video(
+        self,
+        *,
+        script: str,
+        voice_id: str,
+        image_url: str,
+        language: str,
+        aspect_ratio: str = "16:9",
+        resolution: str = "720p",
+        callback_url: str | None = None,
+    ) -> CreateVideoResult:
+        """Dispatch a content-focused (no-avatar) HeyGen render.
+
+        Uses the v3 ``/v3/videos`` endpoint with ``type="image"``: the
+        narration voice plays over a static branded background with
+        synced captions, no talking head. This is the uniform,
+        web-ready path (16:9, 720p) that the product wants for every
+        lesson regardless of domain.
+
+        The image URL must be publicly reachable so HeyGen's renderer
+        can fetch it — typically the frontend's branded asset served
+        at the tenant's public hostname.
+        """
+        if not script.strip():
+            raise HeyGenBadRequestError("script is empty")
+        if not voice_id:
+            raise HeyGenBadRequestError("voice_id is required")
+        if not image_url:
+            raise HeyGenBadRequestError("image_url is required")
+
+        body: dict = {
+            "type": "image",
+            "image": {"type": "url", "url": image_url},
+            "script": script,
+            "voice_id": voice_id,
+            "aspect_ratio": aspect_ratio,
+            "resolution": resolution,
+            "output_format": "mp4",
+        }
+        if callback_url:
+            body["callback_url"] = callback_url
+
+        async def _call() -> httpx.Response:
+            return await self._request("POST", _V3_CREATE_PATH, json=body)
+
+        response = await _retry_transient(_call)
+        data = response.json() or {}
+        inner = data.get("data") or {}
+        video_id = inner.get("video_id") or data.get("video_id")
+        if not video_id:
+            raise HeyGenError(f"HeyGen content video create returned no video_id: {data!r}")
+
+        logger.info(
+            "heygen.create_content_video.dispatched",
+            video_id=video_id,
+            language=language,
+            script_chars=len(script),
+            aspect_ratio=aspect_ratio,
+            resolution=resolution,
         )
         return CreateVideoResult(provider_video_id=str(video_id))
 

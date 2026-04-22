@@ -193,7 +193,13 @@ def _api_version_for(record: GeneratedAudio) -> str:
     dispatch time. Legacy rows predating the poller won't have it —
     treat them as v2 so the previous Direct-Video flow keeps working
     after the rollout of #1798.
+
+    ``v3`` (content-focused /v3/videos, #1854) and ``v3-agent``
+    (Video Agents) both use the same status endpoint path
+    (``/v3/videos/{id}``), so HeyGenClient treats them identically.
     """
     metadata = record.media_metadata or {}
     value = metadata.get("api_version") or "v2"
-    return "v3-agent" if value == "v3-agent" else "v2"
+    if value in ("v3", "v3-agent"):
+        return "v3-agent"
+    return "v2"

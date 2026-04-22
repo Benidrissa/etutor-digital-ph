@@ -1656,6 +1656,22 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "video summary generation requests."
         ),
     ),
+    SettingDef(
+        "video-summary-brand-image-url",
+        "video_summary",
+        "",
+        "string",
+        "Video background image URL (16:9)",
+        (
+            "Publicly reachable URL of a 1280×720 PNG/JPG used as the "
+            "background for every lesson video. HeyGen renders the "
+            "narration voice over this still image with synced captions "
+            "— no talking avatar — so the final video stays uniform, "
+            "720p 16:9, and focused on the lesson content rather than "
+            "a presenter. When empty, video generation fails fast with "
+            "an actionable error at dispatch time."
+        ),
+    ),
     # ── Pagination ─────────────────────────────────────────
     SettingDef(
         "pagination-admin-default-limit",
