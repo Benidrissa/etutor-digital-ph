@@ -51,7 +51,6 @@ jobs:
                   WHERE module_id = '$MODULE_ID'
                     AND content->>'unit_id' = '$UNIT_ID'
                     AND language = '$LANGUAGE'
-                  ORDER BY created_at DESC
                   LIMIT 1")
             LESSON_ID=$(echo "$LESSON_ID" | tr -d '[:space:]')
             if [ -z "$LESSON_ID" ]; then
