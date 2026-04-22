@@ -48,9 +48,7 @@ async def touch_course_interaction_by_module(
         await touch_course_interaction(db, user_id, course_id)
 
 
-async def rollup_course_completion(
-    db: AsyncSession, user_id: UUID, course_id: UUID
-) -> float:
+async def rollup_course_completion(db: AsyncSession, user_id: UUID, course_id: UUID) -> float:
     """Recompute user_course_enrollment.completion_pct as the avg of module pcts.
 
     Modules without a progress row count as 0% (via outer join), so a course
@@ -62,8 +60,7 @@ async def rollup_course_completion(
         .select_from(Module)
         .outerjoin(
             UserModuleProgress,
-            (UserModuleProgress.module_id == Module.id)
-            & (UserModuleProgress.user_id == user_id),
+            (UserModuleProgress.module_id == Module.id) & (UserModuleProgress.user_id == user_id),
         )
         .where(Module.course_id == course_id)
     )
