@@ -416,6 +416,7 @@ class LessonGenerationService:
                     attribution=db_img.attribution or ref.attribution,
                     image_type=db_img.image_type or ref.image_type,
                     storage_url=db_img.storage_url or ref.storage_url,
+                    storage_url_fr=db_img.storage_url_fr or ref.storage_url_fr,
                     alt_text_fr=db_img.alt_text_fr or ref.alt_text_fr,
                     alt_text_en=db_img.alt_text_en or ref.alt_text_en,
                 )
@@ -842,6 +843,7 @@ class LessonGenerationService:
                         attribution=img.get("attribution"),
                         image_type=img.get("image_type") or "unknown",
                         storage_url=img.get("storage_url"),
+                        storage_url_fr=img.get("storage_url_fr"),
                         alt_text_fr=img.get("alt_text_fr"),
                         alt_text_en=img.get("alt_text_en"),
                     )
