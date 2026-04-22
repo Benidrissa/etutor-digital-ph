@@ -62,6 +62,8 @@ class SourceImage(Base):
     surrounding_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     storage_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     storage_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    storage_key_fr: Mapped[str | None] = mapped_column(Text, nullable=True)
+    storage_url_fr: Mapped[str | None] = mapped_column(Text, nullable=True)
     format: Mapped[str] = mapped_column(String(20), server_default="webp", nullable=False)
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -96,6 +98,8 @@ class SourceImage(Base):
             "surrounding_text": self.surrounding_text,
             "storage_key": self.storage_key,
             "storage_url": self.storage_url,
+            "storage_key_fr": self.storage_key_fr,
+            "storage_url_fr": self.storage_url_fr,
             "format": self.format,
             "width": self.width,
             "height": self.height,

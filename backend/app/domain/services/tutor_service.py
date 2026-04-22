@@ -541,6 +541,7 @@ class TutorService:
                                                 "attribution": meta.get("attribution"),
                                                 "image_type": meta.get("image_type", "unknown"),
                                                 "storage_url": meta.get("storage_url"),
+                                                "storage_url_fr": meta.get("storage_url_fr"),
                                                 "alt_text_fr": meta.get("alt_text_fr"),
                                                 "alt_text_en": meta.get("alt_text_en"),
                                             }
@@ -651,6 +652,7 @@ class TutorService:
                                 "attribution": meta.get("attribution"),
                                 "image_type": meta.get("image_type", "unknown"),
                                 "storage_url": meta.get("storage_url"),
+                                "storage_url_fr": meta.get("storage_url_fr"),
                                 "alt_text_fr": meta.get("alt_text_fr"),
                                 "alt_text_en": meta.get("alt_text_en"),
                             }
