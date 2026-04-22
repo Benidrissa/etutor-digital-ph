@@ -1668,8 +1668,13 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "narration voice over this still image with synced captions "
             "— no talking avatar — so the final video stays uniform, "
             "720p 16:9, and focused on the lesson content rather than "
-            "a presenter. When empty, video generation fails fast with "
-            "an actionable error at dispatch time."
+            "a presenter. A default Sira-branded image ships at "
+            "``/images/video-summary-background.png`` on the frontend; "
+            "set this to e.g. "
+            "``https://etutor.elearning.portfolio2.kimbetien.com"
+            "/images/video-summary-background.png`` to use it, or "
+            "upload your own tenant-branded image. When empty, video "
+            "generation falls back to the legacy Video Agents path."
         ),
     ),
     # ── Pagination ─────────────────────────────────────────
