@@ -284,10 +284,7 @@ def _assign_layers(structure: FlowchartStructure) -> dict[str, int]:
         visited.add(current)
         for nxt in outgoing[current]:
             candidate = layer[current] + 1
-            if nxt not in layer:
-                layer[nxt] = candidate
-                queue.append(nxt)
-            elif candidate > layer[nxt] and nxt not in visited:
+            if nxt not in layer or (candidate > layer[nxt] and nxt not in visited):
                 layer[nxt] = candidate
                 queue.append(nxt)
 
