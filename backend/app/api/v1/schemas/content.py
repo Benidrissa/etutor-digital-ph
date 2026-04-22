@@ -41,7 +41,13 @@ class SourceImageRef(BaseModel):
     image_type: str = Field(
         ..., description="Image type: diagram, photo, chart, formula, icon, unknown"
     )
-    storage_url: str | None = Field(None, description="CDN URL to the image")
+    storage_url: str | None = Field(
+        None, description="CDN URL to the default (usually English) image"
+    )
+    storage_url_fr: str | None = Field(
+        None,
+        description="CDN URL to the French-variant image, when Phase 2 has produced one. NULL means the backend /data endpoint will fall back to storage_url for fr requests.",
+    )
     alt_text_fr: str | None = Field(None, description="French alt text")
     alt_text_en: str | None = Field(None, description="English alt text")
 

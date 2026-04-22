@@ -72,23 +72,48 @@ async def get_image_metadata(
 @router.get("/{image_id}/data")
 async def get_image_data(
     image_id: uuid.UUID,
+    lang: str | None = Query(
+        None,
+        pattern="^(fr|en)$",
+        description="Preferred locale. When 'fr' and a French variant exists, stream that instead of the default.",
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
-    """Proxy image binary from internal MinIO storage to the browser."""
+    """Proxy image binary from internal MinIO storage to the browser.
+
+    When ``lang=fr`` and the figure has a populated ``storage_url_fr``,
+    that variant is served; otherwise we fall back to the default
+    ``storage_url`` — preserving today's behaviour for every figure that
+    does not yet have a French-variant asset (issue #1834).
+    """
     result = await db.execute(select(SourceImage).where(SourceImage.id == image_id))
     img = result.scalar_one_or_none()
     if img is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
 
-    if not img.storage_url:
+    fetch_url: str | None
+    served_locale: str
+    if lang == "fr" and img.storage_url_fr:
+        fetch_url = img.storage_url_fr
+        served_locale = "fr"
+    else:
+        fetch_url = img.storage_url
+        served_locale = "default"
+
+    if not fetch_url:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Image binary not available"
         )
 
-    logger.info("Source image data proxy", image_id=str(image_id))
+    logger.info(
+        "Source image data proxy",
+        image_id=str(image_id),
+        requested_lang=lang,
+        served_locale=served_locale,
+    )
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            upstream = await client.get(img.storage_url)
+            upstream = await client.get(fetch_url)
         upstream.raise_for_status()
     except httpx.HTTPError as exc:
         logger.error("Failed to fetch image from storage", image_id=str(image_id), error=str(exc))

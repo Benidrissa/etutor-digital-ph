@@ -37,6 +37,7 @@ def _make_image_meta(
     caption_en=None,
     image_type="diagram",
     storage_url="https://cdn.example.com/img/test.webp",
+    storage_url_fr=None,
     alt_text_fr="Diagramme",
     alt_text_en="Diagram",
 ):
@@ -48,6 +49,7 @@ def _make_image_meta(
         "caption_en": caption_en,
         "image_type": image_type,
         "storage_url": storage_url,
+        "storage_url_fr": storage_url_fr,
         "alt_text_fr": alt_text_fr,
         "alt_text_en": alt_text_en,
     }
@@ -338,6 +340,7 @@ def _make_db_image(
     alt_text_fr=None,
     alt_text_en=None,
     storage_url="https://cdn.example.com/x.webp",
+    storage_url_fr=None,
     figure_number="1.1",
     image_type="diagram",
     attribution=None,
@@ -350,6 +353,7 @@ def _make_db_image(
     m.alt_text_fr = alt_text_fr
     m.alt_text_en = alt_text_en
     m.storage_url = storage_url
+    m.storage_url_fr = storage_url_fr
     m.figure_number = figure_number
     m.image_type = image_type
     m.attribution = attribution
@@ -461,3 +465,63 @@ class TestRehydrateSourceImageRefs:
         session = _FakeSession([])
         out = await LessonGenerationService._rehydrate_source_image_refs(cached, session)
         assert len(out) == 2  # second entry skipped entirely; third parsed but no DB overlay
+
+    async def test_overlays_storage_url_fr_from_db(self):
+        img_id = uuid.uuid4()
+        cached = [
+            {
+                "id": str(img_id),
+                "caption": "English caption",
+                "image_type": "diagram",
+                "storage_url": "https://cdn.example.com/default.webp",
+                "storage_url_fr": None,
+            }
+        ]
+        db_row = _make_db_image(
+            img_id,
+            storage_url="https://cdn.example.com/default.webp",
+            storage_url_fr="https://cdn.example.com/fr.webp",
+        )
+        session = _FakeSession([db_row])
+        out = await LessonGenerationService._rehydrate_source_image_refs(cached, session)
+        assert out[0].storage_url_fr == "https://cdn.example.com/fr.webp"
+
+    async def test_storage_url_fr_null_when_no_french_variant(self):
+        img_id = uuid.uuid4()
+        cached = [
+            {
+                "id": str(img_id),
+                "caption": "English caption",
+                "image_type": "diagram",
+                "storage_url": "https://cdn.example.com/default.webp",
+            }
+        ]
+        db_row = _make_db_image(img_id, storage_url_fr=None)
+        session = _FakeSession([db_row])
+        out = await LessonGenerationService._rehydrate_source_image_refs(cached, session)
+        assert out[0].storage_url_fr is None
+
+
+class TestExtractSourceImageRefsStorageUrlFr:
+    async def test_storage_url_fr_passed_through_from_img_meta(self):
+        img_id = str(uuid.uuid4())
+        text = f"{{{{source_image:{img_id}}}}}"
+        img_meta = _make_image_meta(
+            img_id=uuid.UUID(img_id),
+            storage_url="https://cdn.example.com/default.webp",
+            storage_url_fr="https://cdn.example.com/fr.webp",
+        )
+        linked = {uuid.uuid4(): [img_meta]}
+        result = await LessonGenerationService._extract_source_image_refs(text, linked)
+        assert result[0].storage_url_fr == "https://cdn.example.com/fr.webp"
+
+    async def test_storage_url_fr_null_when_not_in_meta(self):
+        img_id = str(uuid.uuid4())
+        text = f"{{{{source_image:{img_id}}}}}"
+        img_meta = _make_image_meta(
+            img_id=uuid.UUID(img_id),
+            storage_url="https://cdn.example.com/default.webp",
+        )
+        linked = {uuid.uuid4(): [img_meta]}
+        result = await LessonGenerationService._extract_source_image_refs(text, linked)
+        assert result[0].storage_url_fr is None

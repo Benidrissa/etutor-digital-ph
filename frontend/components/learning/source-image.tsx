@@ -22,7 +22,7 @@ export function SourceImage({
   alt_text_en,
   language,
 }: SourceImageProps) {
-  const imageUrl = `${API_BASE}/api/v1/source-images/${id}/data`;
+  const imageUrl = `${API_BASE}/api/v1/source-images/${id}/data?lang=${language}`;
   const t = useTranslations('SourceImage');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
