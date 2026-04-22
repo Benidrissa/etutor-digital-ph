@@ -76,7 +76,7 @@ jobs:
             echo "=============================================="
             echo "Dispatching generate_lesson_video Celery task"
             echo "=============================================="
-            docker compose exec -T backend python -c "
+            docker compose exec -T backend uv run python -c "
             import json
             import asyncio
             from sqlalchemy import select
