@@ -668,9 +668,10 @@ class TestUnlockNextModule:
         )
 
         assert result.quiz_score_avg == 70.0
-        # No unlock should happen — execute called for get_or_create_progress
-        # plus touch_course_interaction_by_module (select Module.course_id)
-        assert call_count == 2
+        # No unlock should happen — execute called for get_or_create_progress,
+        # touch_course_interaction_by_module (select Module.course_id),
+        # and rollup_course_completion_by_module (also select Module.course_id).
+        assert call_count == 3
 
     async def test_unlock_updates_existing_locked_next_module(
         self, progress_service, mock_db, user_id, module_id

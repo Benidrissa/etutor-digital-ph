@@ -797,14 +797,24 @@ async def submit_summative_assessment_attempt(
         assessment_data = assessment_content.content
         questions = assessment_data["questions"]
 
-        # Validate this is a summative assessment
-        _summative_q_count = SettingsCache.instance().get("quiz-summative-questions-count", 20)
-        if len(questions) != _summative_q_count:
+        # The stored content is the source of truth for question count — the user
+        # only ever sees and answers what was generated. The config drives generation,
+        # not submission, so submission must trust the stored content.
+        if assessment_data.get("unit_id") != "summative":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={
                     "error": "not_summative_assessment",
-                    "message": f"This endpoint is only for summative assessments with {_summative_q_count} questions",
+                    "message": "This endpoint is only for summative assessments",
+                },
+            )
+        question_count = len(questions)
+        if question_count == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "empty_assessment",
+                    "message": "Assessment has no questions",
                 },
             )
 
@@ -823,13 +833,13 @@ async def submit_summative_assessment_attempt(
                 },
             )
 
-        # Validate answer count
-        if len(request.answers) != _summative_q_count:
+        # Validate answer count matches what was generated, not the current config
+        if len(request.answers) != question_count:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={
                     "error": "answer_count_mismatch",
-                    "message": f"Expected {_summative_q_count} answers, got {len(request.answers)}",
+                    "message": f"Expected {question_count} answers, got {len(request.answers)}",
                 },
             )
 
@@ -876,7 +886,7 @@ async def submit_summative_assessment_attempt(
 
         # Calculate final score and pass status
         _summative_passing = SettingsCache.instance().get("quiz-passing-score", 80.0)
-        score = round((correct_count / _summative_q_count) * 100, 1)
+        score = round((correct_count / question_count) * 100, 1)
         passed = score >= _summative_passing
 
         # Determine next attempt number
@@ -959,12 +969,18 @@ async def submit_summative_assessment_attempt(
         if assessment_content.module_id:
             try:
                 from app.domain.services.progress_service import (
+                    rollup_course_completion_by_module,
                     touch_course_interaction_by_module,
                 )
 
                 await touch_course_interaction_by_module(
                     session, user_id, assessment_content.module_id
                 )
+                if passed:
+                    await rollup_course_completion_by_module(
+                        session, user_id, assessment_content.module_id
+                    )
+                    await session.commit()
             except Exception as touch_err:
                 logger.warning("touch_course_interaction failed (non-fatal)", error=str(touch_err))
 
@@ -972,7 +988,7 @@ async def submit_summative_assessment_attempt(
             attempt_id=attempt.id,
             assessment_id=request.quiz_id,
             score=score,
-            total_questions=_summative_q_count,
+            total_questions=question_count,
             correct_answers=correct_count,
             total_time_seconds=request.total_time_seconds,
             passed=passed,
