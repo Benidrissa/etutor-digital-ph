@@ -1624,26 +1624,34 @@ SETTING_DEFINITIONS: list[SettingDef] = [
     SettingDef(
         "video-summary-default-avatar-id",
         "video_summary",
-        "",
+        "Judy_Teacher_Standing_public",
         "string",
         "Default HeyGen avatar ID",
         (
-            "HeyGen stock avatar_id used for all generations until "
-            "per-domain overrides land. Operator sets this per environment."
+            "HeyGen stock avatar_id used for every lesson video. "
+            "Default is ``Judy_Teacher_Standing_public`` — an explicit "
+            "teacher avatar (standing, upper body, neutral background) "
+            "paired with female voice defaults so avatar and voice "
+            "gender match. When both this and the language voice_id "
+            "are set, the service uses the v2 Direct Video path for "
+            "consistent, non-random output (vs the v3 Agents fallback "
+            "which HeyGen auto-picks an avatar each time). Admins "
+            "override per tenant via the settings UI."
         ),
     ),
     SettingDef(
         "video-summary-voice-id-fr",
         "video_summary",
-        "90bab79483c242d7b4487e5708db6744",
+        "64cc0b129ac34e04a521cb4627126923",
         "string",
         "HeyGen voice ID — French",
         (
             "HeyGen voice_id used when language=fr. Default is "
-            "``Pierre Narrateur`` — an explicitly narrator-trained male "
-            "French voice that suits lesson-summary delivery. Override "
-            "via HeyGen's voice library if a tenant wants a different "
-            "tone (Sylvie - Professional, Yves - Newscaster, etc.)."
+            "``Sylvie - Professional`` — a professional female French "
+            "voice. Chosen to gender-match the default avatar "
+            "(``Judy_Teacher_Standing_public``). Override via HeyGen's "
+            "voice library if a tenant wants a different tone "
+            "(Pierre Narrateur male, Yves Newscaster, etc.)."
         ),
     ),
     SettingDef(
