@@ -122,8 +122,12 @@ async def get_image_data(
         ) from exc
 
     content_type = upstream.headers.get("content-type", "image/webp")
+    # Drop `immutable` — the French variant can be re-derived in place when
+    # we iterate on the Phase-2 renderer (issue #1874), and `immutable` would
+    # pin the first response to browsers forever. A few hours of caching is
+    # enough for in-session reuse; the backend itself serves fast from MinIO.
     return StreamingResponse(
         content=iter([upstream.content]),
         media_type=content_type,
-        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        headers={"Cache-Control": "public, max-age=3600"},
     )

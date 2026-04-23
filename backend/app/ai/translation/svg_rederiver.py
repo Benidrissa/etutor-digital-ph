@@ -352,8 +352,55 @@ def _render_shape(node: FlowchartNode, cx: float, cy: float) -> str:
     )
 
 
+# Reserved strip on the right side of the canvas used by back-edges
+# (loopbacks) to route cleanly without crossing the main column. If no
+# back-edges are present the strip stays empty but the extra whitespace
+# is harmless.
+_MARGIN_X = 60
+
+
+def _forward_path(x1: float, y1_bottom: float, x2: float, y2_top: float) -> str:
+    """Orthogonal path from the bottom edge of one box to the top edge of another,
+    preferring a straight vertical line when the two boxes share an x column."""
+    if abs(x1 - x2) < 1:
+        return f"M{x1},{y1_bottom} L{x2},{y2_top}"
+    mid_y = (y1_bottom + y2_top) / 2
+    return f"M{x1},{y1_bottom} L{x1},{mid_y} L{x2},{mid_y} L{x2},{y2_top}"
+
+
+def _sideways_path(x1_side: float, y1: float, x2_side: float, y2: float) -> str:
+    """Horizontal path between two boxes on the same row (rare; used when two
+    nodes share a layer and we have an explicit side edge)."""
+    return f"M{x1_side},{y1} L{x2_side},{y2}"
+
+
+def _back_path(
+    x1_right: float,
+    y1: float,
+    x2_right: float,
+    y2: float,
+    margin_x: float,
+) -> str:
+    """Back-edge route: exit the right side of the source, rise up the right
+    margin strip, and re-enter the right side of the target. The terminal
+    segment goes leftward so ``orient="auto"`` points the arrow correctly."""
+    return f"M{x1_right},{y1} L{margin_x},{y1} L{margin_x},{y2} L{x2_right},{y2}"
+
+
 def render_svg(structure: FlowchartStructure) -> bytes:
-    """Render a FlowchartStructure into a self-contained SVG document."""
+    """Render a FlowchartStructure into a self-contained SVG document.
+
+    Layout strategy:
+
+    - Nodes are packed into layers via :func:`_assign_layers` (top-down DAG).
+    - Forward edges (source layer < target layer) are drawn as orthogonal
+      paths — a single straight vertical when the boxes share a column, an
+      elbow (vertical / horizontal / vertical) otherwise.
+    - Back-edges (source layer > target layer, i.e. loopbacks) are routed
+      along a reserved right-margin strip so they never cross the main
+      flow column.
+    - Same-layer edges take a short horizontal path between box sides.
+    """
     if not structure.nodes:
         raise ValueError("cannot render empty flowchart")
 
@@ -363,16 +410,20 @@ def render_svg(structure: FlowchartStructure) -> bytes:
         by_layer[layers[node.id]].append(node)
 
     max_nodes_per_layer = max(len(v) for v in by_layer.values())
-    width = (
+    content_width = (
         _PADDING * 2 + max_nodes_per_layer * _NODE_WIDTH + (max_nodes_per_layer - 1) * _COLUMN_GAP
     )
+    # Reserve a back-edge strip on the right; cheap (~60 px) even if no
+    # back-edges appear — keeps layout calculation deterministic.
+    width = content_width + _MARGIN_X
     height = _PADDING * 2 + len(by_layer) * _NODE_HEIGHT + (len(by_layer) - 1) * _ROW_GAP
+    margin_x = content_width + _MARGIN_X / 2  # centre of the margin strip
 
     positions: dict[str, tuple[float, float]] = {}
     for layer_idx in sorted(by_layer.keys()):
         layer_nodes = by_layer[layer_idx]
         row_width = len(layer_nodes) * _NODE_WIDTH + (len(layer_nodes) - 1) * _COLUMN_GAP
-        start_x = (width - row_width) / 2 + _NODE_WIDTH / 2
+        start_x = (content_width - row_width) / 2 + _NODE_WIDTH / 2
         cy = _PADDING + layer_idx * (_NODE_HEIGHT + _ROW_GAP) + _NODE_HEIGHT / 2
         for i, node in enumerate(layer_nodes):
             cx = start_x + i * (_NODE_WIDTH + _COLUMN_GAP)
@@ -391,24 +442,52 @@ def render_svg(structure: FlowchartStructure) -> bytes:
         "</defs>",
     ]
 
-    # edges first so nodes overdraw them cleanly
+    half_w = _NODE_WIDTH / 2
+    half_h = _NODE_HEIGHT / 2
+
+    # Edges first so nodes overdraw them cleanly.
     for edge in structure.edges:
         if edge.from_id not in positions or edge.to_id not in positions:
             continue
-        x1, y1 = positions[edge.from_id]
-        x2, y2 = positions[edge.to_id]
-        # attach to top/bottom of the node boxes rather than the centre
-        y1 += _NODE_HEIGHT / 2 if y2 > y1 else -_NODE_HEIGHT / 2
-        y2 += -_NODE_HEIGHT / 2 if y2 > y1 else _NODE_HEIGHT / 2
+        cx1, cy1 = positions[edge.from_id]
+        cx2, cy2 = positions[edge.to_id]
+        src_layer = layers[edge.from_id]
+        tgt_layer = layers[edge.to_id]
+
+        if tgt_layer > src_layer:
+            # Forward edge — orthogonal path from bottom to top.
+            y1 = cy1 + half_h
+            y2 = cy2 - half_h
+            d = _forward_path(cx1, y1, cx2, y2)
+            label_x = (cx1 + cx2) / 2
+            label_y = (y1 + y2) / 2 - 4
+        elif tgt_layer < src_layer:
+            # Back edge — route via the right margin strip.
+            x1 = cx1 + half_w
+            x2 = cx2 + half_w
+            d = _back_path(x1, cy1, x2, cy2, margin_x)
+            label_x = margin_x
+            label_y = (cy1 + cy2) / 2 - 4
+        else:
+            # Same layer — short horizontal between right of source and
+            # left of target (or mirrored if target is left of source).
+            if cx2 >= cx1:
+                x1 = cx1 + half_w
+                x2 = cx2 - half_w
+            else:
+                x1 = cx1 - half_w
+                x2 = cx2 + half_w
+            d = _sideways_path(x1, cy1, x2, cy2)
+            label_x = (x1 + x2) / 2
+            label_y = cy1 - 4
+
         svg_parts.append(
-            f'<path d="M{x1},{y1} L{x2},{y2}" stroke="#444" stroke-width="1.5" '
+            f'<path d="{d}" stroke="#444" stroke-width="1.5" '
             'fill="none" marker-end="url(#arrow)" />'
         )
         if edge.label:
-            lx = (x1 + x2) / 2
-            ly = (y1 + y2) / 2 - 4
             svg_parts.append(
-                f'<text x="{lx}" y="{ly}" text-anchor="middle" '
+                f'<text x="{label_x}" y="{label_y}" text-anchor="middle" '
                 f'fill="#666" font-size="{_FONT_SIZE - 2}">'
                 f"{_escape(edge.label)}</text>"
             )
@@ -417,7 +496,7 @@ def render_svg(structure: FlowchartStructure) -> bytes:
         cx, cy = positions[node.id]
         svg_parts.append(_render_shape(node, cx, cy))
         lines = _wrap(node.text)
-        # vertically centre the block of lines on cy
+        # Vertically centre the block of lines on cy.
         total_h = len(lines) * (_FONT_SIZE + 2)
         start_y = cy - total_h / 2 + _FONT_SIZE
         for i, line in enumerate(lines):
