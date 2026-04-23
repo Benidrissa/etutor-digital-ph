@@ -60,6 +60,13 @@ jobs:
                     or str(v.get("locale", "")).lower().startswith(lang)
                 )
 
+            # Sample 3 raw voices so we can see HeyGen's field shape.
+            print("SAMPLE RAW VOICES (first 3, all keys):")
+            import json
+            for v in voices[:3]:
+                print(json.dumps(v, indent=2)[:500])
+                print("---")
+
             filtered = [v for v in voices if match(v)]
             print(f"Total voices: {total}; filtered={len(filtered)}")
             print("-" * 100)
