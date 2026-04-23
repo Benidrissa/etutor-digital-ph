@@ -1672,7 +1672,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
     SettingDef(
         "video-summary-brand-image-url",
         "video_summary",
-        "https://etutor.elearning.portfolio2.kimbetien.com/images/video-summary-background.png",
+        "",
         "string",
         "Video background image URL (16:9)",
         (
