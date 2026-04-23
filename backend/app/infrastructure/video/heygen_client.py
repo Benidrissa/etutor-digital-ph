@@ -360,11 +360,27 @@ class HeyGenClient:
         video_url = (
             inner.get("video_url") or inner.get("url") or data.get("video_url") or data.get("url")
         )
+        # HeyGen v3 returns rich failure details as ``failure_message``
+        # + ``failure_code`` (e.g. "Insufficient credit"). Older shapes
+        # use ``error`` / ``message``. Prefer the richer keys so the
+        # DB ``error_message`` column carries an actionable reason
+        # rather than our generic "heygen reported failure" fallback
+        # (see #1878 — we hit MOVIO_PAYMENT_INSUFFICIENT_CREDIT in prod
+        # and the operator couldn't tell from the row).
+        error_parts: list[str] = []
+        failure_message = inner.get("failure_message")
+        failure_code = inner.get("failure_code")
+        if failure_message:
+            error_parts.append(str(failure_message))
+        if failure_code and failure_code not in (failure_message or ""):
+            error_parts.append(f"({failure_code})")
+        rich_error = " ".join(error_parts) or None
+        legacy_error = inner.get("error") or inner.get("message")
         return VideoStatus(
             provider_video_id=video_id,
             status=mapped,
             video_url=video_url,
-            error=inner.get("error") or inner.get("message"),
+            error=rich_error or legacy_error,
         )
 
     def verify_webhook_signature(self, *, signature: str, raw_body: bytes) -> bool:
