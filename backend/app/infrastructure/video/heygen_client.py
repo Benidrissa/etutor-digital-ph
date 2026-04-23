@@ -215,7 +215,7 @@ class HeyGenClient:
         voice_id: str,
         image_url: str,
         language: str,
-        aspect_ratio: str = "16:9",
+        aspect_ratio: str = "9:16",
         resolution: str = "720p",
         callback_url: str | None = None,
     ) -> CreateVideoResult:
@@ -223,13 +223,19 @@ class HeyGenClient:
 
         Uses the v3 ``/v3/videos`` endpoint with ``type="image"``: the
         narration voice plays over a static branded background with
-        synced captions, no talking head. This is the uniform,
-        web-ready path (16:9, 720p) that the product wants for every
-        lesson regardless of domain.
+        synced captions, no talking head.
+
+        Default dimensions are **mobile-first portrait** (9:16, 720p)
+        — Sira is 2G/3G-oriented and most learners consume on phones,
+        so full-screen vertical is preferred over horizontal. 720p is
+        HeyGen's smallest option; a ~90s 720p portrait MP4 lands
+        around 2-4 MB, tractable even on intermittent connections.
+        Callers can override ``aspect_ratio`` for desktop embeds.
 
         The image URL must be publicly reachable so HeyGen's renderer
         can fetch it — typically the frontend's branded asset served
-        at the tenant's public hostname.
+        at the tenant's public hostname. Provide a 720×1280 portrait
+        image to match the default aspect ratio.
         """
         if not script.strip():
             raise HeyGenBadRequestError("script is empty")
