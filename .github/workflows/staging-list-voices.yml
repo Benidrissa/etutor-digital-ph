@@ -35,25 +35,43 @@ jobs:
             echo "=============================================="
             echo "HeyGen /v2/voices — filter: language=$LANGUAGE"
             echo "=============================================="
-            docker compose exec -T backend sh -c '
-              curl -sS -H "X-Api-Key: $HEYGEN_API_KEY" \
-                https://api.heygen.com/v2/voices
-            ' | python3 -c "
-            import json, os, sys
-            data = json.load(sys.stdin)
-            voices = (data.get('data') or {}).get('voices') or data.get('voices') or []
-            lang = os.environ.get('LANGUAGE','').lower().strip()
+            docker compose exec -T -e LANGUAGE="$LANGUAGE" backend \
+              uv run python -c '
+            import json, os, httpx
+            from app.infrastructure.config.settings import get_settings
+
+            key = get_settings().heygen_api_key
+            assert key, "HEYGEN_API_KEY unset"
+
+            r = httpx.get(
+                "https://api.heygen.com/v2/voices",
+                headers={"X-Api-Key": key, "Accept": "application/json"},
+                timeout=30.0,
+            )
+            r.raise_for_status()
+            data = r.json()
+            voices = (data.get("data") or {}).get("voices") or data.get("voices") or []
+            lang = os.environ.get("LANGUAGE", "").lower().strip()
             total = len(voices)
-            filtered = [v for v in voices if not lang or (v.get('language','').lower() == lang or v.get('locale','').lower().startswith(lang))]
-            print(f'Total voices: {total}; filtered={len(filtered)}')
-            print('-' * 90)
+
+            def match(v):
+                if not lang:
+                    return True
+                return (
+                    v.get("language", "").lower() == lang
+                    or v.get("locale", "").lower().startswith(lang)
+                )
+
+            filtered = [v for v in voices if match(v)]
+            print(f"Total voices: {total}; filtered={len(filtered)}")
+            print("-" * 90)
             for v in filtered[:40]:
                 print(
-                    f\"  {v.get('voice_id',''):40s}  \"
-                    f\"{(v.get('language') or v.get('locale') or ''):10s}  \"
-                    f\"{v.get('gender',''):8s}  \"
-                    f\"{v.get('name','')[:40]}\"
+                    f"  {v.get(\"voice_id\", \"\"):40s}  "
+                    f"{(v.get(\"language\") or v.get(\"locale\") or \"\"):10s}  "
+                    f"{v.get(\"gender\", \"\"):8s}  "
+                    f"{v.get(\"name\", \"\")[:40]}"
                 )
             if len(filtered) > 40:
-                print(f'  ...({len(filtered) - 40} more)')
-            "
+                print(f"  ...({len(filtered) - 40} more)")
+            '
