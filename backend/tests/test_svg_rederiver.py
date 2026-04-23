@@ -278,6 +278,80 @@ class TestRenderSvg:
         texts = {t.text for t in root.findall(".//text") if t.text}
         assert "Yes" in texts
 
+    def test_linear_chain_uses_straight_vertical(self):
+        # Two nodes stacked in the same column should produce a single
+        # straight-vertical edge path (no elbows).
+        structure = FlowchartStructure(
+            nodes=[
+                FlowchartNode(id="a", text="A"),
+                FlowchartNode(id="b", text="B"),
+            ],
+            edges=[FlowchartEdge(from_id="a", to_id="b")],
+        )
+        svg = render_svg(structure)
+        root = self._parse(svg)
+        edge_paths = [p.get("d", "") for p in root.findall(".//path") if p.get("marker-end")]
+        assert len(edge_paths) == 1
+        d = edge_paths[0]
+        # "M{x},{y1} L{x},{y2}" — one M, one L, no second L.
+        assert d.count("L") == 1
+
+    def test_branch_edges_use_elbow_paths(self):
+        # root → left + root → right should both produce elbow paths
+        # (3 segments: vertical, horizontal, vertical).
+        structure = FlowchartStructure(
+            nodes=[
+                FlowchartNode(id="root", text="root"),
+                FlowchartNode(id="left", text="left"),
+                FlowchartNode(id="right", text="right"),
+            ],
+            edges=[
+                FlowchartEdge(from_id="root", to_id="left"),
+                FlowchartEdge(from_id="root", to_id="right"),
+            ],
+        )
+        svg = render_svg(structure)
+        root = self._parse(svg)
+        edge_paths = [p.get("d", "") for p in root.findall(".//path") if p.get("marker-end")]
+        assert len(edge_paths) == 2
+        for d in edge_paths:
+            # Elbow path has exactly 3 L commands.
+            assert d.count("L") == 3
+
+    def test_back_edge_routed_via_right_margin(self):
+        # A cycle (a → b → a) means the second edge is a back-edge and
+        # must exit the right side of its source, not cross back up
+        # through the node column.
+        structure = FlowchartStructure(
+            nodes=[
+                FlowchartNode(id="a", text="A"),
+                FlowchartNode(id="b", text="B"),
+            ],
+            edges=[
+                FlowchartEdge(from_id="a", to_id="b"),
+                FlowchartEdge(from_id="b", to_id="a"),
+            ],
+        )
+        svg = render_svg(structure)
+        root = self._parse(svg)
+        view_box = root.get("viewBox", "")
+        # viewBox is "0 0 WIDTH HEIGHT"; back-edge renderer should push
+        # total width above the content area.
+        view_parts = view_box.split()
+        assert len(view_parts) == 4
+        total_width = float(view_parts[2])
+        edge_paths = [p.get("d", "") for p in root.findall(".//path") if p.get("marker-end")]
+        # Back-edge path starts from the right side of the source box and
+        # the second point is close to the right margin (within a few px).
+        # Pick the longer path — forward edges are short, back paths are
+        # 3 segments + extra horizontal span.
+        back = max(edge_paths, key=len)
+        first_seg = back.split("L")[1]
+        # "L{margin_x},{y}" → first value close to (content_width +
+        # margin_x / 2). Just assert it's in the right half of the canvas.
+        margin_x_used = float(first_seg.split(",")[0].strip())
+        assert margin_x_used > total_width * 0.7
+
     def test_empty_flowchart_raises(self):
         # Can't create via Pydantic (min_length=1), so test the renderer
         # directly with a pre-built object
