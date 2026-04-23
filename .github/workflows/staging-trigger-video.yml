@@ -22,6 +22,10 @@ on:
         description: "fr or en"
         required: true
         default: "fr"
+      force_delete:
+        description: "Delete any existing video row (any status) for this (module, unit, language) before dispatching — useful to retry after a failure."
+        required: false
+        default: "false"
 
 jobs:
   trigger:
@@ -34,14 +38,30 @@ jobs:
           MODULE_ID: ${{ inputs.module_id }}
           UNIT_ID: ${{ inputs.unit_id }}
           LANGUAGE: ${{ inputs.language }}
+          FORCE_DELETE: ${{ inputs.force_delete }}
         with:
           host: 167.86.115.58
           username: deploy
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: MODULE_ID,UNIT_ID,LANGUAGE
+          envs: MODULE_ID,UNIT_ID,LANGUAGE,FORCE_DELETE
           script: |
             set -e
             cd ~/etutor
+
+            if [ "$FORCE_DELETE" = "true" ]; then
+              echo "=============================================="
+              echo "force_delete: removing any existing video row"
+              echo "=============================================="
+              docker compose exec -T postgres \
+                psql -U postgres santepublique_aof \
+                -c "DELETE FROM generated_audio
+                    WHERE module_id = '$MODULE_ID'
+                      AND unit_id = '$UNIT_ID'
+                      AND language = '$LANGUAGE'
+                      AND media_type = 'video'" || true
+              echo
+            fi
+
             echo "=============================================="
             echo "Looking up lesson_id for ($MODULE_ID, $UNIT_ID, $LANGUAGE)"
             echo "=============================================="
