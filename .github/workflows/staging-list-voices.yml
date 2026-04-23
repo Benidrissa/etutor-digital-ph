@@ -55,10 +55,9 @@ jobs:
             def match(v):
                 if not lang:
                     return True
-                return (
-                    str(v.get("language", "")).lower() == lang
-                    or str(v.get("locale", "")).lower().startswith(lang)
-                )
+                # HeyGen returns language as full name ("French", "English").
+                # Match by prefix so "fr" matches "french", "en" → "english".
+                return str(v.get("language", "")).lower().startswith(lang)
 
             # Sample 3 raw voices so we can see HeyGen's field shape.
             print("SAMPLE RAW VOICES (first 3, all keys):")
