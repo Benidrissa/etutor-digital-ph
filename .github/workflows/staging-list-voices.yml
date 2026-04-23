@@ -37,9 +37,8 @@ jobs:
             echo "=============================================="
             cat > /tmp/list_voices.py <<'PYEOF'
             import os, httpx
-            from app.infrastructure.config.settings import get_settings
 
-            key = get_settings().heygen_api_key
+            key = os.environ.get("HEYGEN_API_KEY")
             assert key, "HEYGEN_API_KEY unset"
 
             r = httpx.get(
