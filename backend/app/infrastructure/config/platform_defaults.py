@@ -1635,18 +1635,28 @@ SETTING_DEFINITIONS: list[SettingDef] = [
     SettingDef(
         "video-summary-voice-id-fr",
         "video_summary",
-        "",
+        "90bab79483c242d7b4487e5708db6744",
         "string",
         "HeyGen voice ID — French",
-        "HeyGen voice_id used when language=fr.",
+        (
+            "HeyGen voice_id used when language=fr. Default is "
+            "``Pierre Narrateur`` — an explicitly narrator-trained male "
+            "French voice that suits lesson-summary delivery. Override "
+            "via HeyGen's voice library if a tenant wants a different "
+            "tone (Sylvie - Professional, Yves - Newscaster, etc.)."
+        ),
     ),
     SettingDef(
         "video-summary-voice-id-en",
         "video_summary",
-        "",
+        "cef3bc4e0a84424cafcde6f2cf466c97",
         "string",
         "HeyGen voice ID — English",
-        "HeyGen voice_id used when language=en.",
+        (
+            "HeyGen voice_id used when language=en. Default is ``Ivy`` "
+            "— a clean professional female English voice. Override via "
+            "HeyGen's voice library if a tenant wants a different tone."
+        ),
     ),
     SettingDef(
         "video-summary-feature-enabled",
