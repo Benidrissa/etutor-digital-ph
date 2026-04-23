@@ -1664,15 +1664,17 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "video_summary",
         "",
         "string",
-        "Video background image URL (9:16)",
+        "Video background image URL (16:9)",
         (
-            "Publicly reachable URL of a 720×1280 portrait PNG/JPG used "
-            "as the background for every lesson video. HeyGen renders "
-            "the narration voice over this still image with synced "
-            "captions — no talking avatar — so the final video stays "
-            "uniform, 720p 9:16 (mobile-first portrait), and focused "
-            "on the lesson content rather than a presenter. A default "
-            "Sira-branded portrait image ships at "
+            "Publicly reachable URL of a 1280×720 landscape PNG/JPG "
+            "used as the background for every lesson video. HeyGen "
+            "renders the narration voice over this still image with "
+            "synced captions — no talking avatar — so the final video "
+            "stays uniform, 720p 16:9, and focused on the lesson "
+            "content rather than a presenter. 720p is HeyGen's "
+            "smallest output and ~90 s of narration keeps the MP4 "
+            "under ~4 MB, tractable for 3G learners. A default Sira-"
+            "branded landscape image ships at "
             "``/images/video-summary-background.png`` on the frontend; "
             "set this to e.g. "
             "``https://etutor.elearning.portfolio2.kimbetien.com"
