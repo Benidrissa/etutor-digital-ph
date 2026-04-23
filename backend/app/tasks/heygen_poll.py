@@ -190,16 +190,16 @@ def _api_version_for(record: GeneratedAudio) -> str:
     """Read the HeyGen API version used when the row was created.
 
     Written to ``media_metadata.api_version`` by the service at
-    dispatch time. Legacy rows predating the poller won't have it —
-    treat them as v2 so the previous Direct-Video flow keeps working
-    after the rollout of #1798.
+    dispatch time.
 
-    ``v3`` (content-focused /v3/videos, #1854) and ``v3-agent``
-    (Video Agents) both use the same status endpoint path
-    (``/v3/videos/{id}``), so HeyGenClient treats them identically.
+    Poll every row via the v3 status endpoint (``/v3/videos/{id}``).
+    HeyGen's ``/v2/video_status.get`` returns 404 as of April 2026
+    (#1874) — the endpoint appears to be deprecated. The v3
+    endpoint accepts any video_id HeyGen has issued, regardless of
+    which create path produced it, since the video_id namespace is
+    shared. Returning ``"v3-agent"`` dispatches the v3 GET in
+    ``HeyGenClient.get_video`` for all rows.
     """
-    metadata = record.media_metadata or {}
-    value = metadata.get("api_version") or "v2"
-    if value in ("v3", "v3-agent"):
-        return "v3-agent"
-    return "v2"
+    # All create paths (v2 Direct Video, v3 Video Agents, v3 content
+    # /v3/videos) produce video_ids that resolve on /v3/videos/{id}.
+    return "v3-agent"
