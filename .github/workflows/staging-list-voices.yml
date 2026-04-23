@@ -35,9 +35,8 @@ jobs:
             echo "=============================================="
             echo "HeyGen /v2/voices — filter: language=$LANGUAGE"
             echo "=============================================="
-            docker compose exec -T -e LANGUAGE="$LANGUAGE" backend \
-              uv run python -c '
-            import json, os, httpx
+            cat > /tmp/list_voices.py <<'PYEOF'
+            import os, httpx
             from app.infrastructure.config.settings import get_settings
 
             key = get_settings().heygen_api_key
@@ -58,20 +57,22 @@ jobs:
                 if not lang:
                     return True
                 return (
-                    v.get("language", "").lower() == lang
-                    or v.get("locale", "").lower().startswith(lang)
+                    str(v.get("language", "")).lower() == lang
+                    or str(v.get("locale", "")).lower().startswith(lang)
                 )
 
             filtered = [v for v in voices if match(v)]
             print(f"Total voices: {total}; filtered={len(filtered)}")
-            print("-" * 90)
-            for v in filtered[:40]:
-                print(
-                    f"  {v.get(\"voice_id\", \"\"):40s}  "
-                    f"{(v.get(\"language\") or v.get(\"locale\") or \"\"):10s}  "
-                    f"{v.get(\"gender\", \"\"):8s}  "
-                    f"{v.get(\"name\", \"\")[:40]}"
-                )
-            if len(filtered) > 40:
-                print(f"  ...({len(filtered) - 40} more)")
-            '
+            print("-" * 100)
+            for v in filtered[:50]:
+                vid = str(v.get("voice_id", ""))
+                lg = str(v.get("language") or v.get("locale") or "")
+                gd = str(v.get("gender", ""))
+                nm = str(v.get("name", ""))[:40]
+                print(f"  {vid:40s}  {lg:10s}  {gd:8s}  {nm}")
+            if len(filtered) > 50:
+                print(f"  ...({len(filtered) - 50} more)")
+            PYEOF
+            docker cp /tmp/list_voices.py etutor-backend:/tmp/list_voices.py
+            docker compose exec -T -e LANGUAGE="$LANGUAGE" backend \
+              uv run python /tmp/list_voices.py
