@@ -219,17 +219,20 @@ def test_api_version_for_reads_metadata():
     assert _api_version_for(record) == "v3-agent"
 
 
-def test_api_version_for_defaults_legacy_rows_to_v2():
+def test_api_version_for_always_polls_via_v3():
+    # After #1874, every row polls via /v3/videos/{id} because HeyGen
+    # deprecated /v2/video_status.get (returns 404). Legacy rows
+    # (no metadata) or rows with unknown api_version values should
+    # all be routed to the v3 status endpoint.
     record = _make_record(api_version=None)
-    # Simulate a row written before #1798 ever ran — no metadata at all.
     record.media_metadata = None
-    assert _api_version_for(record) == "v2"
+    assert _api_version_for(record) == "v3-agent"
 
 
-def test_api_version_for_coerces_unknown_values_to_v2():
+def test_api_version_for_coerces_unknown_values_to_v3():
     record = _make_record()
     record.media_metadata = {"api_version": "not-a-real-version"}
-    assert _api_version_for(record) == "v2"
+    assert _api_version_for(record) == "v3-agent"
 
 
 @pytest.mark.asyncio
