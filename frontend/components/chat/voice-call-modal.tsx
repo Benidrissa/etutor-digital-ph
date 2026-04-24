@@ -37,7 +37,7 @@ function formatDuration(seconds: number): string {
 }
 
 export function VoiceCallModal({ open, onOpenChange }: VoiceCallModalProps) {
-  const t = useTranslations('ChatTutor.voice');
+  const t = useTranslations('ChatTutor');
   const locale = useLocale();
   const language = (locale === 'fr' ? 'fr' : 'en') as 'fr' | 'en';
 
@@ -162,20 +162,20 @@ export function VoiceCallModal({ open, onOpenChange }: VoiceCallModalProps) {
     switch (state) {
       case 'idle':
       case 'ended':
-        return t('callReady');
+        return t('voice.callReady');
       case 'requesting_token':
       case 'connecting':
-        return t('connecting');
+        return t('voice.connecting');
       case 'in_call':
-        return t('inCall');
+        return t('voice.inCall');
       case 'ending':
-        return t('ending');
+        return t('voice.ending');
       case 'cap_reached':
-        return t('capReached', { cap: minutesCap ?? 10 });
+        return t('voice.capReached', { cap: minutesCap ?? 10 });
       case 'mic_denied':
-        return t('micDenied');
+        return t('voice.micDenied');
       case 'failed':
-        return t('callFailed');
+        return t('voice.callFailed');
     }
   })();
 
@@ -204,13 +204,13 @@ export function VoiceCallModal({ open, onOpenChange }: VoiceCallModalProps) {
       >
         <div className="flex items-center justify-between">
           <h2 id="voice-call-title" className="text-lg font-semibold">
-            {t('callTitle')}
+            {t('voice.callTitle')}
           </h2>
           <Button
             variant="ghost"
             size="icon"
             onClick={() => onOpenChange(false)}
-            aria-label={t('close')}
+            aria-label={t('voice.close')}
             className="h-8 w-8"
           >
             <X className="h-4 w-4" />
@@ -230,7 +230,7 @@ export function VoiceCallModal({ open, onOpenChange }: VoiceCallModalProps) {
 
           {minutesUsed !== null && minutesCap !== null && (
             <div className="text-xs text-muted-foreground">
-              {t('minutesRemaining', {
+              {t('voice.minutesRemaining', {
                 remaining: Math.max(0, minutesCap - minutesUsed),
                 cap: minutesCap,
               })}
@@ -244,7 +244,7 @@ export function VoiceCallModal({ open, onOpenChange }: VoiceCallModalProps) {
                 size="icon"
                 onClick={toggleMute}
                 className="h-12 w-12 rounded-full"
-                aria-label={muted ? t('unmute') : t('mute')}
+                aria-label={muted ? t('voice.unmute') : t('voice.mute')}
               >
                 {muted ? (
                   <MicOff className="h-5 w-5" />
@@ -261,12 +261,12 @@ export function VoiceCallModal({ open, onOpenChange }: VoiceCallModalProps) {
                 className="h-12 min-w-32 gap-2"
               >
                 <Phone className="h-4 w-4" />
-                {t('startCall')}
+                {t('voice.startCall')}
               </Button>
             ) : state === 'requesting_token' || state === 'connecting' ? (
               <Button disabled className="h-12 min-w-32 gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                {t('connecting')}
+                {t('voice.connecting')}
               </Button>
             ) : state === 'in_call' || state === 'ending' ? (
               <Button
@@ -276,7 +276,7 @@ export function VoiceCallModal({ open, onOpenChange }: VoiceCallModalProps) {
                 className="h-12 min-w-32 gap-2"
               >
                 <PhoneOff className="h-4 w-4" />
-                {t('hangUp')}
+                {t('voice.hangUp')}
               </Button>
             ) : null}
           </div>
