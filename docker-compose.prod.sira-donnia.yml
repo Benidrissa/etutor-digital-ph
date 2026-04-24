@@ -81,6 +81,10 @@ services:
       APP_ENV: production
       CORS_ORIGINS: https://app.sira-donnia.org
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      # Cost kill-switch for Vision-backed figure tasks (#1928). Default
+      # true preserves behaviour; flip to false in .env + recreate the
+      # worker to stop Claude Vision spend on backfills + ingest.
+      ENABLE_FIGURE_VISION: ${ENABLE_FIGURE_VISION:-true}
       HEYGEN_API_KEY: ${HEYGEN_API_KEY}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
@@ -171,6 +175,10 @@ services:
       APP_ENV: production
       CORS_ORIGINS: https://app.sira-donnia.org
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      # Cost kill-switch for Vision-backed figure tasks (#1928). Default
+      # true preserves behaviour; flip to false in .env + recreate the
+      # worker to stop Claude Vision spend on backfills + ingest.
+      ENABLE_FIGURE_VISION: ${ENABLE_FIGURE_VISION:-true}
       HEYGEN_API_KEY: ${HEYGEN_API_KEY}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
