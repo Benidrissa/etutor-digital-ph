@@ -142,10 +142,23 @@ class TestRunBackfillWithFactory:
         assert session.commits >= 1
 
     async def test_translator_failure_does_not_abort_batch(self):
-        rows = [_make_row(), _make_row(), _make_row()]
+        # With parallel execution, side_effect list order is non-deterministic.
+        # Mark one row as "should fail" and have the mock side_effect branch
+        # on the input caption — that keeps the assertion order-independent.
+        rows = [
+            _make_row(caption="ok-1"),
+            _make_row(caption="FAIL"),
+            _make_row(caption="ok-2"),
+        ]
         session = _FakeSession(rows)
         task = MagicMock()
-        mock_tx = AsyncMock(side_effect=[_translation(), ValueError("transient"), _translation()])
+
+        async def _side_effect(*, caption, **_):
+            if caption == "FAIL":
+                raise ValueError("transient")
+            return _translation()
+
+        mock_tx = AsyncMock(side_effect=_side_effect)
         with patch.object(image_translation, "translate_figure_caption", new=mock_tx):
             result = await image_translation._run_backfill_with_factory(
                 task=task,
@@ -160,9 +173,12 @@ class TestRunBackfillWithFactory:
             "translated": 2,
             "failed": 1,
         }
-        assert rows[1].caption_fr is None
-        assert rows[0].caption_fr == "caption_fr"
-        assert rows[2].caption_fr == "caption_fr"
+        # The FAIL row never gets caption_fr assigned; the other two do.
+        fail_row = next(r for r in rows if r.caption == "FAIL")
+        ok_rows = [r for r in rows if r.caption != "FAIL"]
+        assert fail_row.caption_fr is None
+        for row in ok_rows:
+            assert row.caption_fr == "caption_fr"
 
     async def test_empty_eligible_set_returns_noop(self):
         session = _FakeSession([])
