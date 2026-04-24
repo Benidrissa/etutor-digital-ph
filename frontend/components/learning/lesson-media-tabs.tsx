@@ -55,7 +55,7 @@ export function LessonMediaTabs({
       onValueChange={handleValueChange}
       className="mb-6 gap-3"
     >
-      <TabsList className="h-auto w-full justify-start gap-1 rounded-lg bg-muted p-1 overflow-x-auto">
+      <TabsList className="group-data-horizontal/tabs:h-auto min-h-12 w-full justify-start gap-1 rounded-lg bg-muted p-1 overflow-x-auto overflow-y-hidden">
         <TabsTrigger
           value="read"
           className="min-h-11 flex-none gap-2 px-4 data-active:bg-background"
