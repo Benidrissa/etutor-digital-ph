@@ -17,7 +17,7 @@ def module_id() -> uuid.UUID:
 
 @pytest.fixture
 def unit_id() -> str:
-    return "M01-U09"
+    return "1.9"
 
 
 class TestUnitTypeDispatchHelpers:
@@ -113,7 +113,7 @@ class TestCaseStudyTaskImport:
         """Verify generate_case_study_task.delay() can be called."""
         with patch("app.tasks.content_generation.generate_case_study_task") as mock_task:
             mock_task.delay.return_value = MagicMock(id="test-task-id")
-            result = mock_task.delay(str(uuid.uuid4()), "M01-U09", "fr", "SN", 1)
+            result = mock_task.delay(str(uuid.uuid4()), "1.9", "fr", "SN", 1)
             assert result.id == "test-task-id"
             mock_task.delay.assert_called_once()
 
@@ -127,9 +127,9 @@ class TestCaseStudyTaskImport:
             is_case_study = True
 
             if is_case_study:
-                mock_case_task.delay(str(uuid.uuid4()), "M01-U09", "fr", "SN", 1)
+                mock_case_task.delay(str(uuid.uuid4()), "1.9", "fr", "SN", 1)
             else:
-                mock_lesson_task.delay(str(uuid.uuid4()), "M01-U09", "fr", "SN", 1)
+                mock_lesson_task.delay(str(uuid.uuid4()), "1.9", "fr", "SN", 1)
 
             mock_case_task.delay.assert_called_once()
             mock_lesson_task.delay.assert_not_called()

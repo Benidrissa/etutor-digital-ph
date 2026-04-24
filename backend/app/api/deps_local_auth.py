@@ -161,9 +161,10 @@ async def require_subscription_or_first_unit(
 ) -> AuthenticatedUser:
     """Allow free units of a module for free; require subscription for others.
 
-    Reads `unit_id` from path params (e.g. 'M01-U02'). The number of free units
-    is controlled by the 'subscription-free-units-count' platform setting (default: 2).
-    Falls back to DB order_index check when unit_id format is unrecognised.
+    Reads `unit_id` from path params (canonical `unit_number` form, e.g. '1.2').
+    The number of free units is controlled by the 'subscription-free-units-count'
+    platform setting (default: 2). Falls back to DB order_index check when
+    unit_id format is unrecognised.
     """
     import re
 
@@ -178,7 +179,7 @@ async def require_subscription_or_first_unit(
     unit_id = request.path_params.get("unit_id") or request.path_params.get("unitId")
 
     free_count = SettingsCache.instance().get("subscription-free-units-count", 2)
-    m = re.search(r"-U0*(\d+)$", unit_id.upper()) if unit_id else None
+    m = re.match(r"^\d+\.(\d+)$", unit_id) if unit_id else None
     if m and int(m.group(1)) <= free_count:
         return user
 

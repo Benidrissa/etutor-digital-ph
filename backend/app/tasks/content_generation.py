@@ -1053,7 +1053,7 @@ def prefetch_next_lessons_task(
     Args:
         user_id: UUID of the learner
         module_id: UUID string of the current module, or empty string if module_number given
-        current_unit_id: Unit ID like 'M01-U01'; empty string means start of module
+        current_unit_id: Unit number like '1.1'; empty string means start of module
         language: Content language (fr/en)
         country: Country code for contextualization
         level: User competency level (1-4)

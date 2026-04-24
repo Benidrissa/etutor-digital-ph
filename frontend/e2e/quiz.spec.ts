@@ -22,7 +22,7 @@ test.describe('Quiz Page - Current State', () => {
   });
 
   test('quiz page loads or shows error', async ({ page }) => {
-    const response = await page.goto('/en/modules/M01/quiz?unit=M01-U01');
+    const response = await page.goto('/en/modules/M01/units/1.1');
     // The quiz page may show a runtime error (server/client component mismatch)
     // or may load the quiz. Either outcome is valid for this UAT check.
     // We just confirm the page responded.

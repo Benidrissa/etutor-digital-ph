@@ -791,22 +791,8 @@
     "contentNotAvailableOffline": "This case study is not available offline. Download the module to access it without internet.",
     "countryFallback": "Content optimized for your region will be available shortly"
   },
-  "CaseStudyPage": {
-    "backToModule": "Back to {module}",
-    "metadata": {
-      "title": "{unit} - {module}"
-    }
-  },
-  "QuizPage": {
+  "UnitPage": {
     "backToModule": "Back to {module}"
-  },
-  "LessonPage": {
-    "modules": "Modules",
-    "backToModule": "Back to Module",
-    "metadata": {
-      "notFound": "Lesson not found",
-      "title": "{unit} - {module}"
-    }
   },
   "BilingualTooltip": {
     "french": "French",

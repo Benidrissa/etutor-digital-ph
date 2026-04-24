@@ -8,7 +8,6 @@
 
 import { getOfflineContent, upsertOfflineContent, type ContentType } from './db';
 import { apiFetch } from '@/lib/api';
-import { legacyUnitIdToUnitNumber } from '@/lib/unit-id';
 
 export interface ContentLoadResult<T> {
   data: T;
@@ -198,24 +197,13 @@ export class OfflineContentNotAvailable extends Error {
 
 // --- Helpers ---
 
-/**
- * Look up offline content trying both the original unitId and the normalized
- * legacy format (M01-U05 → 1.5) to handle the URL vs API format mismatch.
- */
 async function getOfflineContentWithFallback(
   moduleId: string,
   unitId: string,
   contentType: ContentType,
   locale: 'fr' | 'en',
 ) {
-  const cached = await getOfflineContent(moduleId, unitId, contentType, locale);
-  if (cached) return cached;
-
-  const normalized = legacyUnitIdToUnitNumber(unitId);
-  if (normalized && normalized !== unitId) {
-    return getOfflineContent(moduleId, normalized, contentType, locale);
-  }
-  return undefined;
+  return getOfflineContent(moduleId, unitId, contentType, locale);
 }
 
 function isNetworkError(err: unknown): boolean {
