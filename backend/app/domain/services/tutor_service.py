@@ -24,7 +24,6 @@ from app.ai.prompts.tutor import (
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.domain.models.conversation import TutorConversation
-from app.domain.models.course import Course, UserCourseEnrollment
 from app.domain.models.module import Module
 from app.domain.models.source_image import SourceImage
 from app.domain.models.user import User
@@ -32,6 +31,7 @@ from app.domain.services.analytics_service import AnalyticsService
 from app.domain.services.learner_memory_service import LearnerMemoryService
 from app.domain.services.platform_settings_service import SettingsCache
 from app.domain.services.subscription_service import SubscriptionService
+from app.domain.services.tutor_context_builder import resolve_course
 from app.domain.services.tutor_tools import TOOL_DEFINITIONS, TutorToolExecutor
 from app.infrastructure.config.settings import get_settings
 
@@ -1024,53 +1024,13 @@ class TutorService:
         module_obj: Module | None,
         user_id: uuid.UUID,
         session: AsyncSession,
-    ) -> Course | None:
-        """Resolve course: explicit course_id > module's course > active enrollment.
+    ):
+        """Thin wrapper around the module-level :func:`resolve_course` helper.
 
-        When course_id is explicit, verifies the user is enrolled (active)
-        to prevent access to paid content. Falls back to enrollment if not.
+        Kept so existing tests that ``patch.object(TutorService, '_resolve_course')``
+        continue to work. New code should call ``resolve_course`` directly.
         """
-        # 1. Explicit course_id — verify enrollment
-        if course_id:
-            enrolled = await session.execute(
-                select(UserCourseEnrollment).where(
-                    UserCourseEnrollment.user_id == user_id,
-                    UserCourseEnrollment.course_id == course_id,
-                    UserCourseEnrollment.status == "active",
-                )
-            )
-            if enrolled.scalar_one_or_none():
-                course = await session.get(Course, course_id)
-                if course:
-                    return course
-            else:
-                logger.warning(
-                    "Tutor course_id not enrolled, falling back",
-                    user_id=str(user_id),
-                    course_id=str(course_id),
-                )
-
-        # 2. From module's course_id
-        if module_obj and module_obj.course_id:
-            course = await session.get(Course, module_obj.course_id)
-            if course:
-                return course
-
-        # 3. Fallback: most recent active enrollment
-        result = await session.execute(
-            select(UserCourseEnrollment)
-            .where(
-                UserCourseEnrollment.user_id == user_id,
-                UserCourseEnrollment.status == "active",
-            )
-            .order_by(UserCourseEnrollment.enrolled_at.desc())
-            .limit(1)
-        )
-        enrollment = result.scalar_one_or_none()
-        if enrollment:
-            return await session.get(Course, enrollment.course_id)
-
-        return None
+        return await resolve_course(course_id, module_id, module_obj, user_id, session)
 
     async def _retrieve_relevant_context(
         self, query: str, user: User, module_id: uuid.UUID | None, session: AsyncSession

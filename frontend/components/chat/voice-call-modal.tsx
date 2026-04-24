@@ -17,6 +17,10 @@ import { cn } from '@/lib/utils';
 interface VoiceCallModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Active course for context-aware voice tutoring (#1956). */
+  courseId?: string | null;
+  /** Active module, if the user is on a module page. */
+  moduleId?: string | null;
 }
 
 type CallState =
@@ -36,7 +40,12 @@ function formatDuration(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export function VoiceCallModal({ open, onOpenChange }: VoiceCallModalProps) {
+export function VoiceCallModal({
+  open,
+  onOpenChange,
+  courseId,
+  moduleId,
+}: VoiceCallModalProps) {
   const t = useTranslations('ChatTutor');
   const locale = useLocale();
   const language = (locale === 'fr' ? 'fr' : 'en') as 'fr' | 'en';
@@ -75,7 +84,11 @@ export function VoiceCallModal({ open, onOpenChange }: VoiceCallModalProps) {
 
   const startCall = useCallback(async () => {
     setState('requesting_token');
-    const { data, status } = await startVoiceSession(language);
+    const { data, status } = await startVoiceSession({
+      locale: language,
+      courseId,
+      moduleId,
+    });
     if (!data) {
       setState(status === 403 ? 'cap_reached' : 'failed');
       return;
@@ -104,7 +117,7 @@ export function VoiceCallModal({ open, onOpenChange }: VoiceCallModalProps) {
         setState('failed');
       }
     }
-  }, [language, hangUp]);
+  }, [language, courseId, moduleId, hangUp]);
 
   const toggleMute = useCallback(() => {
     const conn = connectionRef.current;
