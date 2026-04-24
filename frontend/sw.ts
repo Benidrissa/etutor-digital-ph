@@ -86,6 +86,11 @@ const serwist = new Serwist({
       matcher: ({ url, request }: { url: URL; request: Request }) => {
         if (request.method !== "GET") return false;
         if (url.pathname.startsWith("/api/generate")) return false;
+        // Don't cache user-mutable profile/auth state — SWR would serve
+        // stale bodies after PATCH and the form re-syncs to old values
+        // (#1908).
+        if (url.pathname.startsWith("/api/v1/users/")) return false;
+        if (url.pathname.startsWith("/api/v1/auth/")) return false;
         if (url.pathname.startsWith("/api/")) return true;
         return false;
       },
