@@ -133,6 +133,9 @@ class TestRunOverlayBackfillWithFactory:
             "rendered": 0,
             "failed": 0,
         }
+        # Dry-run doesn't track reclassified either — only the post-loop
+        # complete result carries that counter.
+        assert "reclassified" not in result
         extract.assert_not_awaited()
         translate.assert_not_awaited()
         assert storage.uploads == []
@@ -209,6 +212,47 @@ class TestRunOverlayBackfillWithFactory:
         assert result["rendered"] == 2
         assert result["failed"] == 1
         assert sum(1 for r in rows if r.storage_key_fr is None) == 1
+        assert sum(1 for r in rows if r.storage_key_fr is not None) == 2
+
+    async def test_empty_labels_reclassifies_as_photo(self):
+        # Vision returns zero labels for diagrams it cannot read — the task
+        # must flip those rows to ``figure_kind = 'photo'`` so the overlay
+        # backfill stops re-processing them indefinitely (#1925).
+        rows = [_make_row(), _make_row(), _make_row()]
+        session = _FakeSession(rows)
+        task = MagicMock()
+        storage = _FakeStorage()
+
+        call_count = {"n": 0}
+
+        async def _extract(*, image_bytes):
+            call_count["n"] += 1
+            # Second call returns empty labels; others return real labels.
+            if call_count["n"] == 2:
+                return DiagramLabels(labels=[])
+            return _sample_labels()
+
+        extract = AsyncMock(side_effect=_extract)
+        translate = AsyncMock(return_value=_sample_labels())
+
+        with (
+            _patch_httpx(),
+            patch.object(image_translation, "extract_label_positions", new=extract),
+            patch.object(image_translation, "translate_labels", new=translate),
+        ):
+            result = await image_translation._run_overlay_backfill_with_factory(
+                task=task,
+                rag_collection_id=None,
+                limit=None,
+                dry_run=False,
+                session_factory=_FakeSessionFactory(session),
+                storage=storage,
+            )
+
+        assert result["rendered"] == 2
+        assert result["reclassified"] == 1
+        assert result["failed"] == 0
+        assert sum(1 for r in rows if r.figure_kind == "photo") == 1
         assert sum(1 for r in rows if r.storage_key_fr is not None) == 2
 
     async def test_empty_eligible_set_returns_noop(self):

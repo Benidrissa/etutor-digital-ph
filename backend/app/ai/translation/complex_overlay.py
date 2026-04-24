@@ -43,25 +43,37 @@ logger = structlog.get_logger(__name__)
 class DiagramLabel(BaseModel):
     id: str = Field(..., min_length=1)
     text: str = Field(..., min_length=1)
-    # Percentage of image width/height (0.0-100.0). Claude Vision isn't
-    # pixel-accurate, so we don't pretend — percentages keep the renderer
-    # independent of the source image's resolution.
-    x_pct: float = Field(..., ge=0.0, le=100.0)
-    y_pct: float = Field(..., ge=0.0, le=100.0)
+    # Percentage of image width/height. Claude Vision isn't pixel-accurate,
+    # so we don't pretend — percentages keep the renderer independent of
+    # the source image's resolution.
+    x_pct: float
+    y_pct: float
 
     @field_validator("x_pct", "y_pct", mode="before")
     @classmethod
     def _coerce_percentage(cls, value: Any) -> Any:
         # Tolerate integer literals ("45") and 0-1 fractions ("0.45") from
-        # the model. Convert fractions to percentages so downstream code has
-        # one invariant.
-        if isinstance(value, int | float) and 0.0 < value <= 1.0:
-            return float(value) * 100.0
+        # the model. Convert fractions to percentages so downstream code
+        # has one invariant, then clamp near-edge overflows (Vision
+        # occasionally returns 104.0 for a label touching the bottom
+        # border) to the valid [0, 100] range instead of rejecting the
+        # whole response.
+        if isinstance(value, int | float):
+            if 0.0 < value <= 1.0:
+                value = float(value) * 100.0
+            if value < 0.0:
+                return 0.0
+            if value > 100.0:
+                return 100.0
         return value
 
 
 class DiagramLabels(BaseModel):
-    labels: list[DiagramLabel] = Field(..., min_length=1)
+    # Accept an empty list — Claude Vision legitimately returns zero labels
+    # for diagrams that have no visible text (dense illustrations, photos
+    # misclassified as complex_diagram). Callers handle the empty case by
+    # reclassifying the source image to 'photo' (caption-only path).
+    labels: list[DiagramLabel] = Field(default_factory=list)
 
 
 _EXTRACT_MODEL = "claude-haiku-4-5"

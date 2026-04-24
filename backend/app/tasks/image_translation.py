@@ -732,6 +732,7 @@ async def _run_overlay_backfill_with_factory(
             }
 
         rendered = 0
+        reclassified = 0
         failed = 0
         sem = asyncio.Semaphore(_CONCURRENCY)
 
@@ -747,6 +748,11 @@ async def _run_overlay_backfill_with_factory(
                         return img, None, None, ("fetch", exc)
                     try:
                         positions = await extract_label_positions(image_bytes=image_bytes)
+                        if not positions.labels:
+                            # No text found — caller will reclassify as photo
+                            # and skip. Avoids an infinite re-process loop
+                            # over diagrams Vision can't label.
+                            return img, None, None, ("reclassify_photo", None)
                         translated = await translate_labels(positions, target_lang="fr")
                         svg_bytes = render_overlay_svg(
                             image_bytes=image_bytes,
@@ -774,6 +780,16 @@ async def _run_overlay_backfill_with_factory(
                 for img, key, url, err in outcomes:
                     if err is not None:
                         stage, exc = err
+                        if stage == "reclassify_photo":
+                            img.figure_kind = "photo"
+                            session.add(img)
+                            reclassified += 1
+                            logger.info(
+                                "complex_diagram has no extractable labels; reclassifying as photo",
+                                source_image_id=str(img.id),
+                                figure_number=img.figure_number,
+                            )
+                            continue
                         failed += 1
                         logger.warning(
                             "Overlay %s failed for source image, skipping",
@@ -796,6 +812,7 @@ async def _run_overlay_backfill_with_factory(
                         "total": total,
                         "processed": processed,
                         "rendered": rendered,
+                        "reclassified": reclassified,
                         "failed": failed,
                     },
                 )
@@ -804,5 +821,6 @@ async def _run_overlay_backfill_with_factory(
             "status": "complete",
             "eligible": total,
             "rendered": rendered,
+            "reclassified": reclassified,
             "failed": failed,
         }
