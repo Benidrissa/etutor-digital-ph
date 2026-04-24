@@ -8,6 +8,7 @@
 
 import { getOfflineContent, upsertOfflineContent, type ContentType } from './db';
 import { apiFetch } from '@/lib/api';
+import { legacyUnitIdToUnitNumber } from '@/lib/unit-id';
 
 export interface ContentLoadResult<T> {
   data: T;
@@ -198,20 +199,8 @@ export class OfflineContentNotAvailable extends Error {
 // --- Helpers ---
 
 /**
- * Convert URL-format unitId ("M01-U05") to API-format ("1.5").
- * Returns null if the input doesn't match the MXX-UYY pattern.
- *
- * The download manager stores content under the API format (unit.unit_number),
- * but quiz/case-study pages pass the URL format from route params.
- */
-function normalizeUnitId(unitId: string): string | null {
-  const match = unitId.match(/^M0*(\d+)-U0*(\d+)$/);
-  return match ? `${match[1]}.${match[2]}` : null;
-}
-
-/**
  * Look up offline content trying both the original unitId and the normalized
- * format (M01-U05 → 1.5) to handle the URL vs API format mismatch.
+ * legacy format (M01-U05 → 1.5) to handle the URL vs API format mismatch.
  */
 async function getOfflineContentWithFallback(
   moduleId: string,
@@ -222,7 +211,7 @@ async function getOfflineContentWithFallback(
   const cached = await getOfflineContent(moduleId, unitId, contentType, locale);
   if (cached) return cached;
 
-  const normalized = normalizeUnitId(unitId);
+  const normalized = legacyUnitIdToUnitNumber(unitId);
   if (normalized && normalized !== unitId) {
     return getOfflineContent(moduleId, normalized, contentType, locale);
   }
