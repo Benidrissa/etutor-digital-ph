@@ -654,7 +654,12 @@ export function ChatPanel({
       </div>
 
       {/* Voice Call Modal */}
-      <VoiceCallModal open={showVoiceCall} onOpenChange={setShowVoiceCall} />
+      <VoiceCallModal
+        open={showVoiceCall}
+        onOpenChange={setShowVoiceCall}
+        courseId={activeCourseId}
+        moduleId={moduleId ?? null}
+      />
 
       {/* Clear History Dialog */}
       <AlertDialog open={showClearDialog} onOpenChange={setShowClearDialog}>

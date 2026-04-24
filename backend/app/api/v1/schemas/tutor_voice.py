@@ -24,6 +24,14 @@ class VoiceSessionRequest(BaseModel):
     """Request body for minting an OpenAI Realtime session token."""
 
     locale: Literal["fr", "en"] = Field("en", description="Voice call locale")
+    course_id: UUID | None = Field(
+        None,
+        description="Active course ID for context-aware voice tutoring (#1956)",
+    )
+    module_id: UUID | None = Field(
+        None,
+        description="Active module ID (optional, falls back to course's default)",
+    )
 
 
 class VoiceSessionResponse(BaseModel):
