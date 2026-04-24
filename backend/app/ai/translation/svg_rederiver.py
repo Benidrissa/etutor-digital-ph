@@ -139,8 +139,12 @@ async def extract_flowchart_structure(
     if not image_bytes:
         raise ValueError("image_bytes must be non-empty")
 
+    settings = get_settings()
+    if not settings.enable_figure_vision:
+        # Cost kill-switch (#1928). Caller catches and treats as a skip.
+        raise RuntimeError("figure vision is disabled (ENABLE_FIGURE_VISION=false)")
+
     if client is None:
-        settings = get_settings()
         if not settings.anthropic_api_key:
             raise ValueError("ANTHROPIC_API_KEY is required to extract flowcharts")
         client = anthropic.AsyncAnthropic(
