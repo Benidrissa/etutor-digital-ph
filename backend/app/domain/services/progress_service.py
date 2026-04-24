@@ -102,18 +102,6 @@ class ProgressService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    @staticmethod
-    def _unit_number_to_unit_id(unit_number: str, module_number: int) -> str:
-        """Convert unit_number like '1.2' to unit_id like 'M01-U02'."""
-        try:
-            parts = unit_number.split(".")
-            if len(parts) != 2:
-                return unit_number
-            unit_ordinal = int(parts[1])
-            return f"M{module_number:02d}-U{unit_ordinal:02d}"
-        except (ValueError, IndexError):
-            return unit_number
-
     async def track_lesson_access(
         self,
         user_id: UUID,
@@ -369,9 +357,8 @@ class ProgressService:
 
         units_data = []
         for unit in units:
-            unit_id = self._unit_number_to_unit_id(unit.unit_number, module.module_number)
             unit_status = "pending"
-            if unit.unit_number in completed_units or unit_id in completed_units:
+            if unit.unit_number in completed_units:
                 unit_status = "completed"
             elif (
                 progress
@@ -382,8 +369,8 @@ class ProgressService:
 
             units_data.append(
                 {
-                    "id": unit_id,
-                    "unit_number": unit_id,
+                    "id": str(unit.id),
+                    "unit_number": unit.unit_number,
                     "title_fr": unit.title_fr,
                     "title_en": unit.title_en,
                     "description_fr": unit.description_fr,

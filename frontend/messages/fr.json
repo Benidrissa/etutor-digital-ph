@@ -791,22 +791,8 @@
     "contentNotAvailableOffline": "Cette étude de cas n'est pas disponible hors-ligne. Téléchargez le module pour y accéder sans internet.",
     "countryFallback": "Le contenu adapté à votre région sera disponible prochainement"
   },
-  "CaseStudyPage": {
-    "backToModule": "Retour à {module}",
-    "metadata": {
-      "title": "{unit} - {module}"
-    }
-  },
-  "QuizPage": {
+  "UnitPage": {
     "backToModule": "Retour à {module}"
-  },
-  "LessonPage": {
-    "modules": "Modules",
-    "backToModule": "Retour au Module",
-    "metadata": {
-      "notFound": "Leçon non trouvée",
-      "title": "{unit} - {module}"
-    }
   },
   "BilingualTooltip": {
     "french": "Français",

@@ -110,13 +110,13 @@ class TestPregenerateOnPublishTask:
             pregenerate_on_publish_task.run = MagicMock(
                 return_value={
                     "generated": [],
-                    "skipped": ["M01-U01:lesson:fr"],
+                    "skipped": ["1.1:lesson:fr"],
                     "failed": [],
                 }
             )
             result = pregenerate_on_publish_task.run(course_id=course_id)
             mock_audio.apply_async.assert_not_called()
-            assert result["skipped"] == ["M01-U01:lesson:fr"]
+            assert result["skipped"] == ["1.1:lesson:fr"]
 
 
 # ---------------------------------------------------------------------------

@@ -57,7 +57,7 @@ class QuizResponse(BaseModel):
             "example": {
                 "id": "123e4567-e89b-12d3-a456-426614174000",
                 "module_id": "456e7890-e89b-12d3-a456-426614174001",
-                "unit_id": "unit-3",
+                "unit_id": "1.3",
                 "language": "en",
                 "level": 2,
                 "country_context": "senegal",

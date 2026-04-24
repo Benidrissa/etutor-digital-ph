@@ -61,7 +61,7 @@ class TestBuildCaseStudyQuery:
         session.execute = AsyncMock(return_value=mock_result)
 
         query = await case_study_service._build_case_study_query(
-            sample_module, "M01-U05", "fr", session
+            sample_module, "1.5", "fr", session
         )
 
         assert "Étude de cas" in query or "défi sanitaire" in query
@@ -76,7 +76,7 @@ class TestBuildCaseStudyQuery:
         session.execute = AsyncMock(return_value=mock_result)
 
         query = await case_study_service._build_case_study_query(
-            sample_module, "M01-U05", "en", session
+            sample_module, "1.5", "en", session
         )
 
         assert "Case Study" in query or "health challenge" in query.lower()
@@ -91,21 +91,10 @@ class TestBuildCaseStudyQuery:
         session.execute = AsyncMock(return_value=mock_result)
 
         query = await case_study_service._build_case_study_query(
-            sample_module, "M01-U05", "fr", session
+            sample_module, "1.5", "fr", session
         )
 
         assert "Fondements de la Santé Publique" in query
-
-    @pytest.mark.asyncio
-    async def test_falls_back_for_invalid_unit_id(self, case_study_service, sample_module):
-        session = AsyncMock(spec=AsyncSession)
-
-        query = await case_study_service._build_case_study_query(
-            sample_module, "INVALID", "fr", session
-        )
-
-        assert "Fondements de la Santé Publique" in query
-        session.execute.assert_not_called()
 
 
 class TestParseCaseStudyContent:
@@ -193,7 +182,7 @@ class TestCaseStudyPromptImports:
             [mock_chunk],
             "health challenge",
             "Fondements de la Santé Publique",
-            "M01-U05",
+            "1.5",
             "fr",
             module_id="M01",
         )
@@ -213,7 +202,7 @@ class TestCaseStudyPromptImports:
             [mock_chunk],
             "health challenge",
             "Unknown Module",
-            "M99-U01",
+            "99.1",
             "en",
             module_id="M99",
         )

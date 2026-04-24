@@ -283,17 +283,15 @@ class QuizService:
                     )
                     all_units = list(all_units_result.scalars().all())
                 else:
-                    unit_number = self._unit_id_to_unit_number(unit_id, module.module_number)
-                    if unit_number:
-                        unit_result = await session.execute(
-                            select(ModuleUnit).where(
-                                and_(
-                                    ModuleUnit.module_id == module.id,
-                                    ModuleUnit.unit_number == unit_number,
-                                )
+                    unit_result = await session.execute(
+                        select(ModuleUnit).where(
+                            and_(
+                                ModuleUnit.module_id == module.id,
+                                ModuleUnit.unit_number == unit_id,
                             )
                         )
-                        unit_obj = unit_result.scalar_one_or_none()
+                    )
+                    unit_obj = unit_result.scalar_one_or_none()
 
             search_query = self._build_quiz_search_query(
                 module, unit_id, language, unit=unit_obj, all_units=all_units
@@ -399,18 +397,6 @@ class QuizService:
         except Exception as e:
             logger.error("Quiz content generation failed", error=str(e))
             raise
-
-    @staticmethod
-    def _unit_id_to_unit_number(unit_id: str, module_number: int) -> str | None:
-        """Convert unit_id like 'M01-U02' to unit_number like '1.2'."""
-        try:
-            parts = unit_id.upper().split("-U")
-            if len(parts) != 2:
-                return None
-            unit_ordinal = int(parts[1])
-            return f"{module_number}.{unit_ordinal}"
-        except (ValueError, IndexError):
-            return None
 
     @staticmethod
     def _resolve_books_sources(module: "Module") -> dict | None:
