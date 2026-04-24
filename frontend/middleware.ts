@@ -26,14 +26,20 @@ function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATTERNS.some((pattern) => pattern.test(pathname));
 }
 
-function getToken(request: NextRequest): string | null {
-  const cookie = request.cookies.get("access_token")?.value;
-  if (cookie) return cookie;
+function hasSession(request: NextRequest): boolean {
+  if (request.cookies.get("access_token")?.value) return true;
 
   const auth = request.headers.get("authorization");
-  if (auth?.startsWith("Bearer ")) return auth.slice(7);
+  if (auth?.startsWith("Bearer ")) return true;
 
-  return null;
+  // Refresh token cookie (HttpOnly, ~90 days) is sufficient evidence of an
+  // authenticated session — client-side authClient will exchange it for a new
+  // access_token via /api/v1/auth/refresh on the first 401. Without this, the
+  // 15-minute access_token cookie expires and SSR redirects to /login on every
+  // page load, defeating the long-lived refresh token.
+  if (request.cookies.get("refresh_token")?.value) return true;
+
+  return false;
 }
 
 export default function middleware(request: NextRequest) {
@@ -42,9 +48,8 @@ export default function middleware(request: NextRequest) {
   // Auth-aware root redirect: authenticated → /dashboard, anonymous → /courses
   const localeRootMatch = pathname.match(/^\/(fr|en)$/);
   if (localeRootMatch || pathname === "/") {
-    const token = getToken(request);
     const locale = localeRootMatch ? localeRootMatch[1] : "fr";
-    const dest = token ? `/${locale}/dashboard` : `/${locale}/courses`;
+    const dest = hasSession(request) ? `/${locale}/dashboard` : `/${locale}/courses`;
     return NextResponse.redirect(new URL(dest, request.url));
   }
 
@@ -56,15 +61,12 @@ export default function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(`/${locale}/profile`, request.url));
   }
 
-  if (!isPublicPath(pathname)) {
-    const token = getToken(request);
-    if (!token) {
-      const locale = pathname.split("/")[1];
-      const validLocale = ["fr", "en"].includes(locale) ? locale : "fr";
-      const loginUrl = new URL(`/${validLocale}/login`, request.url);
-      loginUrl.searchParams.set("redirect", pathname);
-      return NextResponse.redirect(loginUrl);
-    }
+  if (!isPublicPath(pathname) && !hasSession(request)) {
+    const locale = pathname.split("/")[1];
+    const validLocale = ["fr", "en"].includes(locale) ? locale : "fr";
+    const loginUrl = new URL(`/${validLocale}/login`, request.url);
+    loginUrl.searchParams.set("redirect", pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
   // API routes are proxied by next.config.ts rewrites — skip i18n middleware.
