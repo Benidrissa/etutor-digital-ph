@@ -274,7 +274,7 @@ async def verify_totp(
             httponly=True,
             secure=True,
             samesite="strict",
-            max_age=30 * 24 * 60 * 60,  # 30 days
+            max_age=auth_service.jwt_service.refresh_token_expire_days * 24 * 60 * 60,
         )
 
         logger.info("TOTP verification successful", user_id=request.user_id)
@@ -319,7 +319,7 @@ async def login(
             httponly=True,
             secure=True,
             samesite="strict",
-            max_age=30 * 24 * 60 * 60,  # 30 days
+            max_age=auth_service.jwt_service.refresh_token_expire_days * 24 * 60 * 60,
         )
 
         logger.info("Login successful", email=request.email)
@@ -555,7 +555,7 @@ async def login_with_password(
             httponly=True,
             secure=True,
             samesite="strict",
-            max_age=30 * 24 * 60 * 60,
+            max_age=auth_service.jwt_service.refresh_token_expire_days * 24 * 60 * 60,
         )
 
         logger.info("Password login successful", identifier=request.identifier)
@@ -715,7 +715,7 @@ async def verify_email_otp(
             httponly=True,
             secure=True,
             samesite="strict",
-            max_age=30 * 24 * 60 * 60,  # 30 days
+            max_age=auth_service.jwt_service.refresh_token_expire_days * 24 * 60 * 60,
         )
 
         logger.info("Email OTP verification successful", otp_id=request.otp_id)
@@ -800,7 +800,7 @@ async def verify_login_otp(
             httponly=True,
             secure=True,
             samesite="strict",
-            max_age=30 * 24 * 60 * 60,  # 30 days
+            max_age=auth_service.jwt_service.refresh_token_expire_days * 24 * 60 * 60,
         )
 
         logger.info("Login OTP verification successful", otp_id=request.otp_id)
