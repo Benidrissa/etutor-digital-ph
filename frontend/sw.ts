@@ -17,6 +17,9 @@ declare const self: ServiceWorkerGlobalScope;
 
 const DAY_IN_SECONDS = 24 * 60 * 60;
 
+// Bump when storage shape or routing changes so clients drop stale caches.
+const CACHE_VERSION = "v2-canonical-unit-number";
+
 const OFFLINE_FALLBACK_URL = "/offline.html";
 
 const serwist = new Serwist({
@@ -39,7 +42,7 @@ const serwist = new Serwist({
     {
       matcher: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/i,
       handler: new CacheFirst({
-        cacheName: "google-fonts",
+        cacheName: `google-fonts-${CACHE_VERSION}`,
         plugins: [
           new ExpirationPlugin({
             maxEntries: 30,
@@ -58,7 +61,7 @@ const serwist = new Serwist({
     {
       matcher: /\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/i,
       handler: new CacheFirst({
-        cacheName: "static-images",
+        cacheName: `static-images-${CACHE_VERSION}`,
         plugins: [
           new ExpirationPlugin({
             maxEntries: 100,
@@ -70,7 +73,7 @@ const serwist = new Serwist({
     {
       matcher: /\.(?:js|css|woff2|woff|ttf|eot)$/i,
       handler: new CacheFirst({
-        cacheName: "static-assets",
+        cacheName: `static-assets-${CACHE_VERSION}`,
         plugins: [
           new ExpirationPlugin({
             maxEntries: 200,
@@ -87,7 +90,7 @@ const serwist = new Serwist({
         return false;
       },
       handler: new StaleWhileRevalidate({
-        cacheName: "api-responses",
+        cacheName: `api-responses-${CACHE_VERSION}`,
         plugins: [
           new ExpirationPlugin({
             maxEntries: 50,
@@ -99,7 +102,7 @@ const serwist = new Serwist({
     {
       matcher: ({ request }: { request: Request }) => request.mode === "navigate",
       handler: new NetworkFirst({
-        cacheName: "pages",
+        cacheName: `pages-${CACHE_VERSION}`,
         networkTimeoutSeconds: 3,
       }),
     },

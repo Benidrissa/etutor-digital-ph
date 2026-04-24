@@ -3,24 +3,15 @@
 import { useRouter } from '@/i18n/routing';
 import { QuizContainer } from '@/components/quiz/quiz-container';
 
-interface QuizPageClientProps {
+interface UnitQuizViewerProps {
   moduleId: string;
   unitId: string;
-  language: string;
+  language: 'fr' | 'en';
   level: number;
 }
 
-export function QuizPageClient({
-  moduleId,
-  unitId,
-  language,
-  level,
-}: QuizPageClientProps) {
+export function UnitQuizViewer({ moduleId, unitId, language, level }: UnitQuizViewerProps) {
   const router = useRouter();
-
-  const handleQuizComplete = () => {
-    router.push(`/modules/${moduleId}`);
-  };
 
   return (
     <QuizContainer
@@ -28,7 +19,7 @@ export function QuizPageClient({
       unitId={unitId}
       language={language}
       level={level}
-      onComplete={handleQuizComplete}
+      onComplete={() => router.push(`/modules/${moduleId}`)}
     />
   );
 }

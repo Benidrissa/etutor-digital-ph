@@ -59,10 +59,7 @@ function getTypeIcon(unit: UnitProgressDetail) {
 }
 
 function getUnitHref(moduleId: string, unit: UnitProgressDetail): string {
-  const type = detectUnitType(unit);
-  if (type === 'quiz') return `/modules/${moduleId}/quiz?unit=${unit.unit_number}`;
-  if (type === 'case-study' || type === 'scenario') return `/modules/${moduleId}/case-study?unit=${unit.unit_number}`;
-  return `/modules/${moduleId}/lessons/${unit.unit_number}`;
+  return `/modules/${moduleId}/units/${unit.unit_number}`;
 }
 
 export function ModuleProgressOverlay({
