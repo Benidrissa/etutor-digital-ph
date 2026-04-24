@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.ai.translation import complex_overlay
 from app.ai.translation.complex_overlay import (
     DiagramLabel,
     DiagramLabels,
@@ -108,6 +109,17 @@ class TestExtractLabelPositions:
         client = _mock_client("{}")
         with pytest.raises(ValueError, match="non-empty"):
             await extract_label_positions(b"", client=client)
+        client.messages.create.assert_not_awaited()
+
+    async def test_raises_when_vision_disabled(self):
+        # Cost kill-switch (#1928).
+        client = _mock_client(json.dumps({"labels": []}))
+        fake_settings = MagicMock(enable_figure_vision=False, anthropic_api_key="key")
+        with (
+            patch.object(complex_overlay, "get_settings", return_value=fake_settings),
+            pytest.raises(RuntimeError, match="vision is disabled"),
+        ):
+            await extract_label_positions(b"fake-webp", client=client)
         client.messages.create.assert_not_awaited()
 
     async def test_invalid_json_raises(self):

@@ -5,11 +5,12 @@ from __future__ import annotations
 import json
 import xml.etree.ElementTree as ET
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
 
+from app.ai.translation import svg_rederiver
 from app.ai.translation.svg_rederiver import (
     FlowchartEdge,
     FlowchartNode,
@@ -127,6 +128,17 @@ class TestExtractFlowchartStructure:
         assert result.nodes[0].text == "Make an observation"
         assert result.edges[0].from_id == "n1"
         assert result.edges[0].label is None
+
+    async def test_raises_when_vision_disabled(self):
+        # Cost kill-switch (#1928).
+        client = _mock_client('{"nodes": [], "edges": []}')
+        fake_settings = MagicMock(enable_figure_vision=False, anthropic_api_key="key")
+        with (
+            patch.object(svg_rederiver, "get_settings", return_value=fake_settings),
+            pytest.raises(RuntimeError, match="vision is disabled"),
+        ):
+            await extract_flowchart_structure(b"fake-webp", client=client)
+        client.messages.create.assert_not_awaited()
 
     async def test_strips_markdown_fences(self):
         payload = {

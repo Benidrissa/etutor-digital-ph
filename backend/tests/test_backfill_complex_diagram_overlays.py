@@ -280,3 +280,35 @@ class TestRunOverlayBackfillWithFactory:
         assert result["status"] == "noop"
         assert result["eligible"] == 0
         extract.assert_not_awaited()
+
+    async def test_short_circuits_when_vision_disabled(self):
+        # Cost kill-switch (#1928) — flag=False should return immediately,
+        # skipping any DB query and any Claude call.
+        rows = [_make_row(), _make_row()]
+        session = _FakeSession(rows)
+        task = MagicMock()
+        storage = _FakeStorage()
+
+        extract = AsyncMock(return_value=_sample_labels())
+        translate = AsyncMock(return_value=_sample_labels())
+
+        with (
+            patch.object(image_translation.settings, "enable_figure_vision", False),
+            patch.object(image_translation, "extract_label_positions", new=extract),
+            patch.object(image_translation, "translate_labels", new=translate),
+        ):
+            result = await image_translation._run_overlay_backfill_with_factory(
+                task=task,
+                rag_collection_id=None,
+                limit=None,
+                dry_run=False,
+                session_factory=_FakeSessionFactory(session),
+                storage=storage,
+            )
+
+        assert result["status"] == "disabled"
+        assert result["rendered"] == 0
+        assert result["reclassified"] == 0
+        extract.assert_not_awaited()
+        translate.assert_not_awaited()
+        assert storage.uploads == []

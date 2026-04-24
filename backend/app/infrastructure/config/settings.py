@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     # Anthropic Claude API
     anthropic_api_key: str = ""
 
+    # Cost kill-switch for Vision-backed figure tasks (classifier, flowchart
+    # SVG re-deriver, complex_diagram overlay extractor). Set to False in an
+    # environment that shouldn't spend on Claude Vision — backfills and the
+    # Vision-gated ingest branches short-circuit cleanly. Text-only Haiku
+    # features (caption translation, tutor, lessons) are unaffected.
+    # Issue #1928 — staging burned ~$30 in 4 hours of repeated backfills.
+    enable_figure_vision: bool = True
+
     # Google AI (Gemini TTS)
     google_api_key: str = ""
 
