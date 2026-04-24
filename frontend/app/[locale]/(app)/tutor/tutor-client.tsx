@@ -37,6 +37,12 @@ export function TutorPageClient() {
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [showClearAllDialog, setShowClearAllDialog] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
 
   const loadConversations = useCallback(async () => {
     try {
@@ -99,25 +105,31 @@ export function TutorPageClient() {
   );
 
   const handleDeleteConversation = async (id: string) => {
+    setDeleteTarget(null);
     try {
       await deleteConversation(id);
-    } catch { /* proxy may block response */ }
-    clearDraft(id);
-    if (selectedConversation === id) {
-      setSelectedConversation(null);
+      clearDraft(id);
+      if (selectedConversation === id) {
+        setSelectedConversation(null);
+      }
+    } catch (err) {
+      console.error('Failed to delete conversation', err);
+      showToast(t('error'));
     }
-    setDeleteTarget(null);
     await loadConversations();
   };
 
   const handleClearAll = async () => {
+    setShowClearAllDialog(false);
     try {
       await deleteAllConversations();
-    } catch { /* proxy may block response */ }
-    conversations.forEach((c) => clearDraft(c.id));
-    clearDraft(null);
-    setSelectedConversation(null);
-    setShowClearAllDialog(false);
+      conversations.forEach((c) => clearDraft(c.id));
+      clearDraft(null);
+      setSelectedConversation(null);
+    } catch (err) {
+      console.error('Failed to clear conversations', err);
+      showToast(t('error'));
+    }
     await loadConversations();
   };
 
@@ -230,6 +242,15 @@ export function TutorPageClient() {
 
   return (
     <ChatProvider>
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed top-4 right-4 z-50 rounded-lg bg-destructive px-4 py-2 text-sm text-destructive-foreground shadow-lg"
+        >
+          {toast}
+        </div>
+      )}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Conversations Sidebar — hidden on mobile, visible on desktop */}
         <div className="w-80 border-r bg-card hidden md:flex flex-col shrink-0">
