@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 
 import httpx
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,9 +31,10 @@ from app.api.v1.schemas.tutor_voice import (
     VoiceSessionResponse,
 )
 from app.domain.models.conversation import TutorConversation
-from app.domain.models.tutor_voice import TutorVoiceSession
+from app.domain.models.tutor_voice import TutorMessageAudio, TutorVoiceSession
 from app.domain.services.tutor_audio_service import TutorAudioService
 from app.infrastructure.config.settings import get_settings
+from app.infrastructure.storage.s3 import S3StorageService
 
 logger = structlog.get_logger(__name__)
 
@@ -109,11 +110,69 @@ async def synthesize_message_audio(
             detail="Audio synthesis failed. Please try again.",
         ) from exc
 
+    # Return a relative proxy URL, not the raw MinIO storage_url — the
+    # latter points to the internal container hostname (http://minio:9000)
+    # which is not browser-reachable (#1949, same pattern as #1607/#1608
+    # and lesson_audio.py:_resolve_audio_url).
+    proxy_url = f"/api/v1/tutor/messages/{record.id}/data" if record.status == "ready" else None
     return TutorMessageAudioResponse(
         status=record.status,
-        url=record.storage_url,
+        url=proxy_url,
         duration_seconds=record.duration_seconds,
         error_message=record.error_message,
+    )
+
+
+@router.get(
+    "/messages/{audio_id}/data",
+    responses={
+        200: {"content": {"audio/ogg": {}}, "description": "OGG Opus audio data"},
+        404: {"description": "Audio not found, not ready, or not owned by user"},
+    },
+)
+async def get_message_audio_data(
+    audio_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """Stream a tutor message's TTS audio from MinIO.
+
+    Unauthenticated — matches lesson_audio's GET /audio/{id}/data pattern.
+    The UUID is a 128-bit random identifier only handed to the authenticated
+    user who owns the conversation, so leakage requires either their session
+    token or a server compromise. Adding auth here would break the browser
+    ``<audio>`` element which cannot send Bearer headers.
+    """
+    result = await db.execute(select(TutorMessageAudio).where(TutorMessageAudio.id == audio_id))
+    audio = result.scalar_one_or_none()
+    if audio is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audio not found",
+        )
+    if audio.status != "ready" or not audio.storage_key:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audio not ready",
+        )
+
+    try:
+        audio_bytes = await S3StorageService().download_bytes(audio.storage_key)
+    except Exception as exc:
+        logger.warning(
+            "Tutor audio download failed",
+            audio_id=str(audio_id),
+            storage_key=audio.storage_key,
+            error=str(exc),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audio data unavailable",
+        ) from exc
+
+    return Response(
+        content=audio_bytes,
+        media_type="audio/ogg",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )
 
 
