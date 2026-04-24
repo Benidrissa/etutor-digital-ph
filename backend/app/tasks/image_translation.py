@@ -316,6 +316,10 @@ async def _run_kind_backfill_with_factory(
     dry_run: bool,
     session_factory: async_sessionmaker[AsyncSession],
 ) -> dict:
+    if not settings.enable_figure_vision:
+        # Cost kill-switch (#1928) — every row does a Claude Vision call.
+        logger.info("figure-kind backfill short-circuit: vision disabled")
+        return {"status": "disabled", "eligible": 0, "classified": 0, "failed": 0}
     async with session_factory() as session:
         stmt = select(SourceImage).where(
             SourceImage.figure_kind.is_(None),
@@ -490,6 +494,10 @@ async def _run_svg_backfill_with_factory(
     session_factory: async_sessionmaker[AsyncSession],
     storage: S3StorageService,
 ) -> dict:
+    if not settings.enable_figure_vision:
+        # Cost kill-switch (#1928) — every row does 1-2 Claude Vision calls.
+        logger.info("flowchart SVG backfill short-circuit: vision disabled")
+        return {"status": "disabled", "eligible": 0, "rendered": 0, "failed": 0}
     async with session_factory() as session:
         stmt = select(SourceImage).where(
             SourceImage.figure_kind == "clean_flowchart",
@@ -691,6 +699,16 @@ async def _run_overlay_backfill_with_factory(
     session_factory: async_sessionmaker[AsyncSession],
     storage: S3StorageService,
 ) -> dict:
+    if not settings.enable_figure_vision:
+        # Cost kill-switch (#1928) — every row does 2 Claude Vision calls.
+        logger.info("complex_diagram overlay backfill short-circuit: vision disabled")
+        return {
+            "status": "disabled",
+            "eligible": 0,
+            "rendered": 0,
+            "reclassified": 0,
+            "failed": 0,
+        }
     async with session_factory() as session:
         stmt = select(SourceImage).where(
             SourceImage.figure_kind == "complex_diagram",
