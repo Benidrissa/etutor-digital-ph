@@ -114,6 +114,7 @@ export function ProfileClient() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [showRecontextAlert, setShowRecontextAlert] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const router = useRouter();
   const locale = useLocale();
@@ -137,11 +138,15 @@ export function ProfileClient() {
   const updateMutation = useMutation({
     mutationFn: updateProfile,
     onSuccess: (data) => {
+      setUpdateError(null);
       queryClient.setQueryData(["profile"], data.profile || data);
       setIsEditing(false);
       if (data.content_recontextualization_required) {
         setShowRecontextAlert(true);
       }
+    },
+    onError: (err: Error) => {
+      setUpdateError(err.message || t("updateError"));
     },
   });
 
@@ -421,6 +426,13 @@ export function ProfileClient() {
 
               <Separator />
 
+              {updateError && (
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>{updateError}</AlertDescription>
+                </Alert>
+              )}
+
               <div className="flex justify-between">
                 {!isEditing ? (
                   <Button onClick={() => setIsEditing(true)} variant="outline">
@@ -433,6 +445,7 @@ export function ProfileClient() {
                       variant="outline"
                       onClick={() => {
                         setIsEditing(false);
+                        setUpdateError(null);
                         form.reset();
                       }}
                     >
@@ -508,15 +521,18 @@ export function ProfileClient() {
               onClick={async () => {
                 const newValue = !(profile?.analytics_opt_out ?? false);
                 try {
-                  await updateProfile({ analytics_opt_out: newValue });
-                  queryClient.invalidateQueries({ queryKey: ["userProfile"] });
+                  const data = await updateProfile({ analytics_opt_out: newValue });
+                  setUpdateError(null);
+                  queryClient.setQueryData(["profile"], data.profile || data);
                   if (newValue) {
                     localStorage.setItem("analytics_opt_out", "1");
                   } else {
                     localStorage.removeItem("analytics_opt_out");
                   }
-                } catch {
-                  // ignore
+                } catch (err) {
+                  setUpdateError(
+                    (err as Error).message || t("updateError"),
+                  );
                 }
               }}
               className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${

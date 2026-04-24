@@ -869,6 +869,7 @@
     "edit": "Modifier",
     "cancel": "Annuler",
     "save": "Sauvegarder",
+    "updateError": "Impossible d'enregistrer vos modifications. Veuillez réessayer.",
     "logout": "Déconnexion",
     "logoutDescription": "Se déconnecter de votre compte",
     "loggingOut": "Déconnexion en cours...",
