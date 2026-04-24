@@ -201,7 +201,7 @@ export interface UnitProgressDetail {
   description_en?: string;
   estimated_minutes: number;
   order_index: number;
-  unit_type?: "lesson" | "quiz" | "case-study";
+  unit_type?: "lesson" | "quiz" | "case-study" | "scenario";
   status: "pending" | "in_progress" | "completed";
 }
 
@@ -268,7 +268,7 @@ export interface PublicUnitDetail {
   description_en?: string;
   estimated_minutes: number;
   order_index: number;
-  unit_type?: "lesson" | "quiz" | "case-study";
+  unit_type?: "lesson" | "quiz" | "case-study" | "scenario";
 }
 
 export interface ModuleUnitsResponse {
