@@ -79,7 +79,7 @@ export function ListenButton({
       : state === 'loading'
         ? t('loading')
         : state === 'failed'
-          ? t('failed')
+          ? t('audioUnavailable')
           : t('listen');
 
   const Icon =
