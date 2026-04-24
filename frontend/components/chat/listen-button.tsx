@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Play, Pause, Loader2, Volume2 } from 'lucide-react';
+import { API_BASE } from '@/lib/api';
 import { fetchTutorMessageAudio } from '@/lib/tutor-voice-api';
 import { cn } from '@/lib/utils';
 
@@ -65,7 +66,10 @@ export function ListenButton({
       setState('failed');
       return;
     }
-    audio.src = data.url;
+    // Backend returns a relative proxy path (/api/v1/tutor/messages/{id}/data)
+    // to avoid leaking internal MinIO hostnames (#1949). Resolve to absolute
+    // same-origin URL, matching the lesson-audio pattern.
+    audio.src = data.url.startsWith('/') ? `${API_BASE}${data.url}` : data.url;
     try {
       await audio.play();
     } catch {
