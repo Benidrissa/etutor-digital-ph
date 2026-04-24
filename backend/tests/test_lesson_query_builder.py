@@ -67,29 +67,6 @@ def sample_unit_u02() -> ModuleUnit:
     )
 
 
-class TestUnitIdToUnitNumber:
-    def test_m01_u01_maps_to_1_1(self, lesson_service):
-        assert lesson_service._unit_id_to_unit_number("M01-U01", 1) == "1.1"
-
-    def test_m01_u02_maps_to_1_2(self, lesson_service):
-        assert lesson_service._unit_id_to_unit_number("M01-U02", 1) == "1.2"
-
-    def test_m01_u03_maps_to_1_3(self, lesson_service):
-        assert lesson_service._unit_id_to_unit_number("M01-U03", 1) == "1.3"
-
-    def test_m02_u01_maps_to_2_1(self, lesson_service):
-        assert lesson_service._unit_id_to_unit_number("M02-U01", 2) == "2.1"
-
-    def test_lowercase_unit_id(self, lesson_service):
-        assert lesson_service._unit_id_to_unit_number("m01-u02", 1) == "1.2"
-
-    def test_invalid_unit_id_returns_none(self, lesson_service):
-        assert lesson_service._unit_id_to_unit_number("INVALID", 1) is None
-
-    def test_empty_unit_id_returns_none(self, lesson_service):
-        assert lesson_service._unit_id_to_unit_number("", 1) is None
-
-
 class TestBuildLessonQuery:
     @pytest.mark.asyncio
     async def test_uses_unit_title_when_unit_found(
@@ -100,11 +77,11 @@ class TestBuildLessonQuery:
         mock_result.scalar_one_or_none.return_value = sample_unit_u01
         session.execute = AsyncMock(return_value=mock_result)
 
-        query = await lesson_service._build_lesson_query(sample_module, "M01-U01", "fr", session)
+        query = await lesson_service._build_lesson_query(sample_module, "1.1", "fr", session)
 
         assert "Histoire et définition de la santé publique" in query
         assert "Evolution de la santé publique" in query
-        assert "unit M01-U01" not in query
+        assert "unit 1.1" not in query
 
     @pytest.mark.asyncio
     async def test_uses_english_title_for_en_language(
@@ -115,7 +92,7 @@ class TestBuildLessonQuery:
         mock_result.scalar_one_or_none.return_value = sample_unit_u01
         session.execute = AsyncMock(return_value=mock_result)
 
-        query = await lesson_service._build_lesson_query(sample_module, "M01-U01", "en", session)
+        query = await lesson_service._build_lesson_query(sample_module, "1.1", "en", session)
 
         assert "History and definition of public health" in query
         assert "Evolution of public health" in query
@@ -135,10 +112,10 @@ class TestBuildLessonQuery:
         session.execute = AsyncMock(side_effect=[mock_result_u01, mock_result_u02])
 
         query_u01 = await lesson_service._build_lesson_query(
-            sample_module, "M01-U01", "fr", session
+            sample_module, "1.1", "fr", session
         )
         query_u02 = await lesson_service._build_lesson_query(
-            sample_module, "M01-U02", "fr", session
+            sample_module, "1.2", "fr", session
         )
 
         assert query_u01 != query_u02
@@ -154,19 +131,10 @@ class TestBuildLessonQuery:
         mock_result.scalar_one_or_none.return_value = None
         session.execute = AsyncMock(return_value=mock_result)
 
-        query = await lesson_service._build_lesson_query(sample_module, "M01-U99", "fr", session)
+        query = await lesson_service._build_lesson_query(sample_module, "1.99", "fr", session)
 
         assert "Fondements de la Santé Publique" in query
-        assert "unit M01-U99" in query
-
-    @pytest.mark.asyncio
-    async def test_falls_back_for_invalid_unit_id(self, lesson_service, sample_module):
-        session = AsyncMock(spec=AsyncSession)
-
-        query = await lesson_service._build_lesson_query(sample_module, "INVALID", "fr", session)
-
-        assert "Fondements de la Santé Publique" in query
-        session.execute.assert_not_called()
+        assert "unit 1.99" in query
 
 
 @pytest.fixture
@@ -208,7 +176,7 @@ class TestGetCachedLesson:
         self, lesson_service, sample_module_id, make_cached_content
     ):
         session = AsyncMock(spec=AsyncSession)
-        cached = make_cached_content("M01-U01")
+        cached = make_cached_content("1.1")
         mock_result = MagicMock()
         mock_scalars = MagicMock()
         mock_scalars.first.return_value = cached
@@ -216,11 +184,11 @@ class TestGetCachedLesson:
         session.execute = AsyncMock(return_value=mock_result)
 
         result, is_fallback = await lesson_service._get_cached_lesson(
-            sample_module_id, "M01-U01", "fr", "SN", 1, session
+            sample_module_id, "1.1", "fr", "SN", 1, session
         )
 
         assert result is not None
-        assert result.unit_id == "M01-U01"
+        assert result.unit_id == "1.1"
         assert result.cached is True
 
     @pytest.mark.asyncio
@@ -233,7 +201,7 @@ class TestGetCachedLesson:
         session.execute = AsyncMock(return_value=mock_result)
 
         result, _ = await lesson_service._get_cached_lesson(
-            sample_module_id, "M01-U02", "fr", "SN", 1, session
+            sample_module_id, "1.2", "fr", "SN", 1, session
         )
 
         assert result is None
@@ -242,8 +210,8 @@ class TestGetCachedLesson:
     async def test_different_units_return_their_own_cached_content(
         self, lesson_service, sample_module_id, make_cached_content
     ):
-        cached_u01 = make_cached_content("M01-U01")
-        cached_u02 = make_cached_content("M01-U02")
+        cached_u01 = make_cached_content("1.1")
+        cached_u02 = make_cached_content("1.2")
 
         mock_result_u01 = MagicMock()
         mock_scalars_u01 = MagicMock()
@@ -259,16 +227,16 @@ class TestGetCachedLesson:
         session.execute = AsyncMock(side_effect=[mock_result_u01, mock_result_u02])
 
         result_u01, _ = await lesson_service._get_cached_lesson(
-            sample_module_id, "M01-U01", "fr", "SN", 1, session
+            sample_module_id, "1.1", "fr", "SN", 1, session
         )
         result_u02, _ = await lesson_service._get_cached_lesson(
-            sample_module_id, "M01-U02", "fr", "SN", 1, session
+            sample_module_id, "1.2", "fr", "SN", 1, session
         )
 
         assert result_u01 is not None
         assert result_u02 is not None
-        assert result_u01.unit_id == "M01-U01"
-        assert result_u02.unit_id == "M01-U02"
+        assert result_u01.unit_id == "1.1"
+        assert result_u02.unit_id == "1.2"
         assert result_u01.unit_id != result_u02.unit_id
 
     @pytest.mark.asyncio
@@ -276,7 +244,7 @@ class TestGetCachedLesson:
         self, lesson_service, sample_module_id, make_cached_content
     ):
         session = AsyncMock(spec=AsyncSession)
-        cached = make_cached_content("M01-U03")
+        cached = make_cached_content("1.3")
         mock_result = MagicMock()
         mock_scalars = MagicMock()
         mock_scalars.first.return_value = cached
@@ -284,7 +252,7 @@ class TestGetCachedLesson:
         session.execute = AsyncMock(return_value=mock_result)
 
         result, _ = await lesson_service._get_cached_lesson(
-            sample_module_id, "M01-U03", "fr", "SN", 1, session
+            sample_module_id, "1.3", "fr", "SN", 1, session
         )
 
         assert result is not None
@@ -332,7 +300,7 @@ class TestGetCachedLessonSourceImageRefs:
         }
 
         content = {
-            "unit_id": "M01-U01",
+            "unit_id": "1.1",
             "introduction": "Introduction text",
             "concepts": [f"Concept with marker {{{{source_image:{img_id}}}}}"],
             "aof_example": "Example",
@@ -369,7 +337,7 @@ class TestGetCachedLessonSourceImageRefs:
         session.execute = AsyncMock(side_effect=[mock_first_result, mock_db_result])
 
         result, _ = await lesson_service._get_cached_lesson(
-            sample_module_id, "M01-U01", "fr", "SN", 1, session
+            sample_module_id, "1.1", "fr", "SN", 1, session
         )
 
         assert result is not None
@@ -393,7 +361,7 @@ class TestGetCachedLessonSourceImageRefs:
         }
 
         content = {
-            "unit_id": "M01-U01",
+            "unit_id": "1.1",
             "introduction": "Introduction text",
             "concepts": ["Normal concept"],
             "aof_example": "Example",
@@ -430,7 +398,7 @@ class TestGetCachedLessonSourceImageRefs:
         session.execute = AsyncMock(side_effect=[mock_first_result, mock_db_result])
 
         result, _ = await lesson_service._get_cached_lesson(
-            sample_module_id, "M01-U01", "fr", "SN", 1, session
+            sample_module_id, "1.1", "fr", "SN", 1, session
         )
 
         assert result is not None

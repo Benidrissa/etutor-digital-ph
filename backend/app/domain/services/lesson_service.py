@@ -633,19 +633,15 @@ class LessonGenerationService:
         self, module: Module, unit_id: str, language: str, session: AsyncSession
     ) -> str:
         """Build search query for RAG retrieval using unit-specific metadata."""
-        unit_number = self._unit_id_to_unit_number(unit_id, module.module_number)
-        unit: ModuleUnit | None = None
-
-        if unit_number:
-            unit_result = await session.execute(
-                select(ModuleUnit).where(
-                    and_(
-                        ModuleUnit.module_id == module.id,
-                        ModuleUnit.unit_number == unit_number,
-                    )
+        unit_result = await session.execute(
+            select(ModuleUnit).where(
+                and_(
+                    ModuleUnit.module_id == module.id,
+                    ModuleUnit.unit_number == unit_id,
                 )
             )
-            unit = unit_result.scalar_one_or_none()
+        )
+        unit = unit_result.scalar_one_or_none()
 
         if unit:
             unit_title = unit.title_fr if language == "fr" else unit.title_en
@@ -663,18 +659,6 @@ class LessonGenerationService:
                 query_parts.append(description[:200])
 
         return " ".join(query_parts)
-
-    @staticmethod
-    def _unit_id_to_unit_number(unit_id: str, module_number: int) -> str | None:
-        """Convert unit_id like 'M01-U02' to unit_number like '1.2'."""
-        try:
-            parts = unit_id.upper().split("-U")
-            if len(parts) != 2:
-                return None
-            unit_ordinal = int(parts[1])
-            return f"{module_number}.{unit_ordinal}"
-        except (ValueError, IndexError):
-            return None
 
     async def _parse_lesson_content(self, content_text: str, rag_chunks: list) -> LessonContent:
         """Parse generated content into structured lesson format.
@@ -1446,14 +1430,11 @@ class CaseStudyGenerationService:
         self, module: Module, unit_id: str, session: AsyncSession
     ) -> ModuleUnit | None:
         """Resolve a ModuleUnit from unit_id and module."""
-        unit_number = LessonGenerationService._unit_id_to_unit_number(unit_id, module.module_number)
-        if not unit_number:
-            return None
         unit_result = await session.execute(
             select(ModuleUnit).where(
                 and_(
                     ModuleUnit.module_id == module.id,
-                    ModuleUnit.unit_number == unit_number,
+                    ModuleUnit.unit_number == unit_id,
                 )
             )
         )

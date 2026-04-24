@@ -43,8 +43,8 @@ class ModuleProgressResponse(BaseModel):
 class UnitProgressDetail(BaseModel):
     """Progress detail for a single unit within a module."""
 
-    id: str = Field(description="Unit number/ID")
-    unit_number: str = Field(description="Unit number e.g. M01-U01")
+    id: str = Field(description="Unit UUID")
+    unit_number: str = Field(description="Unit number e.g. 1.1")
     title_fr: str
     title_en: str
     description_fr: str | None = None
@@ -78,7 +78,7 @@ class CompleteLessonRequest(BaseModel):
     """Request to mark a lesson/unit as completed (requires passing quiz)."""
 
     module_id: UUID = Field(description="Module UUID")
-    unit_id: str = Field(description="Unit ID, e.g. 'M01-U02'")
+    unit_id: str = Field(description="Unit number, e.g. '1.2'")
 
 
 class CompleteLessonResponse(BaseModel):

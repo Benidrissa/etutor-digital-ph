@@ -63,7 +63,7 @@ def _make_image_meta(
 class TestFormatRagContextForLesson:
     def test_no_images_produces_same_output_as_before(self):
         chunks = [_make_search_result()]
-        result = format_rag_context_for_lesson(chunks, "epidemiology", "M01", "M01-U01", "fr")
+        result = format_rag_context_for_lesson(chunks, "epidemiology", "M01", "1.1", "fr")
         assert "DOCUMENTS DE RÉFÉRENCE" in result
         assert "FIGURE DISPONIBLE" not in result
 
@@ -73,7 +73,7 @@ class TestFormatRagContextForLesson:
         chunks = [_make_search_result(chunk_id=chunk_id)]
         linked = {chunk_id: [img]}
         result = format_rag_context_for_lesson(
-            chunks, "epidemiology", "M01", "M01-U01", "fr", linked_images=linked
+            chunks, "epidemiology", "M01", "1.1", "fr", linked_images=linked
         )
         assert "FIGURE DISPONIBLE" in result
         assert img["id"] in result
@@ -85,7 +85,7 @@ class TestFormatRagContextForLesson:
         chunks = [_make_search_result(chunk_id=chunk_id)]
         linked = {chunk_id: [img]}
         result = format_rag_context_for_lesson(
-            chunks, "epidemiology", "M01", "M01-U01", "en", linked_images=linked
+            chunks, "epidemiology", "M01", "1.1", "en", linked_images=linked
         )
         assert "FIGURE AVAILABLE" in result
         assert img["id"] in result
@@ -99,7 +99,7 @@ class TestFormatRagContextForLesson:
             chunks.append(sr)
             linked[cid] = [_make_image_meta()]
         result = format_rag_context_for_lesson(
-            chunks, "query", "M01", "M01-U01", "en", linked_images=linked
+            chunks, "query", "M01", "1.1", "en", linked_images=linked
         )
         count = result.count("source_image:")
         assert count <= 5
@@ -107,14 +107,14 @@ class TestFormatRagContextForLesson:
     def test_empty_linked_images_dict_no_annotation(self):
         chunks = [_make_search_result()]
         result = format_rag_context_for_lesson(
-            chunks, "q", "M01", "M01-U01", "en", linked_images={}
+            chunks, "q", "M01", "1.1", "en", linked_images={}
         )
         assert "FIGURE AVAILABLE" not in result
 
     def test_none_linked_images_no_annotation(self):
         chunks = [_make_search_result()]
         result = format_rag_context_for_lesson(
-            chunks, "q", "M01", "M01-U01", "fr", linked_images=None
+            chunks, "q", "M01", "1.1", "fr", linked_images=None
         )
         assert "FIGURE DISPONIBLE" not in result
 
@@ -123,7 +123,7 @@ class TestFormatRagContextForLesson:
         img = _make_image_meta(figure_number="2.5", caption="Epidemiology cycle")
         chunks = [_make_search_result(chunk_id=chunk_id)]
         result = format_rag_context_for_lesson(
-            chunks, "q", "M01", "M01-U01", "en", linked_images={chunk_id: [img]}
+            chunks, "q", "M01", "1.1", "en", linked_images={chunk_id: [img]}
         )
         assert "Figure 2.5" in result
         assert "Epidemiology cycle" in result
@@ -136,7 +136,7 @@ class TestFormatRagContextForLesson:
         sr.chunk.source = "donaldson"
         sr.chunk.chapter = "1"
         sr.chunk.page = 10
-        result = format_rag_context_for_lesson([sr], "q", "M01", "M01-U01", "en", linked_images={})
+        result = format_rag_context_for_lesson([sr], "q", "M01", "1.1", "en", linked_images={})
         assert "FIGURE AVAILABLE" not in result
 
 
@@ -186,7 +186,7 @@ class TestLessonResponseSourceImageRefs:
         )
         return LessonResponse(
             module_id=uuid.uuid4(),
-            unit_id="M01-U01",
+            unit_id="1.1",
             language="fr",
             level=1,
             country_context="SN",

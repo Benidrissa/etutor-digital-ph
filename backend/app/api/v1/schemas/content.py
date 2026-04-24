@@ -258,7 +258,7 @@ class CaseStudyResponse(BaseModel):
             "example": {
                 "id": "550e8400-e29b-41d4-a716-446655440003",
                 "module_id": "550e8400-e29b-41d4-a716-446655440000",
-                "unit_id": "M01-U05",
+                "unit_id": "1.5",
                 "content_type": "case",
                 "language": "fr",
                 "level": 1,
@@ -284,7 +284,7 @@ class PublicUnitDetail(BaseModel):
     """Public unit info without user-specific progress data."""
 
     id: str = Field(description="Unit UUID")
-    unit_number: str = Field(description="Unit number e.g. M01-U01")
+    unit_number: str = Field(description="Unit number e.g. 1.1")
     title_fr: str
     title_en: str
     description_fr: str | None = None

@@ -51,7 +51,7 @@ class TestDispatchPrefetch:
     ):
         with patch("app.tasks.content_generation.prefetch_next_lessons_task") as mock_task:
             mock_task.apply_async.side_effect = Exception("Celery unavailable")
-            progress_service._dispatch_prefetch(user_id, str(module_id), "M01-U01")
+            progress_service._dispatch_prefetch(user_id, str(module_id), "1.1")
 
     def test_dispatch_prefetch_calls_apply_async(self, progress_service, user_id, module_id):
         with patch(
@@ -64,7 +64,7 @@ class TestDispatchPrefetch:
                 "app.tasks.content_generation.prefetch_next_lessons_task",
                 mock_task,
             ):
-                progress_service._dispatch_prefetch(user_id, str(module_id), "M01-U01")
+                progress_service._dispatch_prefetch(user_id, str(module_id), "1.1")
 
 
 # ---------------------------------------------------------------------------
@@ -114,13 +114,13 @@ class TestPrefetchDispatchedOnQuizPass:
         await progress_service.update_progress_after_quiz(
             user_id=user_id,
             module_id=module_id,
-            unit_id="M01-U01",
+            unit_id="1.1",
             score=85.0,
             passed=True,
         )
 
         assert len(dispatch_calls) == 1
-        assert dispatch_calls[0][2] == "M01-U01"
+        assert dispatch_calls[0][2] == "1.1"
 
     async def test_prefetch_not_dispatched_when_quiz_failed(
         self, progress_service, mock_db, user_id, module_id
@@ -147,7 +147,7 @@ class TestPrefetchDispatchedOnQuizPass:
         await progress_service.update_progress_after_quiz(
             user_id=user_id,
             module_id=module_id,
-            unit_id="M01-U01",
+            unit_id="1.1",
             score=60.0,
             passed=False,
         )
@@ -258,13 +258,13 @@ class TestDispatchContentPrefetch:
         mock_user.country = "SN"
         mock_user.current_level = 1
 
-        dispatch(mock_user, str(uuid.uuid4()), "M01-U01")
+        dispatch(mock_user, str(uuid.uuid4()), "1.1")
 
     def test_dispatch_skips_none_user(self):
         mock_task = MagicMock()
         dispatch = self._make_dispatch_fn(mock_task)
 
-        dispatch(None, str(uuid.uuid4()), "M01-U01")
+        dispatch(None, str(uuid.uuid4()), "1.1")
         mock_task.apply_async.assert_not_called()
 
     def test_dispatch_calls_apply_async_with_correct_kwargs(self):
@@ -278,13 +278,13 @@ class TestDispatchContentPrefetch:
         mock_user.current_level = 2
 
         module_id_str = str(uuid.uuid4())
-        dispatch(mock_user, module_id_str, "M02-U03")
+        dispatch(mock_user, module_id_str, "2.3")
 
         mock_task.apply_async.assert_called_once()
         call_kwargs = mock_task.apply_async.call_args[1]["kwargs"]
         assert call_kwargs["user_id"] == str(mock_user.id)
         assert call_kwargs["module_id"] == module_id_str
-        assert call_kwargs["current_unit_id"] == "M02-U03"
+        assert call_kwargs["current_unit_id"] == "2.3"
         assert call_kwargs["language"] == "en"
         assert call_kwargs["country"] == "GH"
         assert call_kwargs["level"] == 2

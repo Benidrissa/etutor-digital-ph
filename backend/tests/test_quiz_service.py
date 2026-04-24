@@ -58,10 +58,10 @@ class TestValidateAndNormalizeQuiz:
         import copy
 
         data = copy.deepcopy(SAMPLE_QUIZ_DICT)
-        result = quiz_service._validate_and_normalize_quiz(data, "M01-U04", 10)
+        result = quiz_service._validate_and_normalize_quiz(data, "1.4", 10)
         assert result["title"] == "Public Health Foundations Quiz"
         assert len(result["questions"]) == 10
-        assert result["unit_id"] == "M01-U04"
+        assert result["unit_id"] == "1.4"
 
     def test_raises_on_missing_title_field(self, quiz_service):
         import copy
@@ -69,7 +69,7 @@ class TestValidateAndNormalizeQuiz:
         data = copy.deepcopy(SAMPLE_QUIZ_DICT)
         del data["title"]
         with pytest.raises(ValueError, match="Missing required field"):
-            quiz_service._validate_and_normalize_quiz(data, "M01-U04", 10)
+            quiz_service._validate_and_normalize_quiz(data, "1.4", 10)
 
     def test_raises_on_empty_questions_list(self, quiz_service):
         import copy
@@ -77,14 +77,14 @@ class TestValidateAndNormalizeQuiz:
         data = copy.deepcopy(SAMPLE_QUIZ_DICT)
         data["questions"] = []
         with pytest.raises(ValueError, match="at least one question"):
-            quiz_service._validate_and_normalize_quiz(data, "M01-U04", 10)
+            quiz_service._validate_and_normalize_quiz(data, "1.4", 10)
 
     def test_sets_default_passing_score_to_80(self, quiz_service):
         import copy
 
         data = copy.deepcopy(SAMPLE_QUIZ_DICT)
         del data["passing_score"]
-        result = quiz_service._validate_and_normalize_quiz(data, "M01-U04", 10)
+        result = quiz_service._validate_and_normalize_quiz(data, "1.4", 10)
         assert result["passing_score"] == 80.0
 
     def test_enforces_minimum_passing_score_of_80(self, quiz_service):
@@ -92,7 +92,7 @@ class TestValidateAndNormalizeQuiz:
 
         data = copy.deepcopy(SAMPLE_QUIZ_DICT)
         data["passing_score"] = 60.0
-        result = quiz_service._validate_and_normalize_quiz(data, "M01-U04", 10)
+        result = quiz_service._validate_and_normalize_quiz(data, "1.4", 10)
         assert result["passing_score"] == 80.0
 
     def test_accepts_slightly_fewer_questions_than_requested(self, quiz_service):
@@ -100,15 +100,15 @@ class TestValidateAndNormalizeQuiz:
 
         data = copy.deepcopy(SAMPLE_QUIZ_DICT)
         data["questions"] = data["questions"][:8]
-        result = quiz_service._validate_and_normalize_quiz(data, "M01-U04", 10)
+        result = quiz_service._validate_and_normalize_quiz(data, "1.4", 10)
         assert len(result["questions"]) == 8
 
     def test_unit_id_added_to_result(self, quiz_service):
         import copy
 
         data = copy.deepcopy(SAMPLE_QUIZ_DICT)
-        result = quiz_service._validate_and_normalize_quiz(data, "M01-U04", 10)
-        assert result["unit_id"] == "M01-U04"
+        result = quiz_service._validate_and_normalize_quiz(data, "1.4", 10)
+        assert result["unit_id"] == "1.4"
 
 
 class TestValidateQuestion:
@@ -226,7 +226,7 @@ class TestGenerateQuizContent:
         module_id = uuid.uuid4()
         result = await quiz_service._generate_quiz_content(
             module_id=module_id,
-            unit_id="M01-U04",
+            unit_id="1.4",
             language="fr",
             country="senegal",
             level=1,
@@ -240,7 +240,7 @@ class TestGenerateQuizContent:
         module_id = uuid.uuid4()
         result = await quiz_service._generate_quiz_content(
             module_id=module_id,
-            unit_id="M01-U04",
+            unit_id="1.4",
             language="fr",
             country="senegal",
             level=1,
@@ -254,7 +254,7 @@ class TestGenerateQuizContent:
         with pytest.raises(Exception, match="API error"):
             await quiz_service._generate_quiz_content(
                 module_id=module_id,
-                unit_id="M01-U04",
+                unit_id="1.4",
                 language="fr",
                 country="senegal",
                 level=1,
@@ -270,7 +270,7 @@ class TestRawResponseFallback:
             "raw_response": True,
         }
         with pytest.raises(ValueError, match="Claude returned non-JSON text"):
-            quiz_service._validate_and_normalize_quiz(raw_fallback, "M01-U04", 10)
+            quiz_service._validate_and_normalize_quiz(raw_fallback, "1.4", 10)
 
     async def test_raises_when_claude_returns_raw_response(self, quiz_service, mock_claude_service):
         raw_fallback = {
@@ -283,7 +283,7 @@ class TestRawResponseFallback:
         with pytest.raises(ValueError, match="Invalid quiz format"):
             await quiz_service._generate_quiz_content(
                 module_id=module_id,
-                unit_id="M01-U04",
+                unit_id="1.4",
                 language="fr",
                 country="senegal",
                 level=1,
@@ -295,7 +295,7 @@ class TestBuildQuizPrompt:
     def test_returns_tuple_of_system_and_user(self, quiz_service):
         result = quiz_service._build_quiz_prompt(
             context="Some context",
-            unit_id="M01-U04",
+            unit_id="1.4",
             language="fr",
             country="senegal",
             level=1,
@@ -307,18 +307,18 @@ class TestBuildQuizPrompt:
     def test_prompt_contains_unit_id(self, quiz_service):
         _system_prompt, user_message = quiz_service._build_quiz_prompt(
             context="Some context",
-            unit_id="M01-U04",
+            unit_id="1.4",
             language="fr",
             country="senegal",
             level=1,
             num_questions=10,
         )
-        assert "M01-U04" in user_message
+        assert "1.4" in user_message
 
     def test_prompt_uses_french_instruction(self, quiz_service):
         _system_prompt, user_message = quiz_service._build_quiz_prompt(
             context="context",
-            unit_id="M01-U04",
+            unit_id="1.4",
             language="fr",
             country="senegal",
             level=1,
@@ -329,7 +329,7 @@ class TestBuildQuizPrompt:
     def test_prompt_uses_english_instruction(self, quiz_service):
         _system_prompt, user_message = quiz_service._build_quiz_prompt(
             context="context",
-            unit_id="M01-U04",
+            unit_id="1.4",
             language="en",
             country="ghana",
             level=2,
@@ -340,7 +340,7 @@ class TestBuildQuizPrompt:
     def test_prompt_includes_passing_score_80(self, quiz_service):
         _system_prompt, user_message = quiz_service._build_quiz_prompt(
             context="context",
-            unit_id="M01-U04",
+            unit_id="1.4",
             language="fr",
             country="senegal",
             level=1,
@@ -351,7 +351,7 @@ class TestBuildQuizPrompt:
     def test_system_prompt_enforces_json_only(self, quiz_service):
         system_prompt, _user_message = quiz_service._build_quiz_prompt(
             context="context",
-            unit_id="M01-U04",
+            unit_id="1.4",
             language="fr",
             country="senegal",
             level=1,
@@ -364,7 +364,7 @@ class TestBuildQuizPrompt:
     def test_unit_title_injects_topic_constraint(self, quiz_service):
         _system_prompt, user_message = quiz_service._build_quiz_prompt(
             context="context",
-            unit_id="M01-U01",
+            unit_id="1.1",
             language="fr",
             country="senegal",
             level=1,
@@ -378,7 +378,7 @@ class TestBuildQuizPrompt:
     def test_unit_description_appended_to_topic_constraint(self, quiz_service):
         _system_prompt, user_message = quiz_service._build_quiz_prompt(
             context="context",
-            unit_id="M01-U01",
+            unit_id="1.1",
             language="fr",
             country="senegal",
             level=1,
@@ -405,7 +405,7 @@ class TestBuildQuizPrompt:
     def test_uses_unit_title_in_requirements_section(self, quiz_service):
         _system_prompt, user_message = quiz_service._build_quiz_prompt(
             context="context",
-            unit_id="M01-U01",
+            unit_id="1.1",
             language="fr",
             country="senegal",
             level=1,
@@ -413,7 +413,7 @@ class TestBuildQuizPrompt:
             unit_title="Épidémiologie descriptive",
         )
         assert "Épidémiologie descriptive" in user_message
-        assert "M01-U01" not in user_message
+        assert "1.1" not in user_message
 
 
 class TestBuildQuizPromptKidsAware:
@@ -441,7 +441,7 @@ class TestBuildQuizPromptKidsAware:
         kids_course = self._make_kids_course()
         _system, user_message = quiz_service._build_quiz_prompt(
             context="context",
-            unit_id="M01-U01",
+            unit_id="1.1",
             language="en",
             country="senegal",
             level=1,
@@ -456,7 +456,7 @@ class TestBuildQuizPromptKidsAware:
         kids_course = self._make_kids_course(age_min=6, age_max=12)
         _system, user_message = quiz_service._build_quiz_prompt(
             context="context",
-            unit_id="M01-U01",
+            unit_id="1.1",
             language="en",
             country="senegal",
             level=1,
@@ -470,7 +470,7 @@ class TestBuildQuizPromptKidsAware:
         kids_course = self._make_kids_course()
         _system, user_message = quiz_service._build_quiz_prompt(
             context="context",
-            unit_id="M01-U01",
+            unit_id="1.1",
             language="en",
             country="senegal",
             level=1,
@@ -485,7 +485,7 @@ class TestBuildQuizPromptKidsAware:
         adult_course = self._make_adult_course()
         _system, user_message = quiz_service._build_quiz_prompt(
             context="context",
-            unit_id="M01-U01",
+            unit_id="1.1",
             language="en",
             country="ghana",
             level=2,
@@ -499,7 +499,7 @@ class TestBuildQuizPromptKidsAware:
     def test_no_course_produces_adult_public_health_message(self, quiz_service):
         _system, user_message = quiz_service._build_quiz_prompt(
             context="context",
-            unit_id="M01-U01",
+            unit_id="1.1",
             language="en",
             country="nigeria",
             level=1,
@@ -513,7 +513,7 @@ class TestBuildQuizPromptKidsAware:
         kids_course = self._make_kids_course()
         _system, user_message = quiz_service._build_quiz_prompt(
             context="context",
-            unit_id="M01-U01",
+            unit_id="1.1",
             language="en",
             country="senegal",
             level=1,
@@ -527,7 +527,7 @@ class TestBuildQuizPromptKidsAware:
         kids_course = self._make_kids_course()
         _system, user_message = quiz_service._build_quiz_prompt(
             context="context",
-            unit_id="M01-U01",
+            unit_id="1.1",
             language="en",
             country="senegal",
             level=1,
@@ -541,8 +541,8 @@ class TestBuildQuizPromptKidsAware:
 
 class TestBuildQuizSearchQuery:
     def test_returns_unit_id_when_module_is_none(self, quiz_service):
-        result = quiz_service._build_quiz_search_query(None, "M01-U04", "fr")
-        assert result == "unit M01-U04"
+        result = quiz_service._build_quiz_search_query(None, "1.4", "fr")
+        assert result == "unit 1.4"
 
     def test_uses_module_title_fr(self, quiz_service):
         module = MagicMock()
@@ -550,9 +550,9 @@ class TestBuildQuizSearchQuery:
         module.title_en = "Foundations of Public Health"
         module.description_fr = None
         module.description_en = None
-        result = quiz_service._build_quiz_search_query(module, "M01-U01", "fr")
+        result = quiz_service._build_quiz_search_query(module, "1.1", "fr")
         assert "Fondements de la santé publique" in result
-        assert "M01-U01" in result
+        assert "1.1" in result
 
     def test_uses_module_title_en(self, quiz_service):
         module = MagicMock()
@@ -560,7 +560,7 @@ class TestBuildQuizSearchQuery:
         module.title_en = "Internal Audit"
         module.description_fr = None
         module.description_en = None
-        result = quiz_service._build_quiz_search_query(module, "M01-U01", "en")
+        result = quiz_service._build_quiz_search_query(module, "1.1", "en")
         assert "Internal Audit" in result
 
     def test_includes_description_up_to_200_chars(self, quiz_service):
@@ -569,7 +569,7 @@ class TestBuildQuizSearchQuery:
         module.title_en = "Module"
         module.description_fr = "A" * 300
         module.description_en = "A" * 300
-        result = quiz_service._build_quiz_search_query(module, "M01-U01", "fr")
+        result = quiz_service._build_quiz_search_query(module, "1.1", "fr")
         assert "A" * 200 in result
         assert "A" * 201 not in result
 
@@ -579,7 +579,7 @@ class TestBuildQuizSearchQuery:
         module.title_en = "Internal Audit GIAS 2024"
         module.description_fr = None
         module.description_en = None
-        result = quiz_service._build_quiz_search_query(module, "M01-U01", "fr")
+        result = quiz_service._build_quiz_search_query(module, "1.1", "fr")
         assert "public health epidemiology" not in result.lower()
 
     def test_uses_unit_title_when_unit_provided(self, quiz_service):
@@ -593,7 +593,7 @@ class TestBuildQuizSearchQuery:
         unit.title_en = "Introduction to Epidemiology"
         unit.description_fr = "Bases de l'épidémiologie"
         unit.description_en = "Epidemiology basics"
-        result = quiz_service._build_quiz_search_query(module, "M01-U01", "fr", unit=unit)
+        result = quiz_service._build_quiz_search_query(module, "1.1", "fr", unit=unit)
         assert "Introduction à l'épidémiologie" in result
         assert "Bases de l'épidémiologie" in result
         assert "Module Santé" not in result
@@ -609,7 +609,7 @@ class TestBuildQuizSearchQuery:
         unit.title_en = "Introduction to Epidemiology"
         unit.description_fr = None
         unit.description_en = "Epidemiology basics"
-        result = quiz_service._build_quiz_search_query(module, "M01-U01", "en", unit=unit)
+        result = quiz_service._build_quiz_search_query(module, "1.1", "en", unit=unit)
         assert "Introduction to Epidemiology" in result
         assert "Epidemiology basics" in result
 
@@ -631,24 +631,6 @@ class TestBuildQuizSearchQuery:
         assert "Module Santé" in result
         assert "Unité 1" in result
         assert "Unité 2" in result
-
-
-class TestUnitIdToUnitNumber:
-    def test_converts_m01_u02_to_1_2(self, quiz_service):
-        result = QuizService._unit_id_to_unit_number("M01-U02", 1)
-        assert result == "1.2"
-
-    def test_converts_m03_u05_to_3_5(self, quiz_service):
-        result = QuizService._unit_id_to_unit_number("M03-U05", 3)
-        assert result == "3.5"
-
-    def test_returns_none_for_summative(self, quiz_service):
-        result = QuizService._unit_id_to_unit_number("summative", 1)
-        assert result is None
-
-    def test_returns_none_for_invalid_format(self, quiz_service):
-        result = QuizService._unit_id_to_unit_number("invalid", 1)
-        assert result is None
 
 
 class TestGenerateQuizContentPassesBooksSources:
@@ -675,7 +657,7 @@ class TestGenerateQuizContentPassesBooksSources:
 
         await quiz_service._generate_quiz_content(
             module_id=module_id,
-            unit_id="M01-U01",
+            unit_id="1.1",
             language="fr",
             country="senegal",
             level=1,
@@ -705,7 +687,7 @@ class TestGenerateQuizContentPassesBooksSources:
 
         await quiz_service._generate_quiz_content(
             module_id=module_id,
-            unit_id="M01-U01",
+            unit_id="1.1",
             language="en",
             country="senegal",
             level=1,
