@@ -61,12 +61,21 @@ export async function fetchTutorMessageAudio(
   );
 }
 
+export interface StartVoiceSessionParams {
+  locale: 'fr' | 'en';
+  courseId?: string | null;
+  moduleId?: string | null;
+}
+
 export async function startVoiceSession(
-  locale: 'fr' | 'en',
+  params: StartVoiceSessionParams,
 ): Promise<{ data: VoiceSessionResponse | null; status: number }> {
+  const body: Record<string, string> = { locale: params.locale };
+  if (params.courseId) body.course_id = params.courseId;
+  if (params.moduleId) body.module_id = params.moduleId;
   return authedJson<VoiceSessionResponse>('/api/v1/tutor/voice-session', {
     method: 'POST',
-    body: JSON.stringify({ locale }),
+    body: JSON.stringify(body),
   });
 }
 

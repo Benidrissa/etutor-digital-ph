@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.prompts.tutor import get_socratic_system_prompt
 from app.api.deps import get_db_session
 from app.api.deps_local_auth import AuthenticatedUser, get_current_user
 from app.api.v1.schemas.tutor_voice import (
@@ -32,7 +33,9 @@ from app.api.v1.schemas.tutor_voice import (
 )
 from app.domain.models.conversation import TutorConversation
 from app.domain.models.tutor_voice import TutorMessageAudio, TutorVoiceSession
+from app.domain.models.user import User
 from app.domain.services.tutor_audio_service import TutorAudioService
+from app.domain.services.tutor_context_builder import build_tutor_context
 from app.infrastructure.config.settings import get_settings
 from app.infrastructure.storage.s3 import S3StorageService
 
@@ -189,6 +192,18 @@ async def _minutes_used_today(user_id: uuid.UUID, db: AsyncSession) -> int:
     return (int(seconds) + 59) // 60
 
 
+_VOICE_MODE_SUFFIX = """
+
+## Voice-call mode (spoken output)
+
+You are now in a **live voice call** with the learner. Adapt your responses:
+- Keep replies short — 1-3 spoken sentences by default. The learner can always ask for more.
+- Use natural spoken phrasing. Do not use markdown, bullet points, or source_image markers.
+- Still follow the Socratic pedagogy above: ask probing questions, guide rather than lecture.
+- If you'd normally cite a source, say it briefly in speech ("as covered in Chapter 4") rather than a formal citation.
+- If the learner asks you to speak louder / slower / in a different language, acknowledge and comply."""
+
+
 @router.post("/voice-session", response_model=VoiceSessionResponse)
 async def create_voice_session(
     body: VoiceSessionRequest,
@@ -199,6 +214,9 @@ async def create_voice_session(
 
     403 when cap is reached, 503 when OpenAI is not configured, 402 reserved for
     the future credit-balance gate (not applied in v1).
+
+    The session is started with a course/module-aware system prompt (#1956)
+    so the voice tutor is context-aware like the text tutor.
     """
     settings = get_settings()
     if not settings.openai_api_key:
@@ -215,7 +233,33 @@ async def create_voice_session(
             detail=f"Daily voice-call cap reached ({cap} min). Try again tomorrow.",
         )
 
+    # Build the context-aware system prompt, mirroring what the text tutor
+    # injects on every message. Voice mode tacks on a short suffix reminding
+    # the model to keep output spoken-style and drop text-only constructs.
+    user = await db.get(User, current_user.id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    context = await build_tutor_context(
+        user=user,
+        course_id=body.course_id,
+        module_id=body.module_id,
+        locale=body.locale,
+        session=db,
+    )
+    instructions = get_socratic_system_prompt(context, []) + _VOICE_MODE_SUFFIX
+
     voice = "alloy" if body.locale == "en" else "shimmer"
+    openai_payload: dict[str, object] = {
+        "model": settings.openai_realtime_model,
+        "voice": voice,
+        "instructions": instructions,
+        # Server-side transcription of user speech — useful for debug logs and
+        # future cross-session continuity.
+        "input_audio_transcription": {"model": "whisper-1"},
+    }
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -226,10 +270,7 @@ async def create_voice_session(
                     "Content-Type": "application/json",
                     "OpenAI-Beta": "realtime=v1",
                 },
-                json={
-                    "model": settings.openai_realtime_model,
-                    "voice": voice,
-                },
+                json=openai_payload,
             )
             response.raise_for_status()
             payload = response.json()
@@ -243,6 +284,16 @@ async def create_voice_session(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Could not start voice session. Please try again.",
         ) from exc
+
+    logger.info(
+        "Voice session created",
+        user_id=str(current_user.id),
+        course_id=str(body.course_id) if body.course_id else None,
+        module_id=str(body.module_id) if body.module_id else None,
+        language=body.locale,
+        course_title=context.course_title,
+        module_title=context.module_title,
+    )
 
     client_secret_obj = payload.get("client_secret") or {}
     client_secret = client_secret_obj.get("value")
