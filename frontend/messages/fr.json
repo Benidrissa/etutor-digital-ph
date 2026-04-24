@@ -749,6 +749,12 @@
     "generateError": "La génération vidéo a échoué. Veuillez réessayer.",
     "featureDisabled": "Les résumés vidéo sont désactivés pour ce tenant."
   },
+  "LessonMediaTabs": {
+    "readTab": "Lire",
+    "listenTab": "Écouter",
+    "watchTab": "Vidéo",
+    "generatingBadge": "génération…"
+  },
   "CaseStudyViewer": {
     "error": "Une erreur est survenue",
     "streamError": "Erreur lors de la diffusion en continu",
