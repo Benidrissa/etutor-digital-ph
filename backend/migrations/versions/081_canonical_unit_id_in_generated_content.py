@@ -43,7 +43,7 @@ def upgrade() -> None:
             """
             SELECT id, content->>'unit_id' AS uid
             FROM generated_content
-            WHERE content ? 'unit_id' AND content->>'unit_id' <> ''
+            WHERE content->>'unit_id' IS NOT NULL AND content->>'unit_id' <> ''
             """
         )
     ).fetchall()
@@ -75,8 +75,8 @@ def upgrade() -> None:
                 """
                 UPDATE generated_content
                 SET content = jsonb_set(
-                    content, '{unit_id}', to_jsonb(:val::text)
-                )
+                    content::jsonb, '{unit_id}', to_jsonb(:val::text)
+                )::json
                 WHERE id = :id
                 """
             ),
