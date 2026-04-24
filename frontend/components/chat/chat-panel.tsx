@@ -207,6 +207,9 @@ export function ChatPanel({
             chapter: s.chapter ?? j + 1,
             page: s.page ?? 0,
           })),
+          // Backend resolves {{source_image:UUID}} markers on GET so history
+          // messages render images identically to the live stream (#1937).
+          sourceImageRefs: m.source_image_refs,
         }));
         setMessages(loaded.length > 0 ? loaded : [welcomeMessage]);
       })
@@ -223,6 +226,7 @@ export function ChatPanel({
               chapter: s.chapter ?? j + 1,
               page: s.page ?? 0,
             })),
+            sourceImageRefs: m.source_image_refs,
           }));
           setMessages(loaded.length > 0 ? loaded : [welcomeMessage]);
         } else {
