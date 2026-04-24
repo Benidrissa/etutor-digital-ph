@@ -111,12 +111,8 @@ class TestBuildLessonQuery:
 
         session.execute = AsyncMock(side_effect=[mock_result_u01, mock_result_u02])
 
-        query_u01 = await lesson_service._build_lesson_query(
-            sample_module, "1.1", "fr", session
-        )
-        query_u02 = await lesson_service._build_lesson_query(
-            sample_module, "1.2", "fr", session
-        )
+        query_u01 = await lesson_service._build_lesson_query(sample_module, "1.1", "fr", session)
+        query_u02 = await lesson_service._build_lesson_query(sample_module, "1.2", "fr", session)
 
         assert query_u01 != query_u02
         assert "Histoire et définition" in query_u01

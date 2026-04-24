@@ -106,16 +106,12 @@ class TestFormatRagContextForLesson:
 
     def test_empty_linked_images_dict_no_annotation(self):
         chunks = [_make_search_result()]
-        result = format_rag_context_for_lesson(
-            chunks, "q", "M01", "1.1", "en", linked_images={}
-        )
+        result = format_rag_context_for_lesson(chunks, "q", "M01", "1.1", "en", linked_images={})
         assert "FIGURE AVAILABLE" not in result
 
     def test_none_linked_images_no_annotation(self):
         chunks = [_make_search_result()]
-        result = format_rag_context_for_lesson(
-            chunks, "q", "M01", "1.1", "fr", linked_images=None
-        )
+        result = format_rag_context_for_lesson(chunks, "q", "M01", "1.1", "fr", linked_images=None)
         assert "FIGURE DISPONIBLE" not in result
 
     def test_annotation_includes_figure_number_and_caption(self):

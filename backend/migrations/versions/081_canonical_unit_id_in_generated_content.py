@@ -85,6 +85,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise NotImplementedError(
-        "Forward-only migration; rollback via code revert and redeploy."
-    )
+    raise NotImplementedError("Forward-only migration; rollback via code revert and redeploy.")

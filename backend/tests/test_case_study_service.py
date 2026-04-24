@@ -96,6 +96,7 @@ class TestBuildCaseStudyQuery:
 
         assert "Fondements de la Santé Publique" in query
 
+
 class TestParseCaseStudyContent:
     @pytest.mark.asyncio
     async def test_returns_case_study_content_with_sources(self, case_study_service):
