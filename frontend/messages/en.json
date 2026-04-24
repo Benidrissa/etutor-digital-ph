@@ -869,6 +869,7 @@
     "edit": "Edit",
     "cancel": "Cancel",
     "save": "Save Changes",
+    "updateError": "Could not save your changes. Please try again.",
     "logout": "Log out",
     "logoutDescription": "Sign out of your account",
     "loggingOut": "Logging out...",
