@@ -81,9 +81,13 @@ class _FakeHttp:
     def __init__(self, response: httpx.Response):
         self._response = response
         self.calls = 0
+        self.last_args: tuple = ()
+        self.last_kwargs: dict = {}
 
-    async def request(self, *_args, **_kwargs):
+    async def request(self, *args, **kwargs):
         self.calls += 1
+        self.last_args = args
+        self.last_kwargs = kwargs
         return self._response
 
     async def aclose(self):
@@ -100,36 +104,32 @@ def _make_response(status_code: int, body: dict | None = None):
 
 
 @pytest.mark.asyncio
-async def test_create_video_fail_fast_on_4xx():
-    http = _FakeHttp(_make_response(400, {"message": "bad avatar"}))
+async def test_create_video_agent_fail_fast_on_4xx():
+    http = _FakeHttp(_make_response(400, {"message": "overlong prompt"}))
     client = HeyGenClient(settings=_settings(), client=http)
     with pytest.raises(HeyGenBadRequestError):
-        await client.create_video(
-            script="hello",
-            avatar_id="a",
-            voice_id="v",
-            callback_url="https://example.test/cb",
+        await client.create_video_agent(
+            prompt="hello",
             language="en",
+            callback_url="https://example.test/cb",
         )
     assert http.calls == 1  # no retry on 4xx
 
 
 @pytest.mark.asyncio
-async def test_create_video_auth_error_surfaces():
+async def test_create_video_agent_auth_error_surfaces():
     http = _FakeHttp(_make_response(401, {"message": "bad key"}))
     client = HeyGenClient(settings=_settings(), client=http)
     with pytest.raises(HeyGenAuthError):
-        await client.create_video(
-            script="hello",
-            avatar_id="a",
-            voice_id="v",
-            callback_url="https://example.test/cb",
+        await client.create_video_agent(
+            prompt="hello",
             language="en",
+            callback_url="https://example.test/cb",
         )
 
 
 @pytest.mark.asyncio
-async def test_create_video_retries_on_5xx_then_succeeds(monkeypatch):
+async def test_create_video_agent_retries_on_5xx_then_succeeds(monkeypatch):
     success = _make_response(200, {"data": {"video_id": "vid-ok"}})
     failing = _make_response(503, {"message": "upstream"})
 
@@ -146,19 +146,17 @@ async def test_create_video_retries_on_5xx_then_succeeds(monkeypatch):
     monkeypatch.setattr(mod.asyncio, "sleep", _sleep)
 
     client = HeyGenClient(settings=_settings(), client=http)
-    result = await client.create_video(
-        script="hi",
-        avatar_id="a",
-        voice_id="v",
-        callback_url="https://example.test/cb",
+    result = await client.create_video_agent(
+        prompt="hi",
         language="en",
+        callback_url="https://example.test/cb",
     )
     assert result.provider_video_id == "vid-ok"
     assert http.request.await_count == 3
 
 
 @pytest.mark.asyncio
-async def test_create_video_gives_up_after_max_attempts(monkeypatch):
+async def test_create_video_agent_gives_up_after_max_attempts(monkeypatch):
     http = MagicMock()
     http.request = AsyncMock(return_value=_make_response(500, {"message": "boom"}))
     http.aclose = AsyncMock()
@@ -172,14 +170,42 @@ async def test_create_video_gives_up_after_max_attempts(monkeypatch):
 
     client = HeyGenClient(settings=_settings(), client=http)
     with pytest.raises(HeyGenTransientError):
-        await client.create_video(
-            script="hi",
-            avatar_id="a",
-            voice_id="v",
-            callback_url="https://example.test/cb",
+        await client.create_video_agent(
+            prompt="hi",
             language="en",
+            callback_url="https://example.test/cb",
         )
     assert http.request.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_create_video_agent_passes_voice_id_when_given():
+    http = _FakeHttp(_make_response(200, {"data": {"video_id": "vid-1"}}))
+    client = HeyGenClient(settings=_settings(), client=http)
+    await client.create_video_agent(
+        prompt="faceless please",
+        language="fr",
+        voice_id="voice-xyz",
+        callback_url="https://example.test/cb",
+    )
+    # One call, body includes voice_id but NOT avatar_id (faceless).
+    body = http.last_kwargs["json"]
+    assert body["voice_id"] == "voice-xyz"
+    assert "avatar_id" not in body
+    assert body["prompt"] == "faceless please"
+
+
+@pytest.mark.asyncio
+async def test_create_video_agent_omits_voice_when_none():
+    http = _FakeHttp(_make_response(200, {"data": {"video_id": "vid-1"}}))
+    client = HeyGenClient(settings=_settings(), client=http)
+    await client.create_video_agent(
+        prompt="faceless",
+        language="en",
+    )
+    body = http.last_kwargs["json"]
+    assert "voice_id" not in body
+    assert "avatar_id" not in body
 
 
 def test_is_web_ready_mp4_accepts_ftyp_header():
@@ -201,22 +227,12 @@ def test_is_web_ready_mp4_rejects_webm_and_junk():
 
 
 @pytest.mark.asyncio
-async def test_create_video_rejects_blank_inputs():
+async def test_create_video_agent_rejects_blank_prompt():
     http = _FakeHttp(_make_response(200, {"data": {"video_id": "x"}}))
     client = HeyGenClient(settings=_settings(), client=http)
     with pytest.raises(HeyGenBadRequestError):
-        await client.create_video(
-            script="   ",
-            avatar_id="a",
-            voice_id="v",
-            callback_url="https://example.test/cb",
+        await client.create_video_agent(
+            prompt="   ",
             language="en",
-        )
-    with pytest.raises(HeyGenBadRequestError):
-        await client.create_video(
-            script="hi",
-            avatar_id="",
-            voice_id="v",
             callback_url="https://example.test/cb",
-            language="en",
         )
