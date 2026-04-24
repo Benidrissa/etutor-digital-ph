@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
 
+from app.ai.translation import figure_classifier
 from app.ai.translation.figure_classifier import (
     FigureClassification,
     _extract_json_object,
@@ -49,6 +50,18 @@ class TestClassifyFigure:
         result = await classify_figure(image_bytes=b"fake-webp", client=client)
         assert isinstance(result, FigureClassification)
         assert result.kind == "clean_flowchart"
+
+    async def test_raises_when_vision_disabled(self):
+        # Cost kill-switch (#1928) — even with a mock client supplied, the
+        # function must refuse to make the Vision call when the flag is off.
+        client = _mock_client(json.dumps({"kind": "photo"}))
+        fake_settings = MagicMock(enable_figure_vision=False, anthropic_api_key="key")
+        with (
+            patch.object(figure_classifier, "get_settings", return_value=fake_settings),
+            pytest.raises(RuntimeError, match="vision is disabled"),
+        ):
+            await classify_figure(image_bytes=b"fake-webp", client=client)
+        client.messages.create.assert_not_awaited()
 
     @pytest.mark.parametrize(
         "kind",

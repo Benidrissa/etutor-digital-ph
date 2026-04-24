@@ -262,3 +262,28 @@ class TestRunKindBackfillWithFactory:
         assert result["status"] == "noop"
         assert result["eligible"] == 0
         classifier.assert_not_awaited()
+
+    async def test_short_circuits_when_vision_disabled(self):
+        # Cost kill-switch (#1928) — flag=False should return immediately,
+        # skipping any DB query and any Claude call.
+        rows = [_make_row(), _make_row()]
+        session = _FakeSession(rows)
+        task = MagicMock()
+        classifier = AsyncMock(return_value=FigureClassification(kind="photo"))
+
+        with (
+            patch.object(image_translation.settings, "enable_figure_vision", False),
+            patch.object(image_translation, "classify_figure", new=classifier),
+        ):
+            result = await image_translation._run_kind_backfill_with_factory(
+                task=task,
+                rag_collection_id=None,
+                limit=None,
+                dry_run=False,
+                session_factory=_FakeSessionFactory(session),
+            )
+
+        assert result["status"] == "disabled"
+        assert result["classified"] == 0
+        classifier.assert_not_awaited()
+        assert session.commits == 0
