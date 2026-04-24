@@ -37,7 +37,16 @@ export function LessonVideo({ lessonId, language }: LessonVideoProps) {
   const [videoId, setVideoId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // null until the player has fired onLoadedMetadata and we know the
+  // source's natural orientation. HeyGen's Video Agent can return
+  // 9:16 shorts or 16:9 landscape depending on the prompt (#1880),
+  // and we want both to look intentional — portrait centered in a
+  // narrow column, landscape spanning the lesson width (#1881).
+  const [videoOrientation, setVideoOrientation] = useState<
+    'landscape' | 'portrait' | null
+  >(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -142,18 +151,38 @@ export function LessonVideo({ lessonId, language }: LessonVideoProps) {
   // button — hiding on error made the component invisible when the
   // status fetch flaked (#1802 post-deploy regression).
   if (status === 'ready' && videoUrl) {
+    // Portrait sources render in a phone-shaped column (natural 9:16
+    // with no pillarboxing); landscape sources span the lesson width
+    // as before. We read the source's natural dimensions via
+    // onLoadedMetadata rather than assuming an aspect so a future
+    // 16:9 regen (see #1880) just "works" against the same player
+    // without any code change.
+    const playerWrapperClass =
+      videoOrientation === 'portrait'
+        ? 'mx-auto w-full max-w-[min(360px,100%)]'
+        : 'w-full';
     return (
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2 text-sm text-stone-600">
           <VideoIcon className="w-4 h-4 text-amber-600" aria-hidden="true" />
           <span>{t('watchSummary')}</span>
         </div>
-        <video
-          controls
-          preload="metadata"
-          className="w-full rounded-lg bg-black"
-          src={videoUrl}
-        />
+        <div className={playerWrapperClass}>
+          <video
+            ref={videoRef}
+            controls
+            preload="metadata"
+            className="w-full rounded-lg bg-black"
+            src={videoUrl}
+            onLoadedMetadata={() => {
+              const v = videoRef.current;
+              if (!v) return;
+              setVideoOrientation(
+                v.videoWidth >= v.videoHeight ? 'landscape' : 'portrait',
+              );
+            }}
+          />
+        </div>
       </div>
     );
   }
