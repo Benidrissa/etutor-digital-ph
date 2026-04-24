@@ -749,6 +749,12 @@
     "generateError": "Video generation failed. Please try again.",
     "featureDisabled": "Video summaries are disabled for this tenant."
   },
+  "LessonMediaTabs": {
+    "readTab": "Read",
+    "listenTab": "Listen",
+    "watchTab": "Video",
+    "generatingBadge": "generating…"
+  },
   "CaseStudyViewer": {
     "error": "An error occurred",
     "streamError": "Streaming error occurred",
