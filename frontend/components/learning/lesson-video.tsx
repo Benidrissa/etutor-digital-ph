@@ -17,6 +17,13 @@ interface LessonVideoProps {
   lessonId: string;
   /** FR/EN follows the lesson language. */
   language: 'fr' | 'en';
+  /**
+   * Lifted whenever the "actively generating" derived state flips. Lets
+   * a parent (e.g. ``LessonMediaTabs``) badge a tab trigger while the
+   * HeyGen render is in flight without having to mirror the full status
+   * machine.
+   */
+  onActivelyGeneratingChange?: (active: boolean) => void;
 }
 
 /**
@@ -28,7 +35,11 @@ interface LessonVideoProps {
  * the HeyGen MP4 proxied through ``/api/v1/video/{id}/data`` from
  * MinIO.
  */
-export function LessonVideo({ lessonId, language }: LessonVideoProps) {
+export function LessonVideo({
+  lessonId,
+  language,
+  onActivelyGeneratingChange,
+}: LessonVideoProps) {
   const t = useTranslations('LessonVideo');
   const [status, setStatus] = useState<LessonVideoStatus | 'loading' | 'error'>(
     'loading',
@@ -47,6 +58,12 @@ export function LessonVideo({ lessonId, language }: LessonVideoProps) {
   >(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  // Hold the latest callback so the lift-up effect below can read it
+  // without forcing the parent to memoize.
+  const onActivelyGeneratingChangeRef = useRef(onActivelyGeneratingChange);
+  useEffect(() => {
+    onActivelyGeneratingChangeRef.current = onActivelyGeneratingChange;
+  }, [onActivelyGeneratingChange]);
 
   const refresh = useCallback(async () => {
     try {
@@ -146,6 +163,10 @@ export function LessonVideo({ lessonId, language }: LessonVideoProps) {
     isGenerating ||
     (videoId !== null && (status === 'generating' || status === 'pending'));
 
+  useEffect(() => {
+    onActivelyGeneratingChangeRef.current?.(isActivelyGenerating);
+  }, [isActivelyGenerating]);
+
   // Loading / error / pending / failed all fall through to the same
   // "no video yet" card so the learner always sees the Generate
   // button — hiding on error made the component invisible when the
@@ -188,7 +209,7 @@ export function LessonVideo({ lessonId, language }: LessonVideoProps) {
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-stone-200 bg-amber-50/40 p-3">
+    <div className="flex flex-col gap-2 w-full">
       <div className="flex items-center gap-3">
         <div
           className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0"
