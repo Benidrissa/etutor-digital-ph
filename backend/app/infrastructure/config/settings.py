@@ -131,6 +131,17 @@ class Settings(BaseSettings):
     nllb_artifact_release_repo: str = "Benidrissa/sira-nllb-distill"
     nllb_artifact_release_tag: str = "v1.0.0"
 
+    # Tutor voice output (#1932) — aliases, NEVER dated snapshots. OpenAI's
+    # 2026-07-23 snapshot sunset becomes a no-op as long as these stay on the
+    # unversioned aliases. If OpenAI consolidates TTS into the realtime stack
+    # medium-term (gpt-4o-mini-tts-2025-03-20 → substitute gpt-realtime on the
+    # 2026-04-22 deprecation page), the swap is isolated to TutorAudioService.
+    openai_tts_model: str = "gpt-4o-mini-tts"
+    openai_realtime_model: str = "gpt-realtime-mini"
+    # Free-tier cap on live voice-call minutes per user per day. Paid tiers
+    # should override via subscription but v1 applies the same cap to all.
+    tutor_voice_daily_minutes_cap: int = 10
+
     # MinIO / S3-compatible object storage
     minio_endpoint: str = "http://localhost:9000"
     minio_access_key: str = ""

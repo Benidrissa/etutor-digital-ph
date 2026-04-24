@@ -669,6 +669,11 @@ class TutorService:
             updated_messages = conversation.messages + [user_msg_stored, assistant_msg_stored]
             conversation.messages = updated_messages
             conversation.message_count = len(updated_messages)
+            # Index of the just-persisted assistant reply — the frontend needs
+            # this to hit /tutor/conversations/{id}/messages/{index}/audio for
+            # the listen button (#1932). Messages are positional, so the
+            # assistant reply is the last entry in the updated list.
+            assistant_message_index = len(updated_messages) - 1
             session.add(conversation)
 
             if (
@@ -742,6 +747,15 @@ class TutorService:
             yield {
                 "type": "activity_suggestions",
                 "data": {"suggestions": activity_suggestions},
+                "conversation_id": str(conversation.id),
+            }
+
+            # Carries the persisted message index so the frontend can render
+            # a listen-button wired to /tutor/conversations/{id}/messages/{N}
+            # /audio without re-fetching the whole conversation (#1932).
+            yield {
+                "type": "message_complete",
+                "data": {"message_index": assistant_message_index},
                 "conversation_id": str(conversation.id),
             }
 

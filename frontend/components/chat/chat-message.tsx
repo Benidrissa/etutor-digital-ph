@@ -7,6 +7,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { cn } from '@/lib/utils';
 import { AttachedFileCard } from '@/components/chat/file-preview';
+import { ListenButton } from '@/components/chat/listen-button';
 import { SourceImage } from '@/components/learning/source-image';
 import type { SourceImageMeta } from '@/lib/api';
 import { splitWithSourceImageMarkers } from '@/lib/source-image-utils';
@@ -33,6 +34,10 @@ export interface ChatMessage {
   isStreaming?: boolean;
   attachedFiles?: AttachedFileInfo[];
   sourceImageRefs?: SourceImageMeta[];
+  /** Set once the assistant reply is committed server-side. Paired with
+   *  `conversationId` it lets the listen button hit the synthesis endpoint. */
+  messageIndex?: number;
+  conversationId?: string;
 }
 
 interface ChatMessageProps {
@@ -145,6 +150,16 @@ export function ChatMessage({ message }: ChatMessageProps) {
             renderAiContent()
           )}
         </div>
+
+        {!message.isUser &&
+          !message.isStreaming &&
+          message.conversationId &&
+          typeof message.messageIndex === 'number' && (
+            <ListenButton
+              conversationId={message.conversationId}
+              messageIndex={message.messageIndex}
+            />
+          )}
 
         {message.sources && message.sources.length > 0 && (
           <div className="mt-2 pt-2 border-t border-current/20">
