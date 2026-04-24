@@ -88,6 +88,8 @@ export function ChatPanel({
     return 'socratic';
   });
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(true);
   const [enrolledCourses, setEnrolledCourses] = useState<CourseWithEnrollment[]>([]);
   const [activeCourseId, setActiveCourseId] = useState<string | null>(() => {
     if (courseId) return courseId;
@@ -142,17 +144,41 @@ export function ChatPanel({
     refreshEnrolledCourses();
   }, [refreshEnrolledCourses]);
 
-  useEffect(() => {
-    // Same reasoning as the enrollments fetch above — anonymous visitors
-    // shouldn't see a 401 in console for a tutor stats call they can't use.
+  // Server-truth refresh for daily message quota. Re-called on any failure
+  // path in handleSendMessage so the optimistic +1 increment is reconciled
+  // against `/tutor/remaining` when the assistant container is suppressed.
+  const refetchRemaining = useCallback(async () => {
     if (!authClient.isAuthenticated()) return;
-    fetchTutorStats()
-      .then((stats) => {
-        setMaxDailyUsage(stats.daily_messages_limit);
-        setCurrentUsage(stats.daily_messages_used);
-      })
-      .catch(() => {});
+    try {
+      const stats = await fetchTutorStats();
+      if (!isMountedRef.current) return;
+      setMaxDailyUsage(stats.daily_messages_limit);
+      setCurrentUsage(stats.daily_messages_used);
+    } catch {
+      // silent — anonymous visitors and transient failures are handled upstream
+    }
   }, []);
+
+  useEffect(() => {
+    refetchRemaining();
+  }, [refetchRemaining]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      abortControllerRef.current?.abort();
+    };
+  }, []);
+
+  // Abort any in-flight stream when the user switches conversations so the
+  // optimistic usage increment from the abandoned send gets rolled back via
+  // the catch/finally path instead of hanging until unmount.
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, [activeConversationId]);
 
   useEffect(() => {
     clearStaleDrafts();
@@ -234,6 +260,11 @@ export function ChatPanel({
       language: locale,
     });
 
+    abortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    let usageReconciled = false;
+
     try {
       let token: string;
       try {
@@ -260,6 +291,7 @@ export function ChatPanel({
           file_ids: attachedFiles.map((f) => f.fileId),
           locale: locale,
         }),
+        signal: abortController.signal,
       });
 
       if (!response.ok) {
@@ -344,6 +376,7 @@ export function ChatPanel({
                 if (typeof chunk.data?.remaining_messages === 'number') {
                   const remaining = chunk.data.remaining_messages as number;
                   setCurrentUsage(maxDailyUsage - remaining);
+                  usageReconciled = true;
                 }
               } else if (chunk.type === 'error') {
                 const errorCode = chunk.data?.code;
@@ -365,19 +398,37 @@ export function ChatPanel({
         }
       }
     } catch (error) {
-      console.error('Failed to send message:', error);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: (Date.now() + 1).toString(),
-          content: t('error'),
-          isUser: false,
-          timestamp: new Date(),
-        },
-      ]);
+      if ((error as Error | undefined)?.name !== 'AbortError') {
+        console.error('Failed to send message:', error);
+        if (isMountedRef.current) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: (Date.now() + 1).toString(),
+              content: t('error'),
+              isUser: false,
+              timestamp: new Date(),
+            },
+          ]);
+        }
+      }
     } finally {
-      setIsLoading(false);
-      setIsTyping(false);
+      if (abortControllerRef.current === abortController) {
+        abortControllerRef.current = null;
+      }
+      // Reconcile the optimistic +1 from line 229 whenever the response
+      // container was suppressed (error chunk, non-ok response, thrown
+      // fetch, or user-initiated abort via conversation switch / unmount).
+      // Backend only persists the user message together with a successful
+      // assistant reply, so without this the counter drifts high.
+      if (!usageReconciled && isMountedRef.current) {
+        setCurrentUsage((prev) => Math.max(0, prev - 1));
+        void refetchRemaining();
+      }
+      if (isMountedRef.current) {
+        setIsLoading(false);
+        setIsTyping(false);
+      }
     }
   };
 
