@@ -431,6 +431,7 @@
       "pause": "Pause",
       "loading": "Génération…",
       "audioUnavailable": "Audio indisponible",
+      "playbackRate": "Vitesse de lecture",
       "callTitle": "Appel vocal avec le tuteur",
       "callReady": "Démarrez une conversation vocale. Vous pouvez interrompre le tuteur à tout moment.",
       "connecting": "Connexion en cours…",
