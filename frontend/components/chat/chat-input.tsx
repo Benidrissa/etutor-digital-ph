@@ -394,6 +394,41 @@ export function ChatInput({ onSendMessage, disabled = false, placeholder, conver
           capture="environment"
         />
 
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="min-h-[44px] min-w-[44px] shrink-0"
+          aria-label={t('fileUpload.attachAriaLabel')}
+          disabled={disabled}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <Paperclip className="h-4 w-4" />
+        </Button>
+
+        <div className="flex-1 relative">
+          <textarea
+            ref={textareaRef}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={actualPlaceholder}
+            disabled={disabled}
+            rows={1}
+            className={cn(
+              'w-full resize-none rounded-md border border-input px-3 py-2',
+              'text-sm bg-background placeholder:text-muted-foreground',
+              'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+              'min-h-[44px] max-h-[120px]',
+              disabled && 'opacity-50 cursor-not-allowed'
+            )}
+            style={{
+              lineHeight: '1.4',
+              fontSize: '16px',
+            }}
+          />
+        </div>
+
         <div className="flex flex-col shrink-0">
           <Button
             type="button"
@@ -427,50 +462,15 @@ export function ChatInput({ onSendMessage, disabled = false, placeholder, conver
           </Button>
 
           <Button
-            type="button"
-            variant="ghost"
+            type="submit"
             size="icon"
+            disabled={!canSend}
             className="min-h-[44px] min-w-[44px]"
-            aria-label={t('fileUpload.attachAriaLabel')}
-            disabled={disabled}
-            onClick={() => fileInputRef.current?.click()}
+            aria-label={t('send')}
           >
-            <Paperclip className="h-4 w-4" />
+            <Send className="h-4 w-4" />
           </Button>
         </div>
-
-        <div className="flex-1 relative">
-          <textarea
-            ref={textareaRef}
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={actualPlaceholder}
-            disabled={disabled}
-            rows={1}
-            className={cn(
-              'w-full resize-none rounded-md border border-input px-3 py-2',
-              'text-sm bg-background placeholder:text-muted-foreground',
-              'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
-              'min-h-[44px] max-h-[120px]',
-              disabled && 'opacity-50 cursor-not-allowed'
-            )}
-            style={{
-              lineHeight: '1.4',
-              fontSize: '16px',
-            }}
-          />
-        </div>
-
-        <Button
-          type="submit"
-          size="icon"
-          disabled={!canSend}
-          className="min-h-[44px] min-w-[44px] shrink-0"
-          aria-label={t('send')}
-        >
-          <Send className="h-4 w-4" />
-        </Button>
       </form>
     </div>
   );
