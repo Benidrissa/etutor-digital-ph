@@ -350,7 +350,8 @@
       "quiz": "Créer un quiz sur ce sujet",
       "flashcards": "Générer des flashcards",
       "explain": "Expliquer ce concept",
-      "example": "Donnez-moi un exemple"
+      "example": "Donnez-moi un exemple",
+      "toggleSuggestions": "Actions rapides"
     },
     "sources": {
       "title": "Sources",
@@ -395,7 +396,6 @@
     "conversations": "Conversations",
     "openConversations": "Ouvrir les conversations",
     "closeDrawer": "Fermer",
-    "toggleSuggestions": "Actions rapides",
     "modeSocratic": "Mode Socratique",
     "modeExplanatory": "Mode Explicatif",
     "modeSocraticTooltip": "Guidage par questions",
