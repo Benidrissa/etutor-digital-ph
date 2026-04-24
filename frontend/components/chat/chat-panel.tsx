@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { track } from '@/lib/analytics';
 import { Link } from '@/i18n/routing';
-import { X, MoreVertical, Trash2, Menu, HelpCircle, BookOpen, GraduationCap, ChevronDown, Globe } from 'lucide-react';
+import { X, MoreVertical, Trash2, Menu, HelpCircle, BookOpen, GraduationCap, ChevronDown, Globe, Phone } from 'lucide-react';
 import { getMyEnrollments, type CourseWithEnrollment, API_BASE } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import {
@@ -26,6 +26,7 @@ import {
 import { ChatMessage as ChatMessageComponent, type ChatMessage } from './chat-message';
 import { ChatInput } from './chat-input';
 import { ChatSuggestions } from './chat-suggestions';
+import { VoiceCallModal } from './voice-call-modal';
 import { TypingIndicator } from './typing-indicator';
 import { UsageCounter } from './usage-counter';
 import { ChatSkeleton } from './chat-skeleton';
@@ -75,6 +76,7 @@ export function ChatPanel({
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [showClearDialog, setShowClearDialog] = useState(false);
+  const [showVoiceCall, setShowVoiceCall] = useState(false);
   const [currentUsage, setCurrentUsage] = useState(0);
   const [maxDailyUsage, setMaxDailyUsage] = useState(200);
   const [limitReached, setLimitReached] = useState(false);
@@ -207,6 +209,9 @@ export function ChatPanel({
             chapter: s.chapter ?? j + 1,
             page: s.page ?? 0,
           })),
+          messageIndex: m.role === 'assistant' ? i : undefined,
+          conversationId:
+            m.role === 'assistant' ? activeConversationId : undefined,
         }));
         setMessages(loaded.length > 0 ? loaded : [welcomeMessage]);
       })
@@ -368,6 +373,20 @@ export function ChatPanel({
                       : m
                   )
                 );
+              } else if (
+                chunk.type === 'message_complete' &&
+                typeof chunk.data?.message_index === 'number' &&
+                chunk.conversation_id
+              ) {
+                const msgIndex = chunk.data.message_index as number;
+                const convId = chunk.conversation_id as string;
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === aiMessageId
+                      ? { ...m, messageIndex: msgIndex, conversationId: convId }
+                      : m
+                  )
+                );
               } else if (chunk.type === 'finished' && chunk.data?.conversation_id) {
                 const finishedConvId = chunk.data.conversation_id as string;
                 invalidateConversationCache(finishedConvId);
@@ -514,6 +533,16 @@ export function ChatPanel({
               </span>
             ) : null}
             <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setShowVoiceCall(true)}
+              className="h-9 w-9"
+              aria-label={t('voice.callTitle')}
+              title={t('voice.callTitle')}
+            >
+              <Phone className="h-4 w-4" />
+            </Button>
+            <Button
               variant={tutorMode === 'socratic' ? 'default' : 'outline'}
               size="sm"
               onClick={() => setTutorMode(tutorMode === 'socratic' ? 'explanatory' : 'socratic')}
@@ -615,6 +644,9 @@ export function ChatPanel({
           />
         </div>
       </div>
+
+      {/* Voice Call Modal */}
+      <VoiceCallModal open={showVoiceCall} onOpenChange={setShowVoiceCall} />
 
       {/* Clear History Dialog */}
       <AlertDialog open={showClearDialog} onOpenChange={setShowClearDialog}>

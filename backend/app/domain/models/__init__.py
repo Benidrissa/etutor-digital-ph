@@ -47,6 +47,7 @@ from app.domain.models.subscription import (
     SubscriptionStatus,
 )
 from app.domain.models.taxonomy import CourseTaxonomy, TaxonomyCategory
+from app.domain.models.tutor_voice import TutorMessageAudio, TutorVoiceSession
 from app.domain.models.usage_event import UsageEvent
 from app.domain.models.user import User
 from app.domain.models.user_group import CurriculumAccess, UserGroup, UserGroupMember
@@ -98,6 +99,8 @@ __all__ = [
     "TOTPSecret",
     "CourseTaxonomy",
     "TaxonomyCategory",
+    "TutorMessageAudio",
+    "TutorVoiceSession",
     "UsageEvent",
     "UserCourseEnrollment",
     "UserModuleProgress",
