@@ -19,7 +19,7 @@ export function ListenButton({
   messageIndex,
   className,
 }: ListenButtonProps) {
-  const t = useTranslations('ChatTutor.voice');
+  const t = useTranslations('ChatTutor');
   const locale = useLocale();
   const language = (locale === 'fr' ? 'fr' : 'en') as 'fr' | 'en';
   const [state, setState] = useState<State>('idle');
@@ -75,12 +75,12 @@ export function ListenButton({
 
   const label =
     state === 'playing'
-      ? t('pause')
+      ? t('voice.pause')
       : state === 'loading'
-        ? t('loading')
+        ? t('voice.loading')
         : state === 'failed'
-          ? t('audioUnavailable')
-          : t('listen');
+          ? t('voice.audioUnavailable')
+          : t('voice.listen');
 
   const Icon =
     state === 'playing'
