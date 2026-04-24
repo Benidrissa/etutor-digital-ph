@@ -30,8 +30,11 @@ from sqlalchemy.ext.asyncio import (
 from app.ai.translation import (
     classify_figure,
     extract_flowchart_structure,
+    extract_label_positions,
+    render_overlay_svg,
     render_svg,
     translate_figure_caption,
+    translate_labels,
     translate_structure,
 )
 from app.domain.models.source_image import SourceImage
@@ -613,3 +616,206 @@ def _svg_key_for(img: SourceImage) -> str:
     safe_label = figure_label.replace(" ", "_").replace(".", "_")
     prefix = img.rag_collection_id or img.source
     return f"source-images/{prefix}/{img.page_number}_{safe_label}.fr.svg"
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 slice 2.4 (#1883) — complex_diagram raster + numbered-badge overlay
+# ---------------------------------------------------------------------------
+
+
+class ComplexDiagramOverlayTask(Task):
+    """Celery base for the complex_diagram overlay backfill."""
+
+    def on_success(self, retval, task_id, args, kwargs):
+        logger.info("Complex-diagram overlay backfill completed", task_id=task_id, result=retval)
+
+    def on_failure(self, exc, task_id, args, kwargs, einfo):
+        logger.error("Complex-diagram overlay backfill failed", task_id=task_id, exception=str(exc))
+
+
+@celery_app.task(
+    bind=True,
+    base=ComplexDiagramOverlayTask,
+    time_limit=3600,
+    soft_time_limit=3300,
+    ignore_result=True,
+    acks_late=False,
+)
+def backfill_complex_diagram_overlays(
+    self,
+    rag_collection_id: str | None = None,
+    limit: int | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Render French-variant overlays for rows with ``figure_kind = 'complex_diagram'``.
+
+    Eligible: ``figure_kind = 'complex_diagram' AND storage_key_fr IS NULL AND
+    storage_url IS NOT NULL``. Fetches the English raster from MinIO,
+    extracts label positions, translates them, renders a numbered-badge
+    overlay SVG, uploads, writes back ``storage_key_fr`` + ``storage_url_fr``.
+    """
+    return asyncio.run(
+        _run_overlay_backfill(
+            task=self,
+            rag_collection_id=rag_collection_id,
+            limit=limit,
+            dry_run=dry_run,
+        )
+    )
+
+
+async def _run_overlay_backfill(
+    task: Task,
+    rag_collection_id: str | None,
+    limit: int | None,
+    dry_run: bool,
+) -> dict:
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        return await _run_overlay_backfill_with_factory(
+            task=task,
+            rag_collection_id=rag_collection_id,
+            limit=limit,
+            dry_run=dry_run,
+            session_factory=session_factory,
+            storage=S3StorageService(),
+        )
+    finally:
+        await engine.dispose()
+
+
+async def _run_overlay_backfill_with_factory(
+    task: Task,
+    rag_collection_id: str | None,
+    limit: int | None,
+    dry_run: bool,
+    session_factory: async_sessionmaker[AsyncSession],
+    storage: S3StorageService,
+) -> dict:
+    async with session_factory() as session:
+        stmt = select(SourceImage).where(
+            SourceImage.figure_kind == "complex_diagram",
+            SourceImage.storage_key_fr.is_(None),
+            SourceImage.storage_url.is_not(None),
+        )
+        if rag_collection_id is not None:
+            stmt = stmt.where(SourceImage.rag_collection_id == rag_collection_id)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+
+        rows = (await session.execute(stmt)).scalars().all()
+        total = len(rows)
+
+        logger.info(
+            "Complex-diagram overlay backfill: eligible rows",
+            total=total,
+            rag_collection_id=rag_collection_id,
+            dry_run=dry_run,
+        )
+
+        task.update_state(
+            state="OVERLAYING",
+            meta={
+                "step": "overlaying",
+                "total": total,
+                "processed": 0,
+                "rendered": 0,
+                "failed": 0,
+            },
+        )
+
+        if dry_run or total == 0:
+            return {
+                "status": "dry_run" if dry_run else "noop",
+                "eligible": total,
+                "rendered": 0,
+                "failed": 0,
+            }
+
+        rendered = 0
+        failed = 0
+        pending_commit = 0
+
+        async with httpx.AsyncClient(timeout=30.0) as http:
+            for idx, img in enumerate(rows):
+                try:
+                    upstream = await http.get(img.storage_url)
+                    upstream.raise_for_status()
+                    image_bytes = upstream.content
+                except Exception as exc:
+                    failed += 1
+                    logger.warning(
+                        "Failed to fetch image bytes for overlay backfill",
+                        source_image_id=str(img.id),
+                        storage_url=img.storage_url,
+                        error=str(exc),
+                    )
+                    continue
+
+                try:
+                    positions = await extract_label_positions(image_bytes=image_bytes)
+                    translated = await translate_labels(positions, target_lang="fr")
+                    svg_bytes = render_overlay_svg(
+                        image_bytes=image_bytes,
+                        width_px=img.width or 1024,
+                        height_px=img.height or 768,
+                        labels=translated,
+                    )
+                except Exception as exc:
+                    failed += 1
+                    logger.warning(
+                        "Overlay render failed",
+                        source_image_id=str(img.id),
+                        figure_number=img.figure_number,
+                        error=str(exc),
+                    )
+                    continue
+
+                try:
+                    key = _svg_key_for(img)
+                    url = await storage.upload_bytes(
+                        key=key,
+                        data=svg_bytes,
+                        content_type="image/svg+xml",
+                    )
+                except Exception as exc:
+                    failed += 1
+                    logger.warning(
+                        "Failed to upload FR overlay SVG to storage",
+                        source_image_id=str(img.id),
+                        error=str(exc),
+                    )
+                    continue
+
+                img.storage_key_fr = key
+                img.storage_url_fr = url
+                session.add(img)
+                rendered += 1
+                pending_commit += 1
+
+                if pending_commit >= _COMMIT_EVERY:
+                    await session.commit()
+                    pending_commit = 0
+
+                if (idx + 1) % 10 == 0 or idx + 1 == total:
+                    task.update_state(
+                        state="OVERLAYING",
+                        meta={
+                            "step": "overlaying",
+                            "total": total,
+                            "processed": idx + 1,
+                            "rendered": rendered,
+                            "failed": failed,
+                        },
+                    )
+
+        if pending_commit:
+            await session.commit()
+
+        return {
+            "status": "complete",
+            "eligible": total,
+            "rendered": rendered,
+            "failed": failed,
+        }
