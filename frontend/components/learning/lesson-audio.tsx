@@ -13,9 +13,11 @@ const SKIP_SECONDS = 10;
 interface LessonAudioProps {
   lessonId: string;
   language: 'fr' | 'en';
+  /** Lifted whenever the player learns a real duration (in seconds). */
+  onDurationChange?: (durationSeconds: number) => void;
 }
 
-export function LessonAudio({ lessonId, language }: LessonAudioProps) {
+export function LessonAudio({ lessonId, language, onDurationChange }: LessonAudioProps) {
   const t = useTranslations('LessonAudio');
   const [status, setStatus] = useState<LessonAudioStatus>('pending');
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -24,6 +26,12 @@ export function LessonAudio({ lessonId, language }: LessonAudioProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Hold the latest callback so polling/event handlers can read it without
+  // forcing the parent to memoize.
+  const onDurationChangeRef = useRef(onDurationChange);
+  useEffect(() => {
+    onDurationChangeRef.current = onDurationChange;
+  }, [onDurationChange]);
 
   const poll = useCallback(async () => {
     let attempts = 0;
@@ -46,6 +54,7 @@ export function LessonAudio({ lessonId, language }: LessonAudioProps) {
           setAudioUrl(resolvedUrl);
           if (data.duration_seconds) {
             setDuration(data.duration_seconds);
+            onDurationChangeRef.current?.(data.duration_seconds);
           }
           return;
         }
@@ -80,7 +89,9 @@ export function LessonAudio({ lessonId, language }: LessonAudioProps) {
     };
     const onLoadedMetadata = () => {
       if (audio.duration && isFinite(audio.duration)) {
-        setDuration(Math.round(audio.duration));
+        const rounded = Math.round(audio.duration);
+        setDuration(rounded);
+        onDurationChangeRef.current?.(rounded);
       }
     };
     const onEnded = () => {
@@ -153,7 +164,7 @@ export function LessonAudio({ lessonId, language }: LessonAudioProps) {
 
   if (status === 'failed') {
     return (
-      <div className="w-full max-w-xl mx-auto my-4">
+      <div className="w-full">
         <div className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 opacity-60">
           <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-gray-300 text-gray-500 min-h-11 min-w-11">
             <Volume2 className="w-4 h-4" />
@@ -167,7 +178,7 @@ export function LessonAudio({ lessonId, language }: LessonAudioProps) {
   if (status !== 'ready' || !audioUrl) {
     return (
       <div
-        className="w-full max-w-xl mx-auto my-4 rounded-lg overflow-hidden animate-pulse"
+        className="w-full rounded-lg overflow-hidden animate-pulse"
         aria-busy="true"
         aria-label={t('audioPending')}
       >
@@ -180,7 +191,7 @@ export function LessonAudio({ lessonId, language }: LessonAudioProps) {
   }
 
   return (
-    <div className="w-full max-w-xl mx-auto my-4">
+    <div className="w-full">
       <div className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-lg px-4 py-3">
         {/* Rewind 10s */}
         <button

@@ -11,9 +11,8 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { LessonSkeleton } from './lesson-skeleton';
-import { LessonAudio } from './lesson-audio';
-import { LessonVideo } from './lesson-video';
 import { LessonImage } from './lesson-image';
+import { LessonMediaTabs, type LessonMediaTab } from './lesson-media-tabs';
 import { SourceImage } from './source-image';
 import { SourceCitations } from './source-citations';
 import { apiFetch, checkUnitQuizPassed, ApiError } from '@/lib/api';
@@ -89,6 +88,10 @@ export function LessonViewer({
   const [forceRegenerate, setForceRegenerate] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [contentSource, setContentSource] = useState<'api' | 'indexeddb'>('api');
+  // Which media-tab pane is active. The "Actualiser le contenu" button
+  // only makes sense on the Lire pane (it regenerates lesson body, not
+  // audio/video) so we hide it on listen/watch.
+  const [activeMediaTab, setActiveMediaTab] = useState<LessonMediaTab>('read');
 
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollStartRef = useRef<number>(0);
@@ -458,86 +461,85 @@ export function LessonViewer({
               </Badge>
             )}
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={isRefreshing || isLoading || isGenerating || !isOnline}
-            className="min-h-11 gap-1.5 text-gray-500 hover:text-gray-900"
-            title={t('refreshContent')}
-          >
-            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">{t('refreshContent')}</span>
-          </Button>
+          {activeMediaTab === 'read' && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isRefreshing || isLoading || isGenerating || !isOnline}
+              className="min-h-11 gap-1.5 text-gray-500 hover:text-gray-900"
+              title={t('refreshContent')}
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">{t('refreshContent')}</span>
+            </Button>
+          )}
         </div>
         <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3">
           {t('unitTitle', { unit: unitId })}
         </h1>
       </div>
 
-      {/* Audio Summary */}
-      <LessonAudio lessonId={lessonData.id} language={lessonData.language} />
+      <LessonMediaTabs
+        lessonId={lessonData.id}
+        language={lessonData.language}
+        onActiveTabChange={setActiveMediaTab}
+        readPane={
+          <div className="p-6 md:p-8">
+            {/* Lesson Illustration */}
+            <LessonImage lessonId={lessonData.id} language={lessonData.language} />
 
-      {/* Video Summary (opt-in, HeyGen-rendered) */}
-      <LessonVideo lessonId={lessonData.id} language={lessonData.language} />
+            {/* Introduction */}
+            {content.introduction && (
+              <div className="mb-8">
+                {renderContentWithImages(content.introduction)}
+              </div>
+            )}
 
-      {/* Main Content */}
-      <Card className="mb-6">
-        <CardContent className="p-6 md:p-8">
-          {/* Lesson Illustration */}
-          <LessonImage lessonId={lessonData.id} language={lessonData.language} />
-
-          {/* Introduction */}
-          {content.introduction && (
+            {/* Key Concepts */}
             <div className="mb-8">
-              {renderContentWithImages(content.introduction)}
-            </div>
-          )}
-
-          {/* Key Concepts */}
-          <div className="mb-8">
-            <div className="space-y-6">
-              {content.concepts.map((concept, index) => (
-                <div key={index}>
-                  {renderContentWithImages(concept)}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* West African Example */}
-          <div className="mb-8 bg-teal-50 border-l-4 border-teal-400 p-6 rounded-r-lg">
-            <div className="prose prose-teal max-w-none">
-              {renderContentWithImages(content.aof_example)}
-            </div>
-          </div>
-
-          {/* Synthesis */}
-          <div className="mb-8">
-            {renderContentWithImages(content.synthesis)}
-          </div>
-
-
-          {/* Key Points */}
-          <div className="mb-8">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">
-              {t('keyPoints')}
-            </h2>
-            <ul className="space-y-3">
-              {content.key_points.map((point, index) => (
-                <li key={index} className="flex items-start gap-3">
-                  <div className="w-2 h-2 bg-teal-500 rounded-full mt-3 flex-shrink-0" />
-                  <div className="text-base leading-relaxed text-gray-700 prose prose-gray max-w-none prose-p:text-gray-700 prose-strong:text-gray-900 prose-p:my-0">
-                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>
-                      {point}
-                    </ReactMarkdown>
+              <div className="space-y-6">
+                {content.concepts.map((concept, index) => (
+                  <div key={index}>
+                    {renderContentWithImages(concept)}
                   </div>
-                </li>
-              ))}
-            </ul>
+                ))}
+              </div>
+            </div>
+
+            {/* West African Example */}
+            <div className="mb-8 bg-teal-50 border-l-4 border-teal-400 p-6 rounded-r-lg">
+              <div className="prose prose-teal max-w-none">
+                {renderContentWithImages(content.aof_example)}
+              </div>
+            </div>
+
+            {/* Synthesis */}
+            <div className="mb-8">
+              {renderContentWithImages(content.synthesis)}
+            </div>
+
+            {/* Key Points */}
+            <div className="mb-8">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">
+                {t('keyPoints')}
+              </h2>
+              <ul className="space-y-3">
+                {content.key_points.map((point, index) => (
+                  <li key={index} className="flex items-start gap-3">
+                    <div className="w-2 h-2 bg-teal-500 rounded-full mt-3 flex-shrink-0" />
+                    <div className="text-base leading-relaxed text-gray-700 prose prose-gray max-w-none prose-p:text-gray-700 prose-strong:text-gray-900 prose-p:my-0">
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>
+                        {point}
+                      </ReactMarkdown>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
-        </CardContent>
-      </Card>
+        }
+      />
 
       {/* Source Citations */}
       <SourceCitations sources={content.sources_cited} />
