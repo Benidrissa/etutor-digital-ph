@@ -298,23 +298,29 @@ class RAGPipeline:
             elif figure_kind == "complex_diagram":
                 try:
                     positions = await extract_label_positions(image_bytes=img.image_bytes)
-                    translated_positions = await translate_labels(positions, target_lang="fr")
-                    svg_bytes = render_overlay_svg(
-                        image_bytes=img.image_bytes,
-                        width_px=img.width or 1024,
-                        height_px=img.height or 768,
-                        labels=translated_positions,
-                    )
-                    svg_key = (
-                        f"source-images/{prefix}/{readable_name}/"
-                        f"{img.page_number}_{safe_label}.fr.svg"
-                    )
-                    storage_url_fr = await storage.upload_bytes(
-                        key=svg_key,
-                        data=svg_bytes,
-                        content_type="image/svg+xml",
-                    )
-                    storage_key_fr = svg_key
+                    if not positions.labels:
+                        # Vision found no text labels — treat as a photo so
+                        # Phase 1 caption translation covers it and the
+                        # overlay backfill doesn't re-process this row.
+                        figure_kind = "photo"
+                    else:
+                        translated_positions = await translate_labels(positions, target_lang="fr")
+                        svg_bytes = render_overlay_svg(
+                            image_bytes=img.image_bytes,
+                            width_px=img.width or 1024,
+                            height_px=img.height or 768,
+                            labels=translated_positions,
+                        )
+                        svg_key = (
+                            f"source-images/{prefix}/{readable_name}/"
+                            f"{img.page_number}_{safe_label}.fr.svg"
+                        )
+                        storage_url_fr = await storage.upload_bytes(
+                            key=svg_key,
+                            data=svg_bytes,
+                            content_type="image/svg+xml",
+                        )
+                        storage_key_fr = svg_key
                 except Exception as exc:
                     logger.warning(
                         "Failed to build FR overlay for complex_diagram, leaving fr variant NULL",

@@ -7,7 +7,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from pydantic import ValidationError
 
 from app.ai.translation.complex_overlay import (
     DiagramLabel,
@@ -44,9 +43,17 @@ class TestDiagramLabelCoercion:
         assert label.x_pct == pytest.approx(42.0)
         assert label.y_pct == pytest.approx(17.5)
 
-    def test_rejects_out_of_range(self):
-        with pytest.raises(ValidationError):
-            DiagramLabel(id="n1", text="A", x_pct=150.0, y_pct=0.0)
+    def test_clamps_above_100_to_100(self):
+        # Vision occasionally returns y_pct=104.0 for near-edge labels;
+        # clamp rather than reject the whole response (#1925).
+        label = DiagramLabel(id="n1", text="A", x_pct=104.0, y_pct=150.0)
+        assert label.x_pct == 100.0
+        assert label.y_pct == 100.0
+
+    def test_clamps_below_0_to_0(self):
+        label = DiagramLabel(id="n1", text="A", x_pct=-3.0, y_pct=0.0)
+        assert label.x_pct == 0.0
+        assert label.y_pct == 0.0
 
 
 class TestWrapLegendLine:
@@ -75,9 +82,12 @@ class TestParseLabels:
         result = _parse_labels(fenced)
         assert result.labels[0].text == "X"
 
-    def test_rejects_empty_labels_list(self):
-        with pytest.raises(ValidationError):
-            _parse_labels(json.dumps({"labels": []}))
+    def test_accepts_empty_labels_list(self):
+        # Vision legitimately returns no labels for figures with no
+        # extractable text; callers reclassify those rows to 'photo'
+        # (#1925) — parsing shouldn't reject the response outright.
+        result = _parse_labels(json.dumps({"labels": []}))
+        assert result.labels == []
 
 
 class TestExtractLabelPositions:
@@ -105,10 +115,13 @@ class TestExtractLabelPositions:
         with pytest.raises(ValueError):
             await extract_label_positions(b"fake-webp", client=client)
 
-    async def test_missing_labels_fails_validation(self):
+    async def test_missing_labels_key_defaults_to_empty(self):
+        # ``labels`` defaults to an empty list, so a response that omits
+        # the key is treated as "no labels found" (handled by callers
+        # via reclassification-to-photo).
         client = _mock_client(json.dumps({}))
-        with pytest.raises(ValidationError):
-            await extract_label_positions(b"fake-webp", client=client)
+        result = await extract_label_positions(b"fake-webp", client=client)
+        assert result.labels == []
 
 
 class TestTranslateLabels:
