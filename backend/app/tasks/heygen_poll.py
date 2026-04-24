@@ -149,11 +149,7 @@ async def _reconcile_one(
         )
         return "timed_out"
 
-    api_version = _api_version_for(record)
-    status = await client.get_video(
-        str(record.provider_video_id),
-        api_version=api_version,
-    )
+    status = await client.get_video(str(record.provider_video_id))
     if status.status == "completed":
         if not status.video_url:
             record.status = "failed"
@@ -184,22 +180,3 @@ def _is_timed_out(record: GeneratedAudio) -> bool:
     if created.tzinfo is None:
         created = created.replace(tzinfo=UTC)
     return datetime.now(UTC) - created > _GENERATING_TIMEOUT
-
-
-def _api_version_for(record: GeneratedAudio) -> str:
-    """Read the HeyGen API version used when the row was created.
-
-    Written to ``media_metadata.api_version`` by the service at
-    dispatch time.
-
-    Poll every row via the v3 status endpoint (``/v3/videos/{id}``).
-    HeyGen's ``/v2/video_status.get`` returns 404 as of April 2026
-    (#1874) — the endpoint appears to be deprecated. The v3
-    endpoint accepts any video_id HeyGen has issued, regardless of
-    which create path produced it, since the video_id namespace is
-    shared. Returning ``"v3-agent"`` dispatches the v3 GET in
-    ``HeyGenClient.get_video`` for all rows.
-    """
-    # All create paths (v2 Direct Video, v3 Video Agents, v3 content
-    # /v3/videos) produce video_ids that resolve on /v3/videos/{id}.
-    return "v3-agent"

@@ -1624,19 +1624,16 @@ SETTING_DEFINITIONS: list[SettingDef] = [
     SettingDef(
         "video-summary-default-avatar-id",
         "video_summary",
-        "Judy_Teacher_Standing_public",
+        "",
         "string",
-        "Default HeyGen avatar ID",
+        "Default HeyGen avatar ID (unused)",
         (
-            "HeyGen stock avatar_id used for every lesson video. "
-            "Default is ``Judy_Teacher_Standing_public`` — an explicit "
-            "teacher avatar (standing, upper body, neutral background) "
-            "paired with female voice defaults so avatar and voice "
-            "gender match. When both this and the language voice_id "
-            "are set, the service uses the v2 Direct Video path for "
-            "consistent, non-random output (vs the v3 Agents fallback "
-            "which HeyGen auto-picks an avatar each time). Admins "
-            "override per tenant via the settings UI."
+            "DEPRECATED after #1879. The faceless Video Agent path "
+            "ignores ``avatar_id`` entirely — HeyGen's agent picks "
+            "b-roll + captions rather than a talking head, and we "
+            "forbid avatars in the prompt. The setting is kept only "
+            "so existing overrides in ``config/platform_settings.json`` "
+            "don't fail to load; it has no effect at runtime."
         ),
     ),
     SettingDef(
@@ -1648,10 +1645,11 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         (
             "HeyGen voice_id used when language=fr. Default is "
             "``Sylvie - Professional`` — a professional female French "
-            "voice. Chosen to gender-match the default avatar "
-            "(``Judy_Teacher_Standing_public``). Override via HeyGen's "
-            "voice library if a tenant wants a different tone "
-            "(Pierre Narrateur male, Yves Newscaster, etc.)."
+            "voice. Pinned per language so narration stays consistent "
+            "across dispatches (without it HeyGen's Video Agent picks "
+            "a voice per render). Override via HeyGen's voice library "
+            "if a tenant wants a different tone (Pierre Narrateur "
+            "male, Yves Newscaster, etc.)."
         ),
     ),
     SettingDef(
@@ -1662,8 +1660,9 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "HeyGen voice ID — English",
         (
             "HeyGen voice_id used when language=en. Default is ``Ivy`` "
-            "— a clean professional female English voice. Override via "
-            "HeyGen's voice library if a tenant wants a different tone."
+            "— a clean professional female English voice. Pinned per "
+            "language for consistent narration; override via HeyGen's "
+            "voice library if a tenant wants a different tone."
         ),
     ),
     SettingDef(
@@ -1682,23 +1681,14 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "video_summary",
         "",
         "string",
-        "Video background image URL (16:9)",
+        "Video background image URL (unused)",
         (
-            "Publicly reachable URL of a 1280×720 landscape PNG/JPG "
-            "used as the background for every lesson video. HeyGen "
-            "renders the narration voice over this still image with "
-            "synced captions — no talking avatar — so the final video "
-            "stays uniform, 720p 16:9, and focused on the lesson "
-            "content rather than a presenter. 720p is HeyGen's "
-            "smallest output and ~90 s of narration keeps the MP4 "
-            "under ~4 MB, tractable for 3G learners. A default Sira-"
-            "branded landscape image ships at "
-            "``/images/video-summary-background.png`` on the frontend; "
-            "set this to e.g. "
-            "``https://etutor.elearning.portfolio2.kimbetien.com"
-            "/images/video-summary-background.png`` to use it, or "
-            "upload your own tenant-branded image. When empty, video "
-            "generation falls back to the legacy Video Agents path."
+            "DEPRECATED after #1879. Previously powered the "
+            "``/v3/videos`` type=image path which HeyGen rejected with "
+            "``MOVIO_NO_FACE_DETECTED`` because type=image is really "
+            "photo-avatar mode and requires a human face. The faceless "
+            "Video Agent path ignores this URL entirely. Kept only so "
+            "existing overrides don't fail to load."
         ),
     ),
     # ── Pagination ─────────────────────────────────────────
