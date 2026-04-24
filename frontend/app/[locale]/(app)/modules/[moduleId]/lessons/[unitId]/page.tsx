@@ -1,9 +1,10 @@
 import { getTranslations } from 'next-intl/server';
 import { getLocale } from 'next-intl/server';
-import { Link } from '@/i18n/routing';
+import { Link, redirect } from '@/i18n/routing';
 import { ChevronLeft } from 'lucide-react';
 
 import { API_BASE, ModuleUnitsResponse } from '@/lib/api';
+import { matchUnit } from '@/lib/unit-id';
 import { LessonViewer } from '@/components/learning/lesson-viewer';
 import { EnrollmentGuard } from '@/components/shared/enrollment-guard';
 
@@ -31,7 +32,15 @@ export default async function LessonPage({ params }: LessonPageProps) {
 
   const language = locale as 'fr' | 'en';
   const moduleData = await fetchModuleData(moduleId);
-  const unit = moduleData?.units?.find(u => u.unit_number === unitId || u.id === unitId);
+  const unit = matchUnit(moduleData?.units, unitId);
+
+  if (unit?.unit_type === 'scenario' || unit?.unit_type === 'case-study') {
+    redirect({ href: `/modules/${moduleId}/case-study?unit=${unit.unit_number}`, locale });
+  }
+  if (unit?.unit_type === 'quiz') {
+    redirect({ href: `/modules/${moduleId}/quiz?unit=${unit.unit_number}`, locale });
+  }
+
   const moduleTitle = language === 'fr' ? (moduleData?.title_fr || moduleId) : (moduleData?.title_en || moduleId);
   const unitTitle = language === 'fr' ? (unit?.title_fr || unitId) : (unit?.title_en || unitId);
   const moduleLevel = moduleData?.level || 1;
@@ -97,7 +106,7 @@ export async function generateMetadata({ params }: LessonPageProps) {
 
   const language = locale as 'fr' | 'en';
   const moduleData = await fetchModuleData(moduleId);
-  const unit = moduleData?.units?.find(u => u.unit_number === unitId || u.id === unitId);
+  const unit = matchUnit(moduleData?.units, unitId);
   const unitTitle = language === 'fr' ? (unit?.title_fr || unitId) : (unit?.title_en || unitId);
   const modTitle = language === 'fr' ? (moduleData?.title_fr || moduleId) : (moduleData?.title_en || moduleId);
 

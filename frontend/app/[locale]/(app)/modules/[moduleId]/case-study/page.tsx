@@ -2,6 +2,7 @@ import { getTranslations, getLocale } from 'next-intl/server';
 import { Link } from '@/i18n/routing';
 import { ChevronLeft } from 'lucide-react';
 import { getModuleUnits } from '@/lib/api';
+import { matchUnit } from '@/lib/unit-id';
 import { CaseStudyViewer } from '@/components/learning/case-study-viewer';
 import { EnrollmentGuard } from '@/components/shared/enrollment-guard';
 interface CaseStudyPageProps {
@@ -25,13 +26,7 @@ export default async function CaseStudyPage({ params, searchParams }: CaseStudyP
     : moduleData?.learning_objectives_en;
   const bloomLevel = moduleData?.bloom_level;
 
-  // unitId is "M01-U09" format; API units use UUID id and "1.9" unit_number
-  // Match by unit_number: extract module & unit numbers from "MXX-UYY" → "X.Y"
-  const unitNumMatch = unitId.match(/^M0*(\d+)-U0*(\d+)$/);
-  const unitNumber = unitNumMatch ? `${unitNumMatch[1]}.${unitNumMatch[2]}` : null;
-  const matchedUnit = moduleData?.units?.find(
-    (u) => u.id === unitId || (unitNumber && u.unit_number === unitNumber)
-  );
+  const matchedUnit = matchUnit(moduleData?.units, unitId);
   const unitTitle = matchedUnit
     ? (language === 'fr' ? matchedUnit.title_fr : matchedUnit.title_en)
     : undefined;
