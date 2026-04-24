@@ -14,7 +14,9 @@ from anthropic.types import MessageParam, ToolResultBlockParam, ToolUseBlock
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.ai.prompts.audience import detect_audience
 from app.ai.prompts.tutor import (
+    TutorContext,
     get_activity_suggestions,
     get_compaction_prompt,
     get_socratic_system_prompt,
@@ -29,7 +31,7 @@ from app.domain.services.analytics_service import AnalyticsService
 from app.domain.services.learner_memory_service import LearnerMemoryService
 from app.domain.services.platform_settings_service import SettingsCache
 from app.domain.services.subscription_service import SubscriptionService
-from app.domain.services.tutor_context_builder import build_tutor_context, resolve_course
+from app.domain.services.tutor_context_builder import resolve_course
 from app.domain.services.tutor_tools import TOOL_DEFINITIONS, TutorToolExecutor
 from app.infrastructure.config.settings import get_settings
 
@@ -392,41 +394,57 @@ class TutorService:
                 user.preferred_language = locale
                 session.add(user)
 
-            # Build context via the shared helper so text and voice tutors can't
-            # drift (#1956). Pass the already-loaded learner_memory_service to
-            # avoid a redundant instantiation.
-            context = await build_tutor_context(
-                user=user,
-                course_id=course_id,
-                module_id=module_id,
-                locale=locale,
-                session=session,
-                learner_memory_service=self.learner_memory_service,
-                tutor_mode=tutor_mode,
-                context_type=context_type,
-                context_id=context_id,
-            )
-            # Text tutor augments the shared context with session-scoped fields
-            # that voice doesn't use.
-            context.learner_memory = session_ctx.learner_memory
-            context.previous_session_context = session_ctx.previous_compact
-            context.progress_snapshot = session_ctx.progress_snapshot
-
-            # Re-resolve the course so we can pull rag_collection_id and touch
-            # the interaction row. The helper already did the auth check +
-            # fallback logic; this second call is cheap (primary-key GET).
-            module_obj: Module | None = None
+            # Resolve module title for human-readable system prompt
+            module_title = None
+            module_number = None
+            module_obj = None
             if module_id:
                 module_obj = await session.get(Module, module_id)
-            course = await resolve_course(course_id, module_id, module_obj, user_id, session)
-            rag_collection_id = course.rag_collection_id if course else None
+                if module_obj:
+                    module_title = (
+                        module_obj.title_fr if effective_language == "fr" else module_obj.title_en
+                    )
+                    module_number = module_obj.module_number
+
+            # Resolve course context: explicit > from module > from enrollment
+            course = await self._resolve_course(course_id, module_id, module_obj, user_id, session)
+            course_title = None
+            course_domain = None
+            rag_collection_id = None
             if course:
+                course_title = course.title_fr if effective_language == "fr" else course.title_en
+                course_domain = course_domain or course_title
+                rag_collection_id = course.rag_collection_id
+
+                # Touch course interaction for recent-courses ranking
                 try:
                     from app.domain.services.progress_service import touch_course_interaction
 
                     await touch_course_interaction(session, uuid.UUID(str(user_id)), course.id)
                 except Exception:
                     pass  # non-fatal
+
+            audience = detect_audience(course)
+
+            context = TutorContext(
+                user_level=user.current_level,
+                user_language=effective_language,
+                user_country=user.country or "CI",
+                module_id=str(module_id) if module_id else None,
+                module_title=module_title,
+                module_number=module_number,
+                context_type=context_type,
+                tutor_mode=tutor_mode,
+                context_id=str(context_id) if context_id else None,
+                course_title=course_title,
+                course_domain=course_domain,
+                learner_memory=session_ctx.learner_memory,
+                previous_session_context=session_ctx.previous_compact,
+                progress_snapshot=session_ctx.progress_snapshot,
+                is_kids=audience.is_kids,
+                age_min=audience.age_min,
+                age_max=audience.age_max,
+            )
 
             system_prompt = get_socratic_system_prompt(context, [])
 
@@ -998,6 +1016,21 @@ class TutorService:
         await session.commit()
 
         return conversation
+
+    async def _resolve_course(
+        self,
+        course_id: uuid.UUID | None,
+        module_id: uuid.UUID | None,
+        module_obj: Module | None,
+        user_id: uuid.UUID,
+        session: AsyncSession,
+    ):
+        """Thin wrapper around the module-level :func:`resolve_course` helper.
+
+        Kept so existing tests that ``patch.object(TutorService, '_resolve_course')``
+        continue to work. New code should call ``resolve_course`` directly.
+        """
+        return await resolve_course(course_id, module_id, module_obj, user_id, session)
 
     async def _retrieve_relevant_context(
         self, query: str, user: User, module_id: uuid.UUID | None, session: AsyncSession
