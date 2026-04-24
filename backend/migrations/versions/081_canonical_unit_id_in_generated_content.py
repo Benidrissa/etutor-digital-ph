@@ -74,9 +74,13 @@ def upgrade() -> None:
             sa.text(
                 """
                 UPDATE generated_content
-                SET content = jsonb_set(
-                    content::jsonb, '{unit_id}', to_jsonb(:val::text)
-                )::json
+                SET content = CAST(
+                    jsonb_set(
+                        CAST(content AS jsonb),
+                        '{unit_id}',
+                        to_jsonb(CAST(:val AS text))
+                    ) AS json
+                )
                 WHERE id = :id
                 """
             ),
