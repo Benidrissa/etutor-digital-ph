@@ -75,7 +75,7 @@ def upgrade() -> None:
                 """
                 UPDATE generated_content
                 SET content = jsonb_set(
-                    content::jsonb, '{unit_id}', to_jsonb(:val::text)
+                    content::jsonb, '{unit_id}', to_jsonb(CAST(:val AS text))
                 )::json
                 WHERE id = :id
                 """
