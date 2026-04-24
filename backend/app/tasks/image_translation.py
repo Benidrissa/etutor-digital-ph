@@ -47,6 +47,18 @@ logger = structlog.get_logger(__name__)
 _DEFAULT_BATCH_SIZE = 50
 _COMMIT_EVERY = 10
 
+# Concurrency knobs for the parallel backfill passes (issue #1891).
+#   _CONCURRENCY  — max rows processed in parallel per batch. Each row does
+#                   up to 3 Claude Haiku calls, so 8 × 3 ≈ 24 concurrent
+#                   calls in the worst case. Well under Anthropic's 50 req/s
+#                   tier limit; conservative against rate-limit bursts.
+#   _BATCH_SIZE   — rows per commit boundary. One `session.commit()` per
+#                   batch preserves the crash-safety of the prior sequential
+#                   version (at most BATCH_SIZE rows worth of work lost on
+#                   process kill) while keeping transactions short.
+_CONCURRENCY = 8
+_BATCH_SIZE = 40
+
 
 class ImageTranslationTask(Task):
     """Base task for image translation backfill with error logging."""
@@ -172,51 +184,52 @@ async def _run_backfill_with_factory(
 
         translated = 0
         failed = 0
-        pending_commit = 0
+        sem = asyncio.Semaphore(_CONCURRENCY)
 
-        for idx, img in enumerate(rows):
-            try:
-                result = await translate_figure_caption(
-                    caption=img.caption or "",
-                    image_type=img.image_type,
-                    figure_number=img.figure_number,
-                )
-            except Exception as exc:
-                failed += 1
-                logger.warning(
-                    "Translation failed for source image, skipping",
-                    source_image_id=str(img.id),
-                    figure_number=img.figure_number,
-                    error=str(exc),
-                )
-                continue
+        async def _translate_one(img):
+            async with sem:
+                try:
+                    result = await translate_figure_caption(
+                        caption=img.caption or "",
+                        image_type=img.image_type,
+                        figure_number=img.figure_number,
+                    )
+                    return img, result, None
+                except Exception as exc:  # noqa: BLE001 — log and continue
+                    return img, None, exc
 
-            img.caption_fr = result.caption_fr
-            img.caption_en = result.caption_en
-            img.alt_text_fr = result.alt_text_fr
-            img.alt_text_en = result.alt_text_en
-            session.add(img)
-            translated += 1
-            pending_commit += 1
-
-            if pending_commit >= _COMMIT_EVERY:
-                await session.commit()
-                pending_commit = 0
-
-            if (idx + 1) % 10 == 0 or idx + 1 == total:
-                task.update_state(
-                    state="TRANSLATING",
-                    meta={
-                        "step": "translating",
-                        "total": total,
-                        "processed": idx + 1,
-                        "translated": translated,
-                        "failed": failed,
-                    },
-                )
-
-        if pending_commit:
+        processed = 0
+        for batch_start in range(0, total, _BATCH_SIZE):
+            batch = rows[batch_start : batch_start + _BATCH_SIZE]
+            outcomes = await asyncio.gather(*(_translate_one(img) for img in batch))
+            for img, result, exc in outcomes:
+                if exc is not None:
+                    failed += 1
+                    logger.warning(
+                        "Translation failed for source image, skipping",
+                        source_image_id=str(img.id),
+                        figure_number=img.figure_number,
+                        error=str(exc),
+                    )
+                    continue
+                img.caption_fr = result.caption_fr
+                img.caption_en = result.caption_en
+                img.alt_text_fr = result.alt_text_fr
+                img.alt_text_en = result.alt_text_en
+                session.add(img)
+                translated += 1
             await session.commit()
+            processed = batch_start + len(batch)
+            task.update_state(
+                state="TRANSLATING",
+                meta={
+                    "step": "translating",
+                    "total": total,
+                    "processed": processed,
+                    "translated": translated,
+                    "failed": failed,
+                },
+            )
 
         return {
             "status": "complete",
@@ -344,59 +357,55 @@ async def _run_kind_backfill_with_factory(
 
         classified = 0
         failed = 0
-        pending_commit = 0
+        sem = asyncio.Semaphore(_CONCURRENCY)
 
         async with httpx.AsyncClient(timeout=30.0) as http:
-            for idx, img in enumerate(rows):
-                try:
-                    upstream = await http.get(img.storage_url)
-                    upstream.raise_for_status()
-                    image_bytes = upstream.content
-                except Exception as exc:
-                    failed += 1
-                    logger.warning(
-                        "Failed to fetch image bytes for classification, skipping",
-                        source_image_id=str(img.id),
-                        storage_url=img.storage_url,
-                        error=str(exc),
-                    )
-                    continue
 
-                try:
-                    classification = await classify_figure(image_bytes=image_bytes)
-                except Exception as exc:
-                    failed += 1
-                    logger.warning(
-                        "Classification failed for source image, skipping",
-                        source_image_id=str(img.id),
-                        figure_number=img.figure_number,
-                        error=str(exc),
-                    )
-                    continue
+            async def _classify_one(img):
+                async with sem:
+                    try:
+                        upstream = await http.get(img.storage_url)
+                        upstream.raise_for_status()
+                        image_bytes = upstream.content
+                    except Exception as exc:  # noqa: BLE001
+                        return img, None, ("fetch", exc)
+                    try:
+                        classification = await classify_figure(image_bytes=image_bytes)
+                        return img, classification, None
+                    except Exception as exc:  # noqa: BLE001
+                        return img, None, ("classify", exc)
 
-                img.figure_kind = classification.kind
-                session.add(img)
-                classified += 1
-                pending_commit += 1
-
-                if pending_commit >= _COMMIT_EVERY:
-                    await session.commit()
-                    pending_commit = 0
-
-                if (idx + 1) % 10 == 0 or idx + 1 == total:
-                    task.update_state(
-                        state="CLASSIFYING",
-                        meta={
-                            "step": "classifying",
-                            "total": total,
-                            "processed": idx + 1,
-                            "classified": classified,
-                            "failed": failed,
-                        },
-                    )
-
-        if pending_commit:
-            await session.commit()
+            processed = 0
+            for batch_start in range(0, total, _BATCH_SIZE):
+                batch = rows[batch_start : batch_start + _BATCH_SIZE]
+                outcomes = await asyncio.gather(*(_classify_one(img) for img in batch))
+                for img, classification, err in outcomes:
+                    if err is not None:
+                        stage, exc = err
+                        failed += 1
+                        logger.warning(
+                            "Classification %s failed for source image, skipping",
+                            stage,
+                            source_image_id=str(img.id),
+                            figure_number=img.figure_number,
+                            error=str(exc),
+                        )
+                        continue
+                    img.figure_kind = classification.kind
+                    session.add(img)
+                    classified += 1
+                await session.commit()
+                processed = batch_start + len(batch)
+                task.update_state(
+                    state="CLASSIFYING",
+                    meta={
+                        "step": "classifying",
+                        "total": total,
+                        "processed": processed,
+                        "classified": classified,
+                        "failed": failed,
+                    },
+                )
 
         return {
             "status": "complete",
@@ -523,78 +532,67 @@ async def _run_svg_backfill_with_factory(
 
         rendered = 0
         failed = 0
-        pending_commit = 0
+        sem = asyncio.Semaphore(_CONCURRENCY)
 
         async with httpx.AsyncClient(timeout=30.0) as http:
-            for idx, img in enumerate(rows):
-                try:
-                    upstream = await http.get(img.storage_url)
-                    upstream.raise_for_status()
-                    image_bytes = upstream.content
-                except Exception as exc:
-                    failed += 1
-                    logger.warning(
-                        "Failed to fetch image bytes for SVG re-derivation",
-                        source_image_id=str(img.id),
-                        storage_url=img.storage_url,
-                        error=str(exc),
-                    )
-                    continue
 
-                try:
-                    structure = await extract_flowchart_structure(image_bytes=image_bytes)
-                    translated = await translate_structure(structure, target_lang="fr")
-                    svg_bytes = render_svg(translated)
-                except Exception as exc:
-                    failed += 1
-                    logger.warning(
-                        "SVG re-derivation failed",
-                        source_image_id=str(img.id),
-                        figure_number=img.figure_number,
-                        error=str(exc),
-                    )
-                    continue
+            async def _rederive_one(img):
+                async with sem:
+                    try:
+                        upstream = await http.get(img.storage_url)
+                        upstream.raise_for_status()
+                        image_bytes = upstream.content
+                    except Exception as exc:  # noqa: BLE001
+                        return img, None, None, ("fetch", exc)
+                    try:
+                        structure = await extract_flowchart_structure(image_bytes=image_bytes)
+                        translated = await translate_structure(structure, target_lang="fr")
+                        svg_bytes = render_svg(translated)
+                    except Exception as exc:  # noqa: BLE001
+                        return img, None, None, ("rederive", exc)
+                    try:
+                        key = _svg_key_for(img)
+                        url = await storage.upload_bytes(
+                            key=key,
+                            data=svg_bytes,
+                            content_type="image/svg+xml",
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        return img, None, None, ("upload", exc)
+                    return img, key, url, None
 
-                try:
-                    key = _svg_key_for(img)
-                    url = await storage.upload_bytes(
-                        key=key,
-                        data=svg_bytes,
-                        content_type="image/svg+xml",
-                    )
-                except Exception as exc:
-                    failed += 1
-                    logger.warning(
-                        "Failed to upload FR SVG to storage",
-                        source_image_id=str(img.id),
-                        error=str(exc),
-                    )
-                    continue
-
-                img.storage_key_fr = key
-                img.storage_url_fr = url
-                session.add(img)
-                rendered += 1
-                pending_commit += 1
-
-                if pending_commit >= _COMMIT_EVERY:
-                    await session.commit()
-                    pending_commit = 0
-
-                if (idx + 1) % 10 == 0 or idx + 1 == total:
-                    task.update_state(
-                        state="REDERIVING",
-                        meta={
-                            "step": "rederiving",
-                            "total": total,
-                            "processed": idx + 1,
-                            "rendered": rendered,
-                            "failed": failed,
-                        },
-                    )
-
-        if pending_commit:
-            await session.commit()
+            processed = 0
+            for batch_start in range(0, total, _BATCH_SIZE):
+                batch = rows[batch_start : batch_start + _BATCH_SIZE]
+                outcomes = await asyncio.gather(*(_rederive_one(img) for img in batch))
+                for img, key, url, err in outcomes:
+                    if err is not None:
+                        stage, exc = err
+                        failed += 1
+                        logger.warning(
+                            "SVG %s failed for source image, skipping",
+                            stage,
+                            source_image_id=str(img.id),
+                            figure_number=img.figure_number,
+                            error=str(exc),
+                        )
+                        continue
+                    img.storage_key_fr = key
+                    img.storage_url_fr = url
+                    session.add(img)
+                    rendered += 1
+                await session.commit()
+                processed = batch_start + len(batch)
+                task.update_state(
+                    state="REDERIVING",
+                    meta={
+                        "step": "rederiving",
+                        "total": total,
+                        "processed": processed,
+                        "rendered": rendered,
+                        "failed": failed,
+                    },
+                )
 
         return {
             "status": "complete",
@@ -735,83 +733,72 @@ async def _run_overlay_backfill_with_factory(
 
         rendered = 0
         failed = 0
-        pending_commit = 0
+        sem = asyncio.Semaphore(_CONCURRENCY)
 
         async with httpx.AsyncClient(timeout=30.0) as http:
-            for idx, img in enumerate(rows):
-                try:
-                    upstream = await http.get(img.storage_url)
-                    upstream.raise_for_status()
-                    image_bytes = upstream.content
-                except Exception as exc:
-                    failed += 1
-                    logger.warning(
-                        "Failed to fetch image bytes for overlay backfill",
-                        source_image_id=str(img.id),
-                        storage_url=img.storage_url,
-                        error=str(exc),
-                    )
-                    continue
 
-                try:
-                    positions = await extract_label_positions(image_bytes=image_bytes)
-                    translated = await translate_labels(positions, target_lang="fr")
-                    svg_bytes = render_overlay_svg(
-                        image_bytes=image_bytes,
-                        width_px=img.width or 1024,
-                        height_px=img.height or 768,
-                        labels=translated,
-                    )
-                except Exception as exc:
-                    failed += 1
-                    logger.warning(
-                        "Overlay render failed",
-                        source_image_id=str(img.id),
-                        figure_number=img.figure_number,
-                        error=str(exc),
-                    )
-                    continue
+            async def _overlay_one(img):
+                async with sem:
+                    try:
+                        upstream = await http.get(img.storage_url)
+                        upstream.raise_for_status()
+                        image_bytes = upstream.content
+                    except Exception as exc:  # noqa: BLE001
+                        return img, None, None, ("fetch", exc)
+                    try:
+                        positions = await extract_label_positions(image_bytes=image_bytes)
+                        translated = await translate_labels(positions, target_lang="fr")
+                        svg_bytes = render_overlay_svg(
+                            image_bytes=image_bytes,
+                            width_px=img.width or 1024,
+                            height_px=img.height or 768,
+                            labels=translated,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        return img, None, None, ("render", exc)
+                    try:
+                        key = _svg_key_for(img)
+                        url = await storage.upload_bytes(
+                            key=key,
+                            data=svg_bytes,
+                            content_type="image/svg+xml",
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        return img, None, None, ("upload", exc)
+                    return img, key, url, None
 
-                try:
-                    key = _svg_key_for(img)
-                    url = await storage.upload_bytes(
-                        key=key,
-                        data=svg_bytes,
-                        content_type="image/svg+xml",
-                    )
-                except Exception as exc:
-                    failed += 1
-                    logger.warning(
-                        "Failed to upload FR overlay SVG to storage",
-                        source_image_id=str(img.id),
-                        error=str(exc),
-                    )
-                    continue
-
-                img.storage_key_fr = key
-                img.storage_url_fr = url
-                session.add(img)
-                rendered += 1
-                pending_commit += 1
-
-                if pending_commit >= _COMMIT_EVERY:
-                    await session.commit()
-                    pending_commit = 0
-
-                if (idx + 1) % 10 == 0 or idx + 1 == total:
-                    task.update_state(
-                        state="OVERLAYING",
-                        meta={
-                            "step": "overlaying",
-                            "total": total,
-                            "processed": idx + 1,
-                            "rendered": rendered,
-                            "failed": failed,
-                        },
-                    )
-
-        if pending_commit:
-            await session.commit()
+            processed = 0
+            for batch_start in range(0, total, _BATCH_SIZE):
+                batch = rows[batch_start : batch_start + _BATCH_SIZE]
+                outcomes = await asyncio.gather(*(_overlay_one(img) for img in batch))
+                for img, key, url, err in outcomes:
+                    if err is not None:
+                        stage, exc = err
+                        failed += 1
+                        logger.warning(
+                            "Overlay %s failed for source image, skipping",
+                            stage,
+                            source_image_id=str(img.id),
+                            figure_number=img.figure_number,
+                            error=str(exc),
+                        )
+                        continue
+                    img.storage_key_fr = key
+                    img.storage_url_fr = url
+                    session.add(img)
+                    rendered += 1
+                await session.commit()
+                processed = batch_start + len(batch)
+                task.update_state(
+                    state="OVERLAYING",
+                    meta={
+                        "step": "overlaying",
+                        "total": total,
+                        "processed": processed,
+                        "rendered": rendered,
+                        "failed": failed,
+                    },
+                )
 
         return {
             "status": "complete",

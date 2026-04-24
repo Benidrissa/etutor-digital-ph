@@ -178,18 +178,22 @@ class TestRunSvgBackfillWithFactory:
             assert row.storage_url_fr.startswith("https://minio/")
 
     async def test_extract_failure_does_not_abort_batch(self):
+        # Parallel execution: drive the extract mock by call ordinal so the
+        # test asserts counts (not position-based row identity).
         rows = [_make_row(), _make_row(), _make_row()]
         session = _FakeSession(rows)
         task = MagicMock()
         storage = _FakeStorage()
 
-        extract = AsyncMock(
-            side_effect=[
-                _sample_structure(),
-                ValueError("vision timed out"),
-                _sample_structure(),
-            ]
-        )
+        call_count = {"n": 0}
+
+        async def _extract(*, image_bytes):
+            call_count["n"] += 1
+            if call_count["n"] == 2:
+                raise ValueError("vision timed out")
+            return _sample_structure()
+
+        extract = AsyncMock(side_effect=_extract)
         translate = AsyncMock(return_value=_sample_structure())
 
         with (
@@ -209,9 +213,9 @@ class TestRunSvgBackfillWithFactory:
         assert result["rendered"] == 2
         assert result["failed"] == 1
         assert len(storage.uploads) == 2
-        assert rows[0].storage_key_fr is not None
-        assert rows[1].storage_key_fr is None
-        assert rows[2].storage_key_fr is not None
+        # Exactly one row stays NULL; two rows get storage_key_fr.
+        assert sum(1 for r in rows if r.storage_key_fr is None) == 1
+        assert sum(1 for r in rows if r.storage_key_fr is not None) == 2
 
     async def test_upload_failure_does_not_abort_batch(self):
         rows = [_make_row(), _make_row()]
