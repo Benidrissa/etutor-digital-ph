@@ -39,6 +39,7 @@ from app.api.v1.sms_relay import (
 from app.api.v1.source_images import router as source_images_router
 from app.api.v1.subscriptions import router as subscriptions_router
 from app.api.v1.tutor import router as tutor_router
+from app.api.v1.tutor_voice import router as tutor_voice_router
 from app.api.v1.users import router as users_router
 
 api_v1_router = APIRouter()
@@ -53,6 +54,7 @@ api_v1_router.include_router(content_router)
 api_v1_router.include_router(quiz_router)
 api_v1_router.include_router(flashcards_router)
 api_v1_router.include_router(tutor_router)
+api_v1_router.include_router(tutor_voice_router)
 api_v1_router.include_router(images_router)
 api_v1_router.include_router(lesson_audio_router)
 api_v1_router.include_router(lesson_video_router)
