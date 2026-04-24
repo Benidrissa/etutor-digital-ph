@@ -1,24 +1,27 @@
-"""HeyGen V2 video generation API client.
+"""HeyGen Video Agent client — faceless explainer videos only.
 
-Wraps three endpoints that the rest of the stack needs:
+HeyGen has no dedicated ``/faceless`` endpoint; every avatar-specific
+endpoint (``/v2/video/generate``, ``/v3/videos`` with ``type=avatar``
+or ``type=image``) renders a human character. The only way to get a
+faceless explainer-style output is the Video Agent API:
 
-* ``POST /v2/video/generate`` — dispatch a video job.
-* ``GET  /v2/video_status.get`` — fallback poll when a webhook payload
-  arrives without a ``video_url``.
+* ``POST /v3/video-agents`` with ``{prompt, voice_id}`` and — critically —
+  **no** ``avatar_id``. The agent generates b-roll + captions + narration
+  driven entirely by the prompt.
+* ``GET  /v3/videos/{video_id}`` to poll for completion (the v2 status
+  endpoint returns 404 as of April 2026 — see #1874).
 * Webhook signature verification (HMAC-SHA256 over the raw body using
   the shared secret stored in ``settings.heygen_webhook_secret``).
 
-The API itself is async/webhook-native: the create call returns a
-``video_id`` in seconds; actual rendering takes several minutes and
-HeyGen pushes ``avatar_video.success``/``avatar_video.failed`` events
-to the ``callback_url`` we supply. The service layer relies on the
-webhook for the happy path; polling is only used as a reconciliation
-fallback.
+The prompt is expected to include explicit "no avatar / no on-screen
+presenter / b-roll only" directives so HeyGen's agent doesn't drift back
+into picking a talking head (#1879). Callers assemble the prompt; this
+client just dispatches.
 
 Retry policy: transient 5xx responses are retried with exponential
 backoff; 4xx errors surface immediately because they indicate a bad
-request (invalid avatar/voice id, exceeded char limit, bad api key)
-that retries cannot fix.
+request (invalid voice id, overlong prompt, rotated key, insufficient
+credit) that retries cannot fix.
 """
 
 from __future__ import annotations
@@ -37,8 +40,6 @@ from app.infrastructure.video import CreateVideoResult, VideoStatus
 logger = structlog.get_logger(__name__)
 
 _BASE_URL = "https://api.heygen.com"
-_CREATE_PATH = "/v2/video/generate"
-_STATUS_PATH = "/v2/video_status.get"
 _AGENT_CREATE_PATH = "/v3/video-agents"
 _V3_STATUS_PATH_TEMPLATE = "/v3/videos/{video_id}"
 
@@ -70,7 +71,7 @@ async def _retry_transient[T](
 
     Only ``HeyGenTransientError`` and ``httpx.TransportError`` are
     retried; 4xx/auth errors propagate on the first attempt so a bad
-    request (wrong avatar_id, overlong script, rotated key) never
+    request (overlong prompt, rotated key, insufficient credit) never
     silently fails three times before surfacing.
     """
     last_exc: BaseException | None = None
@@ -96,7 +97,7 @@ async def _retry_transient[T](
 
 
 class HeyGenClient:
-    """Async HeyGen V2 API client."""
+    """Async HeyGen Video Agent API client — faceless explainers only."""
 
     def __init__(
         self,
@@ -146,85 +147,36 @@ class HeyGenClient:
             raise HeyGenTransientError(f"HeyGen server error ({response.status_code})")
         return response
 
-    async def create_video(
-        self,
-        *,
-        script: str,
-        avatar_id: str,
-        voice_id: str,
-        language: str,
-        callback_url: str | None = None,
-    ) -> CreateVideoResult:
-        """Dispatch a new video job. Returns the HeyGen video_id.
-
-        ``callback_url`` is optional: when omitted, HeyGen won't push
-        a completion event and the caller is expected to poll
-        ``get_video`` to learn about the terminal status. This keeps
-        the client usable from multi-tenant deployments where there
-        is no single stable public URL to register.
-        """
-        if not script.strip():
-            raise HeyGenBadRequestError("script is empty")
-        if not avatar_id:
-            raise HeyGenBadRequestError("avatar_id is required")
-        if not voice_id:
-            raise HeyGenBadRequestError("voice_id is required")
-
-        body: dict = {
-            "video_inputs": [
-                {
-                    "character": {
-                        "type": "avatar",
-                        "avatar_id": avatar_id,
-                    },
-                    "voice": {
-                        "type": "text",
-                        "voice_id": voice_id,
-                        "input_text": script,
-                    },
-                }
-            ],
-            "caption": True,
-        }
-        if callback_url:
-            body["callback_url"] = callback_url
-
-        async def _call() -> httpx.Response:
-            return await self._request("POST", _CREATE_PATH, json=body)
-
-        response = await _retry_transient(_call)
-        data = response.json() or {}
-        inner = data.get("data") or {}
-        video_id = inner.get("video_id") or data.get("video_id")
-        if not video_id:
-            raise HeyGenError(f"HeyGen create returned no video_id: {data!r}")
-
-        logger.info(
-            "heygen.create_video.dispatched",
-            video_id=video_id,
-            language=language,
-            script_chars=len(script),
-        )
-        return CreateVideoResult(provider_video_id=str(video_id))
-
     async def create_video_agent(
         self,
         *,
         prompt: str,
         language: str,
+        voice_id: str | None = None,
         callback_url: str | None = None,
     ) -> CreateVideoResult:
-        """Dispatch a Video Agent job — avatar/voice auto-picked.
+        """Dispatch a faceless explainer video via the Video Agent API.
 
-        Use this when the tenant hasn't seeded explicit avatar/voice
-        IDs; HeyGen's agent picks both from the prompt. Costs roughly
-        double a Direct Video call but keeps the feature zero-config
-        for fresh tenants. See ``/docs/choosing-the-right-video-api``.
+        ``prompt`` must contain explicit faceless directives ("no avatar,
+        no on-screen presenter, b-roll only") alongside the narration
+        script — HeyGen's agent respects prompt instructions but will
+        drift into picking a talking head if the prompt doesn't forbid
+        one. See ``LessonVideoService`` for the canonical prompt shape.
+
+        ``voice_id`` is optional. When supplied, HeyGen uses that specific
+        voice for narration (stable output across dispatches). When
+        omitted, HeyGen picks a voice per dispatch (non-deterministic).
+
+        ``avatar_id`` is intentionally NOT a parameter — this client only
+        produces faceless output (#1879). If a caller wants an avatar,
+        add a separate method; don't bolt it onto this one.
         """
         if not prompt.strip():
             raise HeyGenBadRequestError("prompt is empty")
 
         body: dict = {"prompt": prompt}
+        if voice_id:
+            body["voice_id"] = voice_id
         if callback_url:
             body["callback_url"] = callback_url
 
@@ -241,35 +193,26 @@ class HeyGenClient:
             "heygen.create_video_agent.dispatched",
             video_id=video_id,
             language=language,
+            voice_id=voice_id or "<auto>",
             prompt_chars=len(prompt),
         )
         return CreateVideoResult(provider_video_id=str(video_id))
 
-    async def get_video(self, video_id: str, *, api_version: str = "v2") -> VideoStatus:
+    async def get_video(self, video_id: str) -> VideoStatus:
         """Fetch current status of a previously-dispatched video.
 
-        ``api_version`` selects the status endpoint: ``"v2"`` for
-        Direct Video (``/v2/video_status.get``) and ``"v3-agent"``
-        for Video Agent (``/v3/videos/{id}``). The two response
-        shapes differ slightly; we normalise both into the same
-        ``VideoStatus``.
+        Uses ``/v3/videos/{id}`` unconditionally (#1874). HeyGen's v2
+        status endpoint returns 404 as of April 2026; the v3 endpoint
+        accepts any video_id HeyGen has issued regardless of which
+        create path produced it, since the video_id namespace is
+        shared.
         """
 
-        if api_version == "v3-agent":
-
-            async def _call() -> httpx.Response:
-                return await self._request(
-                    "GET",
-                    _V3_STATUS_PATH_TEMPLATE.format(video_id=video_id),
-                )
-        else:
-
-            async def _call() -> httpx.Response:
-                return await self._request(
-                    "GET",
-                    _STATUS_PATH,
-                    params={"video_id": video_id},
-                )
+        async def _call() -> httpx.Response:
+            return await self._request(
+                "GET",
+                _V3_STATUS_PATH_TEMPLATE.format(video_id=video_id),
+            )
 
         response = await _retry_transient(_call)
         data = response.json() or {}
@@ -284,17 +227,29 @@ class HeyGenClient:
             "failed": "failed",
             "error": "failed",
         }.get(raw_status, raw_status or "pending")
-        # v3 uses ``video_url`` per docs; v2 also returns ``video_url``.
-        # Accept ``url`` as an additional fallback in case either
-        # surface renames the field in a future minor revision.
         video_url = (
             inner.get("video_url") or inner.get("url") or data.get("video_url") or data.get("url")
         )
+        # HeyGen v3 returns rich failure details as ``failure_message``
+        # + ``failure_code`` (e.g. "Insufficient credit"). Prefer those
+        # so the DB ``error_message`` column carries an actionable
+        # reason rather than the generic "heygen reported failure"
+        # fallback that the service writes when ``error`` is None
+        # (see #1878).
+        error_parts: list[str] = []
+        failure_message = inner.get("failure_message")
+        failure_code = inner.get("failure_code")
+        if failure_message:
+            error_parts.append(str(failure_message))
+        if failure_code and failure_code not in (failure_message or ""):
+            error_parts.append(f"({failure_code})")
+        rich_error = " ".join(error_parts) or None
+        legacy_error = inner.get("error") or inner.get("message")
         return VideoStatus(
             provider_video_id=video_id,
             status=mapped,
             video_url=video_url,
-            error=inner.get("error") or inner.get("message"),
+            error=rich_error or legacy_error,
         )
 
     def verify_webhook_signature(self, *, signature: str, raw_body: bytes) -> bool:

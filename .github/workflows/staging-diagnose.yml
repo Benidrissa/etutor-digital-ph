@@ -140,3 +140,56 @@ jobs:
             docker compose logs --tail=500 celery-worker 2>&1 \
               | grep -E 'Task (received|succeeded|failed)|generate_lesson_video|generate_lesson_audio|Traceback|ERROR/' \
               | tail -80 || true
+
+            echo
+            echo "=============================================="
+            echo "Celery worker actual command (docker inspect)"
+            echo "=============================================="
+            docker inspect etutor-celery-worker --format '{{ join .Config.Cmd " " }}' || true
+
+            echo
+            echo "=============================================="
+            echo "Exact poller query via psql"
+            echo "=============================================="
+            docker compose exec -T postgres \
+              psql -U postgres santepublique_aof \
+              -c "SELECT id, media_type, status, provider_video_id
+                  FROM generated_audio
+                  WHERE media_type = 'video'
+                    AND status = 'generating'
+                    AND provider_video_id IS NOT NULL" || true
+
+            echo
+            echo "=============================================="
+            echo "Same query via backend container + SA (poller's path)"
+            echo "=============================================="
+            docker compose exec -T backend uv run python -c "
+            import asyncio
+            from sqlalchemy import select
+            from app.infrastructure.persistence.database import async_session_factory
+            from app.domain.models.generated_audio import GeneratedAudio
+
+            async def main():
+                async with async_session_factory() as s:
+                    r = await s.execute(
+                        select(GeneratedAudio).where(
+                            GeneratedAudio.media_type == 'video',
+                            GeneratedAudio.status == 'generating',
+                            GeneratedAudio.provider_video_id.is_not(None),
+                        )
+                    )
+                    rows = list(r.scalars().all())
+                    print(f'SA found: {len(rows)} rows')
+                    for row in rows:
+                        print(f'  id={row.id} media={row.media_type!r} status={row.status!r} pvid={row.provider_video_id!r}')
+
+            asyncio.run(main())
+            " || true
+
+            echo
+            echo "=============================================="
+            echo "Celery: boot banner + beat mentions (head 80 lines)"
+            echo "=============================================="
+            docker compose logs celery-worker 2>&1 \
+              | grep -iE 'beat|scheduler|celery@|concurrency|poll-heygen|sending due|ready\.' \
+              | tail -40 || true

@@ -1,23 +1,26 @@
-"""Per-lesson HeyGen video summary generation.
+"""Per-lesson HeyGen faceless video summary generation.
 
 Mirrors ``lesson_audio_service.py`` but produces a rendered MP4 via
-HeyGen instead of an Opus audio file via OpenAI TTS. Writes to the
-shared ``generated_audio`` table with ``media_type='video'``.
+HeyGen's Video Agent API. Writes to the shared ``generated_audio``
+table with ``media_type='video'``.
 
 Flow:
 
 1. Check the cache (``(module_id, unit_id, language, media_type='video')``
    already ``ready``) — return it.
 2. Insert a ``pending`` row, flush, flip to ``generating``.
-3. Build a taxonomy-aware Claude script (kids-register variant when
-   ``detect_audience(course).is_kids``), honouring the admin
-   ``video-summary-max-chars`` cap. Re-prompt once on overshoot;
-   fall back to sentence-boundary truncation.
-4. Dispatch to HeyGen: Direct Video (v2) when both avatar and voice
-   IDs are seeded, Agent mode (v3) when either is empty. Record the
-   ``provider_video_id`` and the ``api_version`` in
-   ``media_metadata``. Leave status as ``generating`` — the
-   ``heygen_poll`` Celery-beat task finalises the row when HeyGen
+3. Build a taxonomy-aware Claude narration script (kids-register
+   variant when ``detect_audience(course).is_kids``), honouring the
+   admin ``video-summary-max-chars`` cap. Re-prompt once on
+   overshoot; fall back to sentence-boundary truncation.
+4. Wrap the narration with an explicit faceless directive and dispatch
+   to HeyGen Video Agent (``POST /v3/video-agents``) — no
+   ``avatar_id``, so the agent produces b-roll + captions +
+   narration rather than a talking head (#1879). Pin the voice per
+   language when configured. Record ``provider_video_id`` and
+   ``api_version='v3-agent'`` in ``media_metadata``.
+5. Leave status as ``generating`` — the ``heygen_poll`` Celery-beat
+   task polls ``/v3/videos/{id}`` and finalises the row when HeyGen
    finishes rendering.
 
 The ready state is therefore written by the poller (via
@@ -52,7 +55,7 @@ logger = structlog.get_logger(__name__)
 VIDEO_SCRIPT_TOOL = {
     "name": "save_video_script",
     "description": (
-        "Save the 3-minute lesson summary narration. Call this exactly once with the full script."
+        "Save the short lesson summary narration. Call this exactly once with the full script."
     ),
     "input_schema": {
         "type": "object",
@@ -109,7 +112,7 @@ def _build_video_system_prompt(
     if is_kids:
         age_hint = age_range or "6-12"
         return (
-            f"You write 3-minute narrated video summaries for young "
+            f"You write short narrated video summaries for young "
             f"learners aged {age_hint} in West Africa.\n\n"
             f"Output language: {lang_label}.\n"
             f"Course field / domain: {domain}.\n"
@@ -140,7 +143,7 @@ def _build_video_system_prompt(
     level_label = f"level {level}/4" if level else "the assigned course level"
 
     return (
-        f"You write 3-minute narrated video summaries for a learning "
+        f"You write short narrated video summaries for a learning "
         f"platform.\n\n"
         f"Output language: {lang_label}.\n"
         f"Course field / domain: {domain}.\n"
@@ -171,8 +174,47 @@ LESSON_VIDEO_USER_TEMPLATE = (
     "Learner level (1=beginner, 4=expert): {level}\n\n"
     "Lesson content to summarize (use this as the source of truth):\n\n"
     "{lesson_content}\n\n"
-    "Write the 3-minute narration script now."
+    "Write the short narration script now."
 )
+
+
+def _build_faceless_prompt(
+    *,
+    script: str,
+    language: str,
+    course_title: str | None,
+    is_kids: bool,
+    age_range: str,
+) -> str:
+    """Assemble the HeyGen Video Agent prompt for a faceless explainer.
+
+    The Video Agent is free to pick an avatar unless the prompt
+    forbids one, so every dispatch spells out the constraints: no
+    presenter, no avatar, b-roll + text only, with the narration
+    text quoted verbatim for the agent to read. Keeping the directive
+    inline (not only in the script) guarantees the agent treats the
+    visual and audio requirements as non-negotiable (#1879).
+    """
+    lang_label = "French" if language == "fr" else "English"
+    domain = course_title or "the subject area"
+    if is_kids:
+        audience = f"children aged {age_range}" if age_range else "young learners aged 6-12"
+    else:
+        audience = f"learners in {domain}"
+
+    return (
+        f"Create a short faceless explainer video in {lang_label} "
+        f"for {audience}, targeting the {domain} subject area. "
+        f"Use cinematic educational b-roll footage, bold on-screen "
+        f"captions synced to the narration, and a calm professional "
+        f"narrator voice. "
+        f"HARD CONSTRAINTS: no on-screen presenter, no avatar, "
+        f"no talking head, no human faces — b-roll and typography only. "
+        f"Keep the pacing brisk and mobile-friendly "
+        f"(under ~90 seconds).\n\n"
+        f"Narration (speak this verbatim in {lang_label}):\n\n"
+        f"{script}"
+    )
 
 
 def _truncate_at_sentence(text: str, max_chars: int) -> str:
@@ -392,33 +434,36 @@ class LessonVideoService:
                 max_chars=max_chars,
             )
 
-            avatar_id = (cache.get("video-summary-default-avatar-id", "") or "").strip()
             voice_key = (
                 "video-summary-voice-id-fr" if language == "fr" else "video-summary-voice-id-en"
             )
-            voice_id = (cache.get(voice_key, "") or "").strip()
-            use_agent_mode = not (avatar_id and voice_id)
+            voice_id = (cache.get(voice_key, "") or "").strip() or None
+
+            # Faceless explainer via HeyGen Video Agent (#1879). The
+            # prompt wraps the Claude-generated narration with explicit
+            # "no avatar / b-roll only" directives so HeyGen's agent
+            # doesn't drift back into picking a talking head. Voice is
+            # pinned to the admin-configured ``video-summary-voice-id-*``
+            # setting when present, otherwise HeyGen picks one per
+            # dispatch (non-deterministic).
+            prompt = _build_faceless_prompt(
+                script=script,
+                language=language,
+                course_title=course_title,
+                is_kids=is_kids,
+                age_range=age_range,
+            )
 
             callback_url = self._heygen_callback_url()
             client = heygen_client or HeyGenClient()
             owns_client = heygen_client is None
             try:
-                if use_agent_mode:
-                    result = await client.create_video_agent(
-                        prompt=script,
-                        language=language,
-                        callback_url=callback_url,
-                    )
-                    api_version = "v3-agent"
-                else:
-                    result = await client.create_video(
-                        script=script,
-                        avatar_id=avatar_id,
-                        voice_id=voice_id,
-                        callback_url=callback_url,
-                        language=language,
-                    )
-                    api_version = "v2"
+                result = await client.create_video_agent(
+                    prompt=prompt,
+                    language=language,
+                    voice_id=voice_id,
+                    callback_url=callback_url,
+                )
             finally:
                 if owns_client and client._client is not None:
                     await client._client.aclose()
@@ -426,8 +471,9 @@ class LessonVideoService:
             record.provider_video_id = result.provider_video_id
             record.script_text = script
             record.media_metadata = {
-                "api_version": api_version,
+                "api_version": "v3-agent",
                 "is_kids": is_kids,
+                "voice_id": voice_id,
             }
             await session.commit()
 
@@ -436,8 +482,9 @@ class LessonVideoService:
                 lesson_id=str(lesson_id),
                 media_id=str(record.id),
                 provider_video_id=result.provider_video_id,
-                api_version=api_version,
-                script_chars=len(script),
+                api_version="v3-agent",
+                voice_id=voice_id or "<auto>",
+                prompt_chars=len(prompt),
             )
 
         except HeyGenError as exc:

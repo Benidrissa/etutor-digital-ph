@@ -1596,13 +1596,16 @@ SETTING_DEFINITIONS: list[SettingDef] = [
     SettingDef(
         "video-summary-max-chars",
         "video_summary",
-        2000,
+        1200,
         "integer",
         "Narration character cap",
         (
             "Hard cap on the concatenated narration script sent to HeyGen. "
-            "Default 2000 ≈ 400 words ≈ ~2:40 of narration. Upper bound is "
-            "HeyGen's own 5000-char input_text limit."
+            "Default 1200 ≈ 240 words ≈ ~90 s of narration, tuned for "
+            "mobile-first, low-bandwidth delivery: shorter clips mean "
+            "faster HeyGen renders and smaller MP4s over 2G/3G. Raise it "
+            "if tenants want longer summaries; upper bound is HeyGen's own "
+            "5000-char input_text limit."
         ),
         {"min": 500, "max": 5000},
     ),
@@ -1623,27 +1626,44 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "video_summary",
         "",
         "string",
-        "Default HeyGen avatar ID",
+        "Default HeyGen avatar ID (unused)",
         (
-            "HeyGen stock avatar_id used for all generations until "
-            "per-domain overrides land. Operator sets this per environment."
+            "DEPRECATED after #1879. The faceless Video Agent path "
+            "ignores ``avatar_id`` entirely — HeyGen's agent picks "
+            "b-roll + captions rather than a talking head, and we "
+            "forbid avatars in the prompt. The setting is kept only "
+            "so existing overrides in ``config/platform_settings.json`` "
+            "don't fail to load; it has no effect at runtime."
         ),
     ),
     SettingDef(
         "video-summary-voice-id-fr",
         "video_summary",
-        "",
+        "64cc0b129ac34e04a521cb4627126923",
         "string",
         "HeyGen voice ID — French",
-        "HeyGen voice_id used when language=fr.",
+        (
+            "HeyGen voice_id used when language=fr. Default is "
+            "``Sylvie - Professional`` — a professional female French "
+            "voice. Pinned per language so narration stays consistent "
+            "across dispatches (without it HeyGen's Video Agent picks "
+            "a voice per render). Override via HeyGen's voice library "
+            "if a tenant wants a different tone (Pierre Narrateur "
+            "male, Yves Newscaster, etc.)."
+        ),
     ),
     SettingDef(
         "video-summary-voice-id-en",
         "video_summary",
-        "",
+        "cef3bc4e0a84424cafcde6f2cf466c97",
         "string",
         "HeyGen voice ID — English",
-        "HeyGen voice_id used when language=en.",
+        (
+            "HeyGen voice_id used when language=en. Default is ``Ivy`` "
+            "— a clean professional female English voice. Pinned per "
+            "language for consistent narration; override via HeyGen's "
+            "voice library if a tenant wants a different tone."
+        ),
     ),
     SettingDef(
         "video-summary-feature-enabled",
@@ -1654,6 +1674,21 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         (
             "Master feature flag. When false the API returns 403 for "
             "video summary generation requests."
+        ),
+    ),
+    SettingDef(
+        "video-summary-brand-image-url",
+        "video_summary",
+        "",
+        "string",
+        "Video background image URL (unused)",
+        (
+            "DEPRECATED after #1879. Previously powered the "
+            "``/v3/videos`` type=image path which HeyGen rejected with "
+            "``MOVIO_NO_FACE_DETECTED`` because type=image is really "
+            "photo-avatar mode and requires a human face. The faceless "
+            "Video Agent path ignores this URL entirely. Kept only so "
+            "existing overrides don't fail to load."
         ),
     ),
     # ── Pagination ─────────────────────────────────────────

@@ -1,0 +1,83 @@
+name: Staging List HeyGen Voices
+
+# One-off diagnostic: list HeyGen voices filtered by language so we
+# can pick neutral, educator-style defaults to seed the
+# video-summary-voice-id-fr / -en platform settings. Reads
+# HEYGEN_API_KEY from the staging container env (same key the
+# Celery workers already use) so we don't need to surface the
+# secret to the Actions runner.
+
+on:
+  workflow_dispatch:
+    inputs:
+      language:
+        description: "Filter by language code (e.g. fr, en). Leave blank for all."
+        required: false
+        default: "fr"
+
+jobs:
+  list-voices:
+    name: List HeyGen voices
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH into staging and query HeyGen
+        uses: appleboy/ssh-action@v1
+        env:
+          LANGUAGE: ${{ inputs.language }}
+        with:
+          host: 167.86.115.58
+          username: deploy
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: LANGUAGE
+          script: |
+            set -e
+            cd ~/etutor
+            echo "=============================================="
+            echo "HeyGen /v2/voices — filter: language=$LANGUAGE"
+            echo "=============================================="
+            cat > /tmp/list_voices.py <<'PYEOF'
+            import os, httpx
+
+            key = os.environ.get("HEYGEN_API_KEY")
+            assert key, "HEYGEN_API_KEY unset"
+
+            r = httpx.get(
+                "https://api.heygen.com/v2/voices",
+                headers={"X-Api-Key": key, "Accept": "application/json"},
+                timeout=30.0,
+            )
+            r.raise_for_status()
+            data = r.json()
+            voices = (data.get("data") or {}).get("voices") or data.get("voices") or []
+            lang = os.environ.get("LANGUAGE", "").lower().strip()
+            total = len(voices)
+
+            def match(v):
+                if not lang:
+                    return True
+                # HeyGen returns language as full name ("French", "English").
+                # Match by prefix so "fr" matches "french", "en" → "english".
+                return str(v.get("language", "")).lower().startswith(lang)
+
+            # Sample 3 raw voices so we can see HeyGen's field shape.
+            print("SAMPLE RAW VOICES (first 3, all keys):")
+            import json
+            for v in voices[:3]:
+                print(json.dumps(v, indent=2)[:500])
+                print("---")
+
+            filtered = [v for v in voices if match(v)]
+            print(f"Total voices: {total}; filtered={len(filtered)}")
+            print("-" * 100)
+            for v in filtered[:50]:
+                vid = str(v.get("voice_id", ""))
+                lg = str(v.get("language") or v.get("locale") or "")
+                gd = str(v.get("gender", ""))
+                nm = str(v.get("name", ""))[:40]
+                print(f"  {vid:40s}  {lg:10s}  {gd:8s}  {nm}")
+            if len(filtered) > 50:
+                print(f"  ...({len(filtered) - 50} more)")
+            PYEOF
+            docker cp /tmp/list_voices.py etutor-backend:/tmp/list_voices.py
+            docker compose exec -T -e LANGUAGE="$LANGUAGE" backend \
+              uv run python /tmp/list_voices.py

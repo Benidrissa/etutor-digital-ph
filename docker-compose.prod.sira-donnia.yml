@@ -159,7 +159,12 @@ services:
     # translate(Qk) for language X can run on one worker while
     # generate_audio(Qj) for language Y runs on another, bounded by
     # sidecar semaphores (NLLB=1, MMS=2).
-    command: uv run celery -A app.tasks.celery_app worker --loglevel=info --concurrency=4
+    # -B runs an embedded beat scheduler so the beat_schedule entries in
+    # app/tasks/celery_app.py (heygen poll every 60s, subscription expiry,
+    # SMS relay heartbeat, etc.) actually fire. Safe for this single-node
+    # deployment; split to a dedicated celery-beat service if we ever scale
+    # to multiple worker containers (#1846).
+    command: uv run celery -A app.tasks.celery_app worker -B --loglevel=info --concurrency=4
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/santepublique_aof
       REDIS_URL: redis://redis:6379/0

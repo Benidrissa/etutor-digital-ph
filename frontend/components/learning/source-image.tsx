@@ -48,14 +48,18 @@ export function SourceImage({
           <Image
             src={imageUrl}
             alt={altText}
-            // Upstream WebP dimensions vary per figure; 1024×768 is the ceiling
-            // for the source library. Next uses this to compute the srcset
-            // ladder (deviceSizes in next.config.ts); CSS (w-full h-auto)
-            // lets the browser size it against the 768px max-width container.
+            // Bypass Next's image optimizer: upstream widths are arbitrary
+            // (SVG re-derives, scanned PDF crops, etc.), so Next can't build
+            // a safe srcset from deviceSizes — 1024 isn't in the ladder and
+            // /_next/image returns 400, leaving the tile blank. The backend
+            // /data endpoint already serves immutable webp/svg with a
+            // year-long Cache-Control. Mirrors the fix in lesson-image.tsx
+            // from #1616 and #1857.
             width={1024}
             height={768}
             sizes="(max-width: 768px) 100vw, 768px"
             loading="lazy"
+            unoptimized
             className={`w-full h-auto object-contain rounded-lg transition-opacity duration-300 ${
               isVisible ? 'opacity-100' : 'opacity-0'
             }`}
@@ -99,6 +103,7 @@ export function SourceImage({
             width={1920}
             height={1080}
             sizes="100vw"
+            unoptimized
             className="max-w-full max-h-[80vh] w-auto h-auto object-contain rounded-lg"
             onClick={(e) => e.stopPropagation()}
             priority

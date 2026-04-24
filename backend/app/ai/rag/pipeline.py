@@ -12,7 +12,13 @@ from app.ai.rag.chunker import TextChunker, detect_language, extract_text_from_p
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.image_extractor import PDFImageExtractor
 from app.ai.rag.image_linker import ImageLinker
-from app.ai.translation import translate_figure_caption
+from app.ai.translation import (
+    classify_figure,
+    extract_flowchart_structure,
+    render_svg,
+    translate_figure_caption,
+    translate_structure,
+)
 from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.source_image import SourceImage
 from app.infrastructure.persistence.database import async_session_factory
@@ -250,6 +256,43 @@ class RAGPipeline:
                         error=str(exc),
                     )
 
+            figure_kind: str | None = None
+            try:
+                classification = await classify_figure(image_bytes=img.image_bytes)
+                figure_kind = classification.kind
+            except Exception as exc:
+                logger.warning(
+                    "Failed to classify figure, storing without figure_kind",
+                    source=source,
+                    figure_number=img.figure_number,
+                    error=str(exc),
+                )
+
+            storage_key_fr: str | None = None
+            storage_url_fr: str | None = None
+            if figure_kind == "clean_flowchart":
+                try:
+                    structure = await extract_flowchart_structure(image_bytes=img.image_bytes)
+                    translated = await translate_structure(structure, target_lang="fr")
+                    svg_bytes = render_svg(translated)
+                    svg_key = (
+                        f"source-images/{prefix}/{readable_name}/"
+                        f"{img.page_number}_{safe_label}.fr.svg"
+                    )
+                    storage_url_fr = await storage.upload_bytes(
+                        key=svg_key,
+                        data=svg_bytes,
+                        content_type="image/svg+xml",
+                    )
+                    storage_key_fr = svg_key
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to re-derive flowchart as FR SVG, leaving fr variant NULL",
+                        source=source,
+                        figure_number=img.figure_number,
+                        error=str(exc),
+                    )
+
             db_image = SourceImage(
                 id=uuid4(),
                 source=source,
@@ -266,6 +309,8 @@ class RAGPipeline:
                 surrounding_text=img.surrounding_text,
                 storage_key=key,
                 storage_url=storage_url,
+                storage_key_fr=storage_key_fr,
+                storage_url_fr=storage_url_fr,
                 format="webp",
                 width=img.width,
                 height=img.height,
@@ -274,6 +319,7 @@ class RAGPipeline:
                 embedding=embedding,
                 alt_text_fr=alt_text_fr,
                 alt_text_en=alt_text_en,
+                figure_kind=figure_kind,
             )
 
             session.add(db_image)

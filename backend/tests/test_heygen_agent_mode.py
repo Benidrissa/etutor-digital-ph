@@ -1,13 +1,13 @@
-"""Tests for the v3 Video Agent fallback and poller version routing.
+"""Tests for the faceless Video Agent path and poller status routing.
 
-Covers (issue #1798):
+Covers (issues #1798, #1874, #1879):
 
 * ``HeyGenClient.create_video_agent`` — happy path body shape,
-  empty-prompt rejection, and retry behaviour matches the v2 client.
-* ``HeyGenClient.get_video`` — v3 path routing by ``api_version``.
-* ``_api_version_for`` — poller reads ``media_metadata.api_version``
-  with a v2 fallback for legacy rows.
-* Poller delegates a v3-agent row to the correct status endpoint.
+  empty-prompt rejection, and retry behaviour.
+* ``HeyGenClient.get_video`` — always polls ``/v3/videos/{id}`` after
+  HeyGen deprecated the v2 status endpoint (#1874); surfaces
+  ``failure_message`` + ``failure_code`` in the mapped ``VideoStatus``.
+* Poller delegates a generating row to the correct status endpoint.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from app.infrastructure.video.heygen_client import (
     HeyGenClient,
     HeyGenTransientError,
 )
-from app.tasks.heygen_poll import _api_version_for, _reconcile_one
+from app.tasks.heygen_poll import _reconcile_one
 
 # ── fakes ────────────────────────────────────────────────────────────
 
@@ -172,25 +172,11 @@ async def test_create_video_agent_surfaces_exhausted_transient(monkeypatch):
         await client.create_video_agent(prompt="hello", language="en")
 
 
-# ── get_video routing ──────────────────────────────────────────────
+# ── get_video routing (always v3 after #1874/#1879) ────────────────
 
 
 @pytest.mark.asyncio
-async def test_get_video_v2_hits_status_endpoint():
-    http = _FakeHttp(
-        _make_response(
-            200,
-            {"data": {"status": "processing", "video_url": None}},
-        )
-    )
-    client = HeyGenClient(settings=_settings(), client=http)
-    await client.get_video("vid-abc")  # default v2
-    assert http.calls[0]["url"].endswith("/v2/video_status.get")
-    assert http.calls[0]["kwargs"]["params"] == {"video_id": "vid-abc"}
-
-
-@pytest.mark.asyncio
-async def test_get_video_v3_agent_hits_videos_path():
+async def test_get_video_hits_v3_videos_path():
     http = _FakeHttp(
         _make_response(
             200,
@@ -203,37 +189,41 @@ async def test_get_video_v3_agent_hits_videos_path():
         )
     )
     client = HeyGenClient(settings=_settings(), client=http)
-    result = await client.get_video("vid-v3", api_version="v3-agent")
-    assert http.calls[0]["url"].endswith("/v3/videos/vid-v3")
-    # v3 payload still maps cleanly into our VideoStatus.
+    result = await client.get_video("vid-abc")
+    assert http.calls[0]["url"].endswith("/v3/videos/vid-abc")
+    # v3 payload maps cleanly into our VideoStatus.
     assert isinstance(result, VideoStatus)
     assert result.status == "completed"
     assert result.video_url == "https://heygen.test/out.mp4"
 
 
-# ── _api_version_for / poller routing ─────────────────────────────
+@pytest.mark.asyncio
+async def test_get_video_surfaces_failure_message():
+    http = _FakeHttp(
+        _make_response(
+            200,
+            {
+                "data": {
+                    "status": "failed",
+                    "failure_code": "MOVIO_PAYMENT_INSUFFICIENT_CREDIT",
+                    "failure_message": "Insufficient credit.",
+                }
+            },
+        )
+    )
+    client = HeyGenClient(settings=_settings(), client=http)
+    result = await client.get_video("vid-insufficient")
+    assert result.status == "failed"
+    assert result.error is not None
+    assert "Insufficient credit" in result.error
+    assert "MOVIO_PAYMENT_INSUFFICIENT_CREDIT" in result.error
 
 
-def test_api_version_for_reads_metadata():
-    record = _make_record(api_version="v3-agent")
-    assert _api_version_for(record) == "v3-agent"
-
-
-def test_api_version_for_defaults_legacy_rows_to_v2():
-    record = _make_record(api_version=None)
-    # Simulate a row written before #1798 ever ran — no metadata at all.
-    record.media_metadata = None
-    assert _api_version_for(record) == "v2"
-
-
-def test_api_version_for_coerces_unknown_values_to_v2():
-    record = _make_record()
-    record.media_metadata = {"api_version": "not-a-real-version"}
-    assert _api_version_for(record) == "v2"
+# ── Poller routing ────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_reconcile_v3_row_uses_v3_api_version(monkeypatch):
+async def test_reconcile_finalises_ready_rows(monkeypatch):
     record = _make_record(api_version="v3-agent")
     session = _FakeSession()
 
@@ -260,7 +250,7 @@ async def test_reconcile_v3_row_uses_v3_api_version(monkeypatch):
         session=session,  # type: ignore[arg-type]
     )
     assert outcome == "ready"
-    # Key assertion: poller passed the row's api_version to the client.
-    client.get_video.assert_awaited_once()
-    args, kwargs = client.get_video.call_args
-    assert kwargs.get("api_version") == "v3-agent"
+    # The poller calls get_video with just the video_id — no
+    # api_version kwarg after #1874 since /v3/videos/{id} is the
+    # only endpoint that works.
+    client.get_video.assert_awaited_once_with(str(record.provider_video_id))

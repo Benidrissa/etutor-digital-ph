@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 
+import httpx
 import structlog
 from celery import Task
 from sqlalchemy import func, or_, select
@@ -26,9 +27,16 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.ai.translation import translate_figure_caption
+from app.ai.translation import (
+    classify_figure,
+    extract_flowchart_structure,
+    render_svg,
+    translate_figure_caption,
+    translate_structure,
+)
 from app.domain.models.source_image import SourceImage
 from app.infrastructure.config.settings import settings
+from app.infrastructure.storage.s3 import S3StorageService
 from app.tasks.celery_app import celery_app
 
 logger = structlog.get_logger(__name__)
@@ -213,3 +221,395 @@ async def _run_backfill_with_factory(
             "translated": translated,
             "failed": failed,
         }
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 slice 2 (#1844) — figure-kind classifier backfill
+# ---------------------------------------------------------------------------
+
+
+class FigureClassificationTask(Task):
+    """Celery base for the figure-kind classifier backfill."""
+
+    def on_success(self, retval, task_id, args, kwargs):
+        logger.info("Figure-kind backfill completed", task_id=task_id, result=retval)
+
+    def on_failure(self, exc, task_id, args, kwargs, einfo):
+        logger.error("Figure-kind backfill failed", task_id=task_id, exception=str(exc))
+
+
+@celery_app.task(
+    bind=True,
+    base=FigureClassificationTask,
+    time_limit=3600,
+    soft_time_limit=3300,
+    ignore_result=True,
+    acks_late=False,
+)
+def backfill_figure_kinds(
+    self,
+    rag_collection_id: str | None = None,
+    limit: int | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Classify ``source_images`` rows that have no ``figure_kind`` yet.
+
+    Args:
+        rag_collection_id: Limit backfill to a single course's RAG collection.
+            None processes every eligible row across all courses.
+        limit: Maximum number of rows to process in this invocation.
+        dry_run: If True, count eligible rows and log a preview but do not
+            call Claude or write to the DB.
+    """
+    return asyncio.run(
+        _run_kind_backfill(
+            task=self,
+            rag_collection_id=rag_collection_id,
+            limit=limit,
+            dry_run=dry_run,
+        )
+    )
+
+
+async def _run_kind_backfill(
+    task: Task,
+    rag_collection_id: str | None,
+    limit: int | None,
+    dry_run: bool,
+) -> dict:
+    # Same task-scoped engine pattern as _run_backfill — each asyncio.run()
+    # invocation gets its own pool bound to its own loop (#1827).
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        return await _run_kind_backfill_with_factory(
+            task=task,
+            rag_collection_id=rag_collection_id,
+            limit=limit,
+            dry_run=dry_run,
+            session_factory=session_factory,
+        )
+    finally:
+        await engine.dispose()
+
+
+async def _run_kind_backfill_with_factory(
+    task: Task,
+    rag_collection_id: str | None,
+    limit: int | None,
+    dry_run: bool,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> dict:
+    async with session_factory() as session:
+        stmt = select(SourceImage).where(
+            SourceImage.figure_kind.is_(None),
+            SourceImage.storage_url.is_not(None),
+        )
+        if rag_collection_id is not None:
+            stmt = stmt.where(SourceImage.rag_collection_id == rag_collection_id)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+
+        rows = (await session.execute(stmt)).scalars().all()
+        total = len(rows)
+
+        logger.info(
+            "Figure-kind backfill: eligible rows",
+            total=total,
+            rag_collection_id=rag_collection_id,
+            dry_run=dry_run,
+        )
+
+        task.update_state(
+            state="CLASSIFYING",
+            meta={
+                "step": "classifying",
+                "total": total,
+                "processed": 0,
+                "classified": 0,
+                "failed": 0,
+            },
+        )
+
+        if dry_run or total == 0:
+            return {
+                "status": "dry_run" if dry_run else "noop",
+                "eligible": total,
+                "classified": 0,
+                "failed": 0,
+            }
+
+        classified = 0
+        failed = 0
+        pending_commit = 0
+
+        async with httpx.AsyncClient(timeout=30.0) as http:
+            for idx, img in enumerate(rows):
+                try:
+                    upstream = await http.get(img.storage_url)
+                    upstream.raise_for_status()
+                    image_bytes = upstream.content
+                except Exception as exc:
+                    failed += 1
+                    logger.warning(
+                        "Failed to fetch image bytes for classification, skipping",
+                        source_image_id=str(img.id),
+                        storage_url=img.storage_url,
+                        error=str(exc),
+                    )
+                    continue
+
+                try:
+                    classification = await classify_figure(image_bytes=image_bytes)
+                except Exception as exc:
+                    failed += 1
+                    logger.warning(
+                        "Classification failed for source image, skipping",
+                        source_image_id=str(img.id),
+                        figure_number=img.figure_number,
+                        error=str(exc),
+                    )
+                    continue
+
+                img.figure_kind = classification.kind
+                session.add(img)
+                classified += 1
+                pending_commit += 1
+
+                if pending_commit >= _COMMIT_EVERY:
+                    await session.commit()
+                    pending_commit = 0
+
+                if (idx + 1) % 10 == 0 or idx + 1 == total:
+                    task.update_state(
+                        state="CLASSIFYING",
+                        meta={
+                            "step": "classifying",
+                            "total": total,
+                            "processed": idx + 1,
+                            "classified": classified,
+                            "failed": failed,
+                        },
+                    )
+
+        if pending_commit:
+            await session.commit()
+
+        return {
+            "status": "complete",
+            "eligible": total,
+            "classified": classified,
+            "failed": failed,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 slice 3 (#1852) — clean_flowchart SVG re-derivation backfill
+# ---------------------------------------------------------------------------
+
+
+class FlowchartSvgTask(Task):
+    """Celery base for the clean_flowchart SVG re-derivation backfill."""
+
+    def on_success(self, retval, task_id, args, kwargs):
+        logger.info("Flowchart SVG backfill completed", task_id=task_id, result=retval)
+
+    def on_failure(self, exc, task_id, args, kwargs, einfo):
+        logger.error("Flowchart SVG backfill failed", task_id=task_id, exception=str(exc))
+
+
+@celery_app.task(
+    bind=True,
+    base=FlowchartSvgTask,
+    time_limit=3600,
+    soft_time_limit=3300,
+    ignore_result=True,
+    acks_late=False,
+)
+def backfill_clean_flowchart_svgs(
+    self,
+    rag_collection_id: str | None = None,
+    limit: int | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Re-derive French SVGs for rows with ``figure_kind = 'clean_flowchart'``.
+
+    Eligible: ``figure_kind = 'clean_flowchart' AND storage_key_fr IS NULL AND
+    storage_url IS NOT NULL``. Fetches the English raster from MinIO,
+    extracts structure, translates, renders SVG, uploads, writes back
+    ``storage_key_fr`` + ``storage_url_fr``.
+    """
+    return asyncio.run(
+        _run_svg_backfill(
+            task=self,
+            rag_collection_id=rag_collection_id,
+            limit=limit,
+            dry_run=dry_run,
+        )
+    )
+
+
+async def _run_svg_backfill(
+    task: Task,
+    rag_collection_id: str | None,
+    limit: int | None,
+    dry_run: bool,
+) -> dict:
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        return await _run_svg_backfill_with_factory(
+            task=task,
+            rag_collection_id=rag_collection_id,
+            limit=limit,
+            dry_run=dry_run,
+            session_factory=session_factory,
+            storage=S3StorageService(),
+        )
+    finally:
+        await engine.dispose()
+
+
+async def _run_svg_backfill_with_factory(
+    task: Task,
+    rag_collection_id: str | None,
+    limit: int | None,
+    dry_run: bool,
+    session_factory: async_sessionmaker[AsyncSession],
+    storage: S3StorageService,
+) -> dict:
+    async with session_factory() as session:
+        stmt = select(SourceImage).where(
+            SourceImage.figure_kind == "clean_flowchart",
+            SourceImage.storage_key_fr.is_(None),
+            SourceImage.storage_url.is_not(None),
+        )
+        if rag_collection_id is not None:
+            stmt = stmt.where(SourceImage.rag_collection_id == rag_collection_id)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+
+        rows = (await session.execute(stmt)).scalars().all()
+        total = len(rows)
+
+        logger.info(
+            "Flowchart SVG backfill: eligible rows",
+            total=total,
+            rag_collection_id=rag_collection_id,
+            dry_run=dry_run,
+        )
+
+        task.update_state(
+            state="REDERIVING",
+            meta={
+                "step": "rederiving",
+                "total": total,
+                "processed": 0,
+                "rendered": 0,
+                "failed": 0,
+            },
+        )
+
+        if dry_run or total == 0:
+            return {
+                "status": "dry_run" if dry_run else "noop",
+                "eligible": total,
+                "rendered": 0,
+                "failed": 0,
+            }
+
+        rendered = 0
+        failed = 0
+        pending_commit = 0
+
+        async with httpx.AsyncClient(timeout=30.0) as http:
+            for idx, img in enumerate(rows):
+                try:
+                    upstream = await http.get(img.storage_url)
+                    upstream.raise_for_status()
+                    image_bytes = upstream.content
+                except Exception as exc:
+                    failed += 1
+                    logger.warning(
+                        "Failed to fetch image bytes for SVG re-derivation",
+                        source_image_id=str(img.id),
+                        storage_url=img.storage_url,
+                        error=str(exc),
+                    )
+                    continue
+
+                try:
+                    structure = await extract_flowchart_structure(image_bytes=image_bytes)
+                    translated = await translate_structure(structure, target_lang="fr")
+                    svg_bytes = render_svg(translated)
+                except Exception as exc:
+                    failed += 1
+                    logger.warning(
+                        "SVG re-derivation failed",
+                        source_image_id=str(img.id),
+                        figure_number=img.figure_number,
+                        error=str(exc),
+                    )
+                    continue
+
+                try:
+                    key = _svg_key_for(img)
+                    url = await storage.upload_bytes(
+                        key=key,
+                        data=svg_bytes,
+                        content_type="image/svg+xml",
+                    )
+                except Exception as exc:
+                    failed += 1
+                    logger.warning(
+                        "Failed to upload FR SVG to storage",
+                        source_image_id=str(img.id),
+                        error=str(exc),
+                    )
+                    continue
+
+                img.storage_key_fr = key
+                img.storage_url_fr = url
+                session.add(img)
+                rendered += 1
+                pending_commit += 1
+
+                if pending_commit >= _COMMIT_EVERY:
+                    await session.commit()
+                    pending_commit = 0
+
+                if (idx + 1) % 10 == 0 or idx + 1 == total:
+                    task.update_state(
+                        state="REDERIVING",
+                        meta={
+                            "step": "rederiving",
+                            "total": total,
+                            "processed": idx + 1,
+                            "rendered": rendered,
+                            "failed": failed,
+                        },
+                    )
+
+        if pending_commit:
+            await session.commit()
+
+        return {
+            "status": "complete",
+            "eligible": total,
+            "rendered": rendered,
+            "failed": failed,
+        }
+
+
+def _svg_key_for(img: SourceImage) -> str:
+    """Compute a deterministic MinIO key for the French-variant SVG of ``img``.
+
+    Mirrors the English-raster key computed at ingest in
+    ``RAGPipeline._process_images`` but with a ``.fr.svg`` suffix so the
+    same object path namespace is preserved and the FR variant is
+    discoverable next to its English original.
+    """
+    figure_label = img.figure_number or str(img.id)
+    safe_label = figure_label.replace(" ", "_").replace(".", "_")
+    prefix = img.rag_collection_id or img.source
+    return f"source-images/{prefix}/{img.page_number}_{safe_label}.fr.svg"

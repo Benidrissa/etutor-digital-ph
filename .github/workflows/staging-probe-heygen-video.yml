@@ -1,0 +1,57 @@
+name: Staging Probe HeyGen Video
+
+# One-off diagnostic: ask HeyGen /v3/videos/{video_id} for the raw
+# status of a specific video so we can see the full error payload
+# when our poller records "heygen reported failure" (which is the
+# default message when HeyGen returns failed without a specific
+# error string).
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_id:
+        description: "HeyGen provider_video_id"
+        required: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1
+        env:
+          VIDEO_ID: ${{ inputs.video_id }}
+        with:
+          host: 167.86.115.58
+          username: deploy
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: VIDEO_ID
+          script: |
+            set -e
+            cd ~/etutor
+            echo "=============================================="
+            echo "HeyGen /v3/videos/$VIDEO_ID raw response"
+            echo "=============================================="
+            cat > /tmp/probe_video.py <<'PYEOF'
+            import json, os, httpx
+
+            key = os.environ.get("HEYGEN_API_KEY")
+            vid = os.environ.get("VIDEO_ID")
+            assert key and vid, "HEYGEN_API_KEY or VIDEO_ID unset"
+
+            for path in (f"/v3/videos/{vid}", f"/v2/video_status.get?video_id={vid}"):
+                print(f"--- GET {path} ---")
+                r = httpx.get(
+                    f"https://api.heygen.com{path}",
+                    headers={"X-Api-Key": key, "Accept": "application/json"},
+                    timeout=30.0,
+                )
+                print(f"HTTP {r.status_code}")
+                try:
+                    print(json.dumps(r.json(), indent=2)[:2000])
+                except Exception:
+                    print(r.text[:500])
+                print()
+            PYEOF
+            docker cp /tmp/probe_video.py etutor-backend:/tmp/probe_video.py
+            docker compose exec -T -e VIDEO_ID="$VIDEO_ID" backend \
+              uv run python /tmp/probe_video.py

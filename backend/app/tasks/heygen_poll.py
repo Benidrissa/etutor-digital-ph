@@ -149,11 +149,7 @@ async def _reconcile_one(
         )
         return "timed_out"
 
-    api_version = _api_version_for(record)
-    status = await client.get_video(
-        str(record.provider_video_id),
-        api_version=api_version,
-    )
+    status = await client.get_video(str(record.provider_video_id))
     if status.status == "completed":
         if not status.video_url:
             record.status = "failed"
@@ -184,16 +180,3 @@ def _is_timed_out(record: GeneratedAudio) -> bool:
     if created.tzinfo is None:
         created = created.replace(tzinfo=UTC)
     return datetime.now(UTC) - created > _GENERATING_TIMEOUT
-
-
-def _api_version_for(record: GeneratedAudio) -> str:
-    """Read the HeyGen API version used when the row was created.
-
-    Written to ``media_metadata.api_version`` by the service at
-    dispatch time. Legacy rows predating the poller won't have it —
-    treat them as v2 so the previous Direct-Video flow keeps working
-    after the rollout of #1798.
-    """
-    metadata = record.media_metadata or {}
-    value = metadata.get("api_version") or "v2"
-    return "v3-agent" if value == "v3-agent" else "v2"
