@@ -1,5 +1,12 @@
-"""AI-backed translation utilities (issue #1820, #1844, #1852)."""
+"""AI-backed translation utilities (issues #1820, #1844, #1852, #1883)."""
 
+from app.ai.translation.complex_overlay import (
+    DiagramLabel,
+    DiagramLabels,
+    extract_label_positions,
+    render_overlay_svg,
+    translate_labels,
+)
 from app.ai.translation.figure_classifier import (
     FigureClassification,
     FigureKind,
@@ -19,6 +26,8 @@ from app.ai.translation.svg_rederiver import (
 )
 
 __all__ = [
+    "DiagramLabel",
+    "DiagramLabels",
     "FigureClassification",
     "FigureKind",
     "FigureTranslation",
@@ -27,7 +36,10 @@ __all__ = [
     "FlowchartStructure",
     "classify_figure",
     "extract_flowchart_structure",
+    "extract_label_positions",
+    "render_overlay_svg",
     "render_svg",
     "translate_figure_caption",
+    "translate_labels",
     "translate_structure",
 ]
