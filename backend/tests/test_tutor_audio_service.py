@@ -147,9 +147,7 @@ class TestCaching:
         # Cached: TTS not re-invoked.
         assert mock_service._call_tts.call_count == 1
 
-    async def test_different_language_synthesizes_separately(
-        self, db_session, mock_service
-    ):
+    async def test_different_language_synthesizes_separately(self, db_session, mock_service):
         conv = await _persisted_conversation(
             db_session,
             [

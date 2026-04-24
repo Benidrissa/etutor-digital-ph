@@ -63,16 +63,12 @@ class TutorAudioService:
             )
         msg = messages[message_index]
         if msg.get("role") != "assistant":
-            raise ValueError(
-                f"Only assistant messages support TTS; role was {msg.get('role')!r}"
-            )
+            raise ValueError(f"Only assistant messages support TTS; role was {msg.get('role')!r}")
         text = (msg.get("content") or "").strip()
         if not text:
             raise ValueError("Cannot synthesize empty message")
 
-        cached = await self._find_cached(
-            conversation.id, message_index, language, session
-        )
+        cached = await self._find_cached(conversation.id, message_index, language, session)
         if cached is not None and cached.status == "ready":
             return cached
 
@@ -89,9 +85,7 @@ class TutorAudioService:
                 await session.flush()
             except Exception:
                 await session.rollback()
-                cached = await self._find_cached(
-                    conversation.id, message_index, language, session
-                )
+                cached = await self._find_cached(conversation.id, message_index, language, session)
                 if cached is not None:
                     return cached
                 raise

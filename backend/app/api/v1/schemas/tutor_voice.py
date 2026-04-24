@@ -15,15 +15,9 @@ class TutorMessageAudioResponse(BaseModel):
     status: Literal["pending", "generating", "ready", "failed"] = Field(
         ..., description="Lifecycle status of the audio record"
     )
-    url: str | None = Field(
-        None, description="Public URL of the audio asset (when ready)"
-    )
-    duration_seconds: int | None = Field(
-        None, description="Estimated audio duration in seconds"
-    )
-    error_message: str | None = Field(
-        None, description="Failure reason when status=failed"
-    )
+    url: str | None = Field(None, description="Public URL of the audio asset (when ready)")
+    duration_seconds: int | None = Field(None, description="Estimated audio duration in seconds")
+    error_message: str | None = Field(None, description="Failure reason when status=failed")
 
 
 class VoiceSessionRequest(BaseModel):
@@ -36,12 +30,8 @@ class VoiceSessionResponse(BaseModel):
     """Ephemeral credentials the browser uses to connect to OpenAI Realtime."""
 
     session_id: UUID = Field(..., description="Internal tutor_voice_sessions row id")
-    openai_session_id: str | None = Field(
-        None, description="OpenAI-side session id"
-    )
-    client_secret: str = Field(
-        ..., description="Ephemeral token; goes in the Authorization header"
-    )
+    openai_session_id: str | None = Field(None, description="OpenAI-side session id")
+    client_secret: str = Field(..., description="Ephemeral token; goes in the Authorization header")
     expires_at: datetime = Field(..., description="UTC expiry of the ephemeral token")
     model: str = Field(..., description="Realtime model alias")
     minutes_used_today: int = Field(..., description="Voice minutes consumed so far today")
@@ -52,9 +42,7 @@ class VoiceSessionCloseRequest(BaseModel):
     """Client reports final duration when hanging up."""
 
     session_id: UUID = Field(..., description="Internal session id from /voice-session")
-    duration_seconds: int = Field(
-        ..., ge=0, description="Reported call duration in seconds"
-    )
+    duration_seconds: int = Field(..., ge=0, description="Reported call duration in seconds")
 
 
 class VoiceSessionCloseResponse(BaseModel):

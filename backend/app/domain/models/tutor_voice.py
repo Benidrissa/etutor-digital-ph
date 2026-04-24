@@ -77,9 +77,7 @@ class TutorVoiceSession(Base):
     """Audit log of live voice-call sessions for daily-minute cap enforcement."""
 
     __tablename__ = "tutor_voice_sessions"
-    __table_args__ = (
-        sa.Index("ix_tutor_voice_sessions_user_started", "user_id", "started_at"),
-    )
+    __table_args__ = (sa.Index("ix_tutor_voice_sessions_user_started", "user_id", "started_at"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(

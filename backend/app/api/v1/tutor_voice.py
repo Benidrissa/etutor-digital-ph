@@ -117,9 +117,7 @@ async def synthesize_message_audio(
     )
 
 
-async def _minutes_used_today(
-    user_id: uuid.UUID, db: AsyncSession
-) -> int:
+async def _minutes_used_today(user_id: uuid.UUID, db: AsyncSession) -> int:
     """Sum voice-session seconds for ``user_id`` since UTC midnight, rounded up to minutes."""
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     result = await db.execute(
@@ -248,9 +246,7 @@ async def close_voice_session(
     # lock a user out of the feature for the day.
     max_seconds = get_settings().tutor_voice_daily_minutes_cap * 60
     session_row.duration_seconds = max(0, min(body.duration_seconds, max_seconds))
-    session_row.ended_at = session_row.started_at + timedelta(
-        seconds=session_row.duration_seconds
-    )
+    session_row.ended_at = session_row.started_at + timedelta(seconds=session_row.duration_seconds)
     await db.commit()
 
     used = await _minutes_used_today(current_user.id, db)
