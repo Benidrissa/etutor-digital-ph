@@ -27,6 +27,13 @@ class TutorMessage(BaseModel):
     activity_suggestions: list[dict[str, str]] = Field(
         default_factory=list, description="Suggested activities"
     )
+    # Resolved figure metadata for any {{source_image:UUID}} markers in content.
+    # Populated by get_conversation() so history-loaded messages render the
+    # same inline images as the live stream (#1937).
+    source_image_refs: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Resolved source_image metadata for markers in content",
+    )
 
 
 class TutorChatRequest(BaseModel):

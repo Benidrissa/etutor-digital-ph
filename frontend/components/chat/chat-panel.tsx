@@ -209,9 +209,13 @@ export function ChatPanel({
             chapter: s.chapter ?? j + 1,
             page: s.page ?? 0,
           })),
+          // Voice output (#1932): listen button needs (conversationId, index).
           messageIndex: m.role === 'assistant' ? i : undefined,
           conversationId:
             m.role === 'assistant' ? activeConversationId : undefined,
+          // Source-image markers (#1937): backend resolves on GET so history
+          // messages render images identically to the live stream.
+          sourceImageRefs: m.source_image_refs,
         }));
         setMessages(loaded.length > 0 ? loaded : [welcomeMessage]);
       })
@@ -228,6 +232,10 @@ export function ChatPanel({
               chapter: s.chapter ?? j + 1,
               page: s.page ?? 0,
             })),
+            messageIndex: m.role === 'assistant' ? i : undefined,
+            conversationId:
+              m.role === 'assistant' ? activeConversationId : undefined,
+            sourceImageRefs: m.source_image_refs,
           }));
           setMessages(loaded.length > 0 ? loaded : [welcomeMessage]);
         } else {

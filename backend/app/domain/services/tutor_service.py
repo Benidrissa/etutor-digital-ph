@@ -45,6 +45,98 @@ COMPACT_SUMMARIZE_UP_TO = _sc().get("tutor-compaction-summarize-up-to", 15)
 
 SESSION_CONTEXT_TOKEN_BUDGET = _sc().get("tutor-context-token-budget", 1500)
 
+# Shared between the live-stream resolver and the GET-conversation resolver (#1937).
+_SOURCE_IMAGE_MARKER_RE = re.compile(r"\{\{source_image:([0-9a-f-]{36})\}\}", re.IGNORECASE)
+
+
+async def _resolve_source_images_by_uuid(
+    uuids: set[str],
+    session: AsyncSession,
+) -> dict[str, dict[str, Any]]:
+    """Fetch ``SourceImage`` rows for the given UUID strings and return a map
+    keyed on UUID string whose values have the exact shape the frontend
+    expects in ``sourceImageRefs`` entries.
+
+    Silent on missing UUIDs (returns only what was found) and on DB errors
+    (returns an empty map after logging). Keeps the live stream and the
+    history GET path from diverging in shape. See #1937.
+    """
+    if not uuids:
+        return {}
+    try:
+        result = await session.execute(
+            select(SourceImage).where(SourceImage.id.in_([uuid.UUID(u) for u in uuids]))
+        )
+    except Exception as exc:
+        logger.warning("Failed to resolve source image UUIDs", error=str(exc))
+        return {}
+
+    resolved: dict[str, dict[str, Any]] = {}
+    for img in result.scalars().all():
+        meta = img.to_meta_dict()
+        resolved[str(img.id)] = {
+            "id": str(img.id),
+            "figure_number": meta.get("figure_number"),
+            "caption": meta.get("caption"),
+            "caption_fr": meta.get("caption_fr") or meta.get("caption"),
+            "caption_en": meta.get("caption_en") or meta.get("caption"),
+            "attribution": meta.get("attribution"),
+            "image_type": meta.get("image_type", "unknown"),
+            "storage_url": meta.get("storage_url"),
+            "storage_url_fr": meta.get("storage_url_fr"),
+            "alt_text_fr": meta.get("alt_text_fr"),
+            "alt_text_en": meta.get("alt_text_en"),
+        }
+    return resolved
+
+
+async def _attach_source_image_refs(
+    messages: list[dict[str, Any]],
+    session: AsyncSession,
+) -> list[dict[str, Any]]:
+    """Return ``messages`` with ``source_image_refs`` added to each assistant
+    entry that contains ``{{source_image:UUID}}`` markers.
+
+    User messages are left untouched (listen/image rendering is assistant-only).
+    Missing UUIDs are silently dropped — same contract as the live-stream
+    resolver. Markers in a message are returned in first-appearance order so
+    the frontend's ``splitWithSourceImageMarkers`` renders correctly.
+    """
+    # First pass — collect the union of UUIDs across all assistant messages.
+    all_uuids: set[str] = set()
+    per_message_uuids: list[list[str]] = []
+    for msg in messages:
+        if msg.get("role") != "assistant":
+            per_message_uuids.append([])
+            continue
+        content = msg.get("content") or ""
+        uuids_in_order: list[str] = []
+        seen_local: set[str] = set()
+        for m in _SOURCE_IMAGE_MARKER_RE.finditer(content):
+            uid = m.group(1).lower()
+            if uid not in seen_local:
+                seen_local.add(uid)
+                uuids_in_order.append(uid)
+        per_message_uuids.append(uuids_in_order)
+        all_uuids.update(uuids_in_order)
+
+    resolved = await _resolve_source_images_by_uuid(all_uuids, session)
+
+    # Second pass — build each message's refs list without mutating input.
+    out: list[dict[str, Any]] = []
+    for msg, uuids_in_order in zip(messages, per_message_uuids, strict=False):
+        if not uuids_in_order:
+            out.append(msg)
+            continue
+        refs = [resolved[u] for u in uuids_in_order if u in resolved]
+        # Shallow-copy so existing callers that retain a reference to the
+        # conversation's stored messages (e.g. in-process tests) aren't
+        # surprised by a mutation.
+        enriched = dict(msg)
+        enriched["source_image_refs"] = refs
+        out.append(enriched)
+    return out
+
 
 @dataclass
 class SessionContext:
@@ -632,38 +724,18 @@ class TutorService:
             }
 
             # Resolve any {{source_image:UUID}} markers in the response that
-            # weren't captured via tool calls (e.g. from conversation history)
-            _IMG_RE = re.compile(r"\{\{source_image:([0-9a-f-]{36})\}\}", re.IGNORECASE)
-            seen_ids = {r["id"] for r in source_image_refs}
-            extra_ids = [
-                m.group(1) for m in _IMG_RE.finditer(full_response) if m.group(1) not in seen_ids
-            ]
+            # weren't captured via tool calls (e.g. from conversation history).
+            # Shares the resolver with get_conversation() so the shape stays
+            # identical between live stream and history GET (#1937).
+            seen_ids = {r["id"].lower() for r in source_image_refs}
+            extra_ids = {
+                m.group(1).lower()
+                for m in _SOURCE_IMAGE_MARKER_RE.finditer(full_response)
+                if m.group(1).lower() not in seen_ids
+            }
             if extra_ids:
-                try:
-                    db_imgs = await session.execute(
-                        select(SourceImage).where(
-                            SourceImage.id.in_([uuid.UUID(i) for i in extra_ids])
-                        )
-                    )
-                    for img in db_imgs.scalars().all():
-                        meta = img.to_meta_dict()
-                        source_image_refs.append(
-                            {
-                                "id": str(img.id),
-                                "figure_number": meta.get("figure_number"),
-                                "caption": meta.get("caption"),
-                                "caption_fr": meta.get("caption_fr") or meta.get("caption"),
-                                "caption_en": meta.get("caption_en") or meta.get("caption"),
-                                "attribution": meta.get("attribution"),
-                                "image_type": meta.get("image_type", "unknown"),
-                                "storage_url": meta.get("storage_url"),
-                                "storage_url_fr": meta.get("storage_url_fr"),
-                                "alt_text_fr": meta.get("alt_text_fr"),
-                                "alt_text_en": meta.get("alt_text_en"),
-                            }
-                        )
-                except Exception as exc:
-                    logger.warning("Failed to resolve extra image markers", error=str(exc))
+                resolved = await _resolve_source_images_by_uuid(extra_ids, session)
+                source_image_refs.extend(resolved.values())
 
             if source_image_refs:
                 yield {
@@ -709,7 +781,12 @@ class TutorService:
     async def get_conversation(
         self, user_id: str | uuid.UUID, conversation_id: uuid.UUID, session: AsyncSession
     ) -> dict[str, Any] | None:
-        """Get a specific conversation."""
+        """Get a specific conversation.
+
+        Assistant messages containing ``{{source_image:UUID}}`` markers have
+        ``source_image_refs`` attached with resolved figure metadata, so the
+        frontend can render images identically to the live-stream path (#1937).
+        """
         if isinstance(user_id, str):
             user_id = uuid.UUID(user_id)
 
@@ -722,10 +799,12 @@ class TutorService:
         if not conversation:
             return None
 
+        messages_out = await _attach_source_image_refs(conversation.messages or [], session)
+
         return {
             "id": conversation.id,
             "module_id": conversation.module_id,
-            "messages": conversation.messages,
+            "messages": messages_out,
             "created_at": conversation.created_at,
         }
 

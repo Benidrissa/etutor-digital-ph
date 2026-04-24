@@ -1,7 +1,7 @@
 'use client';
 
 import { authClient } from '@/lib/auth';
-import { API_BASE } from '@/lib/api';
+import { API_BASE, type SourceImageMeta } from '@/lib/api';
 
 export interface UploadedFile {
   file_id: string;
@@ -109,6 +109,10 @@ export interface ConversationMessage {
   sources: Array<{ source: string; chapter?: number; page?: number }>;
   timestamp: string;
   activity_suggestions: Array<{ type: string; label: string; url?: string }>;
+  // Resolved by backend on GET so history-loaded messages render images
+  // identically to live-stream messages (#1937). Optional for backward-compat
+  // with cached responses from before the field existed.
+  source_image_refs?: SourceImageMeta[];
 }
 
 export interface ConversationDetail {
