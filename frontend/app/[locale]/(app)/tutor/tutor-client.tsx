@@ -161,10 +161,10 @@ export function TutorPageClient() {
 
       <div className="flex-1 overflow-y-auto min-h-0">
         {isLoadingConversations ? (
-          <div className="p-2 space-y-2">
+          <div className="p-2 space-y-1.5">
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="p-3 rounded-lg border animate-pulse">
-                <div className="h-4 bg-muted rounded w-3/4 mb-2" />
+              <div key={i} className="p-2.5 rounded-lg border animate-pulse">
+                <div className="h-4 bg-muted rounded w-3/4 mb-1" />
                 <div className="h-3 bg-muted rounded w-full mb-1" />
                 <div className="h-3 bg-muted rounded w-1/3" />
               </div>
@@ -183,12 +183,12 @@ export function TutorPageClient() {
             </Button>
           </div>
         ) : (
-          <div className="p-2 space-y-2">
+          <div className="p-2 space-y-1.5">
             {conversations.map((conversation) => (
               <Card
                 key={conversation.id}
                 className={cn(
-                  'p-3 cursor-pointer transition-colors hover:bg-accent/50 group',
+                  'relative p-2.5 cursor-pointer transition-colors hover:bg-accent/50 group',
                   selectedConversation === conversation.id && 'bg-accent border-primary'
                 )}
                 onClick={() => handleConversationSelect(conversation.id)}
@@ -202,36 +202,34 @@ export function TutorPageClient() {
                   }
                 }}
               >
-                <div className="flex justify-between items-start mb-2">
-                  <h3 className="font-medium text-sm truncate pr-2">
+                <div className="flex justify-between items-start gap-2">
+                  <h3 className="font-medium text-sm truncate">
                     {conversation.preview
                       ? conversation.preview.slice(0, 40)
                       : t('newConversationTitle')}
                   </h3>
-                  <span className="text-xs text-muted-foreground shrink-0">
+                  <span className="text-xs text-muted-foreground shrink-0 leading-5">
                     {formatRelativeTime(conversation.last_message_at)}
                   </span>
                 </div>
                 {conversation.preview && (
-                  <p className="text-xs text-muted-foreground truncate mb-1">
+                  <p className="text-xs text-muted-foreground truncate mt-0.5">
                     {conversation.preview}
                   </p>
                 )}
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-muted-foreground">
-                    {t('messageCount', { count: conversation.message_count })}
-                  </span>
-                  <button
-                    className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity min-w-[44px] min-h-[44px] flex items-center justify-center md:opacity-0 md:group-hover:opacity-100"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDeleteTarget(conversation.id);
-                    }}
-                    aria-label={t('deleteConversation')}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
+                <span className="text-xs text-muted-foreground block mt-0.5 pr-8">
+                  {t('messageCount', { count: conversation.message_count })}
+                </span>
+                <button
+                  className="absolute right-1 bottom-1 h-8 w-8 p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity flex items-center justify-center"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteTarget(conversation.id);
+                  }}
+                  aria-label={t('deleteConversation')}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
               </Card>
             ))}
           </div>
