@@ -19,6 +19,8 @@ from app.ai.prompts.tutor import (
     TutorContext,
     get_activity_suggestions,
     get_compaction_prompt,
+    get_learner_block_text,
+    get_persona_block_text,
     get_socratic_system_prompt,
 )
 from app.ai.rag.embeddings import EmbeddingService
@@ -170,6 +172,170 @@ def _excerpt_from_generated_content(content: Any, max_chars: int) -> str:
     return text[:cutoff].rstrip() + "…"
 
 
+def _trim_text(text: str, max_chars: int, suffix: str = "…") -> str:
+    """Trim ``text`` to ~``max_chars`` on a paragraph or word boundary (#1984).
+
+    Used by the full-content renderers — when a single lesson/quiz/case body
+    is unreasonably long we want to cap it without slicing mid-word or
+    breaking mid-table.
+    """
+    if not text:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    # Prefer a paragraph boundary, then a sentence end, then a word boundary.
+    cutoff = text.rfind("\n\n", 0, max_chars)
+    if cutoff < int(max_chars * 0.6):
+        cutoff = text.rfind(". ", 0, max_chars)
+    if cutoff < int(max_chars * 0.6):
+        cutoff = text.rfind(" ", 0, max_chars)
+    if cutoff < int(max_chars * 0.6):
+        cutoff = max_chars
+    return text[:cutoff].rstrip() + suffix
+
+
+def _render_lesson_full(content: dict, max_chars: int, language: str) -> str:
+    """Render a generated lesson body as markdown for the system prompt (#1984).
+
+    Lesson shape (per ``LessonContent`` schema): introduction + concepts[]
+    + aof_example + synthesis + key_points[] + sources_cited[].
+    Trims the assembled markdown to ``max_chars`` so a single runaway lesson
+    can't consume the whole module budget.
+    """
+    if not isinstance(content, dict):
+        return ""
+    intro_label = "Introduction" if language == "en" else "Introduction"
+    concepts_label = "Key concepts" if language == "en" else "Concepts clés"
+    aof_label = "West African example" if language == "en" else "Exemple ouest-africain"
+    synthesis_label = "Synthesis" if language == "en" else "Synthèse"
+    key_points_label = "Key takeaways" if language == "en" else "Points clés"
+    sources_label = "Sources" if language == "en" else "Sources"
+
+    parts: list[str] = []
+    intro = (content.get("introduction") or content.get("summary") or "").strip()
+    if intro:
+        parts.append(f"_{intro_label}:_ {intro}")
+    concepts = content.get("concepts")
+    if isinstance(concepts, list) and concepts:
+        bullets = "\n".join(
+            f"  - {c.strip()}" for c in concepts if isinstance(c, str) and c.strip()
+        )
+        if bullets:
+            parts.append(f"_{concepts_label}:_\n{bullets}")
+    aof = (content.get("aof_example") or "").strip()
+    if aof:
+        parts.append(f"_{aof_label}:_ {aof}")
+    synthesis = (content.get("synthesis") or "").strip()
+    if synthesis:
+        parts.append(f"_{synthesis_label}:_ {synthesis}")
+    key_points = content.get("key_points")
+    if isinstance(key_points, list) and key_points:
+        bullets = "\n".join(
+            f"  - {kp.strip()}" for kp in key_points if isinstance(kp, str) and kp.strip()
+        )
+        if bullets:
+            parts.append(f"_{key_points_label}:_\n{bullets}")
+    sources = content.get("sources_cited")
+    if isinstance(sources, list) and sources:
+        srcs = ", ".join(s.strip() for s in sources if isinstance(s, str) and s.strip())
+        if srcs:
+            parts.append(f"_{sources_label}:_ {srcs}")
+    return _trim_text("\n".join(parts), max_chars)
+
+
+def _render_quiz_full(
+    content: dict, max_chars: int, language: str, include_answers: bool = True
+) -> str:
+    """Render a generated quiz with questions + (optionally) correct answers (#1984).
+
+    Including the correct answer + explanation lets the tutor *guide* a
+    learner through reasoning, rather than re-deriving the answer from
+    scratch on each question. Toggle via the ``tutor-include-quiz-answers``
+    setting.
+    """
+    if not isinstance(content, dict):
+        return ""
+    questions = content.get("questions")
+    if not isinstance(questions, list):
+        return ""
+    answer_label = "Correct answer" if language == "en" else "Réponse correcte"
+    explain_label = "Explanation" if language == "en" else "Explication"
+
+    rendered: list[str] = []
+    for idx, q in enumerate(questions, start=1):
+        if not isinstance(q, dict):
+            continue
+        question_text = (q.get("question") or q.get("prompt") or "").strip()
+        if not question_text:
+            continue
+        block = [f"  Q{idx}. {question_text}"]
+        options = q.get("options")
+        if isinstance(options, list):
+            for j, opt in enumerate(options):
+                if isinstance(opt, str) and opt.strip():
+                    block.append(f"    {chr(ord('A') + j)}. {opt.strip()}")
+        if include_answers:
+            correct_idx = q.get("correct_answer")
+            if (
+                isinstance(correct_idx, int)
+                and isinstance(options, list)
+                and 0 <= correct_idx < len(options)
+            ):
+                correct_letter = chr(ord("A") + correct_idx)
+                block.append(f"    _{answer_label}:_ {correct_letter}")
+            explanation = (q.get("explanation") or "").strip()
+            if explanation:
+                block.append(f"    _{explain_label}:_ {explanation}")
+        rendered.append("\n".join(block))
+    return _trim_text("\n\n".join(rendered), max_chars)
+
+
+def _render_case_full(content: Any, max_chars: int, language: str) -> str:
+    """Render a generated case study for the system prompt (#1984).
+
+    Handles two shapes:
+
+    * Structured ``CaseStudyContent`` (aof_context, real_data,
+      guided_questions, annotated_correction, sources_cited).
+    * Plain prose strings — when falling back to the legacy
+      ``module.case_study_fr|en`` text columns (no row in
+      ``generated_content``).
+    """
+    if isinstance(content, str):
+        return _trim_text(content.strip(), max_chars)
+    if not isinstance(content, dict):
+        return ""
+    context_label = "Context" if language == "en" else "Contexte"
+    data_label = "Real-world data" if language == "en" else "Données réelles"
+    questions_label = "Guided questions" if language == "en" else "Questions guidées"
+    correction_label = "Annotated correction" if language == "en" else "Correction annotée"
+    sources_label = "Sources" if language == "en" else "Sources"
+    parts: list[str] = []
+    aof_context = (content.get("aof_context") or content.get("body") or "").strip()
+    if aof_context:
+        parts.append(f"_{context_label}:_ {aof_context}")
+    real_data = (content.get("real_data") or "").strip()
+    if real_data:
+        parts.append(f"_{data_label}:_\n{real_data}")
+    guided = content.get("guided_questions")
+    if isinstance(guided, list) and guided:
+        bullets = "\n".join(f"  - {g.strip()}" for g in guided if isinstance(g, str) and g.strip())
+        if bullets:
+            parts.append(f"_{questions_label}:_\n{bullets}")
+    correction = (content.get("annotated_correction") or "").strip()
+    if correction:
+        parts.append(f"_{correction_label}:_ {correction}")
+    sources = content.get("sources_cited")
+    if isinstance(sources, list) and sources:
+        srcs = ", ".join(s.strip() for s in sources if isinstance(s, str) and s.strip())
+        if srcs:
+            parts.append(f"_{sources_label}:_ {srcs}")
+    summary = (content.get("summary") or "").strip()
+    if not parts and summary:
+        parts.append(summary)
+    return _trim_text("\n".join(parts), max_chars)
+
+
 async def _build_current_module_section(
     module_obj: Module | None,
     language: str,
@@ -177,34 +343,34 @@ async def _build_current_module_section(
     char_limit: int | None = None,
     excerpt_chars: int | None = None,
 ) -> str | None:
-    """Render the current module's unit / quiz / case-study detail (#1981).
+    """Render the current module's unit / quiz / case-study content (#1981, #1984).
 
     Returns ``None`` when no module is in scope (chat without a module
-    context) or when the module has no units. Otherwise emits a markdown-ish
-    section like::
+    context) or when the module has no units.
 
-        Module 1 — Introduction à la santé publique
-        - 1.1 Définitions et concepts clés ✓ (généré)
-          > Résumé : ce chapitre introduit les notions...
-        - 1.2 Histoire et acteurs internationaux 🔒 (à venir)
+    Behaviour evolved with #1984: instead of 200-char excerpts, we now render
+    the **full lesson body, full quiz (with answers), and full case study**
+    for every generated unit in the module — bounded by per-unit and
+    per-section char limits. The tutor can quote, cite, and reason from the
+    actual material rather than tool-calling for every concrete question.
 
-    Always includes unit titles (cheap). Includes short excerpts only for
-    units / case studies whose content has been generated and cached in
-    ``GeneratedContent`` for the requested ``language``. Hard-caps the whole
-    section so it coexists with syllabus + memory + previous-session compact
-    inside the existing session-context token budget.
+    Pending units (no GeneratedContent row) still show titles + a 🔒 marker
+    so the tutor knows what exists but isn't yet authored.
     """
     if module_obj is None:
         return None
 
     char_limit = (
-        char_limit if char_limit is not None else _sc().get("tutor-module-content-char-limit", 2000)
+        char_limit
+        if char_limit is not None
+        else _sc().get("tutor-module-content-char-limit", 30000)
     )
     excerpt_chars = (
         excerpt_chars
         if excerpt_chars is not None
-        else _sc().get("tutor-module-content-excerpt-chars", 200)
+        else _sc().get("tutor-module-content-excerpt-chars", 10000)
     )
+    include_quiz_answers = bool(_sc().get("tutor-include-quiz-answers", True))
 
     # Localised labels — keep the prompt natural in either FR or EN so the
     # tutor doesn't switch languages mid-thought.
@@ -212,12 +378,14 @@ async def _build_current_module_section(
         generated_marker = "✓ (généré)"
         pending_marker = "🔒 (à venir)"
         case_label = "Étude de cas"
-        excerpt_prefix = "Résumé : "
+        lesson_label = "Leçon"
+        quiz_label = "Quiz"
     else:
         generated_marker = "✓ (generated)"
         pending_marker = "🔒 (not yet generated)"
         case_label = "Case study"
-        excerpt_prefix = "Summary: "
+        lesson_label = "Lesson"
+        quiz_label = "Quiz"
 
     module_title = (
         getattr(module_obj, "title_fr", None)
@@ -282,24 +450,28 @@ async def _build_current_module_section(
         marker = generated_marker if (lesson or quiz) else pending_marker
         lines.append(f"- {prefix}{unit_title} {marker}".rstrip())
         if lesson:
-            excerpt = _excerpt_from_generated_content(lesson, excerpt_chars)
-            if excerpt:
-                lines.append(f"  > {excerpt_prefix}{excerpt}")
+            body = _render_lesson_full(lesson, excerpt_chars, language)
+            if body:
+                lines.append(f"  **{lesson_label}:**")
+                for body_line in body.split("\n"):
+                    lines.append(f"  {body_line}")
         if quiz:
-            quiz_excerpt = _excerpt_from_generated_content(quiz, excerpt_chars)
-            if quiz_excerpt:
-                quiz_label = "Quiz" if language == "en" else "Quiz"  # same word both langs
-                lines.append(f"  > {quiz_label}: {quiz_excerpt}")
+            body = _render_quiz_full(quiz, excerpt_chars, language, include_quiz_answers)
+            if body:
+                lines.append(f"  **{quiz_label}:**")
+                for body_line in body.split("\n"):
+                    lines.append(f"  {body_line}")
 
     # Case studies — prefer GeneratedContent rows (the new flow), fall back
     # to the module-level `case_study_fr|en` text columns when no row exists.
     if case_contents:
         for case in case_contents:
             title = (case.get("title") or case_label).strip()
-            excerpt = _excerpt_from_generated_content(case, excerpt_chars)
+            body = _render_case_full(case, excerpt_chars, language)
             lines.append(f"- {title} {generated_marker}")
-            if excerpt:
-                lines.append(f"  > {excerpt_prefix}{excerpt}")
+            if body:
+                for body_line in body.split("\n"):
+                    lines.append(f"  {body_line}")
     else:
         legacy_case = (
             getattr(module_obj, "case_study_fr", None)
@@ -307,10 +479,11 @@ async def _build_current_module_section(
             else getattr(module_obj, "case_study_en", None)
         )
         if isinstance(legacy_case, str) and legacy_case.strip():
-            excerpt = _excerpt_from_generated_content(legacy_case, excerpt_chars)
+            body = _render_case_full(legacy_case, excerpt_chars, language)
             lines.append(f"- {case_label} {generated_marker}")
-            if excerpt:
-                lines.append(f"  > {excerpt_prefix}{excerpt}")
+            if body:
+                for body_line in body.split("\n"):
+                    lines.append(f"  {body_line}")
 
     if len(lines) <= 1:
         # Header only — no units, no cases. Skip the section entirely so we
@@ -325,6 +498,204 @@ async def _build_current_module_section(
     if cutoff < int(char_limit * 0.6):
         cutoff = char_limit
     return rendered[:cutoff].rstrip() + "\n…"
+
+
+async def _build_course_block(
+    course: Any,
+    module_obj: Module | None,
+    language: str,
+    session: AsyncSession,
+    char_limit: int | None = None,
+) -> str | None:
+    """Render the course-level cacheable layer of the tutor prompt (#1984).
+
+    Stable per ``(course, language)`` — eligible for prompt caching across
+    every turn within a session that doesn't switch course.
+
+    Includes:
+      * Course title + domain.
+      * Full ``course.syllabus_context`` (no longer trimmed at 1.4k chars).
+      * Per-resource summary from ``course_resources.summary_text`` so the
+        tutor can name reference materials without a tool call.
+      * Cross-module map: every other module's title + a generated/pending
+        status marker so the tutor knows what's discoverable elsewhere.
+
+    Returns ``None`` when no course is in scope.
+    """
+    if course is None:
+        return None
+    char_limit = (
+        char_limit if char_limit is not None else _sc().get("tutor-course-block-char-limit", 20000)
+    )
+
+    if language == "fr":
+        title_label = "Cours"
+        domain_label = "Domaine"
+        syllabus_label = "Syllabus"
+        resources_label = "Ressources de référence"
+        modules_map_label = "Carte des modules"
+        generated_marker = "✓"
+        pending_marker = "🔒"
+    else:
+        title_label = "Course"
+        domain_label = "Domain"
+        syllabus_label = "Syllabus"
+        resources_label = "Reference resources"
+        modules_map_label = "Module map"
+        generated_marker = "✓"
+        pending_marker = "🔒"
+
+    course_title = (
+        getattr(course, "title_fr", None) if language == "fr" else getattr(course, "title_en", None)
+    ) or ""
+    course_domain = getattr(course, "domain", None) or course_title
+
+    parts: list[str] = []
+    if course_title:
+        parts.append(f"**{title_label}:** {course_title}")
+    if course_domain:
+        parts.append(f"**{domain_label}:** {course_domain}")
+
+    syllabus_text = (getattr(course, "syllabus_context", None) or "").strip()
+    if not syllabus_text:
+        syllabus_json = getattr(course, "syllabus_json", None)
+        if syllabus_json:
+            syllabus_text = _flatten_syllabus_json(syllabus_json).strip()
+    if syllabus_text:
+        parts.append(f"\n## {syllabus_label}\n{syllabus_text}")
+
+    # Reference resources — opt-out via setting if needed (heavy summaries).
+    try:
+        from app.domain.models.course_resource import CourseResource
+
+        result = await session.execute(
+            select(CourseResource).where(CourseResource.course_id == course.id)
+        )
+        resources = result.scalars().all()
+    except Exception as exc:  # pragma: no cover — defensive
+        logger.warning(
+            "Failed to load course resources for tutor prompt",
+            course_id=str(getattr(course, "id", "?")),
+            error=str(exc),
+        )
+        resources = []
+    resource_lines: list[str] = []
+    for res in resources:
+        title = (getattr(res, "filename", None) or getattr(res, "title", "")).strip()
+        summary = (getattr(res, "summary_text", None) or "").strip()
+        if not summary:
+            continue
+        if title:
+            resource_lines.append(f"- **{title}:** {summary}")
+        else:
+            resource_lines.append(f"- {summary}")
+    if resource_lines:
+        parts.append(f"\n## {resources_label}\n" + "\n".join(resource_lines))
+
+    # Cross-module map — gives the tutor a way to point learners across
+    # modules without loading every module's full content.
+    if bool(_sc().get("tutor-include-cross-module-map", True)):
+        modules_map_lines: list[str] = []
+        try:
+            from app.domain.models.module import Module as ModuleModel
+
+            mod_result = await session.execute(
+                select(ModuleModel)
+                .where(ModuleModel.course_id == course.id)
+                .order_by(ModuleModel.module_number.asc())
+            )
+            all_modules = mod_result.scalars().all()
+        except Exception:
+            all_modules = []
+        # Which modules have any GeneratedContent in this language? Single
+        # batched query — much cheaper than per-module probes.
+        generated_module_ids: set = set()
+        try:
+            gc_result = await session.execute(
+                select(GeneratedContent.module_id)
+                .where(GeneratedContent.language == language)
+                .distinct()
+            )
+            generated_module_ids = {mid for (mid,) in gc_result.all()}
+        except Exception:
+            pass
+        active_id = getattr(module_obj, "id", None)
+        for m in all_modules:
+            mtitle = (
+                getattr(m, "title_fr", None) if language == "fr" else getattr(m, "title_en", None)
+            ) or ""
+            mnumber = getattr(m, "module_number", None) or "?"
+            marker = generated_marker if m.id in generated_module_ids else pending_marker
+            you_are_here = " ← " + ("vous êtes ici" if language == "fr" else "you are here")
+            suffix = you_are_here if active_id is not None and m.id == active_id else ""
+            modules_map_lines.append(f"- {mnumber}. {mtitle} {marker}{suffix}")
+        if modules_map_lines:
+            parts.append(f"\n## {modules_map_label}\n" + "\n".join(modules_map_lines))
+
+    if not parts:
+        return None
+    rendered = "\n".join(parts)
+    if len(rendered) <= char_limit:
+        return rendered
+    cutoff = rendered.rfind("\n", 0, char_limit)
+    if cutoff < int(char_limit * 0.6):
+        cutoff = char_limit
+    return rendered[:cutoff].rstrip() + "\n…"
+
+
+def _assemble_cached_system(
+    persona_text: str,
+    course_text: str | None,
+    module_text: str | None,
+    learner_text: str,
+) -> list[dict[str, Any]]:
+    """Build the Anthropic ``system=`` argument as a list of cacheable blocks (#1984).
+
+    Layered most-stable-first so prompt caching hits the longest matching
+    prefix on every repeat turn:
+
+      1. Persona block — stable per (course, language, audience). Cached.
+      2. Course block — stable per (course, language). Cached.
+      3. Module block — stable per (module, language). Cached.
+      4. Learner block — per-conversation. **NOT** cached so memory updates
+         and progress changes mid-session don't bust the prefix above.
+
+    Empty optional blocks (``course_text`` / ``module_text``) are simply
+    omitted from the list, preserving the cache prefix for sessions without
+    course or module context.
+    """
+    blocks: list[dict[str, Any]] = [
+        {
+            "type": "text",
+            "text": persona_text,
+            "cache_control": {"type": "ephemeral"},
+        },
+    ]
+    if course_text:
+        blocks.append(
+            {
+                "type": "text",
+                "text": course_text,
+                "cache_control": {"type": "ephemeral"},
+            }
+        )
+    if module_text:
+        blocks.append(
+            {
+                "type": "text",
+                "text": module_text,
+                "cache_control": {"type": "ephemeral"},
+            }
+        )
+    blocks.append(
+        {
+            "type": "text",
+            "text": learner_text,
+            # No cache_control — this is the only per-conversation slice and
+            # changes whenever learner memory or progress updates.
+        }
+    )
+    return blocks
 
 
 async def _resolve_source_images_by_uuid(
@@ -724,6 +1095,13 @@ class TutorService:
 
             audience = detect_audience(course)
 
+            # Build the cacheable course-level block (#1984). Stable per
+            # (course, language) — eligible for prompt caching across every
+            # turn within a session.
+            course_block_text = await _build_course_block(
+                course, module_obj, effective_language, session
+            )
+
             context = TutorContext(
                 user_level=user.current_level,
                 user_language=effective_language,
@@ -746,7 +1124,20 @@ class TutorService:
                 age_max=audience.age_max,
             )
 
-            system_prompt = get_socratic_system_prompt(context, [])
+            # Layered, cacheable system prompt (#1984). Falls back to the
+            # legacy single-string path when caching is killed via setting.
+            caching_enabled = bool(_sc().get("tutor-context-caching-enabled", True))
+            if caching_enabled:
+                persona_block_text = get_persona_block_text(context)
+                learner_block_text = get_learner_block_text(context)
+                system_prompt: Any = _assemble_cached_system(
+                    persona_text=persona_block_text,
+                    course_text=course_block_text,
+                    module_text=current_module_content,
+                    learner_text=learner_block_text,
+                )
+            else:
+                system_prompt = get_socratic_system_prompt(context, [])
 
             conversation_history = await self._prepare_conversation_history(conversation)
 
@@ -793,6 +1184,26 @@ class TutorService:
                     max_tokens=_sc().get("tutor-response-max-tokens", 1500),
                     temperature=_sc().get("tutor-response-temperature", 0.7),
                 )
+
+                # Prompt-caching telemetry (#1984). Anthropic returns
+                # ``cache_read_input_tokens`` (cache hit) and
+                # ``cache_creation_input_tokens`` (cache write). Watching
+                # cache_read on turn 2+ tells us caching is actually working.
+                try:
+                    usage = getattr(response, "usage", None)
+                    if usage is not None:
+                        logger.info(
+                            "tutor_claude_call",
+                            model="claude-sonnet-4-6",
+                            input_tokens=getattr(usage, "input_tokens", None),
+                            output_tokens=getattr(usage, "output_tokens", None),
+                            cache_read=getattr(usage, "cache_read_input_tokens", None),
+                            cache_creation=getattr(usage, "cache_creation_input_tokens", None),
+                            user_id=str(user_id),
+                            tool_call_count=tool_call_count,
+                        )
+                except Exception:  # pragma: no cover — telemetry must never break the tutor
+                    pass
 
                 tool_use_blocks = [
                     block for block in response.content if isinstance(block, ToolUseBlock)
