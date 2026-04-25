@@ -20,12 +20,14 @@ import { ChatProvider } from '@/components/chat';
 import { cn } from '@/lib/utils';
 import {
   fetchConversations,
+  fetchLastTouchedModule,
   getOfflineConversations,
   invalidateConversationsCache,
   deleteConversation,
   deleteAllConversations,
   clearDraft,
   type ConversationSummary,
+  type LastTouchedModule,
 } from '@/lib/tutor-api';
 
 export function TutorPageClient() {
@@ -38,6 +40,11 @@ export function TutorPageClient() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [showClearAllDialog, setShowClearAllDialog] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // Anchor the standalone /tutor chat to the user's last-touched module so the
+  // tutor's prompt has a concrete module context (#1988). The user can dismiss
+  // the anchor via the badge × to fall back to a course-wide chat.
+  const [anchorModule, setAnchorModule] = useState<LastTouchedModule | null>(null);
+  const [anchorDismissed, setAnchorDismissed] = useState(false);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -68,6 +75,24 @@ export function TutorPageClient() {
     loadConversations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Default-anchor to the user's last-touched module on mount (#1988) so the
+  // tutor sees a real module context. Failure is silent — chat still works,
+  // just without the anchor.
+  useEffect(() => {
+    let cancelled = false;
+    fetchLastTouchedModule()
+      .then((mod) => {
+        if (!cancelled) setAnchorModule(mod);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const effectiveModuleId =
+    anchorDismissed || !anchorModule ? undefined : anchorModule.module_id;
 
   const formatRelativeTime = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -302,12 +327,40 @@ export function TutorPageClient() {
 
         {/* Main Chat Area */}
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          {/* Course/Module anchor badge (#1988) — surfaces the implicit
+              moduleId so the user knows which module the tutor is grounded
+              in, and can drop it for a course-wide chat. */}
+          {anchorModule && !anchorDismissed && (
+            <div
+              className="mx-3 mt-2 mb-1 flex items-center justify-between gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs"
+              role="status"
+              aria-live="polite"
+            >
+              <span className="truncate text-muted-foreground">
+                {t('anchoredToModule', {
+                  module:
+                    anchorModule.module_number != null
+                      ? `${anchorModule.module_number}. ${anchorModule.module_title}`
+                      : anchorModule.module_title,
+                })}
+              </span>
+              <button
+                type="button"
+                onClick={() => setAnchorDismissed(true)}
+                className="shrink-0 rounded p-1 text-muted-foreground hover:bg-primary/10 hover:text-foreground"
+                aria-label={t('dismissAnchor')}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          )}
           {selectedConversation !== undefined ? (
             <ChatPanel
               isOpen={true}
               onClose={() => {}}
               embedded={true}
               conversationId={selectedConversation}
+              moduleId={effectiveModuleId}
               onConversationCreated={handleConversationCreated}
               onMessageSent={handleMessageSent}
               onOpenConversations={() => setIsMobileDrawerOpen(true)}

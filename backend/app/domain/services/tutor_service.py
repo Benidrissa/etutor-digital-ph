@@ -1681,6 +1681,67 @@ class TutorService:
 
         return count
 
+    async def get_last_touched_module(
+        self, user_id: str | uuid.UUID, session: AsyncSession
+    ) -> dict[str, Any] | None:
+        """Return the user's most recently accessed module (#1988).
+
+        Used by the standalone ``/tutor`` page to anchor the chat in a
+        concrete module by default — without this the prompt's module block
+        is empty and the tutor can't cite specific units (the user-reported
+        symptom that prompted #1988).
+
+        Sources the recency from ``UserModuleProgress.last_accessed`` (the
+        same field ``progress_service.touch_course_interaction_by_module``
+        already updates on every learner action). Returns ``None`` when the
+        user has no recorded module activity yet.
+        """
+        from app.domain.models.course import Course
+        from app.domain.models.progress import UserModuleProgress
+
+        if isinstance(user_id, str):
+            user_id = uuid.UUID(user_id)
+
+        user = await session.get(User, user_id)
+        language = (user.preferred_language if user else "fr") or "fr"
+
+        result = await session.execute(
+            select(UserModuleProgress)
+            .where(
+                UserModuleProgress.user_id == user_id,
+                UserModuleProgress.last_accessed.is_not(None),
+            )
+            .order_by(UserModuleProgress.last_accessed.desc())
+            .limit(1)
+        )
+        progress = result.scalar_one_or_none()
+        if progress is None:
+            return None
+
+        module = await session.get(Module, progress.module_id)
+        if module is None:
+            # Defensive: progress row pointing at a deleted module. Skip.
+            return None
+        course = (
+            await session.get(Course, module.course_id)
+            if getattr(module, "course_id", None)
+            else None
+        )
+
+        module_title = (module.title_fr if language == "fr" else module.title_en) or ""
+        course_title = None
+        if course is not None:
+            course_title = (course.title_fr if language == "fr" else course.title_en) or None
+
+        return {
+            "module_id": module.id,
+            "module_number": getattr(module, "module_number", None),
+            "module_title": module_title,
+            "course_id": getattr(module, "course_id", None),
+            "course_title": course_title,
+            "last_accessed": progress.last_accessed,
+        }
+
     async def get_tutor_stats(
         self, user_id: str | uuid.UUID, session: AsyncSession
     ) -> dict[str, Any]:

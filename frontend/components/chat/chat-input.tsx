@@ -346,7 +346,15 @@ export function ChatInput({ onSendMessage, disabled = false, placeholder, conver
 
   const hasReadyFiles = pendingFiles.some((f) => f.fileId && !f.error);
   const isUploading = pendingFiles.some((f) => f.uploading);
-  const canSend = (message.trim() || hasReadyFiles) && !disabled && !isUploading;
+  // Mirror of the backend TutorChatRequest.message max_length cap (#1988).
+  // Bumped from 2 000 → 16 000 so a pasted page no longer 422s; the backend
+  // schema enforces the same limit independently.
+  const MESSAGE_CHAR_LIMIT = 16000;
+  const charCount = message.length;
+  const isOverLimit = charCount > MESSAGE_CHAR_LIMIT;
+  const showCounter = charCount > MESSAGE_CHAR_LIMIT * 0.8;
+  const canSend =
+    (message.trim() || hasReadyFiles) && !disabled && !isUploading && !isOverLimit;
 
   return (
     <div
@@ -415,18 +423,32 @@ export function ChatInput({ onSendMessage, disabled = false, placeholder, conver
             placeholder={actualPlaceholder}
             disabled={disabled}
             rows={1}
+            maxLength={MESSAGE_CHAR_LIMIT}
+            aria-invalid={isOverLimit}
             className={cn(
               'w-full resize-none rounded-md border border-input px-3 py-2',
               'text-sm bg-background placeholder:text-muted-foreground',
               'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
               'min-h-[44px] max-h-[120px]',
-              disabled && 'opacity-50 cursor-not-allowed'
+              disabled && 'opacity-50 cursor-not-allowed',
+              isOverLimit && 'border-destructive focus:ring-destructive'
             )}
             style={{
               lineHeight: '1.4',
               fontSize: '16px',
             }}
           />
+          {showCounter && (
+            <div
+              className={cn(
+                'absolute -top-5 right-1 text-[10px] tabular-nums',
+                isOverLimit ? 'text-destructive font-medium' : 'text-muted-foreground'
+              )}
+              aria-live="polite"
+            >
+              {t('charactersUsed', { used: charCount, limit: MESSAGE_CHAR_LIMIT })}
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col shrink-0">
