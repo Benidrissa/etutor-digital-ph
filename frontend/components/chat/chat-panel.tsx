@@ -273,6 +273,15 @@ export function ChatPanel({
       language: locale,
     });
 
+    // Pre-empt the localStorage cache as soon as the user sends, not just on
+    // the 'finished' SSE chunk. A dropped stream used to leave the cache
+    // serving the pre-message snapshot — and once the backend persists the
+    // user message early (#1975), that stale cache would re-hide it on next
+    // mount. Invalidate now so any later refetch goes to network.
+    if (activeConversationId) {
+      invalidateConversationCache(activeConversationId);
+    }
+
     abortControllerRef.current?.abort();
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
