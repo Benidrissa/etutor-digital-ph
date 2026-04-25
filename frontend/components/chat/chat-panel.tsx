@@ -436,6 +436,15 @@ export function ChatPanel({
                     m.id === aiMessageId ? { ...m, content: fullContent } : m
                   )
                 );
+                // Backend persists the user message before the LLM loop runs
+                // (#1975), so any error other than limit_reached (which fails
+                // before persist) leaves a new row in the sidebar that needs
+                // a refresh — without this the count stays stale until the
+                // user sends another message. (#1978)
+                if (errorCode !== 'limit_reached' && chunk.conversation_id) {
+                  invalidateConversationsCache();
+                  onMessageSent?.(chunk.conversation_id as string);
+                }
               }
             } catch {
               // Skip unparseable lines

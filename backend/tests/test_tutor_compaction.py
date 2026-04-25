@@ -148,9 +148,7 @@ async def test_prepare_history_with_compact_includes_context_note(tutor_service,
     assert history[1]["role"] == "assistant"
 
 
-async def test_prepare_history_with_compact_slices_from_high_water_mark(
-    tutor_service, sample_user
-):
+async def test_prepare_history_with_compact_slices_from_high_water_mark(tutor_service, sample_user):
     """Non-destructive compaction (#1978): the summary covers messages
     [0:compacted_through_position]; the rest of the messages array is sent
     verbatim. Counts the messages past the high-water mark.
@@ -256,6 +254,114 @@ async def test_compact_conversation_async_is_non_destructive(tutor_service, samp
     assert conv.compacted_through_position == COMPACT_SUMMARIZE_UP_TO
     # Originals are NOT deleted — that's the whole point of #1978.
     assert len(conv.messages) == n
+
+
+async def test_compaction_does_not_decrement_counters(tutor_service, sample_user):
+    """Compaction must never reduce ``user_messages_sent`` or ``total_messages``
+    — those are the source of truth for the daily limit and the sidebar count
+    respectively. Regression guard for the original bug where compaction
+    appeared to "refund" budget.
+    """
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    n = COMPACT_SUMMARIZE_UP_TO + 10
+    conv = _make_conversation(sample_user.id, n_messages=n)
+    conv.compacted_through_position = 0
+    # Simulate the live counters as they'd be after n messages.
+    conv.user_messages_sent = n // 2
+    conv.total_messages = n
+    pre_user = conv.user_messages_sent
+    pre_total = conv.total_messages
+    pre_messages = list(conv.messages)
+    conversation_id = conv.id
+
+    class FakeTextBlock:
+        def __init__(self, text):
+            self.text = text
+
+    mock_compact_response = MagicMock()
+    mock_compact_response.content = [FakeTextBlock("Résumé")]
+    tutor_service.anthropic.messages.create = AsyncMock(return_value=mock_compact_response)
+
+    mock_session = AsyncMock(spec=AsyncSession)
+    mock_execute_result = MagicMock()
+    mock_execute_result.scalar_one_or_none = MagicMock(return_value=conv)
+    mock_session.execute = AsyncMock(return_value=mock_execute_result)
+    mock_session.add = MagicMock()
+    mock_session.commit = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+
+    mock_engine = AsyncMock()
+    mock_engine.dispose = AsyncMock()
+    mock_session_factory = MagicMock()
+    mock_session_factory.return_value = mock_session
+
+    with (
+        patch("app.domain.services.tutor_service.create_async_engine", return_value=mock_engine),
+        patch(
+            "app.domain.services.tutor_service.async_sessionmaker",
+            return_value=mock_session_factory,
+        ),
+    ):
+        await tutor_service._compact_conversation_async(
+            conversation_id=conversation_id,
+            user_language="fr",
+        )
+
+    assert conv.user_messages_sent == pre_user, "compaction must not touch the daily counter"
+    assert conv.total_messages == pre_total, "compaction must not touch the sidebar counter"
+    assert conv.messages == pre_messages, "compaction must not mutate the messages array"
+
+
+async def test_compaction_advances_position_by_actual_slice_length(tutor_service, sample_user):
+    """When the slice is shorter than ``COMPACT_SUMMARIZE_UP_TO`` (boundary
+    case), ``compacted_through_position`` advances by the actual count, not the
+    constant — otherwise the next pass would skip messages that arrive later.
+    """
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    # 5 messages past the existing high-water mark — fewer than COMPACT_SUMMARIZE_UP_TO.
+    start = 30
+    extra = 5
+    conv = _make_conversation(sample_user.id, n_messages=start + extra)
+    conv.compacted_through_position = start
+    conversation_id = conv.id
+
+    class FakeTextBlock:
+        def __init__(self, text):
+            self.text = text
+
+    mock_compact_response = MagicMock()
+    mock_compact_response.content = [FakeTextBlock("Résumé partiel")]
+    tutor_service.anthropic.messages.create = AsyncMock(return_value=mock_compact_response)
+
+    mock_session = AsyncMock(spec=AsyncSession)
+    mock_execute_result = MagicMock()
+    mock_execute_result.scalar_one_or_none = MagicMock(return_value=conv)
+    mock_session.execute = AsyncMock(return_value=mock_execute_result)
+    mock_session.add = MagicMock()
+    mock_session.commit = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+    mock_engine = AsyncMock()
+    mock_engine.dispose = AsyncMock()
+    mock_session_factory = MagicMock()
+    mock_session_factory.return_value = mock_session
+
+    with (
+        patch("app.domain.services.tutor_service.create_async_engine", return_value=mock_engine),
+        patch(
+            "app.domain.services.tutor_service.async_sessionmaker",
+            return_value=mock_session_factory,
+        ),
+    ):
+        await tutor_service._compact_conversation_async(
+            conversation_id=conversation_id,
+            user_language="fr",
+        )
+
+    assert conv.compacted_through_position == start + extra
 
 
 async def test_message_count_updated_on_send(tutor_service, sample_user):

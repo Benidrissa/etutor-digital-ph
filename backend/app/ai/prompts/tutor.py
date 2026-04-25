@@ -20,7 +20,9 @@ class TutorContext:
     context_id: str | None = None
     course_title: str | None = None  # Human-readable course title (fr or en)
     course_domain: str | None = None  # e.g. "Santé Publique", "Marketing", ...
-    course_syllabus: str | None = None  # Compressed course outline injected into the system prompt (#1979)
+    course_syllabus: str | None = (
+        None  # Compressed course outline injected into the system prompt (#1979)
+    )
     learner_memory: str | None = None  # Pre-formatted memory text for system prompt
     is_kids: bool = False
     age_min: int | None = None

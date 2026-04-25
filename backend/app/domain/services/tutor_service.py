@@ -911,11 +911,14 @@ class TutorService:
         )
         rows = (await session.execute(messages_query)).scalars().all()
         if rows:
+            # Spread ``extra`` first so role/content from the dedicated columns
+            # always win — guards against a future caller stuffing ``role`` or
+            # ``content`` into the JSON ``extra`` payload.
             messages_full = [
                 {
+                    **(row.extra or {}),
                     "role": row.role,
                     "content": row.content,
-                    **(row.extra or {}),
                 }
                 for row in rows
             ]
@@ -1342,7 +1345,10 @@ class TutorService:
 
                 conversation.compacted_context = new_compact
                 conversation.compacted_at = datetime.utcnow()
-                conversation.compacted_through_position = end
+                # Advance by the actual slice length, not the constant. Otherwise
+                # a partial slice (when end > len(messages)) would mark unread
+                # messages as "summarised" and the next pass would skip them.
+                conversation.compacted_through_position = start + len(messages_to_compact)
                 # Intentionally NOT mutating conversation.messages,
                 # message_count, user_messages_sent, or total_messages — those
                 # are the source of truth for billing and the UI.
