@@ -18,7 +18,7 @@ declare const self: ServiceWorkerGlobalScope;
 const DAY_IN_SECONDS = 24 * 60 * 60;
 
 // Bump when storage shape or routing changes so clients drop stale caches.
-const CACHE_VERSION = "v2-canonical-unit-number";
+const CACHE_VERSION = "v3-tutor-no-cache";
 
 const OFFLINE_FALLBACK_URL = "/offline.html";
 
@@ -91,6 +91,9 @@ const serwist = new Serwist({
         // (#1908).
         if (url.pathname.startsWith("/api/v1/users/")) return false;
         if (url.pathname.startsWith("/api/v1/auth/")) return false;
+        // Same class as #1908: SWR serves the stale conversation list
+        // after a delete, so the deleted row appears to come back.
+        if (url.pathname.startsWith("/api/v1/tutor/")) return false;
         if (url.pathname.startsWith("/api/")) return true;
         return false;
       },
