@@ -124,9 +124,19 @@ async def build_tutor_context(
 
     course_title: str | None = None
     course_domain: str | None = None
+    course_syllabus: str | None = None
     if course:
         course_title = course.title_fr if effective_language == "fr" else course.title_en
         course_domain = course_title
+        # Same syllabus injection as the text tutor (#1979) so the voice path
+        # gives equally well-grounded answers. ``getattr`` keeps test doubles
+        # without these attributes happy.
+        from app.domain.services.tutor_service import _build_syllabus_for_prompt
+
+        course_syllabus = _build_syllabus_for_prompt(
+            getattr(course, "syllabus_context", None),
+            getattr(course, "syllabus_json", None),
+        )
 
     audience = detect_audience(course)
     learner_memory = await lm_service.format_for_prompt(user.id, session)
@@ -143,6 +153,7 @@ async def build_tutor_context(
         context_id=str(context_id) if context_id else None,
         course_title=course_title,
         course_domain=course_domain,
+        course_syllabus=course_syllabus,
         learner_memory=learner_memory,
         previous_session_context="",
         progress_snapshot="",
