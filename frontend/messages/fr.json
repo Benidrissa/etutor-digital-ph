@@ -341,7 +341,7 @@
     "send": "Envoyer",
     "typing": "Le tuteur écrit...",
     "offline": "Tuteur hors ligne",
-    "messageLimit": "{count}/{max} messages aujourd'hui",
+    "messageLimit": "{remaining}/{max} messages restants aujourd'hui",
     "messageLimitWarning": "Limite de messages quotidiens atteinte",
     "messageLimitWarningDescription": "Vous approchez de votre limite de messages quotidiens.",
     "messageLimitReached": "Limite de messages quotidiens atteinte",
