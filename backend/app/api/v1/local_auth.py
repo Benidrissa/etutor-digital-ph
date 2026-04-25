@@ -79,7 +79,7 @@ class TokenResponse(BaseModel):
 class RefreshTokenRequest(BaseModel):
     """Refresh token request."""
 
-    refresh_token: str
+    refresh_token: str | None = None
 
 
 class RefreshTokenResponse(BaseModel):
@@ -332,7 +332,7 @@ async def verify_totp(
             value=result["refresh_token"],
             httponly=True,
             secure=True,
-            samesite="strict",
+            samesite="lax",
             max_age=auth_service.jwt_service.refresh_token_expire_days * 24 * 60 * 60,
         )
 
@@ -377,7 +377,7 @@ async def login(
             value=result["refresh_token"],
             httponly=True,
             secure=True,
-            samesite="strict",
+            samesite="lax",
             max_age=auth_service.jwt_service.refresh_token_expire_days * 24 * 60 * 60,
         )
 
@@ -396,12 +396,15 @@ async def login(
 
 @router.post("/refresh", response_model=RefreshTokenResponse)
 async def refresh_token(
-    request: RefreshTokenRequest, db=Depends(get_db_session)
+    http_request: Request,
+    payload: RefreshTokenRequest | None = None,
+    db=Depends(get_db_session),
 ) -> RefreshTokenResponse:
     """Refresh access token using refresh token.
 
-    Args:
-        request: Refresh token
+    Reads the token from the request body, falling back to the `refresh_token`
+    HttpOnly cookie. The cookie fallback lets the long-lived session survive
+    WebView localStorage eviction.
 
     Returns:
         New access token
@@ -410,9 +413,18 @@ async def refresh_token(
         401: Invalid or expired refresh token
         500: Refresh failed
     """
+    token = (payload.refresh_token if payload else None) or http_request.cookies.get(
+        "refresh_token"
+    )
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token required",
+        )
+
     try:
         auth_service = LocalAuthService(db)
-        result = await auth_service.refresh_access_token(request.refresh_token)
+        result = await auth_service.refresh_access_token(token)
 
         logger.info("Token refreshed successfully")
         return RefreshTokenResponse(**result)
@@ -518,7 +530,7 @@ async def logout(
         success = await auth_service.logout(request.refresh_token)
 
         # Clear refresh token cookie
-        response.delete_cookie(key="refresh_token", httponly=True, secure=True, samesite="strict")
+        response.delete_cookie(key="refresh_token", httponly=True, secure=True, samesite="lax")
 
         if success:
             logger.info("User logged out successfully")
@@ -530,7 +542,7 @@ async def logout(
     except Exception as e:
         logger.error("Logout error", error=str(e))
         # Don't raise error for logout, just clear cookie
-        response.delete_cookie(key="refresh_token", httponly=True, secure=True, samesite="strict")
+        response.delete_cookie(key="refresh_token", httponly=True, secure=True, samesite="lax")
         return {"message": "Logged out"}
 
 
@@ -613,7 +625,7 @@ async def login_with_password(
             value=result["refresh_token"],
             httponly=True,
             secure=True,
-            samesite="strict",
+            samesite="lax",
             max_age=auth_service.jwt_service.refresh_token_expire_days * 24 * 60 * 60,
         )
 
@@ -773,7 +785,7 @@ async def verify_email_otp(
             value=result["refresh_token"],
             httponly=True,
             secure=True,
-            samesite="strict",
+            samesite="lax",
             max_age=auth_service.jwt_service.refresh_token_expire_days * 24 * 60 * 60,
         )
 
@@ -858,7 +870,7 @@ async def verify_login_otp(
             value=result["refresh_token"],
             httponly=True,
             secure=True,
-            samesite="strict",
+            samesite="lax",
             max_age=auth_service.jwt_service.refresh_token_expire_days * 24 * 60 * 60,
         )
 
@@ -941,7 +953,7 @@ async def verify_phone_otp(
             value=result["refresh_token"],
             httponly=True,
             secure=True,
-            samesite="strict",
+            samesite="lax",
             max_age=auth_service.jwt_service.refresh_token_expire_days * 24 * 60 * 60,
         )
 
@@ -1007,7 +1019,7 @@ async def verify_login_phone_otp(
             value=result["refresh_token"],
             httponly=True,
             secure=True,
-            samesite="strict",
+            samesite="lax",
             max_age=auth_service.jwt_service.refresh_token_expire_days * 24 * 60 * 60,
         )
 
