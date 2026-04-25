@@ -5,6 +5,7 @@ import { useRouter } from "@/i18n/routing";
 import { useLocale } from "next-intl";
 import { usePathname } from "next/navigation";
 import { identifyUser } from "@/lib/analytics";
+import { authClient } from "@/lib/auth";
 
 function getStoredToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -33,6 +34,28 @@ function isPublicAppPath(pathname: string): boolean {
   return PUBLIC_APP_PATHS.some((p) => p.test(pathname));
 }
 
+function identifyFromStorage(): void {
+  const storedUser = localStorage.getItem("user");
+  if (!storedUser) return;
+  try {
+    const user = JSON.parse(storedUser) as {
+      id?: string;
+      country?: string;
+      current_level?: number;
+      preferred_language?: string;
+    };
+    if (user.id) {
+      identifyUser(user.id, {
+        country: user.country,
+        level: user.current_level,
+        preferred_language: user.preferred_language,
+      });
+    }
+  } catch {
+    // ignore malformed user data
+  }
+}
+
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const locale = useLocale();
@@ -40,6 +63,22 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const [authorized, setAuthorized] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const authorize = () => {
+      if (cancelled) return;
+      identifyFromStorage();
+      startTransition(() => setAuthorized(true));
+    };
+
+    const redirectToLogin = () => {
+      if (cancelled) return;
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      localStorage.removeItem("user");
+      router.replace("/login");
+    };
+
     // Allow public routes through without authentication
     if (isPublicAppPath(pathname)) {
       startTransition(() => setAuthorized(true));
@@ -47,34 +86,21 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     }
 
     const token = getStoredToken();
-    if (!token || isTokenExpired(token)) {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
-      localStorage.removeItem("user");
-      router.replace("/login");
+    if (token && !isTokenExpired(token)) {
+      authorize();
       return;
     }
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) {
-      try {
-        const user = JSON.parse(storedUser) as {
-          id?: string;
-          country?: string;
-          current_level?: number;
-          preferred_language?: string;
-        };
-        if (user.id) {
-          identifyUser(user.id, {
-            country: user.country,
-            level: user.current_level,
-            preferred_language: user.preferred_language,
-          });
-        }
-      } catch {
-        // ignore malformed user data
-      }
-    }
-    startTransition(() => setAuthorized(true));
+
+    // Try to refresh before bouncing to login: middleware accepts the 90-day
+    // refresh_token cookie, so a missing/expired access_token is recoverable.
+    authClient
+      .refreshAccessToken()
+      .then(authorize)
+      .catch(redirectToLogin);
+
+    return () => {
+      cancelled = true;
+    };
   }, [locale, pathname, router]);
 
   if (!authorized) {

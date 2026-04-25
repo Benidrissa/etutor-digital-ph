@@ -185,7 +185,7 @@ class AuthClient {
       localStorage.setItem('user', JSON.stringify(authResponse.user));
       // Set cookie for server-side middleware auth check
       const maxAge = authResponse.expires_in || 900;
-      document.cookie = `access_token=${authResponse.access_token}; path=/; max-age=${maxAge}; SameSite=Strict; Secure`;
+      document.cookie = `access_token=${authResponse.access_token}; path=/; max-age=${maxAge}; SameSite=Lax; Secure`;
     }
   }
 
@@ -198,7 +198,7 @@ class AuthClient {
       localStorage.removeItem('refresh_token');
       localStorage.removeItem('user');
       // Clear middleware auth cookie
-      document.cookie = 'access_token=; path=/; max-age=0; SameSite=Strict; Secure';
+      document.cookie = 'access_token=; path=/; max-age=0; SameSite=Lax; Secure';
     }
   }
 
@@ -262,18 +262,18 @@ class AuthClient {
   }
 
   /**
-   * Refresh access token using refresh token
+   * Refresh access token using refresh token.
+   * Sends the localStorage token if present; otherwise relies on the
+   * HttpOnly refresh_token cookie (backend reads cookie when body omitted).
    */
   async refreshAccessToken(): Promise<void> {
-    if (!this.refreshToken) {
-      throw new AuthError('No refresh token available');
-    }
+    const body = this.refreshToken
+      ? JSON.stringify({ refresh_token: this.refreshToken })
+      : JSON.stringify({});
 
     const response = await this.apiCall<RefreshTokenResponse>('/refresh', {
       method: 'POST',
-      body: JSON.stringify({
-        refresh_token: this.refreshToken,
-      }),
+      body,
     });
 
     this.accessToken = response.access_token;
@@ -281,7 +281,7 @@ class AuthClient {
       localStorage.setItem('access_token', response.access_token);
       // Update middleware auth cookie
       const maxAge = response.expires_in || 900;
-      document.cookie = `access_token=${response.access_token}; path=/; max-age=${maxAge}; SameSite=Strict; Secure`;
+      document.cookie = `access_token=${response.access_token}; path=/; max-age=${maxAge}; SameSite=Lax; Secure`;
     }
   }
 
