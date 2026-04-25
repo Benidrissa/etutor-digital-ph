@@ -341,7 +341,7 @@
     "send": "Send",
     "typing": "The tutor is typing...",
     "offline": "Tutor is offline",
-    "messageLimit": "{count}/{max} messages today",
+    "messageLimit": "{remaining}/{max} messages left today",
     "messageLimitWarning": "Daily message limit reached",
     "messageLimitWarningDescription": "You are approaching your daily message limit.",
     "messageLimitReached": "Daily message limit reached",
