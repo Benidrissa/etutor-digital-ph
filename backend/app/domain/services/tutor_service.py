@@ -61,6 +61,70 @@ def _message_extra(msg: dict[str, Any]) -> dict[str, Any] | None:
     return extra or None
 
 
+# Soft cap on the syllabus text injected into the tutor system prompt (#1979).
+# At ~4 chars/token this is roughly 350 tokens — well under the existing
+# SESSION_CONTEXT_TOKEN_BUDGET (1500) shared with learner memory and previous
+# session compact, leaving headroom for both.
+_SYLLABUS_PROMPT_CHAR_LIMIT = 1400
+
+
+def _build_syllabus_for_prompt(
+    syllabus_context: str | None,
+    syllabus_json: dict | list | None,
+) -> str | None:
+    """Pick the best available syllabus representation and trim it to fit
+    inside the tutor system prompt (#1979).
+
+    Prefers the prose ``syllabus_context`` (already human-readable). Falls
+    back to a flattened tree of headings extracted from ``syllabus_json``
+    when only structured data is available. Returns ``None`` when neither is
+    populated so course-less or pre-syllabus conversations skip the section.
+    """
+    text = (syllabus_context or "").strip()
+    if not text and syllabus_json:
+        text = _flatten_syllabus_json(syllabus_json).strip()
+    if not text:
+        return None
+    if len(text) <= _SYLLABUS_PROMPT_CHAR_LIMIT:
+        return text
+    # Cut on a paragraph/line boundary close to the limit so we don't slice a
+    # heading mid-word. Falls back to a hard slice if no boundary is nearby.
+    cutoff = text.rfind("\n", 0, _SYLLABUS_PROMPT_CHAR_LIMIT)
+    if cutoff < int(_SYLLABUS_PROMPT_CHAR_LIMIT * 0.6):
+        cutoff = _SYLLABUS_PROMPT_CHAR_LIMIT
+    return text[:cutoff].rstrip() + "\n…"
+
+
+def _flatten_syllabus_json(node: Any, depth: int = 0) -> str:
+    """Walk a structured syllabus tree and emit a markdown-ish bullet list.
+
+    The shape isn't formally specified — different generators produce dicts
+    with ``modules``/``units``/``lessons`` arrays, lists of dicts with
+    ``title``/``name``/``label`` keys, or plain strings. We dig defensively
+    so a bad shape just produces less text rather than a 500.
+    """
+    lines: list[str] = []
+    indent = "  " * depth
+    if isinstance(node, dict):
+        title = node.get("title") or node.get("name") or node.get("label")
+        if title:
+            lines.append(f"{indent}- {title}")
+            depth_for_children = depth + 1
+        else:
+            depth_for_children = depth
+        for key in ("modules", "units", "lessons", "chapters", "sections", "items"):
+            child = node.get(key)
+            if child:
+                lines.append(_flatten_syllabus_json(child, depth_for_children))
+    elif isinstance(node, list):
+        for item in node:
+            lines.append(_flatten_syllabus_json(item, depth))
+    elif isinstance(node, str):
+        if node.strip():
+            lines.append(f"{indent}- {node.strip()}")
+    return "\n".join(line for line in lines if line)
+
+
 async def _resolve_source_images_by_uuid(
     uuids: set[str],
     session: AsyncSession,
@@ -422,11 +486,17 @@ class TutorService:
             course = await self._resolve_course(course_id, module_id, module_obj, user_id, session)
             course_title = None
             course_domain = None
+            course_syllabus = None
             rag_collection_id = None
             if course:
                 course_title = course.title_fr if effective_language == "fr" else course.title_en
                 course_domain = course_domain or course_title
                 rag_collection_id = course.rag_collection_id
+                # Syllabus injected into the system prompt so the tutor can
+                # situate concepts within the course progression (#1979).
+                course_syllabus = _build_syllabus_for_prompt(
+                    course.syllabus_context, course.syllabus_json
+                )
 
                 # Touch course interaction for recent-courses ranking
                 try:
@@ -450,6 +520,7 @@ class TutorService:
                 context_id=str(context_id) if context_id else None,
                 course_title=course_title,
                 course_domain=course_domain,
+                course_syllabus=course_syllabus,
                 learner_memory=session_ctx.learner_memory,
                 previous_session_context=session_ctx.previous_compact,
                 progress_snapshot=session_ctx.progress_snapshot,

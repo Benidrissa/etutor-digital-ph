@@ -20,6 +20,7 @@ class TutorContext:
     context_id: str | None = None
     course_title: str | None = None  # Human-readable course title (fr or en)
     course_domain: str | None = None  # e.g. "Santé Publique", "Marketing", ...
+    course_syllabus: str | None = None  # Compressed course outline injected into the system prompt (#1979)
     learner_memory: str | None = None  # Pre-formatted memory text for system prompt
     is_kids: bool = False
     age_min: int | None = None
@@ -96,7 +97,7 @@ def get_socratic_system_prompt(context: TutorContext, rag_chunks: list[dict[str,
 - Pays: {country_context}
 - Module actuel: {_format_current_module(context)}
 - Mode: {"Socratique (guidage par questions)" if context.tutor_mode == "socratic" else "Explicatif (réponses directes)"}
-{_format_progress_section(context.progress_snapshot)}{_format_memory_section(context.learner_memory)}{_format_previous_session_section(context.previous_session_context)}{kids_section}
+{_format_progress_section(context.progress_snapshot)}{_format_memory_section(context.learner_memory)}{_format_previous_session_section(context.previous_session_context)}{_format_syllabus_section(context.course_syllabus, context.user_language)}{kids_section}
 
 {pedagogical_section}
 
@@ -243,6 +244,31 @@ def _format_progress_section(progress_snapshot: str | None) -> str:
     if not progress_snapshot:
         return ""
     return f"\n## PROGRESSION ACTUELLE\n{progress_snapshot}"
+
+
+def _format_syllabus_section(course_syllabus: str | None, language: str) -> str:
+    """Inject the course syllabus into the system prompt (#1979).
+
+    Caller is expected to have already trimmed the syllabus to a token-safe
+    size — this helper just renders the section header. When no syllabus is
+    available the section is omitted so course-less conversations look the
+    same as before.
+    """
+    if not course_syllabus:
+        return ""
+    if language == "fr":
+        header = "SYLLABUS DU COURS"
+        hint = (
+            "Utilise ce plan pour cadrer tes explications, situer les concepts dans la "
+            "progression du cours et orienter l'apprenant vers les modules pertinents."
+        )
+    else:
+        header = "COURSE SYLLABUS"
+        hint = (
+            "Use this outline to frame your explanations, situate concepts within the "
+            "course progression, and point the learner to the relevant modules."
+        )
+    return f"\n## {header}\n{course_syllabus}\n({hint})"
 
 
 def _format_age_range(age_min: int | None, age_max: int | None, language: str) -> str:
