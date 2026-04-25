@@ -23,6 +23,9 @@ class TutorContext:
     course_syllabus: str | None = (
         None  # Compressed course outline injected into the system prompt (#1979)
     )
+    current_module_content: str | None = (
+        None  # Per-unit detail of the active module — titles always, excerpts when generated (#1981)
+    )
     learner_memory: str | None = None  # Pre-formatted memory text for system prompt
     is_kids: bool = False
     age_min: int | None = None
@@ -99,7 +102,7 @@ def get_socratic_system_prompt(context: TutorContext, rag_chunks: list[dict[str,
 - Pays: {country_context}
 - Module actuel: {_format_current_module(context)}
 - Mode: {"Socratique (guidage par questions)" if context.tutor_mode == "socratic" else "Explicatif (réponses directes)"}
-{_format_progress_section(context.progress_snapshot)}{_format_memory_section(context.learner_memory)}{_format_previous_session_section(context.previous_session_context)}{_format_syllabus_section(context.course_syllabus, context.user_language)}{kids_section}
+{_format_progress_section(context.progress_snapshot)}{_format_memory_section(context.learner_memory)}{_format_previous_session_section(context.previous_session_context)}{_format_syllabus_section(context.course_syllabus, context.user_language)}{_format_module_content_section(context.current_module_content, context.user_language)}{kids_section}
 
 {pedagogical_section}
 
@@ -271,6 +274,32 @@ def _format_syllabus_section(course_syllabus: str | None, language: str) -> str:
             "course progression, and point the learner to the relevant modules."
         )
     return f"\n## {header}\n{course_syllabus}\n({hint})"
+
+
+def _format_module_content_section(current_module_content: str | None, language: str) -> str:
+    """Inject the current module's unit/quiz/case-study detail into the prompt (#1981).
+
+    Caller is expected to have trimmed the content to a token-safe size — this
+    helper just renders the section header. When no module is in scope the
+    section is omitted, matching the syllabus path.
+    """
+    if not current_module_content:
+        return ""
+    if language == "fr":
+        header = "DÉTAIL DU MODULE ACTUEL"
+        hint = (
+            "Utilise ce détail pour pointer l'apprenant vers une leçon précise par "
+            "son numéro et son titre, citer les contenus déjà générés, et signaler "
+            "honnêtement quand un contenu n'est pas encore généré."
+        )
+    else:
+        header = "CURRENT MODULE DETAIL"
+        hint = (
+            "Use this detail to point the learner to a specific lesson by its "
+            "number and title, quote already-generated content, and honestly flag "
+            "when a unit has not yet been generated."
+        )
+    return f"\n## {header}\n{current_module_content}\n({hint})"
 
 
 def _format_age_range(age_min: int | None, age_max: int | None, language: str) -> str:
