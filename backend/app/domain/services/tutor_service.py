@@ -23,8 +23,10 @@ from app.ai.prompts.tutor import (
 )
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
+from app.domain.models.content import GeneratedContent
 from app.domain.models.conversation import TutorConversation, TutorMessage
 from app.domain.models.module import Module
+from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.source_image import SourceImage
 from app.domain.models.user import User
 from app.domain.services.analytics_service import AnalyticsService
@@ -123,6 +125,206 @@ def _flatten_syllabus_json(node: Any, depth: int = 0) -> str:
         if node.strip():
             lines.append(f"{indent}- {node.strip()}")
     return "\n".join(line for line in lines if line)
+
+
+def _excerpt_from_generated_content(content: Any, max_chars: int) -> str:
+    """Extract a short, prompt-friendly excerpt from a ``GeneratedContent.content`` JSON (#1981).
+
+    The shape varies per ``content_type`` (lesson / quiz / case): some store
+    ``text``, some ``body``, some ``summary``, some nest under ``sections`` or
+    ``introduction``. Prefer the most overview-friendly key, fall back to a
+    stringified preview. Always trims to ``max_chars`` on a word boundary
+    where possible so the prompt doesn't show half-words.
+    """
+    if not content:
+        return ""
+    text: str | None = None
+    if isinstance(content, dict):
+        for key in ("summary", "introduction", "intro", "text", "body", "explanation"):
+            value = content.get(key)
+            if isinstance(value, str) and value.strip():
+                text = value.strip()
+                break
+        if text is None:
+            # Fall back to first non-empty string value at the top level so
+            # quizzes (whose top-level shape is `{"questions": [...]}`) still
+            # produce *something* useful.
+            for value in content.values():
+                if isinstance(value, str) and value.strip():
+                    text = value.strip()
+                    break
+        if text is None and isinstance(content.get("questions"), list) and content["questions"]:
+            first_q = content["questions"][0]
+            if isinstance(first_q, dict):
+                text = (first_q.get("question") or first_q.get("prompt") or "").strip() or None
+    elif isinstance(content, str):
+        text = content.strip()
+    if not text:
+        return ""
+    text = " ".join(text.split())  # collapse whitespace to keep prompt compact
+    if len(text) <= max_chars:
+        return text
+    cutoff = text.rfind(" ", 0, max_chars)
+    if cutoff < int(max_chars * 0.6):
+        cutoff = max_chars
+    return text[:cutoff].rstrip() + "…"
+
+
+async def _build_current_module_section(
+    module_obj: Module | None,
+    language: str,
+    session: AsyncSession,
+    char_limit: int | None = None,
+    excerpt_chars: int | None = None,
+) -> str | None:
+    """Render the current module's unit / quiz / case-study detail (#1981).
+
+    Returns ``None`` when no module is in scope (chat without a module
+    context) or when the module has no units. Otherwise emits a markdown-ish
+    section like::
+
+        Module 1 — Introduction à la santé publique
+        - 1.1 Définitions et concepts clés ✓ (généré)
+          > Résumé : ce chapitre introduit les notions...
+        - 1.2 Histoire et acteurs internationaux 🔒 (à venir)
+
+    Always includes unit titles (cheap). Includes short excerpts only for
+    units / case studies whose content has been generated and cached in
+    ``GeneratedContent`` for the requested ``language``. Hard-caps the whole
+    section so it coexists with syllabus + memory + previous-session compact
+    inside the existing session-context token budget.
+    """
+    if module_obj is None:
+        return None
+
+    char_limit = (
+        char_limit if char_limit is not None else _sc().get("tutor-module-content-char-limit", 2000)
+    )
+    excerpt_chars = (
+        excerpt_chars
+        if excerpt_chars is not None
+        else _sc().get("tutor-module-content-excerpt-chars", 200)
+    )
+
+    # Localised labels — keep the prompt natural in either FR or EN so the
+    # tutor doesn't switch languages mid-thought.
+    if language == "fr":
+        generated_marker = "✓ (généré)"
+        pending_marker = "🔒 (à venir)"
+        case_label = "Étude de cas"
+        excerpt_prefix = "Résumé : "
+    else:
+        generated_marker = "✓ (generated)"
+        pending_marker = "🔒 (not yet generated)"
+        case_label = "Case study"
+        excerpt_prefix = "Summary: "
+
+    module_title = (
+        getattr(module_obj, "title_fr", None)
+        if language == "fr"
+        else getattr(module_obj, "title_en", None)
+    )
+    module_number = getattr(module_obj, "module_number", None)
+    if module_title and module_number:
+        header = f"Module {module_number} — {module_title}"
+    elif module_title:
+        header = module_title
+    else:
+        header = f"Module {module_number}" if module_number else "Module"
+
+    # Single batched lookup keyed on (module_id, language). FR and EN are
+    # stored as separate rows, so we only fetch the user's effective language.
+    content_index: dict[tuple[str, str], dict] = {}
+    case_contents: list[dict] = []
+    try:
+        result = await session.execute(
+            select(GeneratedContent).where(
+                GeneratedContent.module_id == module_obj.id,
+                GeneratedContent.language == language,
+            )
+        )
+        for row in result.scalars().all():
+            content_obj = row.content if isinstance(row.content, dict) else {}
+            unit_id = str(content_obj.get("unit_id") or "").strip()
+            if row.content_type == "case":
+                case_contents.append(content_obj)
+            elif unit_id:
+                content_index[(row.content_type, unit_id)] = content_obj
+    except Exception as exc:  # pragma: no cover — defensive: bad DB shouldn't 500 the tutor
+        logger.warning(
+            "Failed to load GeneratedContent for module section",
+            module_id=str(module_obj.id),
+            error=str(exc),
+        )
+
+    # Units — preserve order via order_index. ``selectinload`` should have
+    # populated this; fall back to an empty list rather than triggering a
+    # lazy load (which would explode in async code).
+    units: list[ModuleUnit] = []
+    try:
+        units = sorted(
+            list(getattr(module_obj, "units", []) or []),
+            key=lambda u: getattr(u, "order_index", 0) or 0,
+        )
+    except Exception:
+        units = []
+
+    lines: list[str] = [header]
+
+    for unit in units:
+        unit_title = (
+            getattr(unit, "title_fr", None) if language == "fr" else getattr(unit, "title_en", None)
+        ) or ""
+        unit_number = getattr(unit, "unit_number", None) or ""
+        prefix = f"{unit_number} — " if unit_number else ""
+        lesson = content_index.get(("lesson", unit_number))
+        quiz = content_index.get(("quiz", unit_number))
+        marker = generated_marker if (lesson or quiz) else pending_marker
+        lines.append(f"- {prefix}{unit_title} {marker}".rstrip())
+        if lesson:
+            excerpt = _excerpt_from_generated_content(lesson, excerpt_chars)
+            if excerpt:
+                lines.append(f"  > {excerpt_prefix}{excerpt}")
+        if quiz:
+            quiz_excerpt = _excerpt_from_generated_content(quiz, excerpt_chars)
+            if quiz_excerpt:
+                quiz_label = "Quiz" if language == "en" else "Quiz"  # same word both langs
+                lines.append(f"  > {quiz_label}: {quiz_excerpt}")
+
+    # Case studies — prefer GeneratedContent rows (the new flow), fall back
+    # to the module-level `case_study_fr|en` text columns when no row exists.
+    if case_contents:
+        for case in case_contents:
+            title = (case.get("title") or case_label).strip()
+            excerpt = _excerpt_from_generated_content(case, excerpt_chars)
+            lines.append(f"- {title} {generated_marker}")
+            if excerpt:
+                lines.append(f"  > {excerpt_prefix}{excerpt}")
+    else:
+        legacy_case = (
+            getattr(module_obj, "case_study_fr", None)
+            if language == "fr"
+            else getattr(module_obj, "case_study_en", None)
+        )
+        if isinstance(legacy_case, str) and legacy_case.strip():
+            excerpt = _excerpt_from_generated_content(legacy_case, excerpt_chars)
+            lines.append(f"- {case_label} {generated_marker}")
+            if excerpt:
+                lines.append(f"  > {excerpt_prefix}{excerpt}")
+
+    if len(lines) <= 1:
+        # Header only — no units, no cases. Skip the section entirely so we
+        # don't waste tokens on a content-free heading.
+        return None
+
+    rendered = "\n".join(lines)
+    if len(rendered) <= char_limit:
+        return rendered
+    # Trim on a line boundary near the cap so we never slice mid-bullet.
+    cutoff = rendered.rfind("\n", 0, char_limit)
+    if cutoff < int(char_limit * 0.6):
+        cutoff = char_limit
+    return rendered[:cutoff].rstrip() + "\n…"
 
 
 async def _resolve_source_images_by_uuid(
@@ -470,17 +672,31 @@ class TutorService:
                 user.preferred_language = locale
                 session.add(user)
 
-            # Resolve module title for human-readable system prompt
+            # Resolve module title for human-readable system prompt. Eager-
+            # load ``units`` so we can render the within-module structure for
+            # the tutor (#1981) without a separate round-trip.
+            from sqlalchemy.orm import selectinload
+
             module_title = None
             module_number = None
             module_obj = None
             if module_id:
-                module_obj = await session.get(Module, module_id)
+                result = await session.execute(
+                    select(Module).where(Module.id == module_id).options(selectinload(Module.units))
+                )
+                module_obj = result.scalar_one_or_none()
                 if module_obj:
                     module_title = (
                         module_obj.title_fr if effective_language == "fr" else module_obj.title_en
                     )
                     module_number = module_obj.module_number
+
+            # Build the per-module unit/quiz/case-study detail (#1981). Returns
+            # None when no module is in scope, in which case the section is
+            # omitted from the prompt.
+            current_module_content = await _build_current_module_section(
+                module_obj, effective_language, session
+            )
 
             # Resolve course context: explicit > from module > from enrollment
             course = await self._resolve_course(course_id, module_id, module_obj, user_id, session)
@@ -521,6 +737,7 @@ class TutorService:
                 course_title=course_title,
                 course_domain=course_domain,
                 course_syllabus=course_syllabus,
+                current_module_content=current_module_content,
                 learner_memory=session_ctx.learner_memory,
                 previous_session_context=session_ctx.previous_compact,
                 progress_snapshot=session_ctx.progress_snapshot,

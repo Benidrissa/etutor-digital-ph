@@ -109,16 +109,36 @@ async def build_tutor_context(
     effective_language = locale if locale in ("fr", "en") else user.preferred_language
     lm_service = learner_memory_service or LearnerMemoryService()
 
+    from sqlalchemy.orm import selectinload
+
     module_title: str | None = None
     module_number: int | None = None
     module_obj: Module | None = None
     if module_id:
-        module_obj = await session.get(Module, module_id)
+        # Eager-load units so the voice path can render the within-module
+        # detail too (#1981) without a second round-trip. Wrapped in try/except
+        # because some test doubles route only ``session.get`` and don't expect
+        # a Module-shaped result from ``execute``.
+        module_obj = None
+        try:
+            result = await session.execute(
+                select(Module).where(Module.id == module_id).options(selectinload(Module.units))
+            )
+            candidate = result.scalar_one_or_none()
+            # Only accept the candidate if it actually quacks like a Module.
+            if candidate is not None and hasattr(candidate, "title_fr"):
+                module_obj = candidate
+        except Exception:
+            pass
+        if module_obj is None:
+            module_obj = await session.get(Module, module_id)
         if module_obj:
             module_title = (
-                module_obj.title_fr if effective_language == "fr" else module_obj.title_en
+                getattr(module_obj, "title_fr", None)
+                if effective_language == "fr"
+                else getattr(module_obj, "title_en", None)
             )
-            module_number = module_obj.module_number
+            module_number = getattr(module_obj, "module_number", None)
 
     course = await resolve_course(course_id, module_id, module_obj, user.id, session)
 
@@ -138,6 +158,14 @@ async def build_tutor_context(
             getattr(course, "syllabus_json", None),
         )
 
+    # Same per-module detail as the text tutor (#1981). Returns None when
+    # there's no module in scope; the section is then omitted from the prompt.
+    from app.domain.services.tutor_service import _build_current_module_section
+
+    current_module_content = await _build_current_module_section(
+        module_obj, effective_language, session
+    )
+
     audience = detect_audience(course)
     learner_memory = await lm_service.format_for_prompt(user.id, session)
 
@@ -154,6 +182,7 @@ async def build_tutor_context(
         course_title=course_title,
         course_domain=course_domain,
         course_syllabus=course_syllabus,
+        current_module_content=current_module_content,
         learner_memory=learner_memory,
         previous_session_context="",
         progress_snapshot="",
