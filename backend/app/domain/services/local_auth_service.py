@@ -1311,9 +1311,7 @@ class LocalAuthService:
             except PhoneOTPError as e:
                 raise AuthenticationError(str(e))
 
-            existing = await self.db.scalar(
-                select(User).where(User.phone_number == phone)
-            )
+            existing = await self.db.scalar(select(User).where(User.phone_number == phone))
             if existing:
                 raise AuthenticationError("User already exists")
 
@@ -1376,9 +1374,7 @@ class LocalAuthService:
         """Verify phone OTP and complete registration. Returns auth tokens."""
         try:
             try:
-                otp_result = await self.phone_otp_service.verify_otp(
-                    otp_id, otp_code, ip_address
-                )
+                otp_result = await self.phone_otp_service.verify_otp(otp_id, otp_code, ip_address)
             except PhoneOTPError as e:
                 raise AuthenticationError(str(e))
 
@@ -1480,9 +1476,7 @@ class LocalAuthService:
         """Verify a login phone OTP and issue auth tokens."""
         try:
             try:
-                otp_result = await self.phone_otp_service.verify_otp(
-                    otp_id, otp_code, ip_address
-                )
+                otp_result = await self.phone_otp_service.verify_otp(otp_id, otp_code, ip_address)
             except PhoneOTPError as e:
                 raise AuthenticationError(str(e))
 

@@ -70,9 +70,7 @@ class WhatsAppService:
             return True
 
         lang_code = "en_US" if language == "en" else "fr"
-        url = (
-            f"{self.api_base_url}/{self.api_version}/{self.phone_number_id}/messages"
-        )
+        url = f"{self.api_base_url}/{self.api_version}/{self.phone_number_id}/messages"
         # WhatsApp authentication templates require both a body parameter and
         # a button parameter (the "copy code" button) carrying the OTP. Both
         # use the same code value.

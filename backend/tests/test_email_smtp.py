@@ -17,9 +17,7 @@ from app.domain.services.email_service import EmailService
 async def test_send_otp_email_uses_smtp_relay():
     svc = EmailService()
     with patch("app.domain.services.email_service.aiosmtplib.send", new=AsyncMock()) as mock_send:
-        ok = await svc.send_otp_email(
-            "user@example.com", "123456", "registration", "fr"
-        )
+        ok = await svc.send_otp_email("user@example.com", "123456", "registration", "fr")
     assert ok is True
     assert mock_send.called
     kwargs = mock_send.call_args.kwargs
