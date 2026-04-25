@@ -457,6 +457,11 @@ class TutorService:
                 "has_files": bool(file_content_blocks),
             }
 
+            # Persist the user's message before the LLM loop runs (#1975).
+            # Stream interruptions between here and end-of-stream then lose
+            # only the assistant reply — recoverable — instead of both sides.
+            await self._persist_user_message(conversation, user_msg_stored, session)
+
             if file_content_blocks:
                 user_content: list[Any] = [*file_content_blocks, {"type": "text", "text": message}]
                 conversation_history.append({"role": "user", "content": user_content})
@@ -666,7 +671,9 @@ class TutorService:
                 "tool_calls_count": tool_call_count,
             }
 
-            updated_messages = conversation.messages + [user_msg_stored, assistant_msg_stored]
+            # User message was already committed before the LLM loop (#1975);
+            # this commit only adds the assistant reply on top of it.
+            updated_messages = conversation.messages + [assistant_msg_stored]
             conversation.messages = updated_messages
             conversation.message_count = len(updated_messages)
             # Index of the just-persisted assistant reply — the frontend needs
@@ -1109,6 +1116,26 @@ class TutorService:
                 )
 
         return claude_messages
+
+    async def _persist_user_message(
+        self,
+        conversation: TutorConversation,
+        user_msg: dict[str, Any],
+        session: AsyncSession,
+    ) -> None:
+        """Append the user's message to the conversation and commit immediately.
+
+        Splitting this from the assistant-reply commit is the durability fix for
+        #1975: a stream interruption (mobile dropout, AbortController, container
+        restart) between message receipt and end-of-stream used to lose both
+        sides of the exchange because they shared a single commit. With this
+        helper called before the LLM loop, only the assistant reply is at risk
+        — and the user can see their message persisted on reload and retry.
+        """
+        conversation.messages = conversation.messages + [user_msg]
+        conversation.message_count = len(conversation.messages)
+        session.add(conversation)
+        await session.commit()
 
     async def _compact_conversation_async(
         self,

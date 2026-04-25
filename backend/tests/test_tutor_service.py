@@ -460,3 +460,66 @@ async def test_get_conversation_returns_messages(tutor_service, sample_user, sam
     assert result["id"] == sample_conversation.id
     assert result["messages"] == sample_conversation.messages
     assert "created_at" in result
+
+
+# Regression tests for #1975 — split user/assistant commits so a stream
+# interruption between message receipt and end-of-stream doesn't lose both
+# sides of the exchange.
+
+
+async def test_persist_user_message_appends_and_commits(tutor_service, sample_conversation):
+    """User message must be appended to conversation.messages and committed."""
+    sample_conversation.messages = []
+    sample_conversation.message_count = 0
+    mock_session = AsyncMock(spec=AsyncSession)
+
+    user_msg = {
+        "role": "user",
+        "content": "What is hypertension?",
+        "timestamp": datetime.now(UTC).isoformat(),
+        "has_files": False,
+    }
+
+    await tutor_service._persist_user_message(sample_conversation, user_msg, mock_session)
+
+    assert sample_conversation.messages == [user_msg]
+    assert sample_conversation.message_count == 1
+    mock_session.add.assert_called_once_with(sample_conversation)
+    assert mock_session.commit.await_count == 1
+
+
+async def test_persist_user_message_preserves_existing_messages(tutor_service, sample_conversation):
+    """Helper must not clobber prior turns — appending only."""
+    prior_user = {"role": "user", "content": "earlier", "timestamp": "t0"}
+    prior_assistant = {"role": "assistant", "content": "earlier reply", "timestamp": "t1"}
+    sample_conversation.messages = [prior_user, prior_assistant]
+    sample_conversation.message_count = 2
+    mock_session = AsyncMock(spec=AsyncSession)
+
+    new_user = {"role": "user", "content": "follow-up", "timestamp": "t2"}
+    await tutor_service._persist_user_message(sample_conversation, new_user, mock_session)
+
+    assert sample_conversation.messages == [prior_user, prior_assistant, new_user]
+    assert sample_conversation.message_count == 3
+    assert mock_session.commit.await_count == 1
+
+
+async def test_persist_user_message_commit_durability_invariant(tutor_service, sample_conversation):
+    """The contract is: when this returns, the new message is durable.
+
+    A bare flush() would have left the row visible only inside the request's
+    session — a follow-up GET on a different connection would 404 (#1625
+    pattern). This test guards against accidentally regressing to flush.
+    """
+    sample_conversation.messages = []
+    sample_conversation.message_count = 0
+    mock_session = AsyncMock(spec=AsyncSession)
+
+    await tutor_service._persist_user_message(
+        sample_conversation,
+        {"role": "user", "content": "x", "timestamp": "t"},
+        mock_session,
+    )
+
+    # commit() — not just flush() — is required for cross-session visibility.
+    assert mock_session.commit.await_count >= 1
