@@ -14,6 +14,7 @@ from app.domain.services.email_otp_service import EmailOTPService
 from app.domain.services.email_service import EmailService
 from app.domain.services.jwt_auth_service import JWTAuthService
 from app.domain.services.password_service import PasswordService
+from app.domain.services.phone_otp_service import PhoneOTPError, PhoneOTPService, normalize_phone
 from app.domain.services.platform_settings_service import SettingsCache
 from app.domain.services.totp_service import TOTPService
 from app.infrastructure.config.settings import settings
@@ -36,6 +37,7 @@ class LocalAuthService:
         self.totp_service = TOTPService()
         self.email_service = EmailService()
         self.email_otp_service = EmailOTPService(db)
+        self.phone_otp_service = PhoneOTPService(db)
         self.password_service = PasswordService()
 
     async def register_user(
@@ -1283,4 +1285,250 @@ class LocalAuthService:
         except Exception as e:
             await self.db.rollback()
             logger.error("Login OTP verification failed", otp_id=otp_id, error=str(e))
+            raise AuthenticationError(f"Login verification failed: {e}")
+
+    # =========================================================================
+    # Phone OTP (WhatsApp) — registration + login
+    # =========================================================================
+
+    async def register_user_with_phone_otp(
+        self,
+        phone_number: str,
+        name: str,
+        preferred_language: str = "fr",
+        country: str | None = None,
+        professional_role: str | None = None,
+        ip_address: str | None = None,
+    ) -> dict[str, Any]:
+        """Register a phone-only user and send a WhatsApp OTP.
+
+        Mirrors register_user_with_email_otp. The user record is created
+        without TOTP/password; verifying the OTP issues the auth tokens.
+        """
+        try:
+            try:
+                phone = normalize_phone(phone_number)
+            except PhoneOTPError as e:
+                raise AuthenticationError(str(e))
+
+            existing = await self.db.scalar(select(User).where(User.phone_number == phone))
+            if existing:
+                raise AuthenticationError("User already exists")
+
+            user = User(
+                id=uuid4(),
+                email=None,
+                phone_number=phone,
+                name=name,
+                preferred_language=preferred_language,
+                country=country,
+                professional_role=professional_role,
+                current_level=1,
+                streak_days=0,
+                role=UserRole.user,
+                last_active=datetime.utcnow(),
+                created_at=datetime.utcnow(),
+            )
+            self.db.add(user)
+            await self.db.commit()
+
+            try:
+                otp_result = await self.phone_otp_service.send_registration_otp(
+                    phone, user.id, preferred_language, ip_address
+                )
+            except PhoneOTPError as e:
+                # Roll back the user creation so a failed send doesn't strand
+                # an unverified record that would block re-registration.
+                await self.db.delete(user)
+                await self.db.commit()
+                raise AuthenticationError(str(e))
+
+            logger.info(
+                "User registration with phone OTP initiated",
+                user_id=str(user.id),
+                phone=phone,
+            )
+
+            return {
+                "user_id": str(user.id),
+                "phone_number": phone,
+                "name": name,
+                "verification_method": "phone_otp",
+                "channel": "whatsapp",
+                "otp_id": otp_result["otp_id"],
+                "expires_at": otp_result["expires_at"],
+                "expires_in_seconds": otp_result["expires_in_seconds"],
+            }
+
+        except AuthenticationError:
+            await self.db.rollback()
+            raise
+        except Exception as e:
+            await self.db.rollback()
+            logger.error("Phone OTP registration failed", phone=phone_number, error=str(e))
+            raise AuthenticationError(f"Registration failed: {e}")
+
+    async def verify_phone_otp_registration(
+        self, otp_id: str, otp_code: str, ip_address: str | None = None
+    ) -> dict[str, Any]:
+        """Verify phone OTP and complete registration. Returns auth tokens."""
+        try:
+            try:
+                otp_result = await self.phone_otp_service.verify_otp(otp_id, otp_code, ip_address)
+            except PhoneOTPError as e:
+                raise AuthenticationError(str(e))
+
+            if not otp_result["verified"] or otp_result["purpose"] != "registration":
+                raise AuthenticationError("Invalid OTP verification")
+
+            user = otp_result.get("user")
+            if not user:
+                raise AuthenticationError("User not found after OTP verification")
+
+            user_obj = await self.db.scalar(select(User).where(User.id == UUID(user["id"])))
+            if not user_obj:
+                raise AuthenticationError("User not found")
+
+            access_token = self.jwt_service.create_access_token(
+                user_id=user["id"],
+                email=user.get("email"),
+                phone_number=user.get("phone_number"),
+                preferred_language=user["preferred_language"],
+                country=user["country"],
+                current_level=user["current_level"],
+                role=user_obj.role.value,
+            )
+
+            refresh_token = self.jwt_service.create_refresh_token()
+            refresh_record = RefreshToken(
+                id=uuid4(),
+                user_id=user_obj.id,
+                token_hash=self.jwt_service.hash_token(refresh_token),
+                expires_at=self.jwt_service.get_token_expiry("refresh"),
+                created_at=datetime.utcnow(),
+            )
+            self.db.add(refresh_record)
+            await self.db.commit()
+
+            logger.info(
+                "Phone OTP registration completed",
+                user_id=user["id"],
+                phone=user["phone_number"],
+            )
+
+            return {
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "token_type": "bearer",
+                "expires_in": self.jwt_service.access_token_expire_minutes * 60,
+                "user": {**user, "role": user_obj.role},
+            }
+
+        except AuthenticationError:
+            await self.db.rollback()
+            raise
+        except Exception as e:
+            await self.db.rollback()
+            logger.error("Phone OTP registration verification failed", otp_id=otp_id, error=str(e))
+            raise AuthenticationError(f"Verification failed: {e}")
+
+    async def send_login_phone_otp(
+        self, phone_number: str, ip_address: str | None = None
+    ) -> dict[str, Any]:
+        """Send a WhatsApp OTP for login."""
+        try:
+            try:
+                phone = normalize_phone(phone_number)
+            except PhoneOTPError as e:
+                raise AuthenticationError(str(e))
+
+            user = await self.db.scalar(select(User).where(User.phone_number == phone))
+            if not user:
+                # Don't reveal whether the number is registered.
+                raise AuthenticationError("Invalid credentials")
+
+            try:
+                otp_result = await self.phone_otp_service.send_login_otp(
+                    phone, user.preferred_language, ip_address
+                )
+            except PhoneOTPError as e:
+                raise AuthenticationError(str(e))
+
+            logger.info("Login phone OTP sent", phone=phone)
+
+            return {
+                "otp_id": otp_result["otp_id"],
+                "phone_number": phone,
+                "expires_at": otp_result["expires_at"],
+                "expires_in_seconds": otp_result["expires_in_seconds"],
+                "message": "Login verification code sent via WhatsApp",
+            }
+
+        except AuthenticationError:
+            raise
+        except Exception as e:
+            logger.error("Failed to send login phone OTP", phone=phone_number, error=str(e))
+            raise AuthenticationError("Failed to send login verification code")
+
+    async def verify_login_phone_otp(
+        self, otp_id: str, otp_code: str, ip_address: str | None = None
+    ) -> dict[str, Any]:
+        """Verify a login phone OTP and issue auth tokens."""
+        try:
+            try:
+                otp_result = await self.phone_otp_service.verify_otp(otp_id, otp_code, ip_address)
+            except PhoneOTPError as e:
+                raise AuthenticationError(str(e))
+
+            if not otp_result["verified"] or otp_result["purpose"] != "login":
+                raise AuthenticationError("Invalid OTP verification")
+
+            user = otp_result.get("user")
+            if not user:
+                raise AuthenticationError("User not found after OTP verification")
+
+            user_obj = await self.db.scalar(select(User).where(User.id == UUID(user["id"])))
+            if not user_obj:
+                raise AuthenticationError("User not found")
+
+            user_obj.last_active = datetime.utcnow()
+
+            access_token = self.jwt_service.create_access_token(
+                user_id=user["id"],
+                email=user.get("email"),
+                phone_number=user.get("phone_number"),
+                preferred_language=user["preferred_language"],
+                country=user["country"],
+                current_level=user["current_level"],
+                role=user_obj.role.value,
+            )
+
+            refresh_token = self.jwt_service.create_refresh_token()
+            refresh_record = RefreshToken(
+                id=uuid4(),
+                user_id=user_obj.id,
+                token_hash=self.jwt_service.hash_token(refresh_token),
+                expires_at=self.jwt_service.get_token_expiry("refresh"),
+                created_at=datetime.utcnow(),
+                last_used_at=datetime.utcnow(),
+            )
+            self.db.add(refresh_record)
+            await self.db.commit()
+
+            logger.info("Login phone OTP verification successful", phone=user["phone_number"])
+
+            return {
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "token_type": "bearer",
+                "expires_in": self.jwt_service.access_token_expire_minutes * 60,
+                "user": {**user, "role": user_obj.role},
+            }
+
+        except AuthenticationError:
+            await self.db.rollback()
+            raise
+        except Exception as e:
+            await self.db.rollback()
+            logger.error("Login phone OTP verification failed", otp_id=otp_id, error=str(e))
             raise AuthenticationError(f"Login verification failed: {e}")

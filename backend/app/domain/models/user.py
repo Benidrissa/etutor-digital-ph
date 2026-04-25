@@ -23,6 +23,7 @@ if TYPE_CHECKING:
         EmailOTP,
         MagicLink,
         PasswordResetToken,
+        PhoneOTP,
         RefreshToken,
         TOTPSecret,
     )
@@ -76,6 +77,7 @@ class User(Base):
     refresh_tokens: Mapped[list[RefreshToken]] = relationship(back_populates="user")
     magic_links: Mapped[list[MagicLink]] = relationship(back_populates="user")
     email_otps: Mapped[list[EmailOTP]] = relationship(back_populates="user")
+    phone_otps: Mapped[list[PhoneOTP]] = relationship(back_populates="user")
     password_reset_tokens: Mapped[list[PasswordResetToken]] = relationship(back_populates="user")
 
     # Learning relationships
