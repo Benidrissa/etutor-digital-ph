@@ -27,9 +27,7 @@ async def test_real_send_posts_authentication_template(monkeypatch):
     monkeypatch.setattr(
         "app.domain.services.whatsapp_service.settings.whatsapp_otp_template_name", "sira_otp"
     )
-    monkeypatch.setattr(
-        "app.domain.services.whatsapp_service.settings.whatsapp_stub_mode", False
-    )
+    monkeypatch.setattr("app.domain.services.whatsapp_service.settings.whatsapp_stub_mode", False)
 
     svc = WhatsAppService()
     assert svc.stub_mode is False
@@ -77,9 +75,7 @@ async def test_real_send_returns_false_on_4xx(monkeypatch):
     monkeypatch.setattr(
         "app.domain.services.whatsapp_service.settings.whatsapp_access_token", "TKN"
     )
-    monkeypatch.setattr(
-        "app.domain.services.whatsapp_service.settings.whatsapp_stub_mode", False
-    )
+    monkeypatch.setattr("app.domain.services.whatsapp_service.settings.whatsapp_stub_mode", False)
 
     svc = WhatsAppService()
 

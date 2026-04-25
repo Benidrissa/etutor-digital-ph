@@ -36,9 +36,7 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_phone_otps_user_id ON phone_otps (user_id);"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_phone_otps_user_id ON phone_otps (user_id);")
     op.execute(
         "CREATE INDEX IF NOT EXISTS ix_phone_otps_phone_number ON phone_otps (phone_number);"
     )
