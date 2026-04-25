@@ -53,6 +53,10 @@ interface ChatPanelProps {
   className?: string;
   embedded?: boolean;
   onConversationCreated?: (conversationId: string) => void;
+  // Fires after every message round-trip (the SSE `finished` chunk lands).
+  // The parent uses it to re-fetch the conversation list so the sidebar
+  // message count updates in real time (#1978).
+  onMessageSent?: (conversationId: string) => void;
   onOpenConversations?: () => void;
 }
 
@@ -65,6 +69,7 @@ export function ChatPanel({
   className,
   embedded = false,
   onConversationCreated,
+  onMessageSent,
   onOpenConversations,
 }: ChatPanelProps) {
   const t = useTranslations('ChatTutor');
@@ -408,6 +413,11 @@ export function ChatPanel({
                 const finishedConvId = chunk.data.conversation_id as string;
                 invalidateConversationCache(finishedConvId);
                 invalidateConversationsCache();
+                // Tell the sidebar to re-fetch so the per-conversation
+                // message count updates within the same render cycle (#1978).
+                // Cache invalidation alone isn't enough because the parent
+                // never re-fetches on its own.
+                onMessageSent?.(finishedConvId);
                 void refreshEnrolledCourses();
                 if (typeof chunk.data?.remaining_messages === 'number') {
                   const remaining = chunk.data.remaining_messages as number;

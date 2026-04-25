@@ -23,7 +23,7 @@ from app.ai.prompts.tutor import (
 )
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
-from app.domain.models.conversation import TutorConversation
+from app.domain.models.conversation import TutorConversation, TutorMessage
 from app.domain.models.module import Module
 from app.domain.models.source_image import SourceImage
 from app.domain.models.user import User
@@ -39,14 +39,26 @@ logger = structlog.get_logger()
 
 _sc = SettingsCache.instance
 MAX_TOOL_CALLS = _sc().get("tutor-max-tool-calls", 3)
-COMPACT_TRIGGER = _sc().get("tutor-compaction-trigger-messages", 20)
-COMPACT_KEEP_RECENT = _sc().get("tutor-compaction-keep-recent", 5)
-COMPACT_SUMMARIZE_UP_TO = _sc().get("tutor-compaction-summarize-up-to", 15)
+# Defaults relaxed (#1978) — compaction is now non-destructive, so we can
+# afford a higher trigger and a much larger verbatim window. These fallbacks
+# track ``platform_defaults.py``; the runtime values come from SettingsCache
+# which reads from the platform_settings table.
+COMPACT_TRIGGER = _sc().get("tutor-compaction-trigger-messages", 50)
+COMPACT_KEEP_RECENT = _sc().get("tutor-compaction-keep-recent", 20)
+COMPACT_SUMMARIZE_UP_TO = _sc().get("tutor-compaction-summarize-up-to", 30)
 
 SESSION_CONTEXT_TOKEN_BUDGET = _sc().get("tutor-context-token-budget", 1500)
 
 # Shared between the live-stream resolver and the GET-conversation resolver (#1937).
 _SOURCE_IMAGE_MARKER_RE = re.compile(r"\{\{source_image:([0-9a-f-]{36})\}\}", re.IGNORECASE)
+
+
+def _message_extra(msg: dict[str, Any]) -> dict[str, Any] | None:
+    """Strip role/content (which live in dedicated columns of ``tutor_messages``)
+    and return the rest as the row's ``extra`` JSON payload — sources,
+    activity_suggestions, timestamps, etc. (#1978)."""
+    extra = {k: v for k, v in msg.items() if k not in ("role", "content")}
+    return extra or None
 
 
 async def _resolve_source_images_by_uuid(
@@ -673,15 +685,26 @@ class TutorService:
 
             # User message was already committed before the LLM loop (#1975);
             # this commit only adds the assistant reply on top of it.
+            assistant_position = conversation.total_messages or 0
             updated_messages = conversation.messages + [assistant_msg_stored]
             conversation.messages = updated_messages
             conversation.message_count = len(updated_messages)
+            conversation.total_messages = assistant_position + 1
             # Index of the just-persisted assistant reply — the frontend needs
             # this to hit /tutor/conversations/{id}/messages/{index}/audio for
             # the listen button (#1932). Messages are positional, so the
             # assistant reply is the last entry in the updated list.
             assistant_message_index = len(updated_messages) - 1
             session.add(conversation)
+            session.add(
+                TutorMessage(
+                    conversation_id=conversation.id,
+                    position=assistant_position,
+                    role="assistant",
+                    content=full_response or "",
+                    extra=_message_extra(assistant_msg_stored),
+                )
+            )
 
             if (
                 subscription
@@ -806,7 +829,29 @@ class TutorService:
         if not conversation:
             return None
 
-        messages_out = await _attach_source_image_refs(conversation.messages or [], session)
+        # Prefer the durable per-message store so the user can scroll back to
+        # the very first message even after several compaction passes (#1978).
+        # Fall back to the legacy JSON array for conversations that pre-date
+        # the migration's backfill (defence-in-depth).
+        messages_query = (
+            select(TutorMessage)
+            .where(TutorMessage.conversation_id == conversation_id)
+            .order_by(TutorMessage.position.asc())
+        )
+        rows = (await session.execute(messages_query)).scalars().all()
+        if rows:
+            messages_full = [
+                {
+                    "role": row.role,
+                    "content": row.content,
+                    **(row.extra or {}),
+                }
+                for row in rows
+            ]
+        else:
+            messages_full = conversation.messages or []
+
+        messages_out = await _attach_source_image_refs(messages_full, session)
 
         return {
             "id": conversation.id,
@@ -861,7 +906,11 @@ class TutorService:
                 {
                     "id": conv.id,
                     "module_id": conv.module_id,
-                    "message_count": len(conv.messages),
+                    # Read the increment-only counter so the sidebar count
+                    # stays monotonic per conversation across compaction
+                    # passes (#1978). Falls back to the JSON length only if
+                    # the counter is somehow unset (legacy backfill safety).
+                    "message_count": conv.total_messages or len(conv.messages or []),
                     "last_message_at": last_message_at,
                     "preview": preview,
                     "has_context": bool(conv.compacted_context),
@@ -964,25 +1013,26 @@ class TutorService:
         }
 
     async def _check_daily_limit(self, user_id: str | uuid.UUID, session: AsyncSession) -> int:
-        """Check how many messages user has sent today."""
+        """How many user messages were sent today.
+
+        Sums the increment-only ``user_messages_sent`` column (#1978). The
+        previous implementation counted ``role == "user"`` rows inside the
+        ``messages`` JSON array, which shrank whenever async compaction
+        truncated the array — making the daily counter oscillate. The dedicated
+        column is never decremented and never touched by compaction, so the
+        result is monotonic within a UTC day.
+        """
         if isinstance(user_id, str):
             user_id = uuid.UUID(user_id)
 
         today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
 
-        query = select(TutorConversation).where(
+        query = select(func.coalesce(func.sum(TutorConversation.user_messages_sent), 0)).where(
             TutorConversation.user_id == user_id,
             TutorConversation.created_at >= today_start,
         )
         result = await session.execute(query)
-        conversations = result.scalars().all()
-
-        message_count = 0
-        for conv in conversations:
-            user_messages = [msg for msg in conv.messages if msg.get("role") == "user"]
-            message_count += len(user_messages)
-
-        return message_count
+        return int(result.scalar_one() or 0)
 
     async def _get_or_create_conversation(
         self,
@@ -1082,11 +1132,17 @@ class TutorService:
     ) -> list[dict[str, str]]:
         """Prepare conversation history for Claude API.
 
-        If compacted_context exists, prepend it as a system note then include the
-        most recent COMPACT_KEEP_RECENT messages verbatim.  Otherwise fall back to
-        the last 10 messages (pre-compaction behaviour).
+        Compaction is non-destructive (#1978): the full ordered ``messages``
+        array stays intact, and ``compacted_through_position`` marks where the
+        summary in ``compacted_context`` ends. We send the summary (if any)
+        followed by every message past that high-water mark so Claude sees
+        complete continuity without re-paying the token cost of the summarised
+        prefix. When nothing has been compacted yet we cap at the last
+        ``COMPACT_KEEP_RECENT * 2`` turns so the prompt stays bounded for very
+        long pre-compaction conversations.
         """
-        recent_messages = conversation.messages[-COMPACT_KEEP_RECENT:]
+        all_messages = conversation.messages or []
+        compacted_through = conversation.compacted_through_position or 0
 
         claude_messages: list[dict[str, str]] = []
 
@@ -1098,12 +1154,10 @@ class TutorService:
                     "content": "Compris. Je vais tenir compte de ce contexte pour la suite.",
                 }
             )
+            recent_messages = all_messages[compacted_through:]
         else:
-            recent_messages = (
-                conversation.messages[-10:]
-                if len(conversation.messages) > 10
-                else conversation.messages
-            )
+            cap = max(10, COMPACT_KEEP_RECENT * 2)
+            recent_messages = all_messages[-cap:] if len(all_messages) > cap else all_messages
 
         for msg in recent_messages:
             content = (msg.get("content") or "").strip()
@@ -1131,10 +1185,28 @@ class TutorService:
         sides of the exchange because they shared a single commit. With this
         helper called before the LLM loop, only the assistant reply is at risk
         — and the user can see their message persisted on reload and retry.
+
+        Also writes a durable row to ``tutor_messages`` and increments the
+        increment-only counters (#1978) — the JSON array stays the working set
+        for Claude, but billing/display counts no longer depend on its length.
         """
+        # Counters can be None on a freshly-constructed instance that hasn't
+        # been flushed yet (server defaults haven't fired) — coerce to 0.
+        position = conversation.total_messages or 0
         conversation.messages = conversation.messages + [user_msg]
         conversation.message_count = len(conversation.messages)
+        conversation.user_messages_sent = (conversation.user_messages_sent or 0) + 1
+        conversation.total_messages = position + 1
         session.add(conversation)
+        session.add(
+            TutorMessage(
+                conversation_id=conversation.id,
+                position=position,
+                role="user",
+                content=user_msg.get("content", "") or "",
+                extra=_message_extra(user_msg),
+            )
+        )
         await session.commit()
 
     async def _compact_conversation_async(
@@ -1142,11 +1214,20 @@ class TutorService:
         conversation_id: uuid.UUID,
         user_language: str,
     ) -> None:
-        """Summarize old messages into compacted_context in its own DB session.
+        """Summarize old messages into ``compacted_context`` non-destructively (#1978).
 
-        Runs asynchronously (fire-and-forget) so it never blocks the response stream.
-        Summarizes messages[0:COMPACT_SUMMARIZE_UP_TO], keeps messages[COMPACT_SUMMARIZE_UP_TO:]
-        verbatim in the messages list.
+        Runs asynchronously (fire-and-forget) so it never blocks the response
+        stream. Produces a Claude-generated summary covering messages
+        ``[compacted_through_position : compacted_through_position + N]`` where
+        ``N = COMPACT_SUMMARIZE_UP_TO``, then advances
+        ``compacted_through_position`` past the summarised slice. The
+        ``messages`` JSON array and the increment-only counters
+        (``user_messages_sent``, ``total_messages``) are **not** mutated — so
+        the daily limit stays accurate and the sidebar count never shrinks.
+
+        The summary is what gets sent to Claude on the next call (see
+        ``_prepare_conversation_history``); the durable per-message store in
+        ``tutor_messages`` keeps the originals available for scroll-back.
         """
         try:
             engine = create_async_engine(self.settings.database_url, echo=False)
@@ -1161,8 +1242,9 @@ class TutorService:
                 if not conversation:
                     return
 
-                messages_to_compact = conversation.messages[:COMPACT_SUMMARIZE_UP_TO]
-                messages_to_keep = conversation.messages[COMPACT_SUMMARIZE_UP_TO:]
+                start = conversation.compacted_through_position or 0
+                end = start + COMPACT_SUMMARIZE_UP_TO
+                messages_to_compact = (conversation.messages or [])[start:end]
 
                 if not messages_to_compact:
                     return
@@ -1189,8 +1271,10 @@ class TutorService:
 
                 conversation.compacted_context = new_compact
                 conversation.compacted_at = datetime.utcnow()
-                conversation.messages = messages_to_keep
-                conversation.message_count = len(messages_to_keep)
+                conversation.compacted_through_position = end
+                # Intentionally NOT mutating conversation.messages,
+                # message_count, user_messages_sent, or total_messages — those
+                # are the source of truth for billing and the UI.
                 session.add(conversation)
                 await session.commit()
 
@@ -1198,7 +1282,7 @@ class TutorService:
                     "Conversation compacted",
                     conversation_id=str(conversation_id),
                     messages_summarized=len(messages_to_compact),
-                    messages_kept=len(messages_to_keep),
+                    compacted_through_position=end,
                     compact_length=len(new_compact),
                 )
         except Exception:

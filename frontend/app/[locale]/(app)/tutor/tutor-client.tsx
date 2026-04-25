@@ -104,6 +104,16 @@ export function TutorPageClient() {
     []
   );
 
+  // Re-fetch on every message round-trip so "17 messages" → "18 messages"
+  // updates in real time without the user reopening the panel (#1978). The
+  // chat panel already invalidates the cache, but cache invalidation alone
+  // doesn't trigger a state update here — a re-fetch does.
+  const handleMessageSent = useCallback(() => {
+    fetchConversations({ limit: 20 })
+      .then((data) => setConversations(data.conversations))
+      .catch(() => {});
+  }, []);
+
   const handleDeleteConversation = async (id: string) => {
     setDeleteTarget(null);
     try {
@@ -299,6 +309,7 @@ export function TutorPageClient() {
               embedded={true}
               conversationId={selectedConversation}
               onConversationCreated={handleConversationCreated}
+              onMessageSent={handleMessageSent}
               onOpenConversations={() => setIsMobileDrawerOpen(true)}
             />
           ) : (

@@ -93,7 +93,10 @@ export async function uploadTutorFile(
 
 const CACHE_KEY_CONVERSATIONS = 'tutor_conversations_cache';
 const CACHE_KEY_PREFIX_CONVERSATION = 'tutor_conversation_';
-const CACHE_TTL_MS = 5 * 60 * 1000;
+// 30s instead of 5 min: belt-and-suspenders for tabs not actively sending
+// messages so the sidebar count doesn't sit on a stale value for minutes.
+// Active senders bypass this anyway via the onMessageSent re-fetch (#1978).
+const CACHE_TTL_MS = 30 * 1000;
 
 export interface ConversationSummary {
   id: string;

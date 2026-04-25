@@ -4,7 +4,7 @@ from app.domain.models.auth import MagicLink, RefreshToken, TOTPSecret
 from app.domain.models.base import Base
 from app.domain.models.certificate import Certificate, CertificateTemplate
 from app.domain.models.content import GeneratedContent
-from app.domain.models.conversation import TutorConversation
+from app.domain.models.conversation import TutorConversation, TutorMessage
 from app.domain.models.course import Course, UserCourseEnrollment
 from app.domain.models.course_resource import CourseResource
 from app.domain.models.credit import CreditAccount, CreditPackage, CreditTransaction
@@ -74,6 +74,7 @@ __all__ = [
     "LearnerMemory",
     "LessonReading",
     "TutorConversation",
+    "TutorMessage",
     "FlashcardReview",
     "MagicLink",
     "Module",

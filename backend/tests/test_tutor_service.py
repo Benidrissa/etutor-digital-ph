@@ -431,7 +431,13 @@ async def test_get_conversation_returns_none_for_wrong_user(tutor_service, sampl
 
 
 async def test_get_conversation_returns_messages(tutor_service, sample_user, sample_conversation):
-    """get_conversation must return id, module_id, messages, and created_at."""
+    """get_conversation returns the durable per-message history (#1978).
+
+    First the conversation row is loaded, then ``tutor_messages`` is queried
+    for the ordered history. When that table has no rows (e.g. a legacy
+    conversation predating the backfill) the implementation falls back to the
+    JSON array on the conversation.
+    """
     sample_conversation.messages = [
         {
             "role": "user",
@@ -446,9 +452,11 @@ async def test_get_conversation_returns_messages(tutor_service, sample_user, sam
     ]
 
     mock_session = AsyncMock(spec=AsyncSession)
-    mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = sample_conversation
-    mock_session.execute = AsyncMock(return_value=mock_result)
+    conv_result = MagicMock()
+    conv_result.scalar_one_or_none.return_value = sample_conversation
+    rows_result = MagicMock()
+    rows_result.scalars.return_value.all.return_value = []  # legacy fallback path
+    mock_session.execute = AsyncMock(side_effect=[conv_result, rows_result])
 
     result = await tutor_service.get_conversation(
         user_id=sample_user.id,
@@ -468,9 +476,16 @@ async def test_get_conversation_returns_messages(tutor_service, sample_user, sam
 
 
 async def test_persist_user_message_appends_and_commits(tutor_service, sample_conversation):
-    """User message must be appended to conversation.messages and committed."""
+    """User message gets appended to the JSON working set, written as a
+    durable ``TutorMessage`` row, and the increment-only counters move
+    forward — all in one commit (#1975, #1978).
+    """
+    from app.domain.models.conversation import TutorMessage
+
     sample_conversation.messages = []
     sample_conversation.message_count = 0
+    sample_conversation.user_messages_sent = 0
+    sample_conversation.total_messages = 0
     mock_session = AsyncMock(spec=AsyncSession)
 
     user_msg = {
@@ -484,7 +499,15 @@ async def test_persist_user_message_appends_and_commits(tutor_service, sample_co
 
     assert sample_conversation.messages == [user_msg]
     assert sample_conversation.message_count == 1
-    mock_session.add.assert_called_once_with(sample_conversation)
+    assert sample_conversation.user_messages_sent == 1
+    assert sample_conversation.total_messages == 1
+    added = [call.args[0] for call in mock_session.add.call_args_list]
+    assert sample_conversation in added
+    tutor_message_rows = [obj for obj in added if isinstance(obj, TutorMessage)]
+    assert len(tutor_message_rows) == 1
+    assert tutor_message_rows[0].role == "user"
+    assert tutor_message_rows[0].content == "What is hypertension?"
+    assert tutor_message_rows[0].position == 0
     assert mock_session.commit.await_count == 1
 
 
@@ -494,6 +517,8 @@ async def test_persist_user_message_preserves_existing_messages(tutor_service, s
     prior_assistant = {"role": "assistant", "content": "earlier reply", "timestamp": "t1"}
     sample_conversation.messages = [prior_user, prior_assistant]
     sample_conversation.message_count = 2
+    sample_conversation.user_messages_sent = 1
+    sample_conversation.total_messages = 2
     mock_session = AsyncMock(spec=AsyncSession)
 
     new_user = {"role": "user", "content": "follow-up", "timestamp": "t2"}
@@ -501,6 +526,8 @@ async def test_persist_user_message_preserves_existing_messages(tutor_service, s
 
     assert sample_conversation.messages == [prior_user, prior_assistant, new_user]
     assert sample_conversation.message_count == 3
+    assert sample_conversation.user_messages_sent == 2
+    assert sample_conversation.total_messages == 3
     assert mock_session.commit.await_count == 1
 
 
@@ -513,6 +540,8 @@ async def test_persist_user_message_commit_durability_invariant(tutor_service, s
     """
     sample_conversation.messages = []
     sample_conversation.message_count = 0
+    sample_conversation.user_messages_sent = 0
+    sample_conversation.total_messages = 0
     mock_session = AsyncMock(spec=AsyncSession)
 
     await tutor_service._persist_user_message(

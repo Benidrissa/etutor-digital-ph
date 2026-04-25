@@ -109,25 +109,33 @@ def _make_conversation(user_id, n_messages: int, compacted_context: str | None =
 
 
 async def test_compact_trigger_constant():
-    """COMPACT_TRIGGER must be 20 as specified in the issue."""
-    assert COMPACT_TRIGGER == 20
+    """COMPACT_TRIGGER relaxed to 50 (#1978) — trigger ~5x further out."""
+    assert COMPACT_TRIGGER == 50
 
 
 async def test_compact_keep_recent_constant():
-    """COMPACT_KEEP_RECENT must be 5."""
-    assert COMPACT_KEEP_RECENT == 5
+    """COMPACT_KEEP_RECENT bumped to 20 (#1978)."""
+    assert COMPACT_KEEP_RECENT == 20
 
 
 async def test_compact_summarize_up_to_constant():
-    """COMPACT_SUMMARIZE_UP_TO must be 15."""
-    assert COMPACT_SUMMARIZE_UP_TO == 15
+    """COMPACT_SUMMARIZE_UP_TO bumped to 30 (#1978)."""
+    assert COMPACT_SUMMARIZE_UP_TO == 30
 
 
-async def test_prepare_history_no_compact_falls_back_to_last_10(tutor_service, sample_user):
-    """When no compacted_context, last 10 messages are used."""
+async def test_prepare_history_no_compact_returns_all_when_short(tutor_service, sample_user):
+    """With no compacted_context and a conversation under the cap, all messages are returned."""
     conv = _make_conversation(sample_user.id, n_messages=15)
     history = await tutor_service._prepare_conversation_history(conv)
-    assert len(history) == 10
+    assert len(history) == 15
+
+
+async def test_prepare_history_no_compact_caps_long_conversation(tutor_service, sample_user):
+    """With no compacted_context but a very long conversation, history is capped to keep prompts bounded."""
+    conv = _make_conversation(sample_user.id, n_messages=100)
+    history = await tutor_service._prepare_conversation_history(conv)
+    cap = max(10, COMPACT_KEEP_RECENT * 2)
+    assert len(history) == cap
 
 
 async def test_prepare_history_with_compact_includes_context_note(tutor_service, sample_user):
@@ -140,12 +148,18 @@ async def test_prepare_history_with_compact_includes_context_note(tutor_service,
     assert history[1]["role"] == "assistant"
 
 
-async def test_prepare_history_with_compact_keeps_recent_messages(tutor_service, sample_user):
-    """When compacted_context is set, COMPACT_KEEP_RECENT recent messages are included."""
-    conv = _make_conversation(sample_user.id, n_messages=20, compacted_context="summary")
+async def test_prepare_history_with_compact_slices_from_high_water_mark(
+    tutor_service, sample_user
+):
+    """Non-destructive compaction (#1978): the summary covers messages
+    [0:compacted_through_position]; the rest of the messages array is sent
+    verbatim. Counts the messages past the high-water mark.
+    """
+    conv = _make_conversation(sample_user.id, n_messages=40, compacted_context="summary")
+    conv.compacted_through_position = 30
     history = await tutor_service._prepare_conversation_history(conv)
     non_system = [m for m in history if m["content"] != "summary" and "Compris" not in m["content"]]
-    assert len(non_system) == COMPACT_KEEP_RECENT
+    assert len(non_system) == 40 - 30
 
 
 async def test_compaction_prompt_fr_contains_key_fields():
@@ -188,11 +202,17 @@ async def test_compaction_prompt_includes_existing_compact_en():
     assert existing in prompt
 
 
-async def test_compact_conversation_async_updates_db(tutor_service, sample_user):
-    """_compact_conversation_async stores compacted_context and trims messages."""
+async def test_compact_conversation_async_is_non_destructive(tutor_service, sample_user):
+    """Non-destructive compaction (#1978): ``compacted_context`` and
+    ``compacted_at`` are populated, ``compacted_through_position`` advances
+    by ``COMPACT_SUMMARIZE_UP_TO``, and the original messages array is left
+    intact so users can still scroll back.
+    """
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    conv = _make_conversation(sample_user.id, n_messages=20)
+    n = COMPACT_SUMMARIZE_UP_TO + 10
+    conv = _make_conversation(sample_user.id, n_messages=n)
+    conv.compacted_through_position = 0
     conversation_id = conv.id
 
     class FakeTextBlock:
@@ -233,7 +253,9 @@ async def test_compact_conversation_async_updates_db(tutor_service, sample_user)
 
     assert conv.compacted_context == "Résumé compact généré"
     assert conv.compacted_at is not None
-    assert len(conv.messages) == 20 - COMPACT_SUMMARIZE_UP_TO
+    assert conv.compacted_through_position == COMPACT_SUMMARIZE_UP_TO
+    # Originals are NOT deleted — that's the whole point of #1978.
+    assert len(conv.messages) == n
 
 
 async def test_message_count_updated_on_send(tutor_service, sample_user):
