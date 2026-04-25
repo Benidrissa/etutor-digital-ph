@@ -17,6 +17,7 @@ export function UsageCounter({ currentUsage, maxUsage, className }: UsageCounter
   const usagePercentage = (currentUsage / maxUsage) * 100;
   const isWarning = usagePercentage >= 80;
   const isLimitReached = currentUsage >= maxUsage;
+  const remaining = Math.max(0, maxUsage - currentUsage);
 
   const getVariant = () => {
     if (isLimitReached) return 'destructive';
@@ -29,7 +30,7 @@ export function UsageCounter({ currentUsage, maxUsage, className }: UsageCounter
       {/* Counter Badge */}
       <div className="flex justify-center">
         <Badge variant={getVariant()} className="px-3 py-1">
-          {t('messageLimit', { count: currentUsage, max: maxUsage })}
+          {t('messageLimit', { remaining, max: maxUsage })}
         </Badge>
       </div>
 
