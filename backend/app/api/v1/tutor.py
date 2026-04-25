@@ -21,6 +21,7 @@ from app.api.deps import get_db_session
 from app.api.deps_local_auth import AuthenticatedUser, get_current_user
 from app.api.v1.schemas.tutor import (
     FileUploadResponse,
+    LastTouchedModuleResponse,
     TutorChatRequest,
     TutorConversationListResponse,
     TutorConversationResponse,
@@ -394,6 +395,27 @@ async def get_remaining_messages(
         "messages_used": stats["daily_messages_used"],
         "message_credits": stats.get("message_credits", 0),
     }
+
+
+@router.get("/last-module", response_model=LastTouchedModuleResponse | None)
+async def get_last_touched_module(
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    tutor_service: TutorService = Depends(get_tutor_service),
+) -> LastTouchedModuleResponse | None:
+    """Return the user's most recently accessed module so the standalone
+    ``/tutor`` page can default to chatting with that module in scope (#1988).
+
+    Returns ``null`` (HTTP 200) when the user has no recorded module activity
+    — frontend should then render the chat without a module anchor.
+    """
+    result = await tutor_service.get_last_touched_module(
+        user_id=current_user.id,
+        session=session,
+    )
+    if result is None:
+        return None
+    return LastTouchedModuleResponse(**result)
 
 
 @router.delete(

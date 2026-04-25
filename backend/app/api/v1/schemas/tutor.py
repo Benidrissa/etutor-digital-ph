@@ -39,7 +39,12 @@ class TutorMessage(BaseModel):
 class TutorChatRequest(BaseModel):
     """Request schema for tutor chat."""
 
-    message: str = Field(..., min_length=1, max_length=2000, description="User message")
+    message: str = Field(
+        ...,
+        min_length=1,
+        max_length=16000,
+        description="User message (max ~4 000 tokens — generous; bumped from 2k in #1988 to fit a pasted page).",
+    )
     course_id: UUID | None = Field(
         None, description="Course ID for context (derived from enrollment if absent)"
     )
@@ -121,3 +126,24 @@ class StreamChunk(BaseModel):
     data: Any = Field(..., description="Chunk data")
     conversation_id: UUID | None = Field(None, description="Conversation ID")
     finished: bool = Field(False, description="Whether streaming is complete")
+
+
+class LastTouchedModuleResponse(BaseModel):
+    """Response for the user's most recently accessed module (#1988).
+
+    Used by the standalone ``/tutor`` page to anchor the chat in the user's
+    last-touched module by default, so the tutor's prompt has a concrete
+    module context to load full lesson/quiz/case content for. ``None`` when
+    the user has no enrolled course or no recorded module activity yet.
+    """
+
+    module_id: UUID = Field(..., description="Most recently touched module ID")
+    module_number: int | None = Field(None, description="Module number (e.g. 1, 2)")
+    module_title: str = Field(
+        ..., description="Localised module title (FR or EN per user's preferred_language)"
+    )
+    course_id: UUID | None = Field(None, description="Owning course ID")
+    course_title: str | None = Field(None, description="Localised course title")
+    last_accessed: datetime | None = Field(
+        None, description="When the user last touched this module"
+    )

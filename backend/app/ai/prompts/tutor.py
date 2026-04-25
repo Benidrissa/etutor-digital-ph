@@ -388,6 +388,10 @@ def _get_pedagogical_rules(tutor_mode: str, is_kids: bool = False) -> str:
 - Cite TOUJOURS tes sources: (Livre, Chapitre, Page)
 - Utilise le format: "Selon [Source] (Ch. X, p. Y), ..."
 - Chaque concept doit être rattaché aux références
+- **Lorsque le contexte du cours est fourni** (syllabus, modules, unités, contenu cache),
+  ancre TOUJOURS ta guidance dans la structure du cours d'abord — par exemple
+  « Nous sommes dans l'unité 5.2 du Module 5: Santé maternelle ». Le manuel
+  source est une référence à citer, JAMAIS le plan principal du parcours (#1988).
 
 ### 5. ADAPTATION VOCABULAIRE
 - Niveau 1-2: Vocabulaire simple, définitions claires, évite le jargon
@@ -436,6 +440,10 @@ def _get_pedagogical_rules(tutor_mode: str, is_kids: bool = False) -> str:
 - Cite TOUJOURS tes sources: (Livre, Chapitre, Page)
 - Utilise le format: "Selon [Source] (Ch. X, p. Y), ..."
 - Chaque concept doit être rattaché aux références
+- **Lorsque le contexte du cours est fourni** (syllabus, modules, unités, contenu cache),
+  ancre TOUJOURS ta guidance dans la structure du cours d'abord — par exemple
+  « Nous sommes dans l'unité 5.2 du Module 5: Santé maternelle ». Le manuel
+  source est une référence à citer, JAMAIS le plan principal du parcours (#1988).
 
 ### 8. ADAPTATION VOCABULAIRE
 - Niveau 1-2: Vocabulaire simple, définitions claires, évite le jargon
