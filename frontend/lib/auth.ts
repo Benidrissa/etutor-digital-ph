@@ -155,8 +155,9 @@ class AuthClient {
         headers,
       });
     } catch (error) {
-      // If we get a 401 and have a refresh token, try to refresh
-      if (error instanceof AuthError && error.status === 401 && this.refreshToken) {
+      // On 401, always attempt refresh — the HttpOnly refresh_token cookie may
+      // be valid even when localStorage was evicted (Android WebView).
+      if (error instanceof AuthError && error.status === 401) {
         try {
           await this.refreshAccessToken();
           // Retry with new token
@@ -402,11 +403,20 @@ class AuthClient {
       });
 
       if (!response.ok) {
-        if (response.status === 401 && this.refreshToken) {
-          // Try to refresh token
-          await this.refreshAccessToken();
+        if (response.status === 401) {
+          // Always retry via refresh — cookie may carry a valid session even
+          // when localStorage was evicted. refreshAccessToken throws on 401.
+          try {
+            await this.refreshAccessToken();
+          } catch {
+            const errorData = await response.json().catch(() => ({}));
+            throw new AuthError(
+              errorData.detail || `Request failed with status ${response.status}`,
+              response.status
+            );
+          }
           headers['Authorization'] = `Bearer ${this.accessToken}`;
-          
+
           const retryResponse = await fetch(url, {
             ...options,
             headers,
