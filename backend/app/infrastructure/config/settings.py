@@ -22,10 +22,31 @@ class Settings(BaseSettings):
     # Local JWT Auth
     jwt_secret: str = "your-secret-key-change-in-production"
 
-    # Email Service
-    resend_api_key: str = ""
+    # Email Service — SMTP relay (GoDaddy hosting expects localhost:25,
+    # no auth, no TLS, with `v=spf1 include:secureserver.net -all` on DNS).
+    # Defaults match that contract; staging/prod typically don't override.
+    smtp_host: str = "localhost"
+    smtp_port: int = 25
+    smtp_use_tls: bool = False
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_timeout_seconds: float = 10.0
     from_email: str = "noreply@sira.local"
+    from_name: str = "Sira"
     frontend_url: str = "http://localhost:3000"
+
+    # WhatsApp Cloud API (Meta) — used for phone-OTP delivery.
+    # OTP MUST be delivered through an AUTHENTICATION-category template that
+    # has been pre-approved in Meta Business Manager. Freeform messages are
+    # rejected for OTPs and risk template suspension.
+    whatsapp_phone_number_id: str = ""
+    whatsapp_access_token: str = ""
+    whatsapp_otp_template_name: str = "sira_otp"
+    whatsapp_api_version: str = "v20.0"
+    whatsapp_api_base_url: str = "https://graph.facebook.com"
+    # When credentials are missing or this flag is on, WhatsAppService logs
+    # the OTP locally and short-circuits the HTTP call — for dev/staging.
+    whatsapp_stub_mode: bool = False
 
     # Anthropic Claude API
     anthropic_api_key: str = ""

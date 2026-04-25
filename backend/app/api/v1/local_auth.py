@@ -196,6 +196,65 @@ class VerifyLoginOTPRequest(BaseModel):
     otp_code: str = Field(..., min_length=6, max_length=6, pattern="^[0-9]{6}$")
 
 
+# ---- Phone OTP (WhatsApp) ----------------------------------------------------
+
+
+_PHONE_PATTERN = r"^\+?[1-9]\d{6,14}$"
+
+
+class RegisterPhoneOTPRequest(BaseModel):
+    """Phone OTP registration request (WhatsApp delivery)."""
+
+    phone_number: str = Field(..., min_length=7, max_length=20, pattern=_PHONE_PATTERN)
+    name: str = Field(..., min_length=2, max_length=100)
+    preferred_language: str = Field(default="fr", pattern="^(fr|en)$")
+    country: str | None = Field(None, description="ECOWAS country code")
+    professional_role: str | None = Field(None, max_length=50)
+
+
+class RegisterPhoneOTPResponse(BaseModel):
+    """Phone OTP registration response."""
+
+    user_id: str
+    phone_number: str
+    name: str
+    verification_method: str = "phone_otp"
+    channel: str = "whatsapp"
+    otp_id: str
+    expires_at: str
+    expires_in_seconds: int
+
+
+class VerifyPhoneOTPRequest(BaseModel):
+    """Phone OTP verification request."""
+
+    otp_id: str
+    otp_code: str = Field(..., min_length=6, max_length=6, pattern="^[0-9]{6}$")
+
+
+class SendLoginPhoneOTPRequest(BaseModel):
+    """Send login phone OTP request."""
+
+    phone_number: str = Field(..., min_length=7, max_length=20, pattern=_PHONE_PATTERN)
+
+
+class SendLoginPhoneOTPResponse(BaseModel):
+    """Send login phone OTP response."""
+
+    otp_id: str
+    phone_number: str
+    expires_at: str
+    expires_in_seconds: int
+    message: str
+
+
+class VerifyLoginPhoneOTPRequest(BaseModel):
+    """Verify login phone OTP request."""
+
+    otp_id: str
+    otp_code: str = Field(..., min_length=6, max_length=6, pattern="^[0-9]{6}$")
+
+
 # =============================================================================
 # AUTH ENDPOINTS
 # =============================================================================
@@ -811,6 +870,155 @@ async def verify_login_otp(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
     except Exception as e:
         logger.error("Login OTP verification error", otp_id=request.otp_id, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Login verification failed"
+        )
+
+
+# =============================================================================
+# PHONE OTP (WhatsApp) ENDPOINTS
+# =============================================================================
+
+
+@router.post("/register-phone-otp", response_model=RegisterPhoneOTPResponse)
+async def register_phone_otp(
+    request: RegisterPhoneOTPRequest,
+    request_obj: Request,
+    db=Depends(get_db_session),
+    _guard=Depends(_require_registration_enabled),
+) -> RegisterPhoneOTPResponse:
+    """Register a new user with phone number + WhatsApp OTP verification.
+
+    Flow:
+    1. User provides phone number + profile info
+    2. System sends 6-digit OTP via WhatsApp
+    3. User calls /verify-phone-otp to complete setup
+    """
+    try:
+        ip_address = getattr(request_obj.client, "host", None) if request_obj.client else None
+
+        auth_service = LocalAuthService(db)
+        result = await auth_service.register_user_with_phone_otp(
+            phone_number=request.phone_number,
+            name=request.name,
+            preferred_language=request.preferred_language,
+            country=request.country,
+            professional_role=request.professional_role,
+            ip_address=ip_address,
+        )
+
+        logger.info("User phone OTP registration initiated", phone=request.phone_number)
+        return RegisterPhoneOTPResponse(**result)
+
+    except AuthenticationError as e:
+        logger.warning("Phone OTP registration failed", phone=request.phone_number, error=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error("Phone OTP registration error", phone=request.phone_number, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Registration failed"
+        )
+
+
+@router.post("/verify-phone-otp", response_model=TokenResponse)
+async def verify_phone_otp(
+    request: VerifyPhoneOTPRequest,
+    response: Response,
+    request_obj: Request,
+    db=Depends(get_db_session),
+) -> TokenResponse:
+    """Verify phone OTP code and complete registration."""
+    try:
+        ip_address = getattr(request_obj.client, "host", None) if request_obj.client else None
+
+        auth_service = LocalAuthService(db)
+        result = await auth_service.verify_phone_otp_registration(
+            otp_id=request.otp_id, otp_code=request.otp_code, ip_address=ip_address
+        )
+
+        response.set_cookie(
+            key="refresh_token",
+            value=result["refresh_token"],
+            httponly=True,
+            secure=True,
+            samesite="strict",
+            max_age=auth_service.jwt_service.refresh_token_expire_days * 24 * 60 * 60,
+        )
+
+        logger.info("Phone OTP verification successful", otp_id=request.otp_id)
+        return TokenResponse(**result)
+
+    except AuthenticationError as e:
+        logger.warning("Phone OTP verification failed", otp_id=request.otp_id, error=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error("Phone OTP verification error", otp_id=request.otp_id, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Verification failed"
+        )
+
+
+@router.post("/send-login-phone-otp", response_model=SendLoginPhoneOTPResponse)
+async def send_login_phone_otp(
+    request: SendLoginPhoneOTPRequest,
+    request_obj: Request,
+    db=Depends(get_db_session),
+) -> SendLoginPhoneOTPResponse:
+    """Send a login OTP via WhatsApp."""
+    try:
+        ip_address = getattr(request_obj.client, "host", None) if request_obj.client else None
+
+        auth_service = LocalAuthService(db)
+        result = await auth_service.send_login_phone_otp(
+            phone_number=request.phone_number, ip_address=ip_address
+        )
+
+        logger.info("Login phone OTP sent", phone=request.phone_number)
+        return SendLoginPhoneOTPResponse(**result)
+
+    except AuthenticationError as e:
+        logger.warning("Send login phone OTP failed", phone=request.phone_number, error=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error("Send login phone OTP error", phone=request.phone_number, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to send login code"
+        )
+
+
+@router.post("/verify-login-phone-otp", response_model=TokenResponse)
+async def verify_login_phone_otp(
+    request: VerifyLoginPhoneOTPRequest,
+    response: Response,
+    request_obj: Request,
+    db=Depends(get_db_session),
+) -> TokenResponse:
+    """Verify a login phone OTP and authenticate the user."""
+    try:
+        ip_address = getattr(request_obj.client, "host", None) if request_obj.client else None
+
+        auth_service = LocalAuthService(db)
+        result = await auth_service.verify_login_phone_otp(
+            otp_id=request.otp_id, otp_code=request.otp_code, ip_address=ip_address
+        )
+
+        response.set_cookie(
+            key="refresh_token",
+            value=result["refresh_token"],
+            httponly=True,
+            secure=True,
+            samesite="strict",
+            max_age=auth_service.jwt_service.refresh_token_expire_days * 24 * 60 * 60,
+        )
+
+        logger.info("Login phone OTP verification successful", otp_id=request.otp_id)
+        return TokenResponse(**result)
+
+    except AuthenticationError as e:
+        logger.warning("Login phone OTP verification failed", otp_id=request.otp_id, error=str(e))
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+    except Exception as e:
+        logger.error("Login phone OTP verification error", otp_id=request.otp_id, error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Login verification failed"
         )
