@@ -510,6 +510,15 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {},
     ),
     SettingDef(
+        "tutor-message-max-chars",
+        "tutor",
+        16000,
+        "integer",
+        "Tutor: max user message chars",
+        "Hard cap on a single user message. Schema enforces it too.",
+        {"min": 500, "max": 60000},
+    ),
+    SettingDef(
         "tutor-max-tool-calls",
         "tutor",
         3,

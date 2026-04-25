@@ -288,6 +288,34 @@ export async function fetchTutorStats(): Promise<TutorStats> {
   return response.json();
 }
 
+export interface LastTouchedModule {
+  module_id: string;
+  module_number: number | null;
+  module_title: string;
+  course_id: string | null;
+  course_title: string | null;
+  last_accessed: string | null;
+}
+
+/**
+ * Fetch the user's most recently accessed module so the standalone /tutor
+ * page can default-anchor the chat in that module's context (#1988).
+ * Returns null when the user has no recorded module activity.
+ */
+export async function fetchLastTouchedModule(): Promise<LastTouchedModule | null> {
+  const token = await authClient.getValidToken();
+  const response = await fetch(`${API_BASE}/api/v1/tutor/last-module`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    if (response.status === 404) return null;
+    throw new Error(`Failed to fetch last-touched module: ${response.status}`);
+  }
+  const body = await response.text();
+  if (!body || body === 'null') return null;
+  return JSON.parse(body) as LastTouchedModule;
+}
+
 const DRAFT_KEY_PREFIX = 'tutor_draft_';
 const DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
