@@ -18,7 +18,7 @@ declare const self: ServiceWorkerGlobalScope;
 const DAY_IN_SECONDS = 24 * 60 * 60;
 
 // Bump when storage shape or routing changes so clients drop stale caches.
-const CACHE_VERSION = "v3-tutor-no-cache";
+const CACHE_VERSION = "v4-quiz-hydration-race-fix";
 
 const OFFLINE_FALLBACK_URL = "/offline.html";
 
