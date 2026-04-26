@@ -27,6 +27,7 @@ import {
   deleteAllConversations,
   clearDraft,
   type ConversationSummary,
+  type LastTouchedModule,
 } from '@/lib/tutor-api';
 
 export function TutorPageClient() {
