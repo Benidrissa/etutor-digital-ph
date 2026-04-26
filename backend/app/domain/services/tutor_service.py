@@ -43,12 +43,13 @@ logger = structlog.get_logger()
 
 _sc = SettingsCache.instance
 MAX_TOOL_CALLS = _sc().get("tutor-max-tool-calls", 3)
-# Defaults relaxed (#1978) — compaction is now non-destructive, so we can
-# afford a higher trigger and a much larger verbatim window. These fallbacks
-# track ``platform_defaults.py``; the runtime values come from SettingsCache
-# which reads from the platform_settings table.
-COMPACT_TRIGGER = _sc().get("tutor-compaction-trigger-messages", 50)
-COMPACT_KEEP_RECENT = _sc().get("tutor-compaction-keep-recent", 20)
+# Defaults relaxed (#1978) — compaction is non-destructive so we can afford
+# a higher trigger and a much larger verbatim window. Further bumped #1995
+# (50→80, 20→40) after staging feedback that the tutor lost learner-stated
+# objectives mid-session. Fallbacks track ``platform_defaults.py``;
+# runtime values come from SettingsCache.
+COMPACT_TRIGGER = _sc().get("tutor-compaction-trigger-messages", 80)
+COMPACT_KEEP_RECENT = _sc().get("tutor-compaction-keep-recent", 40)
 COMPACT_SUMMARIZE_UP_TO = _sc().get("tutor-compaction-summarize-up-to", 30)
 
 SESSION_CONTEXT_TOKEN_BUDGET = _sc().get("tutor-context-token-budget", 1500)
