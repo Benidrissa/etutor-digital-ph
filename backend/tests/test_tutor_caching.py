@@ -243,7 +243,9 @@ def test_render_case_full_handles_structured_and_legacy_text():
 
 
 @pytest.mark.asyncio
-async def test_module_block_renders_full_lesson_body_when_generated():
+async def test_module_block_marks_unit_generated_when_lesson_exists():
+    """Per #1992 spec: generated units show ✓ marker but body is NOT
+    inlined — descriptions only, full body via search_knowledge_base."""
     units = [_unit("1.1", "Définitions", "Definitions", order_index=1)]
     module = _module(units=units)
     rows = [
@@ -255,25 +257,21 @@ async def test_module_block_renders_full_lesson_body_when_generated():
                 "introduction": "Introduction longue avec plusieurs phrases.",
                 "concepts": ["concept1", "concept2"],
                 "aof_example": "Exemple ouest-africain détaillé",
-                "synthesis": "Synthèse complète",
-                "key_points": ["point1", "point2", "point3"],
-                "sources_cited": ["Donaldson Ch.4"],
             },
         )
     ]
     section = await _build_current_module_section(module, "fr", _mock_session([rows]))
     assert section is not None
-    # Full lesson content (not just a 200-char excerpt) is now in the section.
-    assert "Introduction longue avec plusieurs phrases." in section
-    assert "concept1" in section and "concept2" in section
-    assert "Exemple ouest-africain détaillé" in section
-    assert "Synthèse complète" in section
-    assert "point1" in section and "point2" in section
-    assert "Donaldson Ch.4" in section
+    assert "Unité 1.1" in section and "Définitions" in section
+    assert "✓ généré" in section
+    # Body content NOT inlined per the new spec.
+    assert "Introduction longue avec plusieurs phrases." not in section
+    assert "concept1" not in section
 
 
 @pytest.mark.asyncio
-async def test_module_block_includes_quiz_answers_by_default():
+async def test_module_block_marks_quiz_generated_without_inlining_questions():
+    """Quiz body is also no longer inlined — just the marker."""
     units = [_unit("1.1", "Définitions", "Definitions", order_index=1)]
     module = _module(units=units)
     rows = [
@@ -295,10 +293,11 @@ async def test_module_block_includes_quiz_answers_by_default():
     ]
     section = await _build_current_module_section(module, "fr", _mock_session([rows]))
     assert section is not None
-    assert "Quelle est la définition de X" in section
-    assert "Op C" in section
-    assert "Réponse correcte" in section
-    assert "Parce que C est correcte" in section
+    assert "Unité 1.1" in section
+    assert "✓ généré" in section
+    # Question body must NOT be inlined per #1992.
+    assert "Quelle est la définition de X" not in section
+    assert "Parce que C est correcte" not in section
 
 
 # --- course block ----------------------------------------------------------

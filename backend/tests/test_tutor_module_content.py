@@ -140,6 +140,8 @@ async def test_module_with_no_units_returns_none():
 
 @pytest.mark.asyncio
 async def test_renders_unit_titles_with_pending_status_when_no_generated_content():
+    """Per #1992 spec: every unit's number + title visible regardless of size,
+    pending units flagged as such, no full-body content."""
     units = [
         _unit("1.1", "Définitions", "Definitions", order_index=1),
         _unit("1.2", "Histoire", "History", order_index=2),
@@ -147,14 +149,16 @@ async def test_renders_unit_titles_with_pending_status_when_no_generated_content
     module = _module(units=units)
     section = await _build_current_module_section(module, "fr", _mock_session([]))
     assert section is not None
-    assert "1.1 — Définitions" in section
-    assert "1.2 — Histoire" in section
-    assert "🔒 (à venir)" in section
-    assert "✓ (généré)" not in section
+    assert "Unité 1.1" in section and "Définitions" in section
+    assert "Unité 1.2" in section and "Histoire" in section
+    assert "🔒 à venir" in section
+    assert "✓ généré" not in section
 
 
 @pytest.mark.asyncio
-async def test_renders_excerpt_for_generated_lesson():
+async def test_renders_generated_marker_when_content_exists():
+    """Per #1992: generated units show ✓ marker but do NOT inline the body
+    (tutor calls search_knowledge_base for full content)."""
     units = [_unit("1.1", "Définitions", "Definitions", order_index=1)]
     module = _module(units=units)
     rows = [
@@ -166,8 +170,10 @@ async def test_renders_excerpt_for_generated_lesson():
     ]
     section = await _build_current_module_section(module, "fr", _mock_session(rows))
     assert section is not None
-    assert "✓ (généré)" in section
-    assert "Ce chapitre introduit les notions clés." in section
+    assert "Unité 1.1" in section
+    assert "✓ généré" in section
+    # Body content must NOT be inlined per #1992 spec — descriptions only.
+    assert "Ce chapitre introduit les notions clés." not in section
 
 
 @pytest.mark.asyncio
@@ -180,8 +186,11 @@ async def test_picks_french_or_english_per_locale():
     assert "Definitions" in en_section
     assert "Définitions" not in en_section
     assert "Definitions" not in fr_section
-    assert "🔒 (à venir)" in fr_section
-    assert "🔒 (not yet generated)" in en_section
+    assert "🔒 à venir" in fr_section
+    assert "🔒 pending" in en_section
+    # Localised units header.
+    assert "Unités" in fr_section
+    assert "Units" in en_section
 
 
 @pytest.mark.asyncio
@@ -205,7 +214,10 @@ async def test_generated_case_row_preferred_over_legacy_text_column():
     section = await _build_current_module_section(module, "fr", _mock_session(rows))
     assert section is not None
     assert "Riposte Ebola" in section
+    # Per #1992 spec: case body content is no longer inlined when a generated
+    # case row exists — the title+marker is enough; full body via tool_use.
     assert "OLD legacy" not in section
+    assert "Coordination régionale" not in section
 
 
 @pytest.mark.asyncio
@@ -252,4 +264,4 @@ async def test_db_failure_does_not_explode_returns_titles_only():
     # Falls through to titles-only; no crash.
     assert section is not None
     assert "Définitions" in section
-    assert "🔒 (à venir)" in section
+    assert "🔒 à venir" in section
