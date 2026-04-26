@@ -65,9 +65,7 @@ class TestResolveModuleUnitId:
         session = AsyncMock(spec=AsyncSession)
         session.execute = AsyncMock()
 
-        resolved = await resolve_module_unit_id(
-            session, uuid.uuid4(), SUMMATIVE_SENTINEL
-        )
+        resolved = await resolve_module_unit_id(session, uuid.uuid4(), SUMMATIVE_SENTINEL)
         assert resolved is None
         session.execute.assert_not_called()
 
@@ -134,9 +132,7 @@ class TestGetCachedLessonUsesFkLookup:
             side_effect=[_resolve_result(unit_uuid), _cache_result(None), _cache_result(None)]
         )
 
-        await service._get_cached_lesson(
-            uuid.uuid4(), "1.2", "fr", "CI", 1, session
-        )
+        await service._get_cached_lesson(uuid.uuid4(), "1.2", "fr", "CI", 1, session)
 
         # Inspect the second call (the primary cache query) and assert its
         # WHERE clause references the FK column. Render to SQL and grep.
@@ -153,11 +149,7 @@ class TestSchemaDeclaresCascadeOnUnitDelete:
     staging after migration 084 runs."""
 
     def test_module_unit_id_fk_has_on_delete_cascade(self):
-        fk_cols = [
-            c
-            for c in GeneratedContent.__table__.columns
-            if c.name == "module_unit_id"
-        ]
+        fk_cols = [c for c in GeneratedContent.__table__.columns if c.name == "module_unit_id"]
         assert len(fk_cols) == 1, "module_unit_id column must exist on generated_content"
 
         col = fk_cols[0]
