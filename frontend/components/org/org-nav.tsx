@@ -22,7 +22,7 @@ export function OrgNav() {
   const locale = useLocale();
   const pathname = usePathname();
   const { org, role } = useOrg();
-  const currentUser = useCurrentUser();
+  const { user: currentUser } = useCurrentUser();
   const isEditor = canEditBank(role as OrgRole, currentUser?.role);
 
   if (!org) return null;

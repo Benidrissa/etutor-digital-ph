@@ -95,7 +95,7 @@ export function LessonViewer({
   const pollStartRef = useRef<number>(0);
   const slowWarningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const currentUser = useCurrentUser();
+  const { user: currentUser, isHydrated } = useCurrentUser();
   const country = countryContext || currentUser?.country || 'CI';
   const router = useRouter();
   const locale = useLocale();
@@ -116,66 +116,67 @@ export function LessonViewer({
     setErrorType(type);
   };
 
-  const pollStatus = (taskId: string, startTime: number) => {
-    if (Date.now() - startTime > POLL_TIMEOUT_MS) {
-      stopGenerating(t('generationTimeout'), 'timeout');
-      return;
-    }
-
-    pollTimerRef.current = setTimeout(async () => {
-      try {
-        const statusRes = await apiFetch<{ status: string; content_id?: string; error?: string }>(
-          `/api/v1/content/status/${taskId}`
-        );
-
-        if (statusRes.status === 'complete') {
-          if (slowWarningTimerRef.current) {
-            clearTimeout(slowWarningTimerRef.current);
-            slowWarningTimerRef.current = null;
-          }
-          setIsSlowGeneration(false);
-          const lessonRes = await apiFetch<LessonData>(
-            `/api/v1/content/lessons/${moduleId}/${unitId}?language=${language}&level=${level}&country=${country}`
-          );
-          // Guard: re-fetch may return 202 (generating) instead of cached content
-          if ('status' in lessonRes && (lessonRes as unknown as GeneratingResponse).status === 'generating') {
-            pollStatus(taskId, startTime);
-            return;
-          }
-          setLessonData(lessonRes);
-          setIsGenerating(false);
-          setIsLoading(false);
-          setIsRefreshing(false);
-          setForceRegenerate(false);
-        } else if (statusRes.status === 'failed') {
-          const isNoContent = statusRes.error?.toLowerCase().includes('no relevant') ||
-            statusRes.error?.toLowerCase().includes('rag') ||
-            statusRes.error?.toLowerCase().includes('no results') ||
-            statusRes.error?.toLowerCase().includes('0 results');
-          stopGenerating(
-            isNoContent ? t('noContentFound') : t('generationFailed'),
-            isNoContent ? 'no_content' : 'generation'
-          );
-        } else {
-          pollStatus(taskId, startTime);
-        }
-      } catch {
-        stopGenerating(t('loadError'), 'load');
-      }
-    }, POLL_INTERVAL_MS);
-  };
-
   useEffect(() => {
-    return () => {
-      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
-      if (slowWarningTimerRef.current) clearTimeout(slowWarningTimerRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    // Wait for the localStorage-backed user to settle before fetching. Otherwise
+    // `country` flips from default → real country mid-mount and re-fires this
+    // effect, dispatching a duplicate Celery task for the same logical request.
+    if (!isHydrated) return;
 
     let cancelled = false;
+    if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+
+    const pollStatus = (taskId: string, startTime: number) => {
+      if (cancelled) return;
+      if (Date.now() - startTime > POLL_TIMEOUT_MS) {
+        stopGenerating(t('generationTimeout'), 'timeout');
+        return;
+      }
+
+      pollTimerRef.current = setTimeout(async () => {
+        if (cancelled) return;
+        try {
+          const statusRes = await apiFetch<{ status: string; content_id?: string; error?: string }>(
+            `/api/v1/content/status/${taskId}`
+          );
+          if (cancelled) return;
+
+          if (statusRes.status === 'complete') {
+            if (slowWarningTimerRef.current) {
+              clearTimeout(slowWarningTimerRef.current);
+              slowWarningTimerRef.current = null;
+            }
+            setIsSlowGeneration(false);
+            const lessonRes = await apiFetch<LessonData>(
+              `/api/v1/content/lessons/${moduleId}/${unitId}?language=${language}&level=${level}&country=${country}`
+            );
+            if (cancelled) return;
+            if ('status' in lessonRes && (lessonRes as unknown as GeneratingResponse).status === 'generating') {
+              pollStatus(taskId, startTime);
+              return;
+            }
+            setLessonData(lessonRes);
+            setIsGenerating(false);
+            setIsLoading(false);
+            setIsRefreshing(false);
+            setForceRegenerate(false);
+          } else if (statusRes.status === 'failed') {
+            const rawError = statusRes.error?.trim();
+            const isNoContent = rawError?.toLowerCase().includes('no relevant') ||
+              rawError?.toLowerCase().includes('rag') ||
+              rawError?.toLowerCase().includes('no results') ||
+              rawError?.toLowerCase().includes('0 results');
+            const fallback = isNoContent ? t('noContentFound') : t('generationFailed');
+            const msg = !isNoContent && rawError && rawError.length <= 200 ? rawError : fallback;
+            stopGenerating(msg, isNoContent ? 'no_content' : 'generation');
+          } else {
+            pollStatus(taskId, startTime);
+          }
+        } catch {
+          if (cancelled) return;
+          stopGenerating(t('loadError'), 'load');
+        }
+      }, POLL_INTERVAL_MS);
+    };
 
     const load = async () => {
       try {
@@ -197,7 +198,7 @@ export function LessonViewer({
           setIsSlowGeneration(false);
           pollStartRef.current = Date.now();
           slowWarningTimerRef.current = setTimeout(() => {
-            setIsSlowGeneration(true);
+            if (!cancelled) setIsSlowGeneration(true);
           }, UX_SLOW_WARNING_MS);
           pollStatus((res as GeneratingResponse).task_id, pollStartRef.current);
         } else {
@@ -232,9 +233,13 @@ export function LessonViewer({
 
     load();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+      if (slowWarningTimerRef.current) clearTimeout(slowWarningTimerRef.current);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moduleId, unitId, language, level, country, forceRegenerate]);
+  }, [moduleId, unitId, language, level, country, forceRegenerate, isHydrated]);
 
   const handleRetry = () => {
     if (pollTimerRef.current) clearTimeout(pollTimerRef.current);

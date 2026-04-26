@@ -111,61 +111,67 @@ export function CaseStudyViewer({
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollStartRef = useRef<number>(0);
 
-  const currentUser = useCurrentUser();
+  const { user: currentUser, isHydrated } = useCurrentUser();
   const country = countryContext || currentUser?.country || 'CI';
   const { isOnline } = useNetworkStatus();
 
   const t = useTranslations('CaseStudyViewer');
 
-  const pollStatus = (taskId: string, startTime: number) => {
-    if (Date.now() - startTime > POLL_TIMEOUT_MS) {
-      setIsGenerating(false);
-      setIsLoading(false);
-      setIsRefreshing(false);
-      setError(t('generationTimeout'));
-      return;
-    }
+  useEffect(() => {
+    // Wait for the localStorage-backed user to settle before fetching, otherwise
+    // `country` flips mid-mount and re-fires this effect with a duplicate Celery task.
+    if (!isHydrated) return;
 
-    pollTimerRef.current = setTimeout(async () => {
-      try {
-        const statusRes = await apiFetch<{ status: string; content_id?: string; error?: string }>(
-          `/api/v1/content/status/${taskId}`
-        );
+    let cancelled = false;
+    if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
 
-        if (statusRes.status === 'complete') {
-          const caseRes = await apiFetch<CaseStudyData>(
-            `/api/v1/content/cases/${moduleId}/${unitId}?language=${language}&level=${level}&country=${country}`
-          );
-          setCaseStudyData(caseRes);
-          setIsGenerating(false);
-          setIsLoading(false);
-          setIsRefreshing(false);
-          setForceRegenerate(false);
-        } else if (statusRes.status === 'failed') {
-          setError(t('generationFailed'));
-          setIsGenerating(false);
-          setIsLoading(false);
-          setIsRefreshing(false);
-        } else {
-          pollStatus(taskId, startTime);
-        }
-      } catch {
-        setError(t('loadError'));
+    const pollStatus = (taskId: string, startTime: number) => {
+      if (cancelled) return;
+      if (Date.now() - startTime > POLL_TIMEOUT_MS) {
         setIsGenerating(false);
         setIsLoading(false);
         setIsRefreshing(false);
+        setError(t('generationTimeout'));
+        return;
       }
-    }, POLL_INTERVAL_MS);
-  };
 
-  useEffect(() => {
-    return () => {
-      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = setTimeout(async () => {
+        if (cancelled) return;
+        try {
+          const statusRes = await apiFetch<{ status: string; content_id?: string; error?: string }>(
+            `/api/v1/content/status/${taskId}`
+          );
+          if (cancelled) return;
+
+          if (statusRes.status === 'complete') {
+            const caseRes = await apiFetch<CaseStudyData>(
+              `/api/v1/content/cases/${moduleId}/${unitId}?language=${language}&level=${level}&country=${country}`
+            );
+            if (cancelled) return;
+            setCaseStudyData(caseRes);
+            setIsGenerating(false);
+            setIsLoading(false);
+            setIsRefreshing(false);
+            setForceRegenerate(false);
+          } else if (statusRes.status === 'failed') {
+            const rawError = statusRes.error?.trim();
+            const msg = rawError && rawError.length <= 200 ? rawError : t('generationFailed');
+            setError(msg);
+            setIsGenerating(false);
+            setIsLoading(false);
+            setIsRefreshing(false);
+          } else {
+            pollStatus(taskId, startTime);
+          }
+        } catch {
+          if (cancelled) return;
+          setError(t('loadError'));
+          setIsGenerating(false);
+          setIsLoading(false);
+          setIsRefreshing(false);
+        }
+      }, POLL_INTERVAL_MS);
     };
-  }, []);
-
-  useEffect(() => {
-    if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
 
     const load = async () => {
       try {
@@ -175,6 +181,7 @@ export function CaseStudyViewer({
         const result = await loadCaseStudy<CaseStudyData | GeneratingResponse>(
           moduleId, unitId, language, level, country, forceRegenerate
         );
+        if (cancelled) return;
 
         setContentSource(result.source);
 
@@ -191,6 +198,7 @@ export function CaseStudyViewer({
           setForceRegenerate(false);
         }
       } catch (err) {
+        if (cancelled) return;
         if (err instanceof OfflineContentNotAvailable) {
           setError(t('contentNotAvailableOffline'));
         } else {
@@ -202,8 +210,13 @@ export function CaseStudyViewer({
     };
 
     load();
+
+    return () => {
+      cancelled = true;
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moduleId, unitId, language, level, country, forceRegenerate]);
+  }, [moduleId, unitId, language, level, country, forceRegenerate, isHydrated]);
 
   const handleRefresh = () => {
     setCaseStudyData(null);

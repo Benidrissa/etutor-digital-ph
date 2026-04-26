@@ -34,7 +34,7 @@ export function QBankListClient() {
   const locale = useLocale();
   const t = useTranslations("qbank");
   const { org, role, loading: orgLoading } = useOrg();
-  const currentUser = useCurrentUser();
+  const { user: currentUser } = useCurrentUser();
   const isEditor = canEditBank(role as OrgRole, currentUser?.role);
   const [banks, setBanks] = useState<QBankBank[]>([]);
   const [loading, setLoading] = useState(true);

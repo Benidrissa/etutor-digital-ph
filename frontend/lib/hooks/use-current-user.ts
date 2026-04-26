@@ -3,16 +3,21 @@
 import { useState, useEffect } from 'react';
 import type { User } from '@/lib/auth';
 
-export function useCurrentUser(): User | null {
-  const [user, setUser] = useState<User | null>(null);
+export interface CurrentUserState {
+  user: User | null;
+  isHydrated: boolean;
+}
+
+export function useCurrentUser(): CurrentUserState {
+  const [state, setState] = useState<CurrentUserState>({ user: null, isHydrated: false });
 
   useEffect(() => {
     const load = () => {
       try {
         const raw = localStorage.getItem('user');
-        setUser(raw ? (JSON.parse(raw) as User) : null);
+        setState({ user: raw ? (JSON.parse(raw) as User) : null, isHydrated: true });
       } catch {
-        setUser(null);
+        setState({ user: null, isHydrated: true });
       }
     };
 
@@ -26,5 +31,5 @@ export function useCurrentUser(): User | null {
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
-  return user;
+  return state;
 }

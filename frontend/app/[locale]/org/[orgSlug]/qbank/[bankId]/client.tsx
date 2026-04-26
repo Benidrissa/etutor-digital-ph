@@ -37,7 +37,7 @@ export function QBankDetailClient({ bankId }: Props) {
   const locale = useLocale();
   const t = useTranslations("qbank");
   const { org, role } = useOrg();
-  const currentUser = useCurrentUser();
+  const { user: currentUser } = useCurrentUser();
   const isEditor = canEditBank(role as OrgRole, currentUser?.role);
   const [bank, setBank] = useState<QBankBank | null>(null);
   const [questions, setQuestions] = useState<QBankQuestionFull[]>([]);

@@ -52,7 +52,7 @@ export function QuizContainer({
   const t = useTranslations('Quiz');
   const { getSetting } = useSettings();
   const unitQuestionsCount = getSetting<number>("quiz-unit-questions-count", 10);
-  const currentUser = useCurrentUser();
+  const { user: currentUser, isHydrated } = useCurrentUser();
   const resolvedCountry = country || currentUser?.country || 'CI';
   
   const [state, setState] = useState<QuizState>('loading');
@@ -67,58 +67,64 @@ export function QuizContainer({
   const pollStartRef = useRef<number>(0);
   const { isOnline } = useNetworkStatus();
 
-  const pollStatus = (taskId: string, startTime: number) => {
-    if (Date.now() - startTime > POLL_TIMEOUT_MS) {
-      setState('error');
-      const msg = t('generationTimeout');
-      setError(msg);
-      onError?.(msg);
-      return;
-    }
-
-    pollTimerRef.current = setTimeout(async () => {
-      try {
-        const statusRes = await apiFetch<{ status: string; content_id?: string; error?: string }>(
-          `/api/v1/content/status/${taskId}`
-        );
-
-        if (statusRes.status === 'complete') {
-          const quizData = await generateQuiz({
-            module_id: moduleId,
-            unit_id: unitId,
-            language,
-            country: resolvedCountry,
-            level,
-            num_questions: unitQuestionsCount,
-          });
-          setQuiz(quizData);
-          setForceRegenerate(false);
-          setState('ready');
-        } else if (statusRes.status === 'failed') {
-          const msg = t('generationFailed');
-          setError(msg);
-          setState('error');
-          onError?.(msg);
-        } else {
-          pollStatus(taskId, startTime);
-        }
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : t('failedToLoad');
-        setError(errorMessage);
-        setState('error');
-        onError?.(errorMessage);
-      }
-    }, POLL_INTERVAL_MS);
-  };
-
   useEffect(() => {
-    return () => {
-      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
-    };
-  }, []);
-  
-  useEffect(() => {
+    // Wait for the localStorage-backed user to settle before fetching. Otherwise
+    // `resolvedCountry` flips from default → real country mid-mount and re-fires
+    // this effect, dispatching a duplicate Celery task for the same logical request.
+    if (!isHydrated) return;
+
+    let stale = false;
     if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+
+    const pollStatus = (taskId: string, startTime: number) => {
+      if (stale) return;
+      if (Date.now() - startTime > POLL_TIMEOUT_MS) {
+        const msg = t('generationTimeout');
+        setError(msg);
+        setState('error');
+        onError?.(msg);
+        return;
+      }
+
+      pollTimerRef.current = setTimeout(async () => {
+        if (stale) return;
+        try {
+          const statusRes = await apiFetch<{ status: string; content_id?: string; error?: string }>(
+            `/api/v1/content/status/${taskId}`
+          );
+          if (stale) return;
+
+          if (statusRes.status === 'complete') {
+            const quizData = await generateQuiz({
+              module_id: moduleId,
+              unit_id: unitId,
+              language,
+              country: resolvedCountry,
+              level,
+              num_questions: unitQuestionsCount,
+            });
+            if (stale) return;
+            setQuiz(quizData);
+            setForceRegenerate(false);
+            setState('ready');
+          } else if (statusRes.status === 'failed') {
+            const rawError = statusRes.error?.trim();
+            const msg = rawError && rawError.length <= 200 ? rawError : t('generationFailed');
+            setError(msg);
+            setState('error');
+            onError?.(msg);
+          } else {
+            pollStatus(taskId, startTime);
+          }
+        } catch (err) {
+          if (stale) return;
+          const errorMessage = err instanceof Error ? err.message : t('failedToLoad');
+          setError(errorMessage);
+          setState('error');
+          onError?.(errorMessage);
+        }
+      }, POLL_INTERVAL_MS);
+    };
 
     const fetchQuiz = async () => {
       try {
@@ -129,10 +135,10 @@ export function QuizContainer({
           moduleId, unitId, language, level, resolvedCountry,
           unitQuestionsCount, forceRegenerate,
         );
+        if (stale) return;
 
         setContentSource(result.source);
 
-        // If from IndexedDB, it's already a full quiz (no generating state)
         if (result.source === 'indexeddb') {
           setQuiz(result.data as Quiz);
           setForceRegenerate(false);
@@ -151,6 +157,7 @@ export function QuizContainer({
           setState('ready');
         }
       } catch (err) {
+        if (stale) return;
         console.error('Failed to load quiz:', err);
         let errorMessage: string;
         if (err instanceof OfflineContentNotAvailable) {
@@ -173,8 +180,13 @@ export function QuizContainer({
     };
 
     fetchQuiz();
+
+    return () => {
+      stale = true;
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moduleId, unitId, language, resolvedCountry, level, retryCount, forceRegenerate]);
+  }, [moduleId, unitId, language, resolvedCountry, level, retryCount, forceRegenerate, isHydrated]);
   
   const handleStartQuiz = () => {
     setState('in-progress');
