@@ -369,7 +369,21 @@ class TestCheckQuizPassedForUnit:
     async def test_returns_false_when_no_quiz_content_found(
         self, progress_service, mock_db, user_id, module_id
     ):
-        mock_db.execute = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+        # Two execute() calls now: (1) resolve_module_unit_id, (2) quiz lookup.
+        unit_uuid = uuid.uuid4()
+        call_count = 0
+
+        async def mock_execute(query):
+            nonlocal call_count
+            call_count += 1
+            mock_result = MagicMock()
+            if call_count == 1:
+                mock_result.scalar_one_or_none = MagicMock(return_value=unit_uuid)
+            else:
+                mock_result.all = MagicMock(return_value=[])
+            return mock_result
+
+        mock_db.execute = mock_execute
 
         result = await progress_service.check_quiz_passed_for_unit(
             user_id=user_id,
@@ -383,6 +397,7 @@ class TestCheckQuizPassedForUnit:
         self, progress_service, mock_db, user_id, module_id
     ):
         quiz_id = uuid.uuid4()
+        unit_uuid = uuid.uuid4()
         call_count = 0
 
         async def mock_execute(query):
@@ -390,6 +405,8 @@ class TestCheckQuizPassedForUnit:
             call_count += 1
             mock_result = MagicMock()
             if call_count == 1:
+                mock_result.scalar_one_or_none = MagicMock(return_value=unit_uuid)
+            elif call_count == 2:
                 mock_result.all = MagicMock(return_value=[(quiz_id,)])
             else:
                 mock_result.scalar = MagicMock(return_value=70.0)
@@ -409,6 +426,7 @@ class TestCheckQuizPassedForUnit:
         self, progress_service, mock_db, user_id, module_id
     ):
         quiz_id = uuid.uuid4()
+        unit_uuid = uuid.uuid4()
         call_count = 0
 
         async def mock_execute(query):
@@ -416,6 +434,8 @@ class TestCheckQuizPassedForUnit:
             call_count += 1
             mock_result = MagicMock()
             if call_count == 1:
+                mock_result.scalar_one_or_none = MagicMock(return_value=unit_uuid)
+            elif call_count == 2:
                 mock_result.all = MagicMock(return_value=[(quiz_id,)])
             else:
                 mock_result.scalar = MagicMock(return_value=85.0)
@@ -435,6 +455,7 @@ class TestCheckQuizPassedForUnit:
         self, progress_service, mock_db, user_id, module_id
     ):
         quiz_id = uuid.uuid4()
+        unit_uuid = uuid.uuid4()
         call_count = 0
 
         async def mock_execute(query):
@@ -442,6 +463,8 @@ class TestCheckQuizPassedForUnit:
             call_count += 1
             mock_result = MagicMock()
             if call_count == 1:
+                mock_result.scalar_one_or_none = MagicMock(return_value=unit_uuid)
+            elif call_count == 2:
                 mock_result.all = MagicMock(return_value=[(quiz_id,)])
             else:
                 mock_result.scalar = MagicMock(return_value=80.0)
@@ -461,6 +484,7 @@ class TestCheckQuizPassedForUnit:
         self, progress_service, mock_db, user_id, module_id
     ):
         quiz_id = uuid.uuid4()
+        unit_uuid = uuid.uuid4()
         call_count = 0
 
         async def mock_execute(query):
@@ -468,6 +492,8 @@ class TestCheckQuizPassedForUnit:
             call_count += 1
             mock_result = MagicMock()
             if call_count == 1:
+                mock_result.scalar_one_or_none = MagicMock(return_value=unit_uuid)
+            elif call_count == 2:
                 mock_result.all = MagicMock(return_value=[(quiz_id,)])
             else:
                 mock_result.scalar = MagicMock(return_value=None)

@@ -4,10 +4,28 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
+import structlog
+
 if TYPE_CHECKING:
     from app.domain.models.course import Course
 
 from app.domain.services.platform_settings_service import SettingsCache
+
+logger = structlog.get_logger(__name__)
+
+# Keys whose admin-editable value MUST reference {unit_title} so the
+# generated content stays bound to the unit. Warn at runtime if missing.
+_UNIT_BINDING_REQUIRED_KEYS = frozenset(
+    {
+        "ai-prompt-lesson-system",
+        "ai-prompt-lesson-kids-system",
+        "ai-prompt-quiz-system",
+        "ai-prompt-quiz-kids-system",
+        "ai-prompt-case-study-system",
+        "ai-prompt-case-study-kids-system",
+    }
+)
+_unit_binding_warned: set[str] = set()
 
 # Mapping of country codes to French names for contextualization
 COUNTRY_NAMES_FR = {
@@ -104,6 +122,20 @@ def _apply_settings_template(
     current = SettingsCache.instance().get(setting_key)
     if not current:
         current = defn.default
+    # Guard: warn once if an admin-overridden prompt drops the {unit_title}
+    # placeholder. Without it, generated content drifts to module-level
+    # overviews instead of the requested unit (issue #2007).
+    if (
+        setting_key in _UNIT_BINDING_REQUIRED_KEYS
+        and "{unit_title}" not in current
+        and setting_key not in _unit_binding_warned
+    ):
+        _unit_binding_warned.add(setting_key)
+        logger.warning(
+            "Prompt template missing {unit_title} placeholder — "
+            "generated content may drift off-topic",
+            setting_key=setting_key,
+        )
     vars_map = _build_template_vars(
         language,
         country,
@@ -165,6 +197,8 @@ def format_rag_context_for_lesson(
     unit_id: str,
     language: Literal["fr", "en"],
     linked_images: dict[UUID, list[dict]] | None = None,
+    unit_title: str = "",
+    unit_description: str | None = None,
 ) -> str:
     """Format RAG chunks into context for lesson generation.
 
@@ -172,14 +206,27 @@ def format_rag_context_for_lesson(
         chunks: RAG search result chunks
         query: Original search query
         module_title: Title of the module
-        unit_id: Unit identifier
+        unit_id: Unit identifier (e.g. "1.3")
         language: Content language (fr/en)
         linked_images: Optional mapping of chunk_id -> list of image metadata dicts
                        (from SemanticRetriever.get_linked_images). Capped at 5 total annotations.
+        unit_title: Declared title of the unit (e.g. "Mesures de morbidité et de mortalité").
+                    Required for unit-level binding; empty string falls back to query-only.
+        unit_description: Declared description of the unit. Reinforces topic scope.
     """
     if language == "fr":
-        context_intro = f"""DEMANDE : Génère une leçon pour le module "{module_title}",
-unité {unit_id}, sur le sujet : "{query}"
+        unit_block = f"UNITÉ CIBLE : {unit_id} — « {unit_title} »\n" if unit_title else ""
+        if unit_description:
+            unit_block += f"DESCRIPTION DE L'UNITÉ : {unit_description}\n"
+        constraint = (
+            "CONTRAINTE STRICTE : Le contenu doit traiter EXCLUSIVEMENT du sujet de "
+            "l'unité ci-dessus. Ne couvre PAS les autres unités du module — chaque "
+            "unité a sa propre leçon dédiée.\n\n"
+            if unit_title
+            else ""
+        )
+        context_intro = f"""DEMANDE : Génère une leçon pour le module "{module_title}".
+{unit_block}{constraint}Sujet de recherche : "{query}"
 
 DOCUMENTS DE RÉFÉRENCE :
 """
@@ -187,8 +234,18 @@ DOCUMENTS DE RÉFÉRENCE :
         figure_label = "FIGURE DISPONIBLE"
 
     else:  # English
-        context_intro = f"""REQUEST: Generate a lesson for module "{module_title}",
-unit {unit_id}, on the topic: "{query}"
+        unit_block = f'TARGET UNIT: {unit_id} — "{unit_title}"\n' if unit_title else ""
+        if unit_description:
+            unit_block += f"UNIT DESCRIPTION: {unit_description}\n"
+        constraint = (
+            "STRICT CONSTRAINT: The content must address EXCLUSIVELY the topic of "
+            "the unit above. Do NOT cover the other units in the module — each unit "
+            "has its own dedicated lesson.\n\n"
+            if unit_title
+            else ""
+        )
+        context_intro = f"""REQUEST: Generate a lesson for module "{module_title}".
+{unit_block}{constraint}Search topic: "{query}"
 
 REFERENCE DOCUMENTS:
 """

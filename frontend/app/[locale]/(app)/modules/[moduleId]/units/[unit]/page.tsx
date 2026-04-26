@@ -56,6 +56,8 @@ export default async function UnitPage({ params }: UnitPageProps) {
             unitId={unit.unit_number}
             language={language}
             level={level}
+            unitTitle={unitTitle}
+            unitDescription={unitDescription}
           />
         ) : unit.unit_type === 'scenario' || unit.unit_type === 'case-study' ? (
           <CaseStudyViewer
@@ -76,6 +78,8 @@ export default async function UnitPage({ params }: UnitPageProps) {
             language={language}
             level={level}
             estimatedMinutes={unit.estimated_minutes}
+            unitTitle={unitTitle}
+            unitDescription={unitDescription}
           />
         )}
       </div>

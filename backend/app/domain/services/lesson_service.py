@@ -109,17 +109,25 @@ class LessonGenerationService:
         """
         # Always return manually edited content, even with force_regenerate
         if force_regenerate:
+            from app.domain.services._unit_resolution import resolve_module_unit_id
+
+            locked_unit_uuid = await resolve_module_unit_id(session, module_id, unit_id)
             locked_query = (
-                select(GeneratedContent.id)
-                .where(GeneratedContent.module_id == module_id)
-                .where(GeneratedContent.content_type == "lesson")
-                .where(GeneratedContent.language == language)
-                .where(GeneratedContent.content["unit_id"].astext == unit_id)
-                .where(GeneratedContent.is_manually_edited.is_(True))
-                .limit(1)
+                (
+                    select(GeneratedContent.id)
+                    .where(GeneratedContent.module_unit_id == locked_unit_uuid)
+                    .where(GeneratedContent.content_type == "lesson")
+                    .where(GeneratedContent.language == language)
+                    .where(GeneratedContent.is_manually_edited.is_(True))
+                    .limit(1)
+                )
+                if locked_unit_uuid
+                else None
             )
-            locked_result = await session.execute(locked_query)
-            if locked_result.scalar_one_or_none():
+            locked_result = (
+                await session.execute(locked_query) if locked_query is not None else None
+            )
+            if locked_result is not None and locked_result.scalar_one_or_none():
                 logger.info(
                     "Returning manually edited lesson (locked, ignoring force_regenerate)",
                     module_id=str(module_id),
@@ -252,6 +260,14 @@ class LessonGenerationService:
 
             yield StreamingEvent(event="chunk", data="Démarrage de la génération...")
 
+            # Resolve unit metadata once — for prompt grounding + RAG query.
+            unit = await self._resolve_unit(module, unit_id, session)
+            unit_title = (unit.title_fr if language == "fr" else unit.title_en) if unit else ""
+            unit_description = (
+                (unit.description_fr if language == "fr" else unit.description_en) if unit else None
+            )
+            module_title = module.title_fr if language == "fr" else module.title_en
+
             # Perform RAG retrieval
             yield StreamingEvent(event="chunk", data="Recherche des documents pertinents...")
 
@@ -317,15 +333,19 @@ class LessonGenerationService:
                     if course
                     else None
                 ),
+                module_title=module_title,
+                unit_title=unit_title,
                 course=course,
             )
             user_message = format_rag_context_for_lesson(
                 rag_chunks,
                 query,
-                module.title_fr if language == "fr" else module.title_en,
+                module_title,
                 unit_id,
                 language,
                 linked_images=linked_images or None,
+                unit_title=unit_title,
+                unit_description=unit_description,
             )
 
             # Stream content generation
@@ -438,14 +458,19 @@ class LessonGenerationService:
             Tuple of (LessonResponse | None, country_fallback: bool).
             country_fallback is True when content is from a different country's cache.
         """
+        from app.domain.services._unit_resolution import resolve_module_unit_id
+
+        module_unit_uuid = await resolve_module_unit_id(session, module_id, unit_id)
+        if module_unit_uuid is None:
+            return None, False
+
         query = (
             select(GeneratedContent)
-            .where(GeneratedContent.module_id == module_id)
+            .where(GeneratedContent.module_unit_id == module_unit_uuid)
             .where(GeneratedContent.content_type == "lesson")
             .where(GeneratedContent.language == language)
             .where(GeneratedContent.level == level)
             .where(GeneratedContent.country_context == country)
-            .where(GeneratedContent.content["unit_id"].astext == unit_id)
             .order_by(GeneratedContent.generated_at.desc())
         )
 
@@ -455,11 +480,10 @@ class LessonGenerationService:
         if not cached_content:
             fallback_query = (
                 select(GeneratedContent)
-                .where(GeneratedContent.module_id == module_id)
+                .where(GeneratedContent.module_unit_id == module_unit_uuid)
                 .where(GeneratedContent.content_type == "lesson")
                 .where(GeneratedContent.language == language)
                 .where(GeneratedContent.level == level)
-                .where(GeneratedContent.content["unit_id"].astext == unit_id)
                 .order_by(GeneratedContent.generated_at.desc())
             )
             fallback_result = await session.execute(fallback_query)
@@ -518,6 +542,14 @@ class LessonGenerationService:
         session: AsyncSession,
     ) -> LessonResponse:
         """Generate new lesson content using RAG + Claude."""
+        # Resolve unit metadata once — used for prompt grounding and RAG query.
+        unit = await self._resolve_unit(module, unit_id, session)
+        unit_title = (unit.title_fr if language == "fr" else unit.title_en) if unit else ""
+        unit_description = (
+            (unit.description_fr if language == "fr" else unit.description_en) if unit else None
+        )
+        module_title = module.title_fr if language == "fr" else module.title_en
+
         # Build search query
         query = await self._build_lesson_query(module, unit_id, language, session)
 
@@ -570,15 +602,19 @@ class LessonGenerationService:
                 if course
                 else None
             ),
+            module_title=module_title,
+            unit_title=unit_title,
             course=course,
         )
         user_message = format_rag_context_for_lesson(
             rag_chunks,
             query,
-            module.title_fr if language == "fr" else module.title_en,
+            module_title,
             unit_id,
             language,
             linked_images=linked_images or None,
+            unit_title=unit_title,
+            unit_description=unit_description,
         )
 
         # Get non-streaming response for structured parsing
@@ -843,6 +879,16 @@ class LessonGenerationService:
         self, lesson_response: LessonResponse, session: AsyncSession
     ) -> None:
         """Save generated lesson content to cache."""
+        from app.domain.services._unit_resolution import resolve_module_unit_id
+
+        # Resolve FK so the unique index `idx_unique_content_per_module_unit`
+        # can enforce one cached lesson per (unit, lang, level, country).
+        # JSON unit_id is still written for backwards compat with audio/video
+        # readers that haven't been migrated yet (#2007 — deferred Step 5).
+        module_unit_uuid = await resolve_module_unit_id(
+            session, lesson_response.module_id, lesson_response.unit_id
+        )
+
         content_with_unit = lesson_response.content.model_dump()
         content_with_unit["unit_id"] = lesson_response.unit_id
         content_with_unit["source_image_refs"] = [
@@ -852,6 +898,7 @@ class LessonGenerationService:
         cached_content = GeneratedContent(
             id=lesson_response.id,
             module_id=lesson_response.module_id,
+            module_unit_id=module_unit_uuid,
             content_type="lesson",
             language=lesson_response.language,
             level=lesson_response.level,
@@ -1198,6 +1245,8 @@ class CaseStudyGenerationService:
                 language,
                 module_id=module_key,
                 syllabus_json=course.syllabus_json if course else None,
+                unit_title=stream_unit_title,
+                unit_description=stream_unit_description,
             )
 
             logger.debug(
@@ -1255,14 +1304,19 @@ class CaseStudyGenerationService:
             Tuple of (CaseStudyResponse | None, country_fallback: bool).
             country_fallback is True when content is from a different country's cache.
         """
+        from app.domain.services._unit_resolution import resolve_module_unit_id
+
+        module_unit_uuid = await resolve_module_unit_id(session, module_id, unit_id)
+        if module_unit_uuid is None:
+            return None, False
+
         query = (
             select(GeneratedContent)
-            .where(GeneratedContent.module_id == module_id)
+            .where(GeneratedContent.module_unit_id == module_unit_uuid)
             .where(GeneratedContent.content_type == "case")
             .where(GeneratedContent.language == language)
             .where(GeneratedContent.level == level)
             .where(GeneratedContent.country_context == country)
-            .where(GeneratedContent.content["unit_id"].astext == unit_id)
             .order_by(GeneratedContent.generated_at.desc())
         )
 
@@ -1272,11 +1326,10 @@ class CaseStudyGenerationService:
         if not cached_content:
             fallback_query = (
                 select(GeneratedContent)
-                .where(GeneratedContent.module_id == module_id)
+                .where(GeneratedContent.module_unit_id == module_unit_uuid)
                 .where(GeneratedContent.content_type == "case")
                 .where(GeneratedContent.language == language)
                 .where(GeneratedContent.level == level)
-                .where(GeneratedContent.content["unit_id"].astext == unit_id)
                 .order_by(GeneratedContent.generated_at.desc())
             )
             fallback_result = await session.execute(fallback_query)
@@ -1371,6 +1424,8 @@ class CaseStudyGenerationService:
             language,
             module_id=module_key,
             syllabus_json=course.syllabus_json if course else None,
+            unit_title=resolved_unit_title,
+            unit_description=resolved_unit_description,
         )
 
         logger.debug(
@@ -1600,12 +1655,21 @@ class CaseStudyGenerationService:
         self, case_study_response: CaseStudyResponse, session: AsyncSession
     ) -> None:
         """Save generated case study content to cache."""
+        from app.domain.services._unit_resolution import resolve_module_unit_id
+
+        module_unit_uuid = await resolve_module_unit_id(
+            session,
+            case_study_response.module_id,
+            case_study_response.unit_id,
+        )
+
         content_with_unit = case_study_response.content.model_dump()
         content_with_unit["unit_id"] = case_study_response.unit_id
 
         cached_content = GeneratedContent(
             id=case_study_response.id,
             module_id=case_study_response.module_id,
+            module_unit_id=module_unit_uuid,
             content_type="case",
             language=case_study_response.language,
             level=case_study_response.level,

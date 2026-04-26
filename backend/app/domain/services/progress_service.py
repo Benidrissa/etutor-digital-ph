@@ -243,14 +243,21 @@ class ProgressService:
         """
         from app.domain.models.content import GeneratedContent
         from app.domain.models.quiz import QuizAttempt
+        from app.domain.services._unit_resolution import resolve_module_unit_id
 
-        content_result = await self.db.execute(
-            select(GeneratedContent.id).where(
+        progress_unit_uuid = await resolve_module_unit_id(self.db, module_id, unit_id)
+        quiz_query = select(GeneratedContent.id).where(
+            GeneratedContent.content_type == "quiz",
+        )
+        if progress_unit_uuid is not None:
+            quiz_query = quiz_query.where(GeneratedContent.module_unit_id == progress_unit_uuid)
+        else:
+            quiz_query = quiz_query.where(
                 GeneratedContent.module_id == module_id,
-                GeneratedContent.content_type == "quiz",
+                GeneratedContent.module_unit_id.is_(None),
                 GeneratedContent.content["unit_id"].astext == unit_id,
             )
-        )
+        content_result = await self.db.execute(quiz_query)
         quiz_ids = [row[0] for row in content_result.all()]
 
         if not quiz_ids:

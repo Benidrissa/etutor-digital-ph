@@ -169,7 +169,10 @@ class TestCaseStudyPromptImports:
         assert "guided_questions" in prompt
         assert "annotated_correction" in prompt
 
-    def test_format_rag_context_includes_topic_for_known_module(self):
+    def test_format_rag_context_binds_to_unit_title_and_description(self):
+        """Per #2007, the case-study prompt must hard-bind to the unit's
+        declared title and description rather than a hardcoded module-level
+        recommended topic."""
         from app.ai.prompts.case_study import format_rag_context_for_case_study
 
         mock_chunk = MagicMock()
@@ -182,14 +185,17 @@ class TestCaseStudyPromptImports:
             [mock_chunk],
             "health challenge",
             "Fondements de la Santé Publique",
-            "1.5",
+            "1.9",
             "fr",
-            module_id="M01",
+            unit_title="Analyse de la charge de morbidité au Sénégal",
+            unit_description="DALYs et indicateurs de mortalité",
         )
 
-        assert "Ebola" in context or "Guinée" in context
+        assert "Analyse de la charge de morbidité au Sénégal" in context
+        assert "DALYs et indicateurs de mortalité" in context
+        assert "EXCLUSIVEMENT" in context  # strict topic constraint
 
-    def test_format_rag_context_without_known_module(self):
+    def test_format_rag_context_without_unit_title_omits_constraint(self):
         from app.ai.prompts.case_study import format_rag_context_for_case_study
 
         mock_chunk = MagicMock()
@@ -204,11 +210,11 @@ class TestCaseStudyPromptImports:
             "Unknown Module",
             "99.1",
             "en",
-            module_id="M99",
         )
 
         assert "Unknown Module" in context
         assert "health challenge" in context
+        assert "STRICT CONSTRAINT" not in context
 
     def test_empty_cache_value_falls_back_to_default_prompt(self):
         from unittest.mock import patch
