@@ -79,8 +79,9 @@ def test_search_source_images_tool_has_required_fields():
     assert set(enum_vals) == {"diagram", "photo", "chart", "any"}
 
 
-def test_tool_count_increased_to_six():
-    assert len(TOOL_DEFINITIONS) == 6
+def test_tool_count_includes_get_unit_content():
+    # 7 since #1992 added get_unit_content (full body fetch on demand).
+    assert len(TOOL_DEFINITIONS) == 7
 
 
 # ---------------------------------------------------------------------------

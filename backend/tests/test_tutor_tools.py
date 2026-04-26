@@ -143,7 +143,10 @@ def tutor_service(mock_retriever, mock_anthropic, mock_learner_memory_service):
 
 
 def test_tool_definitions_count():
-    assert len(TOOL_DEFINITIONS) == 6
+    # Bumped to 7 with the addition of get_unit_content (#1992) — serves
+    # full lesson/quiz/case bodies on demand so the system prompt can stay
+    # at the structured listing level (titles + descriptions only).
+    assert len(TOOL_DEFINITIONS) == 7
 
 
 def test_tool_names():
@@ -155,6 +158,7 @@ def test_tool_names():
         "generate_mini_quiz",
         "search_flashcards",
         "save_learner_preference",
+        "get_unit_content",
     }
 
 

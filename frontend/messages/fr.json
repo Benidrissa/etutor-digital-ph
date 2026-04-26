@@ -396,8 +396,6 @@
     "conversations": "Conversations",
     "openConversations": "Ouvrir les conversations",
     "closeDrawer": "Fermer",
-    "anchoredToModule": "Tuteur ancré sur : {module}",
-    "dismissAnchor": "Basculer en discussion sur tout le cours",
     "messageTooLong": "Message trop long — raccourcis-le avant d'envoyer",
     "charactersUsed": "{used} / {limit} caractères",
     "modeSocratic": "Mode Socratique",

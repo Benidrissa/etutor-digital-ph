@@ -342,20 +342,28 @@ async def _build_current_module_section(
     session: AsyncSession,
     char_limit: int | None = None,
     excerpt_chars: int | None = None,
+    user_id: uuid.UUID | None = None,
 ) -> str | None:
-    """Render the current module's unit / quiz / case-study content (#1981, #1984).
+    """Render the current module as a structured listing for the tutor (#1981, #1984, #1992).
 
     Returns ``None`` when no module is in scope (chat without a module
     context) or when the module has no units.
 
-    Behaviour evolved with #1984: instead of 200-char excerpts, we now render
-    the **full lesson body, full quiz (with answers), and full case study**
-    for every generated unit in the module — bounded by per-unit and
-    per-section char limits. The tutor can quote, cite, and reason from the
-    actual material rather than tool-calling for every concrete question.
+    Per #1992 user spec, output is a **structured navigation listing**, not
+    full lesson bodies:
 
-    Pending units (no GeneratedContent row) still show titles + a 🔒 marker
-    so the tutor knows what exists but isn't yet authored.
+    - Module header: title + description + estimated_hours + progress
+      (if user_id provided).
+    - Per unit: number + estimated reading time + title + description.
+    - Per unit: ✓ generated / 🔒 pending marker — tutor knows what's
+      available without needing the body in-prompt.
+
+    Why not full bodies (the #1985 design)? At ~10 000 chars per generated
+    lesson, only 3 units fit before the per-section trim cuts the rest →
+    tutor saw only the first few units of long modules. Descriptions
+    (~200 chars each) keep ALL units visible regardless of module size,
+    and the tutor calls ``search_knowledge_base`` for body content when
+    a specific question needs it.
     """
     if module_obj is None:
         return None
@@ -365,44 +373,84 @@ async def _build_current_module_section(
         if char_limit is not None
         else _sc().get("tutor-module-content-char-limit", 30000)
     )
-    excerpt_chars = (
-        excerpt_chars
-        if excerpt_chars is not None
-        else _sc().get("tutor-module-content-excerpt-chars", 10000)
-    )
-    include_quiz_answers = bool(_sc().get("tutor-include-quiz-answers", True))
 
-    # Localised labels — keep the prompt natural in either FR or EN so the
-    # tutor doesn't switch languages mid-thought.
+    # Localised labels — keep the prompt natural in either FR or EN.
     if language == "fr":
-        generated_marker = "✓ (généré)"
-        pending_marker = "🔒 (à venir)"
+        generated_marker = "✓ généré"
+        pending_marker = "🔒 à venir"
         case_label = "Étude de cas"
-        lesson_label = "Leçon"
-        quiz_label = "Quiz"
+        units_header = "Unités"
+        no_desc = "(description non disponible)"
+        progress_label = "Progression"
+        module_status_labels = {
+            "completed": "terminé",
+            "in_progress": "en cours",
+            "available": "disponible",
+            "locked": "verrouillé",
+        }
+        time_unit = "min de lecture"
     else:
-        generated_marker = "✓ (generated)"
-        pending_marker = "🔒 (not yet generated)"
+        generated_marker = "✓ generated"
+        pending_marker = "🔒 pending"
         case_label = "Case study"
-        lesson_label = "Lesson"
-        quiz_label = "Quiz"
+        units_header = "Units"
+        no_desc = "(no description available)"
+        progress_label = "Progress"
+        module_status_labels = {
+            "completed": "completed",
+            "in_progress": "in progress",
+            "available": "available",
+            "locked": "locked",
+        }
+        time_unit = "min reading"
 
+    # --- Module header ------------------------------------------------------
     module_title = (
         getattr(module_obj, "title_fr", None)
         if language == "fr"
         else getattr(module_obj, "title_en", None)
-    )
+    ) or ""
     module_number = getattr(module_obj, "module_number", None)
-    if module_title and module_number:
+    module_description = (
+        getattr(module_obj, "description_fr", None)
+        if language == "fr"
+        else getattr(module_obj, "description_en", None)
+    )
+    estimated_hours = getattr(module_obj, "estimated_hours", None)
+
+    if module_title and module_number is not None:
         header = f"Module {module_number} — {module_title}"
     elif module_title:
         header = module_title
     else:
-        header = f"Module {module_number}" if module_number else "Module"
+        header = f"Module {module_number}" if module_number is not None else "Module"
 
-    # Single batched lookup keyed on (module_id, language). FR and EN are
-    # stored as separate rows, so we only fetch the user's effective language.
+    header_lines: list[str] = [header]
+    if estimated_hours:
+        header_lines.append(f"_{estimated_hours} h_")
+    if isinstance(module_description, str) and module_description.strip():
+        header_lines.append(module_description.strip())
+
+    # --- Units (sorted by order_index) -------------------------------------
+    units: list[ModuleUnit] = []
+    try:
+        units = sorted(
+            list(getattr(module_obj, "units", []) or []),
+            key=lambda u: getattr(u, "order_index", 0) or 0,
+        )
+    except Exception:
+        units = []
+
+    # Per-unit generation flag + full-content index — checked once per module
+    # via a single batched query against ``generated_content``. Pass 1 uses
+    # ``generated_unit_ids`` for the ✓ marker; pass 2 uses ``content_index``
+    # to inline the full body for the active module (cached in the system
+    # prompt so the tutor has it without latency — this is the on-prompt half
+    # of the architecture; the get_unit_content tool serves cross-module
+    # requests).
+    generated_unit_ids: set[str] = set()
     content_index: dict[tuple[str, str], dict] = {}
+    case_titles: list[str] = []
     case_contents: list[dict] = []
     try:
         result = await session.execute(
@@ -415,63 +463,85 @@ async def _build_current_module_section(
             content_obj = row.content if isinstance(row.content, dict) else {}
             unit_id = str(content_obj.get("unit_id") or "").strip()
             if row.content_type == "case":
+                title = (content_obj.get("title") or case_label).strip()
+                case_titles.append(title)
                 case_contents.append(content_obj)
             elif unit_id:
+                generated_unit_ids.add(unit_id)
                 content_index[(row.content_type, unit_id)] = content_obj
-    except Exception as exc:  # pragma: no cover — defensive: bad DB shouldn't 500 the tutor
+    except Exception as exc:  # pragma: no cover — defensive
         logger.warning(
             "Failed to load GeneratedContent for module section",
             module_id=str(module_obj.id),
             error=str(exc),
         )
 
-    # Units — preserve order via order_index. ``selectinload`` should have
-    # populated this; fall back to an empty list rather than triggering a
-    # lazy load (which would explode in async code).
-    units: list[ModuleUnit] = []
-    try:
-        units = sorted(
-            list(getattr(module_obj, "units", []) or []),
-            key=lambda u: getattr(u, "order_index", 0) or 0,
-        )
-    except Exception:
-        units = []
+    # --- User progress on this module --------------------------------------
+    progress_line = ""
+    if user_id is not None:
+        try:
+            from app.domain.models.progress import UserModuleProgress
 
-    lines: list[str] = [header]
+            progress_result = await session.execute(
+                select(UserModuleProgress).where(
+                    UserModuleProgress.user_id == user_id,
+                    UserModuleProgress.module_id == module_obj.id,
+                )
+            )
+            progress_row = progress_result.scalar_one_or_none()
+            if progress_row is not None:
+                pct = (
+                    int(round((progress_row.completion_pct or 0.0) * 100))
+                    if (progress_row.completion_pct or 0.0) <= 1.0
+                    else int(round(progress_row.completion_pct or 0.0))
+                )
+                status_label = module_status_labels.get(
+                    progress_row.status or "locked", progress_row.status or ""
+                )
+                progress_line = f"_{progress_label}: {pct}% — {status_label}_"
+        except Exception as exc:  # pragma: no cover — defensive
+            logger.warning(
+                "Failed to load UserModuleProgress for module section",
+                user_id=str(user_id),
+                module_id=str(module_obj.id),
+                error=str(exc),
+            )
 
-    for unit in units:
-        unit_title = (
-            getattr(unit, "title_fr", None) if language == "fr" else getattr(unit, "title_en", None)
-        ) or ""
-        unit_number = getattr(unit, "unit_number", None) or ""
-        prefix = f"{unit_number} — " if unit_number else ""
-        lesson = content_index.get(("lesson", unit_number))
-        quiz = content_index.get(("quiz", unit_number))
-        marker = generated_marker if (lesson or quiz) else pending_marker
-        lines.append(f"- {prefix}{unit_title} {marker}".rstrip())
-        if lesson:
-            body = _render_lesson_full(lesson, excerpt_chars, language)
-            if body:
-                lines.append(f"  **{lesson_label}:**")
-                for body_line in body.split("\n"):
-                    lines.append(f"  {body_line}")
-        if quiz:
-            body = _render_quiz_full(quiz, excerpt_chars, language, include_quiz_answers)
-            if body:
-                lines.append(f"  **{quiz_label}:**")
-                for body_line in body.split("\n"):
-                    lines.append(f"  {body_line}")
+    if progress_line:
+        header_lines.append(progress_line)
 
-    # Case studies — prefer GeneratedContent rows (the new flow), fall back
-    # to the module-level `case_study_fr|en` text columns when no row exists.
-    if case_contents:
-        for case in case_contents:
-            title = (case.get("title") or case_label).strip()
-            body = _render_case_full(case, excerpt_chars, language)
-            lines.append(f"- {title} {generated_marker}")
-            if body:
-                for body_line in body.split("\n"):
-                    lines.append(f"  {body_line}")
+    # --- Render unit listing ----------------------------------------------
+    unit_lines: list[str] = []
+    if units:
+        unit_lines.append(f"\n## {units_header} ({len(units)})")
+        for unit in units:
+            unit_title = (
+                getattr(unit, "title_fr", None)
+                if language == "fr"
+                else getattr(unit, "title_en", None)
+            ) or ""
+            unit_number = getattr(unit, "unit_number", None) or ""
+            unit_desc = (
+                getattr(unit, "description_fr", None)
+                if language == "fr"
+                else getattr(unit, "description_en", None)
+            )
+            estimated_minutes = getattr(unit, "estimated_minutes", None)
+            marker = generated_marker if unit_number in generated_unit_ids else pending_marker
+
+            prefix = f"Unité {unit_number}" if language == "fr" else f"Unit {unit_number}"
+            time_str = f" • {estimated_minutes} {time_unit}" if estimated_minutes else ""
+            unit_lines.append(f"- **{prefix}** — {unit_title} ({marker}){time_str}")
+            if isinstance(unit_desc, str) and unit_desc.strip():
+                unit_lines.append(f"  > {unit_desc.strip()}")
+            else:
+                unit_lines.append(f"  > {no_desc}")
+
+    # --- Module-level case studies ---------------------------------------
+    case_lines: list[str] = []
+    if case_titles:
+        for title in case_titles:
+            case_lines.append(f"- **{case_label}**: {title} ({generated_marker})")
     else:
         legacy_case = (
             getattr(module_obj, "case_study_fr", None)
@@ -479,21 +549,120 @@ async def _build_current_module_section(
             else getattr(module_obj, "case_study_en", None)
         )
         if isinstance(legacy_case, str) and legacy_case.strip():
-            body = _render_case_full(legacy_case, excerpt_chars, language)
-            lines.append(f"- {case_label} {generated_marker}")
-            if body:
-                for body_line in body.split("\n"):
-                    lines.append(f"  {body_line}")
+            preview = legacy_case.strip().split("\n")[0][:200]
+            case_lines.append(f"- **{case_label}** ({generated_marker})")
+            case_lines.append(f"  > {preview}")
 
-    if len(lines) <= 1:
-        # Header only — no units, no cases. Skip the section entirely so we
-        # don't waste tokens on a content-free heading.
+    if not units and not case_lines:
+        # Module has nothing to show — skip the whole section.
         return None
 
-    rendered = "\n".join(lines)
+    # --- Pass 1 output: structured listing (titles + descriptions) ---------
+    # Always emitted in full — small (~200 chars/unit) so even a 20-unit
+    # module fits comfortably. The tutor sees ALL units regardless of how
+    # many bodies fit in pass 2 below.
+    listing_lines = (
+        header_lines + unit_lines + ([f"\n## {case_label}", *case_lines] if case_lines else [])
+    )
+    listing = "\n".join(listing_lines)
+
+    # --- Pass 2 output: full bodies for the active module --------------------
+    # Inline lesson + quiz + case bodies so the tutor has the actual content
+    # in the cached prompt — zero-latency content awareness for the active
+    # module. Cross-module body fetches use the get_unit_content tool. We
+    # add bodies in unit order until the char budget is reached, then emit a
+    # tool-call hint for any units whose body didn't fit.
+    if language == "fr":
+        bodies_header = "\n## Contenu détaillé"
+        lesson_label = "**Leçon**"
+        quiz_label = "**Quiz**"
+        case_body_label = "**Étude de cas**"
+        tool_hint_template = (
+            "→ Pour le contenu complet de l'unité {n}, appelle `get_unit_content('{n}', '{ct}')`."
+        )
+    else:
+        bodies_header = "\n## Detailed content"
+        lesson_label = "**Lesson**"
+        quiz_label = "**Quiz**"
+        case_body_label = "**Case study**"
+        tool_hint_template = (
+            "→ For the full content of unit {n}, call `get_unit_content('{n}', '{ct}')`."
+        )
+
+    # Per-item char budget for the body itself — keeps a single runaway
+    # lesson from monopolising the section.
+    per_item_chars = max(2000, _sc().get("tutor-module-content-excerpt-chars", 10000))
+    include_quiz_answers = bool(_sc().get("tutor-include-quiz-answers", True))
+
+    body_blocks: list[str] = []
+    skipped_for_budget: list[tuple[str, str]] = []  # (unit_number, content_type)
+
+    # Reserve at least the listing + a safety buffer; bodies fill the rest.
+    budget_used = len(listing)
+    safety = 200
+
+    for unit in units:
+        unit_number = getattr(unit, "unit_number", None) or ""
+        if not unit_number:
+            continue
+        unit_title_localised = (
+            getattr(unit, "title_fr", None) if language == "fr" else getattr(unit, "title_en", None)
+        ) or unit_number
+        unit_header = f"\n### {unit_number} — {unit_title_localised}"
+
+        for ct, ct_label in (("lesson", lesson_label), ("quiz", quiz_label)):
+            content_obj = content_index.get((ct, unit_number))
+            if not content_obj:
+                continue
+            if ct == "lesson":
+                rendered_body = _render_lesson_full(content_obj, per_item_chars, language)
+            else:
+                rendered_body = _render_quiz_full(
+                    content_obj, per_item_chars, language, include_quiz_answers
+                )
+            if not rendered_body:
+                continue
+            block = f"{unit_header}\n{ct_label}\n{rendered_body}"
+            if budget_used + len(block) + safety > char_limit:
+                skipped_for_budget.append((unit_number, ct))
+                continue
+            body_blocks.append(block)
+            budget_used += len(block)
+
+    # Module-level case study bodies (only when not skipped from the listing).
+    for case_obj in case_contents:
+        rendered_body = _render_case_full(case_obj, per_item_chars, language)
+        if not rendered_body:
+            continue
+        title = (case_obj.get("title") or case_label).strip()
+        block = f"\n### {title}\n{case_body_label}\n{rendered_body}"
+        if budget_used + len(block) + safety > char_limit:
+            skipped_for_budget.append(("case", "case"))
+            continue
+        body_blocks.append(block)
+        budget_used += len(block)
+
+    if skipped_for_budget:
+        # Tell the tutor explicitly which units it must use the tool for —
+        # otherwise it might silently improvise instead of fetching.
+        hint_lines = (
+            ["\n## Contenu non inclus (utilise le tool pour ces unités)"]
+            if language == "fr"
+            else ["\n## Content not inlined (use the tool for these units)"]
+        )
+        for unit_number, ct in skipped_for_budget:
+            if unit_number == "case":
+                continue
+            hint_lines.append("- " + tool_hint_template.format(n=unit_number, ct=ct))
+        body_blocks.append("\n".join(hint_lines))
+
+    rendered = listing + bodies_header + "\n" + "\n".join(body_blocks) if body_blocks else listing
+
+    # Final safety trim — should rarely trigger because pass 2 already
+    # respects the budget, but keeps the prompt bounded if a single
+    # cached lesson body somehow exceeds per_item_chars.
     if len(rendered) <= char_limit:
         return rendered
-    # Trim on a line boundary near the cap so we never slice mid-bullet.
     cutoff = rendered.rfind("\n", 0, char_limit)
     if cutoff < int(char_limit * 0.6):
         cutoff = char_limit
@@ -1062,15 +1231,41 @@ class TutorService:
                     )
                     module_number = module_obj.module_number
 
-            # Build the per-module unit/quiz/case-study detail (#1981). Returns
-            # None when no module is in scope, in which case the section is
-            # omitted from the prompt.
-            current_module_content = await _build_current_module_section(
-                module_obj, effective_language, session
-            )
-
             # Resolve course context: explicit > from module > from enrollment
             course = await self._resolve_course(course_id, module_id, module_obj, user_id, session)
+
+            # Defensive guard (#1992): if both course and module are resolved
+            # but the module belongs to a *different* course, drop the module
+            # rather than load incoherent units into the prompt. Symptom that
+            # prompted this: anchor showed *"Détectives du Vivant"* while user
+            # had Santé Publique selected — module units leaked into the
+            # Santé Publique chat and confused the tutor.
+            if (
+                course is not None
+                and module_obj is not None
+                and getattr(module_obj, "course_id", None) is not None
+                and module_obj.course_id != course.id
+            ):
+                logger.warning(
+                    "Dropping mismatched module from tutor context",
+                    active_course_id=str(course.id),
+                    module_course_id=str(module_obj.course_id),
+                    module_id=str(module_obj.id),
+                    user_id=str(user_id),
+                )
+                module_obj = None
+                module_title = None
+                module_number = None
+
+            # Build the per-module unit/quiz/case-study detail (#1981/#1992).
+            # Returns None when no module is in scope. Passes ``user_id`` so
+            # the section can include the learner's per-module progress.
+            current_module_content = await _build_current_module_section(
+                module_obj,
+                effective_language,
+                session,
+                user_id=uuid.UUID(str(user_id)) if user_id else None,
+            )
             course_title = None
             course_domain = None
             course_syllabus = None
@@ -1166,6 +1361,10 @@ class TutorService:
                 user_level=user.current_level,
                 user_language=effective_language,
                 rag_collection_id=rag_collection_id,
+                # So get_unit_content (#1992) defaults to the conversation's
+                # current module — no need for Claude to pass module_id
+                # explicitly on every call.
+                current_module_id=getattr(module_obj, "id", None) if module_obj else None,
             )
 
             tool_call_count = 0
@@ -1682,19 +1881,30 @@ class TutorService:
         return count
 
     async def get_last_touched_module(
-        self, user_id: str | uuid.UUID, session: AsyncSession
+        self,
+        user_id: str | uuid.UUID,
+        session: AsyncSession,
+        course_id: uuid.UUID | None = None,
     ) -> dict[str, Any] | None:
-        """Return the user's most recently accessed module (#1988).
+        """Return the user's most recently accessed module (#1988, #1992).
 
         Used by the standalone ``/tutor`` page to anchor the chat in a
         concrete module by default — without this the prompt's module block
         is empty and the tutor can't cite specific units (the user-reported
         symptom that prompted #1988).
 
+        When ``course_id`` is provided (the active course on the frontend),
+        the lookup is JOINed to ``Module`` and filtered to that course —
+        otherwise the most-recent-globally module bleeds in from a
+        different course and the prompt becomes incoherent (regression
+        symptom that prompted #1992: anchor showed *"Les Détectives du
+        Vivant"* while user had *"Santé Publique"* selected).
+
         Sources the recency from ``UserModuleProgress.last_accessed`` (the
         same field ``progress_service.touch_course_interaction_by_module``
         already updates on every learner action). Returns ``None`` when the
-        user has no recorded module activity yet.
+        user has no recorded module activity (or no activity in the
+        requested course).
         """
         from app.domain.models.course import Course
         from app.domain.models.progress import UserModuleProgress
@@ -1705,15 +1915,18 @@ class TutorService:
         user = await session.get(User, user_id)
         language = (user.preferred_language if user else "fr") or "fr"
 
-        result = await session.execute(
-            select(UserModuleProgress)
-            .where(
-                UserModuleProgress.user_id == user_id,
-                UserModuleProgress.last_accessed.is_not(None),
-            )
-            .order_by(UserModuleProgress.last_accessed.desc())
-            .limit(1)
+        stmt = select(UserModuleProgress).where(
+            UserModuleProgress.user_id == user_id,
+            UserModuleProgress.last_accessed.is_not(None),
         )
+        if course_id is not None:
+            # Filter to a specific course — most recent module IN that course.
+            stmt = stmt.join(Module, Module.id == UserModuleProgress.module_id).where(
+                Module.course_id == course_id
+            )
+        stmt = stmt.order_by(UserModuleProgress.last_accessed.desc()).limit(1)
+
+        result = await session.execute(stmt)
         progress = result.scalar_one_or_none()
         if progress is None:
             return None
