@@ -101,6 +101,7 @@ const CACHE_TTL_MS = 30 * 1000;
 export interface ConversationSummary {
   id: string;
   module_id: string | null;
+  course_id: string | null;
   message_count: number;
   last_message_at: string;
   preview: string;
@@ -121,6 +122,7 @@ export interface ConversationMessage {
 export interface ConversationDetail {
   id: string;
   module_id: string | null;
+  course_id: string | null;
   messages: ConversationMessage[];
   created_at: string;
 }
