@@ -1015,7 +1015,21 @@ class SessionManager:
         ctx.learner_memory = await self.learner_memory_service.format_for_prompt(user.id, session)
 
         if is_new_conversation:
-            prior = await self._get_previous_compact(user.id, conversation.id, session)
+            # Scope cross-session continuity to the same module/course (#1997).
+            # The conversation row carries module_id; course_id is resolved
+            # via the Module FK when needed.
+            module_id = getattr(conversation, "module_id", None)
+            course_id: uuid.UUID | None = None
+            if module_id is not None:
+                module = await session.get(Module, module_id)
+                course_id = getattr(module, "course_id", None) if module else None
+            prior = await self._get_previous_compact(
+                user.id,
+                conversation.id,
+                session,
+                module_id=module_id,
+                course_id=course_id,
+            )
             if prior:
                 ctx.previous_compact = prior
         else:
@@ -1042,18 +1056,41 @@ class SessionManager:
         user_id: uuid.UUID,
         current_conversation_id: uuid.UUID,
         session: AsyncSession,
+        module_id: uuid.UUID | None = None,
+        course_id: uuid.UUID | None = None,
     ) -> str | None:
-        """Return compacted_context from the most recent prior conversation."""
-        result = await session.execute(
-            select(TutorConversation)
-            .where(
-                TutorConversation.user_id == user_id,
-                TutorConversation.id != current_conversation_id,
-                TutorConversation.compacted_context.isnot(None),
-            )
-            .order_by(TutorConversation.created_at.desc())
-            .limit(1)
+        """Return compacted_context from the most recent prior conversation (#1997).
+
+        Default behaviour (``tutor-cross-session-continuity`` = false): returns
+        ``None`` so each new conversation starts fresh — fixes the staging bug
+        where a Bio-Aventures (kids biology) chat picked up *"dénominateur"*
+        framing from a prior epidemiology session.
+
+        When the setting is enabled and the new conversation has a module in
+        scope, only conversations with the SAME ``module_id`` are considered.
+        With only a ``course_id`` in scope, the lookup JOINs ``Module`` and
+        filters by course_id. With neither, returns None — there's no
+        coherent "prior session" to inherit.
+        """
+        if not bool(_sc().get("tutor-cross-session-continuity", False)):
+            return None
+        if module_id is None and course_id is None:
+            return None
+
+        stmt = select(TutorConversation).where(
+            TutorConversation.user_id == user_id,
+            TutorConversation.id != current_conversation_id,
+            TutorConversation.compacted_context.isnot(None),
         )
+        if module_id is not None:
+            stmt = stmt.where(TutorConversation.module_id == module_id)
+        elif course_id is not None:
+            stmt = stmt.join(Module, Module.id == TutorConversation.module_id).where(
+                Module.course_id == course_id
+            )
+        stmt = stmt.order_by(TutorConversation.created_at.desc()).limit(1)
+
+        result = await session.execute(stmt)
         prev = result.scalar_one_or_none()
         return prev.compacted_context if prev else None
 

@@ -447,6 +447,15 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 5, "max": 100},
     ),
     SettingDef(
+        "tutor-cross-session-continuity",
+        "tutor",
+        False,
+        "boolean",
+        "Tutor: cross-session continuity",
+        "When ON, new chats inherit compacted context from a prior chat in the same module/course.",
+        {},
+    ),
+    SettingDef(
         "tutor-context-token-budget",
         "tutor",
         1500,
