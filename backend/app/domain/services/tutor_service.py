@@ -441,11 +441,17 @@ async def _build_current_module_section(
     except Exception:
         units = []
 
-    # Per-unit generation flag — checked once per module via a single batched
-    # query against ``generated_content`` so we can mark units ✓ generated /
-    # 🔒 pending without per-row queries.
+    # Per-unit generation flag + full-content index — checked once per module
+    # via a single batched query against ``generated_content``. Pass 1 uses
+    # ``generated_unit_ids`` for the ✓ marker; pass 2 uses ``content_index``
+    # to inline the full body for the active module (cached in the system
+    # prompt so the tutor has it without latency — this is the on-prompt half
+    # of the architecture; the get_unit_content tool serves cross-module
+    # requests).
     generated_unit_ids: set[str] = set()
+    content_index: dict[tuple[str, str], dict] = {}
     case_titles: list[str] = []
+    case_contents: list[dict] = []
     try:
         result = await session.execute(
             select(GeneratedContent).where(
@@ -459,8 +465,10 @@ async def _build_current_module_section(
             if row.content_type == "case":
                 title = (content_obj.get("title") or case_label).strip()
                 case_titles.append(title)
+                case_contents.append(content_obj)
             elif unit_id:
                 generated_unit_ids.add(unit_id)
+                content_index[(row.content_type, unit_id)] = content_obj
     except Exception as exc:  # pragma: no cover — defensive
         logger.warning(
             "Failed to load GeneratedContent for module section",
@@ -549,13 +557,110 @@ async def _build_current_module_section(
         # Module has nothing to show — skip the whole section.
         return None
 
-    all_lines = (
+    # --- Pass 1 output: structured listing (titles + descriptions) ---------
+    # Always emitted in full — small (~200 chars/unit) so even a 20-unit
+    # module fits comfortably. The tutor sees ALL units regardless of how
+    # many bodies fit in pass 2 below.
+    listing_lines = (
         header_lines + unit_lines + ([f"\n## {case_label}", *case_lines] if case_lines else [])
     )
-    rendered = "\n".join(all_lines)
+    listing = "\n".join(listing_lines)
 
-    # Trim on a line boundary if we somehow exceed the cap (shouldn't happen
-    # with descriptions-only rendering — included for safety).
+    # --- Pass 2 output: full bodies for the active module --------------------
+    # Inline lesson + quiz + case bodies so the tutor has the actual content
+    # in the cached prompt — zero-latency content awareness for the active
+    # module. Cross-module body fetches use the get_unit_content tool. We
+    # add bodies in unit order until the char budget is reached, then emit a
+    # tool-call hint for any units whose body didn't fit.
+    if language == "fr":
+        bodies_header = "\n## Contenu détaillé"
+        lesson_label = "**Leçon**"
+        quiz_label = "**Quiz**"
+        case_body_label = "**Étude de cas**"
+        tool_hint_template = (
+            "→ Pour le contenu complet de l'unité {n}, appelle `get_unit_content('{n}', '{ct}')`."
+        )
+    else:
+        bodies_header = "\n## Detailed content"
+        lesson_label = "**Lesson**"
+        quiz_label = "**Quiz**"
+        case_body_label = "**Case study**"
+        tool_hint_template = (
+            "→ For the full content of unit {n}, call `get_unit_content('{n}', '{ct}')`."
+        )
+
+    # Per-item char budget for the body itself — keeps a single runaway
+    # lesson from monopolising the section.
+    per_item_chars = max(2000, _sc().get("tutor-module-content-excerpt-chars", 10000))
+    include_quiz_answers = bool(_sc().get("tutor-include-quiz-answers", True))
+
+    body_blocks: list[str] = []
+    skipped_for_budget: list[tuple[str, str]] = []  # (unit_number, content_type)
+
+    # Reserve at least the listing + a safety buffer; bodies fill the rest.
+    budget_used = len(listing)
+    safety = 200
+
+    for unit in units:
+        unit_number = getattr(unit, "unit_number", None) or ""
+        if not unit_number:
+            continue
+        unit_title_localised = (
+            getattr(unit, "title_fr", None) if language == "fr" else getattr(unit, "title_en", None)
+        ) or unit_number
+        unit_header = f"\n### {unit_number} — {unit_title_localised}"
+
+        for ct, ct_label in (("lesson", lesson_label), ("quiz", quiz_label)):
+            content_obj = content_index.get((ct, unit_number))
+            if not content_obj:
+                continue
+            if ct == "lesson":
+                rendered_body = _render_lesson_full(content_obj, per_item_chars, language)
+            else:
+                rendered_body = _render_quiz_full(
+                    content_obj, per_item_chars, language, include_quiz_answers
+                )
+            if not rendered_body:
+                continue
+            block = f"{unit_header}\n{ct_label}\n{rendered_body}"
+            if budget_used + len(block) + safety > char_limit:
+                skipped_for_budget.append((unit_number, ct))
+                continue
+            body_blocks.append(block)
+            budget_used += len(block)
+
+    # Module-level case study bodies (only when not skipped from the listing).
+    for case_obj in case_contents:
+        rendered_body = _render_case_full(case_obj, per_item_chars, language)
+        if not rendered_body:
+            continue
+        title = (case_obj.get("title") or case_label).strip()
+        block = f"\n### {title}\n{case_body_label}\n{rendered_body}"
+        if budget_used + len(block) + safety > char_limit:
+            skipped_for_budget.append(("case", "case"))
+            continue
+        body_blocks.append(block)
+        budget_used += len(block)
+
+    if skipped_for_budget:
+        # Tell the tutor explicitly which units it must use the tool for —
+        # otherwise it might silently improvise instead of fetching.
+        hint_lines = (
+            ["\n## Contenu non inclus (utilise le tool pour ces unités)"]
+            if language == "fr"
+            else ["\n## Content not inlined (use the tool for these units)"]
+        )
+        for unit_number, ct in skipped_for_budget:
+            if unit_number == "case":
+                continue
+            hint_lines.append("- " + tool_hint_template.format(n=unit_number, ct=ct))
+        body_blocks.append("\n".join(hint_lines))
+
+    rendered = listing + bodies_header + "\n" + "\n".join(body_blocks) if body_blocks else listing
+
+    # Final safety trim — should rarely trigger because pass 2 already
+    # respects the budget, but keeps the prompt bounded if a single
+    # cached lesson body somehow exceeds per_item_chars.
     if len(rendered) <= char_limit:
         return rendered
     cutoff = rendered.rfind("\n", 0, char_limit)

@@ -243,9 +243,11 @@ def test_render_case_full_handles_structured_and_legacy_text():
 
 
 @pytest.mark.asyncio
-async def test_module_block_marks_unit_generated_when_lesson_exists():
-    """Per #1992 spec: generated units show ✓ marker but body is NOT
-    inlined — descriptions only, full body via search_knowledge_base."""
+async def test_module_block_marks_unit_generated_and_inlines_lesson_body():
+    """Active-module two-pass renderer (#1992 cont'd): the unit shows up in
+    BOTH the structured listing (with ✓ marker + description) AND the
+    'Detailed content' section (full body inlined). Cached in the system
+    prompt — no tool call needed for the active module."""
     units = [_unit("1.1", "Définitions", "Definitions", order_index=1)]
     module = _module(units=units)
     rows = [
@@ -264,14 +266,16 @@ async def test_module_block_marks_unit_generated_when_lesson_exists():
     assert section is not None
     assert "Unité 1.1" in section and "Définitions" in section
     assert "✓ généré" in section
-    # Body content NOT inlined per the new spec.
-    assert "Introduction longue avec plusieurs phrases." not in section
-    assert "concept1" not in section
+    # Body IS inlined for the active module.
+    assert "Introduction longue avec plusieurs phrases." in section
+    assert "concept1" in section
+    assert "Contenu détaillé" in section
 
 
 @pytest.mark.asyncio
-async def test_module_block_marks_quiz_generated_without_inlining_questions():
-    """Quiz body is also no longer inlined — just the marker."""
+async def test_module_block_inlines_quiz_questions_and_answers_for_active_module():
+    """Quiz body is inlined for the active module so the tutor can reference
+    questions and correct answers directly without a tool call."""
     units = [_unit("1.1", "Définitions", "Definitions", order_index=1)]
     module = _module(units=units)
     rows = [
@@ -295,9 +299,9 @@ async def test_module_block_marks_quiz_generated_without_inlining_questions():
     assert section is not None
     assert "Unité 1.1" in section
     assert "✓ généré" in section
-    # Question body must NOT be inlined per #1992.
-    assert "Quelle est la définition de X" not in section
-    assert "Parce que C est correcte" not in section
+    # Quiz body IS inlined for the active module.
+    assert "Quelle est la définition de X" in section
+    assert "Parce que C est correcte" in section
 
 
 # --- course block ----------------------------------------------------------

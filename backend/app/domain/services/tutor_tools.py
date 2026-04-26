@@ -166,14 +166,15 @@ TOOL_DEFINITIONS: list[ToolParam] = [
         "name": "get_unit_content",
         "description": (
             "Fetch the FULL generated body of a specific unit's lesson, quiz, or case study from the "
-            "course's content cache (#1992). The system prompt contains only unit titles + descriptions "
-            "for context-window efficiency — call this tool to get the actual lesson body, quiz "
-            "questions+answers, or case-study text when the learner asks about a specific unit's "
-            "content. Returns the structured content as JSON, or {error, available_units} when the "
-            "unit isn't generated yet (so you can honestly tell the learner it's not yet available "
-            "and suggest a generated alternative). The unit_number comes from the 'CURRENT MODULE "
-            "DETAIL' section in your system prompt (e.g. '1.1', '1.2'). Defaults to the current "
-            "module when module_id is omitted — pass module_id only when discussing a different module."
+            "course's content cache (#1992). PRIMARY USE: cross-module references. The active "
+            "module's bodies are already inlined in your system prompt under 'CURRENT MODULE "
+            "DETAIL' / 'Detailed content' — you do NOT need to call this tool for them. Call this "
+            "tool when: (1) the learner asks about a unit in a DIFFERENT module than the active "
+            "one, OR (2) the prompt's 'Content not inlined' hint section says a specific active-"
+            "module unit was skipped for budget reasons. Returns the structured content as JSON, "
+            "or {error, available_units} when the unit isn't generated yet (so you can honestly "
+            "tell the learner it's not yet available). Defaults to the current module when "
+            "module_id is omitted."
         ),
         "input_schema": {
             "type": "object",

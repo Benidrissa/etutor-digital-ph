@@ -458,11 +458,11 @@ SETTING_DEFINITIONS: list[SettingDef] = [
     SettingDef(
         "tutor-module-content-char-limit",
         "tutor",
-        30000,
+        60000,
         "integer",
         "Module-detail char limit",
-        "Hard cap on the current-module unit/quiz/case-study section in the system prompt.",
-        {"min": 2000, "max": 60000},
+        "Hard cap on the active module section (listing + inlined bodies).",
+        {"min": 2000, "max": 120000},
     ),
     SettingDef(
         "tutor-module-content-excerpt-chars",
