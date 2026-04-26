@@ -117,3 +117,70 @@ async def test_trailing_comma_fixed(claude_service):
     result = await claude_service.generate_structured_content("system", "user", "quiz")
 
     assert result == {"title": "Quiz", "questions": []}
+
+
+@pytest.mark.asyncio
+async def test_malformed_then_valid_json_retry_succeeds(claude_service):
+    """Malformed JSON on first call, valid on retry — caller sees the retry result.
+
+    Covers #1822: Claude occasionally drops a delimiter or unescapes a
+    quote; one retry with a strict-JSON nudge fixes it most of the time.
+    """
+    malformed = '{"title": broken json here}'
+    valid = '{"title": "Quiz", "questions": []}'
+    claude_service.client.messages.create = AsyncMock(
+        side_effect=[
+            _make_response(malformed, "end_turn"),
+            _make_response(valid, "end_turn"),
+        ]
+    )
+
+    result = await claude_service.generate_structured_content("system", "user", "quiz")
+
+    assert result == {"title": "Quiz", "questions": []}
+    assert claude_service.client.messages.create.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_max_retries_zero_skips_retry(claude_service):
+    """max_retries=0 preserves the pre-#1822 single-attempt behavior."""
+    malformed = '{"title": broken json here}'
+    claude_service.client.messages.create = AsyncMock(
+        return_value=_make_response(malformed, "end_turn")
+    )
+
+    result = await claude_service.generate_structured_content(
+        "system", "user", "quiz", max_retries=0
+    )
+
+    assert result["raw_response"] is True
+    assert claude_service.client.messages.create.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_truncated_response_does_not_retry(claude_service):
+    """stop_reason=max_tokens skips retry; bigger output would re-truncate."""
+    truncated = '{"title": "Quiz", "questions": [{"id": "q1"'
+    claude_service.client.messages.create = AsyncMock(
+        return_value=_make_response(truncated, "max_tokens")
+    )
+
+    with pytest.raises(ValueError, match="truncated"):
+        await claude_service.generate_structured_content("system", "user", "quiz")
+
+    assert claude_service.client.messages.create.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_no_json_found_retried_then_falls_back(claude_service):
+    """Plain-prose response with no JSON structure also goes through the retry path."""
+    prose = "I'm sorry, I can't help with that right now."
+    claude_service.client.messages.create = AsyncMock(
+        return_value=_make_response(prose, "end_turn")
+    )
+
+    result = await claude_service.generate_structured_content("system", "user", "quiz")
+
+    assert result["raw_response"] is True
+    assert result["type"] == "quiz"
+    assert claude_service.client.messages.create.await_count == 2
