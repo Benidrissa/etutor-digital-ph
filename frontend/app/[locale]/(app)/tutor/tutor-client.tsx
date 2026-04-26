@@ -42,8 +42,14 @@ export function TutorPageClient() {
   // Anchor the standalone /tutor chat to the user's last-touched module
   // SCOPED TO THE ACTIVE COURSE (#1992) so the tutor's prompt has a concrete
   // module context. No user-visible UI — purely implicit. The active course
-  // is read from the same localStorage key that ChatPanel uses.
+  // is now derived from the selected conversation's stored ``course_id``
+  // (#YRyXI) instead of a process-wide localStorage key.
   const [anchorModuleId, setAnchorModuleId] = useState<string | undefined>(undefined);
+
+  const selectedConvData = selectedConversation
+    ? conversations.find((c) => c.id === selectedConversation) ?? null
+    : null;
+  const selectedConversationCourseId = selectedConvData?.course_id ?? null;
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -79,11 +85,11 @@ export function TutorPageClient() {
   // SCOPED to the active course (#1992) so we never bleed a module from
   // a different course into the prompt. No visible UI — purely implicit.
   // Failure is silent (chat still works, just without a module context).
+  // Re-runs when the selected conversation's course changes (#YRyXI), so
+  // switching threads re-anchors to a module from THAT thread's course.
   useEffect(() => {
     let cancelled = false;
-    const activeCourseId =
-      typeof window !== 'undefined' ? localStorage.getItem('activeCourseId') : null;
-    fetchLastTouchedModule(activeCourseId)
+    fetchLastTouchedModule(selectedConversationCourseId)
       .then((mod) => {
         if (!cancelled) setAnchorModuleId(mod?.module_id);
       })
@@ -91,7 +97,7 @@ export function TutorPageClient() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [selectedConversationCourseId]);
 
   const formatRelativeTime = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -166,8 +172,6 @@ export function TutorPageClient() {
     }
     await loadConversations();
   };
-
-  const selectedConvData = conversations.find((c) => c.id === selectedConversation);
 
   const conversationListContent = (
     <>
@@ -337,6 +341,7 @@ export function TutorPageClient() {
               embedded={true}
               conversationId={selectedConversation}
               moduleId={anchorModuleId}
+              courseId={selectedConversationCourseId ?? undefined}
               onConversationCreated={handleConversationCreated}
               onMessageSent={handleMessageSent}
               onOpenConversations={() => setIsMobileDrawerOpen(true)}

@@ -83,6 +83,7 @@ class ConversationSummary(BaseModel):
 
     id: UUID = Field(..., description="Conversation ID")
     module_id: UUID | None = Field(None, description="Associated module ID")
+    course_id: UUID | None = Field(None, description="Associated course ID")
     message_count: int = Field(..., description="Number of messages")
     last_message_at: datetime = Field(..., description="Timestamp of last message")
     preview: str = Field(..., description="First few words of conversation")
@@ -103,6 +104,7 @@ class TutorConversationResponse(BaseModel):
 
     id: UUID = Field(..., description="Conversation ID")
     module_id: UUID | None = Field(None, description="Associated module ID")
+    course_id: UUID | None = Field(None, description="Associated course ID")
     messages: list[TutorMessage] = Field(..., description="All messages in conversation")
     created_at: datetime = Field(..., description="Conversation creation timestamp")
 

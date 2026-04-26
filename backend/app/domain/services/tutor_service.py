@@ -1218,7 +1218,7 @@ class TutorService:
         try:
             is_new_conversation = conversation_id is None
             conversation = await self._get_or_create_conversation(
-                user_id, module_id, conversation_id, session
+                user_id, module_id, conversation_id, session, course_id=course_id
             )
 
             session_ctx = await self.session_manager.build_session_context(
@@ -1271,6 +1271,14 @@ class TutorService:
 
             # Resolve course context: explicit > from module > from enrollment
             course = await self._resolve_course(course_id, module_id, module_obj, user_id, session)
+
+            # Persist the resolved course on the conversation row so the next
+            # GET restores per-thread course context (#YRyXI). Update only on
+            # change to avoid spurious UPDATEs; this also lets a user change
+            # course mid-thread by picking a new one in the dropdown.
+            if course is not None and conversation.course_id != course.id:
+                conversation.course_id = course.id
+                session.add(conversation)
 
             # Defensive guard (#1992): if both course and module are resolved
             # but the module belongs to a *different* course, drop the module
@@ -1795,6 +1803,7 @@ class TutorService:
         return {
             "id": conversation.id,
             "module_id": conversation.module_id,
+            "course_id": conversation.course_id,
             "messages": messages_out,
             "created_at": conversation.created_at,
         }
@@ -1845,6 +1854,7 @@ class TutorService:
                 {
                     "id": conv.id,
                     "module_id": conv.module_id,
+                    "course_id": conv.course_id,
                     # Read the increment-only counter so the sidebar count
                     # stays monotonic per conversation across compaction
                     # passes (#1978). Falls back to the JSON length only if
@@ -2054,6 +2064,7 @@ class TutorService:
         module_id: uuid.UUID | None,
         conversation_id: uuid.UUID | None,
         session: AsyncSession,
+        course_id: uuid.UUID | None = None,
     ) -> TutorConversation:
         """Get existing conversation or create a new one.
 
@@ -2080,6 +2091,7 @@ class TutorService:
             id=uuid.uuid4(),
             user_id=user_id,
             module_id=module_id,
+            course_id=course_id,
             messages=[],
             created_at=datetime.utcnow(),
         )
