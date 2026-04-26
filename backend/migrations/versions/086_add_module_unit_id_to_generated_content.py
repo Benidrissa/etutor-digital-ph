@@ -97,6 +97,40 @@ def upgrade() -> None:
     # 3. Delete orphan rows: had a non-summative JSON unit_id but no
     # matching module_units row. These are the stale-cache rows
     # producing observable topic mismatches.
+    #
+    # Repoint media tables (generated_images, generated_audio) that
+    # reference generated_content via lesson_id. The model declares
+    # ondelete="SET NULL" but the actual FK shape on prod can predate
+    # that declaration, so we explicitly NULL them out before the DELETE.
+    # Idempotent and safe regardless of the live FK definition.
+    bind.execute(
+        sa.text(
+            """
+            UPDATE generated_images
+            SET lesson_id = NULL
+            WHERE lesson_id IN (
+                SELECT id FROM generated_content
+                WHERE content->>'unit_id' IS NOT NULL
+                  AND content->>'unit_id' NOT IN ('', 'summative')
+                  AND module_unit_id IS NULL
+            )
+            """
+        )
+    )
+    bind.execute(
+        sa.text(
+            """
+            UPDATE generated_audio
+            SET lesson_id = NULL
+            WHERE lesson_id IN (
+                SELECT id FROM generated_content
+                WHERE content->>'unit_id' IS NOT NULL
+                  AND content->>'unit_id' NOT IN ('', 'summative')
+                  AND module_unit_id IS NULL
+            )
+            """
+        )
+    )
     orphans = bind.execute(
         sa.text(
             """
@@ -107,7 +141,7 @@ def upgrade() -> None:
             """
         )
     )
-    print(f"[084] Deleted {orphans.rowcount} orphan generated_content row(s)")
+    print(f"[086] Deleted {orphans.rowcount} orphan generated_content row(s)")
 
     # 4. Swap the unique indexes.
     op.execute("DROP INDEX IF EXISTS idx_unique_lesson_per_unit")
