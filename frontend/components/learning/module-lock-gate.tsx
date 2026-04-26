@@ -212,14 +212,6 @@ export function ModuleLockGate({ moduleId, language }: ModuleLockGateProps) {
 
         <div className="space-y-4">
           <div className="space-y-2">
-            {status === 'completed' && (
-              <Link href={`/modules/${moduleId}/quiz`} className="block">
-                <Button className="w-full min-h-11 bg-teal-600 hover:bg-teal-700">
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  {tCard('review')}
-                </Button>
-              </Link>
-            )}
             {(() => {
               const allUnitsDone = (moduleData?.completion_pct ?? 0) >= 100;
               if (!allUnitsDone) return null;

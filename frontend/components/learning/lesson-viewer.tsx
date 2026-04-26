@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { CheckCircle, Clock, RefreshCw, PlayCircle, Loader2, AlertTriangle } from 'lucide-react';
+import { Clock, RefreshCw, Loader2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -15,7 +15,7 @@ import { LessonImage } from './lesson-image';
 import { LessonMediaTabs, type LessonMediaTab } from './lesson-media-tabs';
 import { SourceImage } from './source-image';
 import { SourceCitations } from './source-citations';
-import { apiFetch, checkUnitQuizPassed, ApiError } from '@/lib/api';
+import { apiFetch, ApiError } from '@/lib/api';
 import type { SourceImageMeta } from '@/lib/api';
 import { SOURCE_IMAGE_RE, splitWithSourceImageMarkers } from '@/lib/source-image-utils';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
@@ -83,8 +83,6 @@ export function LessonViewer({
   const [isSlowGeneration, setIsSlowGeneration] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorType, setErrorType] = useState<'load' | 'generation' | 'timeout' | 'no_content' | 'not_found' | null>(null);
-  const [isQuizPassed, setIsQuizPassed] = useState(false);
-  const [isCheckingQuiz, setIsCheckingQuiz] = useState(false);
   const [forceRegenerate, setForceRegenerate] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [contentSource, setContentSource] = useState<'api' | 'indexeddb'>('api');
@@ -104,20 +102,6 @@ export function LessonViewer({
   const { isOnline } = useNetworkStatus();
 
   const t = useTranslations('LessonViewer');
-
-  useEffect(() => {
-    const checkQuizStatus = async () => {
-      setIsCheckingQuiz(true);
-      try {
-        const quizStatus = await checkUnitQuizPassed(moduleId, unitId);
-        setIsQuizPassed(quizStatus.passed);
-      } catch {
-      } finally {
-        setIsCheckingQuiz(false);
-      }
-    };
-    checkQuizStatus();
-  }, [moduleId, unitId]);
 
   const stopGenerating = (errMsg: string, type: 'load' | 'generation' | 'timeout' | 'no_content') => {
     if (slowWarningTimerRef.current) {
@@ -269,10 +253,6 @@ export function LessonViewer({
     setLessonData(null);
     setIsRefreshing(true);
     setForceRegenerate(true);
-  };
-
-  const handleValidateWithQuiz = () => {
-    router.push(`/${locale}/modules/${moduleId}/quiz?unit=${unitId}`);
   };
 
   const mdClass = "prose prose-gray max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-900 prose-table:text-sm";
@@ -543,34 +523,6 @@ export function LessonViewer({
 
       {/* Source Citations */}
       <SourceCitations sources={content.sources_cited} />
-
-      {/* Quiz Validation */}
-      <div className="mt-8 text-center">
-        {isCheckingQuiz ? (
-          <div className="inline-flex items-center gap-2 text-gray-500 text-sm">
-            <RefreshCw className="w-4 h-4 animate-spin" />
-            {t('checkingStatus')}
-          </div>
-        ) : isQuizPassed ? (
-          <div
-            role="status"
-            className="inline-flex items-center gap-2 bg-green-50 border border-green-200 text-green-700 font-medium px-6 py-3 rounded-lg"
-          >
-            <CheckCircle className="w-5 h-5" />
-            {t('completed')}
-          </div>
-        ) : (
-          <Button
-            onClick={handleValidateWithQuiz}
-            disabled={isLoading || isGenerating}
-            className="min-h-11 px-8 bg-teal-600 hover:bg-teal-700"
-            size="lg"
-          >
-            <PlayCircle className="w-4 h-4 mr-2" />
-            {t('validateWithQuiz')}
-          </Button>
-        )}
-      </div>
     </div>
   );
 }
