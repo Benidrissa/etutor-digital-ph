@@ -399,6 +399,7 @@ async def get_remaining_messages(
 
 @router.get("/last-module", response_model=LastTouchedModuleResponse | None)
 async def get_last_touched_module(
+    course_id: uuid.UUID | None = None,
     current_user: AuthenticatedUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     tutor_service: TutorService = Depends(get_tutor_service),
@@ -406,12 +407,18 @@ async def get_last_touched_module(
     """Return the user's most recently accessed module so the standalone
     ``/tutor`` page can default to chatting with that module in scope (#1988).
 
+    When ``course_id`` is supplied, restricts the lookup to modules in that
+    course — required to prevent the cross-course anchor leak that was
+    observed on staging post-#1989 (#1992: badge showed *"Les Détectives
+    du Vivant"* while user had *"Santé Publique"* selected).
+
     Returns ``null`` (HTTP 200) when the user has no recorded module activity
-    — frontend should then render the chat without a module anchor.
+    in the requested scope.
     """
     result = await tutor_service.get_last_touched_module(
         user_id=current_user.id,
         session=session,
+        course_id=course_id,
     )
     if result is None:
         return None

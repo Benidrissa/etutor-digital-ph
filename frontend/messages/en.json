@@ -396,8 +396,6 @@
     "conversations": "Conversations",
     "openConversations": "Open conversations",
     "closeDrawer": "Close",
-    "anchoredToModule": "Tutor anchored to: {module}",
-    "dismissAnchor": "Chat course-wide instead",
     "messageTooLong": "Message too long — shorten it before sending",
     "charactersUsed": "{used} / {limit} characters",
     "modeSocratic": "Socratic Mode",

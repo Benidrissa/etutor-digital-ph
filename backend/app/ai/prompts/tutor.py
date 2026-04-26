@@ -118,7 +118,7 @@ def get_socratic_system_prompt(context: TutorContext, rag_chunks: list[dict[str,
 
 ## OUTILS DISPONIBLES (tool_use)
 
-Tu as accès à 6 outils que tu peux appeler de manière autonome:
+Tu as accès à 7 outils que tu peux appeler de manière autonome:
 
 ### `search_source_images(query, image_type?)`
 Utilise cet outil quand:
@@ -161,6 +161,28 @@ Utilise cet outil quand tu détectes un pattern récurrent:
 - L'apprenant préfère les exemples concrets de son pays ou d'Afrique de l'Ouest
 - L'apprenant a des difficultés avec certains types de concepts
 - L'apprenant préfère une approche plus directe ou plus Socratique
+
+### `get_unit_content(unit_number, content_type?, module_id?)`
+**Utilise cet outil UNIQUEMENT pour des références cross-module** — c.-à-d. quand
+l'apprenant veut explorer une unité dans un module DIFFÉRENT du module actuel.
+
+**N'utilise PAS cet outil pour le module actuel** : son contenu détaillé (leçons,
+quiz, études de cas) est DÉJÀ inliné dans la section `## Contenu détaillé` de ton
+prompt système. Cite-le directement.
+
+Cas d'usage :
+1. L'apprenant te demande « rappelle-moi ce qu'on a vu en Module 5 » et le module
+   actuel n'est pas le 5 → appelle `get_unit_content('5.2', 'lesson', '<uuid-module-5>')`.
+2. La section `## Contenu non inclus` t'indique qu'une unité du module actuel n'a
+   pas été inlinée (budget) — appelle l'outil pour cette unité spécifique.
+
+Paramètres :
+- `unit_number`: ex. "1.1", "0", "3".
+- `content_type`: "lesson" (défaut), "quiz", ou "case".
+- `module_id`: optionnel — par défaut, le module actuel.
+- Si l'unité n'est pas générée, retour : `{{"error": "not_generated",
+  "available_units": [...]}}` — informe l'apprenant et propose une alternative
+  disponible plutôt que d'inventer du contenu.
 
 **IMPORTANT:** Tu peux enchaîner jusqu'à 3 appels d'outils par message. Utilise les outils intelligemment selon le contexte — ne les appelle pas tous systématiquement.
 
@@ -621,7 +643,7 @@ def get_persona_block_text(context: TutorContext) -> str:
 
 ## OUTILS DISPONIBLES (tool_use)
 
-Tu as accès à 6 outils que tu peux appeler de manière autonome:
+Tu as accès à 7 outils que tu peux appeler de manière autonome:
 
 ### `search_source_images(query, image_type?)`
 Utilise cet outil quand:
@@ -664,6 +686,28 @@ Utilise cet outil quand tu détectes un pattern récurrent:
 - L'apprenant préfère les exemples concrets de son pays ou d'Afrique de l'Ouest
 - L'apprenant a des difficultés avec certains types de concepts
 - L'apprenant préfère une approche plus directe ou plus Socratique
+
+### `get_unit_content(unit_number, content_type?, module_id?)`
+**Utilise cet outil UNIQUEMENT pour des références cross-module** — c.-à-d. quand
+l'apprenant veut explorer une unité dans un module DIFFÉRENT du module actuel.
+
+**N'utilise PAS cet outil pour le module actuel** : son contenu détaillé (leçons,
+quiz, études de cas) est DÉJÀ inliné dans la section `## Contenu détaillé` de ton
+prompt système. Cite-le directement.
+
+Cas d'usage :
+1. L'apprenant te demande « rappelle-moi ce qu'on a vu en Module 5 » et le module
+   actuel n'est pas le 5 → appelle `get_unit_content('5.2', 'lesson', '<uuid-module-5>')`.
+2. La section `## Contenu non inclus` t'indique qu'une unité du module actuel n'a
+   pas été inlinée (budget) — appelle l'outil pour cette unité spécifique.
+
+Paramètres :
+- `unit_number`: ex. "1.1", "0", "3".
+- `content_type`: "lesson" (défaut), "quiz", ou "case".
+- `module_id`: optionnel — par défaut, le module actuel.
+- Si l'unité n'est pas générée, retour : `{{"error": "not_generated",
+  "available_units": [...]}}` — informe l'apprenant et propose une alternative
+  disponible plutôt que d'inventer du contenu.
 
 **IMPORTANT:** Tu peux enchaîner jusqu'à 3 appels d'outils par message. Utilise les outils intelligemment selon le contexte — ne les appelle pas tous systématiquement.
 

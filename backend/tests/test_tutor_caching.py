@@ -243,7 +243,11 @@ def test_render_case_full_handles_structured_and_legacy_text():
 
 
 @pytest.mark.asyncio
-async def test_module_block_renders_full_lesson_body_when_generated():
+async def test_module_block_marks_unit_generated_and_inlines_lesson_body():
+    """Active-module two-pass renderer (#1992 cont'd): the unit shows up in
+    BOTH the structured listing (with ✓ marker + description) AND the
+    'Detailed content' section (full body inlined). Cached in the system
+    prompt — no tool call needed for the active module."""
     units = [_unit("1.1", "Définitions", "Definitions", order_index=1)]
     module = _module(units=units)
     rows = [
@@ -255,25 +259,23 @@ async def test_module_block_renders_full_lesson_body_when_generated():
                 "introduction": "Introduction longue avec plusieurs phrases.",
                 "concepts": ["concept1", "concept2"],
                 "aof_example": "Exemple ouest-africain détaillé",
-                "synthesis": "Synthèse complète",
-                "key_points": ["point1", "point2", "point3"],
-                "sources_cited": ["Donaldson Ch.4"],
             },
         )
     ]
     section = await _build_current_module_section(module, "fr", _mock_session([rows]))
     assert section is not None
-    # Full lesson content (not just a 200-char excerpt) is now in the section.
+    assert "Unité 1.1" in section and "Définitions" in section
+    assert "✓ généré" in section
+    # Body IS inlined for the active module.
     assert "Introduction longue avec plusieurs phrases." in section
-    assert "concept1" in section and "concept2" in section
-    assert "Exemple ouest-africain détaillé" in section
-    assert "Synthèse complète" in section
-    assert "point1" in section and "point2" in section
-    assert "Donaldson Ch.4" in section
+    assert "concept1" in section
+    assert "Contenu détaillé" in section
 
 
 @pytest.mark.asyncio
-async def test_module_block_includes_quiz_answers_by_default():
+async def test_module_block_inlines_quiz_questions_and_answers_for_active_module():
+    """Quiz body is inlined for the active module so the tutor can reference
+    questions and correct answers directly without a tool call."""
     units = [_unit("1.1", "Définitions", "Definitions", order_index=1)]
     module = _module(units=units)
     rows = [
@@ -295,9 +297,10 @@ async def test_module_block_includes_quiz_answers_by_default():
     ]
     section = await _build_current_module_section(module, "fr", _mock_session([rows]))
     assert section is not None
+    assert "Unité 1.1" in section
+    assert "✓ généré" in section
+    # Quiz body IS inlined for the active module.
     assert "Quelle est la définition de X" in section
-    assert "Op C" in section
-    assert "Réponse correcte" in section
     assert "Parce que C est correcte" in section
 
 

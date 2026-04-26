@@ -300,11 +300,24 @@ export interface LastTouchedModule {
 /**
  * Fetch the user's most recently accessed module so the standalone /tutor
  * page can default-anchor the chat in that module's context (#1988).
- * Returns null when the user has no recorded module activity.
+ *
+ * When ``courseId`` is provided (the user's active course on the frontend),
+ * scopes the lookup to that course — required to prevent the cross-course
+ * leak fixed in #1992 (badge would show a module from a different course
+ * than the one the user has selected).
+ *
+ * Returns null when the user has no recorded module activity in the
+ * requested scope.
  */
-export async function fetchLastTouchedModule(): Promise<LastTouchedModule | null> {
+export async function fetchLastTouchedModule(
+  courseId?: string | null
+): Promise<LastTouchedModule | null> {
   const token = await authClient.getValidToken();
-  const response = await fetch(`${API_BASE}/api/v1/tutor/last-module`, {
+  const url = new URL(`${API_BASE}/api/v1/tutor/last-module`);
+  if (courseId) {
+    url.searchParams.set('course_id', courseId);
+  }
+  const response = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) {

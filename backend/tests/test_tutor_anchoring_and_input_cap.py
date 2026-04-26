@@ -220,3 +220,147 @@ async def test_get_last_touched_module_handles_missing_course(tutor_service):
     assert result is not None
     assert result["course_id"] is None
     assert result["course_title"] is None
+
+
+# --- #1992 — course-scoped lookup + structured renderer ---------------------
+
+
+@pytest.mark.asyncio
+async def test_get_last_touched_module_filters_by_course_when_provided(tutor_service):
+    """When ``course_id`` is supplied, the SELECT should JOIN Module and filter."""
+    user = _user(language="fr")
+    session = MagicMock()
+    captured: list = []
+
+    async def _execute(stmt):
+        captured.append(stmt)
+        result = MagicMock()
+        result.scalar_one_or_none = MagicMock(return_value=None)
+        return result
+
+    session.execute = AsyncMock(side_effect=_execute)
+    session.get = AsyncMock(return_value=user)
+
+    target_course_id = uuid.uuid4()
+    await tutor_service.get_last_touched_module(user.id, session, course_id=target_course_id)
+    assert captured, "execute() should have been called with the scoped query"
+    sql = str(captured[0])
+    # The scoped query must reference Module.course_id; the no-scope
+    # variant won't contain it. Crude but effective check.
+    assert "module" in sql.lower() and "course_id" in sql.lower()
+
+
+@pytest.mark.asyncio
+async def test_get_last_touched_module_no_scope_does_not_filter_by_course(tutor_service):
+    """Without ``course_id`` the original behaviour (most-recent-globally) holds."""
+    user = _user(language="fr")
+    session = MagicMock()
+    captured: list = []
+
+    async def _execute(stmt):
+        captured.append(stmt)
+        result = MagicMock()
+        result.scalar_one_or_none = MagicMock(return_value=None)
+        return result
+
+    session.execute = AsyncMock(side_effect=_execute)
+    session.get = AsyncMock(return_value=user)
+
+    await tutor_service.get_last_touched_module(user.id, session)  # no course_id
+    sql = str(captured[0]).lower()
+    # The unscoped query selects from user_module_progress without joining Module.
+    # We assert by absence of the JOIN keyword between the two tables.
+    assert "user_module_progress" in sql
+    # The scoped variant adds an explicit ``JOIN modules`` clause; absence
+    # confirms we're on the unscoped path.
+    assert " join modules" not in sql
+
+
+@pytest.mark.asyncio
+async def test_module_section_lists_all_units_regardless_of_count(tutor_service):
+    """#1992 spec: a 9-unit module must show all 9 units; no truncation
+    after the first 2-3 (the bug the user reported on staging)."""
+    from app.domain.services.tutor_service import _build_current_module_section
+
+    units = []
+    for i in range(9):
+        units.append(
+            SimpleNamespace(
+                unit_number=str(i),
+                title_fr=f"Unité {i} titre",
+                title_en=f"Unit {i} title",
+                description_fr=f"Description de l'unité {i}.",
+                description_en=f"Unit {i} description.",
+                estimated_minutes=15,
+                order_index=i,
+            )
+        )
+    module = SimpleNamespace(
+        id=uuid.uuid4(),
+        title_fr="Fondements de la santé publique",
+        title_en="Foundations",
+        module_number=1,
+        description_fr="Module description",
+        description_en="Module description",
+        estimated_hours=8,
+        case_study_fr=None,
+        case_study_en=None,
+        units=units,
+    )
+
+    exec_result = MagicMock()
+    exec_result.all = MagicMock(return_value=[])
+    exec_result.scalar_one_or_none = MagicMock(return_value=None)
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=exec_result)
+
+    section = await _build_current_module_section(module, "fr", session)
+    assert section is not None
+    # Every unit number must be present in the rendered section.
+    for i in range(9):
+        assert f"Unité {i}" in section, f"Unit {i} missing from rendered section"
+    # Module-level metadata must be present per the user's spec.
+    assert "8 h" in section
+    assert "Fondements" in section
+
+
+@pytest.mark.asyncio
+async def test_module_section_includes_unit_descriptions_and_reading_time(tutor_service):
+    """Each unit shows: number + title + reading time + description bullet."""
+    from app.domain.services.tutor_service import _build_current_module_section
+
+    units = [
+        SimpleNamespace(
+            unit_number="3",
+            title_fr="Mesures de morbidité",
+            title_en="Morbidity measures",
+            description_fr="Explication des proportions, ratios, taux.",
+            description_en="Proportions, ratios, rates.",
+            estimated_minutes=15,
+            order_index=3,
+        )
+    ]
+    module = SimpleNamespace(
+        id=uuid.uuid4(),
+        title_fr="M",
+        title_en="M",
+        module_number=1,
+        description_fr=None,
+        description_en=None,
+        estimated_hours=None,
+        case_study_fr=None,
+        case_study_en=None,
+        units=units,
+    )
+    exec_result = MagicMock()
+    exec_result.all = MagicMock(return_value=[])
+    exec_result.scalar_one_or_none = MagicMock(return_value=None)
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=exec_result)
+
+    section = await _build_current_module_section(module, "fr", session)
+    assert section is not None
+    assert "Unité 3" in section
+    assert "Mesures de morbidité" in section
+    assert "15 min de lecture" in section
+    assert "Explication des proportions, ratios, taux." in section
