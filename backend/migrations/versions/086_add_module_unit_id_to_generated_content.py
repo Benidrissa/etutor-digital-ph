@@ -1,8 +1,13 @@
 """Add module_unit_id FK to generated_content; replace JSON unit_id join.
 
-Revision ID: 084
-Revises: 083
+Revision ID: 086
+Revises: 085
 Create Date: 2026-04-26
+
+Renumbered from 084 → 086: the tutor message store (#1978, revision 084)
+and tutor course_id column (revision 085) merged to dev in parallel.
+Linear chain on dev is now: 083 → 084_tutor_messages →
+085_tutor_conversation_course → 086_module_unit_id.
 
 The link between ``generated_content`` (cached lessons / quizzes / case
 studies) and the ``module_units`` row that defines the unit's title and
@@ -47,8 +52,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "084"
-down_revision: str | None = "083"
+revision: str = "086"
+down_revision: str | None = "085"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
