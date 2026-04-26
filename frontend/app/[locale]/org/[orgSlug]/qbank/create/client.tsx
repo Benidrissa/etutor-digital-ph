@@ -27,7 +27,7 @@ export function QBankCreateClient() {
   const t = useTranslations("qbank");
   const router = useRouter();
   const { org, role, loading: orgLoading } = useOrg();
-  const currentUser = useCurrentUser();
+  const { user: currentUser } = useCurrentUser();
   const isEditor = canEditBank(role as OrgRole, currentUser?.role);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
