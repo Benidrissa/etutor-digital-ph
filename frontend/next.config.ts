@@ -70,6 +70,11 @@ const nextConfig: NextConfig = {
       "remark-gfm",
       "remark-math",
     ],
+    // Course-resource PDFs (tens of MB) are uploaded through the /api/* rewrite
+    // to the FastAPI backend. Next.js's default proxy body buffer is 10MB,
+    // which silently truncates larger uploads and makes the upstream return 502.
+    // Match the wizard's advertised "max 100 Mo par fichier". See #2018.
+    middlewareClientMaxBodySize: "100mb",
   },
 
   async rewrites() {
