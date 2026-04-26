@@ -817,18 +817,36 @@ def get_compaction_prompt(messages: list[dict], existing_compact: str | None, la
         return f"""Tu es un assistant spécialisé dans la synthèse de conversations pédagogiques.
 
 Résume les échanges suivants en un contexte compact de 500 tokens maximum.
-Le résumé doit préserver:
-- Les sujets abordés et les concepts expliqués
-- Les difficultés identifiées chez l'apprenant
-- Les préférences pédagogiques détectées
-- Les questions non résolues
-- Les décisions pédagogiques importantes et les explications clés
-- Le niveau de progression de l'apprenant dans les thèmes traités{prior_section}
+Le résumé DOIT commencer par la section « Objectif(s) déclaré(s) par l'apprenant »
+puis suivre la structure exacte ci-dessous (#1995). L'objectif déclaré est la
+chose la plus importante à préserver — c'est ce qui permet au tuteur de garder
+le cap quand l'apprenant pose des questions de suivi connexes plus tard.
+
+## Objectif(s) déclaré(s) par l'apprenant
+- Cite ou paraphrase verbatim ce que l'apprenant a explicitement dit vouloir
+  accomplir, comprendre, ou maîtriser (ex. « Je veux comprendre les DALYs
+  avant l'examen de vendredi »).
+- Si l'apprenant n'a PAS exprimé d'objectif explicite, écris littéralement « Aucun objectif explicitement déclaré » — ne fabrique pas un objectif inféré.
+
+## Sujets et concepts abordés
+- Les sujets et concepts expliqués durant ces échanges.
+
+## Difficultés identifiées
+- Erreurs récurrentes, blocages, malentendus de l'apprenant.
+
+## Préférences pédagogiques détectées
+- Style d'apprentissage, format préféré, ton souhaité.
+
+## Questions non résolues / décisions pédagogiques
+- Questions ouvertes à reprendre, prochaines étapes prévues.
+
+## Progression
+- Niveau atteint dans les thèmes traités, modules/unités touchés.{prior_section}
 
 ### MESSAGES À RÉSUMER
 {messages_text}
 
-### RÉSUMÉ COMPACT (500 tokens max)"""
+### RÉSUMÉ COMPACT (500 tokens max, structure ci-dessus obligatoire)"""
     else:
         prior_section = (
             f"\n\n### PREVIOUS COMPACT CONTEXT\n{existing_compact}" if existing_compact else ""
@@ -839,18 +857,36 @@ Le résumé doit préserver:
         return f"""You are an assistant specializing in summarizing pedagogical conversations.
 
 Summarize the following exchanges into a compact context of 500 tokens maximum.
-The summary must preserve:
-- Topics covered and concepts explained
-- Difficulties identified in the learner
-- Detected pedagogical preferences
-- Unresolved questions
-- Key pedagogical decisions and explanations given
-- The learner's progression level in the topics discussed{prior_section}
+The summary MUST begin with the "Stated objective(s) by the learner" section,
+then follow the exact structure below (#1995). The stated objective is the
+single most important thing to preserve — it's what keeps the tutor on track
+when the learner asks related follow-up questions later.
+
+## Stated objective(s) by the learner
+- Quote or paraphrase verbatim what the learner explicitly said they want
+  to achieve, understand, or master (e.g. "I want to understand DALYs
+  before Friday's exam").
+- If the learner did NOT express an explicit objective, write the literal phrase "No explicit objective stated" — do not fabricate an inferred objective.
+
+## Topics and concepts covered
+- The topics and concepts explained during these exchanges.
+
+## Identified difficulties
+- Recurring errors, sticking points, misunderstandings.
+
+## Detected pedagogical preferences
+- Learning style, preferred format, desired tone.
+
+## Unresolved questions / pedagogical decisions
+- Open questions to revisit, planned next steps.
+
+## Progression
+- Level reached in topics covered, modules/units touched.{prior_section}
 
 ### MESSAGES TO SUMMARIZE
 {messages_text}
 
-### COMPACT SUMMARY (500 tokens max)"""
+### COMPACT SUMMARY (500 tokens max, follow the structure above)"""
 
 
 def get_activity_suggestions(

@@ -109,13 +109,15 @@ def _make_conversation(user_id, n_messages: int, compacted_context: str | None =
 
 
 async def test_compact_trigger_constant():
-    """COMPACT_TRIGGER relaxed to 50 (#1978) — trigger ~5x further out."""
-    assert COMPACT_TRIGGER == 50
+    """COMPACT_TRIGGER bumped 50→80 (#1995) — staging feedback that compaction
+    fires before the learner's stated objective has stabilised in long sessions."""
+    assert COMPACT_TRIGGER == 80
 
 
 async def test_compact_keep_recent_constant():
-    """COMPACT_KEEP_RECENT bumped to 20 (#1978)."""
-    assert COMPACT_KEEP_RECENT == 20
+    """COMPACT_KEEP_RECENT bumped 20→40 (#1995) — keep more verbatim history so
+    the original objective-setting exchange survives the first compaction."""
+    assert COMPACT_KEEP_RECENT == 40
 
 
 async def test_compact_summarize_up_to_constant():
@@ -182,6 +184,29 @@ async def test_compaction_prompt_en_contains_key_fields():
     assert "topics" in prompt.lower()
     assert "difficulties" in prompt.lower()
     assert "500" in prompt
+
+
+async def test_compaction_prompt_fr_pins_stated_objective_first():
+    """#1995 regression guard: the FR compaction prompt MUST instruct Claude
+    to put the learner's stated objective at the top of the summary so it
+    survives every compaction pass and the tutor stays on track for
+    follow-up connected questions."""
+    messages = [{"role": "user", "content": "Q"}, {"role": "assistant", "content": "A"}]
+    prompt = get_compaction_prompt(messages, existing_compact=None, language="fr")
+    assert "Objectif(s) déclaré(s) par l'apprenant" in prompt
+    # The objective section must appear BEFORE the topics section.
+    assert prompt.index("Objectif(s) déclaré(s)") < prompt.index("Sujets et concepts")
+    # Explicit instruction to not fabricate when no objective is stated.
+    assert "Aucun objectif explicitement déclaré" in prompt
+
+
+async def test_compaction_prompt_en_pins_stated_objective_first():
+    """Mirror of the FR test for the English compaction prompt."""
+    messages = [{"role": "user", "content": "Q"}, {"role": "assistant", "content": "A"}]
+    prompt = get_compaction_prompt(messages, existing_compact=None, language="en")
+    assert "Stated objective(s) by the learner" in prompt
+    assert prompt.index("Stated objective(s)") < prompt.index("Topics and concepts")
+    assert "No explicit objective stated" in prompt
 
 
 async def test_compaction_prompt_includes_existing_compact_fr():
