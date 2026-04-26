@@ -52,6 +52,4 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute("DROP INDEX IF EXISTS ix_tutor_conversations_course_id;")
-    op.execute(
-        "ALTER TABLE tutor_conversations DROP COLUMN IF EXISTS course_id;"
-    )
+    op.execute("ALTER TABLE tutor_conversations DROP COLUMN IF EXISTS course_id;")
