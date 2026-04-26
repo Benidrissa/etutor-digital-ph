@@ -1,6 +1,7 @@
 """Claude API service for content generation."""
 
 import json
+import re
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -96,31 +97,65 @@ class ClaudeService:
         system_prompt: str,
         user_message: str,
         content_type: str,
+        max_retries: int = 1,
     ) -> dict[str, Any]:
         """
         Generate structured content (non-streaming) and parse JSON response.
+
+        On a malformed-JSON parse failure (Claude occasionally drops a delimiter
+        or unescapes a quote — see #1822), retries up to ``max_retries`` extra
+        times with a sharpened user message asking for strict JSON. Truncation
+        (``stop_reason=max_tokens``) is NOT retried; a bigger response would
+        only re-truncate.
 
         Args:
             system_prompt: System prompt with JSON structure requirements
             user_message: User message with context
             content_type: Type of content being generated (lesson, quiz, etc.)
+            max_retries: Extra attempts after the first on JSON parse failure.
+                Default 1 means up to 2 total Claude calls.
 
         Returns:
-            Parsed JSON content as dictionary
+            Parsed JSON content as dictionary, or ``{"raw_response": True, ...}``
+            if all attempts failed to parse.
         """
-        try:
-            response = await self.client.messages.create(
-                model="claude-sonnet-4-6",
-                max_tokens=self._max_tokens,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_message}],
-                temperature=self._temperature,
-            )
+        last_error: str | None = None
+        last_preview: str = ""
+        last_content_text: str = ""
+
+        for attempt in range(max_retries + 1):
+            if attempt == 0:
+                effective_user_message = user_message
+            else:
+                effective_user_message = (
+                    "Your previous response was not valid JSON.\n"
+                    f"Parse error: {last_error}\n"
+                    f"Response preview: {last_preview!r}\n\n"
+                    "Respond with STRICT, valid JSON only. No prose, no markdown "
+                    "fences, no trailing commas, no unescaped quotes inside strings. "
+                    "Match the schema in the original request exactly.\n\n"
+                    f"{user_message}"
+                )
+
+            try:
+                response = await self.client.messages.create(
+                    model="claude-sonnet-4-6",
+                    max_tokens=self._max_tokens,
+                    system=system_prompt,
+                    messages=[{"role": "user", "content": effective_user_message}],
+                    temperature=self._temperature,
+                )
+            except Exception as e:
+                logger.error(
+                    "Failed to generate structured content",
+                    content_type=content_type,
+                    error=str(e),
+                )
+                raise
 
             if not response.content or len(response.content) == 0:
                 raise ValueError("Empty response from Claude API")
 
-            # Check for truncation
             is_truncated = response.stop_reason == "max_tokens"
             if is_truncated:
                 logger.warning(
@@ -129,90 +164,108 @@ class ClaudeService:
                     usage_output=getattr(response.usage, "output_tokens", None),
                 )
 
-            # Extract text from response
             content_text = ""
             for block in response.content:
                 if hasattr(block, "text"):
                     content_text += block.text
 
-            # Try to parse JSON from the response
+            last_content_text = content_text
+
             try:
-                # Strip markdown code fences if present
-                clean_text = content_text.strip()
-                if clean_text.startswith("```"):
-                    # Remove opening ```json or ```
-                    first_newline = clean_text.find("\n")
-                    if first_newline > 0:
-                        clean_text = clean_text[first_newline + 1 :]
-                    # Remove closing ```
-                    if clean_text.rstrip().endswith("```"):
-                        clean_text = clean_text.rstrip()[:-3]
-
-                # Look for JSON within the response text (object or array)
-                obj_start = clean_text.find("{")
-                arr_start = clean_text.find("[")
-
-                if arr_start >= 0 and (obj_start < 0 or arr_start < obj_start):
-                    json_start = arr_start
-                    json_end = clean_text.rfind("]") + 1
-                else:
-                    json_start = obj_start
-                    json_end = clean_text.rfind("}") + 1
-
-                if json_start >= 0 and json_end > json_start:
-                    json_text = clean_text[json_start:json_end]
-
-                    # Fix common Claude JSON mistakes
-                    import re
-
-                    # Remove trailing commas before } or ]
-                    json_text = re.sub(r",\s*([}\]])", r"\1", json_text)
-
-                    parsed_content = json.loads(json_text)
-
-                    if is_truncated:
-                        logger.warning(
-                            "JSON parsed but response was truncated — content may be incomplete",
-                            content_type=content_type,
-                        )
-
-                    logger.info(
-                        "Successfully generated structured content",
-                        content_type=content_type,
-                        response_length=len(content_text),
-                    )
-
-                    return parsed_content
-                else:
-                    if is_truncated:
-                        raise ValueError(
-                            f"Response truncated (stop_reason=max_tokens) "
-                            f"for {content_type}. No JSON found."
-                        )
-                    raise ValueError("No JSON structure found in response")
-
+                parsed_content = self._extract_json(content_text)
             except json.JSONDecodeError as e:
+                last_error = str(e)
+                last_preview = content_text[:200]
+
                 if is_truncated:
                     logger.error(
                         "Truncated JSON could not be parsed",
                         content_type=content_type,
-                        error=str(e),
+                        error=last_error,
                     )
                     raise ValueError(
                         f"Response truncated (stop_reason=max_tokens) "
                         f"for {content_type}. JSON is incomplete."
                     )
+
+                if attempt < max_retries:
+                    logger.warning(
+                        "JSON parse failed, retrying with strict-JSON nudge",
+                        content_type=content_type,
+                        attempt=attempt + 1,
+                        error=last_error,
+                        response_preview=last_preview,
+                    )
+                    continue
+
                 logger.error(
                     "Failed to parse JSON from Claude response",
                     content_type=content_type,
-                    error=str(e),
-                    response_preview=content_text[:200],
+                    error=last_error,
+                    response_preview=last_preview,
+                    attempts=max_retries + 1,
                 )
-                # Fallback: return raw content wrapped in basic structure
-                return {"content": content_text, "type": content_type, "raw_response": True}
+                return {
+                    "content": content_text,
+                    "type": content_type,
+                    "raw_response": True,
+                }
 
-        except Exception as e:
-            logger.error(
-                "Failed to generate structured content", content_type=content_type, error=str(e)
+            if is_truncated:
+                logger.warning(
+                    "JSON parsed but response was truncated — content may be incomplete",
+                    content_type=content_type,
+                )
+
+            logger.info(
+                "Successfully generated structured content",
+                content_type=content_type,
+                response_length=len(content_text),
+                attempt=attempt + 1,
             )
-            raise
+            return parsed_content
+
+        # Defensive: loop always returns or raises above; fall-through fallback.
+        return {
+            "content": last_content_text,
+            "type": content_type,
+            "raw_response": True,
+        }
+
+    @staticmethod
+    def _extract_json(content_text: str) -> dict[str, Any]:
+        """
+        Extract and parse JSON from Claude's response text.
+
+        Strips markdown fences, locates the outermost ``{...}`` or ``[...]``,
+        removes trailing commas before ``}`` / ``]``, then ``json.loads``.
+
+        Raises:
+            json.JSONDecodeError: If no JSON structure is found, or if the
+                located span fails to parse. Both cases use the same exception
+                so the caller's retry path covers them uniformly.
+        """
+        clean_text = content_text.strip()
+        if clean_text.startswith("```"):
+            first_newline = clean_text.find("\n")
+            if first_newline > 0:
+                clean_text = clean_text[first_newline + 1 :]
+            if clean_text.rstrip().endswith("```"):
+                clean_text = clean_text.rstrip()[:-3]
+
+        obj_start = clean_text.find("{")
+        arr_start = clean_text.find("[")
+
+        if arr_start >= 0 and (obj_start < 0 or arr_start < obj_start):
+            json_start = arr_start
+            json_end = clean_text.rfind("]") + 1
+        else:
+            json_start = obj_start
+            json_end = clean_text.rfind("}") + 1
+
+        if json_start < 0 or json_end <= json_start:
+            raise json.JSONDecodeError("No JSON structure found in response", clean_text or "", 0)
+
+        json_text = clean_text[json_start:json_end]
+        json_text = re.sub(r",\s*([}\]])", r"\1", json_text)
+        return json.loads(json_text)
