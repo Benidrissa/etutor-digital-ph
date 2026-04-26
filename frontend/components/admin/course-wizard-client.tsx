@@ -34,7 +34,7 @@ import {
   AlertDialogTitle,
   AlertDialogDescription,
 } from "@/components/ui/alert-dialog";
-import { apiFetch, API_BASE, getCourseTaxonomy, type TaxonomyItem } from "@/lib/api";
+import { apiFetch, ApiError, API_BASE, getCourseTaxonomy, type TaxonomyItem } from "@/lib/api";
 import { authClient } from "@/lib/auth";
 
 type WizardStep = "upload" | "info" | "generate" | "index" | "publish";
@@ -404,6 +404,30 @@ export function CourseWizardClient({
   }, [resumeCourseId, resumeCreationStep]);
 
   useEffect(() => {
+    // When the user reaches the "generate" step we need to know whether
+    // sources have already been indexed; the syllabus generator is gated on
+    // chunks_indexed > 0 by the backend (#2017). Skip if already indexing
+    // (the polling effect keeps indexStatus fresh in that case).
+    if (step !== "generate" || !courseId || isIndexing) return;
+    if (indexStatus?.indexed) return;
+
+    apiFetch<{
+      indexed: boolean;
+      chunks_indexed: number;
+      images_indexed?: number;
+    }>(`/api/v1/admin/courses/${courseId}/index-status`)
+      .then((data) => {
+        setIndexStatus((prev) => ({
+          ...(prev ?? {}),
+          indexed: data.indexed,
+          chunks_indexed: data.chunks_indexed,
+          images_indexed: data.images_indexed,
+        }));
+      })
+      .catch(() => {});
+  }, [step, courseId, isIndexing, indexStatus?.indexed]);
+
+  useEffect(() => {
     if (step !== "upload" || !courseId) return;
 
     const fetchExistingFiles = async () => {
@@ -651,8 +675,12 @@ export function CourseWizardClient({
       );
       setGenerateTaskId(result.task_id);
       setIsGenerating(true);
-    } catch {
-      setRegenerateError(t("generate.regenerateError"));
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "no_source_summary") {
+        setRegenerateError(t("generate.no_source_summary"));
+      } else {
+        setRegenerateError(t("generate.regenerateError"));
+      }
     } finally {
       setIsRegenerating(false);
     }
@@ -686,8 +714,12 @@ export function CourseWizardClient({
         }
       );
       setGenerateTaskId(result.task_id);
-    } catch {
-      setGenerateError(t("generate.error"));
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "no_source_summary") {
+        setGenerateError(t("generate.no_source_summary"));
+      } else {
+        setGenerateError(t("generate.error"));
+      }
       setIsGenerating(false);
     }
   }, [courseId, courseInfo, isGenerating, shouldForceGenerate, t]);
@@ -1293,11 +1325,44 @@ export function CourseWizardClient({
                   </div>
                 )}
 
+                {generatedModules.length === 0 &&
+                  !isGenerating &&
+                  !isCheckingGenerateStatus &&
+                  !indexStatus?.indexed &&
+                  !isIndexing && (
+                    <div className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                        <p>{t("generate.no_source_summary")}</p>
+                      </div>
+                      <Button
+                        onClick={startIndexation}
+                        size="sm"
+                        className="self-start min-h-[44px]"
+                      >
+                        <Database className="mr-2 h-4 w-4" />
+                        {t("generate.no_source_summaryRunIndex")}
+                      </Button>
+                    </div>
+                  )}
+
+                {generatedModules.length === 0 &&
+                  !isGenerating &&
+                  !isCheckingGenerateStatus &&
+                  !indexStatus?.indexed &&
+                  isIndexing && (
+                    <div className="flex items-center gap-2 rounded-lg border bg-card p-3 text-sm">
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent shrink-0" />
+                      <p>{t("index.taskRunning")}</p>
+                    </div>
+                  )}
+
                 {generatedModules.length === 0 && !isGenerating && !isCheckingGenerateStatus && (
                   <Button
                     onClick={() => generateSyllabus()}
                     className="w-full min-h-11"
-                    disabled={isGenerating}
+                    disabled={isGenerating || !indexStatus?.indexed}
+                    title={!indexStatus?.indexed ? t("generate.no_source_summary") : undefined}
                   >
                     <Sparkles className="mr-2 h-4 w-4" />
                     {t("generate.button")}

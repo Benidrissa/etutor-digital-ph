@@ -145,6 +145,55 @@ async def _fetch_image_count(db, rag_collection_id: str | None) -> int:
     return result.scalar_one()
 
 
+def _safe_task_meta(task_result: AsyncResult) -> tuple[str, dict]:
+    """Read Celery task state + meta without 500ing on malformed payloads.
+
+    `AsyncResult.info` is a property that calls `exception_to_python()` for
+    FAILURE-state tasks; if the stored payload is missing `exc_type`, that
+    raises before any caller-side guard runs. Degrade to `("FAILURE", {})`
+    instead of letting the polling endpoint 500. See #2015.
+    """
+    state = task_result.state
+    meta: dict = {}
+    try:
+        info = task_result.info
+        if isinstance(info, dict):
+            meta = info
+    except (ValueError, KeyError):
+        state = "FAILURE"
+    return state, meta
+
+
+async def _require_indexed_sources(course: Course, db) -> None:
+    """Refuse AI generation when no indexed source content exists for the course.
+
+    See #2017: title/description/objectives/syllabus/modules must be grounded in
+    indexed RAG content. Falling through to a prompt-only generation produces
+    fabricated, citation-less material.
+    """
+    if not course.rag_collection_id:
+        chunk_count = 0
+    else:
+        chunk_result = await db.execute(
+            select(func.count())
+            .select_from(DocumentChunk)
+            .where(DocumentChunk.source == course.rag_collection_id)
+        )
+        chunk_count = chunk_result.scalar_one()
+    if chunk_count == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "no_source_summary",
+                "message_key": "course.generate.no_source_summary",
+                "message": (
+                    "Upload at least one source document and wait for indexation "
+                    "to complete before generating course content."
+                ),
+            },
+        )
+
+
 def _slugify(text: str) -> str:
     slug = text.lower().strip()
     slug = re.sub(r"[^\w\s-]", "", slug)
@@ -389,6 +438,8 @@ async def suggest_course_metadata(
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
 
+    await _require_indexed_sources(course, db)
+
     # Gather context from uploaded resources
     res_result = await db.execute(
         select(CourseResource.raw_text).where(CourseResource.course_id == course_id).limit(5)
@@ -590,6 +641,7 @@ async def save_syllabus(
             id=uuid.uuid4(),
             course_id=course_id,
             module_number=m.module_number,
+            level=1,
             title_fr=m.title_fr,
             title_en=m.title_en,
             description_fr=m.description_fr,
@@ -782,6 +834,8 @@ async def generate_course_structure(
             detail=f"A task is already in progress (step: {course.creation_step})",
         )
 
+    await _require_indexed_sources(course, db)
+
     from app.domain.services.platform_settings_service import SettingsCache
 
     cache = SettingsCache.instance()
@@ -846,6 +900,8 @@ async def regenerate_course_syllabus(
             status_code=status.HTTP_409_CONFLICT,
             detail="A generation task is already in progress",
         )
+
+    await _require_indexed_sources(course, db)
 
     from app.domain.services.platform_settings_service import SettingsCache
 
@@ -927,10 +983,11 @@ async def get_generate_status(
 
     if resolved_task_id:
         task_result = AsyncResult(resolved_task_id)
+        state, meta = _safe_task_meta(task_result)
         response["task"] = {
             "id": resolved_task_id,
-            "state": task_result.state,
-            "meta": task_result.info if isinstance(task_result.info, dict) else {},
+            "state": state,
+            "meta": meta,
         }
 
     return response
@@ -1109,10 +1166,10 @@ async def get_rag_index_status(
     effective_task_id = task_id or course.indexation_task_id
     if effective_task_id:
         task_result = AsyncResult(effective_task_id)
-        meta = task_result.info if isinstance(task_result.info, dict) else {}
+        state, meta = _safe_task_meta(task_result)
         response["task"] = {
             "id": effective_task_id,
-            "state": task_result.state,
+            "state": state,
             "step": meta.get("step"),
             "step_label": meta.get("step_label"),
             "progress": meta.get("progress", 0),
@@ -1414,6 +1471,8 @@ async def admin_generate_module_content(
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
 
+    await _require_indexed_sources(course, db)
+
     module_result = await db.execute(
         select(Module).where(Module.id == module_id, Module.course_id == course_id)
     )
@@ -1630,10 +1689,10 @@ async def get_preassessment_status(
 
     if task_id:
         task_result = AsyncResult(task_id)
-        meta = task_result.info if isinstance(task_result.info, dict) else {}
+        state, meta = _safe_task_meta(task_result)
         response["task"] = {
             "id": task_id,
-            "state": task_result.state,
+            "state": state,
             "step": meta.get("step"),
             "progress": meta.get("progress", 0),
             "question_count": meta.get("question_count", 0),

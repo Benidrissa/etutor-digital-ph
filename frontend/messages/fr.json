@@ -1444,7 +1444,9 @@
         "regenerateFreshConfirmDescription": "Cela va ré-analyser tous les PDFs depuis le début. La structure des modules actuels sera remplacée.",
         "regenerateFreshConfirmAction": "Vider et regénérer",
         "regenerateFreshConfirmCancel": "Annuler",
-        "regenerateError": "Erreur lors de la regénération du syllabus."
+        "regenerateError": "Erreur lors de la regénération du syllabus.",
+        "no_source_summary": "Téléversez au moins un document source et terminez l'indexation avant de générer le contenu du cours.",
+        "no_source_summaryRunIndex": "Lancer l'indexation maintenant"
       },
       "index": {
         "title": "Indexation RAG",

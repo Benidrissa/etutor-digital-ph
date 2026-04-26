@@ -1444,7 +1444,9 @@
         "regenerateFreshConfirmDescription": "This will re-analyze all PDFs from scratch. The current module structure will be replaced.",
         "regenerateFreshConfirmAction": "Discard & regenerate",
         "regenerateFreshConfirmCancel": "Cancel",
-        "regenerateError": "Failed to regenerate syllabus."
+        "regenerateError": "Failed to regenerate syllabus.",
+        "no_source_summary": "Upload at least one source document and complete indexation before generating course content.",
+        "no_source_summaryRunIndex": "Run indexation now"
       },
       "index": {
         "title": "RAG Indexation",
