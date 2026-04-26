@@ -187,17 +187,27 @@ async def generate_quiz(
             num_questions=request.num_questions,
         )
 
+        from app.domain.services._unit_resolution import resolve_module_unit_id
+
+        quiz_unit_uuid = await resolve_module_unit_id(session, module_uuid, request.unit_id)
+
         if not request.force_regenerate:
             cached_query = (
                 select(GeneratedContent)
-                .where(GeneratedContent.module_id == module_uuid)
                 .where(GeneratedContent.content_type == "quiz")
                 .where(GeneratedContent.language == request.language)
                 .where(GeneratedContent.level == request.level)
                 .where(GeneratedContent.country_context == request.country)
-                .where(GeneratedContent.content["unit_id"].astext == request.unit_id)
                 .order_by(GeneratedContent.generated_at.desc())
             )
+            if quiz_unit_uuid is not None:
+                cached_query = cached_query.where(GeneratedContent.module_unit_id == quiz_unit_uuid)
+            else:
+                cached_query = cached_query.where(
+                    GeneratedContent.module_id == module_uuid,
+                    GeneratedContent.module_unit_id.is_(None),
+                    GeneratedContent.content["unit_id"].astext == request.unit_id,
+                )
             cache_result = await session.execute(cached_query)
             cached = cache_result.scalars().first()
 

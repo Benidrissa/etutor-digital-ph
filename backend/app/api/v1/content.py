@@ -439,15 +439,15 @@ async def get_or_generate_lesson_by_module_and_unit(
 
         resolved_module_id = await _resolve_module_id(module_id, session)
 
-        unit_type_result = await session.execute(
-            select(ModuleUnit.unit_type).where(
+        unit_lookup_result = await session.execute(
+            select(ModuleUnit.id, ModuleUnit.unit_type).where(
                 ModuleUnit.module_id == resolved_module_id,
                 ModuleUnit.unit_number == unit_id,
             )
         )
-        unit_type_row = unit_type_result.first()
+        unit_row = unit_lookup_result.first()
 
-        if unit_type_row is None:
+        if unit_row is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail={
@@ -456,18 +456,18 @@ async def get_or_generate_lesson_by_module_and_unit(
                 },
             )
 
-        is_case_study = unit_type_row[0] in ("case-study", "scenario")
+        module_unit_uuid = unit_row[0]
+        is_case_study = unit_row[1] in ("case-study", "scenario")
 
         if not force_regenerate:
             content_type_filter = "case" if is_case_study else "lesson"
             cached_query = (
                 select(GeneratedContent)
-                .where(GeneratedContent.module_id == resolved_module_id)
+                .where(GeneratedContent.module_unit_id == module_unit_uuid)
                 .where(GeneratedContent.content_type == content_type_filter)
                 .where(GeneratedContent.language == language)
                 .where(GeneratedContent.level == level)
                 .where(GeneratedContent.country_context == country)
-                .where(GeneratedContent.content["unit_id"].astext == unit_id)
                 .order_by(GeneratedContent.generated_at.desc())
             )
             cache_result = await session.execute(cached_query)
@@ -478,11 +478,10 @@ async def get_or_generate_lesson_by_module_and_unit(
             if not cached:
                 fallback_query = (
                     select(GeneratedContent)
-                    .where(GeneratedContent.module_id == resolved_module_id)
+                    .where(GeneratedContent.module_unit_id == module_unit_uuid)
                     .where(GeneratedContent.content_type == content_type_filter)
                     .where(GeneratedContent.language == language)
                     .where(GeneratedContent.level == level)
-                    .where(GeneratedContent.content["unit_id"].astext == unit_id)
                     .order_by(GeneratedContent.generated_at.desc())
                 )
                 fallback_result = await session.execute(fallback_query)
@@ -1206,15 +1205,27 @@ async def get_or_generate_case_study(
 
         resolved_module_id = await _resolve_module_id(module_id, session)
 
+        # Resolve unit UUID once — replaces legacy JSON unit_id join (#2007).
+        from app.domain.services._unit_resolution import resolve_module_unit_id
+
+        case_module_unit_uuid = await resolve_module_unit_id(session, resolved_module_id, unit_id)
+        if case_module_unit_uuid is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "unit_not_found",
+                    "message": f"Unit '{unit_id}' does not exist in this module.",
+                },
+            )
+
         if not force_regenerate:
             cached_query = (
                 select(GeneratedContent)
-                .where(GeneratedContent.module_id == resolved_module_id)
+                .where(GeneratedContent.module_unit_id == case_module_unit_uuid)
                 .where(GeneratedContent.content_type == "case")
                 .where(GeneratedContent.language == language)
                 .where(GeneratedContent.level == level)
                 .where(GeneratedContent.country_context == country)
-                .where(GeneratedContent.content["unit_id"].astext == unit_id)
                 .order_by(GeneratedContent.generated_at.desc())
             )
             cache_result = await session.execute(cached_query)

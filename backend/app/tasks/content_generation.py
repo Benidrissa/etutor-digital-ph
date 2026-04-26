@@ -529,18 +529,32 @@ def generate_country_content_task(
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         try:
             async with session_factory() as session:
-                existing = await session.execute(
+                from app.domain.services._unit_resolution import resolve_module_unit_id
+
+                cgen_unit_uuid = await resolve_module_unit_id(
+                    session, uuid.UUID(module_id), unit_id
+                )
+                existing_query = (
                     select(GeneratedContent)
                     .where(
-                        GeneratedContent.module_id == uuid.UUID(module_id),
                         GeneratedContent.content_type == content_type,
                         GeneratedContent.language == language,
                         GeneratedContent.level == level,
                         GeneratedContent.country_context == country,
-                        GeneratedContent.content["unit_id"].astext == unit_id,
                     )
                     .limit(1)
                 )
+                if cgen_unit_uuid is not None:
+                    existing_query = existing_query.where(
+                        GeneratedContent.module_unit_id == cgen_unit_uuid
+                    )
+                else:
+                    existing_query = existing_query.where(
+                        GeneratedContent.module_id == uuid.UUID(module_id),
+                        GeneratedContent.module_unit_id.is_(None),
+                        GeneratedContent.content["unit_id"].astext == unit_id,
+                    )
+                existing = await session.execute(existing_query)
                 if existing.scalars().first():
                     logger.info(
                         "Country-targeted content already exists, skipping generation",
@@ -1143,14 +1157,22 @@ def prefetch_next_lessons_task(
         country: str,
     ) -> bool:
         """Return True if content already exists in generated_content cache."""
-        result = await session.execute(
-            select(GeneratedContent.id).where(
+        from app.domain.services._unit_resolution import resolve_module_unit_id
+
+        unit_uuid = await resolve_module_unit_id(session, module_uuid, unit_id)
+        cache_query = select(GeneratedContent.id).where(
+            GeneratedContent.content_type == content_type,
+            GeneratedContent.language == language,
+        )
+        if unit_uuid is not None:
+            cache_query = cache_query.where(GeneratedContent.module_unit_id == unit_uuid)
+        else:
+            cache_query = cache_query.where(
                 GeneratedContent.module_id == module_uuid,
-                GeneratedContent.content_type == content_type,
-                GeneratedContent.language == language,
+                GeneratedContent.module_unit_id.is_(None),
                 GeneratedContent.content["unit_id"].astext == unit_id,
             )
-        )
+        result = await session.execute(cache_query)
         return result.scalar_one_or_none() is not None
 
     async def _run() -> dict:
@@ -1516,14 +1538,22 @@ def pregenerate_on_publish_task(self, course_id: str) -> dict:
         content_type: str,
         language: str,
     ) -> bool:
-        result = await session.execute(
-            select(GeneratedContent.id).where(
+        from app.domain.services._unit_resolution import resolve_module_unit_id
+
+        unit_uuid = await resolve_module_unit_id(session, module_uuid, unit_id)
+        cache_query = select(GeneratedContent.id).where(
+            GeneratedContent.content_type == content_type,
+            GeneratedContent.language == language,
+        )
+        if unit_uuid is not None:
+            cache_query = cache_query.where(GeneratedContent.module_unit_id == unit_uuid)
+        else:
+            cache_query = cache_query.where(
                 GeneratedContent.module_id == module_uuid,
-                GeneratedContent.content_type == content_type,
-                GeneratedContent.language == language,
+                GeneratedContent.module_unit_id.is_(None),
                 GeneratedContent.content["unit_id"].astext == unit_id,
             )
-        )
+        result = await session.execute(cache_query)
         return result.scalar_one_or_none() is not None
 
     async def _run() -> dict:
