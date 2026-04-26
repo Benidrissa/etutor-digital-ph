@@ -3,13 +3,14 @@
 import time
 import uuid
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.models.conversation import TutorConversation
 from app.domain.models.user import User
+from app.domain.services import tutor_service as tutor_service_mod
 from app.domain.services.learner_memory_service import LearnerMemoryService
 from app.domain.services.tutor_service import (
     SESSION_CONTEXT_TOKEN_BUDGET,
@@ -18,6 +19,15 @@ from app.domain.services.tutor_service import (
     _build_progress_snapshot,
     _trim_to_budget,
 )
+
+
+def _patch_continuity_setting(enabled: bool):
+    """Patch tutor_service._sc to make tutor-cross-session-continuity return ``enabled``."""
+    fake_cache = MagicMock()
+    fake_cache.get.side_effect = lambda key, default=None: (
+        enabled if key == "tutor-cross-session-continuity" else default
+    )
+    return patch.object(tutor_service_mod, "_sc", return_value=fake_cache)
 
 
 @pytest.fixture
@@ -96,14 +106,29 @@ async def test_new_conversation_loads_learner_memory(
     mock_memory_service.format_for_prompt.assert_awaited_once_with(sample_user.id, mock_session)
 
 
-async def test_new_conversation_loads_previous_compact(
-    session_manager, sample_user, new_conversation
+async def test_new_conversation_loads_previous_compact_when_continuity_enabled(
+    session_manager, sample_user
 ):
-    """New conversation: previous conversation's compacted_context is loaded as previous_compact."""
+    """When tutor-cross-session-continuity is ON and the new conversation
+    shares a module with a prior compacted conversation, previous_compact loads.
+    """
+    module_id = uuid.uuid4()
+    course_id = uuid.uuid4()
+
+    new_conv = TutorConversation(
+        id=uuid.uuid4(),
+        user_id=sample_user.id,
+        module_id=module_id,
+        messages=[],
+        message_count=0,
+        created_at=datetime.now(UTC),
+        compacted_context=None,
+        compacted_at=None,
+    )
     prior_conv = TutorConversation(
         id=uuid.uuid4(),
         user_id=sample_user.id,
-        module_id=None,
+        module_id=module_id,
         messages=[],
         message_count=0,
         created_at=datetime.now(UTC),
@@ -111,38 +136,148 @@ async def test_new_conversation_loads_previous_compact(
         compacted_at=datetime.now(UTC),
     )
 
+    fake_module = MagicMock()
+    fake_module.course_id = course_id
+
     mock_session = AsyncMock(spec=AsyncSession)
+    mock_session.get = AsyncMock(return_value=fake_module)
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = prior_conv
     mock_session.execute = AsyncMock(return_value=mock_result)
 
-    ctx = await session_manager.build_session_context(
-        user=sample_user,
-        conversation=new_conversation,
-        is_new_conversation=True,
-        session=mock_session,
-    )
+    with _patch_continuity_setting(True):
+        ctx = await session_manager.build_session_context(
+            user=sample_user,
+            conversation=new_conv,
+            is_new_conversation=True,
+            session=mock_session,
+        )
 
     assert ctx.previous_compact == "Summary of the last session about epidemiology."
     assert ctx.current_compact == ""
     assert ctx.is_new_conversation is True
 
 
-async def test_new_conversation_no_prior_compact_when_none_exists(
+async def test_previous_compact_skipped_when_continuity_disabled(session_manager, sample_user):
+    """Default behavior (#1997): setting OFF → previous_compact stays empty
+    even when a prior compacted conversation exists in the same module.
+    Fixes the staging bug where epidemiology framing leaked into Bio-Aventures.
+    """
+    module_id = uuid.uuid4()
+    new_conv = TutorConversation(
+        id=uuid.uuid4(),
+        user_id=sample_user.id,
+        module_id=module_id,
+        messages=[],
+        message_count=0,
+        created_at=datetime.now(UTC),
+        compacted_context=None,
+        compacted_at=None,
+    )
+
+    mock_session = AsyncMock(spec=AsyncSession)
+    mock_session.get = AsyncMock(return_value=MagicMock(course_id=uuid.uuid4()))
+    mock_session.execute = AsyncMock()
+
+    with _patch_continuity_setting(False):
+        ctx = await session_manager.build_session_context(
+            user=sample_user,
+            conversation=new_conv,
+            is_new_conversation=True,
+            session=mock_session,
+        )
+
+    assert ctx.previous_compact == ""
+    mock_session.execute.assert_not_called()
+
+
+async def test_previous_compact_returns_none_when_no_module_or_course(
     session_manager, sample_user, new_conversation
 ):
-    """New conversation: previous_compact is empty when no prior conversation exists."""
+    """Even with continuity ON, if the new conversation has neither module
+    nor (derivable) course in scope, no prior compact is loaded."""
     mock_session = AsyncMock(spec=AsyncSession)
+    mock_session.get = AsyncMock(return_value=None)
+    mock_session.execute = AsyncMock()
+
+    with _patch_continuity_setting(True):
+        ctx = await session_manager.build_session_context(
+            user=sample_user,
+            conversation=new_conversation,
+            is_new_conversation=True,
+            session=mock_session,
+        )
+
+    assert ctx.previous_compact == ""
+    mock_session.execute.assert_not_called()
+
+
+async def test_previous_compact_filters_query_by_module_id(session_manager, sample_user):
+    """When continuity is ON and module_id is set, the executed query must
+    filter by module_id (so cross-course bleed is impossible)."""
+    module_id = uuid.uuid4()
+    course_id = uuid.uuid4()
+    new_conv = TutorConversation(
+        id=uuid.uuid4(),
+        user_id=sample_user.id,
+        module_id=module_id,
+        messages=[],
+        message_count=0,
+        created_at=datetime.now(UTC),
+        compacted_context=None,
+        compacted_at=None,
+    )
+
+    fake_module = MagicMock()
+    fake_module.course_id = course_id
+
+    mock_session = AsyncMock(spec=AsyncSession)
+    mock_session.get = AsyncMock(return_value=fake_module)
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = None
     mock_session.execute = AsyncMock(return_value=mock_result)
 
-    ctx = await session_manager.build_session_context(
-        user=sample_user,
-        conversation=new_conversation,
-        is_new_conversation=True,
-        session=mock_session,
+    with _patch_continuity_setting(True):
+        await session_manager.build_session_context(
+            user=sample_user,
+            conversation=new_conv,
+            is_new_conversation=True,
+            session=mock_session,
+        )
+
+    mock_session.execute.assert_awaited_once()
+    executed_stmt = mock_session.execute.call_args.args[0]
+    rendered = str(executed_stmt.compile(compile_kwargs={"literal_binds": False}))
+    assert "tutor_conversations.module_id" in rendered
+
+
+async def test_new_conversation_no_prior_compact_when_none_exists(session_manager, sample_user):
+    """Continuity ON + module set + no prior conversation → previous_compact stays empty."""
+    module_id = uuid.uuid4()
+    new_conv = TutorConversation(
+        id=uuid.uuid4(),
+        user_id=sample_user.id,
+        module_id=module_id,
+        messages=[],
+        message_count=0,
+        created_at=datetime.now(UTC),
+        compacted_context=None,
+        compacted_at=None,
     )
+
+    mock_session = AsyncMock(spec=AsyncSession)
+    mock_session.get = AsyncMock(return_value=MagicMock(course_id=uuid.uuid4()))
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_session.execute = AsyncMock(return_value=mock_result)
+
+    with _patch_continuity_setting(True):
+        ctx = await session_manager.build_session_context(
+            user=sample_user,
+            conversation=new_conv,
+            is_new_conversation=True,
+            session=mock_session,
+        )
 
     assert ctx.previous_compact == ""
 
