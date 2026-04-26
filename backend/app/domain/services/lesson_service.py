@@ -665,6 +665,25 @@ class LessonGenerationService:
             return module.books_sources
         return None
 
+    async def _resolve_unit(
+        self, module: Module, unit_id: str, session: AsyncSession
+    ) -> ModuleUnit | None:
+        """Resolve a ModuleUnit row from `(module, unit_id)` for prompt grounding.
+
+        Same logic as the helper on CaseStudyGenerationService — duplicated here
+        because the prompt-grounding paths in this class call `self._resolve_unit`
+        and the two services don't share a base class. Issue #2007.
+        """
+        unit_result = await session.execute(
+            select(ModuleUnit).where(
+                and_(
+                    ModuleUnit.module_id == module.id,
+                    ModuleUnit.unit_number == unit_id,
+                )
+            )
+        )
+        return unit_result.scalar_one_or_none()
+
     async def _build_lesson_query(
         self, module: Module, unit_id: str, language: str, session: AsyncSession
     ) -> str:
