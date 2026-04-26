@@ -69,8 +69,12 @@ def _row(content_type: str, language: str, content: dict) -> SimpleNamespace:
 
 def test_no_current_module_content_means_no_section_in_prompt():
     prompt = get_socratic_system_prompt(_ctx(current_module_content=None), [])
-    assert "DÉTAIL DU MODULE ACTUEL" not in prompt
-    assert "CURRENT MODULE DETAIL" not in prompt
+    # Check for the actual section header at the start of a line — the
+    # substring may appear in the get_unit_content tool description (#1992)
+    # which references "## DÉTAIL DU MODULE ACTUEL" as the source of unit
+    # numbers. The section is omitted when no module content is in scope.
+    assert "\n## DÉTAIL DU MODULE ACTUEL\n" not in prompt
+    assert "\n## CURRENT MODULE DETAIL\n" not in prompt
 
 
 def test_section_renders_with_french_header_when_locale_fr():

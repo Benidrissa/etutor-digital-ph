@@ -162,6 +162,42 @@ TOOL_DEFINITIONS: list[ToolParam] = [
             "required": ["preference_type", "value"],
         },
     },
+    {
+        "name": "get_unit_content",
+        "description": (
+            "Fetch the FULL generated body of a specific unit's lesson, quiz, or case study from the "
+            "course's content cache (#1992). The system prompt contains only unit titles + descriptions "
+            "for context-window efficiency — call this tool to get the actual lesson body, quiz "
+            "questions+answers, or case-study text when the learner asks about a specific unit's "
+            "content. Returns the structured content as JSON, or {error, available_units} when the "
+            "unit isn't generated yet (so you can honestly tell the learner it's not yet available "
+            "and suggest a generated alternative). The unit_number comes from the 'CURRENT MODULE "
+            "DETAIL' section in your system prompt (e.g. '1.1', '1.2'). Defaults to the current "
+            "module when module_id is omitted — pass module_id only when discussing a different module."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "unit_number": {
+                    "type": "string",
+                    "description": "Unit number from the system prompt's module listing (e.g. '1.1', '0', '3').",
+                },
+                "content_type": {
+                    "type": "string",
+                    "enum": ["lesson", "quiz", "case"],
+                    "description": "Which generated artifact to fetch for this unit. Defaults to 'lesson'.",
+                },
+                "module_id": {
+                    "type": "string",
+                    "description": (
+                        "Optional UUID of the module — defaults to the conversation's current "
+                        "module. Pass only when explicitly discussing a different module."
+                    ),
+                },
+            },
+            "required": ["unit_number"],
+        },
+    },
 ]
 
 
@@ -177,6 +213,7 @@ class TutorToolExecutor:
         user_language: str,
         learner_memory_service: LearnerMemoryService | None = None,
         rag_collection_id: str | None = None,
+        current_module_id: uuid.UUID | None = None,
     ):
         self.retriever = retriever
         self.anthropic = anthropic_client
@@ -185,6 +222,10 @@ class TutorToolExecutor:
         self.user_language = user_language
         self.learner_memory_service = learner_memory_service or LearnerMemoryService()
         self.rag_collection_id = rag_collection_id
+        # Default scope for unit-content lookups when Claude doesn't pass an
+        # explicit module_id — set to the conversation's current module by
+        # the calling send_message (#1992).
+        self.current_module_id = current_module_id
 
     async def execute(
         self,
@@ -223,6 +264,8 @@ class TutorToolExecutor:
                 return await self._save_learner_preference(tool_input, session)
             elif tool_name == "search_source_images":
                 return await self._search_source_images(tool_input, session)
+            elif tool_name == "get_unit_content":
+                return await self._get_unit_content(tool_input, session)
             else:
                 logger.warning("Unknown tool called", tool_name=tool_name)
                 return json.dumps({"error": f"Unknown tool: {tool_name}"})
@@ -643,4 +686,111 @@ Respond ONLY with valid JSON in this exact format:
                 "value": value,
                 "updated": was_existing,
             }
+        )
+
+    async def _get_unit_content(self, tool_input: dict[str, Any], session: AsyncSession) -> str:
+        """Fetch a generated unit's full body from ``generated_content`` (#1992).
+
+        Companion to the structured listing in the system prompt: prompt
+        carries titles + descriptions only, this tool serves the actual body
+        on demand. Filters by (module_id, content_type, language, unit_id).
+
+        Returns:
+            JSON with ``content_type``, ``unit_number``, ``language``,
+            ``content`` (the full structured payload). When the unit hasn't
+            been generated yet, returns ``{"error": "not_generated", ...,
+            "available_units": [...]}`` so the tutor can honestly tell the
+            learner the content isn't ready and suggest a generated alternative
+            instead of hallucinating.
+        """
+        unit_number = str(tool_input.get("unit_number") or "").strip()
+        if not unit_number:
+            return json.dumps({"error": "unit_number is required"})
+
+        content_type = (tool_input.get("content_type") or "lesson").strip().lower()
+        if content_type not in {"lesson", "quiz", "case"}:
+            return json.dumps(
+                {"error": f"invalid content_type {content_type!r} — use lesson/quiz/case"}
+            )
+
+        # Resolve target module: explicit input wins, fall back to the
+        # conversation's current module set on the executor.
+        target_module_id_str = tool_input.get("module_id") or (
+            str(self.current_module_id) if self.current_module_id else None
+        )
+        if not target_module_id_str:
+            return json.dumps({"error": "no module in scope — pass module_id explicitly"})
+        try:
+            target_module_id = uuid.UUID(target_module_id_str)
+        except ValueError:
+            return json.dumps({"error": f"invalid module_id {target_module_id_str!r}"})
+
+        result = await session.execute(
+            select(GeneratedContent).where(
+                GeneratedContent.module_id == target_module_id,
+                GeneratedContent.language == self.user_language,
+                GeneratedContent.content_type == content_type,
+            )
+        )
+        rows = result.scalars().all()
+
+        # Match the row whose content.unit_id matches the requested unit_number.
+        # Case studies may have unit_id at the module level (no per-unit cases),
+        # so we accept any case row when content_type=='case' and the explicit
+        # unit_id doesn't match — the tutor explicitly asked for a case study.
+        matching: dict | None = None
+        for row in rows:
+            content_obj = row.content if isinstance(row.content, dict) else {}
+            row_unit = str(content_obj.get("unit_id") or "").strip()
+            if row_unit == unit_number:
+                matching = content_obj
+                break
+
+        if matching is not None:
+            logger.info(
+                "get_unit_content tool: hit",
+                module_id=str(target_module_id),
+                unit_number=unit_number,
+                content_type=content_type,
+                language=self.user_language,
+                user_id=str(self.user_id),
+            )
+            return json.dumps(
+                {
+                    "content_type": content_type,
+                    "unit_number": unit_number,
+                    "language": self.user_language,
+                    "content": matching,
+                },
+                ensure_ascii=False,
+            )
+
+        # Cache miss — surface what IS available for this module so the
+        # tutor can offer something concrete instead of a dead end.
+        available_units: list[str] = []
+        for row in rows:
+            content_obj = row.content if isinstance(row.content, dict) else {}
+            row_unit = str(content_obj.get("unit_id") or "").strip()
+            if row_unit and row_unit not in available_units:
+                available_units.append(row_unit)
+
+        logger.info(
+            "get_unit_content tool: miss",
+            module_id=str(target_module_id),
+            unit_number=unit_number,
+            content_type=content_type,
+            language=self.user_language,
+            available_units=available_units,
+            user_id=str(self.user_id),
+        )
+        return json.dumps(
+            {
+                "error": "not_generated",
+                "module_id": str(target_module_id),
+                "unit_number": unit_number,
+                "content_type": content_type,
+                "language": self.user_language,
+                "available_units": available_units,
+            },
+            ensure_ascii=False,
         )

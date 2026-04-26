@@ -1256,6 +1256,10 @@ class TutorService:
                 user_level=user.current_level,
                 user_language=effective_language,
                 rag_collection_id=rag_collection_id,
+                # So get_unit_content (#1992) defaults to the conversation's
+                # current module — no need for Claude to pass module_id
+                # explicitly on every call.
+                current_module_id=getattr(module_obj, "id", None) if module_obj else None,
             )
 
             tool_call_count = 0

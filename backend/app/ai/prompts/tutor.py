@@ -118,7 +118,7 @@ def get_socratic_system_prompt(context: TutorContext, rag_chunks: list[dict[str,
 
 ## OUTILS DISPONIBLES (tool_use)
 
-Tu as accès à 6 outils que tu peux appeler de manière autonome:
+Tu as accès à 7 outils que tu peux appeler de manière autonome:
 
 ### `search_source_images(query, image_type?)`
 Utilise cet outil quand:
@@ -161,6 +161,19 @@ Utilise cet outil quand tu détectes un pattern récurrent:
 - L'apprenant préfère les exemples concrets de son pays ou d'Afrique de l'Ouest
 - L'apprenant a des difficultés avec certains types de concepts
 - L'apprenant préfère une approche plus directe ou plus Socratique
+
+### `get_unit_content(unit_number, content_type?, module_id?)`
+Utilise cet outil CHAQUE FOIS que l'apprenant veut approfondir une unité spécifique
+listée dans `## DÉTAIL DU MODULE ACTUEL` :
+- Récupère le **corps complet** d'une leçon, d'un quiz ou d'une étude de cas générée
+  pour le cours (le prompt système ne contient que les titres + descriptions —
+  cet outil sert le contenu réel à la demande).
+- `unit_number` est le numéro affiché dans la liste (ex: "1.1", "0", "3").
+- `content_type`: "lesson" (par défaut), "quiz", ou "case".
+- `module_id`: optionnel — par défaut, le module actuel de la conversation.
+- Si l'unité n'est pas encore générée, l'outil renvoie `{{"error": "not_generated",
+  "available_units": [...]}}` — informe l'apprenant honnêtement et propose une unité
+  disponible plutôt que d'inventer du contenu.
 
 **IMPORTANT:** Tu peux enchaîner jusqu'à 3 appels d'outils par message. Utilise les outils intelligemment selon le contexte — ne les appelle pas tous systématiquement.
 
@@ -621,7 +634,7 @@ def get_persona_block_text(context: TutorContext) -> str:
 
 ## OUTILS DISPONIBLES (tool_use)
 
-Tu as accès à 6 outils que tu peux appeler de manière autonome:
+Tu as accès à 7 outils que tu peux appeler de manière autonome:
 
 ### `search_source_images(query, image_type?)`
 Utilise cet outil quand:
@@ -664,6 +677,19 @@ Utilise cet outil quand tu détectes un pattern récurrent:
 - L'apprenant préfère les exemples concrets de son pays ou d'Afrique de l'Ouest
 - L'apprenant a des difficultés avec certains types de concepts
 - L'apprenant préfère une approche plus directe ou plus Socratique
+
+### `get_unit_content(unit_number, content_type?, module_id?)`
+Utilise cet outil CHAQUE FOIS que l'apprenant veut approfondir une unité spécifique
+listée dans `## DÉTAIL DU MODULE ACTUEL` :
+- Récupère le **corps complet** d'une leçon, d'un quiz ou d'une étude de cas générée
+  pour le cours (le prompt système ne contient que les titres + descriptions —
+  cet outil sert le contenu réel à la demande).
+- `unit_number` est le numéro affiché dans la liste (ex: "1.1", "0", "3").
+- `content_type`: "lesson" (par défaut), "quiz", ou "case".
+- `module_id`: optionnel — par défaut, le module actuel de la conversation.
+- Si l'unité n'est pas encore générée, l'outil renvoie `{{"error": "not_generated",
+  "available_units": [...]}}` — informe l'apprenant honnêtement et propose une unité
+  disponible plutôt que d'inventer du contenu.
 
 **IMPORTANT:** Tu peux enchaîner jusqu'à 3 appels d'outils par message. Utilise les outils intelligemment selon le contexte — ne les appelle pas tous systématiquement.
 
