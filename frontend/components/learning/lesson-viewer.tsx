@@ -66,6 +66,8 @@ interface LessonViewerProps {
   level: number;
   countryContext?: string;
   estimatedMinutes?: number;
+  unitTitle?: string;
+  unitDescription?: string | null;
   onComplete?: () => void;
 }
 
@@ -76,6 +78,8 @@ export function LessonViewer({
   level,
   countryContext,
   estimatedMinutes,
+  unitTitle,
+  unitDescription,
 }: LessonViewerProps) {
   const [lessonData, setLessonData] = useState<LessonData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -460,9 +464,17 @@ export function LessonViewer({
             </Button>
           )}
         </div>
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3">
-          {t('unitTitle', { unit: unitId })}
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-1">
+          {unitTitle || t('unitTitle', { unit: unitId })}
         </h1>
+        {unitTitle && (
+          <p className="text-sm text-gray-500 mb-3">
+            {t('unitTitle', { unit: unitId })}
+          </p>
+        )}
+        {unitDescription && (
+          <p className="text-base text-gray-700 mb-3">{unitDescription}</p>
+        )}
       </div>
 
       <LessonMediaTabs

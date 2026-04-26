@@ -13,6 +13,7 @@ from app.domain.models.base import Base
 if TYPE_CHECKING:
     from app.domain.models.flashcard import FlashcardReview
     from app.domain.models.module import Module
+    from app.domain.models.module_unit import ModuleUnit
     from app.domain.models.quiz import QuizAttempt, SummativeAssessmentAttempt
 
 
@@ -22,6 +23,15 @@ class GeneratedContent(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     module_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("modules.id", ondelete="CASCADE"), index=True
+    )
+    # FK to module_units; nullable because flashcards and summative quizzes
+    # are intentionally module-scoped (no unit binding). For unit-scoped
+    # content this is the authoritative join — replaces the legacy
+    # JSON-string match on content->>'unit_id' (issue #2007 / migration 084).
+    module_unit_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("module_units.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
     )
     content_type: Mapped[str] = mapped_column(String, index=True)  # lesson|quiz|flashcard|case
     language: Mapped[str] = mapped_column(String(2), index=True)  # fr|en
@@ -34,6 +44,7 @@ class GeneratedContent(Base):
     is_manually_edited: Mapped[bool] = mapped_column(Boolean, server_default="false")
 
     module: Mapped[Module] = relationship(back_populates="generated_content")
+    module_unit: Mapped[ModuleUnit | None] = relationship(back_populates="generated_content")
     quiz_attempts: Mapped[list[QuizAttempt]] = relationship(
         back_populates="quiz", passive_deletes=True
     )

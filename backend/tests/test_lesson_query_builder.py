@@ -166,6 +166,24 @@ def make_cached_content(sample_module_id):
     return _make
 
 
+def _make_resolve_unit_result(unit_uuid: uuid.UUID | None) -> MagicMock:
+    """Build a mock SQLAlchemy Result that returns ``unit_uuid`` from
+    ``.scalar_one_or_none()`` — matches what ``resolve_module_unit_id``
+    expects from its ``select(ModuleUnit.id)`` query (#2007).
+    """
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = unit_uuid
+    return result
+
+
+def _make_cache_result(cached) -> MagicMock:
+    result = MagicMock()
+    scalars = MagicMock()
+    scalars.first.return_value = cached
+    result.scalars.return_value = scalars
+    return result
+
+
 class TestGetCachedLesson:
     @pytest.mark.asyncio
     async def test_returns_cached_lesson_for_matching_unit(
@@ -173,11 +191,13 @@ class TestGetCachedLesson:
     ):
         session = AsyncMock(spec=AsyncSession)
         cached = make_cached_content("1.1")
-        mock_result = MagicMock()
-        mock_scalars = MagicMock()
-        mock_scalars.first.return_value = cached
-        mock_result.scalars.return_value = mock_scalars
-        session.execute = AsyncMock(return_value=mock_result)
+        # Two execute() calls now: (1) resolve unit_uuid, (2) cache lookup.
+        session.execute = AsyncMock(
+            side_effect=[
+                _make_resolve_unit_result(uuid.uuid4()),
+                _make_cache_result(cached),
+            ]
+        )
 
         result, is_fallback = await lesson_service._get_cached_lesson(
             sample_module_id, "1.1", "fr", "SN", 1, session
@@ -190,11 +210,14 @@ class TestGetCachedLesson:
     @pytest.mark.asyncio
     async def test_returns_none_on_cache_miss(self, lesson_service, sample_module_id):
         session = AsyncMock(spec=AsyncSession)
-        mock_result = MagicMock()
-        mock_scalars = MagicMock()
-        mock_scalars.first.return_value = None
-        mock_result.scalars.return_value = mock_scalars
-        session.execute = AsyncMock(return_value=mock_result)
+        # Cache miss in both primary + country-fallback queries.
+        session.execute = AsyncMock(
+            side_effect=[
+                _make_resolve_unit_result(uuid.uuid4()),
+                _make_cache_result(None),
+                _make_cache_result(None),
+            ]
+        )
 
         result, _ = await lesson_service._get_cached_lesson(
             sample_module_id, "1.2", "fr", "SN", 1, session
@@ -203,24 +226,35 @@ class TestGetCachedLesson:
         assert result is None
 
     @pytest.mark.asyncio
+    async def test_returns_none_when_unit_does_not_exist(self, lesson_service, sample_module_id):
+        """If resolve_module_unit_id returns None (unknown unit_number),
+        the cache lookup short-circuits — no cached content can match."""
+        session = AsyncMock(spec=AsyncSession)
+        session.execute = AsyncMock(side_effect=[_make_resolve_unit_result(None)])
+
+        result, fallback = await lesson_service._get_cached_lesson(
+            sample_module_id, "9.9", "fr", "SN", 1, session
+        )
+
+        assert result is None
+        assert fallback is False
+
+    @pytest.mark.asyncio
     async def test_different_units_return_their_own_cached_content(
         self, lesson_service, sample_module_id, make_cached_content
     ):
         cached_u01 = make_cached_content("1.1")
         cached_u02 = make_cached_content("1.2")
 
-        mock_result_u01 = MagicMock()
-        mock_scalars_u01 = MagicMock()
-        mock_scalars_u01.first.return_value = cached_u01
-        mock_result_u01.scalars.return_value = mock_scalars_u01
-
-        mock_result_u02 = MagicMock()
-        mock_scalars_u02 = MagicMock()
-        mock_scalars_u02.first.return_value = cached_u02
-        mock_result_u02.scalars.return_value = mock_scalars_u02
-
         session = AsyncMock(spec=AsyncSession)
-        session.execute = AsyncMock(side_effect=[mock_result_u01, mock_result_u02])
+        session.execute = AsyncMock(
+            side_effect=[
+                _make_resolve_unit_result(uuid.uuid4()),
+                _make_cache_result(cached_u01),
+                _make_resolve_unit_result(uuid.uuid4()),
+                _make_cache_result(cached_u02),
+            ]
+        )
 
         result_u01, _ = await lesson_service._get_cached_lesson(
             sample_module_id, "1.1", "fr", "SN", 1, session
@@ -241,11 +275,12 @@ class TestGetCachedLesson:
     ):
         session = AsyncMock(spec=AsyncSession)
         cached = make_cached_content("1.3")
-        mock_result = MagicMock()
-        mock_scalars = MagicMock()
-        mock_scalars.first.return_value = cached
-        mock_result.scalars.return_value = mock_scalars
-        session.execute = AsyncMock(return_value=mock_result)
+        session.execute = AsyncMock(
+            side_effect=[
+                _make_resolve_unit_result(uuid.uuid4()),
+                _make_cache_result(cached),
+            ]
+        )
 
         result, _ = await lesson_service._get_cached_lesson(
             sample_module_id, "1.3", "fr", "SN", 1, session
@@ -330,7 +365,13 @@ class TestGetCachedLessonSourceImageRefs:
         mock_db_scalars.all.return_value = [mock_db_img]
         mock_db_result.scalars.return_value = mock_db_scalars
 
-        session.execute = AsyncMock(side_effect=[mock_first_result, mock_db_result])
+        session.execute = AsyncMock(
+            side_effect=[
+                _make_resolve_unit_result(uuid.uuid4()),
+                mock_first_result,
+                mock_db_result,
+            ]
+        )
 
         result, _ = await lesson_service._get_cached_lesson(
             sample_module_id, "1.1", "fr", "SN", 1, session
@@ -391,7 +432,13 @@ class TestGetCachedLessonSourceImageRefs:
         mock_db_scalars.all.return_value = [mock_db_img]
         mock_db_result.scalars.return_value = mock_db_scalars
 
-        session.execute = AsyncMock(side_effect=[mock_first_result, mock_db_result])
+        session.execute = AsyncMock(
+            side_effect=[
+                _make_resolve_unit_result(uuid.uuid4()),
+                mock_first_result,
+                mock_db_result,
+            ]
+        )
 
         result, _ = await lesson_service._get_cached_lesson(
             sample_module_id, "1.1", "fr", "SN", 1, session

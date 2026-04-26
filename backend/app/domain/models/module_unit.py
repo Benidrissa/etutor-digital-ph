@@ -14,6 +14,7 @@ from sqlalchemy.sql import func
 from app.domain.models.base import Base
 
 if TYPE_CHECKING:
+    from app.domain.models.content import GeneratedContent
     from app.domain.models.module import Module
 
 
@@ -37,3 +38,10 @@ class ModuleUnit(Base):
     created_at: Mapped[datetime] = mapped_column(default=func.now())
 
     module: Mapped[Module] = relationship(back_populates="units")
+    # Cached AI-generated content (lessons / quizzes / case studies) bound
+    # to this unit. Cascade-deletes when the unit row is removed.
+    generated_content: Mapped[list[GeneratedContent]] = relationship(
+        back_populates="module_unit",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )

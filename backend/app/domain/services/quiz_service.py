@@ -63,39 +63,46 @@ class QuizService:
             Exception: If quiz generation fails
         """
         try:
+            from app.domain.services._unit_resolution import resolve_module_unit_id
+
+            # For unit-scoped quizzes use the FK; summative stays module-scoped
+            # (module_unit_id IS NULL + JSON unit_id="summative" sentinel).
+            module_unit_uuid = await resolve_module_unit_id(session, module_id, unit_id)
+
+            def _apply_unit_filter(q):
+                if module_unit_uuid is not None:
+                    return q.where(GeneratedContent.module_unit_id == module_unit_uuid)
+                return q.where(
+                    GeneratedContent.module_id == module_id,
+                    GeneratedContent.module_unit_id.is_(None),
+                    GeneratedContent.content["unit_id"].astext == unit_id,
+                )
+
             cached_quiz = None
             is_fallback = False
             if not force_regenerate:
                 # Cache lookup: match all 6 fields that form the unique index
                 # Use .first() with ORDER BY as safety net for any legacy duplicates
-                query = (
-                    select(GeneratedContent)
-                    .where(
-                        GeneratedContent.module_id == module_id,
+                query = _apply_unit_filter(
+                    select(GeneratedContent).where(
                         GeneratedContent.content_type == "quiz",
                         GeneratedContent.language == language,
                         GeneratedContent.level == level,
                         GeneratedContent.country_context == country,
-                        GeneratedContent.content["unit_id"].astext == unit_id,
                     )
-                    .order_by(GeneratedContent.generated_at.desc())
-                )
+                ).order_by(GeneratedContent.generated_at.desc())
 
                 result = await session.execute(query)
                 cached_quiz = result.scalars().first()
 
                 if not cached_quiz:
-                    fallback_query = (
-                        select(GeneratedContent)
-                        .where(
-                            GeneratedContent.module_id == module_id,
+                    fallback_query = _apply_unit_filter(
+                        select(GeneratedContent).where(
                             GeneratedContent.content_type == "quiz",
                             GeneratedContent.language == language,
                             GeneratedContent.level == level,
-                            GeneratedContent.content["unit_id"].astext == unit_id,
                         )
-                        .order_by(GeneratedContent.generated_at.desc())
-                    )
+                    ).order_by(GeneratedContent.generated_at.desc())
                     fallback_result = await session.execute(fallback_query)
                     cached_quiz = fallback_result.scalars().first()
                     is_fallback = cached_quiz is not None
@@ -153,10 +160,12 @@ class QuizService:
                 num_questions=num_questions,
             )
 
-            # Store in cache
+            # Store in cache. module_unit_uuid was resolved at the top of this
+            # function and stays None for "summative" quizzes.
             generated_content = GeneratedContent(
                 id=uuid.uuid4(),
                 module_id=module_id,
+                module_unit_id=module_unit_uuid,
                 content_type="quiz",
                 language=language,
                 level=level,
@@ -179,15 +188,13 @@ class QuizService:
                     language=language,
                 )
                 conflict_result = await session.execute(
-                    select(GeneratedContent)
-                    .where(
-                        GeneratedContent.module_id == module_id,
-                        GeneratedContent.content_type == "quiz",
-                        GeneratedContent.language == language,
-                        GeneratedContent.level == level,
-                        GeneratedContent.content["unit_id"].astext == unit_id,
-                    )
-                    .order_by(GeneratedContent.generated_at.desc())
+                    _apply_unit_filter(
+                        select(GeneratedContent).where(
+                            GeneratedContent.content_type == "quiz",
+                            GeneratedContent.language == language,
+                            GeneratedContent.level == level,
+                        )
+                    ).order_by(GeneratedContent.generated_at.desc())
                 )
                 existing = conflict_result.scalars().first()
                 return QuizResponse(
