@@ -98,13 +98,13 @@ export function ChatPanel({
   const abortControllerRef = useRef<AbortController | null>(null);
   const isMountedRef = useRef(true);
   const [enrolledCourses, setEnrolledCourses] = useState<CourseWithEnrollment[]>([]);
-  const [activeCourseId, setActiveCourseId] = useState<string | null>(() => {
-    if (courseId) return courseId;
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('activeCourseId') ?? null;
-    }
-    return null;
-  });
+  // Per-thread course context (#YRyXI). The previous implementation kept a
+  // single global `activeCourseId` in localStorage, so picking a course in
+  // one thread silently overwrote every other thread. Initial value comes
+  // from the prop (set by the parent from the selected conversation's
+  // ``course_id``); when no prop is passed we wait for the conversation
+  // fetch below or fall back to the first enrollment for brand-new threads.
+  const [activeCourseId, setActiveCourseId] = useState<string | null>(courseId ?? null);
 
   const isLimitReached = currentUsage >= maxDailyUsage;
 
@@ -124,11 +124,12 @@ export function ChatPanel({
     localStorage.setItem('tutorMode', tutorMode);
   }, [tutorMode]);
 
+  // Reflect prop-driven course changes (parent passes a different conversation
+  // → the per-thread course_id). Without this the dropdown would stick to
+  // whichever course the previous thread declared (#YRyXI).
   useEffect(() => {
-    if (activeCourseId) {
-      localStorage.setItem('activeCourseId', activeCourseId);
-    }
-  }, [activeCourseId]);
+    if (courseId) setActiveCourseId(courseId);
+  }, [courseId]);
 
   // Fetch enrolled courses for course selector. Skip for anonymous visitors
   // so /courses (public catalog) doesn't fire a 401 into every visitor's
@@ -138,9 +139,14 @@ export function ChatPanel({
     try {
       const courses = await getMyEnrollments({ orderBy: 'last_accessed', limit: 3 });
       setEnrolledCourses(courses);
+      // Only fall back to the first enrolled course when the thread itself
+      // has no course context yet (brand-new conversation, no prop). For
+      // existing threads the per-conversation course_id loaded in the
+      // history-fetch effect below is the source of truth (#YRyXI).
       setActiveCourseId((current) => {
         if (current && courses.some((c) => c.id === current)) return current;
-        return courses[0]?.id ?? current;
+        if (current) return current;
+        return courses[0]?.id ?? null;
       });
     } catch {
       // silent — matches prior behavior
@@ -204,6 +210,14 @@ export function ChatPanel({
     setIsHistoryLoading(true);
     fetchConversation(activeConversationId)
       .then((conv) => {
+        // Restore per-thread course context (#YRyXI). The dropdown reads
+        // from `activeCourseId`, so loading a thread must reset it to that
+        // thread's stored course rather than leaking the previous thread's
+        // selection. Skip when the parent already supplied a `courseId`
+        // prop (in-context launches like the lesson-page side panel).
+        if (!courseId && conv.course_id) {
+          setActiveCourseId(conv.course_id);
+        }
         const loaded: ChatMessage[] = conv.messages.map((m, i) => ({
           id: `history-${i}`,
           content: m.content,

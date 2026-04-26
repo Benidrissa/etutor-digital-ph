@@ -11,6 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.domain.models.base import Base
 
 if TYPE_CHECKING:
+    from app.domain.models.course import Course
     from app.domain.models.module import Module
     from app.domain.models.user import User
 
@@ -22,6 +23,12 @@ class TutorConversation(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
     module_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("modules.id", ondelete="CASCADE")
+    )
+    # Per-thread course context (#YRyXI). Without this column the active course
+    # was a single global localStorage key on the client, so switching course
+    # in one thread silently overwrote every other thread's context.
+    course_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("courses.id", ondelete="SET NULL"), nullable=True, index=True
     )
     # Working set passed to Claude. After compaction this still holds the full
     # ordered history; `compacted_through_position` marks where the summary
@@ -50,6 +57,7 @@ class TutorConversation(Base):
 
     user: Mapped[User] = relationship(back_populates="tutor_conversations")
     module: Mapped[Module] = relationship(back_populates="tutor_conversations")
+    course: Mapped[Course | None] = relationship("Course", foreign_keys=[course_id])
 
 
 class TutorMessage(Base):
