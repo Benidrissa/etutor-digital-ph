@@ -183,13 +183,33 @@ const IMAGE_STAGES = new Set(["EXTRACTING_IMAGES", "LINKING_IMAGES"]);
 function isExtractionComplete(indexStatus: IndexStatus | null): boolean {
   if (!indexStatus) return false;
   const taskState = indexStatus.task?.state;
-  return (
-    taskState === "COMPLETE" ||
-    taskState === "SUCCESS" ||
-    (!taskState &&
-      indexStatus.indexed &&
-      (indexStatus.chunks_indexed ?? 0) > 0)
-  );
+  if (taskState === "COMPLETE" || taskState === "SUCCESS") return true;
+
+  // No active task and we have indexed data → done.
+  if (
+    !taskState &&
+    indexStatus.indexed &&
+    (indexStatus.chunks_indexed ?? 0) > 0
+  )
+    return true;
+
+  // Stale-task heuristic (#2051): if a task is "still running" but reports
+  // estimated_seconds_remaining=0 with progress<100 and we already have
+  // chunks+images in the DB, the celery worker has crashed silently. Fall
+  // through to "effectively done" so the admin can advance to the linker
+  // step (which has its own recovery path) instead of being stranded.
+  const eta = indexStatus.task?.estimated_seconds_remaining;
+  const progress = indexStatus.task?.progress ?? 0;
+  if (
+    indexStatus.indexed &&
+    (indexStatus.chunks_indexed ?? 0) > 0 &&
+    (indexStatus.images_indexed ?? 0) > 0 &&
+    eta === 0 &&
+    progress < 100
+  )
+    return true;
+
+  return false;
 }
 
 // Linker has populated source_image_chunks, OR there were no images to link.
@@ -924,6 +944,31 @@ export function AICourseWizard({
       // ignore
     }
   }, [courseId]);
+
+  // Fetch index-status on mount of the indexation/linker step when we don't
+  // already have a value. Without this, an admin who opens an already-
+  // generated course and clicks Suivant manually never populates indexStatus
+  // (hydrate only fires for resumeCreationStep="indexing"|"indexed", and the
+  // polling effect only runs while isIndexing=true). Result before this
+  // effect: canGoNext stays false on the indexation step and the user is
+  // stranded with Next disabled (#2051).
+  useEffect(() => {
+    if (!courseId) return;
+    if (step !== "indexation" && step !== "linker") return;
+    if (indexStatus) return;
+    let cancelled = false;
+    getIndexStatusApi(courseId)
+      .then((s) => {
+        if (!cancelled) setIndexStatus(buildIndexStatus(s));
+      })
+      .catch(() => {
+        // Network failure — leave indexStatus null; the user can still
+        // launch indexation explicitly via the step's primary button.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [step, courseId, indexStatus]);
 
   // Auto-advance linker → publish once the join has populated rows. Runs on
   // step change (manual Next from indexation), polling completion, resume,
