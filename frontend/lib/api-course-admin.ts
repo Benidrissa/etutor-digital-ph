@@ -58,6 +58,11 @@ export interface IndexStatus {
   indexed: boolean;
   chunks_indexed: number;
   images_indexed?: number;
+  // Live count of `source_image_chunks` rows for this course's rag
+  // collection. Surfaced in the wizard recap so the linker phase is
+  // visible — silent linker failures used to ship lessons with empty
+  // source_image_refs (#2035).
+  links_indexed?: number;
   task?: TaskProgress;
 }
 

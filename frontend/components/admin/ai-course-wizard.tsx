@@ -168,18 +168,23 @@ const IMAGE_STAGES = new Set(["EXTRACTING_IMAGES", "LINKING_IMAGES"]);
 function isIndexationFullyComplete(indexStatus: IndexStatus | null): boolean {
   if (!indexStatus) return false;
   const taskState = indexStatus.task?.state;
-  // Truthful signal: celery task hit COMPLETE/SUCCESS. We also accept the
-  // case where the task was cleaned from the result backend but the live
-  // chunk count + indexed flag say we're done, since those persist.
-  if (taskState === "COMPLETE" || taskState === "SUCCESS") return true;
-  if (
-    !taskState &&
-    indexStatus.indexed &&
-    (indexStatus.chunks_indexed ?? 0) > 0
-  ) {
-    return true;
-  }
-  return false;
+  const taskComplete =
+    taskState === "COMPLETE" ||
+    taskState === "SUCCESS" ||
+    (!taskState &&
+      indexStatus.indexed &&
+      (indexStatus.chunks_indexed ?? 0) > 0);
+  if (!taskComplete) return false;
+
+  // If images were extracted, at least one source_image_chunks row must
+  // exist — otherwise the linker silently failed and lessons would ship
+  // with empty source_image_refs. PDFs with no figures legitimately have
+  // 0 images AND 0 links; that's still publishable. (#2035)
+  const images = indexStatus.images_indexed ?? 0;
+  const links = indexStatus.links_indexed ?? 0;
+  if (images > 0 && links === 0) return false;
+
+  return true;
 }
 
 function IndexationRecap({
@@ -200,13 +205,27 @@ function IndexationRecap({
   const eta = indexStatus?.task?.estimated_seconds_remaining;
   const chunks = indexStatus?.chunks_indexed ?? 0;
   const images = indexStatus?.images_indexed ?? 0;
+  const links = indexStatus?.links_indexed ?? 0;
 
   // Phase derivations based on the celery task state machine.
   const textRunning = !!taskState && TEXT_STAGES.has(taskState);
   const imagesRunning = !!taskState && IMAGE_STAGES.has(taskState);
+  // The linker phase happens at the end of process_pdf_images, signalled
+  // by celery state LINKING_IMAGES. If the task hits COMPLETE without
+  // links being created on a course that has images, the linker silently
+  // failed (a real bug we surface here so the admin doesn't publish blind).
+  const linkingRunning = taskState === "LINKING_IMAGES";
   const fullyDone = isIndexationFullyComplete(indexStatus);
-  const textDone = fullyDone || imagesRunning || chunks > 0;
-  const imagesDone = fullyDone;
+  const textDone = fullyDone || imagesRunning || linkingRunning || chunks > 0;
+  const imagesDone = fullyDone || linkingRunning;
+  // Links are "done" only when the whole task is complete AND either no
+  // images existed (nothing to link) or the join produced rows.
+  const linksDone = fullyDone && (images === 0 || links > 0);
+  const linksFailed =
+    !!taskState &&
+    (taskState === "COMPLETE" || taskState === "SUCCESS") &&
+    images > 0 &&
+    links === 0;
 
   return (
     <div className="rounded-lg border bg-card p-4 space-y-3">
@@ -244,6 +263,36 @@ function IndexationRecap({
             ? t("index.recap.imagesPending")
             : imagesDone
             ? t("index.recap.imagesNone")
+            : "—"}
+        </span>
+      </div>
+
+      {/* Liens (links) row — surfaces the linker phase so admins can see when
+          source_image_chunks failed to populate (#2035). */}
+      <div className="flex items-center gap-2">
+        {linksFailed ? (
+          <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />
+        ) : linksDone ? (
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
+        ) : linkingRunning ? (
+          <div className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        ) : (
+          <div className="h-4 w-4 shrink-0 rounded-full border border-muted-foreground/40" />
+        )}
+        <p className="text-sm font-medium">{t("index.recap.linksRow")}</p>
+        <span
+          className={`ml-auto text-xs ${
+            linksFailed ? "text-destructive" : "text-muted-foreground"
+          }`}
+        >
+          {linksFailed
+            ? t("index.recap.linksFailed")
+            : links > 0
+            ? t("index.recap.linksCount", { count: links })
+            : linkingRunning
+            ? t("index.recap.linksPending")
+            : linksDone
+            ? t("index.recap.linksNone")
             : "—"}
         </span>
       </div>

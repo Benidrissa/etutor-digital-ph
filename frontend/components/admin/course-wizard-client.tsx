@@ -102,6 +102,9 @@ interface IndexStatus {
   indexed: boolean;
   chunks_indexed: number;
   images_indexed?: number;
+  // Live count of source_image_chunks rows for this course's collection.
+  // Used by the publish gate to detect linker silent failures (#2035).
+  links_indexed?: number;
   task?: TaskProgress;
 }
 
@@ -1545,17 +1548,26 @@ export function CourseWizardClient({
                       disabled={
                         isPublishing ||
                         isIndexing ||
-                        // Match the AI wizard's gate: require the celery
-                        // task to be fully complete (text + image phases),
-                        // not just chunks_indexed > 0. Avoids publishing
-                        // while image extraction is mid-flight (#2032).
-                        !(
-                          indexStatus?.task?.state === "COMPLETE" ||
-                          indexStatus?.task?.state === "SUCCESS" ||
-                          (!indexStatus?.task?.state &&
-                            indexStatus?.indexed === true &&
-                            (indexStatus?.chunks_indexed ?? 0) > 0)
-                        )
+                        !(() => {
+                          // Match the AI wizard's gate: task must be fully
+                          // complete (text + image + linker phases) before
+                          // publish. (#2032 / #2035)
+                          const taskState = indexStatus?.task?.state;
+                          const taskComplete =
+                            taskState === "COMPLETE" ||
+                            taskState === "SUCCESS" ||
+                            (!taskState &&
+                              indexStatus?.indexed === true &&
+                              (indexStatus?.chunks_indexed ?? 0) > 0);
+                          if (!taskComplete) return false;
+                          const images = indexStatus?.images_indexed ?? 0;
+                          const links = indexStatus?.links_indexed ?? 0;
+                          // If the linker had work to do, at least one row
+                          // must exist; otherwise lessons publish without
+                          // figure refs (#2035).
+                          if (images > 0 && links === 0) return false;
+                          return true;
+                        })()
                       }
                     >
                       {isPublishing ? (
