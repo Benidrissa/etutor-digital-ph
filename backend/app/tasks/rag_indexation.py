@@ -319,12 +319,54 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                 },
             )
 
+            # Per-image progress callback: lets the celery task stream live
+            # progress to /index-status while images are being processed,
+            # instead of freezing at img_progress for the whole pass (#2029).
+            # Loop locals are bound via default args so the closure captures
+            # this iteration's values, not the moving loop bindings.
+            _link_progress_for_pdf = img_progress + int((1 / len(pdf_files)) * 7)
+
+            def _image_progress_cb(
+                done: int,
+                total: int,
+                figure_label: str | None,
+                *,
+                _img_progress: int = img_progress,
+                _link_progress: int = _link_progress_for_pdf,
+                _running_total: int = total_images,
+                _pdf_name: str = pdf_path.name,
+                _files_processed: int = i + 1,
+                _total_chunks: int = total_chunks,
+                _files_total: int = len(pdf_files),
+            ) -> None:
+                if total <= 0:
+                    return
+                ratio = min(done / total, 1.0)
+                live_progress = _img_progress + int((_link_progress - _img_progress) * ratio)
+                self.update_state(
+                    state="EXTRACTING_IMAGES",
+                    meta={
+                        "step": "extracting_images",
+                        "step_label": (
+                            f"Extraction des illustrations: {_pdf_name} ({done}/{total})"
+                        ),
+                        "progress": live_progress,
+                        "files_total": _files_total,
+                        "files_processed": _files_processed,
+                        "current_file": _pdf_name,
+                        "chunks_processed": _total_chunks,
+                        "images_processed": _running_total + done,
+                        "estimated_seconds_remaining": _remaining(live_progress),
+                    },
+                )
+
             image_count = 0
             try:
                 image_count = await pipeline.process_pdf_images(
                     pdf_path=str(pdf_path),
                     source=rag_collection_id,
                     rag_collection_id=rag_collection_id,
+                    progress_callback=_image_progress_cb,
                 )
                 total_images += image_count
             except Exception as img_exc:

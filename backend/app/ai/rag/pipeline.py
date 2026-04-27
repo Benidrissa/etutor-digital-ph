@@ -1,5 +1,6 @@
 """RAG pipeline for processing documents into searchable chunks with embeddings."""
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -160,6 +161,7 @@ class RAGPipeline:
         source: str,
         rag_collection_id: str | None = None,
         session: AsyncSession | None = None,
+        progress_callback: "Callable[[int, int, str | None], None] | None" = None,
     ) -> int:
         """Extract images from a PDF, upload to MinIO, store metadata, and link to chunks.
 
@@ -168,6 +170,11 @@ class RAGPipeline:
             source: Source identifier (e.g., "donaldson").
             rag_collection_id: Optional RAG collection identifier.
             session: Database session (will create one if not provided).
+            progress_callback: Optional `(images_done, images_total, current_figure_label)`
+                callback invoked after each image is committed. Used by the celery
+                task wrapper to update task.meta so the UI can show live progress
+                instead of freezing at the start of the image-extraction phase
+                (#2029).
 
         Returns:
             Number of images processed and stored.
@@ -179,9 +186,13 @@ class RAGPipeline:
         session_provided = session is not None
         if not session_provided:
             async with async_session_factory() as session:
-                return await self._process_images(pdf_path, source, rag_collection_id, session)
+                return await self._process_images(
+                    pdf_path, source, rag_collection_id, session, progress_callback
+                )
         else:
-            return await self._process_images(pdf_path, source, rag_collection_id, session)
+            return await self._process_images(
+                pdf_path, source, rag_collection_id, session, progress_callback
+            )
 
     async def _process_images(
         self,
@@ -189,6 +200,7 @@ class RAGPipeline:
         source: str,
         rag_collection_id: str | None,
         session: AsyncSession,
+        progress_callback: "Callable[[int, int, str | None], None] | None" = None,
     ) -> int:
         """Internal: extract, upload, store, and link images."""
         extractor = PDFImageExtractor(pdf_path.parent)
@@ -359,9 +371,21 @@ class RAGPipeline:
             )
 
             session.add(db_image)
+            # Commit per image so /index-status reflects progress live and
+            # so a hang on a later image doesn't lose previously-extracted
+            # work. Was a single batch commit at end-of-PDF (#2029).
+            await session.commit()
             stored_count += 1
 
-        await session.commit()
+            if progress_callback is not None:
+                try:
+                    progress_callback(stored_count, len(images), figure_label)
+                except Exception as cb_exc:  # never let callbacks break extraction
+                    logger.debug(
+                        "image progress_callback raised, ignoring",
+                        error=str(cb_exc),
+                    )
+
         logger.info("Stored source images", source=source, count=stored_count)
 
         links = await linker.link_images_to_chunks(source, session)
