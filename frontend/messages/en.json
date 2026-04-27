@@ -1580,8 +1580,9 @@
         "ai_proposal": "AI Proposal",
         "generate": "Generate",
         "syllabus_edit": "Edit Syllabus",
-        "publish": "Publish",
-        "lesson_preview": "Lessons"
+        "lesson_preview": "Lessons",
+        "indexation": "Indexation",
+        "publish": "Publish"
       },
       "objectives": {
         "title": "Course Objectives",
