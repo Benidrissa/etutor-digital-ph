@@ -205,6 +205,27 @@ function isLinkerComplete(indexStatus: IndexStatus | null): boolean {
 // Back-compat alias kept so the publish-button gate keeps the same name.
 const isIndexationFullyComplete = isLinkerComplete;
 
+// Single source of truth for shaping `setIndexStatus` payloads. Previously
+// the polling tick + hydrate built this inline and silently dropped
+// `links_indexed`, so every poll clobbered the field set by the SUCCESS
+// branch and the wizard rendered "—" instead of the real link count (#2048).
+type RawIndexStatus = {
+  indexed: boolean;
+  chunks_indexed: number;
+  images_indexed?: number;
+  links_indexed?: number;
+  task?: IndexStatus["task"];
+};
+function buildIndexStatus(s: RawIndexStatus): IndexStatus {
+  return {
+    indexed: s.indexed,
+    chunks_indexed: s.chunks_indexed,
+    images_indexed: s.images_indexed,
+    links_indexed: s.links_indexed,
+    task: s.task,
+  };
+}
+
 function IndexationRecap({
   indexStatus,
   isIndexing,
@@ -476,12 +497,7 @@ export function AICourseWizard({
           // actual status and route based on real state.
           try {
             const status = await getIndexStatusApi(resumeCourseId);
-            setIndexStatus({
-              indexed: status.indexed,
-              chunks_indexed: status.chunks_indexed,
-              images_indexed: status.images_indexed,
-              task: status.task,
-            });
+            setIndexStatus(buildIndexStatus(status));
             const taskState = status.task?.state;
             if (taskState && ["PENDING", "STARTED", "RETRY"].includes(taskState)) {
               setTaskId(status.task?.id ?? null);
@@ -756,12 +772,7 @@ export function AICourseWizard({
       try {
         const status = await getIndexStatusApi(courseId, taskId ?? undefined);
 
-        setIndexStatus({
-          indexed: status.indexed,
-          chunks_indexed: status.chunks_indexed,
-          images_indexed: status.images_indexed,
-          task: status.task,
-        });
+        setIndexStatus(buildIndexStatus(status));
 
         const newProgress = status.task?.progress ?? 0;
         if (newProgress !== lastIndexProgressValueRef.current) {
@@ -774,13 +785,7 @@ export function AICourseWizard({
         }
 
         if (status.task?.state === "SUCCESS" || status.task?.state === "COMPLETE") {
-          setIndexStatus({
-            indexed: true,
-            chunks_indexed: status.chunks_indexed,
-            images_indexed: status.images_indexed,
-            links_indexed: status.links_indexed,
-            task: status.task,
-          });
+          setIndexStatus(buildIndexStatus({ ...status, indexed: true }));
           setIsIndexing(false);
           setIndexStaleWarning(false);
           queryClient.invalidateQueries({ queryKey: ["admin-courses"] });
@@ -943,13 +948,7 @@ export function AICourseWizard({
     try {
       await relinkImagesApi(courseId);
       const status = await getIndexStatusApi(courseId);
-      setIndexStatus({
-        indexed: status.indexed,
-        chunks_indexed: status.chunks_indexed,
-        images_indexed: status.images_indexed,
-        links_indexed: status.links_indexed,
-        task: status.task,
-      });
+      setIndexStatus(buildIndexStatus(status));
     } catch {
       setRelinkError(tAi("linker.error"));
     } finally {
@@ -1517,9 +1516,16 @@ export function AICourseWizard({
               const taskState = indexStatus?.task?.state;
               const linkingRunning = taskState === "LINKING_IMAGES";
               const images = indexStatus?.images_indexed ?? 0;
+              const chunks = indexStatus?.chunks_indexed ?? 0;
               const links = indexStatus?.links_indexed ?? 0;
               const extractionDone = isExtractionComplete(indexStatus);
               const linksDone = isLinkerComplete(indexStatus);
+              // The linker is inline-async, no celery task is required to
+              // re-run it. As long as there is something to link (chunks
+              // and/or images), surface the recovery action and treat the
+              // current "no links yet" state as actionable rather than a
+              // stuck "waiting" state (#2048).
+              const hasLinkable = images > 0 || chunks > 0;
               const linksFailed = extractionDone && images > 0 && links === 0;
 
               let bannerCls = "border-muted bg-muted/30";
@@ -1543,6 +1549,12 @@ export function AICourseWizard({
                 bannerCls = "border-destructive/40 bg-destructive/5";
                 icon = <AlertCircle className="h-5 w-5 shrink-0 text-destructive" />;
                 bannerText = tAi("linker.failed");
+              } else if (hasLinkable) {
+                // Extraction has produced material to link but the celery
+                // task isn't in a strict-final state (e.g. EXTRACTING_IMAGES
+                // is still flagged on a stale poll). Don't show "waiting" —
+                // the linker can be re-run any time (#2048).
+                bannerText = tAi("linker.unknown");
               }
 
               return (
@@ -1592,7 +1604,11 @@ export function AICourseWizard({
                     </div>
                   )}
 
-                  {extractionDone && !linkingRunning && (
+                  {/* Relancer is gated only on "there is something to link"
+                      and "the linker isn't currently running". The previous
+                      `extractionDone` precondition stranded users when celery
+                      task state was non-final (#2048). */}
+                  {hasLinkable && !linkingRunning && (
                     <Button
                       onClick={relinkLinker}
                       disabled={isRelinking}
