@@ -1,9 +1,13 @@
 """Links SourceImage records to DocumentChunk records via the source_image_chunks junction table.
 
-Two link types:
-- explicit: chunk text contains a "Figure X.Y" reference matching the image's figure_number
-- contextual: image and chunk share the same page number (proximity), with chapter fallback
-  for chunks whose `page` column is NULL
+Three link types:
+- explicit:   chunk text contains a "Figure X.Y" reference matching the
+              image's figure_number
+- contextual: image and chunk share the same page number (proximity),
+              with chapter fallback for chunks whose `page` column is NULL
+- semantic:   image embedding is close (cosine distance < threshold) to a
+              chunk's embedding — catches the long tail of figures whose
+              chunks paraphrase rather than cite by number (#2063)
 """
 
 from __future__ import annotations
@@ -11,7 +15,7 @@ from __future__ import annotations
 import re
 
 import structlog
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.models.document_chunk import DocumentChunk
@@ -27,6 +31,17 @@ _FIGURE_RE = re.compile(r"(?:Figure|Fig)\.?\s*(\d+(?:[\.\-]\d+)*)", re.IGNORECAS
 
 _PAGE_ADJACENCY = 1
 
+# Semantic-similarity matcher tuning (#2063). The image embedding is
+# generated from caption + figure_label in pipeline._process_images, the
+# chunk embedding from chunk.content. Both are 1536-dim
+# text-embedding-3-small vectors stored as double precision[] but cast to
+# pgvector's `vector` type at query time (mirrors retriever.py's pattern).
+#
+# Defaults are conservative — preferring precision over recall. Tune by
+# spot-checking pairs on the test course before relaxing.
+_SEMANTIC_TOP_K = 3
+_SEMANTIC_DIST_MAX = 0.35  # cosine distance; ~0.65 cosine similarity
+
 
 def _normalize_figure_number(raw: str) -> str:
     """Normalise figure numbers so that '1-3' and '1.3' compare equal."""
@@ -37,7 +52,7 @@ class ImageLinker:
     """Links images to text chunks for a given source document."""
 
     async def link_images_to_chunks(self, source: str, session: AsyncSession) -> int:
-        """Create explicit and contextual links between images and chunks.
+        """Create explicit, contextual, and semantic links between images and chunks.
 
         Args:
             source: The source identifier (e.g. "donaldson").
@@ -48,6 +63,14 @@ class ImageLinker:
         """
         explicit_pairs = await self._build_explicit_pairs(source, session)
         contextual_pairs = await self._build_contextual_pairs(source, session, explicit_pairs)
+        # Semantic must run last so it can deduplicate against pairs the
+        # higher-precision strategies already produced. The explicit and
+        # contextual matchers already filter against existing DB rows
+        # internally, so semantic only needs to dedupe against the pairs
+        # we just computed — no third _get_existing_pairs call.
+        semantic_pairs = await self._build_semantic_pairs(
+            source, session, explicit_pairs | contextual_pairs
+        )
 
         rows: list[SourceImageChunk] = []
         for image_id, chunk_id in explicit_pairs:
@@ -66,6 +89,14 @@ class ImageLinker:
                     reference_type="contextual",
                 )
             )
+        for image_id, chunk_id in semantic_pairs:
+            rows.append(
+                SourceImageChunk(
+                    source_image_id=image_id,
+                    document_chunk_id=chunk_id,
+                    reference_type="semantic",
+                )
+            )
 
         if rows:
             session.add_all(rows)
@@ -76,6 +107,7 @@ class ImageLinker:
             source=source,
             explicit=len(explicit_pairs),
             contextual=len(contextual_pairs),
+            semantic=len(semantic_pairs),
             total=len(rows),
         )
         return len(rows)
@@ -196,6 +228,82 @@ class ImageLinker:
                 pair = (image_id, chunk_id)
                 if pair not in existing_pairs and pair not in explicit_image_chunk:
                     pairs.add(pair)
+
+        return pairs
+
+    async def _build_semantic_pairs(
+        self,
+        source: str,
+        session: AsyncSession,
+        higher_priority: set[tuple],
+    ) -> set[tuple]:
+        """Find image↔chunk pairs by embedding cosine similarity (#2063).
+
+        Both ``source_images.embedding`` and ``document_chunks.embedding``
+        are stored as ``double precision[]`` and cast to pgvector's
+        ``vector`` type at query time (mirrors retriever.py's pattern,
+        avoids schema migration). For each image, this returns up to
+        ``_SEMANTIC_TOP_K`` chunk candidates whose cosine distance is
+        below ``_SEMANTIC_DIST_MAX``. Pairs already in ``higher_priority``
+        (existing junction rows + explicit + contextual) are deduplicated.
+
+        Implementation note: the LATERAL JOIN runs the per-image
+        top-K query in a single round-trip rather than 460 separate
+        SELECTs. With pgvector's HNSW index on the embedding columns
+        the inner ``ORDER BY <=> LIMIT K`` is sub-millisecond.
+
+        Returns an empty set when either side has no embedded rows; the
+        outer COUNT short-circuits the lateral join for collections that
+        haven't been embedded yet.
+        """
+        # Skip the whole pass when the collection has no embedded chunks
+        # or no embedded images — the join would just return zero rows
+        # but the explicit COUNT short-circuits the round-trip.
+        count_q = text(
+            """
+            SELECT
+              (SELECT COUNT(*) FROM source_images
+                 WHERE source = :src AND embedding IS NOT NULL) AS img_count,
+              (SELECT COUNT(*) FROM document_chunks
+                 WHERE source = :src AND embedding IS NOT NULL) AS chunk_count
+            """
+        ).bindparams(src=source)
+        counts = (await session.execute(count_q)).one()
+        if not (counts.img_count and counts.chunk_count):
+            return set()
+
+        # Per-image lateral query: pick top-K closest chunks above the
+        # similarity threshold. The double `<=>` (one inside the LIMIT,
+        # one in the projection) is intentional — pg planner only uses
+        # the index for the ORDER BY clause.
+        query = text(
+            """
+            SELECT si.id AS image_id,
+                   cand.chunk_id,
+                   cand.distance
+              FROM source_images si
+              CROSS JOIN LATERAL (
+                SELECT dc.id AS chunk_id,
+                       (si.embedding::vector <=> dc.embedding::vector) AS distance
+                  FROM document_chunks dc
+                 WHERE dc.source = :src
+                   AND dc.embedding IS NOT NULL
+                 ORDER BY si.embedding::vector <=> dc.embedding::vector
+                 LIMIT :k
+              ) AS cand
+             WHERE si.source = :src
+               AND si.embedding IS NOT NULL
+               AND cand.distance < :max_dist
+            """
+        ).bindparams(src=source, k=_SEMANTIC_TOP_K, max_dist=_SEMANTIC_DIST_MAX)
+
+        result = await session.execute(query)
+        pairs: set[tuple] = set()
+        for row in result.all():
+            pair = (row.image_id, row.chunk_id)
+            if pair in higher_priority:
+                continue
+            pairs.add(pair)
 
         return pairs
 
