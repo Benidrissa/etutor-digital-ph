@@ -809,20 +809,13 @@ export function AICourseWizard({
           setIsIndexing(false);
           setIndexStaleWarning(false);
           queryClient.invalidateQueries({ queryKey: ["admin-courses"] });
-          // Auto-advance through the new linker step (#2044):
-          //   indexation → linker (always)
-          //   linker → publish iff the chunk↔image join produced rows
-          //                     (or there were no images to link)
-          // If the linker silently failed (images > 0, links === 0), stop on
-          // the linker step so the admin can hit "Relancer le linker".
-          const linksOk =
-            (status.images_indexed ?? 0) === 0 ||
-            (status.links_indexed ?? 0) > 0;
-          setStep((s) => {
-            if (s === "indexation") return "linker";
-            if (s === "linker" && linksOk) return "publish";
-            return s;
-          });
+          // Auto-advance indexation → linker when text+image extraction
+          // completes. Stop there — the admin must explicitly click Suivant
+          // (or "Relancer le linker") to leave the linker step (#2068).
+          // Previously this also auto-advanced linker → publish on success,
+          // but that skipped the admin's chance to confirm the link count
+          // or relink before publishing.
+          setStep((s) => (s === "indexation" ? "linker" : s));
           return;
         }
 
@@ -969,17 +962,6 @@ export function AICourseWizard({
       cancelled = true;
     };
   }, [step, courseId, indexStatus]);
-
-  // Auto-advance linker → publish once the join has populated rows. Runs on
-  // step change (manual Next from indexation), polling completion, resume,
-  // and on relink success (#2044).
-  useEffect(() => {
-    if (step !== "linker") return;
-    if (isLinkerComplete(indexStatus)) {
-      const t = setTimeout(() => setStep("publish"), 800);
-      return () => clearTimeout(t);
-    }
-  }, [step, indexStatus]);
 
   // Linker recovery — re-runs the chunk↔image join inline (no celery, no
   // re-embedding, no re-extraction). Powers the "Relancer le linker" button
