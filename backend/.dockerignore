@@ -8,7 +8,10 @@ __pycache__/
 htmlcov/
 *.egg-info/
 data/
-scripts/
+# scripts/ is intentionally NOT excluded — operational scripts (backfills,
+# RAG maintenance) ship in the runtime image so they can be invoked via
+# `docker exec etutor-celery-worker uv run python scripts/<name>.py ...`.
+# Adds <50 KB. Test files stay excluded via tests/.
 .env
 .env.*
 .git/
