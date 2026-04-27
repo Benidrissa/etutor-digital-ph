@@ -21,7 +21,7 @@ from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.preassessment import CoursePreAssessment
 from app.domain.models.quiz import PlacementTestAttempt
-from app.domain.models.source_image import SourceImage
+from app.domain.models.source_image import SourceImage, SourceImageChunk
 from app.domain.models.taxonomy import TaxonomyCategory
 from app.domain.models.user import UserRole
 from app.tasks.content_generation import generate_lesson_task, pregenerate_on_publish_task
@@ -1155,11 +1155,23 @@ async def get_rag_index_status(
     )
     images_indexed = image_count.scalar_one()
 
+    # Count chunk↔image join rows. The wizard's recap (#2035) surfaces this
+    # as a third row so admins can see when the linker silently failed —
+    # cached lessons without source_image_refs were the user-visible symptom.
+    link_count = await db.execute(
+        select(func.count())
+        .select_from(SourceImageChunk)
+        .join(SourceImage, SourceImageChunk.source_image_id == SourceImage.id)
+        .where(SourceImage.rag_collection_id == course.rag_collection_id)
+    )
+    links_indexed = link_count.scalar_one()
+
     response: dict = {
         "course_id": str(course_id),
         "rag_collection_id": course.rag_collection_id,
         "chunks_indexed": chunks_indexed,
         "images_indexed": images_indexed,
+        "links_indexed": links_indexed,
         "indexed": chunks_indexed > 0,
     }
 

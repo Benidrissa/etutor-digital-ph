@@ -1478,10 +1478,15 @@
         "recap": {
           "textRow": "Text",
           "imagesRow": "Images",
+          "linksRow": "Image-text links",
           "chunksCount": "{count, plural, one {# chunk} other {# chunks}}",
           "imagesCount": "{count, plural, one {# image} other {# images}}",
           "imagesPending": "pending",
-          "imagesNone": "no images"
+          "imagesNone": "no images",
+          "linksCount": "{count, plural, one {# link} other {# links}}",
+          "linksPending": "pending",
+          "linksNone": "no links needed",
+          "linksFailed": "failed — re-run indexation"
         },
         "resumeHint": "You can close and come back later. The task continues in the background.",
         "inProgress": "Indexation in progress",
