@@ -324,9 +324,7 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
             # instead of freezing at img_progress for the whole pass (#2029).
             # Loop locals are bound via default args so the closure captures
             # this iteration's values, not the moving loop bindings.
-            _link_progress_for_pdf = (
-                img_progress + int((1 / len(pdf_files)) * 7)
-            )
+            _link_progress_for_pdf = img_progress + int((1 / len(pdf_files)) * 7)
 
             def _image_progress_cb(
                 done: int,
@@ -344,16 +342,13 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                 if total <= 0:
                     return
                 ratio = min(done / total, 1.0)
-                live_progress = _img_progress + int(
-                    (_link_progress - _img_progress) * ratio
-                )
+                live_progress = _img_progress + int((_link_progress - _img_progress) * ratio)
                 self.update_state(
                     state="EXTRACTING_IMAGES",
                     meta={
                         "step": "extracting_images",
                         "step_label": (
-                            f"Extraction des illustrations: {_pdf_name} "
-                            f"({done}/{total})"
+                            f"Extraction des illustrations: {_pdf_name} ({done}/{total})"
                         ),
                         "progress": live_progress,
                         "files_total": _files_total,
