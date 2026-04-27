@@ -1542,7 +1542,21 @@ export function CourseWizardClient({
                     <Button
                       onClick={publishCourse}
                       className="w-full min-h-11"
-                      disabled={isPublishing}
+                      disabled={
+                        isPublishing ||
+                        isIndexing ||
+                        // Match the AI wizard's gate: require the celery
+                        // task to be fully complete (text + image phases),
+                        // not just chunks_indexed > 0. Avoids publishing
+                        // while image extraction is mid-flight (#2032).
+                        !(
+                          indexStatus?.task?.state === "COMPLETE" ||
+                          indexStatus?.task?.state === "SUCCESS" ||
+                          (!indexStatus?.task?.state &&
+                            indexStatus?.indexed === true &&
+                            (indexStatus?.chunks_indexed ?? 0) > 0)
+                        )
+                      }
                     >
                       {isPublishing ? (
                         <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />

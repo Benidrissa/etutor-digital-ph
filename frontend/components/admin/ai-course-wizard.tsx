@@ -151,6 +151,135 @@ function ETALabel({ seconds, t }: { seconds: number | undefined; t: ReturnType<t
   return <span>{t("index.etaMinutes", { minutes: Math.ceil(seconds / 60) })}</span>;
 }
 
+// Stages where the celery task is still working on the TEXT phase. After
+// these, the task moves into image extraction/linking.
+const TEXT_STAGES = new Set([
+  "PENDING",
+  "STARTED",
+  "EXTRACTING",
+  "CHUNKING",
+  "EMBEDDING",
+  "STORING",
+]);
+
+// Stages where the IMAGE phase has begun (text is done by now).
+const IMAGE_STAGES = new Set(["EXTRACTING_IMAGES", "LINKING_IMAGES"]);
+
+function isIndexationFullyComplete(indexStatus: IndexStatus | null): boolean {
+  if (!indexStatus) return false;
+  const taskState = indexStatus.task?.state;
+  // Truthful signal: celery task hit COMPLETE/SUCCESS. We also accept the
+  // case where the task was cleaned from the result backend but the live
+  // chunk count + indexed flag say we're done, since those persist.
+  if (taskState === "COMPLETE" || taskState === "SUCCESS") return true;
+  if (
+    !taskState &&
+    indexStatus.indexed &&
+    (indexStatus.chunks_indexed ?? 0) > 0
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function IndexationRecap({
+  indexStatus,
+  isIndexing,
+  progressValue,
+  onCancel,
+  t,
+}: {
+  indexStatus: IndexStatus | null;
+  isIndexing: boolean;
+  progressValue: number;
+  onCancel?: () => void;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const taskState = indexStatus?.task?.state;
+  const stepLabel = indexStatus?.task?.step_label;
+  const eta = indexStatus?.task?.estimated_seconds_remaining;
+  const chunks = indexStatus?.chunks_indexed ?? 0;
+  const images = indexStatus?.images_indexed ?? 0;
+
+  // Phase derivations based on the celery task state machine.
+  const textRunning = !!taskState && TEXT_STAGES.has(taskState);
+  const imagesRunning = !!taskState && IMAGE_STAGES.has(taskState);
+  const fullyDone = isIndexationFullyComplete(indexStatus);
+  const textDone = fullyDone || imagesRunning || chunks > 0;
+  const imagesDone = fullyDone;
+
+  return (
+    <div className="rounded-lg border bg-card p-4 space-y-3">
+      {/* Texte row */}
+      <div className="flex items-center gap-2">
+        {textDone ? (
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
+        ) : textRunning ? (
+          <div className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        ) : (
+          <div className="h-4 w-4 shrink-0 rounded-full border border-muted-foreground/40" />
+        )}
+        <p className="text-sm font-medium">{t("index.recap.textRow")}</p>
+        <span className="ml-auto text-xs text-muted-foreground">
+          {chunks > 0
+            ? t("index.recap.chunksCount", { count: chunks })
+            : "—"}
+        </span>
+      </div>
+
+      {/* Images row */}
+      <div className="flex items-center gap-2">
+        {imagesDone ? (
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
+        ) : imagesRunning ? (
+          <div className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        ) : (
+          <div className="h-4 w-4 shrink-0 rounded-full border border-muted-foreground/40" />
+        )}
+        <p className="text-sm font-medium">{t("index.recap.imagesRow")}</p>
+        <span className="ml-auto text-xs text-muted-foreground">
+          {images > 0
+            ? t("index.recap.imagesCount", { count: images })
+            : imagesRunning
+            ? t("index.recap.imagesPending")
+            : imagesDone
+            ? t("index.recap.imagesNone")
+            : "—"}
+        </span>
+      </div>
+
+      {/* Live step label + ETA only while a phase is active */}
+      {isIndexing && (
+        <>
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span className="truncate">
+              {stepLabel || t("index.taskPending")}
+            </span>
+            {eta !== undefined && eta > 0 && (
+              <div className="flex items-center gap-1 shrink-0">
+                <Clock className="h-3 w-3" />
+                <ETALabel seconds={eta} t={t} />
+              </div>
+            )}
+          </div>
+          <Progress value={progressValue} className="h-2" />
+          {onCancel && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onCancel}
+              className="w-full min-h-[44px] border-destructive/50 text-destructive hover:bg-destructive/5 hover:text-destructive"
+            >
+              <StopCircle className="mr-2 h-4 w-4" />
+              {t("index.cancelIndexation")}
+            </Button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Props ─────────────────────────────────────────────────────────────
 
 interface AICourseWizardProps {
@@ -1232,49 +1361,19 @@ export function AICourseWizard({
                   </div>
                 )}
 
-                {/* Indexation progress (inline, not a separate step) */}
-                {isIndexing && (
-                  <div className="rounded-lg border bg-card p-4 space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent shrink-0" />
-                        <p className="text-sm font-medium">
-                          {taskProg ? (taskProg.state === "EXTRACTING_IMAGES" ? t("index.stepExtractingImages") : getStepLabel(taskProg.step)) : t("index.taskPending")}
-                        </p>
-                      </div>
-                      {taskProg?.estimated_seconds_remaining !== undefined && taskProg.estimated_seconds_remaining > 0 && (
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
-                          <Clock className="h-3 w-3" />
-                          <ETALabel seconds={taskProg.estimated_seconds_remaining} t={t} />
-                        </div>
-                      )}
-                    </div>
-                    <Progress value={progressValue} className="h-2" />
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>{progressValue}%</span>
-                      {taskProg && taskProg.files_total > 0 && (
-                        <span>{t("index.filesProgress", { current: taskProg.files_processed, total: taskProg.files_total })}</span>
-                      )}
-                    </div>
-                    <Button variant="outline" size="sm" onClick={cancelIndexation} className="w-full min-h-[44px] border-destructive/50 text-destructive hover:bg-destructive/5 hover:text-destructive">
-                      <StopCircle className="mr-2 h-4 w-4" />
-                      {t("index.cancelIndexation")}
-                    </Button>
-                  </div>
-                )}
-
-                {indexStatus?.indexed && !isIndexing && (
-                  <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-900 dark:bg-green-950">
-                    <CheckCircle2 className="h-5 w-5 text-green-600" />
-                    <div>
-                      <p className="text-sm font-medium text-green-700 dark:text-green-400">{t("index.indexed")}</p>
-                      <p className="text-xs text-green-600 dark:text-green-500">
-                        {indexStatus.images_indexed && indexStatus.images_indexed > 0
-                          ? t("index.chunksAndImagesIndexed", { chunks: indexStatus.chunks_indexed, images: indexStatus.images_indexed })
-                          : t("index.chunksIndexed", { count: indexStatus.chunks_indexed })}
-                      </p>
-                    </div>
-                  </div>
+                {/* Indexation recap: text + images on separate rows. The
+                    backend pipeline is one celery task with two phases
+                    (text → images), so a single combined progress bar hid
+                    the second phase. Surfacing both phases makes "0 images
+                    while published" visible (#2032). */}
+                {(isIndexing || indexStatus?.indexed) && (
+                  <IndexationRecap
+                    indexStatus={indexStatus}
+                    isIndexing={isIndexing}
+                    progressValue={progressValue}
+                    onCancel={cancelIndexation}
+                    t={t}
+                  />
                 )}
 
                 {indexError && !isIndexing && (
@@ -1423,7 +1522,10 @@ export function AICourseWizard({
                       disabled={
                         isPublishing ||
                         isIndexing ||
-                        (publishSummaryIndexStatus?.chunks_indexed ?? 0) === 0
+                        // Require the celery task to have hit COMPLETE — not
+                        // just chunks_indexed > 0 — so we don't publish while
+                        // image extraction is still in flight (#2032).
+                        !isIndexationFullyComplete(publishSummaryIndexStatus)
                       }
                     >
                       {isPublishing ? (
