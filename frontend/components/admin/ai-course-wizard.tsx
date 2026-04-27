@@ -42,10 +42,8 @@ import {
   type GeneratedModule,
   type IndexStatus,
   createAdminCourse,
-  uploadCourseResource,
-  deleteCourseResource,
-  getCourseResources,
   getAdminCourse,
+  getCourseResources,
   triggerSyllabusGeneration,
   regenerateSyllabusApi,
   getGenerationStatus,
@@ -61,6 +59,10 @@ import {
 import { getCourseTaxonomy, type TaxonomyItem } from "@/lib/api";
 import { SyllabusVisualEditor } from "@/components/admin/syllabus-visual-editor";
 import { LessonPreviewStep } from "@/components/admin/lesson-preview-step";
+import {
+  CourseResourceUploadStep,
+  useCourseResourceUpload,
+} from "@/components/admin/course-resource-upload-step";
 
 const EXTRACTING_STATUSES = new Set(["pending", "extracting"]);
 
@@ -173,12 +175,12 @@ export function AICourseWizard({
 
   // ── State ─────────────────────────────────────────────────────────
   const [step, setStep] = useState<AIWizardStep>("upload");
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [files, setFiles] = useState<UploadedFile[]>([]);
   const [courseId, setCourseId] = useState<string | null>(resumeCourseId ?? null);
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [isFetchingExistingFiles, setIsFetchingExistingFiles] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // The upload state machine (queued/uploading/uploaded/error + dropzone +
+  // file list + aggregate error banner) lives in a shared hook used by both
+  // wizards — see course-resource-upload-step.tsx.
+  const upload = useCourseResourceUpload({ courseId });
+  const { files, setFiles, pendingFiles, uploadAllPending } = upload;
 
   // Objectives state
   const [objectivesFr, setObjectivesFr] = useState("");
@@ -274,7 +276,8 @@ export function AICourseWizard({
 
   useEffect(() => {
     if (!resumeCourseId) return;
-    setIsFetchingExistingFiles(true);
+    // The shared upload hook handles its own fetch-on-mount when courseId is
+    // present, so we don't manage isFetchingExistingFiles here anymore.
 
     const hydrate = async () => {
       try {
@@ -341,152 +344,49 @@ export function AICourseWizard({
         }
       } catch {
         // fallback
-      } finally {
-        setIsFetchingExistingFiles(false);
       }
     };
 
     hydrate();
   }, [resumeCourseId, resumeCreationStep]);
 
-  // Fetch existing files when on upload step with a courseId
-  useEffect(() => {
-    if (step !== "upload" || !courseId) return;
-    setIsFetchingExistingFiles(true);
-    getCourseResources(courseId)
-      .then((data) => {
-        const serverFiles: UploadedFile[] = (data.files ?? []).map((f) => ({
-          name: f.name,
-          size_bytes: f.size_bytes,
-          status: "uploaded" as const,
-          extraction_status: f.extraction_status,
-        }));
-        setFiles((prev) => {
-          const localNames = new Set(prev.map((f) => f.name));
-          const toAdd = serverFiles.filter((f) => !localNames.has(f.name));
-          return [...prev, ...toAdd];
-        });
-      })
-      .catch(() => {})
-      .finally(() => setIsFetchingExistingFiles(false));
-  }, [step, courseId]);
-
-  // ── File handling (reuses shared API wrappers) ────────────────────
-
-  const uploadFile = useCallback(
-    async (file: File) => {
-      if (!courseId) return;
-      setFiles((prev) =>
-        prev.map((f) => (f.name === file.name ? { ...f, status: "uploading" as const } : f))
-      );
-      const result = await uploadCourseResource(courseId, file);
-      if (!result.ok) {
-        setFiles((prev) =>
-          prev.map((f) =>
-            f.name === file.name ? { ...f, status: "error" as const, error: result.error } : f
-          )
-        );
-        return;
-      }
-      setFiles((prev) =>
-        prev.map((f) =>
-          f.name === file.name
-            ? { ...f, status: "uploaded" as const, extraction_status: "pending" as const }
-            : f
-        )
-      );
-    },
-    [courseId]
-  );
-
-  const handleFiles = useCallback(
-    async (incoming: File[]) => {
-      const pdfs = incoming.filter((f) => f.type === "application/pdf");
-      if (!pdfs.length) return;
-
-      const newEntries: UploadedFile[] = pdfs
-        .filter((f) => !files.some((existing) => existing.name === f.name))
-        .map((f) => ({ name: f.name, size_bytes: f.size, status: "uploading" as const }));
-
-      if (!newEntries.length) return;
-      setFiles((prev) => [...prev, ...newEntries]);
-
-      if (courseId) {
-        for (const file of pdfs) {
-          await uploadFile(file);
-        }
-      } else {
-        setFiles((prev) =>
-          prev.map((f) =>
-            newEntries.some((n) => n.name === f.name) ? { ...f, status: "uploaded" as const } : f
-          )
-        );
-        setPendingFiles((prev) => [...prev, ...pdfs]);
-      }
-    },
-    [courseId, files, uploadFile]
-  );
-
-  const onDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setIsDragOver(false);
-      handleFiles(Array.from(e.dataTransfer.files));
-    },
-    [handleFiles]
-  );
-
-  const onFileInput = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      handleFiles(Array.from(e.target.files || []));
-      e.target.value = "";
-    },
-    [handleFiles]
-  );
-
-  const removeFile = useCallback(
-    async (name: string) => {
-      if (courseId) {
-        await deleteCourseResource(courseId, name);
-      }
-      setFiles((prev) => prev.filter((f) => f.name !== name));
-    },
-    [courseId]
-  );
+  // File state, dropzone handlers, and the upload state machine all live in
+  // the shared `useCourseResourceUpload` hook (course-resource-upload-step.tsx).
+  // Removed duplicate file-handling code that previously lived here.
 
   // ── Create course (on first Next from upload) ─────────────────────
 
   const createCourse = useCallback(async () => {
-    if (courseId) {
-      // Already created, just advance
+    // Already created and nothing pending → just advance.
+    if (courseId && pendingFiles.length === 0) {
       setStep("objectives");
       return;
     }
 
     try {
-      // Create a placeholder course with AI-assisted mode
-      const course = await createAdminCourse({
-        title_fr: "Nouveau cours (AI)",
-        title_en: "New course (AI)",
-        creation_mode: "ai_assisted",
-        organization_id: organizationId,
-      });
-      setCourseId(course.id);
+      let activeCourseId = courseId;
+      if (!activeCourseId) {
+        const course = await createAdminCourse({
+          title_fr: "Nouveau cours (AI)",
+          title_en: "New course (AI)",
+          creation_mode: "ai_assisted",
+          organization_id: organizationId,
+        });
+        setCourseId(course.id);
+        activeCourseId = course.id;
+      }
 
-      // Upload pending files
-      for (const file of pendingFiles) {
-        await uploadCourseResource(course.id, file);
-      }
-      if (pendingFiles.length > 0) {
-        setFiles((prev) => prev.map((f) => ({ ...f, status: "uploaded" as const })));
-        setPendingFiles([]);
-      }
+      // Flush every locally-queued file. The hook returns ok=false if any
+      // file failed; in that case we stay on the upload step so the user
+      // can see the error banner and remove/retry.
+      const result = await uploadAllPending(activeCourseId);
+      if (!result.ok) return;
 
       setStep("objectives");
     } catch {
-      // Stay on upload step
+      // Stay on upload step; the hook surfaces upload errors via its banner.
     }
-  }, [courseId, pendingFiles]);
+  }, [courseId, pendingFiles, organizationId, uploadAllPending]);
 
   // ── Objectives save ────────────────────────────────────────────────
 
@@ -891,7 +791,9 @@ export function AICourseWizard({
   }, [isIndexing, isGenerating, onClose]);
 
   const canGoNext = (): boolean => {
-    if (step === "upload") return files.filter((f) => f.status === "uploaded").length > 0;
+    // Upload step gating is owned by the shared hook so both wizards behave
+    // identically: at least one file present, none in error or in-flight.
+    if (step === "upload") return upload.canAdvance;
     if (step === "objectives") return objectivesFr.trim().length > 0 || objectivesEn.trim().length > 0;
     if (step === "ai_proposal") return proposedTitle.fr.trim().length > 0 && proposedTitle.en.trim().length > 0;
     if (step === "generate") return generatedModules.length > 0;
@@ -1021,92 +923,14 @@ export function AICourseWizard({
         <div className="flex-1 overflow-y-auto p-4 md:p-6">
           <div className="mx-auto max-w-2xl">
 
-            {/* ── UPLOAD STEP ─────────────────────────────────────── */}
+            {/* ── UPLOAD STEP — shared with CourseWizardClient ─────── */}
             {step === "upload" && (
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-xl font-semibold">{t("upload.title")}</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">{t("upload.description")}</p>
-                </div>
-
-                <div
-                  onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
-                  onDragLeave={() => setIsDragOver(false)}
-                  onDrop={onDrop}
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors ${
-                    isDragOver
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50 hover:bg-muted/50"
-                  }`}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={t("upload.dropzone")}
-                  onKeyDown={(e) => e.key === "Enter" && fileInputRef.current?.click()}
-                >
-                  <Upload className="mb-3 h-8 w-8 text-muted-foreground" />
-                  <p className="text-sm font-medium">
-                    {isDragOver ? t("upload.dropzoneActive") : t("upload.dropzone")}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">{t("upload.fileTypes")}</p>
-                </div>
-
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="application/pdf"
-                  multiple
-                  className="hidden"
-                  onChange={onFileInput}
-                />
-
-                {isFetchingExistingFiles && (
-                  <div className="flex items-center justify-center py-4">
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                  </div>
-                )}
-
-                {files.length > 0 && (
-                  <div className="space-y-2">
-                    {files.map((f) => (
-                      <div key={f.name} className="flex items-center gap-3 rounded-lg border bg-card p-3">
-                        <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium">{f.name}</p>
-                          <p className="text-xs text-muted-foreground">{formatBytes(f.size_bytes)}</p>
-                        </div>
-                        {f.status === "uploading" && (
-                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                        )}
-                        {f.status === "uploaded" && f.extraction_status && EXTRACTING_STATUSES.has(f.extraction_status) && (
-                          <span title={t("upload.extracting")} className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <div className="h-3 w-3 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
-                            {t("upload.extracting")}
-                          </span>
-                        )}
-                        {f.status === "uploaded" && (!f.extraction_status || f.extraction_status === "done") && (
-                          <CheckCircle2 className="h-4 w-4 text-green-600" />
-                        )}
-                        {f.status === "uploaded" && f.extraction_status === "failed" && (
-                          <span title={t("upload.extractionFailed")}><AlertCircle className="h-4 w-4 text-destructive" /></span>
-                        )}
-                        {f.status === "error" && (
-                          <span title={f.error}><AlertCircle className="h-4 w-4 text-destructive" /></span>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 shrink-0"
-                          onClick={(e) => { e.stopPropagation(); removeFile(f.name); }}
-                          aria-label={t("upload.remove")}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <CourseResourceUploadStep
+                upload={upload}
+                onRetry={() => {
+                  if (courseId) void uploadAllPending(courseId);
+                }}
+              />
             )}
 
             {/* ── OBJECTIVES STEP ────────────────────────────────── */}
