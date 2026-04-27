@@ -8,9 +8,7 @@ from pathlib import Path
 # Load the script as a module without depending on packaging changes.
 _SPEC = importlib.util.spec_from_file_location(
     "backfill_legacy_figure_numbers",
-    Path(__file__).resolve().parent.parent
-    / "scripts"
-    / "backfill_legacy_figure_numbers.py",
+    Path(__file__).resolve().parent.parent / "scripts" / "backfill_legacy_figure_numbers.py",
 )
 assert _SPEC and _SPEC.loader, "spec must load"
 _MOD = importlib.util.module_from_spec(_SPEC)
@@ -49,9 +47,7 @@ class TestRepairOne:
     def test_caption_not_starting_with_digit_skipped(self):
         # Genuine chapter-only label, e.g. "Figure 1" with caption starting
         # with "(a)" — leave alone, not a severed-subnumber row
-        assert (
-            _repair_one("Figure 1", "(a) Survey Results 2 CHAPTER 1") is None
-        )
+        assert _repair_one("Figure 1", "(a) Survey Results 2 CHAPTER 1") is None
 
     def test_dotted_subnumber_recovers(self):
         # Some textbooks use "1.5" rather than "1-5"

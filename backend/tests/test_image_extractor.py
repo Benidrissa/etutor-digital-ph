@@ -1115,9 +1115,7 @@ class TestDashedFigureNumberCapture:
         assert "5-2" in meta["figure_number"]
 
     def test_dashed_figure_in_generic_fr(self):
-        meta = self._extract(
-            "Schéma 4-2 Organisation des services de santé", book="generic"
-        )
+        meta = self._extract("Schéma 4-2 Organisation des services de santé", book="generic")
         assert meta["figure_number"] is not None
         assert "4-2" in meta["figure_number"]
 

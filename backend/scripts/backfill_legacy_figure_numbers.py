@@ -71,7 +71,7 @@ def _repair_one(figure_number: str | None, caption: str | None) -> tuple[str, st
         return None
     suffix = m.group(1)
     new_figure_number = f"{figure_number.rstrip()}-{suffix}"
-    new_caption = caption[m.end():].lstrip(" .:–—-")
+    new_caption = caption[m.end() :].lstrip(" .:–—-")
     return new_figure_number, new_caption
 
 
