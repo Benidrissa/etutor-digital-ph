@@ -227,6 +227,21 @@ export async function reindexImagesApi(
   });
 }
 
+/** Re-run the chunk↔image linker without re-embedding text or re-extracting
+ *  images. Inline async on the backend; ~1s for typical collections.
+ *  Powers the wizard's Linker-step "Relancer le linker" button (#2044).
+ */
+export async function relinkImagesApi(
+  courseId: string,
+  clearOld = false,
+): Promise<{ links_added: number; cleared: number }> {
+  const params = clearOld ? "?clear_old=true" : "";
+  return apiFetch(
+    `/api/v1/admin/courses/${courseId}/relink-images${params}`,
+    { method: "POST" },
+  );
+}
+
 // ── Syllabus ──────────────────────────────────────────────────────────
 
 export interface SyllabusUnit {
