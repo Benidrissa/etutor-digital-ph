@@ -16,6 +16,12 @@ COPY app/ app/
 COPY migrations/ migrations/
 COPY alembic.ini .
 
+# Operational scripts shipped so they can be invoked via
+# `docker exec etutor-celery-worker uv run python scripts/<name>.py ...`
+# without docker cp gymnastics. Examples: backfill jobs, one-off RAG
+# maintenance. Adds <50 KB to the image.
+COPY scripts/ scripts/
+
 EXPOSE 8000
 
 # Traefik-compatible healthcheck (NOT wget/curl — they fail silently in slim images)
