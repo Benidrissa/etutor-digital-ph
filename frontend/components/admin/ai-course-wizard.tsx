@@ -23,6 +23,7 @@ import {
   StopCircle,
   RotateCcw,
   BookOpen,
+  Link as LinkIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +52,7 @@ import {
   getIndexStatusApi,
   cancelIndexationApi,
   reindexImagesApi,
+  relinkImagesApi,
   updateAdminCourse,
   publishAdminCourse,
   suggestCourseMetadata,
@@ -76,6 +78,7 @@ type AIWizardStep =
   | "syllabus_edit"
   | "lesson_preview"
   | "indexation"
+  | "linker"
   | "publish";
 
 const AI_STEPS: AIWizardStep[] = [
@@ -85,9 +88,13 @@ const AI_STEPS: AIWizardStep[] = [
   "generate",
   "syllabus_edit",
   "lesson_preview",
-  // Dedicated indexation step so the Texte/Images/Liens recap is visible
+  // Dedicated indexation step so the Texte/Images recap is visible
   // as its own phase rather than buried inside syllabus_edit (#2041).
   "indexation",
+  // Dedicated linker step — splits the chunk↔image join from the
+  // text+image extraction phase. Lets the admin see the link count and
+  // hit "Relancer le linker" without paying for re-embedding (#2044).
+  "linker",
   "publish",
 ];
 
@@ -99,6 +106,7 @@ const STEP_ICONS: Record<AIWizardStep, React.ReactNode> = {
   syllabus_edit: <GripVertical className="h-4 w-4" />,
   lesson_preview: <BookOpen className="h-4 w-4" />,
   indexation: <Database className="h-4 w-4" />,
+  linker: <LinkIcon className="h-4 w-4" />,
   publish: <Rocket className="h-4 w-4" />,
 };
 
@@ -170,27 +178,32 @@ const TEXT_STAGES = new Set([
 // Stages where the IMAGE phase has begun (text is done by now).
 const IMAGE_STAGES = new Set(["EXTRACTING_IMAGES", "LINKING_IMAGES"]);
 
-function isIndexationFullyComplete(indexStatus: IndexStatus | null): boolean {
+// Text+images extraction has hit COMPLETE/SUCCESS. Linker may not have run.
+// This is the gate for advancing past the "indexation" step (#2044).
+function isExtractionComplete(indexStatus: IndexStatus | null): boolean {
   if (!indexStatus) return false;
   const taskState = indexStatus.task?.state;
-  const taskComplete =
+  return (
     taskState === "COMPLETE" ||
     taskState === "SUCCESS" ||
     (!taskState &&
       indexStatus.indexed &&
-      (indexStatus.chunks_indexed ?? 0) > 0);
-  if (!taskComplete) return false;
-
-  // If images were extracted, at least one source_image_chunks row must
-  // exist — otherwise the linker silently failed and lessons would ship
-  // with empty source_image_refs. PDFs with no figures legitimately have
-  // 0 images AND 0 links; that's still publishable. (#2035)
-  const images = indexStatus.images_indexed ?? 0;
-  const links = indexStatus.links_indexed ?? 0;
-  if (images > 0 && links === 0) return false;
-
-  return true;
+      (indexStatus.chunks_indexed ?? 0) > 0)
+  );
 }
+
+// Linker has populated source_image_chunks, OR there were no images to link.
+// This is the publish gate AND the "linker" step gate. PDFs with no figures
+// legitimately have 0 images AND 0 links; that's still publishable. (#2035)
+function isLinkerComplete(indexStatus: IndexStatus | null): boolean {
+  if (!isExtractionComplete(indexStatus)) return false;
+  const images = indexStatus?.images_indexed ?? 0;
+  const links = indexStatus?.links_indexed ?? 0;
+  return images === 0 || links > 0;
+}
+
+// Back-compat alias kept so the publish-button gate keeps the same name.
+const isIndexationFullyComplete = isLinkerComplete;
 
 function IndexationRecap({
   indexStatus,
@@ -210,27 +223,18 @@ function IndexationRecap({
   const eta = indexStatus?.task?.estimated_seconds_remaining;
   const chunks = indexStatus?.chunks_indexed ?? 0;
   const images = indexStatus?.images_indexed ?? 0;
-  const links = indexStatus?.links_indexed ?? 0;
 
   // Phase derivations based on the celery task state machine.
   const textRunning = !!taskState && TEXT_STAGES.has(taskState);
   const imagesRunning = !!taskState && IMAGE_STAGES.has(taskState);
   // The linker phase happens at the end of process_pdf_images, signalled
-  // by celery state LINKING_IMAGES. If the task hits COMPLETE without
-  // links being created on a course that has images, the linker silently
-  // failed (a real bug we surface here so the admin doesn't publish blind).
+  // by celery state LINKING_IMAGES. The Liens row moved to a dedicated
+  // "linker" step (#2044), so here we only treat LINKING_IMAGES as "image
+  // extraction is done" — the linker substep gets its own UI.
   const linkingRunning = taskState === "LINKING_IMAGES";
-  const fullyDone = isIndexationFullyComplete(indexStatus);
-  const textDone = fullyDone || imagesRunning || linkingRunning || chunks > 0;
-  const imagesDone = fullyDone || linkingRunning;
-  // Links are "done" only when the whole task is complete AND either no
-  // images existed (nothing to link) or the join produced rows.
-  const linksDone = fullyDone && (images === 0 || links > 0);
-  const linksFailed =
-    !!taskState &&
-    (taskState === "COMPLETE" || taskState === "SUCCESS") &&
-    images > 0 &&
-    links === 0;
+  const extractionDone = isExtractionComplete(indexStatus);
+  const textDone = extractionDone || imagesRunning || linkingRunning || chunks > 0;
+  const imagesDone = extractionDone || linkingRunning;
 
   return (
     <div className="rounded-lg border bg-card p-4 space-y-3">
@@ -268,36 +272,6 @@ function IndexationRecap({
             ? t("index.recap.imagesPending")
             : imagesDone
             ? t("index.recap.imagesNone")
-            : "—"}
-        </span>
-      </div>
-
-      {/* Liens (links) row — surfaces the linker phase so admins can see when
-          source_image_chunks failed to populate (#2035). */}
-      <div className="flex items-center gap-2">
-        {linksFailed ? (
-          <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />
-        ) : linksDone ? (
-          <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
-        ) : linkingRunning ? (
-          <div className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-        ) : (
-          <div className="h-4 w-4 shrink-0 rounded-full border border-muted-foreground/40" />
-        )}
-        <p className="text-sm font-medium">{t("index.recap.linksRow")}</p>
-        <span
-          className={`ml-auto text-xs ${
-            linksFailed ? "text-destructive" : "text-muted-foreground"
-          }`}
-        >
-          {linksFailed
-            ? t("index.recap.linksFailed")
-            : links > 0
-            ? t("index.recap.linksCount", { count: links })
-            : linkingRunning
-            ? t("index.recap.linksPending")
-            : linksDone
-            ? t("index.recap.linksNone")
             : "—"}
         </span>
       </div>
@@ -810,10 +784,20 @@ export function AICourseWizard({
           setIsIndexing(false);
           setIndexStaleWarning(false);
           queryClient.invalidateQueries({ queryKey: ["admin-courses"] });
-          // Auto-advance to publish if the user is sitting on the indexation
-          // step waiting for completion (#2041). Functional setStep reads
-          // the latest step without needing it in the effect's deps.
-          setStep((s) => (s === "indexation" ? "publish" : s));
+          // Auto-advance through the new linker step (#2044):
+          //   indexation → linker (always)
+          //   linker → publish iff the chunk↔image join produced rows
+          //                     (or there were no images to link)
+          // If the linker silently failed (images > 0, links === 0), stop on
+          // the linker step so the admin can hit "Relancer le linker".
+          const linksOk =
+            (status.images_indexed ?? 0) === 0 ||
+            (status.links_indexed ?? 0) > 0;
+          setStep((s) => {
+            if (s === "indexation") return "linker";
+            if (s === "linker" && linksOk) return "publish";
+            return s;
+          });
           return;
         }
 
@@ -936,6 +920,43 @@ export function AICourseWizard({
     }
   }, [courseId]);
 
+  // Auto-advance linker → publish once the join has populated rows. Runs on
+  // step change (manual Next from indexation), polling completion, resume,
+  // and on relink success (#2044).
+  useEffect(() => {
+    if (step !== "linker") return;
+    if (isLinkerComplete(indexStatus)) {
+      const t = setTimeout(() => setStep("publish"), 800);
+      return () => clearTimeout(t);
+    }
+  }, [step, indexStatus]);
+
+  // Linker recovery — re-runs the chunk↔image join inline (no celery, no
+  // re-embedding, no re-extraction). Powers the "Relancer le linker" button
+  // on the dedicated linker step (#2044).
+  const [isRelinking, setIsRelinking] = useState(false);
+  const [relinkError, setRelinkError] = useState<string | null>(null);
+  const relinkLinker = useCallback(async () => {
+    if (!courseId) return;
+    setIsRelinking(true);
+    setRelinkError(null);
+    try {
+      await relinkImagesApi(courseId);
+      const status = await getIndexStatusApi(courseId);
+      setIndexStatus({
+        indexed: status.indexed,
+        chunks_indexed: status.chunks_indexed,
+        images_indexed: status.images_indexed,
+        links_indexed: status.links_indexed,
+        task: status.task,
+      });
+    } catch {
+      setRelinkError(tAi("linker.error"));
+    } finally {
+      setIsRelinking(false);
+    }
+  }, [courseId, tAi]);
+
   // ── Publish ───────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -992,9 +1013,12 @@ export function AICourseWizard({
     if (step === "generate") return generatedModules.length > 0;
     if (step === "syllabus_edit") return generatedModules.length > 0;
     if (step === "lesson_preview") return true; // Optional step — always skippable
-    // Indexation step: same gate as the publish button — task must be
-    // fully complete (text + images + linker). (#2041)
-    if (step === "indexation") return isIndexationFullyComplete(indexStatus);
+    // Indexation step: text + image extraction must be done. The linker
+    // gets its own step now (#2044) — don't block indexation on link rows.
+    if (step === "indexation") return isExtractionComplete(indexStatus);
+    // Linker step: chunk↔image join must have produced rows (or there were
+    // no images to link). This is also the publish gate.
+    if (step === "linker") return isLinkerComplete(indexStatus);
     return false;
   };
 
@@ -1483,6 +1507,109 @@ export function AICourseWizard({
                 )}
               </div>
             )}
+
+            {/* ── LINKER STEP ───────────────────────────────────────── */}
+            {/* Dedicated step for the chunk↔image linker (#2044). Splits
+                the join phase out of indexation so admins can see when
+                source_image_chunks rows weren't created and re-run the
+                linker without re-embedding text or re-extracting images. */}
+            {step === "linker" && (() => {
+              const taskState = indexStatus?.task?.state;
+              const linkingRunning = taskState === "LINKING_IMAGES";
+              const images = indexStatus?.images_indexed ?? 0;
+              const links = indexStatus?.links_indexed ?? 0;
+              const extractionDone = isExtractionComplete(indexStatus);
+              const linksDone = isLinkerComplete(indexStatus);
+              const linksFailed = extractionDone && images > 0 && links === 0;
+
+              let bannerCls = "border-muted bg-muted/30";
+              let icon = (
+                <div className="h-5 w-5 shrink-0 rounded-full border border-muted-foreground/40" />
+              );
+              let bannerText = tAi("linker.idle");
+              if (linkingRunning || isRelinking) {
+                bannerCls = "border-primary/30 bg-primary/5";
+                icon = (
+                  <div className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                );
+                bannerText = tAi("linker.running");
+              } else if (linksDone) {
+                bannerCls = "border-green-300 bg-green-50 dark:border-green-700/40 dark:bg-green-950/30";
+                icon = <CheckCircle2 className="h-5 w-5 shrink-0 text-green-600" />;
+                bannerText = images === 0
+                  ? tAi("linker.doneNone")
+                  : tAi("linker.done");
+              } else if (linksFailed) {
+                bannerCls = "border-destructive/40 bg-destructive/5";
+                icon = <AlertCircle className="h-5 w-5 shrink-0 text-destructive" />;
+                bannerText = tAi("linker.failed");
+              }
+
+              return (
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-xl font-semibold">{tAi("linker.title")}</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {tAi("linker.description")}
+                    </p>
+                  </div>
+
+                  <div className={`rounded-lg border p-4 space-y-3 ${bannerCls}`}>
+                    <div className="flex items-start gap-3">
+                      {icon}
+                      <p className="text-sm font-medium">{bannerText}</p>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4 text-sm">
+                      <span className="text-muted-foreground">
+                        {t("index.recap.linksRow")}
+                      </span>
+                      <span className="font-medium">
+                        {linksFailed
+                          ? t("index.recap.linksFailed")
+                          : links > 0
+                          ? t("index.recap.linksCount", { count: links })
+                          : linkingRunning || isRelinking
+                          ? t("index.recap.linksPending")
+                          : linksDone
+                          ? t("index.recap.linksNone")
+                          : "—"}
+                      </span>
+                    </div>
+
+                    {images > 0 && (
+                      <div className="flex items-center justify-between gap-4 text-xs text-muted-foreground">
+                        <span>{t("index.recap.imagesRow")}</span>
+                        <span>{t("index.recap.imagesCount", { count: images })}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {relinkError && (
+                    <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      {relinkError}
+                    </div>
+                  )}
+
+                  {extractionDone && !linkingRunning && (
+                    <Button
+                      onClick={relinkLinker}
+                      disabled={isRelinking}
+                      variant={linksFailed ? "default" : "outline"}
+                      className="w-full min-h-11"
+                    >
+                      {isRelinking ? (
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
+                      ) : (
+                        <RotateCcw className="mr-2 h-4 w-4" />
+                      )}
+                      {tAi("linker.retryButton")}
+                    </Button>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* ── LESSON PREVIEW STEP ───────────────────────────────── */}
             {step === "lesson_preview" && (

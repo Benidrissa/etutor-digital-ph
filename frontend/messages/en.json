@@ -1582,6 +1582,7 @@
         "syllabus_edit": "Edit Syllabus",
         "lesson_preview": "Lessons",
         "indexation": "Indexation",
+        "linker": "Linker",
         "publish": "Publish"
       },
       "objectives": {
@@ -1623,6 +1624,17 @@
       },
       "publish": {
         "ragMissing": "RAG indexation has not completed — 0 content fragments indexed. Run indexation before publishing so the AI tutor can cite your resources."
+      },
+      "linker": {
+        "title": "Image-to-text links",
+        "description": "The linker pairs each extracted figure with the paragraph that mentions it. This step is required so generated lessons can cite the right figures.",
+        "idle": "Waiting for image extraction to finish.",
+        "running": "Creating links…",
+        "done": "Links created. Figures are ready to be cited in lessons.",
+        "doneNone": "No figures to link — you can publish the course.",
+        "failed": "No links were created even though figures were extracted. Click Re-run linker to retry without re-indexing everything.",
+        "error": "Failed to re-run the linker. Please try again.",
+        "retryButton": "Re-run linker"
       },
       "skipToPublish": "Skip to Publish"
     },
