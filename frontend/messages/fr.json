@@ -1582,6 +1582,7 @@
         "syllabus_edit": "Modifier le programme",
         "lesson_preview": "Leçons",
         "indexation": "Indexation",
+        "linker": "Liens",
         "publish": "Publier"
       },
       "objectives": {
@@ -1623,6 +1624,17 @@
       },
       "publish": {
         "ragMissing": "L'indexation RAG n'est pas terminée — 0 fragment de contenu indexé. Lancez l'indexation avant de publier afin que le tuteur IA puisse citer vos ressources."
+      },
+      "linker": {
+        "title": "Liens entre texte et illustrations",
+        "description": "Le linker associe chaque illustration extraite au paragraphe qui la mentionne. Cette étape est nécessaire pour que les leçons générées puissent citer les bonnes figures.",
+        "idle": "En attente de l'extraction des illustrations.",
+        "running": "Création des liens en cours…",
+        "done": "Liens créés. Les illustrations sont prêtes à être citées dans les leçons.",
+        "doneNone": "Aucune illustration à lier — vous pouvez publier le cours.",
+        "failed": "Aucun lien n'a été créé alors que des illustrations ont été extraites. Cliquez sur Relancer le linker pour réessayer sans tout réindexer.",
+        "error": "Échec de la relance du linker. Réessayez.",
+        "retryButton": "Relancer le linker"
       },
       "skipToPublish": "Passer à la publication"
     },

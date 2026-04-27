@@ -1290,6 +1290,65 @@ async def trigger_image_reindexation(
     return {"task_id": task.id, "status": "started"}
 
 
+@router.post("/{course_id}/relink-images")
+async def relink_images(
+    course_id: uuid.UUID,
+    clear_old: bool = False,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
+    db=Depends(get_db_session),
+) -> dict:
+    """Re-run the chunk↔image linker without re-embedding or re-extracting.
+
+    The linker is fast (single SELECT + simple Python pairing logic, ~1s for
+    several hundred images) and does not call any external APIs. Useful when:
+
+    - The linker was deployed in an updated form (regex change, new heuristic)
+      and existing courses need their join table refreshed.
+    - A previous indexation run had a transient linker failure and the recap
+      shows red on the Liens row.
+
+    `clear_old=True` purges existing junction rows for this course's
+    rag_collection before re-running, so the looser regex from #2038 can
+    fully re-evaluate. Default `False` keeps existing rows (linker is
+    idempotent and only adds new pairs).
+
+    Powers the wizard's "Relancer le linker" button on the Linker step
+    (#2044).
+    """
+    from app.ai.rag.image_linker import ImageLinker
+
+    result = await db.execute(select(Course).where(Course.id == course_id))
+    course = result.scalar_one_or_none()
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+    if not course.rag_collection_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Course has no rag_collection_id",
+        )
+
+    linker = ImageLinker()
+    cleared = 0
+    if clear_old:
+        cleared = await linker.clear_links_for_source(source=course.rag_collection_id, session=db)
+
+    links_added = await linker.link_images_to_chunks(source=course.rag_collection_id, session=db)
+    await db.commit()
+
+    logger.info(
+        "Linker re-run",
+        course_id=str(course_id),
+        rag_collection_id=course.rag_collection_id,
+        cleared=cleared,
+        links_added=links_added,
+        admin_id=current_user.id,
+    )
+    return {
+        "links_added": links_added,
+        "cleared": cleared,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Resource Upload
 # ---------------------------------------------------------------------------
