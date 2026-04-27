@@ -207,6 +207,7 @@ export async function getIndexStatusApi(courseId: string, taskId?: string) {
     indexed: boolean;
     chunks_indexed: number;
     images_indexed?: number;
+    links_indexed?: number;
     creation_step?: string;
     task?: TaskProgress & { id?: string; state: string };
   }>(`/api/v1/admin/courses/${courseId}/index-status${params}`);

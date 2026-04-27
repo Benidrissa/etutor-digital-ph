@@ -75,6 +75,7 @@ type AIWizardStep =
   | "generate"
   | "syllabus_edit"
   | "lesson_preview"
+  | "indexation"
   | "publish";
 
 const AI_STEPS: AIWizardStep[] = [
@@ -84,6 +85,9 @@ const AI_STEPS: AIWizardStep[] = [
   "generate",
   "syllabus_edit",
   "lesson_preview",
+  // Dedicated indexation step so the Texte/Images/Liens recap is visible
+  // as its own phase rather than buried inside syllabus_edit (#2041).
+  "indexation",
   "publish",
 ];
 
@@ -94,6 +98,7 @@ const STEP_ICONS: Record<AIWizardStep, React.ReactNode> = {
   generate: <Sparkles className="h-4 w-4" />,
   syllabus_edit: <GripVertical className="h-4 w-4" />,
   lesson_preview: <BookOpen className="h-4 w-4" />,
+  indexation: <Database className="h-4 w-4" />,
   publish: <Rocket className="h-4 w-4" />,
 };
 
@@ -795,10 +800,20 @@ export function AICourseWizard({
         }
 
         if (status.task?.state === "SUCCESS" || status.task?.state === "COMPLETE") {
-          setIndexStatus({ indexed: true, chunks_indexed: status.chunks_indexed, images_indexed: status.images_indexed, task: status.task });
+          setIndexStatus({
+            indexed: true,
+            chunks_indexed: status.chunks_indexed,
+            images_indexed: status.images_indexed,
+            links_indexed: status.links_indexed,
+            task: status.task,
+          });
           setIsIndexing(false);
           setIndexStaleWarning(false);
           queryClient.invalidateQueries({ queryKey: ["admin-courses"] });
+          // Auto-advance to publish if the user is sitting on the indexation
+          // step waiting for completion (#2041). Functional setStep reads
+          // the latest step without needing it in the effect's deps.
+          setStep((s) => (s === "indexation" ? "publish" : s));
           return;
         }
 
@@ -977,6 +992,9 @@ export function AICourseWizard({
     if (step === "generate") return generatedModules.length > 0;
     if (step === "syllabus_edit") return generatedModules.length > 0;
     if (step === "lesson_preview") return true; // Optional step — always skippable
+    // Indexation step: same gate as the publish button — task must be
+    // fully complete (text + images + linker). (#2041)
+    if (step === "indexation") return isIndexationFullyComplete(indexStatus);
     return false;
   };
 
@@ -1410,11 +1428,37 @@ export function AICourseWizard({
                   </div>
                 )}
 
-                {/* Indexation recap: text + images on separate rows. The
-                    backend pipeline is one celery task with two phases
-                    (text → images), so a single combined progress bar hid
-                    the second phase. Surfacing both phases makes "0 images
-                    while published" visible (#2032). */}
+                {/* Visual syllabus editor */}
+                {courseId && (
+                  <SyllabusVisualEditor
+                    courseId={courseId}
+                    fetchOnMount
+                  />
+                )}
+              </div>
+            )}
+
+            {/* ── INDEXATION STEP ───────────────────────────────────── */}
+            {/* Promoted from inline-inside-syllabus_edit to a top-level
+                step (#2041) so the Texte/Images/Liens recap is visible
+                in the stepper instead of buried under "Modifier le
+                programme". */}
+            {step === "indexation" && (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-xl font-semibold">{t("index.title")}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {t("index.description")}
+                  </p>
+                </div>
+
+                {!isIndexing && !indexStatus?.indexed && (
+                  <Button onClick={startIndexation} className="w-full min-h-11">
+                    <Database className="mr-2 h-4 w-4" />
+                    {t("index.button")}
+                  </Button>
+                )}
+
                 {(isIndexing || indexStatus?.indexed) && (
                   <IndexationRecap
                     indexStatus={indexStatus}
@@ -1436,14 +1480,6 @@ export function AICourseWizard({
                       {t("index.retryIndexation")}
                     </Button>
                   </div>
-                )}
-
-                {/* Visual syllabus editor */}
-                {courseId && (
-                  <SyllabusVisualEditor
-                    courseId={courseId}
-                    fetchOnMount
-                  />
                 )}
               </div>
             )}
