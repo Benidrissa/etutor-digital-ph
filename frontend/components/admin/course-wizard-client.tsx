@@ -34,8 +34,12 @@ import {
   AlertDialogTitle,
   AlertDialogDescription,
 } from "@/components/ui/alert-dialog";
-import { apiFetch, ApiError, API_BASE, getCourseTaxonomy, type TaxonomyItem } from "@/lib/api";
-import { authClient } from "@/lib/auth";
+import { apiFetch, ApiError, getCourseTaxonomy, type TaxonomyItem } from "@/lib/api";
+import { type UploadedFile } from "@/lib/api-course-admin";
+import {
+  CourseResourceUploadStep,
+  useCourseResourceUpload,
+} from "@/components/admin/course-resource-upload-step";
 
 type WizardStep = "upload" | "info" | "generate" | "index" | "publish";
 
@@ -60,12 +64,9 @@ function mapCreationStepToWizardStep(creationStep: string): WizardStep {
   }
 }
 
-interface UploadedFile {
-  name: string;
-  size_bytes: number;
-  status: "uploading" | "uploaded" | "error";
-  error?: string;
-}
+// UploadedFile is exported from lib/api-course-admin.ts (used by both the
+// shared upload hook and the API helpers). We import it below; no local
+// duplicate is needed.
 
 interface CourseInfo {
   title_fr: string;
@@ -184,9 +185,11 @@ export function CourseWizardClient({
     : "upload";
 
   const [step, setStep] = useState<WizardStep>(initialStep);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [files, setFiles] = useState<UploadedFile[]>([]);
   const [courseId, setCourseId] = useState<string | null>(resumeCourseId ?? null);
+  // Upload state machine + dropzone + file list + error banner are owned by
+  // the shared hook. See course-resource-upload-step.tsx.
+  const upload = useCourseResourceUpload({ courseId });
+  const { files, uploadAllPending } = upload;
   const [courseInfo, setCourseInfo] = useState<CourseInfo>({
     title_fr: "",
     title_en: "",
@@ -244,10 +247,6 @@ export function CourseWizardClient({
   const [showFreshConfirm, setShowFreshConfirm] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [regenerateError, setRegenerateError] = useState<string | null>(null);
-  const [isFetchingExistingFiles, setIsFetchingExistingFiles] = useState(false);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const generatePollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -257,7 +256,6 @@ export function CourseWizardClient({
     if (!resumeCourseId) return;
 
     const hydrateFromBackend = async () => {
-      setIsFetchingExistingFiles(true);
       try {
         const courseData = await apiFetch<{
           title_fr: string;
@@ -280,8 +278,8 @@ export function CourseWizardClient({
           estimated_hours: courseData.estimated_hours,
         });
       } catch {
-      } finally {
-        setIsFetchingExistingFiles(false);
+        // The shared upload hook handles its own loading indicator for files;
+        // failures here just leave the form fields blank for the user.
       }
     };
 
@@ -428,34 +426,6 @@ export function CourseWizardClient({
   }, [step, courseId, isIndexing, indexStatus?.indexed]);
 
   useEffect(() => {
-    if (step !== "upload" || !courseId) return;
-
-    const fetchExistingFiles = async () => {
-      setIsFetchingExistingFiles(true);
-      try {
-        const data = await apiFetch<{ files: Array<{ name: string; size_bytes: number }> }>(
-          `/api/v1/admin/courses/${courseId}/resources`
-        );
-        const serverFiles: UploadedFile[] = (data.files ?? []).map((f) => ({
-          name: f.name,
-          size_bytes: f.size_bytes,
-          status: "uploaded" as const,
-        }));
-        setFiles((prev) => {
-          const localNames = new Set(prev.map((f) => f.name));
-          const toAdd = serverFiles.filter((f) => !localNames.has(f.name));
-          return [...prev, ...toAdd];
-        });
-      } catch {
-      } finally {
-        setIsFetchingExistingFiles(false);
-      }
-    };
-
-    fetchExistingFiles();
-  }, [step, courseId]);
-
-  useEffect(() => {
     getCourseTaxonomy().then((tax) => {
       setDomainOptions(tax.domains);
       setLevelOptions(tax.levels);
@@ -463,126 +433,11 @@ export function CourseWizardClient({
     }).catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (!courseId || files.length > 0) return;
-    apiFetch<{ files: Array<{ name: string; size_bytes: number }> }>(
-      `/api/v1/admin/courses/${courseId}/resources`
-    )
-      .then((data) => {
-        if (data.files?.length) {
-          setFiles(
-            data.files.map((f) => ({ name: f.name, size_bytes: f.size_bytes, status: "uploaded" as const }))
-          );
-        }
-      })
-      .catch(() => {});
-  }, [courseId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const getAuthHeaders = useCallback(async (): Promise<Record<string, string>> => {
-    const token = await authClient.getValidToken();
-    return { Authorization: `Bearer ${token}` };
-  }, []);
-
-  const uploadFile = useCallback(
-    async (file: File) => {
-      if (!courseId) return;
-
-      setFiles((prev) =>
-        prev.map((f) =>
-          f.name === file.name ? { ...f, status: "uploading" as const } : f
-        )
-      );
-
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const headers = await getAuthHeaders();
-      const res = await fetch(`${API_BASE}/api/v1/admin/courses/${courseId}/resources`, {
-        method: "POST",
-        headers,
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        const msg = body?.detail || t("upload.uploadError");
-        setFiles((prev) =>
-          prev.map((f) =>
-            f.name === file.name ? { ...f, status: "error" as const, error: msg } : f
-          )
-        );
-        return;
-      }
-
-      setFiles((prev) =>
-        prev.map((f) => (f.name === file.name ? { ...f, status: "uploaded" as const } : f))
-      );
-    },
-    [courseId, getAuthHeaders, t]
-  );
-
-  const handleFiles = useCallback(
-    async (incoming: File[]) => {
-      const pdfs = incoming.filter((f) => f.type === "application/pdf");
-      if (!pdfs.length) return;
-
-      const newEntries: UploadedFile[] = pdfs
-        .filter((f) => !files.some((existing) => existing.name === f.name))
-        .map((f) => ({ name: f.name, size_bytes: f.size, status: "uploading" as const }));
-
-      if (!newEntries.length) return;
-      setFiles((prev) => [...prev, ...newEntries]);
-
-      if (courseId) {
-        for (const file of pdfs) {
-          await uploadFile(file);
-        }
-      } else {
-        setFiles((prev) =>
-          prev.map((f) =>
-            newEntries.some((n) => n.name === f.name)
-              ? { ...f, status: "uploaded" as const }
-              : f
-          )
-        );
-        setPendingFiles((prev) => [...prev, ...pdfs]);
-      }
-    },
-    [courseId, files, uploadFile]
-  );
-
-  const onDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setIsDragOver(false);
-      const incoming = Array.from(e.dataTransfer.files);
-      handleFiles(incoming);
-    },
-    [handleFiles]
-  );
-
-  const onFileInput = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const incoming = Array.from(e.target.files || []);
-      handleFiles(incoming);
-      e.target.value = "";
-    },
-    [handleFiles]
-  );
-
-  const removeFile = useCallback(
-    async (name: string) => {
-      if (courseId) {
-        const headers = await getAuthHeaders();
-        await fetch(
-          `${API_BASE}/api/v1/admin/courses/${courseId}/resources/${encodeURIComponent(name)}`,
-          { method: "DELETE", headers }
-        ).catch(() => {});
-      }
-      setFiles((prev) => prev.filter((f) => f.name !== name));
-    },
-    [courseId, getAuthHeaders]
-  );
+  // File state, dropzone handlers, and upload state machine live in the
+  // shared `useCourseResourceUpload` hook (course-resource-upload-step.tsx).
+  // Removed duplicate file-handling code (uploadFile, handleFiles,
+  // dropzone state, getAuthHeaders, file-fetch effects) that previously
+  // lived here. Auth tokens are attached by the shared upload helper.
 
   const createCourseAndUploadFiles = useCallback(async () => {
     const errors: Partial<CourseInfo> = {};
@@ -627,21 +482,17 @@ export function CourseWizardClient({
 
       setCourseId(course.id);
 
-      const headers = await getAuthHeaders();
-
-      for (const file of pendingFiles) {
-        const formData = new FormData();
-        formData.append("file", file);
-        await fetch(`${API_BASE}/api/v1/admin/courses/${course.id}/resources`, {
-          method: "POST",
-          headers,
-          body: formData,
-        });
-      }
-
-      if (pendingFiles.length > 0) {
-        setFiles((prev) => prev.map((f) => ({ ...f, status: "uploaded" as const })));
-        setPendingFiles([]);
+      // Flush every locally-queued file via the shared upload helper. If any
+      // file fails (e.g. proxy 502), the hook surfaces an error banner and we
+      // stay on the info step so the user can fix the failures before the
+      // wizard advances. Never force-mark uploads as successful.
+      const result = await uploadAllPending(course.id);
+      if (!result.ok) {
+        // Roll the user back to the upload step so the error banner + per-file
+        // status icons are visible. canGoNext on "upload" will keep "Suivant"
+        // disabled until the failed files are removed or retried.
+        setStep("upload");
+        return;
       }
 
       setStep("generate");
@@ -650,7 +501,7 @@ export function CourseWizardClient({
     } finally {
       setIsCreatingCourse(false);
     }
-  }, [courseInfo, courseId, getAuthHeaders, t, pendingFiles]);
+  }, [courseInfo, courseId, t, uploadAllPending]);
 
   const regenerateSyllabus = useCallback(async (mode: "reuse" | "fresh") => {
     if (!courseId || isGenerating || isRegenerating) return;
@@ -1001,8 +852,18 @@ export function CourseWizardClient({
   }, [onClose]);
 
   const canGoNext = (): boolean => {
-    if (step === "upload") return files.filter((f) => f.status === "uploaded").length > 0;
-    if (step === "info") return courseInfo.title_fr.trim().length > 0 && courseInfo.title_en.trim().length > 0 && files.filter((f) => f.status === "uploaded").length > 0;
+    // Upload step gating is delegated to the shared hook so both wizards
+    // behave identically: at least one file present, none in error or
+    // in-flight, no files force-marked as uploaded.
+    if (step === "upload") return upload.canAdvance;
+    if (step === "info") {
+      const titleOk =
+        courseInfo.title_fr.trim().length > 0 && courseInfo.title_en.trim().length > 0;
+      // For the info step we only require that any earlier upload has fully
+      // settled (no in-flight, no error). At-least-one-file is enforced by
+      // the shared hook's canAdvance when the user originally left "upload".
+      return titleOk && upload.canAdvance;
+    }
     if (step === "generate") return generatedModules.length > 0;
     if (step === "index") return !!(indexStatus?.indexed && indexStatus.chunks_indexed > 0 && !isIndexing);
     return false;
@@ -1111,84 +972,12 @@ export function CourseWizardClient({
         <div className="flex-1 overflow-y-auto p-4 md:p-6">
           <div className="mx-auto max-w-2xl">
             {step === "upload" && (
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-xl font-semibold">{t("upload.title")}</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">{t("upload.description")}</p>
-                </div>
-
-                <div
-                  onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
-                  onDragLeave={() => setIsDragOver(false)}
-                  onDrop={onDrop}
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors ${
-                    isDragOver
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50 hover:bg-muted/50"
-                  }`}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={t("upload.dropzone")}
-                  onKeyDown={(e) => e.key === "Enter" && fileInputRef.current?.click()}
-                >
-                  <Upload className="mb-3 h-8 w-8 text-muted-foreground" />
-                  <p className="text-sm font-medium">
-                    {isDragOver ? t("upload.dropzoneActive") : t("upload.dropzone")}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">{t("upload.fileTypes")}</p>
-                </div>
-
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="application/pdf"
-                  multiple
-                  className="hidden"
-                  onChange={onFileInput}
-                />
-
-                {isFetchingExistingFiles && (
-                  <div className="flex items-center justify-center py-4">
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                  </div>
-                )}
-
-                {files.length > 0 && (
-                  <div className="space-y-2">
-                    {files.map((f) => (
-                      <div
-                        key={f.name}
-                        className="flex items-center gap-3 rounded-lg border bg-card p-3"
-                      >
-                        <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium">{f.name}</p>
-                          <p className="text-xs text-muted-foreground">{formatBytes(f.size_bytes)}</p>
-                        </div>
-                        {f.status === "uploading" && (
-                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                        )}
-                        {f.status === "uploaded" && (
-                          <CheckCircle2 className="h-4 w-4 text-green-600" />
-                        )}
-                        {f.status === "error" && (
-                          <span title={f.error}><AlertCircle className="h-4 w-4 text-destructive" /></span>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 shrink-0"
-                          onClick={(e) => { e.stopPropagation(); removeFile(f.name); }}
-                          aria-label={t("upload.remove")}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <CourseResourceUploadStep
+                upload={upload}
+                onRetry={() => {
+                  if (courseId) void uploadAllPending(courseId);
+                }}
+              />
             )}
 
             {step === "info" && (

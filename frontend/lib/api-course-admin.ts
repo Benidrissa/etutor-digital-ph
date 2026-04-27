@@ -12,7 +12,14 @@ export type ExtractionStatus = "pending" | "extracting" | "done" | "failed";
 export interface UploadedFile {
   name: string;
   size_bytes: number;
-  status: "uploading" | "uploaded" | "error";
+  // queued = picked locally, no HTTP upload attempted yet (no courseId yet).
+  // uploading = HTTP POST in flight.
+  // uploaded = backend persisted (2xx).
+  // error = upload failed; user must remove or retry before advancing.
+  // Wizards must NEVER mark a file "uploaded" optimistically — silent
+  // failures + force-marked success was the root cause behind ungrounded
+  // course generation (#2017, #2023).
+  status: "queued" | "uploading" | "uploaded" | "error";
   error?: string;
   extraction_status?: ExtractionStatus;
 }
