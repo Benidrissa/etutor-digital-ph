@@ -1478,10 +1478,15 @@
         "recap": {
           "textRow": "Texte",
           "imagesRow": "Images",
+          "linksRow": "Liens images-texte",
           "chunksCount": "{count, plural, one {# fragment} other {# fragments}}",
           "imagesCount": "{count, plural, one {# image} other {# images}}",
           "imagesPending": "en attente",
-          "imagesNone": "aucune image"
+          "imagesNone": "aucune image",
+          "linksCount": "{count, plural, one {# lien} other {# liens}}",
+          "linksPending": "en attente",
+          "linksNone": "aucun lien nécessaire",
+          "linksFailed": "échec — relancer l'indexation"
         },
         "resumeHint": "Vous pouvez fermer et revenir plus tard. La tâche continue en arrière-plan.",
         "inProgress": "Indexation en cours",
