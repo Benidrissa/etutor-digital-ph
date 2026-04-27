@@ -1629,6 +1629,7 @@
         "title": "Liens entre texte et illustrations",
         "description": "Le linker associe chaque illustration extraite au paragraphe qui la mentionne. Cette étape est nécessaire pour que les leçons générées puissent citer les bonnes figures.",
         "idle": "En attente de l'extraction des illustrations.",
+        "unknown": "Le linker n'a pas encore été exécuté pour ce cours, ou son état n'est pas finalisé. Vous pouvez le relancer à tout moment.",
         "running": "Création des liens en cours…",
         "done": "Liens créés. Les illustrations sont prêtes à être citées dans les leçons.",
         "doneNone": "Aucune illustration à lier — vous pouvez publier le cours.",
