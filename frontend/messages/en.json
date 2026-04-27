@@ -1629,6 +1629,7 @@
         "title": "Image-to-text links",
         "description": "The linker pairs each extracted figure with the paragraph that mentions it. This step is required so generated lessons can cite the right figures.",
         "idle": "Waiting for image extraction to finish.",
+        "unknown": "The linker has not run yet for this course, or its state hasn't finalized. You can re-run it at any time.",
         "running": "Creating links…",
         "done": "Links created. Figures are ready to be cited in lessons.",
         "doneNone": "No figures to link — you can publish the course.",
