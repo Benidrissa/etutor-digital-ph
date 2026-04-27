@@ -210,27 +210,20 @@ export function useCourseResourceUpload(
     ): Promise<{ ok: boolean; failed: string[] }> => {
       setUploadError(null);
       const queue = [...pendingFiles];
-      // Also retry anything currently in error state so a single button can
-      // both flush queued files AND retry failed ones.
-      const erroredNames = new Set(
-        files.filter((f) => f.status === "error").map((f) => f.name),
-      );
-      const erroredFiles = queue.filter(() => false); // placeholder — errored
-      // The actual File handles for errored entries are still in `pendingFiles`
-      // if they originated from a queued state. If a file was already uploaded
-      // once and failed, we don't have the original File handle to retry — the
-      // user must remove + reattach. That's surfaced via removeFile above.
-      void erroredNames;
-      void erroredFiles;
-
       if (queue.length === 0) return { ok: true, failed: [] };
 
+      // Per-file: try the upload, track which succeeded vs failed. Only
+      // successful files are pulled out of pendingFiles — failed ones stay
+      // queued so the next click of Réessayer actually re-uploads them
+      // instead of short-circuiting on an empty queue (#2026).
+      const succeeded: string[] = [];
       const failed: string[] = [];
       for (const file of queue) {
         const ok = await uploadOne(targetCourseId, file);
-        if (!ok) failed.push(file.name);
+        if (ok) succeeded.push(file.name);
+        else failed.push(file.name);
       }
-      setPendingFiles((prev) => prev.filter((f) => !queue.some((q) => q.name === f.name)));
+      setPendingFiles((prev) => prev.filter((f) => !succeeded.includes(f.name)));
 
       if (failed.length > 0) {
         setUploadError(
@@ -240,7 +233,7 @@ export function useCourseResourceUpload(
       }
       return { ok: true, failed: [] };
     },
-    [files, pendingFiles, t, uploadOne],
+    [pendingFiles, t, uploadOne],
   );
 
   const canAdvance =
