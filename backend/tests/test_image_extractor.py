@@ -1043,6 +1043,85 @@ class TestExtractAllPDFs:
         assert len(result["generic"]) == 2
 
 
+class TestDashedFigureNumberCapture:
+    """Pre-#2055 the regex used `(\\d+\\.?\\d*)` which truncated dashed
+    labels: "FIGURE 2-8 Pareto Chart" stored as figure_number="FIGURE 2"
+    with the "8" bleeding into the caption. Loosened to `\\d+(?:[\\.\\-]\\d+)*`.
+
+    These tests pin the new behaviour for every BOOKS entry that the
+    extractor uses.
+    """
+
+    def setup_method(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.extractor = PDFImageExtractor(Path(self.temp_dir))
+
+    def teardown_method(self):
+        import shutil
+
+        shutil.rmtree(self.temp_dir)
+
+    def _extract(self, text: str, book: str = "triola") -> dict:
+        page = MagicMock()
+        page.get_text.return_value = {
+            "blocks": [
+                {
+                    "type": 0,
+                    "bbox": [10, 200, 300, 220],
+                    "lines": [{"spans": [{"text": text}]}],
+                }
+            ]
+        }
+        image_bbox = pymupdf.Rect(10, 160, 300, 200)
+        patterns = _build_figure_patterns(BOOKS[book])
+        return self.extractor._extract_figure_metadata(page, image_bbox, patterns)
+
+    def test_dashed_figure_uppercase(self):
+        meta = self._extract("FIGURE 2-8 Pareto Chart of Causes of Accidental Deaths")
+        assert meta["figure_number"] == "FIGURE 2-8"
+        assert meta["caption"] is not None
+        assert meta["caption"].startswith("Pareto Chart")
+        # The leading "8" must NOT bleed into the caption
+        assert not meta["caption"].lstrip().startswith("8 ")
+
+    def test_dashed_figure_titlecase(self):
+        meta = self._extract("Figure 2-6 Dotplot of Pulse Rates of Males")
+        assert meta["figure_number"] == "Figure 2-6"
+
+    def test_dotted_figure(self):
+        meta = self._extract("Fig. 2.8 Histogram of distributions")
+        assert meta["figure_number"] is not None
+        assert "2.8" in meta["figure_number"]
+
+    def test_multipart_figure(self):
+        meta = self._extract("Figure 12.3.4 Multipart numbering")
+        assert meta["figure_number"] is not None
+        assert "12.3.4" in meta["figure_number"]
+
+    def test_chapter_only_figure_still_works(self):
+        # Backwards compatibility: pre-loosen behaviour for plain chapter-only
+        meta = self._extract("Figure 2 Common Distributions")
+        assert meta["figure_number"] is not None
+        assert "Figure 2" in meta["figure_number"]
+
+    def test_dashed_table_in_triola(self):
+        meta = self._extract("Table 1-3 Levels of Measurement", book="triola")
+        assert meta["figure_number"] is not None
+        assert "1-3" in meta["figure_number"]
+
+    def test_dashed_figure_in_donaldson(self):
+        meta = self._extract("Figure 5-2 Health system pyramid", book="donaldson")
+        assert meta["figure_number"] is not None
+        assert "5-2" in meta["figure_number"]
+
+    def test_dashed_figure_in_generic_fr(self):
+        meta = self._extract(
+            "Schéma 4-2 Organisation des services de santé", book="generic"
+        )
+        assert meta["figure_number"] is not None
+        assert "4-2" in meta["figure_number"]
+
+
 class TestExtractedImageDataclass:
     def test_instantiation(self):
         img = ExtractedImage(
