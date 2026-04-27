@@ -53,39 +53,47 @@ class ExtractedImage:
     section: str | None
 
 
+# Multi-part numbering pattern: matches "1", "1.5", "2-8", "12.3.4", "1-2-3".
+# Mirrors image_linker._FIGURE_RE (#2038). Previous form `(\d+\.?\d*)` only
+# matched chapter-and-optional-decimal — it truncated dashed numbering like
+# "Figure 2-8" to "Figure 2", which collapsed every chapter-N image into the
+# same figure_map key in the linker and was the root cause of the 2/460 link
+# rate on legacy courses (#2055).
+_NUM = r"(\d+(?:[\.\-]\d+)*)"
+
 BOOKS = {
     "donaldson": {
         "filename_pattern": "Donaldson",
-        "figure_patterns": [r"Figure\s+(\d+\.?\d*)", r"Fig\.?\s+(\d+\.?\d*)"],
+        "figure_patterns": [rf"Figure\s+{_NUM}", rf"Fig\.?\s*{_NUM}"],
         "exhibit_patterns": [],
     },
     "scutchfield": {
         "filename_pattern": "Scutchfield",
-        "figure_patterns": [r"Figure\s+(\d+\.?\d*)", r"Fig\.?\s+(\d+\.?\d*)"],
-        "exhibit_patterns": [r"Exhibit\s+(\d+\.?\d*)"],
+        "figure_patterns": [rf"Figure\s+{_NUM}", rf"Fig\.?\s*{_NUM}"],
+        "exhibit_patterns": [rf"Exhibit\s+{_NUM}"],
     },
     "triola": {
         "filename_pattern": "Triola",
-        "figure_patterns": [r"Figure\s+(\d+\.?\d*)", r"Fig\.?\s+(\d+\.?\d*)"],
-        "exhibit_patterns": [r"Table\s+(\d+[\-\.]?\d*)", r"Chart\s+(\d+\.?\d*)"],
+        "figure_patterns": [rf"Figure\s+{_NUM}", rf"Fig\.?\s*{_NUM}"],
+        "exhibit_patterns": [rf"Table\s+{_NUM}", rf"Chart\s+{_NUM}"],
     },
     "generic": {
         "filename_pattern": None,
         "figure_patterns": [
-            r"Figure\s+(\d+\.?\d*)",
-            r"Fig\.?\s+(\d+\.?\d*)",
-            r"Sch[eé]ma\s+(\d+\.?\d*)",
-            r"Tableau\s+(\d+\.?\d*)",
-            r"Graphique\s+(\d+\.?\d*)",
-            r"Illustration\s+(\d+\.?\d*)",
-            r"Diagramme\s+(\d+\.?\d*)",
-            r"Encadr[eé]\s+(\d+\.?\d*)",
+            rf"Figure\s+{_NUM}",
+            rf"Fig\.?\s*{_NUM}",
+            rf"Sch[eé]ma\s+{_NUM}",
+            rf"Tableau\s+{_NUM}",
+            rf"Graphique\s+{_NUM}",
+            rf"Illustration\s+{_NUM}",
+            rf"Diagramme\s+{_NUM}",
+            rf"Encadr[eé]\s+{_NUM}",
         ],
         "exhibit_patterns": [
-            r"Table\s+(\d+[\-\.]?\d*)",
-            r"Chart\s+(\d+\.?\d*)",
-            r"Exhibit\s+(\d+\.?\d*)",
-            r"Box\s+(\d+\.?\d*)",
+            rf"Table\s+{_NUM}",
+            rf"Chart\s+{_NUM}",
+            rf"Exhibit\s+{_NUM}",
+            rf"Box\s+{_NUM}",
         ],
     },
 }
