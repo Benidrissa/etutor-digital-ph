@@ -1475,6 +1475,14 @@
         "imagesProgress": "{count} images extraites",
         "stepExtractingImages": "Extraction des images des PDFs",
         "chunksAndImagesIndexed": "{chunks} fragments et {images} images indexés",
+        "recap": {
+          "textRow": "Texte",
+          "imagesRow": "Images",
+          "chunksCount": "{count, plural, one {# fragment} other {# fragments}}",
+          "imagesCount": "{count, plural, one {# image} other {# images}}",
+          "imagesPending": "en attente",
+          "imagesNone": "aucune image"
+        },
         "resumeHint": "Vous pouvez fermer et revenir plus tard. La tâche continue en arrière-plan.",
         "inProgress": "Indexation en cours",
         "noImagesIndexed": "Aucune image indexée. Vous pouvez ré-indexer les images séparément sans relancer le pipeline complet (sans coût OpenAI supplémentaire).",
