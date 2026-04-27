@@ -209,23 +209,36 @@ class TextChunker:
         return " ".join(overlap_words)
 
 
-def extract_text_from_pdf(pdf_path: str) -> str:
-    """Extract text from PDF using PyMuPDF."""
+def extract_pages_from_pdf(pdf_path: str) -> list[tuple[int, str]]:
+    """Extract text from a PDF as a list of `(page_number, text)` tuples.
+
+    Page numbers are 1-indexed. Empty pages are skipped (returned list is
+    sparse on page numbers, never sparse on indices). Used by the chunker
+    so each `DocumentChunk.page` reflects the source page — the linker's
+    contextual matching is dead without this (#2038).
+    """
     import fitz  # PyMuPDF
 
-    text_content = []
-
+    pages: list[tuple[int, str]] = []
     try:
         doc = fitz.open(pdf_path)
-        for page in doc:
+        for idx, page in enumerate(doc):
             text = page.get_text()
-            if text.strip():
-                text_content.append(text)
+            if text and text.strip():
+                pages.append((idx + 1, text))
         doc.close()
     except Exception as e:
         raise ValueError(f"Failed to extract text from {pdf_path}: {e}")
+    return pages
 
-    return "\n".join(text_content)
+
+def extract_text_from_pdf(pdf_path: str) -> str:
+    """Extract text from PDF using PyMuPDF. Joins pages with newlines.
+
+    Kept as a thin wrapper around `extract_pages_from_pdf` for callers
+    that don't care about page boundaries.
+    """
+    return "\n".join(text for _, text in extract_pages_from_pdf(pdf_path))
 
 
 def detect_language(text: str) -> str:

@@ -19,7 +19,11 @@ from app.domain.models.source_image import SourceImage, SourceImageChunk
 
 logger = structlog.get_logger(__name__)
 
-_FIGURE_RE = re.compile(r"(?:Figure|Fig\.?)\s+(\d+[\.\-]?\d*)", re.IGNORECASE)
+# Match "Figure 1.5", "Fig 1-5", "Fig. 1.5.3", "FIGURE1.5", etc. The `.?\s*`
+# lets the period-and-space after "Fig"/"Figure" be optional. The
+# `(?:[\.\-]\d+)*` allows multi-part numbering ("1.5.3") rather than the
+# previous two-part cap. (#2038)
+_FIGURE_RE = re.compile(r"(?:Figure|Fig)\.?\s*(\d+(?:[\.\-]\d+)*)", re.IGNORECASE)
 
 _PAGE_ADJACENCY = 1
 

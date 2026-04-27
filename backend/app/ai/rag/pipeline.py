@@ -9,7 +9,11 @@ import structlog
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.rag.chunker import TextChunker, detect_language, extract_text_from_pdf
+from app.ai.rag.chunker import (
+    TextChunker,
+    detect_language,
+    extract_pages_from_pdf,
+)
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.image_extractor import PDFImageExtractor
 from app.ai.rag.image_linker import ImageLinker
@@ -65,25 +69,45 @@ class RAGPipeline:
 
         logger.info("Starting PDF processing", pdf_path=str(pdf_path), source=source)
 
-        # Extract text from PDF
+        # Extract text per page so each chunk can record its page number.
+        # The image linker's contextual matching joins on chunk.page == image.page_number;
+        # before #2038 this was always None and that match path was dead.
         try:
-            text = extract_text_from_pdf(str(pdf_path))
+            pages = extract_pages_from_pdf(str(pdf_path))
         except Exception as e:
             logger.error("Failed to extract text from PDF", pdf_path=str(pdf_path), error=str(e))
             raise
 
-        if not text.strip():
+        if not pages:
             logger.warning("No text extracted from PDF", pdf_path=str(pdf_path))
             return 0
 
-        # Detect language
-        language = detect_language(text)
-        logger.info("Detected language", language=language, text_length=len(text))
-
-        # Create chunks
-        chunks = list(
-            self.chunker.chunk_document(text=text, source=source, level=level, language=language)
+        # Sample first 5 pages for language detection — full document join would
+        # waste memory on a 600-page textbook for the same answer.
+        sample = " ".join(t for _, t in pages[:5])
+        language = detect_language(sample)
+        total_chars = sum(len(t) for _, t in pages)
+        logger.info(
+            "Detected language",
+            language=language,
+            text_length=total_chars,
+            page_count=len(pages),
         )
+
+        # Chunk page-by-page so each emitted DocumentChunk inherits its page.
+        chunks = []
+        for page_num, page_text in pages:
+            if not page_text.strip():
+                continue
+            chunks.extend(
+                self.chunker.chunk_document(
+                    text=page_text,
+                    source=source,
+                    level=level,
+                    language=language,
+                    page=page_num,
+                )
+            )
 
         if not chunks:
             logger.warning("No chunks created from document", pdf_path=str(pdf_path))
