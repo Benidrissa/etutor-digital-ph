@@ -129,7 +129,7 @@ class ImageGenerationService:
             await session.flush()
 
             image_bytes, image_url = await self._call_dalle(prompt)
-            webp_bytes, width = _resize_to_webp(image_bytes, max_width=512)
+            webp_bytes, width = _resize_to_webp(image_bytes, max_width=1024)
 
             alt_fr, alt_en = await self._generate_alt_text(concept)
 
@@ -169,18 +169,30 @@ class ImageGenerationService:
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=600.0)
 
         system = (
-            "You are an expert in public health education for West Africa. "
-            "Given lesson content, extract: "
-            "1) A short key concept (5 words max), "
-            "2) A vivid image generation prompt that follows these STRICT rules:\n"
-            "   - NEVER include any text, words, labels, numbers, letters, captions, or titles in the image\n"
-            "   - Focus on visual metaphors, diagrams without text, people, scenes, objects\n"
-            "   - Style: clean flat illustration, infographic style, vibrant colors, educational\n"
-            "   - Context: West African setting, diverse people, health facilities\n"
-            "   - Max 120 chars\n"
-            "   - Examples of GOOD prompts: 'African health worker examining patient in rural clinic, stethoscope, colorful flat illustration'\n"
-            "   - Examples of BAD prompts: 'Chart showing mortality rates with labels and percentages'\n"
-            "3) A JSON array of 5-8 lowercase semantic tags. "
+            "You design explanatory infographics for an adaptive multi-subject learning platform. "
+            "Given lesson content, extract:\n"
+            "1) A short key concept (5 words max).\n"
+            "2) A detailed image-generation prompt for an editorial-poster-style INFOGRAPHIC "
+            "that explains the concept at a glance. The prompt MUST request:\n"
+            "   - A clear short title across the top.\n"
+            "   - 3 to 6 named components, objects, or steps drawn as a labeled diagram, "
+            "each with a short callout label (1-3 words).\n"
+            "   - Connector arrows or lines that show how the components relate "
+            "(flow, hierarchy, before/after, cause/effect).\n"
+            "   - Optional split panels when the concept has natural contrasts "
+            "(e.g. rural vs urban, before vs after, input vs output).\n"
+            "   - An optional small legend or maturity/timeline strip at the bottom only if it fits the concept.\n"
+            "   - Style: flat editorial illustration, hand-drawn educational poster feel, "
+            "muted palette with one or two accent colors, lots of whitespace, sans-serif labels.\n"
+            "   - Stay subject-agnostic: derive the visual setting from the lesson content itself "
+            "(do not assume any specific country, region, profession, or industry unless the lesson states it).\n"
+            "   - 250-400 characters.\n"
+            '   - GOOD example: \'Educational poster titled "Photosynthesis". Cross-section of a leaf '
+            "with labeled callouts: chloroplast, stomata, xylem, phloem. Arrows show CO2 in, O2 out, "
+            "water up, sugar down. Flat illustration, muted greens, hand-drawn feel.'\n"
+            "   - BAD example: 'A green leaf in nature, vibrant colors' (no labels, no structure).\n"
+            "3) A JSON array of 5-8 lowercase semantic tags describing the lesson concept. "
+            'Always include the literal tag "style:infographic" as one of the tags.\n'
             "Reply ONLY in this exact format:\n"
             "CONCEPT: <concept>\n"
             "PROMPT: <image_prompt>\n"
@@ -237,7 +249,15 @@ class ImageGenerationService:
     async def _find_reusable_image(
         self, tags: list[str], session: AsyncSession
     ) -> GeneratedImage | None:
-        """Search generated_images for an existing ready image with ≥85% tag overlap."""
+        """Search generated_images for an existing ready image with ≥85% tag overlap.
+
+        Only matches candidates that share the same style discriminator tag
+        (e.g. ``style:infographic``) so older plain-illustration rows are not reused.
+        """
+        style_tags = {t.lower() for t in tags if t.lower().startswith("style:")}
+        if not style_tags:
+            return None
+
         result = await session.execute(
             select(GeneratedImage).where(GeneratedImage.status == "ready")
         )
@@ -245,6 +265,11 @@ class ImageGenerationService:
 
         for candidate in candidates:
             if not candidate.semantic_tags:
+                continue
+            candidate_styles = {
+                t.lower() for t in candidate.semantic_tags if t.lower().startswith("style:")
+            }
+            if not (style_tags & candidate_styles):
                 continue
             similarity = _jaccard_similarity(tags, candidate.semantic_tags)
             if similarity >= SEMANTIC_REUSE_THRESHOLD:
@@ -259,14 +284,11 @@ class ImageGenerationService:
 
         client = AsyncOpenAI(api_key=settings.openai_api_key)
 
-        no_text_suffix = " I NEED this image to contain absolutely NO text, letters, numbers, or written words anywhere."
-        final_prompt = prompt + no_text_suffix
-
         response = await client.images.generate(
             model="gpt-image-1",
-            prompt=final_prompt,
-            size="1024x1024",
-            quality="low",
+            prompt=prompt,
+            size="1536x1024",
+            quality="medium",
         )
 
         image_bytes = base64.b64decode(response.data[0].b64_json)
@@ -287,11 +309,12 @@ class ImageGenerationService:
                 {
                     "role": "user",
                     "content": (
-                        f"Write a short accessibility alt-text for an educational illustration "
-                        f"about '{concept}' for West African public health students.\n"
+                        f"Write a short accessibility alt-text for an explanatory infographic "
+                        f"about '{concept}'. Describe the labeled components, panels, "
+                        f"and relationships shown — not just the topic.\n"
                         "Reply in this exact format:\n"
-                        "FR: <alt text in French, max 15 words>\n"
-                        "EN: <alt text in English, max 15 words>"
+                        "FR: <alt text in French, max 20 words>\n"
+                        "EN: <alt text in English, max 20 words>"
                     ),
                 }
             ],
@@ -326,11 +349,17 @@ def _parse_concept_response(text: str) -> tuple[str, str, list[str]]:
                 tags = re.findall(r'"([^"]+)"', raw)
 
     if not concept:
-        concept = "public health"
+        concept = "lesson concept"
     if not prompt:
-        prompt = f"Educational illustration of {concept} for West African public health"
+        prompt = (
+            f'Editorial-poster-style infographic titled "{concept}" with 3-5 labeled '
+            "components, callouts, and connector arrows. Flat illustration, hand-drawn feel, "
+            "muted palette, sans-serif labels."
+        )
     if not tags:
         tags = [concept.lower()]
+    if "style:infographic" not in {t.lower() for t in tags}:
+        tags.append("style:infographic")
 
     return concept, prompt, tags
 
