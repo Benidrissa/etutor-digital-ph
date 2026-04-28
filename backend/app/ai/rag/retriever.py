@@ -24,6 +24,14 @@ logger = structlog.get_logger()
 _STOCK_THUMB_MAX_WIDTH = 200
 _STOCK_THUMB_KINDS = ("photo", "decorative")
 
+# High-precision SourceImageChunk reference types. PR #2066 added
+# `semantic` (caption-vs-chunk cosine similarity) which expanded the
+# candidate pool 3.7× on the Triola collection (109 explicit → 400
+# semantic). Lower precision than the others, so semantic links should
+# only fill the slate for a chunk when it has no higher-precision link
+# (issue #2072).
+_HIGH_PRECISION_REF_TYPES = ("explicit", "contextual")
+
 
 @dataclass
 class SearchResult:
@@ -327,7 +335,26 @@ class SemanticRetriever:
         )
         pairs = rows.all()
 
+        # Demote semantic-only links: when a chunk has any explicit or
+        # contextual link, drop semantic rows for that chunk.
+        per_chunk: dict[UUID, list] = {}
         for sic, img in pairs:
+            per_chunk.setdefault(sic.document_chunk_id, []).append((sic, img))
+        filtered_pairs = []
+        for cid, group in per_chunk.items():
+            has_high_precision = any(
+                sic.reference_type in _HIGH_PRECISION_REF_TYPES for sic, _ in group
+            )
+            if has_high_precision:
+                filtered_pairs.extend(
+                    (sic, img)
+                    for sic, img in group
+                    if sic.reference_type in _HIGH_PRECISION_REF_TYPES
+                )
+            else:
+                filtered_pairs.extend(group)
+
+        for sic, img in filtered_pairs:
             if total_collected >= max_total:
                 break
             cid = sic.document_chunk_id
