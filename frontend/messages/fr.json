@@ -808,7 +808,9 @@
     "countryFallback": "Le contenu adapté à votre région sera disponible prochainement"
   },
   "UnitPage": {
-    "backToModule": "Retour à {module}"
+    "backToModule": "Retour à {module}",
+    "previous": "Précédent",
+    "next": "Suivant"
   },
   "BilingualTooltip": {
     "french": "Français",
