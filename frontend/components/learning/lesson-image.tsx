@@ -75,7 +75,7 @@ export function LessonImage({ lessonId, language }: LessonImageProps) {
   if (status !== 'ready' || !imageUrl) {
     return (
       <div
-        className="w-full max-w-[512px] mx-auto my-6 rounded-lg overflow-hidden animate-pulse"
+        className="w-full my-6 rounded-lg overflow-hidden animate-pulse"
         aria-busy="true"
         aria-label={t('imagePending')}
       >
@@ -88,7 +88,7 @@ export function LessonImage({ lessonId, language }: LessonImageProps) {
 
   return (
     <>
-      <div className="w-full max-w-[512px] mx-auto my-6">
+      <div className="w-full my-6">
         <button
           type="button"
           className="w-full rounded-lg overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 min-h-11"
@@ -101,7 +101,7 @@ export function LessonImage({ lessonId, language }: LessonImageProps) {
             width={512}
             height={512}
             loading="lazy"
-            sizes="(max-width: 640px) 100vw, 512px"
+            sizes="(max-width: 768px) 100vw, (max-width: 1024px) 90vw, 832px"
             unoptimized
             className={`w-full h-auto object-cover rounded-lg transition-opacity duration-300 ${
               isVisible ? 'opacity-100' : 'opacity-0'
