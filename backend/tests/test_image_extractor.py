@@ -916,6 +916,33 @@ class TestExtractImagesFromPDF:
         assert results == []
 
     @patch("pymupdf.open")
+    def test_filters_stock_thumbnail_under_200px(self, mock_open):
+        """Regression test for #2073 — 150×100 stock-photo thumbnails must be filtered."""
+        mock_doc = MagicMock()
+        mock_doc.page_count = 1
+        mock_page = MagicMock()
+        mock_page.get_images.return_value = [(42, 0, 150, 100, 8, "CS", "I")]
+        mock_page.get_image_info.return_value = []
+        mock_page.get_text.side_effect = lambda mode=None: "" if mode != "dict" else {"blocks": []}
+        mock_page.get_drawings.return_value = []
+        thumb_png = _make_minimal_png(150, 100)
+        mock_doc.extract_image.return_value = {
+            "image": thumb_png,
+            "ext": "png",
+            "width": 150,
+            "height": 100,
+        }
+        mock_doc.load_page.return_value = mock_page
+        mock_open.return_value = mock_doc
+        mock_doc.__enter__ = MagicMock(return_value=mock_doc)
+        mock_doc.__exit__ = MagicMock(return_value=False)
+
+        pdf_path = self.resources_path / "test.pdf"
+        pdf_path.touch()
+        results = self.extractor.extract_images_from_pdf(pdf_path, "triola")
+        assert results == []
+
+    @patch("pymupdf.open")
     def test_extracts_valid_image(self, mock_open):
         mock_doc = MagicMock()
         mock_doc.page_count = 1
