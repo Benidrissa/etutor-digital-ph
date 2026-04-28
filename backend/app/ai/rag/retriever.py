@@ -341,7 +341,7 @@ class SemanticRetriever:
         for sic, img in pairs:
             per_chunk.setdefault(sic.document_chunk_id, []).append((sic, img))
         filtered_pairs = []
-        for cid, group in per_chunk.items():
+        for group in per_chunk.values():
             has_high_precision = any(
                 sic.reference_type in _HIGH_PRECISION_REF_TYPES for sic, _ in group
             )
