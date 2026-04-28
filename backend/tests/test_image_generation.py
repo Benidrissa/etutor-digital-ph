@@ -51,8 +51,9 @@ class TestParseConceptResponse:
 
     def test_defaults_when_empty(self):
         concept, prompt, tags = _parse_concept_response("")
-        assert concept == "public health"
+        assert concept == "lesson concept"
         assert len(tags) > 0
+        assert "style:infographic" in tags
 
     def test_tags_lowercased(self):
         text = 'CONCEPT: Malaria\nPROMPT: Illustration\nTAGS: ["MALARIA", "AOF"]'
@@ -161,8 +162,8 @@ class TestImageGenerationService:
         content_block = MagicMock()
         content_block.text = (
             "CONCEPT: paludisme\n"
-            "PROMPT: Malaria parasite life cycle in West Africa illustration\n"
-            'TAGS: ["paludisme", "malaria", "aof", "épidémiologie"]'
+            "PROMPT: Educational poster titled Paludisme with labeled life-cycle stages and arrows\n"
+            'TAGS: ["paludisme", "malaria", "aof", "épidémiologie", "style:infographic"]'
         )
         msg.content = [content_block]
         return msg
@@ -179,7 +180,9 @@ class TestImageGenerationService:
 
     async def test_semantic_reuse_skips_dalle(self, service, mock_session, mock_claude_response):
         """When a matching image exists (≥85% Jaccard), DALL-E must NOT be called."""
-        existing = _make_db_image(["paludisme", "malaria", "aof", "épidémiologie"])
+        existing = _make_db_image(
+            ["paludisme", "malaria", "aof", "épidémiologie", "style:infographic"]
+        )
         existing.reuse_count = 0
 
         dedup_result = _no_existing_image_result()
@@ -245,9 +248,11 @@ class TestImageGenerationService:
             mock_openai.images.generate.assert_called_once()
             call_kwargs = mock_openai.images.generate.call_args.kwargs
             assert call_kwargs.get("model") == "gpt-image-1"
-            assert call_kwargs.get("size") == "1024x1024"
+            assert call_kwargs.get("size") == "1536x1024"
+            assert call_kwargs.get("quality") == "medium"
             prompt_sent = call_kwargs.get("prompt", "")
-            assert "NO text" in prompt_sent or "no text" in prompt_sent.lower()
+            assert "NO text" not in prompt_sent
+            assert "no text, letters, numbers" not in prompt_sent.lower()
 
         assert result.status == "ready"
         assert result.image_url == f"/api/v1/images/{result.id}/data"
@@ -314,7 +319,9 @@ class TestImageGenerationService:
 
     async def test_reuse_increments_reuse_count(self, service, mock_session, mock_claude_response):
         """Reusing an existing image must increment its reuse_count."""
-        existing = _make_db_image(["paludisme", "malaria", "aof", "épidémiologie"])
+        existing = _make_db_image(
+            ["paludisme", "malaria", "aof", "épidémiologie", "style:infographic"]
+        )
         existing.reuse_count = 2
 
         dedup_result = _no_existing_image_result()
@@ -337,25 +344,38 @@ class TestImageGenerationService:
 
         assert existing.reuse_count == 3
 
-    def test_system_prompt_contains_no_text_rules(self):
-        """System prompt for concept extraction must contain strict no-text rules."""
+    def test_system_prompt_requests_infographic_style(self):
+        """System prompt for concept extraction must ask for an infographic with labels."""
         import inspect
 
         from app.domain.services import image_service
 
         source = inspect.getsource(image_service)
-        assert "NEVER include any text" in source
-        assert "West African setting" in source
-        assert "flat illustration" in source
+        assert "INFOGRAPHIC" in source
+        assert "callout" in source.lower()
+        assert "subject-agnostic" in source.lower()
+        # West-Africa / public-health framing must be gone.
+        assert "West African setting" not in source
+        assert "public health education for West Africa" not in source
 
-    def test_dalle_prompt_suffix_enforces_no_text(self):
-        """DALL-E prompt must include the no-text enforcement suffix."""
+    def test_dalle_prompt_does_not_append_no_text_suffix(self):
+        """The legacy NO-TEXT enforcement suffix must no longer be present."""
         import inspect
 
         from app.domain.services import image_service
 
         source = inspect.getsource(image_service)
-        assert "NO text, letters, numbers, or written words" in source
+        assert "NO text, letters, numbers, or written words" not in source
+
+    def test_dalle_call_uses_medium_quality_landscape(self):
+        """gpt-image-1 must be invoked at medium quality, 1536x1024."""
+        import inspect
+
+        from app.domain.services import image_service
+
+        source = inspect.getsource(image_service)
+        assert '"1536x1024"' in source
+        assert '"medium"' in source
 
     def test_openai_api_key_not_in_frontend_accessible_code(self):
         """Verify OPENAI_API_KEY is loaded from settings (server-side), not hardcoded."""
