@@ -13,7 +13,11 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import HTTPException
 
-from app.api.v1.admin_courses import _require_indexed_sources, _safe_task_meta
+from app.api.v1.admin_courses import (
+    _require_extracted_sources,
+    _require_indexed_sources,
+    _safe_task_meta,
+)
 
 
 class _RaisingInfoAsyncResult:
@@ -133,6 +137,65 @@ async def test_require_indexed_sources_blocks_when_zero_chunks():
         await _require_indexed_sources(course, db)
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail["code"] == "no_source_summary"
+
+
+# ---------------------------------------------------------------------------
+# #2079 — _require_extracted_sources gate (raw_text-based, not chunk-based)
+# ---------------------------------------------------------------------------
+
+
+def _make_db_with_extracted_count(count: int):
+    """Mock db.execute that returns a count for the extracted-resources query."""
+
+    class _Result:
+        def scalar_one(self):
+            return count
+
+    db = SimpleNamespace()
+    db.execute = AsyncMock(return_value=_Result())
+    return db
+
+
+@pytest.mark.asyncio
+async def test_require_extracted_sources_passes_when_raw_text_present():
+    """Regression case for #2079: AI wizard reaches ai_proposal before Indexation.
+
+    raw_text is populated by extract_course_resource at upload time (well before
+    the dedicated Indexation step), so suggest-metadata / generate-structure /
+    regenerate-syllabus must succeed even when DocumentChunk count is zero.
+    """
+    course = SimpleNamespace(id="course-1", rag_collection_id="col-1")
+    db = _make_db_with_extracted_count(1)
+    await _require_extracted_sources(course, db)  # no exception
+
+
+@pytest.mark.asyncio
+async def test_require_extracted_sources_blocks_when_no_extracted_text():
+    course = SimpleNamespace(id="course-1", rag_collection_id="col-1")
+    db = _make_db_with_extracted_count(0)
+    with pytest.raises(HTTPException) as exc_info:
+        await _require_extracted_sources(course, db)
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail["code"] == "no_source_summary"
+    assert exc_info.value.detail["message_key"] == "course.generate.no_source_summary"
+
+
+@pytest.mark.asyncio
+async def test_require_extracted_sources_query_filters_on_done_and_nonempty():
+    """The SQL must filter on extraction_status=DONE AND length(raw_text) > 0.
+
+    Source-level assertion catches accidental regressions if someone weakens
+    the predicate (e.g. drops the length check, which would let
+    extraction_status=DONE with empty raw_text slip through).
+    """
+    import inspect
+
+    from app.api.v1 import admin_courses
+
+    src = inspect.getsource(admin_courses._require_extracted_sources)
+    assert "EXTRACTION_STATUS_DONE" in src
+    assert "raw_text" in src
+    assert "length" in src.lower()
 
 
 # ---------------------------------------------------------------------------

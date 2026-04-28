@@ -16,6 +16,7 @@ from structlog import get_logger
 from app.api.deps import get_db as get_db_session
 from app.api.deps_local_auth import AuthenticatedUser, require_role
 from app.domain.models.course import Course, UserCourseEnrollment
+from app.domain.models.course_resource import EXTRACTION_STATUS_DONE, CourseResource
 from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
@@ -167,9 +168,14 @@ def _safe_task_meta(task_result: AsyncResult) -> tuple[str, dict]:
 async def _require_indexed_sources(course: Course, db) -> None:
     """Refuse AI generation when no indexed source content exists for the course.
 
-    See #2017: title/description/objectives/syllabus/modules must be grounded in
-    indexed RAG content. Falling through to a prompt-only generation produces
-    fabricated, citation-less material.
+    See #2017: lesson/case-study generation must be grounded in indexed RAG
+    content. Falling through to a prompt-only generation produces fabricated,
+    citation-less material.
+
+    Use only on endpoints that actually consume DocumentChunk via RAG retrieval.
+    For endpoints that consume CourseResource.raw_text directly (suggest-metadata,
+    generate-structure, regenerate-syllabus), use _require_extracted_sources —
+    those run before the dedicated Indexation step (#2079).
     """
     if not course.rag_collection_id:
         chunk_count = 0
@@ -189,6 +195,37 @@ async def _require_indexed_sources(course: Course, db) -> None:
                 "message": (
                     "Upload at least one source document and wait for indexation "
                     "to complete before generating course content."
+                ),
+            },
+        )
+
+
+async def _require_extracted_sources(course: Course, db) -> None:
+    """Refuse AI generation when no extracted source text exists for the course.
+
+    The AI wizard runs Indexation as step 7 (after ai_proposal / generate /
+    syllabus_edit / lesson_preview), so the chunk-based _require_indexed_sources
+    gate is wrong for the earlier endpoints — they consume CourseResource.raw_text
+    populated by extract_course_resource at upload time, not DocumentChunk rows.
+    """
+    result = await db.execute(
+        select(func.count())
+        .select_from(CourseResource)
+        .where(
+            CourseResource.course_id == course.id,
+            CourseResource.extraction_status == EXTRACTION_STATUS_DONE,
+            func.length(CourseResource.raw_text) > 0,
+        )
+    )
+    if result.scalar_one() == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "no_source_summary",
+                "message_key": "course.generate.no_source_summary",
+                "message": (
+                    "Upload at least one source document and wait for text "
+                    "extraction to complete before generating course content."
                 ),
             },
         )
@@ -431,14 +468,12 @@ async def suggest_course_metadata(
 
     Synchronous single-turn call — returns within ~10s. Not a Celery task.
     """
-    from app.domain.models.course_resource import CourseResource
-
     result = await db.execute(select(Course).where(Course.id == course_id))
     course = result.scalar_one_or_none()
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
 
-    await _require_indexed_sources(course, db)
+    await _require_extracted_sources(course, db)
 
     # Gather context from uploaded resources
     res_result = await db.execute(
@@ -834,7 +869,7 @@ async def generate_course_structure(
             detail=f"A task is already in progress (step: {course.creation_step})",
         )
 
-    await _require_indexed_sources(course, db)
+    await _require_extracted_sources(course, db)
 
     from app.domain.services.platform_settings_service import SettingsCache
 
@@ -901,7 +936,7 @@ async def regenerate_course_syllabus(
             detail="A generation task is already in progress",
         )
 
-    await _require_indexed_sources(course, db)
+    await _require_extracted_sources(course, db)
 
     from app.domain.services.platform_settings_service import SettingsCache
 
