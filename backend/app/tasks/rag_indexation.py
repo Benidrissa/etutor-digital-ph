@@ -53,10 +53,7 @@ def finalize_indexation_state(
             with Session(engine) as session:
                 if transition is None:
                     session.execute(
-                        text(
-                            "UPDATE courses SET indexation_task_id = NULL"
-                            " WHERE id = :cid"
-                        ),
+                        text("UPDATE courses SET indexation_task_id = NULL WHERE id = :cid"),
                         {"cid": course_id},
                     )
                 else:

@@ -1249,9 +1249,7 @@ async def get_rag_index_status(
                 "files_processed": meta.get("files_processed", 0),
                 "current_file": meta.get("current_file"),
                 "chunks_processed": meta.get("chunks_processed", 0),
-                "estimated_seconds_remaining": meta.get(
-                    "estimated_seconds_remaining"
-                ),
+                "estimated_seconds_remaining": meta.get("estimated_seconds_remaining"),
             }
 
     return response

@@ -37,9 +37,7 @@ class TestFinalizeIndexationState:
 
         with (
             patch("sqlalchemy.create_engine") as mock_engine,
-            patch(
-                "sqlalchemy.orm.Session", return_value=mock_session
-            ),
+            patch("sqlalchemy.orm.Session", return_value=mock_session),
         ):
             mock_engine.return_value = MagicMock()
             finalize_indexation_state("abc-123")
@@ -65,14 +63,10 @@ class TestFinalizeIndexationState:
 
         with (
             patch("sqlalchemy.create_engine") as mock_engine,
-            patch(
-                "sqlalchemy.orm.Session", return_value=mock_session
-            ),
+            patch("sqlalchemy.orm.Session", return_value=mock_session),
         ):
             mock_engine.return_value = MagicMock()
-            finalize_indexation_state(
-                "abc-123", transition=("indexing", "indexed")
-            )
+            finalize_indexation_state("abc-123", transition=("indexing", "indexed"))
 
         sql = captured["sql"]
         assert "indexation_task_id = NULL" in sql
@@ -90,9 +84,7 @@ class TestFinalizeIndexationState:
         task as failed-after-success and the queue would loop."""
         from app.tasks.rag_indexation import finalize_indexation_state
 
-        with patch(
-            "sqlalchemy.create_engine", side_effect=RuntimeError("db down")
-        ):
+        with patch("sqlalchemy.create_engine", side_effect=RuntimeError("db down")):
             finalize_indexation_state("abc-123")  # must not raise
 
 
@@ -106,9 +98,7 @@ class TestRAGTaskCallbacks:
 
         task = RAGTask()
 
-        with patch(
-            "app.tasks.rag_indexation.finalize_indexation_state"
-        ) as mock_finalize:
+        with patch("app.tasks.rag_indexation.finalize_indexation_state") as mock_finalize:
             task.on_success(
                 retval={"status": "complete"},
                 task_id="task-1",
@@ -116,18 +106,14 @@ class TestRAGTaskCallbacks:
                 kwargs={},
             )
 
-        mock_finalize.assert_called_once_with(
-            "course-abc", transition=("indexing", "indexed")
-        )
+        mock_finalize.assert_called_once_with("course-abc", transition=("indexing", "indexed"))
 
     def test_on_failure_transitions_indexing_to_generated(self) -> None:
         from app.tasks.rag_indexation import RAGTask
 
         task = RAGTask()
 
-        with patch(
-            "app.tasks.rag_indexation.finalize_indexation_state"
-        ) as mock_finalize:
+        with patch("app.tasks.rag_indexation.finalize_indexation_state") as mock_finalize:
             task.on_failure(
                 exc=RuntimeError("boom"),
                 task_id="task-1",
@@ -136,18 +122,14 @@ class TestRAGTaskCallbacks:
                 einfo=None,
             )
 
-        mock_finalize.assert_called_once_with(
-            "course-abc", transition=("indexing", "generated")
-        )
+        mock_finalize.assert_called_once_with("course-abc", transition=("indexing", "generated"))
 
     def test_callback_reads_course_id_from_kwargs(self) -> None:
         from app.tasks.rag_indexation import RAGTask
 
         task = RAGTask()
 
-        with patch(
-            "app.tasks.rag_indexation.finalize_indexation_state"
-        ) as mock_finalize:
+        with patch("app.tasks.rag_indexation.finalize_indexation_state") as mock_finalize:
             task.on_success(
                 retval={},
                 task_id="task-1",
@@ -155,9 +137,7 @@ class TestRAGTaskCallbacks:
                 kwargs={"course_id": "course-abc"},
             )
 
-        mock_finalize.assert_called_once_with(
-            "course-abc", transition=("indexing", "indexed")
-        )
+        mock_finalize.assert_called_once_with("course-abc", transition=("indexing", "indexed"))
 
 
 class TestImageIndexTaskCallbacks:
@@ -170,9 +150,7 @@ class TestImageIndexTaskCallbacks:
 
         task = ImageIndexTask()
 
-        with patch(
-            "app.tasks.rag_indexation.finalize_indexation_state"
-        ) as mock_finalize:
+        with patch("app.tasks.rag_indexation.finalize_indexation_state") as mock_finalize:
             task.on_success(
                 retval={"status": "complete"},
                 task_id="task-1",
@@ -187,9 +165,7 @@ class TestImageIndexTaskCallbacks:
 
         task = ImageIndexTask()
 
-        with patch(
-            "app.tasks.rag_indexation.finalize_indexation_state"
-        ) as mock_finalize:
+        with patch("app.tasks.rag_indexation.finalize_indexation_state") as mock_finalize:
             task.on_failure(
                 exc=RuntimeError("boom"),
                 task_id="task-1",

@@ -46,9 +46,7 @@ def upgrade() -> None:
             """
         )
     )
-    print(
-        f"[087] Cleared {result.rowcount} dangling indexation_task_id pointer(s)"
-    )
+    print(f"[087] Cleared {result.rowcount} dangling indexation_task_id pointer(s)")
 
 
 def downgrade() -> None:
