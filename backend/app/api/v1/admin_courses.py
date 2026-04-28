@@ -1214,18 +1214,43 @@ async def get_rag_index_status(
     if effective_task_id:
         task_result = AsyncResult(effective_task_id)
         state, meta = _safe_task_meta(task_result)
-        response["task"] = {
-            "id": effective_task_id,
-            "state": state,
-            "step": meta.get("step"),
-            "step_label": meta.get("step_label"),
-            "progress": meta.get("progress", 0),
-            "files_total": meta.get("files_total", 0),
-            "files_processed": meta.get("files_processed", 0),
-            "current_file": meta.get("current_file"),
-            "chunks_processed": meta.get("chunks_processed", 0),
-            "estimated_seconds_remaining": meta.get("estimated_seconds_remaining"),
-        }
+
+        # Self-heal Redis-evicted task pointers (#2085). When a worker dies
+        # via SIGKILL (deploy, OOM, container restart) Celery callbacks
+        # don't run, so courses.indexation_task_id can outlive its task.
+        # AsyncResult on an evicted/unknown task returns state=PENDING with
+        # an empty meta — indistinguishable from a freshly-enqueued task
+        # *unless* the course already has indexed data (chunks/images
+        # committed mid-run). When both conditions hold, the pointer is
+        # provably dead; null it on read so the wizard returns to a clean
+        # state without admin intervention.
+        is_evicted_pointer = (
+            state == "PENDING"
+            and not meta
+            and effective_task_id == course.indexation_task_id
+            and (chunks_indexed > 0 or images_indexed > 0)
+        )
+        if is_evicted_pointer:
+            course.indexation_task_id = None
+            await db.commit()
+            logger.info(
+                "Cleared evicted indexation_task_id pointer",
+                course_id=str(course_id),
+                task_id=effective_task_id,
+            )
+        else:
+            response["task"] = {
+                "id": effective_task_id,
+                "state": state,
+                "step": meta.get("step"),
+                "step_label": meta.get("step_label"),
+                "progress": meta.get("progress", 0),
+                "files_total": meta.get("files_total", 0),
+                "files_processed": meta.get("files_processed", 0),
+                "current_file": meta.get("current_file"),
+                "chunks_processed": meta.get("chunks_processed", 0),
+                "estimated_seconds_remaining": meta.get("estimated_seconds_remaining"),
+            }
 
     return response
 
