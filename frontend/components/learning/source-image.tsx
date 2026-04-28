@@ -38,7 +38,7 @@ export function SourceImage({
 
   return (
     <>
-      <figure className="my-6 w-full max-w-[768px] mx-auto">
+      <figure className="my-6 w-full">
         <button
           type="button"
           className="w-full rounded-lg overflow-hidden border border-stone-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 min-h-11"
@@ -57,7 +57,7 @@ export function SourceImage({
             // from #1616 and #1857.
             width={1024}
             height={768}
-            sizes="(max-width: 768px) 100vw, 768px"
+            sizes="(max-width: 768px) 100vw, (max-width: 1024px) 90vw, 832px"
             loading="lazy"
             unoptimized
             className={`w-full h-auto object-contain rounded-lg transition-opacity duration-300 ${
