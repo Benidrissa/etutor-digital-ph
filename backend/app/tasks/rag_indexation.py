@@ -26,36 +26,88 @@ def _estimate_seconds(pdf_files: list[Path]) -> int:
     return max(30, int(extraction_s + embedding_s))
 
 
-class RAGTask(Task):
-    """Base task for RAG indexation with progress tracking."""
+def finalize_indexation_state(
+    course_id: str | None,
+    *,
+    transition: tuple[str, str] | None = None,
+) -> None:
+    """Clear ``courses.indexation_task_id``; optionally transition ``creation_step``.
 
-    def on_success(self, retval, task_id, args, kwargs):
-        logger.info("RAG indexation completed", task_id=task_id, result=retval)
+    Called from Celery task lifecycle callbacks so the
+    ``(creation_step, indexation_task_id)`` pair is always written
+    atomically on every terminal exit. The conditional ``creation_step``
+    transition is idempotent — if the user cancelled while the task was
+    running, the WHERE clause skips the transition and we still null
+    the task pointer. See #2085.
+    """
+    if not course_id:
+        return
+    try:
+        from sqlalchemy import create_engine, text
+        from sqlalchemy.orm import Session
 
-    def on_failure(self, exc, task_id, args, kwargs, einfo):
-        logger.error("RAG indexation failed", task_id=task_id, exception=str(exc))
-        # Reset creation_step so the user can retry
+        from app.infrastructure.config.settings import settings
+
+        engine = create_engine(settings.database_url_sync, pool_pre_ping=True)
         try:
-            course_id = args[0] if args else kwargs.get("course_id")
-            if course_id:
-                from sqlalchemy import create_engine, text
-                from sqlalchemy.orm import Session
-
-                from app.infrastructure.config.settings import settings
-
-                engine = create_engine(settings.database_url_sync, pool_pre_ping=True)
-                with Session(engine) as session:
+            with Session(engine) as session:
+                if transition is None:
                     session.execute(
                         text(
-                            "UPDATE courses SET creation_step = 'generated'"
-                            " WHERE id = :cid AND creation_step = 'indexing'"
+                            "UPDATE courses SET indexation_task_id = NULL"
+                            " WHERE id = :cid"
                         ),
                         {"cid": course_id},
                     )
-                    session.commit()
-                engine.dispose()
-        except Exception as reset_exc:
-            logger.warning("Failed to reset creation_step", error=str(reset_exc))
+                else:
+                    from_step, to_step = transition
+                    session.execute(
+                        text(
+                            "UPDATE courses SET indexation_task_id = NULL,"
+                            " creation_step = CASE WHEN creation_step = :from_step"
+                            " THEN :to_step ELSE creation_step END"
+                            " WHERE id = :cid"
+                        ),
+                        {
+                            "cid": course_id,
+                            "from_step": from_step,
+                            "to_step": to_step,
+                        },
+                    )
+                session.commit()
+        finally:
+            engine.dispose()
+    except Exception as exc:
+        logger.warning(
+            "Failed to finalize indexation state",
+            course_id=course_id,
+            transition=transition,
+            error=str(exc),
+        )
+
+
+class RAGTask(Task):
+    """Base task for RAG indexation. Owns the lifecycle of
+    ``(creation_step, indexation_task_id)`` so terminal exits — success,
+    raised exception, or revoke — always converge to a consistent state.
+    See #2085 for the bug this prevents (dangling task pointer wedging
+    the wizard).
+    """
+
+    def on_success(self, retval, task_id, args, kwargs):
+        course_id = args[0] if args else kwargs.get("course_id")
+        logger.info("RAG indexation completed", task_id=task_id, course_id=course_id)
+        finalize_indexation_state(course_id, transition=("indexing", "indexed"))
+
+    def on_failure(self, exc, task_id, args, kwargs, einfo):
+        course_id = args[0] if args else kwargs.get("course_id")
+        logger.error(
+            "RAG indexation failed",
+            task_id=task_id,
+            course_id=course_id,
+            exception=str(exc),
+        )
+        finalize_indexation_state(course_id, transition=("indexing", "generated"))
 
 
 @celery_app.task(
@@ -420,28 +472,9 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
             },
         )
 
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import Session
-
-        from app.infrastructure.config.settings import settings
-
-        sync_engine = create_engine(
-            settings.database_url_sync,
-            pool_pre_ping=True,
-            pool_size=2,
-            max_overflow=0,
-        )
-        try:
-            from sqlalchemy import text
-
-            with Session(sync_engine) as session:
-                session.execute(
-                    text("UPDATE courses SET creation_step = 'indexed' WHERE id = :cid"),
-                    {"cid": course_id},
-                )
-                session.commit()
-        finally:
-            sync_engine.dispose()
+        # State transition (creation_step → 'indexed', indexation_task_id → NULL)
+        # is owned by RAGTask.on_success so success/failure/revoke all converge
+        # through one code path. See #2085.
 
         return {
             "status": "complete",

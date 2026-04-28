@@ -14,13 +14,36 @@ UPLOAD_DIR = Path("uploads/course_resources")
 
 
 class ImageIndexTask(Task):
-    """Base task for image indexation with error logging."""
+    """Base task for image-only re-indexation. Clears
+    ``courses.indexation_task_id`` on every terminal exit so the
+    wizard's polling can never wedge on a stale pointer. Does not
+    transition ``creation_step`` — image-only re-index runs at any
+    creation_step (typically 'published') and doesn't change it.
+    See #2085.
+    """
 
     def on_success(self, retval, task_id, args, kwargs):
-        logger.info("Image re-indexation completed", task_id=task_id, result=retval)
+        course_id = args[0] if args else kwargs.get("course_id")
+        logger.info(
+            "Image re-indexation completed",
+            task_id=task_id,
+            course_id=course_id,
+        )
+        from app.tasks.rag_indexation import finalize_indexation_state
+
+        finalize_indexation_state(course_id)
 
     def on_failure(self, exc, task_id, args, kwargs, einfo):
-        logger.error("Image re-indexation failed", task_id=task_id, exception=str(exc))
+        course_id = args[0] if args else kwargs.get("course_id")
+        logger.error(
+            "Image re-indexation failed",
+            task_id=task_id,
+            course_id=course_id,
+            exception=str(exc),
+        )
+        from app.tasks.rag_indexation import finalize_indexation_state
+
+        finalize_indexation_state(course_id)
 
 
 @celery_app.task(
