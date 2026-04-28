@@ -187,12 +187,12 @@ class ImageGenerationService:
             "   - Stay subject-agnostic: derive the visual setting from the lesson content itself "
             "(do not assume any specific country, region, profession, or industry unless the lesson states it).\n"
             "   - 250-400 characters.\n"
-            "   - GOOD example: 'Educational poster titled \"Photosynthesis\". Cross-section of a leaf "
+            '   - GOOD example: \'Educational poster titled "Photosynthesis". Cross-section of a leaf '
             "with labeled callouts: chloroplast, stomata, xylem, phloem. Arrows show CO2 in, O2 out, "
             "water up, sugar down. Flat illustration, muted greens, hand-drawn feel.'\n"
             "   - BAD example: 'A green leaf in nature, vibrant colors' (no labels, no structure).\n"
             "3) A JSON array of 5-8 lowercase semantic tags describing the lesson concept. "
-            "Always include the literal tag \"style:infographic\" as one of the tags.\n"
+            'Always include the literal tag "style:infographic" as one of the tags.\n'
             "Reply ONLY in this exact format:\n"
             "CONCEPT: <concept>\n"
             "PROMPT: <image_prompt>\n"
@@ -352,7 +352,7 @@ def _parse_concept_response(text: str) -> tuple[str, str, list[str]]:
         concept = "lesson concept"
     if not prompt:
         prompt = (
-            f"Editorial-poster-style infographic titled \"{concept}\" with 3-5 labeled "
+            f'Editorial-poster-style infographic titled "{concept}" with 3-5 labeled '
             "components, callouts, and connector arrows. Flat illustration, hand-drawn feel, "
             "muted palette, sans-serif labels."
         )
