@@ -388,8 +388,7 @@ class TestFindSourceImage:
         return session
 
     async def test_returns_none_when_lesson_not_found(self, service, mock_session):
-        mock_session.get = AsyncMock(return_value=None)
-        result = await service._find_source_image(uuid.uuid4(), mock_session)
+        result = await service._find_source_image(None, mock_session)
         assert result is None
 
     async def test_returns_none_when_no_sources_cited(self, service, mock_session):
@@ -397,9 +396,8 @@ class TestFindSourceImage:
 
         lesson = MagicMock(spec=GeneratedContent)
         lesson.sources_cited = None
-        mock_session.get = AsyncMock(return_value=lesson)
 
-        result = await service._find_source_image(uuid.uuid4(), mock_session)
+        result = await service._find_source_image(lesson, mock_session)
         assert result is None
 
     async def test_returns_none_when_sources_cited_empty(self, service, mock_session):
@@ -407,9 +405,8 @@ class TestFindSourceImage:
 
         lesson = MagicMock(spec=GeneratedContent)
         lesson.sources_cited = []
-        mock_session.get = AsyncMock(return_value=lesson)
 
-        result = await service._find_source_image(uuid.uuid4(), mock_session)
+        result = await service._find_source_image(lesson, mock_session)
         assert result is None
 
     async def test_returns_source_image_when_explicit_link_exists(self, service, mock_session):
@@ -417,14 +414,13 @@ class TestFindSourceImage:
 
         lesson = MagicMock(spec=GeneratedContent)
         lesson.sources_cited = [{"source": "donaldson", "chapter": "3", "page": 42}]
-        mock_session.get = AsyncMock(return_value=lesson)
 
         source_img = _make_source_image(image_type="diagram")
         mock_execute_result = MagicMock()
         mock_execute_result.scalar_one_or_none = MagicMock(return_value=source_img)
         mock_session.execute = AsyncMock(return_value=mock_execute_result)
 
-        result = await service._find_source_image(uuid.uuid4(), mock_session)
+        result = await service._find_source_image(lesson, mock_session)
         assert result is source_img
 
     async def test_returns_none_when_no_explicit_source_image(self, service, mock_session):
@@ -432,13 +428,12 @@ class TestFindSourceImage:
 
         lesson = MagicMock(spec=GeneratedContent)
         lesson.sources_cited = [{"source": "triola", "chapter": "1", "page": 5}]
-        mock_session.get = AsyncMock(return_value=lesson)
 
         mock_execute_result = MagicMock()
         mock_execute_result.scalar_one_or_none = MagicMock(return_value=None)
         mock_session.execute = AsyncMock(return_value=mock_execute_result)
 
-        result = await service._find_source_image(uuid.uuid4(), mock_session)
+        result = await service._find_source_image(lesson, mock_session)
         assert result is None
 
 
@@ -446,6 +441,13 @@ def _no_existing_image_result() -> MagicMock:
     """Mock result for the dedup check — no existing image found."""
     result = MagicMock()
     result.scalar_one_or_none.return_value = None
+    return result
+
+
+def _lesson_context_result(lesson: object | None) -> MagicMock:
+    """Mock result for ImageGenerationService._load_lesson_context()."""
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = lesson
     return result
 
 
@@ -485,7 +487,8 @@ class TestDallEFallbackOptimization:
 
         lesson = MagicMock(spec=GeneratedContent)
         lesson.sources_cited = [{"source": "donaldson", "chapter": "3", "page": 42}]
-        mock_session.get = AsyncMock(return_value=lesson)
+        lesson.language = "en"
+        lesson.module = None
 
         reuse_result = MagicMock()
         reuse_result.scalars.return_value.all.return_value = []
@@ -494,7 +497,14 @@ class TestDallEFallbackOptimization:
         source_result.scalar_one_or_none = MagicMock(return_value=source_img)
 
         dedup_result = _no_existing_image_result()
-        mock_session.execute = AsyncMock(side_effect=[dedup_result, reuse_result, source_result])
+        mock_session.execute = AsyncMock(
+            side_effect=[
+                dedup_result,
+                _lesson_context_result(lesson),
+                reuse_result,
+                source_result,
+            ]
+        )
 
         with __import__("unittest.mock", fromlist=["patch"]).patch(
             "anthropic.AsyncAnthropic"
@@ -526,8 +536,6 @@ class TestDallEFallbackOptimization:
         import base64
         from unittest.mock import patch
 
-        mock_session.get = AsyncMock(return_value=None)
-
         dedup_result = _no_existing_image_result()
         reuse_result = MagicMock()
         reuse_result.scalars.return_value.all.return_value = []
@@ -539,7 +547,9 @@ class TestDallEFallbackOptimization:
         image_api_response = MagicMock()
         image_api_response.data = [MagicMock(b64_json=fake_b64)]
 
-        mock_session.execute = AsyncMock(side_effect=[dedup_result, reuse_result])
+        mock_session.execute = AsyncMock(
+            side_effect=[dedup_result, _lesson_context_result(None), reuse_result]
+        )
 
         with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
             mock_client = AsyncMock()
@@ -578,7 +588,8 @@ class TestDallEFallbackOptimization:
 
         lesson = MagicMock(spec=GeneratedContent)
         lesson.sources_cited = [{"source": "triola", "chapter": "5", "page": 90}]
-        mock_session.get = AsyncMock(return_value=lesson)
+        lesson.language = "en"
+        lesson.module = None
 
         reuse_result = MagicMock()
         reuse_result.scalars.return_value.all.return_value = []
@@ -587,7 +598,14 @@ class TestDallEFallbackOptimization:
         source_result.scalar_one_or_none = MagicMock(return_value=source_img)
 
         dedup_result = _no_existing_image_result()
-        mock_session.execute = AsyncMock(side_effect=[dedup_result, reuse_result, source_result])
+        mock_session.execute = AsyncMock(
+            side_effect=[
+                dedup_result,
+                _lesson_context_result(lesson),
+                reuse_result,
+                source_result,
+            ]
+        )
 
         with __import__("unittest.mock", fromlist=["patch"]).patch(
             "anthropic.AsyncAnthropic"
