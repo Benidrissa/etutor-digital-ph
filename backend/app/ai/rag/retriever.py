@@ -6,7 +6,7 @@ from typing import Any
 from uuid import UUID
 
 import structlog
-from sqlalchemy import select, text
+from sqlalchemy import and_, not_, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.rag.embeddings import EmbeddingService
@@ -15,6 +15,14 @@ from app.domain.models.source_image import SourceImage, SourceImageChunk
 from app.domain.services.platform_settings_service import SettingsCache
 
 logger = structlog.get_logger()
+
+# Stock-photo / chapter-opener thumbnails extracted from PDFs come back as
+# tiny webp/jpeg crops (~100–200px wide, ~3KB). They have correct caption
+# metadata but the binary itself is unrelated to the figure they claim to
+# represent (issue #2071). Until the extractor is fixed (#2073), drop them
+# at retrieval time so the lesson generator never sees them as candidates.
+_STOCK_THUMB_MAX_WIDTH = 200
+_STOCK_THUMB_KINDS = ("photo", "decorative")
 
 
 @dataclass
@@ -300,7 +308,18 @@ class SemanticRetriever:
         rows = await session.execute(
             select(SourceImageChunk, SourceImage)
             .join(SourceImage, SourceImageChunk.source_image_id == SourceImage.id)
-            .where(SourceImageChunk.document_chunk_id.in_(chunk_ids))
+            .where(
+                SourceImageChunk.document_chunk_id.in_(chunk_ids),
+                not_(
+                    and_(
+                        SourceImage.figure_kind.in_(_STOCK_THUMB_KINDS),
+                        or_(
+                            SourceImage.width.is_(None),
+                            SourceImage.width <= _STOCK_THUMB_MAX_WIDTH,
+                        ),
+                    )
+                ),
+            )
             .order_by(
                 SourceImageChunk.document_chunk_id,
                 (SourceImageChunk.reference_type != "explicit"),

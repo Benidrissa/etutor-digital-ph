@@ -125,6 +125,23 @@ class TestGetLinkedImages:
         assert result[chunk_id] == []
         assert result[other_chunk_id] == []
 
+    async def test_excludes_stock_thumbnail_kinds_at_query_level(self, retriever):
+        """The compiled SQL must filter (figure_kind in photo/decorative) AND (width<=200 OR null)."""
+        chunk_id = uuid.uuid4()
+        mock_result = MagicMock()
+        mock_result.all.return_value = []
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=mock_result)
+
+        await retriever.get_linked_images([chunk_id], session)
+
+        stmt = session.execute.call_args.args[0]
+        compiled = str(stmt.compile(compile_kwargs={"literal_binds": True})).lower()
+        assert "figure_kind" in compiled
+        assert "'photo'" in compiled and "'decorative'" in compiled
+        assert "width" in compiled
+        assert "200" in compiled
+
 
 class TestSearchSourceImages:
     async def test_empty_query_returns_empty(self, retriever):
