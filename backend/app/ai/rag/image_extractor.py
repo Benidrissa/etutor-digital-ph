@@ -21,9 +21,15 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
-MIN_WIDTH_PX = 100
-MIN_HEIGHT_PX = 100
-MIN_SIZE_BYTES = 2 * 1024
+# Raised from 100/100/2KB to 200/200/4KB in #2073. PDFs frequently embed
+# tiny chapter-opener stock photos and preview thumbnails (100-200px,
+# ~3KB) under the same xref table as real figures; `doc.extract_image()`
+# returns these binaries verbatim. Real textbook figures rasterize to
+# >=200px when extracted at native resolution, so this floor drops the
+# placeholders without affecting legitimate diagrams.
+MIN_WIDTH_PX = 200
+MIN_HEIGHT_PX = 200
+MIN_SIZE_BYTES = 4 * 1024
 WEBP_MAX_WIDTH = 1024
 WEBP_QUALITY = 87
 CAPTION_PROXIMITY_PT = 100
