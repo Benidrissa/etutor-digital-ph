@@ -32,7 +32,6 @@ _STOCK_THUMB_KINDS = ("photo", "decorative")
 # (issue #2072).
 _HIGH_PRECISION_REF_TYPES = ("explicit", "contextual")
 
-
 @dataclass
 class SearchResult:
     """Result from semantic search."""
