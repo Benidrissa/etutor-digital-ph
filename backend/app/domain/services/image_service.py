@@ -9,7 +9,9 @@ from datetime import datetime
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
+from app.ai.prompts.audience import AudienceContext, detect_audience
 from app.domain.models.generated_image import GeneratedImage
 from app.domain.models.source_image import SourceImage, SourceImageChunk
 from app.infrastructure.config.settings import settings
@@ -17,6 +19,7 @@ from app.infrastructure.config.settings import settings
 logger = structlog.get_logger(__name__)
 
 SEMANTIC_REUSE_THRESHOLD = 0.85
+STYLE_TAG_INFOGRAPHIC = "style:infographic"
 
 
 def _jaccard_similarity(tags_a: list[str], tags_b: list[str]) -> float:
@@ -75,7 +78,10 @@ class ImageGenerationService:
         await session.flush()
 
         try:
-            concept, prompt, tags = await self._extract_concept_and_tags(lesson_content)
+            lesson_row, language, audience = await self._load_lesson_context(lesson_id, session)
+            concept, prompt, tags = await self._extract_concept_and_tags(
+                lesson_content, language, audience
+            )
             image_record.concept = concept
             image_record.prompt = prompt
             image_record.semantic_tags = tags
@@ -100,7 +106,7 @@ class ImageGenerationService:
                 )
                 return image_record
 
-            source_img = await self._find_source_image(lesson_id, session)
+            source_img = await self._find_source_image(lesson_row, session)
             if source_img is not None:
                 image_record.status = "ready"
                 image_record.image_url = (
@@ -162,37 +168,93 @@ class ImageGenerationService:
             )
             return image_record
 
-    async def _extract_concept_and_tags(self, lesson_content: str) -> tuple[str, str, list[str]]:
+    async def _load_lesson_context(
+        self, lesson_id: uuid.UUID, session: AsyncSession
+    ) -> tuple[object | None, str, AudienceContext]:
+        """Eager-load the lesson row plus the course audience taxonomy.
+
+        Returns ``(lesson_row, language, audience)``. Falls back to
+        ``("en", AudienceContext(is_kids=False))`` when the lesson, its module,
+        or its course can't be resolved — image generation must remain best-effort.
+        """
+        from app.domain.models.content import GeneratedContent
+        from app.domain.models.module import Module
+
+        result = await session.execute(
+            select(GeneratedContent)
+            .options(
+                selectinload(GeneratedContent.module).selectinload(Module.course),
+            )
+            .where(GeneratedContent.id == lesson_id)
+        )
+        lesson = result.scalar_one_or_none()
+        if lesson is None:
+            return None, "en", AudienceContext(is_kids=False)
+
+        language = (getattr(lesson, "language", None) or "en").lower()
+        if language not in ("fr", "en"):
+            language = "en"
+
+        course = getattr(getattr(lesson, "module", None), "course", None)
+        audience = detect_audience(course)
+        return lesson, language, audience
+
+    async def _extract_concept_and_tags(
+        self, lesson_content: str, language: str, audience: AudienceContext
+    ) -> tuple[str, str, list[str]]:
         """Use Claude API to extract key concept, DALL-E prompt, and semantic tags."""
         import anthropic
 
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=600.0)
 
+        language_name = "French" if language == "fr" else "English"
+
+        if audience.is_kids:
+            style_block = (
+                "STYLE for a children's audience: bright friendly cartoon-style flat "
+                "illustration, primary colors, rounded shapes, big readable text, simple "
+                "icons, optional friendly mascot character. Keep visual complexity low; "
+                "callout labels MUST be 1 to 3 words. Show diverse children where people "
+                "appear."
+            )
+        else:
+            style_block = (
+                "STYLE: flat editorial illustration, hand-drawn educational poster feel, "
+                "muted palette with one or two accent colors, lots of whitespace, sans-serif labels."
+            )
+
         system = (
             "You design explanatory infographics for an adaptive multi-subject learning platform. "
             "Given lesson content, extract:\n"
-            "1) A short key concept (5 words max).\n"
+            "1) A short key concept (5 words max, in English).\n"
             "2) A detailed image-generation prompt for an editorial-poster-style INFOGRAPHIC "
             "that explains the concept at a glance. The prompt MUST request:\n"
             "   - A clear short title across the top.\n"
             "   - 3 to 6 named components, objects, or steps drawn as a labeled diagram, "
-            "each with a short callout label (1-3 words).\n"
+            "each with a short callout label.\n"
             "   - Connector arrows or lines that show how the components relate "
             "(flow, hierarchy, before/after, cause/effect).\n"
-            "   - Optional split panels when the concept has natural contrasts "
-            "(e.g. rural vs urban, before vs after, input vs output).\n"
-            "   - An optional small legend or maturity/timeline strip at the bottom only if it fits the concept.\n"
-            "   - Style: flat editorial illustration, hand-drawn educational poster feel, "
-            "muted palette with one or two accent colors, lots of whitespace, sans-serif labels.\n"
+            "   - Optional split panels when the concept has natural contrasts.\n"
+            "   - An optional small legend or maturity/timeline strip at the bottom only if it fits.\n"
+            f"   - {style_block}\n"
+            "   - Human figures (learners, professionals, customers, kids, etc.) ARE allowed and "
+            "even encouraged when they help convey the concept; depict diverse people and avoid "
+            "stereotypes. They are not required if the concept is purely structural.\n"
             "   - Stay subject-agnostic: derive the visual setting from the lesson content itself "
             "(do not assume any specific country, region, profession, or industry unless the lesson states it).\n"
-            "   - 250-400 characters.\n"
-            '   - GOOD example: \'Educational poster titled "Photosynthesis". Cross-section of a leaf '
-            "with labeled callouts: chloroplast, stomata, xylem, phloem. Arrows show CO2 in, O2 out, "
-            "water up, sugar down. Flat illustration, muted greens, hand-drawn feel.'\n"
+            f"   - LANGUAGE: write the in-image title and ALL callout labels in {language_name} "
+            "(natural, idiomatic). The CONCEPT and TAGS fields below MUST stay in English so the "
+            "cache key is language-agnostic.\n"
+            "   - 250-450 characters.\n"
+            '   - GOOD example (en): \'Educational poster titled "Photosynthesis". Cross-section of '
+            "a leaf with labeled callouts in English: chloroplast, stomata, xylem, phloem. Arrows "
+            "show CO2 in, O2 out, water up, sugar down. Flat illustration, muted greens, hand-drawn feel.'\n"
+            "   - GOOD example (fr): 'Affiche éducative titrée « Photosynthèse ». Coupe d'une "
+            "feuille avec des étiquettes en français : chloroplaste, stomate, xylème, phloème. "
+            "Flèches montrant CO2 entrant, O2 sortant, eau qui monte, sucre qui descend.'\n"
             "   - BAD example: 'A green leaf in nature, vibrant colors' (no labels, no structure).\n"
-            "3) A JSON array of 5-8 lowercase semantic tags describing the lesson concept. "
-            'Always include the literal tag "style:infographic" as one of the tags.\n'
+            "3) A JSON array of 5-8 lowercase English semantic tags describing the lesson concept. "
+            f'Always include the literal tag "{STYLE_TAG_INFOGRAPHIC}" as one of the tags.\n'
             "Reply ONLY in this exact format:\n"
             "CONCEPT: <concept>\n"
             "PROMPT: <image_prompt>\n"
@@ -201,7 +263,7 @@ class ImageGenerationService:
 
         message = await client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=300,
+            max_tokens=400,
             messages=[
                 {
                     "role": "user",
@@ -212,20 +274,30 @@ class ImageGenerationService:
         )
 
         text = message.content[0].text if message.content else ""
-        return _parse_concept_response(text)
+        concept, prompt, tags = _parse_concept_response(text)
+
+        # Inject server-side discriminator tags so the cache key always matches the
+        # actual generated style/language/audience, regardless of what Claude returned.
+        tag_set = {t.lower() for t in tags}
+        if STYLE_TAG_INFOGRAPHIC not in tag_set:
+            tags.append(STYLE_TAG_INFOGRAPHIC)
+        lang_tag = f"lang:{language}"
+        if lang_tag not in tag_set:
+            tags.append(lang_tag)
+        if audience.is_kids and "audience:kids" not in tag_set:
+            tags.append("audience:kids")
+
+        return concept, prompt, tags
 
     async def _find_source_image(
-        self, lesson_id: uuid.UUID, session: AsyncSession
+        self, lesson: object | None, session: AsyncSession
     ) -> SourceImage | None:
         """Check if any source images are explicitly linked to the lesson's document chunks.
 
         Returns the first SourceImage with image_type in ('diagram', 'chart', 'photo')
         that is explicitly linked to a document chunk via the lesson's generated content.
         """
-        from app.domain.models.content import GeneratedContent
-
-        lesson = await session.get(GeneratedContent, lesson_id)
-        if lesson is None or not lesson.sources_cited:
+        if lesson is None or not getattr(lesson, "sources_cited", None):
             return None
 
         sources = [
@@ -251,11 +323,18 @@ class ImageGenerationService:
     ) -> GeneratedImage | None:
         """Search generated_images for an existing ready image with ≥85% tag overlap.
 
-        Only matches candidates that share the same style discriminator tag
-        (e.g. ``style:infographic``) so older plain-illustration rows are not reused.
+        A candidate must share **every** discriminator-prefixed tag from the new
+        generation — currently ``style:``, ``lang:``, and ``audience:``. This
+        prevents cross-language reuse (an EN infographic for an FR lesson) and
+        cross-audience reuse (an adult infographic for a kids lesson). Old rows
+        that pre-date a discriminator simply lack it and are skipped.
         """
-        style_tags = {t.lower() for t in tags if t.lower().startswith("style:")}
-        if not style_tags:
+        new_discriminators = {
+            t.lower()
+            for t in tags
+            if any(t.lower().startswith(p) for p in ("style:", "lang:", "audience:"))
+        }
+        if not new_discriminators:
             return None
 
         result = await session.execute(
@@ -266,10 +345,12 @@ class ImageGenerationService:
         for candidate in candidates:
             if not candidate.semantic_tags:
                 continue
-            candidate_styles = {
-                t.lower() for t in candidate.semantic_tags if t.lower().startswith("style:")
+            candidate_discriminators = {
+                t.lower()
+                for t in candidate.semantic_tags
+                if any(t.lower().startswith(p) for p in ("style:", "lang:", "audience:"))
             }
-            if not (style_tags & candidate_styles):
+            if not new_discriminators.issubset(candidate_discriminators):
                 continue
             similarity = _jaccard_similarity(tags, candidate.semantic_tags)
             if similarity >= SEMANTIC_REUSE_THRESHOLD:
