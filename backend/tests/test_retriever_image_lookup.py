@@ -125,6 +125,86 @@ class TestGetLinkedImages:
         assert result[chunk_id] == []
         assert result[other_chunk_id] == []
 
+    async def test_demotes_semantic_when_explicit_exists_for_chunk(self, retriever):
+        """Chunk with 1 explicit + 2 semantic returns only the explicit row (#2072)."""
+        chunk_id = uuid.uuid4()
+        explicit_img = _make_image()
+        semantic_imgs = [_make_image(), _make_image()]
+        pairs = [
+            _make_chunk_pair(chunk_id, explicit_img, ref_type="explicit"),
+            _make_chunk_pair(chunk_id, semantic_imgs[0], ref_type="semantic"),
+            _make_chunk_pair(chunk_id, semantic_imgs[1], ref_type="semantic"),
+        ]
+        mock_result = MagicMock()
+        mock_result.all.return_value = pairs
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=mock_result)
+
+        result = await retriever.get_linked_images([chunk_id], session)
+
+        returned_ids = [r["id"] for r in result[chunk_id]]
+        assert returned_ids == [str(explicit_img.id)]
+
+    async def test_demotes_semantic_when_contextual_exists_for_chunk(self, retriever):
+        """Contextual is also high-precision; semantic for the same chunk is dropped (#2072)."""
+        chunk_id = uuid.uuid4()
+        contextual_img = _make_image()
+        semantic_img = _make_image()
+        pairs = [
+            _make_chunk_pair(chunk_id, contextual_img, ref_type="contextual"),
+            _make_chunk_pair(chunk_id, semantic_img, ref_type="semantic"),
+        ]
+        mock_result = MagicMock()
+        mock_result.all.return_value = pairs
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=mock_result)
+
+        result = await retriever.get_linked_images([chunk_id], session)
+
+        returned_ids = [r["id"] for r in result[chunk_id]]
+        assert returned_ids == [str(contextual_img.id)]
+
+    async def test_keeps_semantic_when_no_higher_precision_link(self, retriever):
+        """Chunk with 0 explicit + 0 contextual + 2 semantic keeps semantic rows (#2072)."""
+        chunk_id = uuid.uuid4()
+        semantic_imgs = [_make_image(), _make_image()]
+        pairs = [
+            _make_chunk_pair(chunk_id, semantic_imgs[0], ref_type="semantic"),
+            _make_chunk_pair(chunk_id, semantic_imgs[1], ref_type="semantic"),
+        ]
+        mock_result = MagicMock()
+        mock_result.all.return_value = pairs
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=mock_result)
+
+        result = await retriever.get_linked_images([chunk_id], session)
+
+        returned_ids = sorted(r["id"] for r in result[chunk_id])
+        expected_ids = sorted(str(i.id) for i in semantic_imgs)
+        assert returned_ids == expected_ids
+
+    async def test_demotion_is_per_chunk_not_global(self, retriever):
+        """Chunk A (with explicit) drops its semantic; chunk B (no explicit) keeps its semantic (#2072)."""
+        chunk_a = uuid.uuid4()
+        chunk_b = uuid.uuid4()
+        explicit_a = _make_image()
+        semantic_a = _make_image()
+        semantic_b = _make_image()
+        pairs = [
+            _make_chunk_pair(chunk_a, explicit_a, ref_type="explicit"),
+            _make_chunk_pair(chunk_a, semantic_a, ref_type="semantic"),
+            _make_chunk_pair(chunk_b, semantic_b, ref_type="semantic"),
+        ]
+        mock_result = MagicMock()
+        mock_result.all.return_value = pairs
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=mock_result)
+
+        result = await retriever.get_linked_images([chunk_a, chunk_b], session)
+
+        assert [r["id"] for r in result[chunk_a]] == [str(explicit_a.id)]
+        assert [r["id"] for r in result[chunk_b]] == [str(semantic_b.id)]
+
     async def test_excludes_stock_thumbnail_kinds_at_query_level(self, retriever):
         """The compiled SQL must filter (figure_kind in photo/decorative) AND (width<=200 OR null)."""
         chunk_id = uuid.uuid4()
