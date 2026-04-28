@@ -8,6 +8,7 @@ import { EnrollmentGuard } from '@/components/shared/enrollment-guard';
 import { LessonViewer } from '@/components/learning/lesson-viewer';
 import { CaseStudyViewer } from '@/components/learning/case-study-viewer';
 import { UnitQuizViewer } from '@/components/learning/unit-quiz-viewer';
+import { UnitNav } from '@/components/learning/unit-nav';
 
 interface UnitPageProps {
   params: Promise<{ moduleId: string; unit: string }>;
@@ -22,10 +23,15 @@ export default async function UnitPage({ params }: UnitPageProps) {
   const moduleData = await getModuleUnits(moduleId).catch(() => null);
   if (!moduleData) notFound();
 
-  const unit = moduleData.units?.find(
+  const units = moduleData.units ?? [];
+  const unit = units.find(
     (u) => u.unit_number === unitParam || u.id === unitParam,
   );
   if (!unit) notFound();
+
+  const idx = units.findIndex((u) => u.id === unit.id);
+  const prev = idx > 0 ? units[idx - 1] : null;
+  const next = idx >= 0 && idx < units.length - 1 ? units[idx + 1] : null;
 
   const moduleTitle = language === 'fr' ? moduleData.title_fr : moduleData.title_en;
   const unitTitle = language === 'fr' ? unit.title_fr : unit.title_en;
@@ -82,6 +88,13 @@ export default async function UnitPage({ params }: UnitPageProps) {
             unitDescription={unitDescription}
           />
         )}
+
+        <UnitNav
+          moduleId={moduleId}
+          prev={prev}
+          next={next}
+          language={language}
+        />
       </div>
     </EnrollmentGuard>
   );
