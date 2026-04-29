@@ -1497,6 +1497,8 @@
         "reindexImagesError": "La ré-indexation des images a échoué.",
         "cancelIndexation": "Annuler l'indexation",
         "retryIndexation": "Relancer l'indexation",
+        "conflictTitle": "Tâche d'indexation déjà active",
+        "resetAndRetry": "Réinitialiser et relancer l'indexation",
         "staleWarning": "Aucune progression détectée depuis plus de 60 secondes. La tâche est peut-être bloquée.",
         "cancelError": "Impossible d'annuler l'indexation.",
         "cancelSuccess": "Indexation annulée. Vous pouvez la relancer."

@@ -1497,6 +1497,8 @@
         "reindexImagesError": "Image re-indexation failed.",
         "cancelIndexation": "Cancel indexation",
         "retryIndexation": "Retry indexation",
+        "conflictTitle": "Indexation task already active",
+        "resetAndRetry": "Reset and retry indexation",
         "staleWarning": "No progress detected for over 60 seconds. The task may be stuck.",
         "cancelError": "Failed to cancel indexation.",
         "cancelSuccess": "Indexation cancelled. You can restart it."

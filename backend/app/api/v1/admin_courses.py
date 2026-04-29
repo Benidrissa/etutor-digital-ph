@@ -165,6 +165,52 @@ def _safe_task_meta(task_result: AsyncResult) -> tuple[str, dict]:
     return state, meta
 
 
+_TERMINAL_TASK_STATES = frozenset({"SUCCESS", "FAILURE", "REVOKED"})
+
+
+def _diagnose_indexation_pointer(
+    course: Course,
+    *,
+    chunks_indexed: int = 0,
+    images_indexed: int = 0,
+    require_progress: bool,
+) -> tuple[str, str, dict]:
+    """Classify whether ``course.indexation_task_id`` points at a live task.
+
+    Returns ``(verdict, state, meta)``:
+    - ``"stale_no_pointer"``: ``indexation_task_id`` is null. Only meaningful
+      when ``creation_step`` is itself stuck — the row was wedged without an
+      associated task.
+    - ``"stale_terminal"``: Celery reports a terminal state (SUCCESS/FAILURE/
+      REVOKED) but ``finalize_indexation_state`` never ran (e.g. DB write in
+      the callback failed and was logged as a warning).
+    - ``"stale_evicted"``: ``state == "PENDING"`` with empty meta. Either a
+      Redis-evicted task or a worker that died before publishing meta.
+      ``require_progress=True`` adds the chunks/images > 0 gate used by
+      ``/index-status`` (less aggressive — needs durable evidence the task
+      ran). ``require_progress=False`` is the trigger-side variant: if an
+      admin clicks "Démarrer l'indexation" against a wedged row, we trust
+      the manual signal and clear the pointer.
+    - ``"live"``: Anything else (STARTED/PROGRESS/RETRY, or PENDING with
+      meta — a freshly-enqueued task that's already been picked up). Caller
+      should refuse to start a new task.
+
+    See #2100. Companion to ``_safe_task_meta``; reuses it for state lookup.
+    """
+    if not course.indexation_task_id:
+        return "stale_no_pointer", "", {}
+    state, meta = _safe_task_meta(AsyncResult(course.indexation_task_id))
+    if state in _TERMINAL_TASK_STATES:
+        return "stale_terminal", state, meta
+    if (
+        state == "PENDING"
+        and not meta
+        and (not require_progress or chunks_indexed > 0 or images_indexed > 0)
+    ):
+        return "stale_evicted", state, meta
+    return "live", state, meta
+
+
 async def _require_indexed_sources(course: Course, db) -> None:
     """Refuse AI generation when no indexed source content exists for the course.
 
@@ -1128,8 +1174,17 @@ async def trigger_rag_indexation(
     current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> dict:
-    """Trigger RAG indexation for course resources. Returns Celery task ID."""
-    result = await db.execute(select(Course).where(Course.id == course_id))
+    """Trigger RAG indexation for course resources. Returns Celery task ID.
+
+    Self-heals stuck pointers (#2100): when ``creation_step`` is already
+    ``"generating"`` or ``"indexing"`` but the recorded task is dead
+    (terminal/evicted/null), the row is reset inline and a fresh task
+    enqueued. Only refuses with 409 when a *live* task is genuinely running.
+    The SELECT takes a row lock so two simultaneous admin clicks serialize.
+    """
+    result = await db.execute(
+        select(Course).where(Course.id == course_id).with_for_update()
+    )
     course = result.scalar_one_or_none()
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
@@ -1140,11 +1195,50 @@ async def trigger_rag_indexation(
             detail="Course has no rag_collection_id",
         )
 
-    if course.creation_step in ("generating", "indexing"):
+    if course.creation_step == "generating":
+        # Syllabus generation uses course.syllabus_task_id (separate pointer)
+        # — out of scope for this endpoint's self-heal. The syllabus endpoint
+        # exposes a `force=true` escape hatch (#2079) for stuck rows.
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"A task is already in progress (step: {course.creation_step})",
+            detail={
+                "code": "SYLLABUS_GENERATION_ACTIVE",
+                "message": (
+                    "Syllabus generation is still in progress for this course. "
+                    "Wait for it to finish, or recover via "
+                    "POST /generate-syllabus?force=true."
+                ),
+                "creation_step": course.creation_step,
+            },
         )
+
+    if course.creation_step == "indexing":
+        verdict, task_state, _ = _diagnose_indexation_pointer(
+            course, require_progress=False
+        )
+        if verdict == "live":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "INDEX_TASK_ACTIVE",
+                    "message": (
+                        f"Indexation task {course.indexation_task_id} is {task_state}"
+                    ),
+                    "task_id": course.indexation_task_id,
+                    "task_state": task_state,
+                    "creation_step": course.creation_step,
+                },
+            )
+        logger.info(
+            "Self-healing stuck indexation pointer before re-trigger",
+            course_id=str(course_id),
+            verdict=verdict,
+            prior_step=course.creation_step,
+            prior_task_id=course.indexation_task_id,
+            admin_id=current_user.id,
+        )
+        course.creation_step = "generated"
+        course.indexation_task_id = None
 
     task = index_course_resources.delay(str(course_id), course.rag_collection_id)
 
