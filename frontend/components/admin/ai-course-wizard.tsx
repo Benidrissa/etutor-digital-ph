@@ -58,7 +58,7 @@ import {
   suggestCourseMetadata,
   formatBytes,
 } from "@/lib/api-course-admin";
-import { getCourseTaxonomy, type TaxonomyItem } from "@/lib/api";
+import { ApiError, getCourseTaxonomy, type TaxonomyItem } from "@/lib/api";
 import { SyllabusVisualEditor } from "@/components/admin/syllabus-visual-editor";
 import { LessonPreviewStep } from "@/components/admin/lesson-preview-step";
 import {
@@ -427,6 +427,10 @@ export function AICourseWizard({
   const [indexStatus, setIndexStatus] = useState<IndexStatus | null>(null);
   const [isIndexing, setIsIndexing] = useState(false);
   const [indexError, setIndexError] = useState<string | null>(null);
+  // 409 INDEX_TASK_ACTIVE / SYLLABUS_GENERATION_ACTIVE detail. Distinct from
+  // indexError so the UI can offer a one-click reset-and-retry instead of
+  // a plain retry that would just 409 again (#2100).
+  const [indexConflictDetail, setIndexConflictDetail] = useState<string | null>(null);
   const [indexStaleWarning, setIndexStaleWarning] = useState(false);
   const lastIndexProgressValueRef = useRef(0);
   const lastIndexProgressTimeRef = useRef<number | null>(null);
@@ -772,6 +776,7 @@ export function AICourseWizard({
     if (!courseId) return;
     setIsIndexing(true);
     setIndexError(null);
+    setIndexConflictDetail(null);
     setIndexStaleWarning(false);
     lastIndexProgressValueRef.current = 0;
     lastIndexProgressTimeRef.current = Date.now();
@@ -779,9 +784,19 @@ export function AICourseWizard({
     try {
       const result = await triggerIndexation(courseId);
       setTaskId(result.task_id);
-    } catch {
-      setIndexError(t("index.error"));
+    } catch (err) {
       setIsIndexing(false);
+      if (
+        err instanceof ApiError &&
+        err.status === 409 &&
+        (err.code === "INDEX_TASK_ACTIVE" || err.code === "SYLLABUS_GENERATION_ACTIVE")
+      ) {
+        setIndexConflictDetail(err.message);
+      } else if (err instanceof ApiError) {
+        setIndexError(err.message || t("index.error"));
+      } else {
+        setIndexError(t("index.error"));
+      }
     }
   }, [courseId, t]);
 
@@ -926,6 +941,12 @@ export function AICourseWizard({
       // ignore
     }
   }, [courseId]);
+
+  const resetAndRetryIndexation = useCallback(async () => {
+    setIndexConflictDetail(null);
+    await cancelIndexation();
+    await startIndexation();
+  }, [cancelIndexation, startIndexation]);
 
   const reindexImages = useCallback(async () => {
     if (!courseId) return;
@@ -1502,7 +1523,7 @@ export function AICourseWizard({
                   </p>
                 </div>
 
-                {!isIndexing && !indexStatus?.indexed && (
+                {!isIndexing && !indexStatus?.indexed && !indexConflictDetail && (
                   <Button onClick={startIndexation} className="w-full min-h-11">
                     <Database className="mr-2 h-4 w-4" />
                     {t("index.button")}
@@ -1517,6 +1538,29 @@ export function AICourseWizard({
                     onCancel={cancelIndexation}
                     t={t}
                   />
+                )}
+
+                {indexConflictDetail && !isIndexing && (
+                  <div className="space-y-2">
+                    <div className="rounded-lg border border-amber-500/40 bg-amber-50 p-3 text-sm dark:bg-amber-950/30">
+                      <div className="flex items-start gap-2 text-amber-900 dark:text-amber-200">
+                        <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-medium">{t("index.conflictTitle")}</p>
+                          <p className="mt-1 text-xs opacity-90">{indexConflictDetail}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <Button
+                      onClick={resetAndRetryIndexation}
+                      variant="outline"
+                      size="sm"
+                      className="w-full min-h-[44px]"
+                    >
+                      <RotateCcw className="mr-2 h-4 w-4" />
+                      {t("index.resetAndRetry")}
+                    </Button>
+                  </div>
                 )}
 
                 {indexError && !isIndexing && (

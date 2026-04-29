@@ -231,6 +231,9 @@ export function CourseWizardClient({
     resumeCreationStep === "indexing"
   );
   const [indexError, setIndexError] = useState<string | null>(null);
+  // 409 INDEX_TASK_ACTIVE / SYLLABUS_GENERATION_ACTIVE detail (#2100). Distinct
+  // from indexError so the UI offers reset-and-retry instead of plain retry.
+  const [indexConflictDetail, setIndexConflictDetail] = useState<string | null>(null);
   const [isReindexingImages, setIsReindexingImages] = useState(false);
   const [reindexImagesError, setReindexImagesError] = useState<string | null>(null);
   const [isCancellingIndexation, setIsCancellingIndexation] = useState(false);
@@ -691,6 +694,7 @@ export function CourseWizardClient({
     if (!courseId) return;
     setIsIndexing(true);
     setIndexError(null);
+    setIndexConflictDetail(null);
     setIndexStaleWarning(false);
     setCancelIndexationError(null);
     lastIndexProgressValueRef.current = 0;
@@ -702,11 +706,27 @@ export function CourseWizardClient({
         { method: "POST" }
       );
       setTaskId(result.task_id);
-    } catch {
-      setIndexError(t("index.error"));
+    } catch (err) {
       setIsIndexing(false);
+      if (
+        err instanceof ApiError &&
+        err.status === 409 &&
+        (err.code === "INDEX_TASK_ACTIVE" || err.code === "SYLLABUS_GENERATION_ACTIVE")
+      ) {
+        setIndexConflictDetail(err.message);
+      } else if (err instanceof ApiError) {
+        setIndexError(err.message || t("index.error"));
+      } else {
+        setIndexError(t("index.error"));
+      }
     }
   }, [courseId, t]);
+
+  const resetAndRetryIndexation = useCallback(async () => {
+    setIndexConflictDetail(null);
+    await cancelIndexation();
+    await startIndexation();
+  }, [cancelIndexation, startIndexation]);
 
   useEffect(() => {
     if (!courseId || !isIndexing) return;
@@ -1291,11 +1311,34 @@ export function CourseWizardClient({
                   </div>
                 )}
 
-                {!isIndexing && !indexStatus?.indexed && !isCheckingIndexStatus && (
+                {!isIndexing && !indexStatus?.indexed && !isCheckingIndexStatus && !indexConflictDetail && (
                   <Button onClick={startIndexation} className="w-full min-h-11" disabled={isIndexing}>
                     <Database className="mr-2 h-4 w-4" />
                     {t("index.button")}
                   </Button>
+                )}
+
+                {!isIndexing && indexConflictDetail && (
+                  <div className="space-y-2">
+                    <div className="rounded-lg border border-amber-500/40 bg-amber-50 p-3 text-sm dark:bg-amber-950/30">
+                      <div className="flex items-start gap-2 text-amber-900 dark:text-amber-200">
+                        <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-medium">{t("index.conflictTitle")}</p>
+                          <p className="mt-1 text-xs opacity-90">{indexConflictDetail}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <Button
+                      onClick={resetAndRetryIndexation}
+                      variant="outline"
+                      size="sm"
+                      className="w-full min-h-[44px]"
+                    >
+                      <RotateCcw className="mr-2 h-4 w-4" />
+                      {t("index.resetAndRetry")}
+                    </Button>
+                  </div>
                 )}
 
                 {isIndexing && (
