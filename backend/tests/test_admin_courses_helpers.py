@@ -14,6 +14,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.v1.admin_courses import (
+    _diagnose_indexation_pointer,
     _require_extracted_sources,
     _require_indexed_sources,
     _safe_task_meta,
@@ -228,3 +229,104 @@ def test_save_syllabus_handler_sets_level_in_module_constructor():
 
     src = inspect.getsource(save_syllabus)
     assert "level=1" in src, "save_syllabus must set Module.level — see #2016"
+
+
+# ---------------------------------------------------------------------------
+# #2100 — _diagnose_indexation_pointer classifies stuck pointers
+# ---------------------------------------------------------------------------
+
+
+def _patch_async_result(monkeypatch, state: str, info):
+    """Replace AsyncResult in admin_courses with a stub returning (state, info)."""
+
+    class _Stub:
+        def __init__(self, _task_id):
+            self.state = state
+
+        @property
+        def info(self):
+            return info
+
+    monkeypatch.setattr("app.api.v1.admin_courses.AsyncResult", _Stub)
+
+
+def test_diagnose_pointer_returns_stale_no_pointer_when_task_id_null():
+    course = SimpleNamespace(indexation_task_id=None)
+    verdict, state, meta = _diagnose_indexation_pointer(course, require_progress=False)
+    assert verdict == "stale_no_pointer"
+    assert state == ""
+    assert meta == {}
+
+
+def test_diagnose_pointer_returns_stale_terminal_for_success(monkeypatch):
+    _patch_async_result(monkeypatch, "SUCCESS", {})
+    course = SimpleNamespace(indexation_task_id="t-1")
+    verdict, state, _meta = _diagnose_indexation_pointer(course, require_progress=False)
+    assert verdict == "stale_terminal"
+    assert state == "SUCCESS"
+
+
+def test_diagnose_pointer_returns_stale_terminal_for_failure(monkeypatch):
+    _patch_async_result(monkeypatch, "FAILURE", {})
+    course = SimpleNamespace(indexation_task_id="t-1")
+    verdict, state, _meta = _diagnose_indexation_pointer(course, require_progress=False)
+    assert verdict == "stale_terminal"
+    assert state == "FAILURE"
+
+
+def test_diagnose_pointer_returns_stale_terminal_for_revoked(monkeypatch):
+    _patch_async_result(monkeypatch, "REVOKED", {})
+    course = SimpleNamespace(indexation_task_id="t-1")
+    verdict, _state, _meta = _diagnose_indexation_pointer(course, require_progress=False)
+    assert verdict == "stale_terminal"
+
+
+def test_diagnose_pointer_evicted_pending_no_meta_trigger_path(monkeypatch):
+    """Trigger endpoint (require_progress=False) clears evicted pointers even
+    without indexed chunks/images — the admin's manual click is signal enough.
+    """
+    _patch_async_result(monkeypatch, "PENDING", {})
+    course = SimpleNamespace(indexation_task_id="t-1")
+    verdict, _state, _meta = _diagnose_indexation_pointer(course, require_progress=False)
+    assert verdict == "stale_evicted"
+
+
+def test_diagnose_pointer_evicted_status_path_requires_progress(monkeypatch):
+    """Status endpoint (require_progress=True) needs durable evidence the
+    task ran. PENDING+empty-meta with no chunks looks identical to a freshly
+    enqueued task — hold the verdict at "live".
+    """
+    _patch_async_result(monkeypatch, "PENDING", {})
+    course = SimpleNamespace(indexation_task_id="t-1")
+    verdict, _state, _meta = _diagnose_indexation_pointer(
+        course, require_progress=True, chunks_indexed=0, images_indexed=0
+    )
+    assert verdict == "live"
+
+
+def test_diagnose_pointer_evicted_status_path_with_chunks(monkeypatch):
+    _patch_async_result(monkeypatch, "PENDING", {})
+    course = SimpleNamespace(indexation_task_id="t-1")
+    verdict, _state, _meta = _diagnose_indexation_pointer(
+        course, require_progress=True, chunks_indexed=42, images_indexed=0
+    )
+    assert verdict == "stale_evicted"
+
+
+def test_diagnose_pointer_returns_live_for_started(monkeypatch):
+    _patch_async_result(monkeypatch, "STARTED", {"step": "embedding"})
+    course = SimpleNamespace(indexation_task_id="t-1")
+    verdict, state, meta = _diagnose_indexation_pointer(course, require_progress=False)
+    assert verdict == "live"
+    assert state == "STARTED"
+    assert meta == {"step": "embedding"}
+
+
+def test_diagnose_pointer_returns_live_for_pending_with_meta(monkeypatch):
+    """A freshly-enqueued task picked up by a worker reports PENDING but with
+    meta. Don't treat it as evicted.
+    """
+    _patch_async_result(monkeypatch, "PENDING", {"progress": 5})
+    course = SimpleNamespace(indexation_task_id="t-1")
+    verdict, _state, _meta = _diagnose_indexation_pointer(course, require_progress=False)
+    assert verdict == "live"
