@@ -287,9 +287,7 @@ def test_diagnose_pointer_evicted_pending_no_meta_trigger_path(monkeypatch):
     """
     _patch_async_result(monkeypatch, "PENDING", {})
     course = SimpleNamespace(indexation_task_id="t-1")
-    verdict, _state, _meta = _diagnose_indexation_pointer(
-        course, require_progress=False
-    )
+    verdict, _state, _meta = _diagnose_indexation_pointer(course, require_progress=False)
     assert verdict == "stale_evicted"
 
 
@@ -330,7 +328,5 @@ def test_diagnose_pointer_returns_live_for_pending_with_meta(monkeypatch):
     """
     _patch_async_result(monkeypatch, "PENDING", {"progress": 5})
     course = SimpleNamespace(indexation_task_id="t-1")
-    verdict, _state, _meta = _diagnose_indexation_pointer(
-        course, require_progress=False
-    )
+    verdict, _state, _meta = _diagnose_indexation_pointer(course, require_progress=False)
     assert verdict == "live"

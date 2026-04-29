@@ -1182,9 +1182,7 @@ async def trigger_rag_indexation(
     enqueued. Only refuses with 409 when a *live* task is genuinely running.
     The SELECT takes a row lock so two simultaneous admin clicks serialize.
     """
-    result = await db.execute(
-        select(Course).where(Course.id == course_id).with_for_update()
-    )
+    result = await db.execute(select(Course).where(Course.id == course_id).with_for_update())
     course = result.scalar_one_or_none()
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
@@ -1213,17 +1211,13 @@ async def trigger_rag_indexation(
         )
 
     if course.creation_step == "indexing":
-        verdict, task_state, _ = _diagnose_indexation_pointer(
-            course, require_progress=False
-        )
+        verdict, task_state, _ = _diagnose_indexation_pointer(course, require_progress=False)
         if verdict == "live":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={
                     "code": "INDEX_TASK_ACTIVE",
-                    "message": (
-                        f"Indexation task {course.indexation_task_id} is {task_state}"
-                    ),
+                    "message": (f"Indexation task {course.indexation_task_id} is {task_state}"),
                     "task_id": course.indexation_task_id,
                     "task_state": task_state,
                     "creation_step": course.creation_step,
