@@ -109,7 +109,7 @@ async def get_module_progress(
             return ModuleProgressResponse(
                 module_id=resolved_id,
                 user_id=user_id,
-                status="locked",
+                status="not_started",
                 completion_pct=0.0,
                 quiz_score_avg=None,
                 time_spent_minutes=0,
@@ -142,8 +142,9 @@ async def get_all_module_progress(
     Get current user's progress for all modules.
 
     When course_id is provided, only modules belonging to that course are returned.
-    Without course_id, returns ALL modules (including locked ones), ordered by module_number.
-    Locked modules with no progress record have status 'locked' and 0% completion.
+    Without course_id, returns ALL modules, ordered by module_number.
+    Modules with no progress record have status 'not_started' and 0% completion;
+    they remain accessible to enrolled learners (no sequential gating).
     """
     try:
         user_id = UUID(str(current_user.id))
