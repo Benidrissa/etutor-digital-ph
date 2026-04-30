@@ -30,11 +30,7 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     bind = op.get_bind()
     result = bind.execute(
-        sa.text(
-            "UPDATE user_module_progress "
-            "SET status = 'not_started' "
-            "WHERE status = 'locked'"
-        )
+        sa.text("UPDATE user_module_progress SET status = 'not_started' WHERE status = 'locked'")
     )
     print(f"[088] Relaxed {result.rowcount} 'locked' module progress row(s) to 'not_started'")
 

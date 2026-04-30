@@ -954,9 +954,7 @@ class TestGetAllModulesWithProgress:
 
         mock_db.execute = mock_execute
 
-        result = await progress_service.get_all_modules_with_progress(
-            user_id, course_id=course_id
-        )
+        result = await progress_service.get_all_modules_with_progress(user_id, course_id=course_id)
 
         assert len(result) == 5
         assert {m["status"] for m in result} == {"not_started"}
