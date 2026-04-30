@@ -64,10 +64,11 @@ class ImageLinker:
         explicit_pairs = await self._build_explicit_pairs(source, session)
         contextual_pairs = await self._build_contextual_pairs(source, session, explicit_pairs)
         # Semantic must run last so it can deduplicate against pairs the
-        # higher-precision strategies already produced. The explicit and
-        # contextual matchers already filter against existing DB rows
-        # internally, so semantic only needs to dedupe against the pairs
-        # we just computed — no third _get_existing_pairs call.
+        # higher-precision strategies already produced. It also needs to
+        # dedupe against existing DB rows — explicit/contextual filter
+        # against `_get_existing_pairs` internally, but semantic was
+        # missing that check, so re-running the linker on an
+        # already-linked course raised UniqueViolationError. See #2106.
         semantic_pairs = await self._build_semantic_pairs(
             source, session, explicit_pairs | contextual_pairs
         )
@@ -297,11 +298,15 @@ class ImageLinker:
             """
         ).bindparams(src=source, k=_SEMANTIC_TOP_K, max_dist=_SEMANTIC_DIST_MAX)
 
+        # Filter against rows already in the junction table so a re-run
+        # of the linker doesn't try to insert duplicates. See #2106.
+        existing_pairs = await self._get_existing_pairs(source, session)
+
         result = await session.execute(query)
         pairs: set[tuple] = set()
         for row in result.all():
             pair = (row.image_id, row.chunk_id)
-            if pair in higher_priority:
+            if pair in higher_priority or pair in existing_pairs:
                 continue
             pairs.add(pair)
 
