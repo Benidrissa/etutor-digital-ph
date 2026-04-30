@@ -452,8 +452,21 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
 
         return total_chunks, total_images
 
+    async def _run_pipeline_with_fresh_engine():
+        # asyncpg + Celery prefork: child workers inherit the parent's engine
+        # but its pooled connections are bound to the parent loop. Dispose
+        # before and after so this task — and the next one to land on this
+        # worker — both start with a clean pool. See #2103.
+        from app.infrastructure.persistence.database import engine
+
+        await engine.dispose()
+        try:
+            return await _run_pipeline()
+        finally:
+            await engine.dispose()
+
     try:
-        total_chunks, total_images = asyncio.run(_run_pipeline())
+        total_chunks, total_images = asyncio.run(_run_pipeline_with_fresh_engine())
 
         self.update_state(
             state="COMPLETE",
