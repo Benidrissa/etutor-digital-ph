@@ -18,7 +18,14 @@ ARG SENTRY_ORG
 ARG SENTRY_PROJECT
 ARG SENTRY_AUTH_TOKEN
 
-RUN npm run build
+# Build via webpack so @serwist/next runs — Next.js 16 defaults to Turbopack,
+# which silently skips webpack plugins and ships an image with no /sw.js
+# (offline mode dies; see #2113).
+RUN npm run build && \
+    if [ ! -s public/sw.js ]; then \
+      echo "ERROR: @serwist/next did not emit public/sw.js — refusing to ship a PWA without a service worker." >&2; \
+      exit 1; \
+    fi
 
 # Stage 3: Production
 FROM base AS runner
