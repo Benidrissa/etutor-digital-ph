@@ -151,10 +151,15 @@ async def test_publish_course(authenticated_client, db_session, admin_with_id_he
 
 @pytest.mark.skip(reason=_SKIP_REASON)
 @pytest.mark.asyncio
-async def test_enrollment_creates_progress_records(
+async def test_enrollment_modules_accessible(
     authenticated_client, db_session, admin_with_id_headers, user_with_id_headers, user_id_str
 ):
-    """Enrolling in a course initializes UserModuleProgress for all course modules."""
+    """Enrolling in a course makes every module accessible (no sequential gating, #2125).
+
+    Progress rows are not pre-created at enrollment; the read API synthesizes
+    a 'not_started' status for any module without a row, and any row that
+    happens to exist must not be 'locked'.
+    """
     from app.domain.models.module import Module
     from app.domain.models.progress import UserModuleProgress
 
@@ -187,8 +192,7 @@ async def test_enrollment_creates_progress_records(
         headers=user_with_id_headers,
     )
     assert enroll_resp.status_code == 200
-    enroll_data = enroll_resp.json()
-    assert enroll_data["status"] == "active"
+    assert enroll_resp.json()["status"] == "active"
 
     progress_result = await db_session.execute(
         select(UserModuleProgress).where(
@@ -197,8 +201,14 @@ async def test_enrollment_creates_progress_records(
         )
     )
     progress = progress_result.scalar_one_or_none()
-    assert progress is not None
-    assert progress.status == "locked"
+    assert progress is None or progress.status != "locked"
+
+    api_resp = await authenticated_client.get(
+        f"/api/v1/progress/modules/{module.id}",
+        headers=user_with_id_headers,
+    )
+    assert api_resp.status_code == 200
+    assert api_resp.json()["status"] == "not_started"
 
 
 @pytest.mark.skip(reason=_SKIP_REASON)
