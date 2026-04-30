@@ -132,8 +132,8 @@ class ProgressService:
         # Get or create progress entry
         progress = await self._get_or_create_progress(user_id, module_id, now)
 
-        # Only move to in_progress if currently locked/not started; preserve completed
-        if progress.status == "locked":
+        # Only move to in_progress if not started; preserve completed
+        if progress.status == "not_started":
             progress.status = "in_progress"
 
         progress.last_accessed = now
@@ -194,7 +194,7 @@ class ProgressService:
 
             if new_pct >= 100.0:
                 progress.status = "completed"
-            elif progress.status == "locked":
+            elif progress.status == "not_started":
                 progress.status = "in_progress"
 
         await self.db.commit()
@@ -295,10 +295,11 @@ class ProgressService:
         self, user_id: UUID, course_id: UUID | None = None
     ) -> list[dict]:
         """
-        Return modules with their real lock/unlock status for the user.
+        Return modules with their progress status for the user.
 
         When course_id is provided, only modules belonging to that course are returned.
-        Modules without a progress record default to 'locked'.
+        Modules without a progress record default to 'not_started' (accessible —
+        sequential gating was removed per issue #2125).
         Returns data ordered by module_number.
         """
         stmt = select(Module).order_by(Module.module_number)
@@ -328,7 +329,7 @@ class ProgressService:
                     "level": module.level,
                     "estimated_hours": module.estimated_hours,
                     "user_id": user_id,
-                    "status": progress.status if progress else "locked",
+                    "status": progress.status if progress else "not_started",
                     "completion_pct": progress.completion_pct if progress else 0.0,
                     "quiz_score_avg": progress.quiz_score_avg if progress else None,
                     "time_spent_minutes": progress.time_spent_minutes if progress else 0,
@@ -399,7 +400,7 @@ class ProgressService:
             "description_en": module.description_en,
             "estimated_hours": module.estimated_hours,
             "prereq_modules": [str(p) for p in (module.prereq_modules or [])],
-            "status": progress.status if progress else "locked",
+            "status": progress.status if progress else "not_started",
             "completion_pct": progress.completion_pct if progress else 0.0,
             "quiz_score_avg": progress.quiz_score_avg if progress else None,
             "time_spent_minutes": progress.time_spent_minutes if progress else 0,
@@ -415,10 +416,11 @@ class ProgressService:
 
     async def _unlock_next_module(self, user_id: UUID, completed_module_id: UUID) -> None:
         """
-        Unlock the module with module_number = N+1 when module N meets threshold.
+        Prefetch first 2 lessons of module N+1 when module N completes.
 
-        Per FR-02.2: creates an in_progress progress record for the next module
-        if it doesn't already have one (i.e. is still locked).
+        Sequential gating was removed per issue #2125 — all modules are accessible
+        on enrollment. This hook is retained only to warm the cache so the next
+        module's content is ready when a learner opens it.
         """
         module_result = await self.db.execute(
             select(Module).where(Module.id == completed_module_id)
@@ -434,43 +436,6 @@ class ProgressService:
         if not next_module:
             return
 
-        existing = await self.db.execute(
-            select(UserModuleProgress).where(
-                UserModuleProgress.user_id == user_id,
-                UserModuleProgress.module_id == next_module.id,
-            )
-        )
-        next_progress = existing.scalar_one_or_none()
-
-        if next_progress is None:
-            now = datetime.utcnow()
-            next_progress = UserModuleProgress(
-                user_id=user_id,
-                module_id=next_module.id,
-                status="in_progress",
-                completion_pct=0.0,
-                quiz_score_avg=None,
-                time_spent_minutes=0,
-                last_accessed=now,
-            )
-            self.db.add(next_progress)
-            await self.db.commit()
-            logger.info(
-                "Next module unlocked",
-                user_id=str(user_id),
-                unlocked_module_number=next_module.module_number,
-                unlocked_module_id=str(next_module.id),
-            )
-        elif next_progress.status == "locked":
-            next_progress.status = "in_progress"
-            await self.db.commit()
-            logger.info(
-                "Next module status updated to in_progress",
-                user_id=str(user_id),
-                module_number=next_module.module_number,
-            )
-
-        # Prefetch first 2 lessons of the newly unlocked module
         self._dispatch_prefetch(user_id, str(next_module.id), "")
 
     async def _dispatch_prefetch_after_quiz(

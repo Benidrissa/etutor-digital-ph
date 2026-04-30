@@ -78,13 +78,13 @@ class TestTrackLessonAccess:
         assert added_obj.time_spent_seconds == 120
         assert added_obj.completion_percentage == 50.0
 
-    async def test_marks_locked_module_as_in_progress(
+    async def test_marks_not_started_module_as_in_progress(
         self, progress_service, mock_db, user_id, module_id, lesson_id
     ):
         existing_progress = UserModuleProgress(
             user_id=user_id,
             module_id=module_id,
-            status="locked",
+            status="not_started",
             completion_pct=0.0,
             quiz_score_avg=None,
             time_spent_minutes=0,
@@ -537,9 +537,12 @@ class TestProgressServiceIntegration:
 
 
 class TestUnlockNextModule:
-    async def test_unlock_threshold_triggers_next_module_unlock(
+    async def test_threshold_does_not_create_next_module_progress_row(
         self, progress_service, mock_db, user_id, module_id
     ):
+        """After issue #2125 removed sequential gating, completing module N must
+        no longer auto-create a progress row for module N+1; the next module is
+        already accessible by default."""
         from app.domain.models.module import Module
 
         next_module_id = uuid.uuid4()
@@ -582,23 +585,15 @@ class TestUnlockNextModule:
             call_count += 1
             mock_result = MagicMock()
             if call_count == 1:
-                # _get_or_create_progress
                 mock_result.scalar_one_or_none = MagicMock(return_value=existing_progress)
             elif call_count == 2:
-                # _calculate_completion_pct: total units
                 mock_result.scalar = MagicMock(return_value=1)
             elif call_count == 3:
-                # _get_completed_units: quiz contents
                 mock_result.all = MagicMock(return_value=[])
             elif call_count == 4:
-                # _unlock_next_module: current module lookup
                 mock_result.scalar_one_or_none = MagicMock(return_value=current_module)
             elif call_count == 5:
-                # _unlock_next_module: next module lookup
                 mock_result.scalar_one_or_none = MagicMock(return_value=next_module)
-            elif call_count == 6:
-                # _unlock_next_module: check existing progress for next module
-                mock_result.scalar_one_or_none = MagicMock(return_value=None)
             else:
                 mock_result.scalar_one_or_none = MagicMock(return_value=None)
                 mock_result.scalar = MagicMock(return_value=None)
@@ -619,13 +614,12 @@ class TestUnlockNextModule:
         assert result.completion_pct == 100.0
         assert result.status == "completed"
 
-        unlocked = [
+        next_module_rows = [
             obj
             for obj in added_objects
             if isinstance(obj, UserModuleProgress) and obj.module_id == next_module_id
         ]
-        assert len(unlocked) == 1
-        assert unlocked[0].status == "in_progress"
+        assert next_module_rows == []
 
     async def test_no_unlock_when_score_below_threshold(
         self, progress_service, mock_db, user_id, module_id
@@ -669,9 +663,12 @@ class TestUnlockNextModule:
         # and rollup_course_completion_by_module (also select Module.course_id).
         assert call_count == 3
 
-    async def test_unlock_updates_existing_locked_next_module(
+    async def test_existing_next_module_progress_row_is_not_modified(
         self, progress_service, mock_db, user_id, module_id
     ):
+        """After issue #2125, completing module N never mutates the status of
+        any existing progress row for module N+1; only the legacy data-fix
+        migration (088) relaxes any historical 'locked' rows."""
         from app.domain.models.module import Module
 
         next_module_id = uuid.uuid4()
@@ -690,15 +687,6 @@ class TestUnlockNextModule:
             title_fr="M04",
             title_en="M04",
             estimated_hours=25,
-        )
-        locked_next_progress = UserModuleProgress(
-            user_id=user_id,
-            module_id=next_module_id,
-            status="locked",
-            completion_pct=0.0,
-            quiz_score_avg=None,
-            time_spent_minutes=0,
-            last_accessed=None,
         )
         existing_progress = UserModuleProgress(
             user_id=user_id,
@@ -725,13 +713,14 @@ class TestUnlockNextModule:
                 mock_result.scalar_one_or_none = MagicMock(return_value=current_module)
             elif call_count == 5:
                 mock_result.scalar_one_or_none = MagicMock(return_value=next_module)
-            elif call_count == 6:
-                mock_result.scalar_one_or_none = MagicMock(return_value=locked_next_progress)
             else:
                 mock_result.scalar_one_or_none = MagicMock(return_value=None)
             return mock_result
 
         mock_db.execute = mock_execute
+
+        added_objects = []
+        mock_db.add = MagicMock(side_effect=lambda obj: added_objects.append(obj))
 
         await progress_service.update_progress_after_quiz(
             user_id=user_id,
@@ -741,7 +730,12 @@ class TestUnlockNextModule:
             passed=True,
         )
 
-        assert locked_next_progress.status == "in_progress"
+        next_module_rows = [
+            obj
+            for obj in added_objects
+            if isinstance(obj, UserModuleProgress) and obj.module_id == next_module_id
+        ]
+        assert next_module_rows == []
 
     async def test_no_unlock_when_no_next_module(
         self, progress_service, mock_db, user_id, module_id
@@ -887,9 +881,11 @@ class TestGetAllModulesWithProgress:
         assert len(result) == 1
         assert result[0]["module_number"] == 1
 
-    async def test_defaults_status_to_locked_when_no_progress(
+    async def test_defaults_status_to_not_started_when_no_progress(
         self, progress_service, mock_db, user_id
     ):
+        """Per issue #2125: modules without a progress row are accessible
+        and report status='not_started' (no sequential gating)."""
         from app.domain.models.module import Module
 
         module = Module(
@@ -918,8 +914,51 @@ class TestGetAllModulesWithProgress:
         result = await progress_service.get_all_modules_with_progress(user_id)
 
         assert len(result) == 1
-        assert result[0]["status"] == "locked"
+        assert result[0]["status"] == "not_started"
         assert result[0]["completion_pct"] == 0.0
+
+    async def test_all_modules_accessible_for_fresh_enrollee(
+        self, progress_service, mock_db, user_id
+    ):
+        """Per issue #2125: a fresh enrollee with zero progress rows must see
+        every module of the course as 'not_started' — not just module 1.
+        Confirms learners can jump directly to module N without progressing
+        through 1..N-1."""
+        from app.domain.models.module import Module
+
+        course_id = uuid.uuid4()
+        modules = [
+            Module(
+                id=uuid.uuid4(),
+                module_number=n,
+                level=1,
+                title_fr=f"M{n} FR",
+                title_en=f"M{n} EN",
+                estimated_hours=20,
+                course_id=course_id,
+            )
+            for n in (1, 2, 3, 4, 5)
+        ]
+
+        call_count = 0
+
+        async def mock_execute(stmt):
+            nonlocal call_count
+            call_count += 1
+            mock_result = MagicMock()
+            if call_count == 1:
+                mock_result.scalars.return_value.all.return_value = modules
+            else:
+                mock_result.scalars.return_value.all.return_value = []
+            return mock_result
+
+        mock_db.execute = mock_execute
+
+        result = await progress_service.get_all_modules_with_progress(user_id, course_id=course_id)
+
+        assert len(result) == 5
+        assert {m["status"] for m in result} == {"not_started"}
+        assert all(m["completion_pct"] == 0.0 for m in result)
 
     async def test_returns_empty_list_when_course_has_no_modules(
         self, progress_service, mock_db, user_id
