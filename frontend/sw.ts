@@ -18,7 +18,7 @@ declare const self: ServiceWorkerGlobalScope;
 const DAY_IN_SECONDS = 24 * 60 * 60;
 
 // Bump when storage shape or routing changes so clients drop stale caches.
-const CACHE_VERSION = "v4-quiz-hydration-race-fix";
+const CACHE_VERSION = "v5-progress-no-cache";
 
 const OFFLINE_FALLBACK_URL = "/offline.html";
 
@@ -94,6 +94,10 @@ const serwist = new Serwist({
         // Same class as #1908: SWR serves the stale conversation list
         // after a delete, so the deleted row appears to come back.
         if (url.pathname.startsWith("/api/v1/tutor/")) return false;
+        // Same class as #1908: after a backend status flip (e.g. #2125
+        // unlocking modules), SWR serves the cached "locked" body and
+        // learners still see the old gating UI.
+        if (url.pathname.startsWith("/api/v1/progress/")) return false;
         if (url.pathname.startsWith("/api/")) return true;
         return false;
       },
