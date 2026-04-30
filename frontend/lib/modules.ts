@@ -1,4 +1,4 @@
-export type ModuleStatus = 'locked' | 'in-progress' | 'completed';
+export type ModuleStatus = 'locked' | 'not-started' | 'in-progress' | 'completed';
 export type UnitStatus = 'pending' | 'in-progress' | 'completed';
 
 export interface Unit {

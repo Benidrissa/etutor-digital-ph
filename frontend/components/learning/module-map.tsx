@@ -18,6 +18,8 @@ function apiProgressToModule(p: ModuleProgressResponse): Module {
       ? 'completed'
       : apiStatus === 'in_progress'
       ? 'in-progress'
+      : apiStatus === 'not_started'
+      ? 'not-started'
       : 'locked';
 
   return {

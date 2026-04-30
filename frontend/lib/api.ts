@@ -185,7 +185,7 @@ export interface ModuleProgressResponse {
   description_en?: string | null;
   level: number;
   estimated_hours: number;
-  status: "locked" | "in_progress" | "completed";
+  status: "locked" | "not_started" | "in_progress" | "completed";
   completion_pct: number;
   quiz_score_avg: number | null;
   time_spent_minutes: number;
@@ -215,7 +215,7 @@ export interface ModuleDetailWithProgressResponse {
   description_en?: string;
   estimated_hours: number;
   prereq_modules: string[];
-  status: "locked" | "in_progress" | "completed";
+  status: "locked" | "not_started" | "in_progress" | "completed";
   completion_pct: number;
   quiz_score_avg: number | null;
   time_spent_minutes: number;
