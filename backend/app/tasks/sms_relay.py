@@ -10,6 +10,7 @@ from app.infrastructure.cache.redis import redis_client
 from app.infrastructure.config.settings import settings
 from app.infrastructure.persistence.database import (
     async_session_factory,
+    engine,
 )
 from app.tasks.celery_app import celery_app
 
@@ -30,34 +31,41 @@ def check_relay_heartbeat(self) -> dict:
     try:
 
         async def _run() -> int:
-            async with async_session_factory() as session:
-                service = SmsRelayService()
-                stale = await service.get_stale_devices(
-                    timeout_minutes=(settings.sms_relay_heartbeat_timeout_minutes),
-                    session=session,
-                )
-
-                if not stale or not settings.sms_relay_alert_email:
-                    return 0
-
-                email_service = EmailService()
-                alerted = 0
-                for device in stale:
-                    key = ALERT_COOLDOWN_KEY.format(device_id=device.device_id)
-                    if redis_client.get(key):
-                        continue
-
-                    sent = await email_service.send_relay_alert(
-                        to_email=settings.sms_relay_alert_email,
-                        device_id=device.device_id,
-                        last_seen=device.last_heartbeat_at.isoformat(),
-                        battery=device.battery,
+            # asyncpg + Celery prefork: dispose any pool inherited from the
+            # parent before/after so we don't reuse connections bound to the
+            # parent's event loop. See #2103.
+            await engine.dispose()
+            try:
+                async with async_session_factory() as session:
+                    service = SmsRelayService()
+                    stale = await service.get_stale_devices(
+                        timeout_minutes=(settings.sms_relay_heartbeat_timeout_minutes),
+                        session=session,
                     )
-                    if sent:
-                        redis_client.set(key, "1", ex=ALERT_COOLDOWN_TTL)
-                        alerted += 1
 
-                return alerted
+                    if not stale or not settings.sms_relay_alert_email:
+                        return 0
+
+                    email_service = EmailService()
+                    alerted = 0
+                    for device in stale:
+                        key = ALERT_COOLDOWN_KEY.format(device_id=device.device_id)
+                        if redis_client.get(key):
+                            continue
+
+                        sent = await email_service.send_relay_alert(
+                            to_email=settings.sms_relay_alert_email,
+                            device_id=device.device_id,
+                            last_seen=device.last_heartbeat_at.isoformat(),
+                            battery=device.battery,
+                        )
+                        if sent:
+                            redis_client.set(key, "1", ex=ALERT_COOLDOWN_TTL)
+                            alerted += 1
+
+                    return alerted
+            finally:
+                await engine.dispose()
 
         count = asyncio.run(_run())
         logger.info(
