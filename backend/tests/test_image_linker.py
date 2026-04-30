@@ -672,6 +672,7 @@ class TestSemanticLinkage:
             _make_execute_result([]),  # contextual chunks
             _make_execute_result([]),  # contextual existing.image_ids
             _make_count_result(1, 1),  # semantic count: both > 0
+            _make_execute_result([]),  # semantic existing.image_ids (#2106)
             lateral_result,  # lateral join result
         ]
 
@@ -708,6 +709,7 @@ class TestSemanticLinkage:
             _make_execute_result([(chunk_id, 5, None)]),  # contextual chunks
             _make_execute_result([]),
             _make_count_result(1, 1),
+            _make_execute_result([]),  # semantic existing.image_ids (#2106)
             lateral_result,  # would propose the same pair as explicit
         ]
 
