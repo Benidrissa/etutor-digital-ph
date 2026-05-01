@@ -1,0 +1,77 @@
+name: Prod read-only smoke
+
+on:
+  schedule:
+    # Every hour at :15 (avoids the :00 GH Actions cron storm).
+    - cron: "15 * * * *"
+  workflow_dispatch:
+    inputs:
+      prod_url:
+        description: "Override PROD_URL for ad-hoc invocation"
+        required: false
+        default: ""
+
+# Cancel any older in-progress run when a newer one starts. Hourly cron + the
+# odd workflow_dispatch should never overlap, but this hardens against retries.
+concurrency:
+  group: prod-smoke
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write   # for the on-failure issue-creation step (see below)
+
+jobs:
+  smoke:
+    name: Smoke — app.sira-donnia.org
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run smoke against prod
+        env:
+          PROD_URL: ${{ inputs.prod_url || 'https://app.sira-donnia.org' }}
+          PROD_API: https://api.sira-donnia.org
+          NO_WEB_SERVER: "1"
+        run: npx playwright test --project=smoke --reporter=line,html
+
+      - name: Upload Playwright trace + report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-smoke-${{ github.run_id }}
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          retention-days: 30
+
+      - name: Open / update tracking issue on failure
+        # Avoid pinging on every hourly red while the same regression is open.
+        # The action below upserts a single issue keyed on the title — first
+        # failure opens, subsequent failures comment.
+        if: failure() && github.event_name == 'schedule'
+        uses: JasonEtco/create-an-issue@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          filename: .github/PROD_SMOKE_FAILURE_TEMPLATE.md
+          update_existing: true
+          search_existing: open
