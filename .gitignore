@@ -16,6 +16,11 @@ node_modules/
 out/
 .turbo/
 
+# Serwist build output (emitted by `next build` from frontend/sw.ts)
+frontend/public/sw.js
+frontend/public/sw.js.map
+frontend/public/swe-worker-*.js
+
 # Environment
 .env
 .env.local

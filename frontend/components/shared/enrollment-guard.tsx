@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "@/i18n/routing";
 import { useLocale, useTranslations } from "next-intl";
 import { API_BASE } from "@/lib/api";
+import { getOfflineModule } from "@/lib/offline/db";
 
 interface EnrollmentGuardProps {
   moduleId: string;
@@ -50,6 +51,17 @@ export function EnrollmentGuard({ moduleId, children }: EnrollmentGuardProps) {
 
   useEffect(() => {
     if (guardStatus === "allowed") return;
+
+    // Offline + module already downloaded → trust the prior enrollment check.
+    // /api/v1/progress/* is intentionally excluded from SW caching, so we
+    // can't reach the server; gating on the IndexedDB download record both
+    // unblocks the offline path and keeps non-downloaded modules locked.
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      getOfflineModule(moduleId).then((mod) => {
+        setGuardStatus(mod?.status === "downloaded" ? "allowed" : "denied");
+      });
+      return;
+    }
 
     const token =
       typeof window !== "undefined" ? localStorage.getItem("access_token") : null;

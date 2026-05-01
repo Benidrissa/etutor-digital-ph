@@ -18,7 +18,10 @@ declare const self: ServiceWorkerGlobalScope;
 const DAY_IN_SECONDS = 24 * 60 * 60;
 
 // Bump when storage shape or routing changes so clients drop stale caches.
-const CACHE_VERSION = "v5-progress-no-cache";
+// v6 adds an ExpirationPlugin to the pages cache and is pre-warmed by
+// frontend/lib/offline/download-manager.ts (PAGES_CACHE_NAME constant must
+// match `pages-${CACHE_VERSION}`) so downloaded modules render offline.
+const CACHE_VERSION = "v6-offline-routes";
 
 const OFFLINE_FALLBACK_URL = "/offline.html";
 
@@ -116,6 +119,13 @@ const serwist = new Serwist({
       handler: new NetworkFirst({
         cacheName: `pages-${CACHE_VERSION}`,
         networkTimeoutSeconds: 3,
+        plugins: [
+          new ExpirationPlugin({
+            maxEntries: 60,
+            maxAgeSeconds: 30 * DAY_IN_SECONDS,
+            purgeOnQuotaError: true,
+          }),
+        ],
       }),
     },
   ],
