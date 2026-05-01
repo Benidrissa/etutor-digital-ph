@@ -25,7 +25,7 @@ Provisions on the target DB:
         e2e-draft-course                   status=draft
     Curricula:
         e2e-public-curriculum              public
-        e2e-private-curriculum             org_restricted (owned by e2e-test-org)
+        e2e-private-curriculum             private (owned by e2e-test-org)
     Activation code:
         E2E-FIXTURE-CODE                   for e2e-published-course
     Enrollment:
@@ -156,7 +156,7 @@ async def upsert_curriculum(
         description_en="E2E test curriculum.",
         status="published",
         visibility=visibility,
-        organization_id=org_id if visibility == "org_restricted" else None,
+        organization_id=org_id if visibility == "private" else None,
         created_by=creator_id,
     )
     session.add(curriculum)
@@ -263,7 +263,7 @@ async def seed() -> None:
             org_id=org.id, creator_id=owner.id, course_ids=[published.id],
         )
         await upsert_curriculum(
-            session, slug=CURRICULUM_PRIVATE_SLUG, visibility="org_restricted",
+            session, slug=CURRICULUM_PRIVATE_SLUG, visibility="private",
             org_id=org.id, creator_id=owner.id, course_ids=[published.id, draft.id],
         )
         await session.commit()
