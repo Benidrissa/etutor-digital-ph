@@ -1,6 +1,27 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const STAGING_URL =
+  process.env.STAGING_URL || 'https://etutor.elearning.portfolio2.kimbetien.com';
+
+// Persona projects (#2116) authenticate via auth.setup.ts and load the saved
+// storageState file. New specs go under e2e/specs/{persona}/. Old flat specs
+// in e2e/*.spec.ts continue to run under chromium/mobile-chrome projects below.
+const personaProject = (name: string) => ({
+  name,
+  testDir: `./e2e/specs/${name}`,
+  use: {
+    ...devices['Desktop Chrome'],
+    baseURL: STAGING_URL,
+    storageState: name === '01-anonymous' ? undefined : `./e2e/.auth/${personaToFile(name)}`,
+  },
+  dependencies: name === '01-anonymous' ? [] : ['setup'],
+});
+
+function personaToFile(projectName: string): string {
+  // '02-learner' → 'learner.json'; '03-org-owner' → 'org-owner.json'
+  return `${projectName.replace(/^\d+-/, '')}.json`;
+}
 
 export default defineConfig({
   testDir: './e2e',
@@ -19,14 +40,32 @@ export default defineConfig({
   },
 
   projects: [
+    // Existing flat specs — unchanged. Keep running against BASE_URL until
+    // they're migrated or retired (cleanup follow-up to #2116).
     {
       name: 'chromium',
+      testIgnore: ['**/specs/**', '**/auth.setup.ts'],
       use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'mobile-chrome',
+      testIgnore: ['**/specs/**', '**/auth.setup.ts'],
       use: { ...devices['Pixel 5'] },
     },
+
+    // Persona-based suite (#2116). The setup project authenticates each
+    // persona via /api/v1/auth/login-password and saves storageState files
+    // under e2e/.auth/. Each persona project loads its file so specs start
+    // pre-authed. .auth/ is gitignored.
+    {
+      name: 'setup',
+      testMatch: /auth\.setup\.ts$/,
+      use: { baseURL: STAGING_URL },
+    },
+    personaProject('01-anonymous'),
+    personaProject('02-learner'),
+    // 03-org-owner / 04-sub-admin / 05-admin: declared in follow-up PRs
+    // (2116-2..2116-4) once their spec dirs exist.
   ],
 
   webServer:
