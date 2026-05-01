@@ -66,7 +66,7 @@ export default defineConfig({
     personaProject('02-learner'),
     personaProject('03-org-owner'),
     personaProject('04-sub-admin'),
-    // 05-admin: declared in 2116-4 once its spec dir exists.
+    personaProject('05-admin'),
   ],
 
   webServer:
