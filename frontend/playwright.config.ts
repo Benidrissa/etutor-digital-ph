@@ -64,8 +64,9 @@ export default defineConfig({
     },
     personaProject('01-anonymous'),
     personaProject('02-learner'),
-    // 03-org-owner / 04-sub-admin / 05-admin: declared in follow-up PRs
-    // (2116-2..2116-4) once their spec dirs exist.
+    personaProject('03-org-owner'),
+    // 04-sub-admin / 05-admin: declared in follow-up PRs (2116-3..2116-4)
+    // once their spec dirs exist.
   ],
 
   webServer:
