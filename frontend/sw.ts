@@ -18,7 +18,7 @@ declare const self: ServiceWorkerGlobalScope;
 const DAY_IN_SECONDS = 24 * 60 * 60;
 
 // Bump when storage shape or routing changes so clients drop stale caches.
-const CACHE_VERSION = "v5-progress-no-cache";
+const CACHE_VERSION = "v6-status-no-cache";
 
 const OFFLINE_FALLBACK_URL = "/offline.html";
 
@@ -98,6 +98,10 @@ const serwist = new Serwist({
         // unlocking modules), SWR serves the cached "locked" body and
         // learners still see the old gating UI.
         if (url.pathname.startsWith("/api/v1/progress/")) return false;
+        // Per-task transient state for Celery generation. SWR replaying
+        // a stale "generating" body keeps the quiz spinner alive forever
+        // when the device is offline.
+        if (url.pathname.startsWith("/api/v1/content/status/")) return false;
         if (url.pathname.startsWith("/api/")) return true;
         return false;
       },
