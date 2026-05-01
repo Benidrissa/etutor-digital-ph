@@ -269,6 +269,12 @@ export async function downloadModule(
         sizeBytes: estimatedSize,
         updatedAt: Date.now(),
       });
+
+      // Pre-warm the SW page cache with the rendered unit page so an offline
+      // navigation here is served from cache instead of falling through to
+      // /offline.html. The IndexedDB-backed viewer hydrates inside the cached
+      // HTML via content-loader.
+      await prewarmPage(`/${locale}/modules/${moduleId}/units/${unitId}`);
     }
 
     // Step 3: Download module-level flashcards
@@ -303,6 +309,10 @@ export async function downloadModule(
       downloadedAt: Date.now(),
       updatedAt: Date.now(),
     });
+
+    // Pre-warm the module landing too, so reaching it offline doesn't bounce
+    // to /offline.html before the user can navigate to a unit.
+    await prewarmPage(`/${locale}/modules/${moduleId}`);
 
     emit({ phase: "complete", totalUnits, downloadedUnits: totalUnits });
   } catch (err: unknown) {
@@ -445,5 +455,29 @@ async function downloadUnitQuiz(
   } catch (err: unknown) {
     if (err instanceof DOMException && err.name === "AbortError") throw err;
     console.warn(`Failed to download quiz for ${unitId}:`, err);
+  }
+}
+
+// Cache name MUST stay aligned with `pages-${CACHE_VERSION}` in frontend/sw.ts.
+// Bump both together when changing.
+const PAGES_CACHE_NAME = "pages-v6-offline-routes";
+
+/**
+ * Pre-fetch a same-origin page and stash it in the SW page cache so an offline
+ * navigation hits cache instead of falling through to /offline.html.
+ *
+ * Failures are swallowed — pre-warm is best-effort and must never fail a
+ * download.
+ */
+export async function prewarmPage(url: string): Promise<void> {
+  try {
+    if (typeof caches === "undefined") return;
+    const cache = await caches.open(PAGES_CACHE_NAME);
+    const res = await fetch(url, { credentials: "include" });
+    if (res.ok) {
+      await cache.put(url, res.clone());
+    }
+  } catch {
+    // best-effort
   }
 }
