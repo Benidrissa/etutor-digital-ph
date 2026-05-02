@@ -511,9 +511,7 @@ class TestCheckQuizPassedForUnit:
 
 
 class TestGetUnitType:
-    async def test_returns_unit_type_when_present(
-        self, progress_service, mock_db, module_id
-    ):
+    async def test_returns_unit_type_when_present(self, progress_service, mock_db, module_id):
         mock_db.execute = AsyncMock(
             return_value=MagicMock(first=MagicMock(return_value=("case-study",)))
         )
@@ -522,9 +520,7 @@ class TestGetUnitType:
 
         assert result == "case-study"
 
-    async def test_returns_none_when_unit_missing(
-        self, progress_service, mock_db, module_id
-    ):
+    async def test_returns_none_when_unit_missing(self, progress_service, mock_db, module_id):
         mock_db.execute = AsyncMock(return_value=MagicMock(first=MagicMock(return_value=None)))
 
         result = await progress_service.get_unit_type(module_id, "9.9")
@@ -552,7 +548,11 @@ class TestMarkUnitCompleteNoQuiz:
             # resolve_module_unit_id
             MagicMock(scalar_one_or_none=MagicMock(return_value=unit_uuid)),
             # case content lookup -> scalars().first()
-            MagicMock(scalars=MagicMock(return_value=MagicMock(first=MagicMock(return_value=case_content_id)))),
+            MagicMock(
+                scalars=MagicMock(
+                    return_value=MagicMock(first=MagicMock(return_value=case_content_id))
+                )
+            ),
             # _get_or_create_progress
             MagicMock(scalar_one_or_none=MagicMock(return_value=existing_progress)),
             # _calculate_completion_pct -> total units count
@@ -601,7 +601,9 @@ class TestMarkUnitCompleteNoQuiz:
         results = [
             MagicMock(scalar_one_or_none=MagicMock(return_value=unit_uuid)),
             # No case content row
-            MagicMock(scalars=MagicMock(return_value=MagicMock(first=MagicMock(return_value=None)))),
+            MagicMock(
+                scalars=MagicMock(return_value=MagicMock(first=MagicMock(return_value=None)))
+            ),
             MagicMock(scalar_one_or_none=MagicMock(return_value=existing_progress)),
             MagicMock(scalar=MagicMock(return_value=2)),
             MagicMock(all=MagicMock(return_value=[])),
