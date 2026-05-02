@@ -188,12 +188,14 @@ def _build_faceless_prompt(
 ) -> str:
     """Assemble the HeyGen Video Agent prompt for a faceless explainer.
 
-    The Video Agent is free to pick an avatar unless the prompt
-    forbids one, so every dispatch spells out the constraints: no
-    presenter, no avatar, b-roll + text only, with the narration
-    text quoted verbatim for the agent to read. Keeping the directive
-    inline (not only in the script) guarantees the agent treats the
-    visual and audio requirements as non-negotiable (#1879).
+    The Video Agent is free to pick an avatar AND an aspect ratio
+    unless the prompt forbids both, so every dispatch spells out the
+    constraints: 16:9 landscape, no presenter, no avatar, b-roll +
+    text only, with the narration text quoted verbatim for the agent
+    to read. Keeping the directives inline (not only in metadata)
+    guarantees the agent treats the visual and audio requirements as
+    non-negotiable (#1879 forced faceless, #1880 forced 16:9 after
+    the first dispatch defaulted to 9:16 short-form).
     """
     lang_label = "French" if language == "fr" else "English"
     domain = course_title or "the subject area"
@@ -203,15 +205,19 @@ def _build_faceless_prompt(
         audience = f"learners in {domain}"
 
     return (
-        f"Create a short faceless explainer video in {lang_label} "
-        f"for {audience}, targeting the {domain} subject area. "
+        f"Create a short faceless 16:9 landscape explainer video "
+        f"(horizontal widescreen, desktop / YouTube format — NOT a "
+        f"9:16 vertical short, NOT a square) in {lang_label} for "
+        f"{audience}, targeting the {domain} subject area. "
         f"Use cinematic educational b-roll footage, bold on-screen "
         f"captions synced to the narration, and a calm professional "
         f"narrator voice. "
-        f"HARD CONSTRAINTS: no on-screen presenter, no avatar, "
-        f"no talking head, no human faces — b-roll and typography only. "
-        f"Keep the pacing brisk and mobile-friendly "
-        f"(under ~90 seconds).\n\n"
+        f"HARD CONSTRAINTS (all non-negotiable):\n"
+        f"- Aspect ratio: 16:9 horizontal landscape (1280×720 or "
+        f"1920×1080). NOT 9:16, NOT 1:1, NOT vertical.\n"
+        f"- No on-screen presenter, no avatar, no talking head, no "
+        f"human faces — b-roll and typography only.\n"
+        f"- Under ~90 seconds total runtime.\n\n"
         f"Narration (speak this verbatim in {lang_label}):\n\n"
         f"{script}"
     )
