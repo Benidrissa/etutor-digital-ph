@@ -35,8 +35,14 @@ from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.module import Module
 from app.domain.models.source_image import SourceImage, SourceImageChunk
 
+# Match either the full UUID form (``8-4-4-4-12``) or a bare 8-char hex
+# stem (#2174) — Claude sometimes echoes only the leading segment back.
+# The lookahead pins the 8-char form to a separator (whitespace / comma /
+# end-of-string) so a normal word that *happens* to start with hex letters
+# (e.g. ``"Cafebabe Ch.1"``) is the only false positive we accept;
+# ordinary names like ``"Donaldson"`` have non-hex chars and won't match.
 _UUID_PREFIX_RE = re.compile(
-    r"^\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
+    r"^\s*(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{8}(?=\s|,|$))",
     re.IGNORECASE,
 )
 _CHAPTER_RE = re.compile(r"\bCh\.([^,\s]+)", re.IGNORECASE)

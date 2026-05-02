@@ -117,6 +117,27 @@ class TestUUIDDetection:
         assert not _starts_with_uuid("")
         assert not _starts_with_uuid(None)  # type: ignore[arg-type]
 
+    # 8-char hex stem variants (#2174)
+    def test_detects_8char_hex_with_chapter(self):
+        assert _starts_with_uuid("E8883D1E Ch.1")
+
+    def test_detects_8char_hex_with_page(self):
+        assert _starts_with_uuid("F89C2931, p.43")
+
+    def test_detects_8char_hex_alone(self):
+        assert _starts_with_uuid("E8883D1E")
+
+    def test_rejects_8char_word_followed_by_non_separator(self):
+        # ``Donaldso`` (the first 8 chars of "Donaldson") contains 'o', 'n',
+        # 'l', 's' which aren't hex, so it doesn't match anyway. But this
+        # also guards against a hypothetical hex-shaped word that is
+        # actually part of a longer identifier.
+        assert not _starts_with_uuid("Cafebabexyz Ch.1")  # not separated
+        assert not _starts_with_uuid("Donaldson")
+
+    def test_rejects_seven_char_hex(self):
+        assert not _starts_with_uuid("E8883D1 Ch.1")  # only 7 hex chars
+
 
 class TestHumanizeFilename:
     def test_strips_extension_and_titlecases(self):
@@ -205,6 +226,27 @@ class TestRewriteWithContext:
     def test_empty_returns_empty(self):
         assert rewrite_uuid_citations_with_context([], _make_course(), [], "fr") == []
         assert rewrite_uuid_citations_with_context(None, _make_course(), [], "fr") == []
+
+    # 8-char hex variants (#2174)
+    def test_rewrites_8char_hex_with_chapter(self):
+        course = _make_course()
+        resources = [_make_resource("triola.pdf")]
+        result = rewrite_uuid_citations_with_context(["E8883D1E Ch.1"], course, resources, "fr")
+        assert result == ["Triola Ch.1"]
+
+    def test_rewrites_8char_hex_with_page(self):
+        course = _make_course()
+        resources = [_make_resource("triola.pdf")]
+        result = rewrite_uuid_citations_with_context(["F89C2931, p.43"], course, resources, "fr")
+        assert result == ["Triola, p.43"]
+
+    def test_rewrites_mixed_full_and_short_uuids(self):
+        course = _make_course()
+        resources = [_make_resource("triola.pdf")]
+        result = rewrite_uuid_citations_with_context(
+            [f"{_UUID}, p.43", "E8883D1E Ch.1", "Donaldson, p.67"], course, resources, "fr"
+        )
+        assert result == ["Triola, p.43", "Triola Ch.1", "Donaldson, p.67"]
 
 
 class TestRewriteUUIDInString:
