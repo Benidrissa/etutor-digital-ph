@@ -110,7 +110,9 @@ async def upsert_user(session: AsyncSession, fixture: dict, hasher: PasswordServ
     return user
 
 
-async def upsert_course(session: AsyncSession, *, slug: str, status: str, org_id, creator_id) -> Course:
+async def upsert_course(
+    session: AsyncSession, *, slug: str, status: str, org_id, creator_id
+) -> Course:
     existing = (
         await session.execute(select(Course).where(Course.slug == slug))
     ).scalar_one_or_none()
@@ -248,29 +250,46 @@ async def seed() -> None:
 
         # Courses (under the org, created by the org owner)
         published = await upsert_course(
-            session, slug=COURSE_PUBLISHED_SLUG, status="published",
-            org_id=org.id, creator_id=owner.id,
+            session,
+            slug=COURSE_PUBLISHED_SLUG,
+            status="published",
+            org_id=org.id,
+            creator_id=owner.id,
         )
         draft = await upsert_course(
-            session, slug=COURSE_DRAFT_SLUG, status="draft",
-            org_id=org.id, creator_id=owner.id,
+            session,
+            slug=COURSE_DRAFT_SLUG,
+            status="draft",
+            org_id=org.id,
+            creator_id=owner.id,
         )
         await session.commit()
 
         # Curricula
         await upsert_curriculum(
-            session, slug=CURRICULUM_PUBLIC_SLUG, visibility="public",
-            org_id=org.id, creator_id=owner.id, course_ids=[published.id],
+            session,
+            slug=CURRICULUM_PUBLIC_SLUG,
+            visibility="public",
+            org_id=org.id,
+            creator_id=owner.id,
+            course_ids=[published.id],
         )
         await upsert_curriculum(
-            session, slug=CURRICULUM_PRIVATE_SLUG, visibility="private",
-            org_id=org.id, creator_id=owner.id, course_ids=[published.id, draft.id],
+            session,
+            slug=CURRICULUM_PRIVATE_SLUG,
+            visibility="private",
+            org_id=org.id,
+            creator_id=owner.id,
+            course_ids=[published.id, draft.id],
         )
         await session.commit()
 
         # Activation code (org-scoped → created_by must be NULL per XOR constraint)
         await upsert_activation_code(
-            session, code=ACTIVATION_CODE, course_id=published.id, org_id=org.id,
+            session,
+            code=ACTIVATION_CODE,
+            course_id=published.id,
+            org_id=org.id,
         )
 
         # Enrollment of learner in published course
