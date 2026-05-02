@@ -144,15 +144,32 @@ export async function loadQuiz<T>(
       }),
     });
 
-    // Opportunistically cache
-    upsertOfflineContent({
-      unitId,
-      moduleId,
-      contentType: 'quiz',
-      locale: idbLocale,
-      content: data,
-      cachedAt: Date.now(),
-    }).catch(() => {});
+    // If the backend wants to regenerate (202 "generating") and we already
+    // have a cached copy from a prior attempt, prefer the cached quiz so the
+    // learner isn't blocked behind a 3-minute Celery task — especially when
+    // connectivity drops mid-poll. Skip when the user explicitly asked to
+    // refresh.
+    if (
+      !forceRegenerate &&
+      data && typeof data === 'object' &&
+      'status' in data &&
+      (data as Record<string, unknown>).status === 'generating'
+    ) {
+      const cached = await getOfflineContentWithFallback(moduleId, unitId, 'quiz', idbLocale);
+      if (cached) {
+        return { data: cached.content as T, source: 'indexeddb' };
+      }
+    } else {
+      // Opportunistically cache real quiz payloads (skip 202 generating envelopes).
+      upsertOfflineContent({
+        unitId,
+        moduleId,
+        contentType: 'quiz',
+        locale: idbLocale,
+        content: data,
+        cachedAt: Date.now(),
+      }).catch(() => {});
+    }
 
     return { data, source: 'api' };
   } catch (err: unknown) {

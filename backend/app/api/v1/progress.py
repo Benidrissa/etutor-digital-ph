@@ -236,12 +236,35 @@ async def complete_lesson(
     """
     Mark a unit/lesson as completed.
 
-    Requires a passing quiz attempt (score ≥ 80%) for the given module + unit.
-    Returns 403 with error code 'quiz_required' if no passing attempt exists.
+    Lesson units require a passing quiz attempt (score ≥ 80%) — returns 403
+    with ``quiz_required`` if no passing attempt exists. Case-study and
+    scenario units have no quiz by design and are marked complete directly.
     """
     try:
         user_id = UUID(str(current_user.id))
         service = ProgressService(db)
+
+        unit_type = await service.get_unit_type(request.module_id, request.unit_id)
+
+        if unit_type in ("case-study", "scenario"):
+            progress = await service.mark_unit_complete_no_quiz(
+                user_id=user_id,
+                module_id=request.module_id,
+                unit_id=request.unit_id,
+            )
+            logger.info(
+                "Case-study unit completed via complete-lesson endpoint",
+                user_id=str(user_id),
+                module_id=str(request.module_id),
+                unit_id=request.unit_id,
+                completion_pct=progress.completion_pct,
+            )
+            return CompleteLessonResponse(
+                completed=True,
+                module_progress=_make_module_progress_response(
+                    user_id, request.module_id, progress
+                ),
+            )
 
         quiz_passed = await service.check_quiz_passed_for_unit(
             user_id=user_id,

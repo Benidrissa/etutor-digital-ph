@@ -258,13 +258,11 @@ class SyncManager {
         break;
 
       case 'case_study_complete':
-        await apiFetch('/api/v1/progress/lesson-access', {
+        await apiFetch('/api/v1/progress/complete-lesson', {
           method: 'POST',
           body: JSON.stringify({
             module_id: payload.module_id,
-            lesson_id: payload.lesson_id,
-            time_spent_seconds: payload.time_spent_seconds,
-            completion_percentage: payload.completion_percentage,
+            unit_id: payload.unit_id,
           }),
         });
         break;

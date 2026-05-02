@@ -102,6 +102,7 @@ export function CaseStudyViewer({
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [completeError, setCompleteError] = useState<string | null>(null);
   const [correctionVisible, setCorrectionVisible] = useState(false);
   const [forceRegenerate, setForceRegenerate] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -225,6 +226,7 @@ export function CaseStudyViewer({
   };
 
   const handleMarkComplete = async () => {
+    setCompleteError(null);
     try {
       await apiFetch(`/api/v1/progress/complete-lesson`, {
         method: 'POST',
@@ -237,6 +239,7 @@ export function CaseStudyViewer({
       onComplete?.();
     } catch (err) {
       console.error('Error marking case study complete:', err);
+      setCompleteError(t('completeError'));
     }
   };
 
@@ -551,6 +554,15 @@ export function CaseStudyViewer({
             t('markComplete')
           )}
         </Button>
+        {completeError && (
+          <p
+            role="alert"
+            className="mt-3 inline-flex items-center gap-2 text-sm text-red-600"
+          >
+            <AlertTriangle className="w-4 h-4" aria-hidden />
+            {completeError}
+          </p>
+        )}
       </div>
     </div>
   );
