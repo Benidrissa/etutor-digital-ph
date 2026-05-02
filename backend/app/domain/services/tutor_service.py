@@ -1613,6 +1613,14 @@ class TutorService:
                 api_messages.append({"role": "user", "content": tool_results})
 
             unique_sources = _deduplicate_sources(sources_cited)
+            # Citation surface: swap any rag_collection_id UUID labels for the
+            # course's PDF/title before they hit the wire (#2168). Pure
+            # post-processing — does not change how tool-call results are built.
+            from app.domain.services.citation_formatter import rewrite_uuid_in_source_dicts
+
+            unique_sources = await rewrite_uuid_in_source_dicts(
+                unique_sources, course, session, language=effective_language
+            )
 
             activity_suggestions = self._extract_activity_suggestions(
                 full_response, context_type, user.current_level
@@ -1799,6 +1807,25 @@ class TutorService:
             messages_full = conversation.messages or []
 
         messages_out = await _attach_source_image_refs(messages_full, session)
+
+        # Rewrite UUID-shaped citations stored on older messages (#2168).
+        # New messages have already been rewritten before storage; this pass
+        # is idempotent and only acts on legacy entries that still carry the
+        # raw rag_collection_id.
+        if conversation.course_id is not None:
+            from app.domain.models.course import Course as _Course
+            from app.domain.services.citation_formatter import rewrite_uuid_in_source_dicts
+
+            course_for_citations = await session.get(_Course, conversation.course_id)
+            user_lang = "fr"
+            user_row = await session.get(User, user_id)
+            if user_row is not None and getattr(user_row, "preferred_language", None):
+                user_lang = user_row.preferred_language
+            for msg in messages_out:
+                if isinstance(msg, dict) and isinstance(msg.get("sources"), list):
+                    msg["sources"] = await rewrite_uuid_in_source_dicts(
+                        msg["sources"], course_for_citations, session, language=user_lang
+                    )
 
         return {
             "id": conversation.id,

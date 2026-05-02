@@ -832,6 +832,7 @@ async def preview_lesson(
     db=Depends(get_db_session),
 ) -> dict:
     """Generate a lesson preview for admin review before publishing."""
+    from app.domain.services.citation_formatter import rewrite_response_citations
     from app.domain.services.lesson_service import LessonGenerationService
 
     service = LessonGenerationService()
@@ -844,6 +845,7 @@ async def preview_lesson(
         session=db,
         user_id=uuid.UUID(current_user.id),
     )
+    await rewrite_response_citations(lesson, db)
     return lesson.model_dump()
 
 

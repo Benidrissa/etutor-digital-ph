@@ -41,6 +41,10 @@ from app.domain.models.content import GeneratedContent
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.services.analytics_service import AnalyticsService
+from app.domain.services.citation_formatter import (
+    rewrite_response_citations,
+    rewrite_uuid_citations_for_module,
+)
 from app.domain.services.flashcard_service import FlashcardGenerationService
 from app.domain.services.lesson_service import CaseStudyGenerationService, LessonGenerationService
 from app.domain.services.progress_service import ProgressService
@@ -266,6 +270,7 @@ async def generate_lesson(
             cached=lesson_response.cached,
         )
 
+        await rewrite_response_citations(lesson_response, session)
         return lesson_response
 
     except ValueError as e:
@@ -493,6 +498,12 @@ async def get_or_generate_lesson_by_module_and_unit(
                     from app.api.v1.schemas.content import CaseStudyContent as _CaseStudyContent
 
                     content_dict = {k: v for k, v in cached.content.items() if k != "unit_id"}
+                    content_dict["sources_cited"] = await rewrite_uuid_citations_for_module(
+                        content_dict.get("sources_cited"),
+                        cached.module_id,
+                        session,
+                        language=cached.language,
+                    )
                     case_study_response = CaseStudyResponse(
                         id=cached.id,
                         module_id=cached.module_id,
@@ -548,6 +559,12 @@ async def get_or_generate_lesson_by_module_and_unit(
                 from app.api.v1.schemas.content import LessonContent as _LessonContent
 
                 content_dict = {k: v for k, v in cached.content.items() if k != "unit_id"}
+                content_dict["sources_cited"] = await rewrite_uuid_citations_for_module(
+                    content_dict.get("sources_cited"),
+                    cached.module_id,
+                    session,
+                    language=cached.language,
+                )
 
                 source_image_refs = await lesson_service._extract_source_image_refs(
                     " ".join(str(v or "") for v in cached.content.values() if isinstance(v, str))
@@ -864,14 +881,22 @@ async def get_lesson(
 
         from app.api.v1.schemas.content import LessonContent
 
+        content_dict = dict(lesson_content.content)
+        content_dict["sources_cited"] = await rewrite_uuid_citations_for_module(
+            content_dict.get("sources_cited"),
+            lesson_content.module_id,
+            session,
+            language=lesson_content.language,
+        )
+
         return LessonResponse(
             id=lesson_content.id,
             module_id=lesson_content.module_id,
-            unit_id=lesson_content.content.get("unit_id", ""),
+            unit_id=content_dict.get("unit_id", ""),
             language=lesson_content.language,
             level=lesson_content.level,
             country_context=lesson_content.country_context or "",
-            content=LessonContent(**lesson_content.content),
+            content=LessonContent(**content_dict),
             generated_at=lesson_content.generated_at.isoformat(),
             cached=True,
         )
@@ -1235,6 +1260,12 @@ async def get_or_generate_case_study(
                 from app.api.v1.schemas.content import CaseStudyContent as _CaseStudyContent
 
                 content_dict = {k: v for k, v in cached.content.items() if k != "unit_id"}
+                content_dict["sources_cited"] = await rewrite_uuid_citations_for_module(
+                    content_dict.get("sources_cited"),
+                    cached.module_id,
+                    session,
+                    language=cached.language,
+                )
                 case_study_response = CaseStudyResponse(
                     id=cached.id,
                     module_id=cached.module_id,
