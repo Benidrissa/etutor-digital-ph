@@ -16,7 +16,7 @@
  * in production-uat.spec.ts. Out of scope for #2116-1 (password-only).
  */
 
-import { test as setup } from '@playwright/test';
+import { test as setup, type Page } from '@playwright/test';
 import path from 'node:path';
 
 import { applyAuthToLocalStorage, loginViaApi, PERSONAS, type Persona } from './fixtures/auth';
@@ -26,10 +26,7 @@ const STAGING_URL =
 
 const AUTH_DIR = path.resolve(__dirname, '.auth');
 
-async function authenticatePersona(
-  page: Parameters<Parameters<typeof setup>[1]>[0]['page'],
-  persona: Persona,
-): Promise<void> {
+async function authenticatePersona(page: Page, persona: Persona): Promise<void> {
   // Establish the origin context FIRST so localStorage can be bound to it.
   await page.goto(`${STAGING_URL}/fr/login`, { waitUntil: 'domcontentloaded' });
 
