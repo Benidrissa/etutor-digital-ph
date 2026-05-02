@@ -11,25 +11,42 @@ module rewrites those UUID-prefixed strings into a human-readable form
 The mapping is purely a presentation-layer transform. It uses information
 already on disk — ``CourseResource.filename`` and ``Course.title_*`` — so no
 schema changes, no re-indexation, and no Claude API spend.
+
+Multi-PDF resolution (#2178): when the course has more than one PDF, each
+citation's ``(chapter, page)`` is matched against ``DocumentChunk`` rows for
+that course; the chunk's content prefix is then substring-matched against
+each ``CourseResource.raw_text`` to identify the originating PDF. Per-citation
+fallback to the course title only when the lookup is genuinely ambiguous.
 """
 
 from __future__ import annotations
 
 import contextlib
 import re
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.models.course import Course
 from app.domain.models.course_resource import CourseResource
+from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.module import Module
 
 _UUID_PREFIX_RE = re.compile(
     r"^\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
     re.IGNORECASE,
 )
+_CHAPTER_RE = re.compile(r"\bCh\.([^,\s]+)", re.IGNORECASE)
+_PAGE_RE = re.compile(r"\bp\.(\d+)", re.IGNORECASE)
+# Match what TextChunker._clean_text strips so we can locate a chunk's
+# (cleaned) content inside a resource's pre-clean raw_text.
+_PAGE_NUMBER_NOISE = re.compile(r"\b(?:Page|page)\s*\d+\b")
+_CHAPTER_HEADER_NOISE = re.compile(r"\b\d{1,3}\s*\|\s*Chapter\s*\d+")
+_CASE_BREAK = re.compile(r"([a-z])([A-Z])")
+_WHITESPACE = re.compile(r"\s+")
+_FINGERPRINT_LEN = 200
 
 
 def _starts_with_uuid(s: str) -> bool:
@@ -50,21 +67,15 @@ def humanize_filename(filename: str | None) -> str:
     return name.title() if name else ""
 
 
-def _pick_display_name(
-    course: Course | None,
-    resources: list[CourseResource],
-    language: str,
-) -> str | None:
-    """Pick the label that replaces a UUID prefix.
+def _replace_uuid_prefix(s: str, display: str) -> str:
+    """Swap a leading UUID with ``display``, preserving the trailing suffix."""
+    m = _UUID_PREFIX_RE.match(s)
+    if not m:
+        return s
+    return display + s[m.end() :]
 
-    - Single CourseResource: humanized filename of that PDF.
-    - Multiple resources: course title (we can't disambiguate from a
-      flat string alone).
-    - No resources: course title.
-    """
-    if len(resources) == 1:
-        only = resources[0]
-        return humanize_filename(only.parent_filename or only.filename) or None
+
+def _course_title(course: Course | None, language: str) -> str | None:
     if course is None:
         return None
     if language == "en":
@@ -72,12 +83,163 @@ def _pick_display_name(
     return getattr(course, "title_fr", None) or getattr(course, "title_en", None)
 
 
-def _replace_uuid_prefix(s: str, display: str) -> str:
-    """Swap a leading UUID with ``display``, preserving the trailing suffix."""
-    m = _UUID_PREFIX_RE.match(s)
-    if not m:
-        return s
-    return display + s[m.end() :]
+def _resource_label(resource: CourseResource | None) -> str | None:
+    if resource is None:
+        return None
+    return humanize_filename(resource.parent_filename or resource.filename) or None
+
+
+def _normalize_for_match(text: str | None) -> str:
+    """Apply the same cleaning as ``TextChunker._clean_text`` plus lowercase.
+
+    Chunks are stored post-clean, so to find a chunk inside a ``CourseResource.raw_text``
+    we apply the same cleaning to ``raw_text`` once. Lowercasing additionally
+    guards against any ``.title()``/case drift along the way.
+    """
+    if not text:
+        return ""
+    text = _WHITESPACE.sub(" ", text)
+    text = _PAGE_NUMBER_NOISE.sub("", text)
+    text = _CHAPTER_HEADER_NOISE.sub("", text)
+    text = re.sub(r"\s*\n\s*", " ", text)
+    text = _CASE_BREAK.sub(r"\1. \2", text)
+    return text.lower()
+
+
+def _parse_chapter_page(citation: str) -> tuple[str | None, int | None]:
+    """Pull ``(chapter, page)`` out of a citation string suffix."""
+    chapter: str | None = None
+    page: int | None = None
+    if not isinstance(citation, str):
+        return None, None
+    m = _CHAPTER_RE.search(citation)
+    if m:
+        chapter = m.group(1).strip().rstrip(",")
+    m = _PAGE_RE.search(citation)
+    if m:
+        try:
+            page = int(m.group(1))
+        except ValueError:
+            page = None
+    return chapter, page
+
+
+def _pick_display_name(
+    course: Course | None,
+    resources: list[CourseResource],
+    language: str,
+) -> str | None:
+    """Pick the label that replaces a UUID prefix when no per-citation map exists.
+
+    - Single CourseResource: humanized filename of that PDF.
+    - Multiple resources: course title (used as the per-citation fallback).
+    - No resources: course title.
+    """
+    if len(resources) == 1:
+        return _resource_label(resources[0])
+    return _course_title(course, language)
+
+
+async def _resolve_per_citation_map(
+    course: Course,
+    resources: list[CourseResource],
+    pairs: set[tuple[str | None, int | None]],
+    session: AsyncSession,
+) -> dict[tuple[str | None, int | None], str]:
+    """Return ``{(chapter, page): humanized_filename}`` for resolvable citations.
+
+    For each ``(chapter, page)`` pair, fetch the matching ``DocumentChunk`` rows
+    (scoped by the course's ``rag_collection_id``), then identify which
+    ``CourseResource`` the chunk came from by substring-matching the chunk's
+    content prefix inside each resource's normalized ``raw_text``. Pairs that
+    don't yield a unique resource are simply omitted from the map.
+    """
+    rag_id = getattr(course, "rag_collection_id", None)
+    if not rag_id or not pairs or not resources:
+        return {}
+
+    # Build OR-of-AND filter: (chapter=:c, page=:p) for each pair (skip Nones).
+    filterable = [(c, p) for (c, p) in pairs if c is not None or p is not None]
+    if not filterable:
+        return {}
+    conditions = []
+    for c, p in filterable:
+        clauses = [DocumentChunk.source == rag_id]
+        if c is not None:
+            clauses.append(DocumentChunk.chapter == str(c))
+        if p is not None:
+            clauses.append(DocumentChunk.page == p)
+        conditions.append(and_(*clauses))
+    stmt = (
+        select(DocumentChunk.chapter, DocumentChunk.page, DocumentChunk.content)
+        .where(or_(*conditions))
+        .limit(200)
+    )
+    rows = (await session.execute(stmt)).all()
+    if not rows:
+        return {}
+
+    normalized_resources: list[tuple[CourseResource, str]] = [
+        (r, _normalize_for_match(r.raw_text or "")) for r in resources if r.raw_text
+    ]
+    if not normalized_resources:
+        return {}
+
+    out: dict[tuple[str | None, int | None], str] = {}
+    # Track ambiguity: if two different resources match the same (chapter, page)
+    # via different chunk rows, drop the pair.
+    seen: dict[tuple[str | None, int | None], CourseResource | None] = {}
+    AMBIGUOUS = object()
+    for row in rows:
+        chunk_chapter = row[0]
+        chunk_page = row[1]
+        chunk_content = row[2] or ""
+        normalized = _normalize_for_match(chunk_content)
+        fingerprint = normalized[:_FINGERPRINT_LEN]
+        if len(fingerprint) < 40:
+            continue
+        matches: list[CourseResource] = []
+        for resource, normalized_text in normalized_resources:
+            if fingerprint in normalized_text:
+                matches.append(resource)
+                if len(matches) > 1:
+                    break
+        if len(matches) != 1:
+            continue
+        winner = matches[0]
+        key = (chunk_chapter, chunk_page)
+        prior = seen.get(key)
+        if prior is None:
+            seen[key] = winner
+        elif prior is AMBIGUOUS:
+            continue
+        elif prior.id != winner.id:
+            seen[key] = AMBIGUOUS  # type: ignore[assignment]
+
+    for key, winner in seen.items():
+        if winner is None or winner is AMBIGUOUS:
+            continue
+        label = _resource_label(winner)  # type: ignore[arg-type]
+        if label:
+            out[key] = label
+    return out
+
+
+def _apply_per_citation(
+    str_sources: list[str],
+    per_citation_map: dict[tuple[str | None, int | None], str],
+    fallback_label: str | None,
+) -> list[str]:
+    """Rewrite each UUID-prefixed citation using the per-citation map first."""
+    out: list[str] = []
+    for s in str_sources:
+        if not _starts_with_uuid(s):
+            out.append(s)
+            continue
+        key = _parse_chapter_page(s)
+        label = per_citation_map.get(key) or fallback_label
+        out.append(_replace_uuid_prefix(s, label) if label else s)
+    return out
 
 
 async def rewrite_uuid_citations_for_module(
@@ -110,11 +272,19 @@ async def rewrite_uuid_citations_for_module(
     )
     resources = list(res_result.scalars().all())
 
-    display = _pick_display_name(course, resources, language)
-    if not display:
-        return list(str_sources)
+    fallback_label = _pick_display_name(course, resources, language)
 
-    return [_replace_uuid_prefix(s, display) if _starts_with_uuid(s) else s for s in str_sources]
+    if len(resources) <= 1 or course is None:
+        if not fallback_label:
+            return list(str_sources)
+        return [
+            _replace_uuid_prefix(s, fallback_label) if _starts_with_uuid(s) else s
+            for s in str_sources
+        ]
+
+    pairs = {_parse_chapter_page(s) for s in str_sources if _starts_with_uuid(s)}
+    per_citation_map = await _resolve_per_citation_map(course, resources, pairs, session)
+    return _apply_per_citation(str_sources, per_citation_map, fallback_label)
 
 
 def rewrite_uuid_citations_with_context(
@@ -125,8 +295,9 @@ def rewrite_uuid_citations_with_context(
 ) -> list[str]:
     """Synchronous variant for callers that already have ``course`` and resources loaded.
 
-    Used by the tutor service, which resolves the active course up front
-    and shouldn't hit the DB again per emitted source.
+    Used by the tutor service's in-memory paths. Multi-PDF per-citation
+    resolution requires a DB query, which is async-only — sync callers stick
+    with the single-display fallback (course title for multi-resource).
     """
     if not sources:
         return [] if sources is None else list(sources)
@@ -168,7 +339,8 @@ async def rewrite_uuid_in_source_dicts(
 
     Tutor citations are emitted as ``{"source": <str>, "chapter": ..., "page": ...}``
     dicts. Walks the list, swapping any UUID-prefixed ``source`` for a
-    human-readable label.
+    human-readable label. Multi-PDF courses get per-dict resolution using the
+    dict's own ``chapter``/``page`` fields.
     """
     if not sources:
         return list(sources or [])
@@ -184,21 +356,61 @@ async def rewrite_uuid_in_source_dicts(
         select(CourseResource).where(CourseResource.course_id == course.id)
     )
     resources = list(res_result.scalars().all())
-    display = _pick_display_name(course, resources, language)
-    if not display:
-        return list(sources)
+    fallback_label = _pick_display_name(course, resources, language)
+
+    if len(resources) <= 1:
+        if not fallback_label:
+            return list(sources)
+        rewritten: list[dict] = []
+        for entry in sources:
+            if isinstance(entry, dict):
+                src = entry.get("source", "")
+                if _starts_with_uuid(src):
+                    entry = {**entry, "source": _replace_uuid_prefix(src, fallback_label)}
+            rewritten.append(entry)
+        return rewritten
+
+    pairs: set[tuple[str | None, int | None]] = set()
+    for entry in sources:
+        if not isinstance(entry, dict):
+            continue
+        if not _starts_with_uuid(entry.get("source", "")):
+            continue
+        chapter_raw = entry.get("chapter")
+        chapter = str(chapter_raw) if chapter_raw is not None else None
+        page_raw = entry.get("page")
+        page: int | None
+        try:
+            page = int(page_raw) if page_raw is not None else None
+        except (TypeError, ValueError):
+            page = None
+        pairs.add((chapter, page))
+    per_citation_map = await _resolve_per_citation_map(course, resources, pairs, session)
 
     rewritten: list[dict] = []
     for entry in sources:
-        if isinstance(entry, dict):
-            src = entry.get("source", "")
-            if _starts_with_uuid(src):
-                entry = {**entry, "source": _replace_uuid_prefix(src, display)}
+        if not isinstance(entry, dict):
+            rewritten.append(entry)
+            continue
+        src = entry.get("source", "")
+        if not _starts_with_uuid(src):
+            rewritten.append(entry)
+            continue
+        chapter_raw = entry.get("chapter")
+        chapter = str(chapter_raw) if chapter_raw is not None else None
+        page_raw = entry.get("page")
+        try:
+            page = int(page_raw) if page_raw is not None else None
+        except (TypeError, ValueError):
+            page = None
+        label = per_citation_map.get((chapter, page)) or fallback_label
+        if label:
+            entry = {**entry, "source": _replace_uuid_prefix(src, label)}
         rewritten.append(entry)
     return rewritten
 
 
-async def rewrite_response_citations(response, session: AsyncSession):
+async def rewrite_response_citations(response: Any, session: AsyncSession):
     """Rewrite ``response.content.sources_cited`` in place.
 
     Convenience wrapper for endpoint handlers that return a
