@@ -52,9 +52,14 @@ def _make_module(course_id: str = "course-id") -> SimpleNamespace:
     return SimpleNamespace(id="module-id", course_id=course_id)
 
 
-def _make_chunk_row(chapter: str | None, page: int | None, content: str) -> tuple:
-    """Mimic an SQLAlchemy Row for the (chapter, page, content) projection."""
-    return (chapter, page, content)
+def _make_chunk_row(
+    chapter: str | None,
+    page: int | None,
+    content: str,
+    chunk_id: str | None = None,
+) -> tuple:
+    """Mimic an SQLAlchemy Row for the (id, chapter, page, content) projection."""
+    return (chunk_id or f"chunk-{chapter}-{page}", chapter, page, content)
 
 
 class _FakeAsyncSession:
@@ -370,8 +375,8 @@ class TestRewriteForModuleMultiResource:
 
     async def test_ambiguous_chunk_falls_back_to_course_title(self):
         # Boilerplate paragraph appears in both PDFs — chunk fingerprint
-        # matches both resources, so that pair's citation falls back to the
-        # course title.
+        # matches both resources. With no linked image text to break the tie,
+        # the citation falls back to the course title.
         boilerplate = "this generic introduction paragraph " * 20
         pdf_a = _make_resource(
             "alpha_textbook.pdf",
@@ -393,7 +398,8 @@ class TestRewriteForModuleMultiResource:
             },
             execute_queue=[
                 _scalar_result([pdf_a, pdf_b]),
-                _row_result([_make_chunk_row("1", 1, boilerplate)]),
+                _row_result([("chunk-amb-1", "1", 1, boilerplate)]),
+                _row_result([]),  # no linked images for the deferred chunk
             ],
         )
         sources = [f"{_UUID} Ch.1, p.1"]
@@ -422,6 +428,106 @@ class TestRewriteForModuleMultiResource:
         sources = [f"{_UUID}, p.43", f"{_UUID} Ch.2, p.50"]
         out = await rewrite_uuid_citations_for_module(sources, "module-id", session, "fr")
         assert out == ["Alpha Textbook, p.43", "Alpha Textbook Ch.2, p.50"]
+
+
+@pytest.mark.asyncio
+class TestImageTiebreaker:
+    """When chunk content matches multiple resources, ``SourceImage.surrounding_text``
+    breaks ties (#2181)."""
+
+    async def test_surrounding_text_breaks_tie(self):
+        # Both PDFs share a paragraph (boilerplate). Chunk content matches
+        # both. But a linked SourceImage's surrounding_text appears in only
+        # one — that's the winner.
+        boilerplate = "shared header paragraph " * 30
+        pdf_a_unique = "alpha-only specific marker " * 20
+        pdf_b_unique = "beta-only specific marker " * 20
+        pdf_a = _make_resource(
+            "alpha.pdf",
+            raw_text=boilerplate + pdf_a_unique,
+            rid="rid-a",
+        )
+        pdf_b = _make_resource(
+            "beta.pdf",
+            raw_text=boilerplate + pdf_b_unique,
+            rid="rid-b",
+        )
+        course = _make_course()
+        module = _make_module()
+
+        chunk_id = "chunk-1"
+        # Chunk content == boilerplate, so it matches BOTH resources.
+        chunk_row = (chunk_id, "1", 5, boilerplate)
+        # Linked surrounding_text contains alpha-specific marker → unique to A.
+        img_row = (chunk_id, "alpha-only specific marker " * 5)
+
+        session = _FakeAsyncSession(
+            gets={
+                ("Module", "module-id"): module,
+                ("Course", "course-id"): course,
+            },
+            execute_queue=[
+                _scalar_result([pdf_a, pdf_b]),
+                _row_result([chunk_row]),
+                _row_result([img_row]),
+            ],
+        )
+        sources = [f"{_UUID} Ch.1, p.5"]
+        out = await rewrite_uuid_citations_for_module(sources, "module-id", session, "fr")
+        assert out == ["Alpha Ch.1, p.5"]
+
+    async def test_no_image_keeps_ambiguous_fallback(self):
+        # Chunk content matches both resources, no linked image → still
+        # ambiguous, falls back to course title.
+        boilerplate = "shared header paragraph " * 30
+        pdf_a = _make_resource("alpha.pdf", raw_text=boilerplate + "x" * 200, rid="rid-a")
+        pdf_b = _make_resource("beta.pdf", raw_text=boilerplate + "y" * 200, rid="rid-b")
+        course = _make_course()
+        module = _make_module()
+
+        chunk_row = ("chunk-1", "1", 5, boilerplate)
+
+        session = _FakeAsyncSession(
+            gets={
+                ("Module", "module-id"): module,
+                ("Course", "course-id"): course,
+            },
+            execute_queue=[
+                _scalar_result([pdf_a, pdf_b]),
+                _row_result([chunk_row]),
+                _row_result([]),  # no linked images
+            ],
+        )
+        sources = [f"{_UUID} Ch.1, p.5"]
+        out = await rewrite_uuid_citations_for_module(sources, "module-id", session, "fr")
+        assert out == ["Statistiques de Santé Publique Ch.1, p.5"]
+
+    async def test_image_text_ambiguous_keeps_fallback(self):
+        # Chunk content + linked image text both match multiple resources →
+        # still ambiguous, falls back.
+        boilerplate = "shared header paragraph " * 30
+        pdf_a = _make_resource("alpha.pdf", raw_text=boilerplate + "alpha-x " * 50, rid="rid-a")
+        pdf_b = _make_resource("beta.pdf", raw_text=boilerplate + "beta-y " * 50, rid="rid-b")
+        course = _make_course()
+        module = _make_module()
+
+        chunk_row = ("chunk-1", "1", 5, boilerplate)
+        img_row = ("chunk-1", boilerplate)  # surrounding_text is also shared
+
+        session = _FakeAsyncSession(
+            gets={
+                ("Module", "module-id"): module,
+                ("Course", "course-id"): course,
+            },
+            execute_queue=[
+                _scalar_result([pdf_a, pdf_b]),
+                _row_result([chunk_row]),
+                _row_result([img_row]),
+            ],
+        )
+        sources = [f"{_UUID} Ch.1, p.5"]
+        out = await rewrite_uuid_citations_for_module(sources, "module-id", session, "fr")
+        assert out == ["Statistiques de Santé Publique Ch.1, p.5"]
 
 
 @pytest.mark.asyncio
