@@ -21,7 +21,9 @@ def _make_resource(filename: str, parent_filename: str | None = None) -> SimpleN
     return SimpleNamespace(filename=filename, parent_filename=parent_filename)
 
 
-def _make_course(title_fr: str = "Statistiques de Santé Publique", title_en: str = "Public Health Statistics") -> SimpleNamespace:
+def _make_course(
+    title_fr: str = "Statistiques de Santé Publique", title_en: str = "Public Health Statistics"
+) -> SimpleNamespace:
     return SimpleNamespace(id="course-id", title_fr=title_fr, title_en=title_en)
 
 
@@ -102,9 +104,7 @@ class TestRewriteWithContext:
     def test_english_uses_english_title(self):
         course = _make_course()
         resources = [_make_resource("a.pdf"), _make_resource("b.pdf")]
-        result = rewrite_uuid_citations_with_context(
-            [f"{_UUID}, p.43"], course, resources, "en"
-        )
+        result = rewrite_uuid_citations_with_context([f"{_UUID}, p.43"], course, resources, "en")
         assert result == ["Public Health Statistics, p.43"]
 
     def test_no_resources_no_course_keeps_input(self):
