@@ -735,7 +735,10 @@
     "unitNotFound": "This unit does not exist in this module.",
     "backToModule": "Back to module",
     "contentNotAvailableOffline": "This lesson is not available offline. Download the module to access it without internet.",
-    "countryFallback": "Content optimized for your region will be available shortly"
+    "countryFallback": "Content optimized for your region will be available shortly",
+    "markComplete": "Mark as Complete",
+    "completed": "Completed",
+    "completeError": "Could not mark this lesson as complete. Please try again."
   },
   "LessonAudio": {
     "audioPending": "Generating audio summary...",

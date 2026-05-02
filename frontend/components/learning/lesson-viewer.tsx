@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { Clock, RefreshCw, Loader2, AlertTriangle } from 'lucide-react';
+import { CheckCircle, Clock, RefreshCw, Loader2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -80,6 +80,7 @@ export function LessonViewer({
   estimatedMinutes,
   unitTitle,
   unitDescription,
+  onComplete,
 }: LessonViewerProps) {
   const [lessonData, setLessonData] = useState<LessonData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -90,6 +91,8 @@ export function LessonViewer({
   const [forceRegenerate, setForceRegenerate] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [contentSource, setContentSource] = useState<'api' | 'indexeddb'>('api');
+  const [isCompleted, setIsCompleted] = useState(false);
+  const [completeError, setCompleteError] = useState<string | null>(null);
   // Which media-tab pane is active. The "Actualiser le contenu" button
   // only makes sense on the Lire pane (it regenerates lesson body, not
   // audio/video) so we hide it on listen/watch.
@@ -262,6 +265,24 @@ export function LessonViewer({
     setLessonData(null);
     setIsRefreshing(true);
     setForceRegenerate(true);
+  };
+
+  const handleMarkComplete = async () => {
+    setCompleteError(null);
+    try {
+      await apiFetch(`/api/v1/progress/complete-lesson`, {
+        method: 'POST',
+        body: JSON.stringify({
+          module_id: moduleId,
+          unit_id: unitId,
+        }),
+      });
+      setIsCompleted(true);
+      onComplete?.();
+    } catch (err) {
+      console.error('Error marking lesson complete:', err);
+      setCompleteError(t('completeError'));
+    }
   };
 
   const mdClass = "prose prose-gray max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-900 prose-table:text-sm";
@@ -540,6 +561,34 @@ export function LessonViewer({
 
       {/* Source Citations */}
       <SourceCitations sources={content.sources_cited} />
+
+      {/* Mark as Complete */}
+      <div className="mt-8 text-center">
+        <Button
+          onClick={handleMarkComplete}
+          disabled={isCompleted || isLoading || isGenerating || !isOnline}
+          className="min-h-11 px-8"
+          size="lg"
+        >
+          {isCompleted ? (
+            <>
+              <CheckCircle className="w-4 h-4 mr-2" />
+              {t('completed')}
+            </>
+          ) : (
+            t('markComplete')
+          )}
+        </Button>
+        {completeError && (
+          <p
+            role="alert"
+            className="mt-3 inline-flex items-center gap-2 text-sm text-red-600"
+          >
+            <AlertTriangle className="w-4 h-4" aria-hidden />
+            {completeError}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
