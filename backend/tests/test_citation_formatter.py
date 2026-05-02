@@ -14,7 +14,6 @@ from app.domain.services.citation_formatter import (
     rewrite_uuid_in_string,
 )
 
-
 _UUID = "bd2e9508-9b48-46f4-959c-14b682cba886"
 
 
