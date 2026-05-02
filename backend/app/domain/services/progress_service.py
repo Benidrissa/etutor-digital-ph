@@ -8,7 +8,7 @@ from datetime import datetime
 from uuid import UUID
 
 import structlog
-from sqlalchemy import func, or_, select, text, update
+from sqlalchemy import case, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.models.course import UserCourseEnrollment
@@ -247,12 +247,17 @@ class ProgressService:
         unit_id: str,
     ) -> UserModuleProgress:
         """
-        Mark a non-quiz unit (case-study / scenario) as completed.
+        Mark a non-quiz unit (case-study / scenario / lesson) as completed.
 
         Persists completion via a ``LessonReading`` row at 100% on the unit's
-        case-study ``GeneratedContent`` so ``_get_completed_units`` recognizes
-        it on later recomputations and ``completion_pct`` does not regress.
-        Does **not** touch ``quiz_score_avg`` — case studies are not quizzes.
+        underlying ``GeneratedContent`` (case-study or lesson) so
+        ``_get_completed_units`` recognizes it on later recomputations and
+        ``completion_pct`` does not regress. Does **not** touch
+        ``quiz_score_avg`` — these unit types are not quizzes.
+
+        When both a ``case`` and a ``lesson`` row exist for the same unit
+        (e.g. an admin attached a case study to a lesson unit), the ``case``
+        row is preferred so case-study units stay bound to their case content.
         """
         from app.domain.models.content import GeneratedContent
         from app.domain.services._unit_resolution import resolve_module_unit_id
@@ -260,26 +265,31 @@ class ProgressService:
         now = datetime.utcnow()
 
         progress_unit_uuid = await resolve_module_unit_id(self.db, module_id, unit_id)
-        case_query = select(GeneratedContent.id).where(
-            GeneratedContent.content_type == "case",
+        content_query = select(GeneratedContent.id).where(
+            GeneratedContent.content_type.in_(("case", "lesson")),
         )
         if progress_unit_uuid is not None:
-            case_query = case_query.where(GeneratedContent.module_unit_id == progress_unit_uuid)
+            content_query = content_query.where(
+                GeneratedContent.module_unit_id == progress_unit_uuid
+            )
         else:
-            case_query = case_query.where(
+            content_query = content_query.where(
                 GeneratedContent.module_id == module_id,
                 GeneratedContent.module_unit_id.is_(None),
                 GeneratedContent.content["unit_id"].astext == unit_id,
             )
-        case_result = await self.db.execute(case_query)
-        case_id = case_result.scalars().first()
+        content_query = content_query.order_by(
+            case((GeneratedContent.content_type == "case", 0), else_=1)
+        )
+        content_result = await self.db.execute(content_query)
+        content_id = content_result.scalars().first()
 
-        if case_id is not None:
+        if content_id is not None:
             self.db.add(
                 LessonReading(
                     id=uuid.uuid4(),
                     user_id=user_id,
-                    lesson_id=case_id,
+                    lesson_id=content_id,
                     time_spent_seconds=0,
                     completion_percentage=100.0,
                     read_at=now,
@@ -590,8 +600,9 @@ class ProgressService:
 
         A unit is considered completed when:
         - It has a quiz and the user passed it (score >= unit pass score), OR
-        - It is a case-study/scenario unit explicitly marked complete (a
-          ``LessonReading`` row at 100% against its case-study content).
+        - It is a case-study/scenario or lesson unit explicitly marked complete
+          (a ``LessonReading`` row at 100% against its case-study or lesson
+          content).
         """
         from app.domain.models.content import GeneratedContent
         from app.domain.models.quiz import QuizAttempt
@@ -606,7 +617,7 @@ class ProgressService:
                 GeneratedContent.content,
             ).where(
                 GeneratedContent.module_id == module_id,
-                GeneratedContent.content_type.in_(("quiz", "case")),
+                GeneratedContent.content_type.in_(("quiz", "case", "lesson")),
             )
         )
         rows = content_result.all()
@@ -643,7 +654,7 @@ class ProgressService:
                 max_score = attempt_result.scalar()
                 if max_score is not None and max_score >= pass_score:
                     completed.add(unit_number)
-            elif row.content_type == "case":
+            elif row.content_type in ("case", "lesson"):
                 reading_result = await self.db.execute(
                     select(func.max(LessonReading.completion_percentage)).where(
                         LessonReading.user_id == user_id,
