@@ -510,6 +510,121 @@ class TestCheckQuizPassedForUnit:
         assert result is False
 
 
+class TestGetUnitType:
+    async def test_returns_unit_type_when_present(self, progress_service, mock_db, module_id):
+        mock_db.execute = AsyncMock(
+            return_value=MagicMock(first=MagicMock(return_value=("case-study",)))
+        )
+
+        result = await progress_service.get_unit_type(module_id, "1.2")
+
+        assert result == "case-study"
+
+    async def test_returns_none_when_unit_missing(self, progress_service, mock_db, module_id):
+        mock_db.execute = AsyncMock(return_value=MagicMock(first=MagicMock(return_value=None)))
+
+        result = await progress_service.get_unit_type(module_id, "9.9")
+
+        assert result is None
+
+
+class TestMarkUnitCompleteNoQuiz:
+    async def test_does_not_touch_quiz_score_avg(
+        self, progress_service, mock_db, user_id, module_id
+    ):
+        existing_progress = UserModuleProgress(
+            user_id=user_id,
+            module_id=module_id,
+            status="in_progress",
+            completion_pct=0.0,
+            quiz_score_avg=70.0,
+            time_spent_minutes=0,
+            last_accessed=None,
+        )
+        unit_uuid = uuid.uuid4()
+        case_content_id = uuid.uuid4()
+
+        results = [
+            # resolve_module_unit_id
+            MagicMock(scalar_one_or_none=MagicMock(return_value=unit_uuid)),
+            # case content lookup -> scalars().first()
+            MagicMock(
+                scalars=MagicMock(
+                    return_value=MagicMock(first=MagicMock(return_value=case_content_id))
+                )
+            ),
+            # _get_or_create_progress
+            MagicMock(scalar_one_or_none=MagicMock(return_value=existing_progress)),
+            # _calculate_completion_pct -> total units count
+            MagicMock(scalar=MagicMock(return_value=4)),
+            # _get_completed_units -> no quiz/case rows
+            MagicMock(all=MagicMock(return_value=[])),
+            # touch_course_interaction_by_module: select(Module.course_id)
+            MagicMock(scalar_one_or_none=MagicMock(return_value=None)),
+            # rollup_course_completion_by_module: select(Module.course_id)
+            MagicMock(scalar_one_or_none=MagicMock(return_value=None)),
+        ]
+        mock_db.execute = AsyncMock(side_effect=results)
+
+        result = await progress_service.mark_unit_complete_no_quiz(
+            user_id=user_id,
+            module_id=module_id,
+            unit_id="1.2",
+        )
+
+        assert result.quiz_score_avg == 70.0  # untouched
+        assert result.completion_pct == 25.0  # 1 of 4 units
+        assert result.last_accessed is not None
+        # LessonReading row was added at 100%
+        added = [c.args[0] for c in mock_db.add.call_args_list]
+        readings = [r for r in added if isinstance(r, LessonReading)]
+        assert len(readings) == 1
+        assert readings[0].lesson_id == case_content_id
+        assert readings[0].completion_percentage == 100.0
+
+    async def test_skips_lesson_reading_when_case_content_missing(
+        self, progress_service, mock_db, user_id, module_id
+    ):
+        """User clicks Mark Complete before generation finishes — no content row
+        exists yet. We still mark the module progress, just skip the LessonReading."""
+        existing_progress = UserModuleProgress(
+            user_id=user_id,
+            module_id=module_id,
+            status="not_started",
+            completion_pct=0.0,
+            quiz_score_avg=None,
+            time_spent_minutes=0,
+            last_accessed=None,
+        )
+        unit_uuid = uuid.uuid4()
+
+        results = [
+            MagicMock(scalar_one_or_none=MagicMock(return_value=unit_uuid)),
+            # No case content row
+            MagicMock(
+                scalars=MagicMock(return_value=MagicMock(first=MagicMock(return_value=None)))
+            ),
+            MagicMock(scalar_one_or_none=MagicMock(return_value=existing_progress)),
+            MagicMock(scalar=MagicMock(return_value=2)),
+            MagicMock(all=MagicMock(return_value=[])),
+            MagicMock(scalar_one_or_none=MagicMock(return_value=None)),
+            MagicMock(scalar_one_or_none=MagicMock(return_value=None)),
+        ]
+        mock_db.execute = AsyncMock(side_effect=results)
+
+        result = await progress_service.mark_unit_complete_no_quiz(
+            user_id=user_id,
+            module_id=module_id,
+            unit_id="1.2",
+        )
+
+        assert result.status == "in_progress"
+        assert result.completion_pct == 50.0  # 1 of 2
+        added = [c.args[0] for c in mock_db.add.call_args_list]
+        readings = [r for r in added if isinstance(r, LessonReading)]
+        assert readings == []
+
+
 class TestProgressServiceIntegration:
     async def test_tracking_lesson_updates_last_accessed(
         self, progress_service, mock_db, user_id, module_id, lesson_id
