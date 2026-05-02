@@ -33,6 +33,7 @@ from app.domain.models.course import Course
 from app.domain.models.course_resource import CourseResource
 from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.module import Module
+from app.domain.models.source_image import SourceImage, SourceImageChunk
 
 _UUID_PREFIX_RE = re.compile(
     r"^\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
@@ -151,8 +152,11 @@ async def _resolve_per_citation_map(
     For each ``(chapter, page)`` pair, fetch the matching ``DocumentChunk`` rows
     (scoped by the course's ``rag_collection_id``), then identify which
     ``CourseResource`` the chunk came from by substring-matching the chunk's
-    content prefix inside each resource's normalized ``raw_text``. Pairs that
-    don't yield a unique resource are simply omitted from the map.
+    content prefix inside each resource's normalized ``raw_text``. When the
+    chunk content itself matches multiple resources (boilerplate / shared
+    front-matter), fall back to the chunk's linked ``SourceImage.surrounding_text``
+    as a tiebreaker (#2181). Pairs that still don't yield a unique resource
+    are simply omitted from the map.
     """
     rag_id = getattr(course, "rag_collection_id", None)
     if not rag_id or not pairs or not resources:
@@ -171,7 +175,12 @@ async def _resolve_per_citation_map(
             clauses.append(DocumentChunk.page == p)
         conditions.append(and_(*clauses))
     stmt = (
-        select(DocumentChunk.chapter, DocumentChunk.page, DocumentChunk.content)
+        select(
+            DocumentChunk.id,
+            DocumentChunk.chapter,
+            DocumentChunk.page,
+            DocumentChunk.content,
+        )
         .where(or_(*conditions))
         .limit(200)
     )
@@ -185,15 +194,26 @@ async def _resolve_per_citation_map(
     if not normalized_resources:
         return {}
 
-    out: dict[tuple[str | None, int | None], str] = {}
-    # Track ambiguity: if two different resources match the same (chapter, page)
-    # via different chunk rows, drop the pair.
-    seen: dict[tuple[str | None, int | None], CourseResource | None] = {}
-    AMBIGUOUS = object()
+    AMBIGUOUS: object = object()
+    seen: dict[tuple[str | None, int | None], CourseResource | object] = {}
+    # Chunks whose content matched 2+ resources — defer to the image-text
+    # tiebreaker pass below.
+    deferred: list[tuple[Any, str | None, int | None, list[CourseResource]]] = []
+
+    def _record(key: tuple[str | None, int | None], winner: CourseResource) -> None:
+        prior = seen.get(key)
+        if prior is None:
+            seen[key] = winner
+        elif prior is AMBIGUOUS:
+            return
+        elif getattr(prior, "id", None) != winner.id:
+            seen[key] = AMBIGUOUS
+
     for row in rows:
-        chunk_chapter = row[0]
-        chunk_page = row[1]
-        chunk_content = row[2] or ""
+        chunk_id = row[0]
+        chunk_chapter = row[1]
+        chunk_page = row[2]
+        chunk_content = row[3] or ""
         normalized = _normalize_for_match(chunk_content)
         fingerprint = normalized[:_FINGERPRINT_LEN]
         if len(fingerprint) < 40:
@@ -202,20 +222,48 @@ async def _resolve_per_citation_map(
         for resource, normalized_text in normalized_resources:
             if fingerprint in normalized_text:
                 matches.append(resource)
-                if len(matches) > 1:
-                    break
-        if len(matches) != 1:
-            continue
-        winner = matches[0]
-        key = (chunk_chapter, chunk_page)
-        prior = seen.get(key)
-        if prior is None:
-            seen[key] = winner
-        elif prior is AMBIGUOUS:
-            continue
-        elif prior.id != winner.id:
-            seen[key] = AMBIGUOUS  # type: ignore[assignment]
+        if len(matches) == 1:
+            _record((chunk_chapter, chunk_page), matches[0])
+        elif len(matches) > 1:
+            deferred.append((chunk_id, chunk_chapter, chunk_page, matches))
 
+    if deferred:
+        chunk_ids = list({d[0] for d in deferred if d[0] is not None})
+        if chunk_ids:
+            img_stmt = (
+                select(SourceImageChunk.document_chunk_id, SourceImage.surrounding_text)
+                .join(SourceImage, SourceImage.id == SourceImageChunk.source_image_id)
+                .where(SourceImageChunk.document_chunk_id.in_(chunk_ids))
+            )
+            img_rows = (await session.execute(img_stmt)).all()
+            surrounding_by_chunk: dict[Any, list[str]] = {}
+            for cid, st in img_rows:
+                if not st:
+                    continue
+                surrounding_by_chunk.setdefault(cid, []).append(st)
+
+            for chunk_id, chunk_chapter, chunk_page, candidates in deferred:
+                sts = surrounding_by_chunk.get(chunk_id, [])
+                if not sts:
+                    continue
+                # Vote: which candidate uniquely contains a surrounding_text?
+                # Pre-compute candidate normalized_text lookup.
+                candidate_texts = {
+                    r.id: t for (r, t) in normalized_resources for c in candidates if c.id == r.id
+                }
+                tiebreaker_winner: CourseResource | None = None
+                for st in sts:
+                    fp = _normalize_for_match(st)[:_FINGERPRINT_LEN]
+                    if len(fp) < 40:
+                        continue
+                    sub_matches = [r for r in candidates if fp in candidate_texts.get(r.id, "")]
+                    if len(sub_matches) == 1:
+                        tiebreaker_winner = sub_matches[0]
+                        break
+                if tiebreaker_winner is not None:
+                    _record((chunk_chapter, chunk_page), tiebreaker_winner)
+
+    out: dict[tuple[str | None, int | None], str] = {}
     for key, winner in seen.items():
         if winner is None or winner is AMBIGUOUS:
             continue
