@@ -15,7 +15,7 @@ import { LessonImage } from './lesson-image';
 import { LessonMediaTabs, type LessonMediaTab } from './lesson-media-tabs';
 import { SourceImage } from './source-image';
 import { SourceCitations } from './source-citations';
-import { apiFetch, ApiError } from '@/lib/api';
+import { apiFetch, ApiError, getModuleDetailWithProgress } from '@/lib/api';
 import type { SourceImageMeta } from '@/lib/api';
 import { SOURCE_IMAGE_RE, splitWithSourceImageMarkers } from '@/lib/source-image-utils';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
@@ -109,6 +109,23 @@ export function LessonViewer({
   const { isOnline } = useNetworkStatus();
 
   const t = useTranslations('LessonViewer');
+
+  useEffect(() => {
+    if (!isHydrated || !moduleId || !unitId) return;
+    let cancelled = false;
+    getModuleDetailWithProgress(moduleId)
+      .then((detail) => {
+        if (cancelled) return;
+        const match = detail.units.find((u) => u.unit_number === unitId);
+        if (match?.status === 'completed') setIsCompleted(true);
+      })
+      .catch((err) => {
+        console.warn('Failed to hydrate lesson completion state', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isHydrated, moduleId, unitId]);
 
   const stopGenerating = (errMsg: string, type: 'load' | 'generation' | 'timeout' | 'no_content') => {
     if (slowWarningTimerRef.current) {
