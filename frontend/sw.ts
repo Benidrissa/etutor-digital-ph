@@ -18,10 +18,12 @@ declare const self: ServiceWorkerGlobalScope;
 const DAY_IN_SECONDS = 24 * 60 * 60;
 
 // Bump when storage shape or routing changes so clients drop stale caches.
-// v6 adds an ExpirationPlugin to the pages cache and is pre-warmed by
+// v6 added an ExpirationPlugin to the pages cache, pre-warmed by
 // frontend/lib/offline/download-manager.ts (PAGES_CACHE_NAME constant must
 // match `pages-${CACHE_VERSION}`) so downloaded modules render offline.
-const CACHE_VERSION = "v6-offline-routes";
+// v7 excludes /api/v1/content/status/ from the API SWR cache so a stale
+// "generating" body can't keep the quiz spinner alive forever offline.
+const CACHE_VERSION = "v7-status-no-cache";
 
 const OFFLINE_FALLBACK_URL = "/offline.html";
 
@@ -101,6 +103,10 @@ const serwist = new Serwist({
         // unlocking modules), SWR serves the cached "locked" body and
         // learners still see the old gating UI.
         if (url.pathname.startsWith("/api/v1/progress/")) return false;
+        // Per-task transient state for Celery generation. SWR replaying
+        // a stale "generating" body keeps the quiz spinner alive forever
+        // when the device is offline.
+        if (url.pathname.startsWith("/api/v1/content/status/")) return false;
         if (url.pathname.startsWith("/api/")) return true;
         return false;
       },
