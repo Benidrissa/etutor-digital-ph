@@ -15,6 +15,7 @@ import { useSettings } from '@/lib/settings-context';
 import { track } from '@/lib/analytics';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { loadQuiz, OfflineContentNotAvailable } from '@/lib/offline/content-loader';
+import { getOfflineContent } from '@/lib/offline/db';
 import { scoreQuizOffline } from '@/lib/offline/offline-quiz-scorer';
 import { OfflineBadge } from '@/components/shared/offline-badge';
 import { useNetworkStatus } from '@/lib/hooks/use-network-status';
@@ -76,6 +77,8 @@ export function QuizContainer({
     let stale = false;
     if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
 
+    const idbLocale: 'fr' | 'en' = language === 'en' ? 'en' : 'fr';
+
     const pollStatus = (taskId: string, startTime: number) => {
       if (stale) return;
       if (Date.now() - startTime > POLL_TIMEOUT_MS) {
@@ -88,6 +91,34 @@ export function QuizContainer({
 
       pollTimerRef.current = setTimeout(async () => {
         if (stale) return;
+
+        // If the device went offline mid-generation, polling will either hang
+        // on the network or replay a cached "generating" body from the SW —
+        // neither of which can ever transition to "complete". Fall back to
+        // the IDB-cached quiz if we have one, otherwise surface a clear
+        // offline error instead of spinning until the 3-minute timeout.
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          try {
+            const cached = await getOfflineContent(moduleId, unitId, 'quiz', idbLocale);
+            if (stale) return;
+            if (cached) {
+              setQuiz(cached.content as Quiz);
+              setContentSource('indexeddb');
+              setForceRegenerate(false);
+              setState('ready');
+              return;
+            }
+          } catch {
+            // Fall through to error state below.
+          }
+          if (stale) return;
+          const msg = t('contentNotAvailableOffline');
+          setError(msg);
+          setState('error');
+          onError?.(msg);
+          return;
+        }
+
         try {
           const statusRes = await apiFetch<{ status: string; content_id?: string; error?: string }>(
             `/api/v1/content/status/${taskId}`
