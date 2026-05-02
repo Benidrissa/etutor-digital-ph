@@ -624,6 +624,52 @@ class TestMarkUnitCompleteNoQuiz:
         readings = [r for r in added if isinstance(r, LessonReading)]
         assert readings == []
 
+    async def test_lesson_unit_writes_reading_against_lesson_content(
+        self, progress_service, mock_db, user_id, module_id
+    ):
+        """Lesson units (no case-study row) should bind the 100% LessonReading
+        to the unit's lesson GeneratedContent so _get_completed_units credits it."""
+        existing_progress = UserModuleProgress(
+            user_id=user_id,
+            module_id=module_id,
+            status="in_progress",
+            completion_pct=0.0,
+            quiz_score_avg=None,
+            time_spent_minutes=0,
+            last_accessed=None,
+        )
+        unit_uuid = uuid.uuid4()
+        lesson_content_id = uuid.uuid4()
+
+        results = [
+            MagicMock(scalar_one_or_none=MagicMock(return_value=unit_uuid)),
+            # Content lookup returns the lesson row (case row absent)
+            MagicMock(
+                scalars=MagicMock(
+                    return_value=MagicMock(first=MagicMock(return_value=lesson_content_id))
+                )
+            ),
+            MagicMock(scalar_one_or_none=MagicMock(return_value=existing_progress)),
+            MagicMock(scalar=MagicMock(return_value=4)),
+            MagicMock(all=MagicMock(return_value=[])),
+            MagicMock(scalar_one_or_none=MagicMock(return_value=None)),
+            MagicMock(scalar_one_or_none=MagicMock(return_value=None)),
+        ]
+        mock_db.execute = AsyncMock(side_effect=results)
+
+        result = await progress_service.mark_unit_complete_no_quiz(
+            user_id=user_id,
+            module_id=module_id,
+            unit_id="1.1",
+        )
+
+        assert result.completion_pct == 25.0  # 1 of 4
+        added = [c.args[0] for c in mock_db.add.call_args_list]
+        readings = [r for r in added if isinstance(r, LessonReading)]
+        assert len(readings) == 1
+        assert readings[0].lesson_id == lesson_content_id
+        assert readings[0].completion_percentage == 100.0
+
 
 class TestProgressServiceIntegration:
     async def test_tracking_lesson_updates_last_accessed(
