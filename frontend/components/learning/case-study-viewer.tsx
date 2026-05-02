@@ -15,7 +15,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { LessonSkeleton } from './lesson-skeleton';
 import { SourceCitations } from './source-citations';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, getModuleDetailWithProgress } from '@/lib/api';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { loadCaseStudy, OfflineContentNotAvailable } from '@/lib/offline/content-loader';
 import { OfflineBadge } from '@/components/shared/offline-badge';
@@ -117,6 +117,23 @@ export function CaseStudyViewer({
   const { isOnline } = useNetworkStatus();
 
   const t = useTranslations('CaseStudyViewer');
+
+  useEffect(() => {
+    if (!isHydrated || !moduleId || !unitId) return;
+    let cancelled = false;
+    getModuleDetailWithProgress(moduleId)
+      .then((detail) => {
+        if (cancelled) return;
+        const match = detail.units.find((u) => u.unit_number === unitId);
+        if (match?.status === 'completed') setIsCompleted(true);
+      })
+      .catch((err) => {
+        console.warn('Failed to hydrate case study completion state', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isHydrated, moduleId, unitId]);
 
   useEffect(() => {
     // Wait for the localStorage-backed user to settle before fetching, otherwise
