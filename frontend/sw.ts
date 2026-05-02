@@ -18,7 +18,12 @@ declare const self: ServiceWorkerGlobalScope;
 const DAY_IN_SECONDS = 24 * 60 * 60;
 
 // Bump when storage shape or routing changes so clients drop stale caches.
-const CACHE_VERSION = "v6-status-no-cache";
+// v6 added an ExpirationPlugin to the pages cache, pre-warmed by
+// frontend/lib/offline/download-manager.ts (PAGES_CACHE_NAME constant must
+// match `pages-${CACHE_VERSION}`) so downloaded modules render offline.
+// v7 excludes /api/v1/content/status/ from the API SWR cache so a stale
+// "generating" body can't keep the quiz spinner alive forever offline.
+const CACHE_VERSION = "v7-status-no-cache";
 
 const OFFLINE_FALLBACK_URL = "/offline.html";
 
@@ -120,6 +125,13 @@ const serwist = new Serwist({
       handler: new NetworkFirst({
         cacheName: `pages-${CACHE_VERSION}`,
         networkTimeoutSeconds: 3,
+        plugins: [
+          new ExpirationPlugin({
+            maxEntries: 60,
+            maxAgeSeconds: 30 * DAY_IN_SECONDS,
+            purgeOnQuotaError: true,
+          }),
+        ],
       }),
     },
   ],
