@@ -222,7 +222,8 @@
     "hours": "{count, plural, one {# heure} other {# heures}}",
     "prerequisitesRequired": "Prérequis nécessaires",
     "continue": "Continuer",
-    "start": "Commencer"
+    "start": "Commencer",
+    "review": "Réviser"
   },
   "ModuleMap": {
     "title": "Modules d'apprentissage",
@@ -452,6 +453,7 @@
   },
   "Flashcards": {
     "title": "Flashcards",
+    "cards": "cartes",
     "loading": "Chargement des flashcards...",
     "generating": "Génération de vos flashcards...",
     "noCardsToday": "Aucune carte due aujourd'hui !",
