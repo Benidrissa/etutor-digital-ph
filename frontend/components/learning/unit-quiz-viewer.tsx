@@ -22,7 +22,7 @@ export function UnitQuizViewer({
   unitDescription,
 }: UnitQuizViewerProps) {
   const router = useRouter();
-  const tNav = useTranslations('Navigation');
+  const t = useTranslations('ModuleOverview');
 
   return (
     <div>
@@ -31,7 +31,7 @@ export function UnitQuizViewer({
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-1">
             {unitTitle}
           </h1>
-          <p className="text-sm text-gray-500">{tNav('unitNumber', { number: unitId })}</p>
+          <p className="text-sm text-gray-500">{t('unitNumber', { number: unitId })}</p>
           {unitDescription && (
             <p className="text-base text-gray-700 mt-2">{unitDescription}</p>
           )}
