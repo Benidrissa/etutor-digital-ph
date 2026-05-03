@@ -568,11 +568,7 @@ class TestFKFastPath:
             execute_queue=[
                 _scalar_result([pdf_a, pdf_b]),
                 _row_result(
-                    [
-                        _make_chunk_row(
-                            "1", 5, chunk_content, course_resource_id="rid-deleted"
-                        )
-                    ]
+                    [_make_chunk_row("1", 5, chunk_content, course_resource_id="rid-deleted")]
                 ),
             ],
         )
