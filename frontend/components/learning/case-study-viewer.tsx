@@ -397,8 +397,9 @@ export function CaseStudyViewer({
             size="sm"
             onClick={handleRefresh}
             disabled={isRefreshing || isLoading || isGenerating || !isOnline}
-            className="min-h-11 gap-1.5 text-gray-500 hover:text-gray-900"
+            className="min-h-11 min-w-11 gap-1.5 text-gray-500 hover:text-gray-900"
             title={t('refreshContent')}
+            aria-label={t('refreshContent')}
           >
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">{t('refreshContent')}</span>

@@ -411,7 +411,9 @@ export function QuizContainer({
                 size="sm"
                 onClick={handleRefreshContent}
                 disabled={!isOnline}
-                className="min-h-11 gap-1.5 text-stone-500 hover:text-stone-900"
+                className="min-h-11 min-w-11 gap-1.5 text-stone-500 hover:text-stone-900"
+                title={t('refreshContent')}
+                aria-label={t('refreshContent')}
               >
                 <RefreshCw className="w-4 h-4" />
                 <span className="hidden sm:inline">{t('refreshContent')}</span>
