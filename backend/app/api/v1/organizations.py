@@ -118,13 +118,8 @@ async def create_organization(
     return _org_to_response(org)
 
 
-@router.get("/me", response_model=list[OrgWithRoleResponse])
-async def list_my_organizations(
-    current_user: AuthenticatedUser = Depends(get_current_user),
-    db=Depends(get_db_session),
-) -> list[OrgWithRoleResponse]:
-    """List all organizations where the current user is a member."""
-    memberships = await _svc.list_user_organizations(db, uuid.UUID(current_user.id))
+async def _list_user_orgs(db, user_id: uuid.UUID) -> list[OrgWithRoleResponse]:
+    memberships = await _svc.list_user_organizations(db, user_id)
     return [
         OrgWithRoleResponse(
             organization=_org_to_response(m["organization"]),
@@ -133,6 +128,27 @@ async def list_my_organizations(
         )
         for m in memberships
     ]
+
+
+@router.get("", response_model=list[OrgWithRoleResponse])
+async def list_organizations(
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db=Depends(get_db_session),
+) -> list[OrgWithRoleResponse]:
+    """List all organizations where the current user is a member.
+
+    Default RESTful endpoint — equivalent to ``GET /organizations/me``.
+    """
+    return await _list_user_orgs(db, uuid.UUID(current_user.id))
+
+
+@router.get("/me", response_model=list[OrgWithRoleResponse])
+async def list_my_organizations(
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db=Depends(get_db_session),
+) -> list[OrgWithRoleResponse]:
+    """List all organizations where the current user is a member."""
+    return await _list_user_orgs(db, uuid.UUID(current_user.id))
 
 
 @router.get("/{org_id}", response_model=OrgResponse)
