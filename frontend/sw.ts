@@ -28,10 +28,11 @@ const CACHE_VERSION = "v7-status-no-cache";
 const OFFLINE_FALLBACK_URL = "/offline.html";
 
 const serwist = new Serwist({
-  precacheEntries: [
-    ...(self.__SW_MANIFEST || []),
-    { url: OFFLINE_FALLBACK_URL, revision: "1" },
-  ],
+  // `/offline.html` is auto-injected into __SW_MANIFEST by @serwist/next from
+  // public/. Re-adding it here with a different revision throws
+  // `add-to-cache-list-conflicting-entries` at SW eval, which broke
+  // registration end-to-end (see #2113).
+  precacheEntries: self.__SW_MANIFEST || [],
   skipWaiting: true,
   clientsClaim: true,
   navigationPreload: false,
