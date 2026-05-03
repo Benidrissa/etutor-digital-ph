@@ -155,14 +155,17 @@ async def _resolve_per_citation_map(
 ) -> dict[tuple[str | None, int | None], str]:
     """Return ``{(chapter, page): humanized_filename}`` for resolvable citations.
 
-    For each ``(chapter, page)`` pair, fetch the matching ``DocumentChunk`` rows
-    (scoped by the course's ``rag_collection_id``), then identify which
-    ``CourseResource`` the chunk came from by substring-matching the chunk's
-    content prefix inside each resource's normalized ``raw_text``. When the
-    chunk content itself matches multiple resources (boilerplate / shared
-    front-matter), fall back to the chunk's linked ``SourceImage.surrounding_text``
-    as a tiebreaker (#2181). Pairs that still don't yield a unique resource
-    are simply omitted from the map.
+    Resolution order:
+
+    1. **Direct FK** (#2186): if a chunk row has ``course_resource_id`` set
+       (populated by ingest from migration 089 onward), use it directly.
+    2. **Content fingerprint vote** (#2178): substring-match chunk content
+       against each ``CourseResource.raw_text``.
+    3. **SourceImage.surrounding_text tiebreaker** (#2181): for chunks where
+       step 2 matched multiple resources, look up linked figures and use
+       the surrounding paragraph as a second fingerprint.
+
+    Pairs that don't yield a unique resource are simply omitted from the map.
     """
     rag_id = getattr(course, "rag_collection_id", None)
     if not rag_id or not pairs or not resources:
@@ -186,6 +189,7 @@ async def _resolve_per_citation_map(
             DocumentChunk.chapter,
             DocumentChunk.page,
             DocumentChunk.content,
+            DocumentChunk.course_resource_id,
         )
         .where(or_(*conditions))
         .limit(200)
@@ -206,6 +210,9 @@ async def _resolve_per_citation_map(
     # tiebreaker pass below.
     deferred: list[tuple[Any, str | None, int | None, list[CourseResource]]] = []
 
+    # Build resource-by-id lookup once for the FK fast path.
+    resource_by_id = {r.id: r for r in resources}
+
     def _record(key: tuple[str | None, int | None], winner: CourseResource) -> None:
         prior = seen.get(key)
         if prior is None:
@@ -220,6 +227,17 @@ async def _resolve_per_citation_map(
         chunk_chapter = row[1]
         chunk_page = row[2]
         chunk_content = row[3] or ""
+        chunk_resource_id = row[4]
+
+        # Fast path (#2186): chunks ingested after migration 089 carry a
+        # direct FK to their originating CourseResource. Skip all the
+        # fingerprint dance for those.
+        if chunk_resource_id is not None:
+            direct = resource_by_id.get(chunk_resource_id)
+            if direct is not None:
+                _record((chunk_chapter, chunk_page), direct)
+                continue
+
         normalized = _normalize_for_match(chunk_content)
         fingerprint = normalized[:_FINGERPRINT_LEN]
         if len(fingerprint) < 40:
