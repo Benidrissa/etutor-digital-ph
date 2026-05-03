@@ -188,14 +188,20 @@ async def generate_lesson_video(
     "/lesson/{lesson_id}",
     response_model=LessonVideoListResponse,
     status_code=status.HTTP_200_OK,
-    responses={404: {"description": "No video for this lesson"}},
+    responses={404: {"description": "Lesson not found"}},
 )
 async def get_lesson_video(
     lesson_id: UUID,
     _current_user: AuthenticatedUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> LessonVideoListResponse:
-    """Return video rows for a lesson, shared across countries."""
+    """Return video rows for a lesson, shared across countries.
+
+    Returns 200 with ``video: []`` when the lesson exists but no video
+    has been generated yet. (The 404 was previously surfaced as a
+    console error on every lesson page load — see #2130.) Reserves
+    404 for the genuine "lesson not found" case.
+    """
     from app.domain.models.content import GeneratedContent
 
     lesson_row = await db.execute(
@@ -225,28 +231,17 @@ async def get_lesson_video(
     )
     rows = result.scalars().all()
 
-    video_responses = []
-    for row in rows:
-        row_status: VideoStatus = row.status  # type: ignore[assignment]
-        video_responses.append(
-            LessonVideoResponse(
-                video_id=row.id,
-                lesson_id=lesson_id,
-                status=row_status,
-                video_url=_resolve_video_url(row),
-                duration_seconds=row.duration_seconds if row.status == "ready" else None,
-                file_size_bytes=row.file_size_bytes if row.status == "ready" else None,
-            )
+    video_responses = [
+        LessonVideoResponse(
+            video_id=row.id,
+            lesson_id=lesson_id,
+            status=row.status,  # type: ignore[arg-type]
+            video_url=_resolve_video_url(row),
+            duration_seconds=row.duration_seconds if row.status == "ready" else None,
+            file_size_bytes=row.file_size_bytes if row.status == "ready" else None,
         )
-
-    if not video_responses:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "error": "lesson_video_not_found",
-                "message": f"No video for lesson {lesson_id}",
-            },
-        )
+        for row in rows
+    ]
 
     return LessonVideoListResponse(
         lesson_id=lesson_id,

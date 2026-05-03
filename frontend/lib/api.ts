@@ -781,7 +781,10 @@ export async function getLessonVideoStatus(
     );
     const first = data.video[0];
     if (!first) {
-      return { lesson_id: lessonId, status: "pending" };
+      // BE returns 200 with `video: []` when the lesson exists but has
+      // no video row yet. Map to `absent` so the UI shows Generate
+      // instead of auto-starting the poll loop (#1824, #2130).
+      return { lesson_id: lessonId, status: "absent" };
     }
     return {
       lesson_id: first.lesson_id,
@@ -791,10 +794,11 @@ export async function getLessonVideoStatus(
       duration_seconds: first.duration_seconds ?? undefined,
     };
   } catch (err: unknown) {
-    // 404 means "no video row exists yet". Return the synthetic
-    // ``absent`` status so the UI can tell this apart from a real
-    // ``pending`` row and show the Generate button instead of
-    // auto-starting the poll loop. See #1824.
+    // Older BE deployments return 404 for "no video yet". Treat it as
+    // `absent` for cross-deploy compat; once #2130 ships everywhere
+    // this branch becomes dead code (will surface only on real 404 —
+    // i.e. lesson-not-found — at which point letting it bubble would
+    // be more honest, but `absent` keeps the UI rendering).
     const status = (err as { status?: number })?.status;
     if (status === 404) {
       return { lesson_id: lessonId, status: "absent" };
