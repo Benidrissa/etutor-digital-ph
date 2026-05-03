@@ -135,8 +135,8 @@ export default function AnalyticsPage() {
                 <CardTitle className="text-base">{t("dailyActiveUsers")}</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="h-64 w-full overflow-x-auto">
-                  <ResponsiveContainer width="100%" height="100%">
+                <div className="w-full">
+                  <ResponsiveContainer width="100%" height={256}>
                     <LineChart data={data.daily_active_users}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis
@@ -170,8 +170,8 @@ export default function AnalyticsPage() {
                 <CardTitle className="text-base">{t("eventsByType")}</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="h-64 w-full overflow-x-auto">
-                  <ResponsiveContainer width="100%" height="100%">
+                <div className="w-full">
+                  <ResponsiveContainer width="100%" height={256}>
                     <BarChart data={eventsByTypeData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-25} textAnchor="end" height={60} />
