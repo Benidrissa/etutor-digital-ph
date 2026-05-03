@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import structlog
 from sqlalchemy import delete, select
@@ -50,6 +50,7 @@ class RAGPipeline:
         source: str,
         level: int | None = None,
         session: AsyncSession | None = None,
+        course_resource_id: UUID | None = None,
     ) -> int:
         """
         Process a single PDF document through the complete RAG pipeline.
@@ -59,6 +60,8 @@ class RAGPipeline:
             source: Source identifier (e.g., "donaldson", "triola")
             level: Optional difficulty level (1-4)
             session: Database session (will create one if not provided)
+            course_resource_id: FK back to ``course_resources.id`` (#2186) so
+                stored chunks know their originating PDF.
 
         Returns:
             Number of chunks processed
@@ -106,6 +109,7 @@ class RAGPipeline:
                     level=level,
                     language=language,
                     page=page_num,
+                    course_resource_id=course_resource_id,
                 )
             )
 
@@ -169,6 +173,7 @@ class RAGPipeline:
                 language=chunk_data.language,
                 token_count=chunk_data.token_count,
                 chunk_index=chunk_data.chunk_index,
+                course_resource_id=getattr(chunk_data, "course_resource_id", None),
             )
 
             session.add(db_chunk)

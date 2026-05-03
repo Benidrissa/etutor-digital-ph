@@ -6,6 +6,7 @@ Splits documents into 512-token chunks with 50-token overlap for optimal embeddi
 import re
 from collections.abc import Generator
 from dataclasses import dataclass
+from uuid import UUID
 
 import tiktoken
 
@@ -22,6 +23,7 @@ class DocumentChunk:
     page: int | None = None
     level: int | None = None
     language: str = "en"
+    course_resource_id: UUID | None = None
 
 
 class TextChunker:
@@ -67,6 +69,7 @@ class TextChunker:
         page: int | None = None,
         level: int | None = None,
         language: str = "en",
+        course_resource_id: UUID | None = None,
     ) -> Generator[DocumentChunk, None, None]:
         """
         Split document into overlapping chunks.
@@ -78,6 +81,9 @@ class TextChunker:
             page: Page number if available
             level: Difficulty level (1-4) for targeting
             language: Language code ("fr" or "en")
+            course_resource_id: FK back to ``course_resources.id`` so the
+                citation formatter can resolve a chunk to its originating
+                PDF without fingerprint matching (#2186).
 
         Yields:
             DocumentChunk objects with metadata
@@ -112,6 +118,7 @@ class TextChunker:
                             page=page,
                             level=level,
                             language=language,
+                            course_resource_id=course_resource_id,
                         )
                         chunk_index += 1
                         overlap_text = self._get_overlap_text(current_chunk, self.overlap_size)
@@ -136,6 +143,7 @@ class TextChunker:
                     page=page,
                     level=level,
                     language=language,
+                    course_resource_id=course_resource_id,
                 )
 
                 chunk_index += 1
@@ -163,6 +171,7 @@ class TextChunker:
                 page=page,
                 level=level,
                 language=language,
+                course_resource_id=course_resource_id,
             )
 
     def _clean_text(self, text: str) -> str:
