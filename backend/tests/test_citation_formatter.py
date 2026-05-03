@@ -57,9 +57,16 @@ def _make_chunk_row(
     page: int | None,
     content: str,
     chunk_id: str | None = None,
+    course_resource_id: object | None = None,
 ) -> tuple:
-    """Mimic an SQLAlchemy Row for the (id, chapter, page, content) projection."""
-    return (chunk_id or f"chunk-{chapter}-{page}", chapter, page, content)
+    """Mimic an SQLAlchemy Row for the (id, chapter, page, content, course_resource_id) projection."""
+    return (
+        chunk_id or f"chunk-{chapter}-{page}",
+        chapter,
+        page,
+        content,
+        course_resource_id,
+    )
 
 
 class _FakeAsyncSession:
@@ -440,7 +447,7 @@ class TestRewriteForModuleMultiResource:
             },
             execute_queue=[
                 _scalar_result([pdf_a, pdf_b]),
-                _row_result([("chunk-amb-1", "1", 1, boilerplate)]),
+                _row_result([("chunk-amb-1", "1", 1, boilerplate, None)]),
                 _row_result([]),  # no linked images for the deferred chunk
             ],
         )
@@ -473,6 +480,105 @@ class TestRewriteForModuleMultiResource:
 
 
 @pytest.mark.asyncio
+class TestFKFastPath:
+    """Chunks with course_resource_id set bypass the fingerprint vote (#2186)."""
+
+    async def test_fk_fast_path_resolves_directly(self):
+        # Both PDFs would substring-match the chunk content (boilerplate),
+        # but the FK on the chunk row is decisive.
+        boilerplate = "shared paragraph " * 30
+        pdf_a = _make_resource("alpha.pdf", raw_text=boilerplate, rid="rid-a")
+        pdf_b = _make_resource("beta.pdf", raw_text=boilerplate, rid="rid-b")
+        course = _make_course()
+        module = _make_module()
+
+        # FK -> rid-b (beta), even though substring vote would be ambiguous.
+        chunk_row = _make_chunk_row("1", 5, boilerplate, course_resource_id="rid-b")
+
+        session = _FakeAsyncSession(
+            gets={
+                ("Module", "module-id"): module,
+                ("Course", "course-id"): course,
+            },
+            execute_queue=[
+                _scalar_result([pdf_a, pdf_b]),
+                _row_result([chunk_row]),
+            ],
+        )
+        sources = [f"{_UUID} Ch.1, p.5"]
+        out = await rewrite_uuid_citations_for_module(sources, "module-id", session, "fr")
+        assert out == ["Beta Ch.1, p.5"]
+
+    async def test_null_fk_falls_back_to_fingerprint(self):
+        # Chunk content matches PDF A uniquely; FK is NULL → fingerprint
+        # path resolves it to A.
+        pdf_a = _make_resource(
+            "alpha.pdf",
+            raw_text="alpha-content " + "fingerprint-A " * 30,
+            rid="rid-a",
+        )
+        pdf_b = _make_resource(
+            "beta.pdf",
+            raw_text="beta-content " + "fingerprint-B " * 30,
+            rid="rid-b",
+        )
+        course = _make_course()
+        module = _make_module()
+        chunk_content = "alpha-content " + "fingerprint-A " * 15
+        chunk_row = _make_chunk_row("1", 5, chunk_content, course_resource_id=None)
+
+        session = _FakeAsyncSession(
+            gets={
+                ("Module", "module-id"): module,
+                ("Course", "course-id"): course,
+            },
+            execute_queue=[
+                _scalar_result([pdf_a, pdf_b]),
+                _row_result([chunk_row]),
+            ],
+        )
+        sources = [f"{_UUID} Ch.1, p.5"]
+        out = await rewrite_uuid_citations_for_module(sources, "module-id", session, "fr")
+        assert out == ["Alpha Ch.1, p.5"]
+
+    async def test_fk_dangling_falls_back_to_fingerprint(self):
+        # FK references a resource id that's no longer in the loaded list
+        # (ON DELETE SET NULL would normally NULL the column, but defend
+        # against the transient state). Multi-resource course so the chunk
+        # SELECT still runs.
+        pdf_a = _make_resource(
+            "alpha.pdf",
+            raw_text="alpha-content " + "fingerprint-A " * 30,
+            rid="rid-a",
+        )
+        pdf_b = _make_resource(
+            "beta.pdf",
+            raw_text="beta-content " + "fingerprint-B " * 30,
+            rid="rid-b",
+        )
+        course = _make_course()
+        module = _make_module()
+        chunk_content = "alpha-content " + "fingerprint-A " * 15
+
+        session = _FakeAsyncSession(
+            gets={
+                ("Module", "module-id"): module,
+                ("Course", "course-id"): course,
+            },
+            execute_queue=[
+                _scalar_result([pdf_a, pdf_b]),
+                _row_result(
+                    [_make_chunk_row("1", 5, chunk_content, course_resource_id="rid-deleted")]
+                ),
+            ],
+        )
+        sources = [f"{_UUID} Ch.1, p.5"]
+        out = await rewrite_uuid_citations_for_module(sources, "module-id", session, "fr")
+        # FK is dangling → falls through to fingerprint vote → resolves to A.
+        assert out == ["Alpha Ch.1, p.5"]
+
+
+@pytest.mark.asyncio
 class TestImageTiebreaker:
     """When chunk content matches multiple resources, ``SourceImage.surrounding_text``
     breaks ties (#2181)."""
@@ -499,7 +605,7 @@ class TestImageTiebreaker:
 
         chunk_id = "chunk-1"
         # Chunk content == boilerplate, so it matches BOTH resources.
-        chunk_row = (chunk_id, "1", 5, boilerplate)
+        chunk_row = (chunk_id, "1", 5, boilerplate, None)
         # Linked surrounding_text contains alpha-specific marker → unique to A.
         img_row = (chunk_id, "alpha-only specific marker " * 5)
 
@@ -527,7 +633,7 @@ class TestImageTiebreaker:
         course = _make_course()
         module = _make_module()
 
-        chunk_row = ("chunk-1", "1", 5, boilerplate)
+        chunk_row = ("chunk-1", "1", 5, boilerplate, None)
 
         session = _FakeAsyncSession(
             gets={
@@ -553,7 +659,7 @@ class TestImageTiebreaker:
         course = _make_course()
         module = _make_module()
 
-        chunk_row = ("chunk-1", "1", 5, boilerplate)
+        chunk_row = ("chunk-1", "1", 5, boilerplate, None)
         img_row = ("chunk-1", boilerplate)  # surrounding_text is also shared
 
         session = _FakeAsyncSession(

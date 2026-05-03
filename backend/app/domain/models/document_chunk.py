@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import ARRAY, Float, Integer, String, Text
+from sqlalchemy import ARRAY, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -33,6 +33,14 @@ class DocumentChunk(Base):
     page: Mapped[int | None] = mapped_column(Integer, nullable=True)
     level: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 1-4 difficulty
     language: Mapped[str] = mapped_column(String(2), nullable=False)  # "fr" or "en"
+
+    # Per-PDF identity (#2186). NULL on rows ingested before migration 089;
+    # the citation_formatter falls back to fingerprint matching for those.
+    course_resource_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("course_resources.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     # Chunk metadata
     token_count: Mapped[int] = mapped_column(Integer, nullable=False)

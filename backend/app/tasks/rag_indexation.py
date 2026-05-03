@@ -244,7 +244,12 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                 text = res.raw_text
                 language = detect_language(text)
                 chunks = list(
-                    chunker.chunk_document(text=text, source=rag_collection_id, language=language)
+                    chunker.chunk_document(
+                        text=text,
+                        source=rag_collection_id,
+                        language=language,
+                        course_resource_id=res.id,
+                    )
                 )
                 if not chunks:
                     continue
@@ -286,6 +291,37 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                         )
 
             return total_chunks, total_images
+
+        # Build pdf_path → course_resource_id lookup so chunks land with
+        # their originating PDF identity (#2186). Resolves by `filename` or
+        # `parent_filename` (DB stores stems without extension).
+        resource_id_by_stem: dict[str, uuid.UUID] = {}
+        if pdf_files:
+            from sqlalchemy import create_engine, select
+            from sqlalchemy.orm import Session
+
+            from app.domain.models.course_resource import CourseResource
+            from app.infrastructure.config.settings import settings
+
+            _eng = create_engine(settings.database_url_sync, pool_pre_ping=True)
+            try:
+                with Session(_eng) as _sess:
+                    res_rows = (
+                        _sess.execute(
+                            select(
+                                CourseResource.id,
+                                CourseResource.filename,
+                                CourseResource.parent_filename,
+                            ).where(CourseResource.course_id == uuid.UUID(course_id))
+                        )
+                    ).all()
+                    for rid, fname, parent in res_rows:
+                        if fname:
+                            resource_id_by_stem.setdefault(fname, rid)
+                        if parent:
+                            resource_id_by_stem.setdefault(parent, rid)
+            finally:
+                _eng.dispose()
 
         for i, pdf_path in enumerate(pdf_files):
             extract_progress = 5 + int((i / len(pdf_files)) * 30)
@@ -332,9 +368,13 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                 },
             )
 
+            resource_id = resource_id_by_stem.get(pdf_path.stem) or resource_id_by_stem.get(
+                pdf_path.name
+            )
             chunks = await pipeline.process_pdf_document(
                 pdf_path=str(pdf_path),
                 source=rag_collection_id,
+                course_resource_id=resource_id,
             )
             total_chunks += chunks
 
