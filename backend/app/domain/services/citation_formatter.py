@@ -26,7 +26,7 @@ import re
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.models.course import Course
@@ -147,6 +147,95 @@ def _pick_display_name(
     return _course_title(course, language)
 
 
+def _cosine_distance(a: list[float], b: list[float]) -> float:
+    """Pure-Python cosine distance for 1536-dim embedding vectors.
+
+    Returns 1 - cosine_similarity. Defends against zero norms by returning
+    1.0 (maximum distance) when either vector has zero magnitude.
+    """
+    if not a or not b or len(a) != len(b):
+        return 1.0
+    dot = 0.0
+    norm_a = 0.0
+    norm_b = 0.0
+    for x, y in zip(a, b, strict=False):
+        dot += x * y
+        norm_a += x * x
+        norm_b += y * y
+    if norm_a <= 0.0 or norm_b <= 0.0:
+        return 1.0
+    similarity = dot / ((norm_a**0.5) * (norm_b**0.5))
+    return 1.0 - similarity
+
+
+def _vector_mean(vectors: list[list[float]]) -> list[float] | None:
+    """Component-wise mean of equal-length vectors. None if input is empty."""
+    if not vectors:
+        return None
+    dim = len(vectors[0])
+    if any(len(v) != dim for v in vectors):
+        return None
+    sums = [0.0] * dim
+    for v in vectors:
+        for i, x in enumerate(v):
+            sums[i] += x
+    n = len(vectors)
+    return [s / n for s in sums]
+
+
+_CENTROID_SAMPLE_PER_RESOURCE = 50
+_CENTROID_MARGIN = 0.05
+
+
+async def _build_resource_centroids(
+    session: AsyncSession,
+    rag_id: str,
+) -> dict[Any, list[float]]:
+    """Per-resource embedding centroids derived from FK-populated chunks.
+
+    Samples up to ``_CENTROID_SAMPLE_PER_RESOURCE`` chunks per resource that
+    already have ``course_resource_id`` set (from ingest #2186 or backfill
+    #2190). Returns ``{resource_id: centroid_vector}``. Returns an empty dict
+    if no FK-populated rows exist (e.g. course never re-indexed AND backfill
+    never ran), in which case the caller falls back to existing behavior.
+    """
+    stmt = text(
+        """
+        SELECT course_resource_id, embedding
+        FROM (
+            SELECT course_resource_id, embedding,
+                ROW_NUMBER() OVER (
+                    PARTITION BY course_resource_id ORDER BY created_at
+                ) AS rn
+            FROM document_chunks
+            WHERE source = :rag_id
+              AND course_resource_id IS NOT NULL
+              AND embedding IS NOT NULL
+        ) t
+        WHERE rn <= :sample_size
+        """
+    )
+    rows = (
+        await session.execute(
+            stmt,
+            {"rag_id": rag_id, "sample_size": _CENTROID_SAMPLE_PER_RESOURCE},
+        )
+    ).all()
+    if not rows:
+        return {}
+    by_resource: dict[Any, list[list[float]]] = {}
+    for resource_id, embedding in rows:
+        if not embedding:
+            continue
+        by_resource.setdefault(resource_id, []).append(list(embedding))
+    centroids: dict[Any, list[float]] = {}
+    for rid, vectors in by_resource.items():
+        c = _vector_mean(vectors)
+        if c is not None:
+            centroids[rid] = c
+    return centroids
+
+
 async def _resolve_per_citation_map(
     course: Course,
     resources: list[CourseResource],
@@ -164,6 +253,9 @@ async def _resolve_per_citation_map(
     3. **SourceImage.surrounding_text tiebreaker** (#2181): for chunks where
        step 2 matched multiple resources, look up linked figures and use
        the surrounding paragraph as a second fingerprint.
+    4. **Embedding-centroid tiebreaker** (#2187): for chunks still ambiguous
+       after step 3, compute per-resource centroids from FK-populated chunks
+       and pick the closest by cosine distance, gated by a margin threshold.
 
     Pairs that don't yield a unique resource are simply omitted from the map.
     """
@@ -190,6 +282,7 @@ async def _resolve_per_citation_map(
             DocumentChunk.page,
             DocumentChunk.content,
             DocumentChunk.course_resource_id,
+            DocumentChunk.embedding,
         )
         .where(or_(*conditions))
         .limit(200)
@@ -207,8 +300,10 @@ async def _resolve_per_citation_map(
     AMBIGUOUS: object = object()
     seen: dict[tuple[str | None, int | None], CourseResource | object] = {}
     # Chunks whose content matched 2+ resources — defer to the image-text
-    # tiebreaker pass below.
-    deferred: list[tuple[Any, str | None, int | None, list[CourseResource]]] = []
+    # tiebreaker pass below, then the embedding centroid pass.
+    deferred: list[
+        tuple[Any, str | None, int | None, list[CourseResource], list[float] | None]
+    ] = []
 
     # Build resource-by-id lookup once for the FK fast path.
     resource_by_id = {r.id: r for r in resources}
@@ -228,6 +323,7 @@ async def _resolve_per_citation_map(
         chunk_page = row[2]
         chunk_content = row[3] or ""
         chunk_resource_id = row[4]
+        chunk_embedding = row[5]
 
         # Fast path (#2186): chunks ingested after migration 089 carry a
         # direct FK to their originating CourseResource. Skip all the
@@ -249,10 +345,13 @@ async def _resolve_per_citation_map(
         if len(matches) == 1:
             _record((chunk_chapter, chunk_page), matches[0])
         elif len(matches) > 1:
-            deferred.append((chunk_id, chunk_chapter, chunk_page, matches))
+            deferred.append((chunk_id, chunk_chapter, chunk_page, matches, chunk_embedding))
 
     if deferred:
         chunk_ids = list({d[0] for d in deferred if d[0] is not None})
+        # Track which deferred chunks the image tiebreaker resolves so the
+        # centroid pass only runs on the still-ambiguous remainder.
+        resolved_by_image: set[Any] = set()
         if chunk_ids:
             img_stmt = (
                 select(SourceImageChunk.document_chunk_id, SourceImage.surrounding_text)
@@ -266,7 +365,7 @@ async def _resolve_per_citation_map(
                     continue
                 surrounding_by_chunk.setdefault(cid, []).append(st)
 
-            for chunk_id, chunk_chapter, chunk_page, candidates in deferred:
+            for chunk_id, chunk_chapter, chunk_page, candidates, _emb in deferred:
                 sts = surrounding_by_chunk.get(chunk_id, [])
                 if not sts:
                     continue
@@ -286,6 +385,39 @@ async def _resolve_per_citation_map(
                         break
                 if tiebreaker_winner is not None:
                     _record((chunk_chapter, chunk_page), tiebreaker_winner)
+                    resolved_by_image.add(chunk_id)
+
+        # Centroid tiebreaker (#2187): for chunks the image pass couldn't
+        # resolve, compare the chunk's embedding against per-resource
+        # centroids derived from already-FK-populated chunks. Margin gate
+        # prevents wrong-attribution when two centroids are similarly close.
+        unresolved = [
+            d
+            for d in deferred
+            if d[0] not in resolved_by_image and d[4]  # has an embedding
+        ]
+        if unresolved:
+            centroids = await _build_resource_centroids(session, rag_id)
+            if centroids:
+                for _chunk_id, chunk_chapter, chunk_page, candidates, embedding in unresolved:
+                    candidate_centroids = [
+                        (r, centroids[r.id]) for r in candidates if r.id in centroids
+                    ]
+                    if len(candidate_centroids) < 2:
+                        # Need at least two candidates with centroids to
+                        # measure margin meaningfully.
+                        continue
+                    distances = sorted(
+                        (
+                            (_cosine_distance(list(embedding), c), r)
+                            for (r, c) in candidate_centroids
+                        ),
+                        key=lambda t: t[0],
+                    )
+                    best_distance, best_resource = distances[0]
+                    second_distance = distances[1][0]
+                    if (second_distance - best_distance) >= _CENTROID_MARGIN:
+                        _record((chunk_chapter, chunk_page), best_resource)
 
     out: dict[tuple[str | None, int | None], str] = {}
     for key, winner in seen.items():

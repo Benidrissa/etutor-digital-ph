@@ -6,10 +6,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.domain.services.citation_formatter import (
+    _cosine_distance,
     _normalize_for_match,
     _parse_chapter_page,
     _replace_uuid_prefix,
     _starts_with_uuid,
+    _vector_mean,
     humanize_filename,
     rewrite_uuid_citations_for_module,
     rewrite_uuid_citations_with_context,
@@ -58,14 +60,17 @@ def _make_chunk_row(
     content: str,
     chunk_id: str | None = None,
     course_resource_id: object | None = None,
+    embedding: list[float] | None = None,
 ) -> tuple:
-    """Mimic an SQLAlchemy Row for the (id, chapter, page, content, course_resource_id) projection."""
+    """Mimic an SQLAlchemy Row for the
+    (id, chapter, page, content, course_resource_id, embedding) projection."""
     return (
         chunk_id or f"chunk-{chapter}-{page}",
         chapter,
         page,
         content,
         course_resource_id,
+        embedding,
     )
 
 
@@ -88,7 +93,7 @@ class _FakeAsyncSession:
     async def get(self, model, key):
         return self._gets.get((model.__name__, str(key)))
 
-    async def execute(self, stmt):
+    async def execute(self, stmt, params=None):
         self.execute_calls.append(stmt)
         if not self._queue:
             raise AssertionError("Unexpected execute() call — queue empty")
@@ -447,7 +452,7 @@ class TestRewriteForModuleMultiResource:
             },
             execute_queue=[
                 _scalar_result([pdf_a, pdf_b]),
-                _row_result([("chunk-amb-1", "1", 1, boilerplate, None)]),
+                _row_result([("chunk-amb-1", "1", 1, boilerplate, None, None)]),
                 _row_result([]),  # no linked images for the deferred chunk
             ],
         )
@@ -605,7 +610,7 @@ class TestImageTiebreaker:
 
         chunk_id = "chunk-1"
         # Chunk content == boilerplate, so it matches BOTH resources.
-        chunk_row = (chunk_id, "1", 5, boilerplate, None)
+        chunk_row = (chunk_id, "1", 5, boilerplate, None, None)
         # Linked surrounding_text contains alpha-specific marker → unique to A.
         img_row = (chunk_id, "alpha-only specific marker " * 5)
 
@@ -633,7 +638,7 @@ class TestImageTiebreaker:
         course = _make_course()
         module = _make_module()
 
-        chunk_row = ("chunk-1", "1", 5, boilerplate, None)
+        chunk_row = ("chunk-1", "1", 5, boilerplate, None, None)
 
         session = _FakeAsyncSession(
             gets={
@@ -659,7 +664,7 @@ class TestImageTiebreaker:
         course = _make_course()
         module = _make_module()
 
-        chunk_row = ("chunk-1", "1", 5, boilerplate, None)
+        chunk_row = ("chunk-1", "1", 5, boilerplate, None, None)
         img_row = ("chunk-1", boilerplate)  # surrounding_text is also shared
 
         session = _FakeAsyncSession(
@@ -671,6 +676,180 @@ class TestImageTiebreaker:
                 _scalar_result([pdf_a, pdf_b]),
                 _row_result([chunk_row]),
                 _row_result([img_row]),
+            ],
+        )
+        sources = [f"{_UUID} Ch.1, p.5"]
+        out = await rewrite_uuid_citations_for_module(sources, "module-id", session, "fr")
+        assert out == ["Statistiques de Santé Publique Ch.1, p.5"]
+
+
+class TestVectorMath:
+    def test_cosine_distance_identical(self):
+        v = [1.0, 2.0, 3.0]
+        assert _cosine_distance(v, v) == pytest.approx(0.0)
+
+    def test_cosine_distance_orthogonal(self):
+        # Orthogonal vectors → cosine similarity 0 → distance 1
+        a = [1.0, 0.0, 0.0]
+        b = [0.0, 1.0, 0.0]
+        assert _cosine_distance(a, b) == pytest.approx(1.0)
+
+    def test_cosine_distance_zero_vector(self):
+        # Defends against div-by-zero on zero-norm vectors.
+        assert _cosine_distance([0.0, 0.0, 0.0], [1.0, 2.0, 3.0]) == 1.0
+
+    def test_cosine_distance_mismatched_dim(self):
+        assert _cosine_distance([1.0], [1.0, 1.0]) == 1.0
+
+    def test_vector_mean(self):
+        result = _vector_mean([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+        assert result == [3.0, 4.0]
+
+    def test_vector_mean_empty(self):
+        assert _vector_mean([]) is None
+
+    def test_vector_mean_mismatched_dims(self):
+        assert _vector_mean([[1.0, 2.0], [3.0]]) is None
+
+
+@pytest.mark.asyncio
+class TestCentroidTiebreaker:
+    """Embedding-centroid tiebreaker fires when chunk content + image text
+    can't disambiguate (#2187)."""
+
+    async def test_centroid_breaks_tie_with_clear_margin(self):
+        # Both PDFs share boilerplate (so content + image both ambiguous),
+        # but the chunk's embedding is clearly closer to A's centroid.
+        boilerplate = "shared paragraph " * 30
+        pdf_a = _make_resource("alpha.pdf", raw_text=boilerplate, rid="rid-a")
+        pdf_b = _make_resource("beta.pdf", raw_text=boilerplate, rid="rid-b")
+        course = _make_course()
+        module = _make_module()
+
+        # Chunk embedding closer to A-shaped vectors.
+        chunk_embedding = [1.0, 0.0, 0.0]
+        chunk_row = (
+            "chunk-1",
+            "1",
+            5,
+            boilerplate,
+            None,  # course_resource_id NULL → falls through to vote
+            chunk_embedding,
+        )
+
+        # Per-resource centroid sample query rows.
+        # rid-a chunks point in direction [1, 0, 0]; rid-b in [0, 1, 0].
+        centroid_rows = [
+            ("rid-a", [1.0, 0.0, 0.0]),
+            ("rid-a", [0.9, 0.1, 0.0]),
+            ("rid-b", [0.0, 1.0, 0.0]),
+            ("rid-b", [0.1, 0.9, 0.0]),
+        ]
+
+        session = _FakeAsyncSession(
+            gets={
+                ("Module", "module-id"): module,
+                ("Course", "course-id"): course,
+            },
+            execute_queue=[
+                _scalar_result([pdf_a, pdf_b]),
+                _row_result([chunk_row]),
+                _row_result([]),  # no linked images
+                _row_result(centroid_rows),  # centroid sample SELECT
+            ],
+        )
+        sources = [f"{_UUID} Ch.1, p.5"]
+        out = await rewrite_uuid_citations_for_module(sources, "module-id", session, "fr")
+        assert out == ["Alpha Ch.1, p.5"]
+
+    async def test_centroid_margin_gate_blocks_close_call(self):
+        # Two centroids almost equidistant → margin gate refuses to assign,
+        # falls back to course title.
+        boilerplate = "shared paragraph " * 30
+        pdf_a = _make_resource("alpha.pdf", raw_text=boilerplate, rid="rid-a")
+        pdf_b = _make_resource("beta.pdf", raw_text=boilerplate, rid="rid-b")
+        course = _make_course()
+        module = _make_module()
+
+        chunk_embedding = [1.0, 1.0, 0.0]
+        chunk_row = (
+            "chunk-1",
+            "1",
+            5,
+            boilerplate,
+            None,
+            chunk_embedding,
+        )
+        # Centroids equidistant from the chunk → no clear winner.
+        centroid_rows = [
+            ("rid-a", [1.0, 1.0, 0.0]),
+            ("rid-b", [1.0, 1.0, 0.001]),  # ~equally close
+        ]
+
+        session = _FakeAsyncSession(
+            gets={
+                ("Module", "module-id"): module,
+                ("Course", "course-id"): course,
+            },
+            execute_queue=[
+                _scalar_result([pdf_a, pdf_b]),
+                _row_result([chunk_row]),
+                _row_result([]),
+                _row_result(centroid_rows),
+            ],
+        )
+        sources = [f"{_UUID} Ch.1, p.5"]
+        out = await rewrite_uuid_citations_for_module(sources, "module-id", session, "fr")
+        # Margin gate keeps it ambiguous → falls back to course title.
+        assert out == ["Statistiques de Santé Publique Ch.1, p.5"]
+
+    async def test_no_centroids_skips_pass(self):
+        # No FK-populated chunks for the course → centroid SELECT empty →
+        # tiebreaker no-ops → existing behavior (course title fallback).
+        boilerplate = "shared paragraph " * 30
+        pdf_a = _make_resource("alpha.pdf", raw_text=boilerplate, rid="rid-a")
+        pdf_b = _make_resource("beta.pdf", raw_text=boilerplate, rid="rid-b")
+        course = _make_course()
+        module = _make_module()
+
+        chunk_row = ("chunk-1", "1", 5, boilerplate, None, [1.0, 0.0, 0.0])
+
+        session = _FakeAsyncSession(
+            gets={
+                ("Module", "module-id"): module,
+                ("Course", "course-id"): course,
+            },
+            execute_queue=[
+                _scalar_result([pdf_a, pdf_b]),
+                _row_result([chunk_row]),
+                _row_result([]),
+                _row_result([]),  # centroid sample empty
+            ],
+        )
+        sources = [f"{_UUID} Ch.1, p.5"]
+        out = await rewrite_uuid_citations_for_module(sources, "module-id", session, "fr")
+        assert out == ["Statistiques de Santé Publique Ch.1, p.5"]
+
+    async def test_chunk_without_embedding_skips_centroid(self):
+        # Chunk has no embedding → centroid pass skipped for it.
+        boilerplate = "shared paragraph " * 30
+        pdf_a = _make_resource("alpha.pdf", raw_text=boilerplate, rid="rid-a")
+        pdf_b = _make_resource("beta.pdf", raw_text=boilerplate, rid="rid-b")
+        course = _make_course()
+        module = _make_module()
+
+        chunk_row = ("chunk-1", "1", 5, boilerplate, None, None)
+
+        session = _FakeAsyncSession(
+            gets={
+                ("Module", "module-id"): module,
+                ("Course", "course-id"): course,
+            },
+            execute_queue=[
+                _scalar_result([pdf_a, pdf_b]),
+                _row_result([chunk_row]),
+                _row_result([]),
+                # No centroid SELECT issued (filtered by `d[4]` truthy in _resolve_per_citation_map)
             ],
         )
         sources = [f"{_UUID} Ch.1, p.5"]
