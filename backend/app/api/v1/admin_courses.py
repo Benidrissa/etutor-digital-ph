@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
 from app.api.deps import get_db as get_db_session
@@ -103,8 +104,19 @@ class CourseResponse(BaseModel):
     published_at: str | None
 
 
-def _course_to_response(course: Course, image_count: int = 0) -> CourseResponse:
+def _course_to_response(
+    course: Course,
+    image_count: int = 0,
+    estimated_hours: int | None = None,
+) -> CourseResponse:
     cats = course.taxonomy_categories or []
+    if estimated_hours is None:
+        # Mirrors the public API: course duration = sum of module hours, falling back
+        # to the column (admin-set AI target) when modules aren't loaded yet.
+        # Requires selectinload(Course.modules) on the query.
+        modules = course.modules
+        total = sum(m.estimated_hours or 0 for m in modules) if modules else 0
+        estimated_hours = total if total > 0 else course.estimated_hours
     return CourseResponse(
         id=str(course.id),
         slug=course.slug,
@@ -116,7 +128,7 @@ def _course_to_response(course: Course, image_count: int = 0) -> CourseResponse:
         course_level=[tc.slug for tc in cats if tc.type == "level"],
         audience_type=[tc.slug for tc in cats if tc.type == "audience"],
         languages=course.languages,
-        estimated_hours=course.estimated_hours,
+        estimated_hours=estimated_hours,
         module_count=course.module_count,
         image_count=image_count,
         status=course.status,
@@ -291,7 +303,9 @@ async def list_courses_admin(
     db=Depends(get_db_session),
 ) -> list[CourseResponse]:
     """List all courses (any status). Admin only."""
-    result = await db.execute(select(Course).order_by(Course.created_at.desc()))
+    result = await db.execute(
+        select(Course).options(selectinload(Course.modules)).order_by(Course.created_at.desc())
+    )
     courses = result.scalars().all()
 
     rag_ids = [c.rag_collection_id for c in courses if c.rag_collection_id]
@@ -366,7 +380,7 @@ async def create_course(
     await db.refresh(course)
 
     logger.info("Course created", course_id=str(course.id), admin_id=current_user.id)
-    return _course_to_response(course)
+    return _course_to_response(course, estimated_hours=course.estimated_hours)
 
 
 @router.get("/{course_id}", response_model=CourseResponse)
@@ -376,7 +390,9 @@ async def get_course_admin(
     db=Depends(get_db_session),
 ) -> CourseResponse:
     """Get course detail. Admin only."""
-    result = await db.execute(select(Course).where(Course.id == course_id))
+    result = await db.execute(
+        select(Course).options(selectinload(Course.modules)).where(Course.id == course_id)
+    )
     course = result.scalar_one_or_none()
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
@@ -392,7 +408,9 @@ async def update_course(
     db=Depends(get_db_session),
 ) -> CourseResponse:
     """Update course metadata. Admin only."""
-    result = await db.execute(select(Course).where(Course.id == course_id))
+    result = await db.execute(
+        select(Course).options(selectinload(Course.modules)).where(Course.id == course_id)
+    )
     course = result.scalar_one_or_none()
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
@@ -431,7 +449,9 @@ async def publish_course(
     db=Depends(get_db_session),
 ) -> CourseResponse:
     """Publish a draft course. Admin only."""
-    result = await db.execute(select(Course).where(Course.id == course_id))
+    result = await db.execute(
+        select(Course).options(selectinload(Course.modules)).where(Course.id == course_id)
+    )
     course = result.scalar_one_or_none()
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
@@ -484,7 +504,9 @@ async def archive_course(
     db=Depends(get_db_session),
 ) -> CourseResponse:
     """Archive a course. Admin only."""
-    result = await db.execute(select(Course).where(Course.id == course_id))
+    result = await db.execute(
+        select(Course).options(selectinload(Course.modules)).where(Course.id == course_id)
+    )
     course = result.scalar_one_or_none()
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
@@ -1356,7 +1378,9 @@ async def cancel_indexation(
     Safe to call even when the task has already failed or is stale — idempotent.
     After this call the admin can re-trigger indexation via POST /index-resources.
     """
-    result = await db.execute(select(Course).where(Course.id == course_id))
+    result = await db.execute(
+        select(Course).options(selectinload(Course.modules)).where(Course.id == course_id)
+    )
     course = result.scalar_one_or_none()
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
