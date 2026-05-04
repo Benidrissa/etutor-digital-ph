@@ -15,7 +15,9 @@ const withBundleAnalyzer = createBundleAnalyzer({
 const withSerwist = withSerwistInit({
   swSrc: "sw.ts",
   swDest: "public/sw.js",
-  reloadOnOnline: true,
+  // Offline-first PWA on flaky 3G networks: a hard reload on every `online`
+  // event destroys in-progress quiz/case-study state (issue #2226).
+  reloadOnOnline: false,
   disable: process.env.NODE_ENV === "development",
 });
 

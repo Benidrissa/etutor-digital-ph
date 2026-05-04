@@ -20,6 +20,7 @@ import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { loadCaseStudy, OfflineContentNotAvailable } from '@/lib/offline/content-loader';
 import { OfflineBadge } from '@/components/shared/offline-badge';
 import { useNetworkStatus } from '@/lib/hooks/use-network-status';
+import { loadQuizState, saveQuizState, clearQuizState } from '@/lib/quiz-state-persistence';
 
 const COUNTRY_NAMES: Record<string, { en: string; fr: string }> = {
   BF: { en: 'Burkina Faso', fr: 'Burkina Faso' },
@@ -117,6 +118,21 @@ export function CaseStudyViewer({
   const { isOnline } = useNetworkStatus();
 
   const t = useTranslations('CaseStudyViewer');
+
+  // Restore the "show correction" flag once the case study has loaded so a
+  // refresh / network blip doesn't force the user to re-click the button.
+  // Keyed on the case-study id so a regenerate auto-invalidates.
+  const storageKey = caseStudyData ? `case-study-state:v1:${caseStudyData.id}` : null;
+  useEffect(() => {
+    if (!storageKey) return;
+    const restored = loadQuizState<{ correctionVisible: boolean }>(storageKey);
+    if (restored?.correctionVisible) setCorrectionVisible(true);
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (!storageKey) return;
+    saveQuizState(storageKey, { correctionVisible });
+  }, [storageKey, correctionVisible]);
 
   useEffect(() => {
     if (!isHydrated || !moduleId || !unitId) return;
@@ -258,6 +274,7 @@ export function CaseStudyViewer({
   }, [moduleId, unitId, language, level, country, forceRegenerate, isHydrated]);
 
   const handleRefresh = () => {
+    if (storageKey) clearQuizState(storageKey);
     setCaseStudyData(null);
     setIsRefreshing(true);
     setForceRegenerate(true);
@@ -273,6 +290,7 @@ export function CaseStudyViewer({
           unit_id: unitId,
         }),
       });
+      if (storageKey) clearQuizState(storageKey);
       setIsCompleted(true);
       onComplete?.();
     } catch (err) {
