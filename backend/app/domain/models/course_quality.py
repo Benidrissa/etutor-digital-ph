@@ -40,7 +40,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.domain.models.base import Base
 
 if TYPE_CHECKING:
-    from app.domain.models.content import GeneratedContent
     from app.domain.models.course import Course
     from app.domain.models.module_unit import ModuleUnit
     from app.domain.models.user import User
@@ -128,9 +127,7 @@ class CourseQualityRun(Base):
     spent_credits: Mapped[int] = mapped_column(Integer, server_default="0")
     idempotency_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     course: Mapped[Course] = relationship()
     triggered_by: Mapped[User | None] = relationship(foreign_keys=[triggered_by_user_id])
@@ -169,9 +166,7 @@ class UnitQualityAssessment(Base):
     credit_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("transactions.id", ondelete="SET NULL"), nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     run: Mapped[CourseQualityRun] = relationship(back_populates="assessments")
 
@@ -217,9 +212,7 @@ class CourseGlossaryTerm(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     course: Mapped[Course] = relationship()
     first_unit: Mapped[ModuleUnit | None] = relationship(foreign_keys=[first_unit_id])
@@ -252,6 +245,4 @@ class GeneratedContentRevision(Base):
     triggered_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

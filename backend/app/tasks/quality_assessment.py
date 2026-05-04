@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from typing import Any
 
 import structlog
 from celery import Task
@@ -65,9 +64,7 @@ def _make_session_factory(settings):
     """
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-    engine = create_async_engine(
-        settings.database_url, echo=False, pool_size=5, max_overflow=2
-    )
+    engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     return engine, factory
 
@@ -192,9 +189,7 @@ def assess_and_regenerate_unit_task(
                 retriever = SemanticRetriever(embedding)
                 service = CourseQualityService(ClaudeService(), retriever)
                 run_uuid = uuid.UUID(run_id) if run_id else None
-                user_uuid = (
-                    uuid.UUID(triggered_by_user_id) if triggered_by_user_id else None
-                )
+                user_uuid = uuid.UUID(triggered_by_user_id) if triggered_by_user_id else None
                 last = await service.assess_and_regenerate_loop(
                     content_id=uuid.UUID(content_id),
                     run_id=run_uuid,
@@ -353,9 +348,7 @@ def assess_course_task(
 
                 processed = 0
                 regenerated = 0
-                user_uuid = (
-                    uuid.UUID(triggered_by_user_id) if triggered_by_user_id else None
-                )
+                user_uuid = uuid.UUID(triggered_by_user_id) if triggered_by_user_id else None
 
                 for language in languages:
                     # Glossary pre-pass.
@@ -442,9 +435,7 @@ def assess_course_task(
                                     # See if any remaining flags are blocker — if not, early-exit.
                                     blocker_q = (
                                         select(GeneratedContent.id)
-                                        .where(
-                                            GeneratedContent.last_quality_run_id == run.id
-                                        )
+                                        .where(GeneratedContent.last_quality_run_id == run.id)
                                         .where(
                                             GeneratedContent.quality_flags.contains(
                                                 [{"severity": "blocking"}]
@@ -453,9 +444,8 @@ def assess_course_task(
                                         .limit(1)
                                     )
                                     blocker_exists = (
-                                        (await session.execute(blocker_q)).scalar_one_or_none()
-                                        is not None
-                                    )
+                                        await session.execute(blocker_q)
+                                    ).scalar_one_or_none() is not None
                                     if not blocker_exists:
                                         logger.info(
                                             "Course-level early exit",

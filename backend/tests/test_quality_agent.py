@@ -8,6 +8,7 @@ Anthropic API key.
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from app.ai.prompts.quality import (
     DIMENSION_WEIGHTS,
@@ -32,7 +33,6 @@ from app.domain.services.quality_agent_service import (
     calculate_cost_cents,
     normalize_term,
 )
-
 
 # ---- Rubric weights ---------------------------------------------------
 
@@ -286,7 +286,7 @@ def test_unit_quality_report_rejects_score_above_100():
         "needs_regeneration": False,
         "regeneration_constraints": [],
     }
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         UnitQualityReport.model_validate(bad)
 
 
@@ -301,7 +301,7 @@ def test_glossary_entry_default_consistency_status():
 
 
 def test_quality_flag_rejects_invalid_category():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         QualityFlag.model_validate(
             {
                 "category": "made_up_category",
@@ -355,12 +355,8 @@ def test_auditor_user_message_contains_unit_payload():
         level=2,
         unit_content={"introduction": "intro text", "concepts": []},
         sources_cited=["src:p1"],
-        neighbor_digest=[
-            {"unit_number": "1.1", "title": "Intro", "summary": "summary 1"}
-        ],
-        rag_excerpts=[
-            {"source": "triola", "chapter": "5", "page": "47", "content": "chunk"}
-        ],
+        neighbor_digest=[{"unit_number": "1.1", "title": "Intro", "summary": "summary 1"}],
+        rag_excerpts=[{"source": "triola", "chapter": "5", "page": "47", "content": "chunk"}],
     )
     assert "1.2" in msg
     assert "Hypothesis Testing" in msg
@@ -407,76 +403,89 @@ def _should_stop_loop(
         return True
     if attempts >= MAX_REGEN_ATTEMPTS:
         return True
-    if (
-        prev_score is not None
-        and current_score - prev_score < MIN_IMPROVEMENT_PER_ATTEMPT
-    ):
-        return True
-    return False
+    return prev_score is not None and current_score - prev_score < MIN_IMPROVEMENT_PER_ATTEMPT
 
 
 def test_loop_stops_when_passing():
-    assert _should_stop_loop(
-        is_manually_edited=False,
-        needs_regen=False,
-        current_score=92,
-        prev_score=None,
-        attempts=0,
-    ) is True
+    assert (
+        _should_stop_loop(
+            is_manually_edited=False,
+            needs_regen=False,
+            current_score=92,
+            prev_score=None,
+            attempts=0,
+        )
+        is True
+    )
 
 
 def test_loop_continues_when_failing_first_attempt():
-    assert _should_stop_loop(
-        is_manually_edited=False,
-        needs_regen=True,
-        current_score=72,
-        prev_score=None,
-        attempts=0,
-    ) is False
+    assert (
+        _should_stop_loop(
+            is_manually_edited=False,
+            needs_regen=True,
+            current_score=72,
+            prev_score=None,
+            attempts=0,
+        )
+        is False
+    )
 
 
 def test_loop_stops_at_max_attempts():
-    assert _should_stop_loop(
-        is_manually_edited=False,
-        needs_regen=True,
-        current_score=72,
-        prev_score=70,
-        attempts=MAX_REGEN_ATTEMPTS,
-    ) is True
+    assert (
+        _should_stop_loop(
+            is_manually_edited=False,
+            needs_regen=True,
+            current_score=72,
+            prev_score=70,
+            attempts=MAX_REGEN_ATTEMPTS,
+        )
+        is True
+    )
 
 
 def test_loop_stops_on_oscillation_88_to_90_to_88():
     """88 → 90 (pass), but if it had been 88 → 90 → 88 we'd stop on the third."""
     # 88 first attempt, 90 second — passes the +3 guard? +2 is below +3, so stop.
-    assert _should_stop_loop(
-        is_manually_edited=False,
-        needs_regen=True,
-        current_score=90,
-        prev_score=88,
-        attempts=1,
-    ) is True
+    assert (
+        _should_stop_loop(
+            is_manually_edited=False,
+            needs_regen=True,
+            current_score=90,
+            prev_score=88,
+            attempts=1,
+        )
+        is True
+    )
 
 
 def test_loop_continues_when_improving_well():
     """50 → 75 (+25) is healthy improvement; keep going."""
-    assert _should_stop_loop(
-        is_manually_edited=False,
-        needs_regen=True,
-        current_score=75,
-        prev_score=50,
-        attempts=1,
-    ) is False
+    assert (
+        _should_stop_loop(
+            is_manually_edited=False,
+            needs_regen=True,
+            current_score=75,
+            prev_score=50,
+            attempts=1,
+        )
+        is False
+    )
 
 
 def test_loop_stops_immediately_when_locked():
     """Manually edited content always stops, even if score would warrant retry."""
-    assert _should_stop_loop(
-        is_manually_edited=True,
-        needs_regen=True,
-        current_score=10,
-        prev_score=None,
-        attempts=0,
-    ) is True
+    assert (
+        _should_stop_loop(
+            is_manually_edited=True,
+            needs_regen=True,
+            current_score=10,
+            prev_score=None,
+            attempts=0,
+        )
+        is True
+    )
 
 
 # ---- DimensionScores Pydantic ---------------------------------------
@@ -497,7 +506,7 @@ def test_dimension_scores_round_trip():
 
 
 def test_dimension_scores_rejects_negative():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         DimensionScores(
             terminology_consistency=-1,
             source_grounding=80,

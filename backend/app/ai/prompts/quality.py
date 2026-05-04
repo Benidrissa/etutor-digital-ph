@@ -60,10 +60,7 @@ def has_critical_floor_violation(dimension_scores: dict[str, int]) -> bool:
     dimensions push the weighted average up.
     """
     critical = ("terminology_consistency", "source_grounding", "internal_contradictions")
-    for dim in critical:
-        if int(dimension_scores.get(dim, 0)) < 70:
-            return True
-    return False
+    return any(int(dimension_scores.get(dim, 0)) < 70 for dim in critical)
 
 
 # ---- Auditor prompts ---------------------------------------------------
@@ -73,17 +70,17 @@ AUDITOR_SYSTEM_PROMPT = f"""You are a Course Quality Auditor for the Sira learni
 
 You assess generated educational content (a single unit at a time) against six dimensions, each scored 0-100:
 
-1. terminology_consistency (weight {DIMENSION_WEIGHTS['terminology_consistency']}): every term used in the unit must match the canonical definition in the course glossary. If the unit defines a term differently from the glossary, raise a TERMINOLOGY_DRIFT flag with severity HIGH, citing the unit_number from the glossary entry's first_appears_in_unit AND quoting both definitions.
+1. terminology_consistency (weight {DIMENSION_WEIGHTS["terminology_consistency"]}): every term used in the unit must match the canonical definition in the course glossary. If the unit defines a term differently from the glossary, raise a TERMINOLOGY_DRIFT flag with severity HIGH, citing the unit_number from the glossary entry's first_appears_in_unit AND quoting both definitions.
 
-2. source_grounding (weight {DIMENSION_WEIGHTS['source_grounding']}): every factual claim, number, and quoted statement in the unit must trace to a real source chunk in the provided RAG excerpts or the course resource summaries. Unsourced claims raise UNGROUNDED_CLAIM with severity HIGH.
+2. source_grounding (weight {DIMENSION_WEIGHTS["source_grounding"]}): every factual claim, number, and quoted statement in the unit must trace to a real source chunk in the provided RAG excerpts or the course resource summaries. Unsourced claims raise UNGROUNDED_CLAIM with severity HIGH.
 
-3. syllabus_alignment (weight {DIMENSION_WEIGHTS['syllabus_alignment']}): the unit must cover exactly what the syllabus says THIS unit covers — no scope creep into other units' topics, no omission of declared sub-topics. Raise SYLLABUS_SCOPE_DRIFT for either direction.
+3. syllabus_alignment (weight {DIMENSION_WEIGHTS["syllabus_alignment"]}): the unit must cover exactly what the syllabus says THIS unit covers — no scope creep into other units' topics, no omission of declared sub-topics. Raise SYLLABUS_SCOPE_DRIFT for either direction.
 
-4. internal_contradictions (weight {DIMENSION_WEIGHTS['internal_contradictions']}): no claim in the unit may contradict (a) another claim in the same unit, (b) a claim in any of the OTHER units summarized in the neighbor digest. Raise INTERNAL_CONTRADICTION with the conflicting unit_number in evidence_unit_id when cross-unit.
+4. internal_contradictions (weight {DIMENSION_WEIGHTS["internal_contradictions"]}): no claim in the unit may contradict (a) another claim in the same unit, (b) a claim in any of the OTHER units summarized in the neighbor digest. Raise INTERNAL_CONTRADICTION with the conflicting unit_number in evidence_unit_id when cross-unit.
 
-5. pedagogical_fit (weight {DIMENSION_WEIGHTS['pedagogical_fit']}): depth and prerequisites must match the declared level (1=beginner / 2=intermediate / 3=advanced / 4=expert). Scaffolding must be present (intro → concept → worked example → synthesis). Raise PEDAGOGICAL_MISMATCH.
+5. pedagogical_fit (weight {DIMENSION_WEIGHTS["pedagogical_fit"]}): depth and prerequisites must match the declared level (1=beginner / 2=intermediate / 3=advanced / 4=expert). Scaffolding must be present (intro → concept → worked example → synthesis). Raise PEDAGOGICAL_MISMATCH.
 
-6. structural_completeness (weight {DIMENSION_WEIGHTS['structural_completeness']}): all required JSON keys present and non-trivial (introduction ≥ 80 words, ≥ 3 concepts, key_points ≥ 3, no placeholder text like "TODO" or "...").
+6. structural_completeness (weight {DIMENSION_WEIGHTS["structural_completeness"]}): all required JSON keys present and non-trivial (introduction ≥ 80 words, ≥ 3 concepts, key_points ≥ 3, no placeholder text like "TODO" or "...").
 
 You will receive (in this order, separated by clear headers):
   [BLOCK A] The course syllabus and module objectives.
@@ -148,11 +145,11 @@ def build_auditor_user_message(
     This function only assembles the per-unit varying tail.
     """
     parts: list[str] = []
-    parts.append(f"## [BLOCK D] Neighbor-units digest")
+    parts.append("## [BLOCK D] Neighbor-units digest")
     if neighbor_digest:
         for item in neighbor_digest:
             parts.append(
-                f"- unit_number={item.get('unit_number','?')} title=\"{item.get('title','')}\""
+                f'- unit_number={item.get("unit_number", "?")} title="{item.get("title", "")}"'
             )
             summary = item.get("summary", "").strip()
             if summary:
@@ -161,7 +158,7 @@ def build_auditor_user_message(
         parts.append("(no other units assessed yet — single-unit course or first unit in run)")
 
     parts.append("")
-    parts.append(f"## [BLOCK E] Unit under review")
+    parts.append("## [BLOCK E] Unit under review")
     parts.append(f"unit_number: {unit_number}")
     parts.append(f"unit_title: {unit_title}")
     parts.append(f"content_type: {content_type}")
@@ -174,11 +171,11 @@ def build_auditor_user_message(
         parts.append(json.dumps(sources_cited, ensure_ascii=False, indent=2))
 
     parts.append("")
-    parts.append(f"## [BLOCK F] Relevant RAG excerpts")
+    parts.append("## [BLOCK F] Relevant RAG excerpts")
     if rag_excerpts:
         for ex in rag_excerpts:
             parts.append(
-                f"- source={ex.get('source','?')} chapter={ex.get('chapter','?')} page={ex.get('page','?')}"
+                f"- source={ex.get('source', '?')} chapter={ex.get('chapter', '?')} page={ex.get('page', '?')}"
             )
             content = ex.get("content", "").strip()
             if content:
@@ -302,7 +299,7 @@ def build_glossary_extractor_user_message(
         "## Units (with their concept arrays)",
     ]
     for u in units:
-        parts.append(f"### unit {u.get('unit_number','?')} — {u.get('title','')}")
+        parts.append(f"### unit {u.get('unit_number', '?')} — {u.get('title', '')}")
         concepts = u.get("concepts") or []
         if isinstance(concepts, list) and concepts:
             parts.append(json.dumps(concepts, ensure_ascii=False, indent=2))
@@ -312,7 +309,7 @@ def build_glossary_extractor_user_message(
 
     parts.append("## Source summaries")
     for s in source_summaries:
-        parts.append(f"### {s.get('filename','?')}")
+        parts.append(f"### {s.get('filename', '?')}")
         parts.append((s.get("summary") or "").strip()[:4000])
         parts.append("")
 

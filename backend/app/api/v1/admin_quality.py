@@ -241,11 +241,15 @@ async def get_course_glossary(
     decide whether to manually edit the canonical definition or
     trigger a regenerate of the affected units.
     """
-    q = select(CourseGlossaryTerm, ModuleUnit).join(
-        ModuleUnit,
-        CourseGlossaryTerm.first_unit_id == ModuleUnit.id,
-        isouter=True,
-    ).where(CourseGlossaryTerm.course_id == course_id)
+    q = (
+        select(CourseGlossaryTerm, ModuleUnit)
+        .join(
+            ModuleUnit,
+            CourseGlossaryTerm.first_unit_id == ModuleUnit.id,
+            isouter=True,
+        )
+        .where(CourseGlossaryTerm.course_id == course_id)
+    )
     if language:
         q = q.where(CourseGlossaryTerm.language == language)
     q = q.order_by(CourseGlossaryTerm.term_normalized)
@@ -297,9 +301,7 @@ async def regenerate_unit_with_constraints(
     # Validate the GC actually belongs to this course.
     module = await session.get(Module, gc.module_id)
     if module is None or module.course_id != course_id:
-        raise HTTPException(
-            status_code=404, detail="Content does not belong to this course"
-        )
+        raise HTTPException(status_code=404, detail="Content does not belong to this course")
 
     if gc.is_manually_edited:
         raise HTTPException(

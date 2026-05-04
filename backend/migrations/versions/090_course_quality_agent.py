@@ -54,11 +54,27 @@ def upgrade() -> None:
     # 1. course_quality_runs.
     op.create_table(
         "course_quality_runs",
-        sa.Column("id", sa.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
-        sa.Column("course_id", sa.UUID(as_uuid=True), sa.ForeignKey("courses.id", ondelete="CASCADE"), nullable=False, index=True),
+        sa.Column(
+            "id",
+            sa.UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
+        sa.Column(
+            "course_id",
+            sa.UUID(as_uuid=True),
+            sa.ForeignKey("courses.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        ),
         sa.Column("run_kind", sa.String(24), nullable=False),
         sa.Column("status", sa.String(24), nullable=False, server_default="queued"),
-        sa.Column("triggered_by_user_id", sa.UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True),
+        sa.Column(
+            "triggered_by_user_id",
+            sa.UUID(as_uuid=True),
+            sa.ForeignKey("users.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("overall_score", sa.Numeric(5, 2), nullable=True),
@@ -69,8 +85,12 @@ def upgrade() -> None:
         sa.Column("spent_credits", sa.Integer, nullable=False, server_default="0"),
         sa.Column("idempotency_key", sa.String(64), nullable=True),
         sa.Column("notes", sa.Text, nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.UniqueConstraint("course_id", "idempotency_key", name="uq_course_quality_run_idempotency"),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
+        sa.UniqueConstraint(
+            "course_id", "idempotency_key", name="uq_course_quality_run_idempotency"
+        ),
     )
     op.execute(
         """
@@ -83,42 +103,112 @@ def upgrade() -> None:
     # 2. course_glossary_terms.
     op.create_table(
         "course_glossary_terms",
-        sa.Column("id", sa.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
-        sa.Column("course_id", sa.UUID(as_uuid=True), sa.ForeignKey("courses.id", ondelete="CASCADE"), nullable=False, index=True),
+        sa.Column(
+            "id",
+            sa.UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
+        sa.Column(
+            "course_id",
+            sa.UUID(as_uuid=True),
+            sa.ForeignKey("courses.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        ),
         sa.Column("term_normalized", sa.String(160), nullable=False),
         sa.Column("term_display", sa.String(160), nullable=False),
         sa.Column("language", sa.String(2), nullable=False),
         sa.Column("canonical_definition", sa.Text, nullable=False),
-        sa.Column("first_unit_id", sa.UUID(as_uuid=True), sa.ForeignKey("module_units.id", ondelete="SET NULL"), nullable=True),
-        sa.Column("occurrences", sa.dialects.postgresql.JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+        sa.Column(
+            "first_unit_id",
+            sa.UUID(as_uuid=True),
+            sa.ForeignKey("module_units.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        sa.Column(
+            "occurrences",
+            sa.dialects.postgresql.JSONB,
+            nullable=False,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
         sa.Column("status", sa.String(16), nullable=False, server_default="auto"),
         sa.Column("consistency_status", sa.String(24), nullable=False, server_default="consistent"),
         sa.Column("drift_details", sa.Text, nullable=True),
-        sa.Column("source_citations", sa.dialects.postgresql.JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
-        sa.Column("alt_phrasings", sa.dialects.postgresql.JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.UniqueConstraint("course_id", "term_normalized", "language", name="uq_glossary_course_term_lang"),
+        sa.Column(
+            "source_citations",
+            sa.dialects.postgresql.JSONB,
+            nullable=False,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
+        sa.Column(
+            "alt_phrasings",
+            sa.dialects.postgresql.JSONB,
+            nullable=False,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
+        sa.UniqueConstraint(
+            "course_id", "term_normalized", "language", name="uq_glossary_course_term_lang"
+        ),
     )
 
     # 3. unit_quality_assessments.
     op.create_table(
         "unit_quality_assessments",
-        sa.Column("id", sa.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
-        sa.Column("run_id", sa.UUID(as_uuid=True), sa.ForeignKey("course_quality_runs.id", ondelete="CASCADE"), nullable=False, index=True),
-        sa.Column("generated_content_id", sa.UUID(as_uuid=True), sa.ForeignKey("generated_content.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "id",
+            sa.UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
+        sa.Column(
+            "run_id",
+            sa.UUID(as_uuid=True),
+            sa.ForeignKey("course_quality_runs.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        ),
+        sa.Column(
+            "generated_content_id",
+            sa.UUID(as_uuid=True),
+            sa.ForeignKey("generated_content.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("attempt_number", sa.SmallInteger, nullable=False, server_default="1"),
         sa.Column("score", sa.Numeric(5, 2), nullable=False),
-        sa.Column("dimension_scores", sa.dialects.postgresql.JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
-        sa.Column("flags", sa.dialects.postgresql.JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+        sa.Column(
+            "dimension_scores",
+            sa.dialects.postgresql.JSONB,
+            nullable=False,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
+        sa.Column(
+            "flags",
+            sa.dialects.postgresql.JSONB,
+            nullable=False,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
         sa.Column("model", sa.String(64), nullable=True),
         sa.Column("tokens_in", sa.Integer, nullable=True),
         sa.Column("tokens_out", sa.Integer, nullable=True),
         sa.Column("cache_read_tokens", sa.Integer, nullable=True),
         sa.Column("cache_write_tokens", sa.Integer, nullable=True),
         sa.Column("cost_cents", sa.Integer, nullable=True),
-        sa.Column("credit_transaction_id", sa.UUID(as_uuid=True), sa.ForeignKey("transactions.id", ondelete="SET NULL"), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column(
+            "credit_transaction_id",
+            sa.UUID(as_uuid=True),
+            sa.ForeignKey("transactions.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
     )
     op.create_index(
         "ix_uqa_genc_created",
@@ -184,7 +274,12 @@ def upgrade() -> None:
     # 6. generated_content_revisions.
     op.create_table(
         "generated_content_revisions",
-        sa.Column("id", sa.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column(
+            "id",
+            sa.UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
         sa.Column(
             "generated_content_id",
             sa.UUID(as_uuid=True),
@@ -198,8 +293,15 @@ def upgrade() -> None:
         sa.Column("quality_score_before", sa.Numeric(5, 2), nullable=True),
         sa.Column("quality_flags_before", sa.dialects.postgresql.JSONB, nullable=True),
         sa.Column("trigger", sa.String(32), nullable=False),
-        sa.Column("triggered_by_user_id", sa.UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column(
+            "triggered_by_user_id",
+            sa.UUID(as_uuid=True),
+            sa.ForeignKey("users.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
         sa.UniqueConstraint("generated_content_id", "revision", name="uq_genc_revision"),
     )
 

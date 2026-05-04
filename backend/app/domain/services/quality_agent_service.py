@@ -42,23 +42,19 @@ import structlog
 from sqlalchemy import and_, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.ai.claude_service import ClaudeService
 from app.ai.prompts.quality import (
     GLOSSARY_EXTRACTOR_SYSTEM_PROMPT,
-    QUALITY_PROMPT_VERSION,
     build_auditor_user_message,
     build_cached_system_blocks,
     build_glossary_extractor_user_message,
     compute_weighted_score,
-    constraints_block_from_report,
     has_critical_floor_violation,
 )
 from app.ai.rag.retriever import SemanticRetriever
 from app.api.v1.schemas.quality import (
     CourseGlossaryDocument,
-    GlossaryEntry,
     UnitQualityReport,
 )
 from app.domain.models.content import GeneratedContent
@@ -166,7 +162,8 @@ class CourseQualityService:
             syllabus_parts.append("### syllabus_context (prose)\n" + course.syllabus_context)
         if course.syllabus_json:
             syllabus_parts.append(
-                "### syllabus_json\n" + json.dumps(course.syllabus_json, ensure_ascii=False, indent=2)
+                "### syllabus_json\n"
+                + json.dumps(course.syllabus_json, ensure_ascii=False, indent=2)
             )
         if course.objectives_json:
             syllabus_parts.append(
@@ -199,9 +196,7 @@ class CourseQualityService:
             entry = {
                 "term": t.term_display,
                 "canonical_definition": t.canonical_definition,
-                "first_appears_in_unit": (
-                    t.first_unit.unit_number if t.first_unit else None
-                ),
+                "first_appears_in_unit": (t.first_unit.unit_number if t.first_unit else None),
                 "alt_phrasings": t.alt_phrasings or [],
                 "source_citations": t.source_citations or [],
                 "consistency_status": t.consistency_status,
@@ -416,15 +411,9 @@ class CourseQualityService:
         gc.quality_status = "scoring"
         await session.flush()
 
-        unit = (
-            await session.get(ModuleUnit, gc.module_unit_id)
-            if gc.module_unit_id
-            else None
-        )
+        unit = await session.get(ModuleUnit, gc.module_unit_id) if gc.module_unit_id else None
         unit_number = unit.unit_number if unit else None
-        unit_title = (
-            (unit.title_fr if gc.language == "fr" else unit.title_en) if unit else ""
-        )
+        unit_title = (unit.title_fr if gc.language == "fr" else unit.title_en) if unit else ""
 
         # Build cached prefix if not supplied.
         if cached_blocks is None:
@@ -482,16 +471,18 @@ class CourseQualityService:
         floor_violation = has_critical_floor_violation(report.dimension_scores.model_dump())
         # Use the lower of (LLM-reported, recomputed) for safety.
         final_score = min(int(report.quality_score), recomputed)
-        needs_regen = bool(report.needs_regeneration) or final_score < PASSING_SCORE_THRESHOLD or floor_violation
+        needs_regen = (
+            bool(report.needs_regeneration)
+            or final_score < PASSING_SCORE_THRESHOLD
+            or floor_violation
+        )
 
         # Persist into generated_content.
         gc.quality_score = Decimal(final_score)
         gc.quality_flags = [f.model_dump() for f in report.flags]
         gc.quality_assessed_at = datetime.utcnow()
         gc.last_quality_run_id = run_id
-        gc.quality_status = (
-            "passing" if not needs_regen else "needs_review"
-        )
+        gc.quality_status = "passing" if not needs_regen else "needs_review"
 
         # Persist the assessment row.
         cost = calculate_cost_cents(usage)
@@ -548,9 +539,7 @@ class CourseQualityService:
            while another is queued/scoring/regenerating.
         """
         if budget_credits is None:
-            budget_credits = (
-                DEFAULT_BUDGET_FULL if run_kind == "full" else DEFAULT_BUDGET_TARGETED
-            )
+            budget_credits = DEFAULT_BUDGET_FULL if run_kind == "full" else DEFAULT_BUDGET_TARGETED
 
         # Default key: same course + same user + same UTC day collapses.
         if idempotency_key is None:
@@ -595,9 +584,7 @@ class CourseQualityService:
                 select(CourseQualityRun).where(
                     and_(
                         CourseQualityRun.course_id == course_id,
-                        CourseQualityRun.status.in_(
-                            ["queued", "scoring", "regenerating"]
-                        ),
+                        CourseQualityRun.status.in_(["queued", "scoring", "regenerating"]),
                     )
                 )
             )
@@ -627,12 +614,9 @@ class CourseQualityService:
         agg = await session.execute(
             select(
                 func.count().label("total"),
-                func.count()
-                .filter(GeneratedContent.quality_status == "passing")
-                .label("passing"),
+                func.count().filter(GeneratedContent.quality_status == "passing").label("passing"),
                 func.avg(GeneratedContent.quality_score).label("avg_score"),
-            )
-            .where(GeneratedContent.last_quality_run_id == run_id)
+            ).where(GeneratedContent.last_quality_run_id == run_id)
         )
         row = agg.one()
         total = int(row.total or 0)
@@ -709,11 +693,7 @@ class CourseQualityService:
         await session.flush()
 
         # Resolve unit_id string for the generator API.
-        unit = (
-            await session.get(ModuleUnit, gc.module_unit_id)
-            if gc.module_unit_id
-            else None
-        )
+        unit = await session.get(ModuleUnit, gc.module_unit_id) if gc.module_unit_id else None
         unit_id_str = unit.unit_number if unit else gc.content.get("unit_id", "")
 
         # Dispatch to the right generator service.
@@ -826,10 +806,7 @@ class CourseQualityService:
                 gc.quality_status = "needs_review_final"
                 await session.flush()
                 break
-            if (
-                prev_score is not None
-                and current_score - prev_score < MIN_IMPROVEMENT_PER_ATTEMPT
-            ):
+            if prev_score is not None and current_score - prev_score < MIN_IMPROVEMENT_PER_ATTEMPT:
                 gc.quality_status = "needs_review_final"
                 await session.flush()
                 logger.info(

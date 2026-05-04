@@ -188,7 +188,12 @@ class LessonGenerationService:
         )
 
         lesson_response = await self._generate_lesson_content(
-            module, unit_id, language, country, level, session,
+            module,
+            unit_id,
+            language,
+            country,
+            level,
+            session,
             quality_constraints=quality_constraints,
         )
 
@@ -1132,7 +1137,12 @@ class CaseStudyGenerationService:
         )
 
         case_study_response = await self._generate_case_study_content(
-            module, unit_id, language, country, level, session,
+            module,
+            unit_id,
+            language,
+            country,
+            level,
+            session,
             quality_constraints=quality_constraints,
         )
 

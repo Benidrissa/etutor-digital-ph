@@ -26,7 +26,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 # ---- enums (string-typed for forward compatibility w/ DB columns) ----
 
 QualityStatus = Literal[
@@ -40,9 +39,7 @@ QualityStatus = Literal[
     "failed",
 ]
 
-RunStatus = Literal[
-    "queued", "scoring", "regenerating", "completed", "failed", "cancelled"
-]
+RunStatus = Literal["queued", "scoring", "regenerating", "completed", "failed", "cancelled"]
 
 RunKind = Literal["full", "targeted", "glossary_only"]
 
@@ -123,9 +120,7 @@ class GlossaryEntry(BaseModel):
 
     term: str = Field(..., description="Canonical surface form, lowercase")
     canonical_definition: str = Field(..., description="1–2 sentences, source-grounded")
-    first_appears_in_unit: str = Field(
-        ..., description="unit_number like '1.1'"
-    )
+    first_appears_in_unit: str = Field(..., description="unit_number like '1.1'")
     alt_phrasings: list[str] = Field(default_factory=list)
     source_citations: list[str] = Field(default_factory=list)
     consistency_status: Literal["consistent", "drift_detected", "unsourced"] = "consistent"
