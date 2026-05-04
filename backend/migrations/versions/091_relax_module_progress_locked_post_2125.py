@@ -1,7 +1,7 @@
 """Backfill: relax 'locked' module progress rows to 'not_started' (#2218).
 
-Revision ID: 090
-Revises: 089
+Revision ID: 091
+Revises: 090
 Create Date: 2026-05-04
 
 Follow-up to migration 088. PR #2125 removed sequential module gating, and
@@ -25,8 +25,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "090"
-down_revision: str | None = "089"
+revision: str = "091"
+down_revision: str | None = "090"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -36,7 +36,7 @@ def upgrade() -> None:
     result = bind.execute(
         sa.text("UPDATE user_module_progress SET status = 'not_started' WHERE status = 'locked'")
     )
-    print(f"[090] Relaxed {result.rowcount} 'locked' module progress row(s) to 'not_started'")
+    print(f"[091] Relaxed {result.rowcount} 'locked' module progress row(s) to 'not_started'")
 
 
 def downgrade() -> None:
