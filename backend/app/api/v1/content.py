@@ -3,6 +3,7 @@
 import re
 import uuid
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from uuid import UUID
 
 import structlog
@@ -20,6 +21,15 @@ from app.api.deps_local_auth import (
     get_current_user,
     require_active_subscription,
     require_subscription_or_first_unit,
+)
+from app.api.v1._task_status import (
+    TASK_STALL_THRESHOLD_S,
+)
+from app.api.v1._task_status import (
+    dispatched_at as task_dispatched_at,
+)
+from app.api.v1._task_status import (
+    mark_dispatched as mark_task_dispatched,
 )
 from app.api.v1.schemas.content import (
     CaseStudyResponse,
@@ -68,11 +78,28 @@ async def get_generation_status(task_id: str) -> JSONResponse:
         JSON with status: pending | generating | complete | failed
         On complete: content_id is included
         On failed: error message is included
+
+    Notes:
+        Celery returns ``state == "PENDING"`` both for queued tasks and for
+        unknown task IDs. We disambiguate using the dispatch marker written
+        by ``mark_task_dispatched`` — no marker means the task is unknown
+        (worker outage, expired result, bad task ID); marker older than
+        ``TASK_STALL_THRESHOLD_S`` means the task was queued but no worker
+        has picked it up. Both surface as ``failed`` so the frontend stops
+        polling instead of waiting out the 3-minute UI timeout.
     """
     result = AsyncResult(task_id)
     state = result.state
 
     if state == "PENDING":
+        marker = await task_dispatched_at(task_id)
+        if marker is None:
+            logger.info("content.status.task_lost", task_id=task_id)
+            return JSONResponse({"status": "failed", "error": "task_lost"})
+        age_s = (datetime.now(tz=UTC) - marker).total_seconds()
+        if age_s > TASK_STALL_THRESHOLD_S:
+            logger.warning("content.status.task_stalled", task_id=task_id, age_s=age_s)
+            return JSONResponse({"status": "failed", "error": "task_stalled"})
         return JSONResponse({"status": "pending"})
     elif state == "STARTED":
         return JSONResponse({"status": "generating"})
@@ -685,6 +712,7 @@ async def get_or_generate_lesson_by_module_and_unit(
                 task_id=task.id,
             )
 
+        await mark_task_dispatched(task.id)
         _dispatch_content_prefetch(current_user, str(resolved_module_id), unit_id)
         return JSONResponse(
             content={
@@ -1319,6 +1347,7 @@ async def get_or_generate_case_study(
             task_id=task.id,
         )
 
+        await mark_task_dispatched(task.id)
         _dispatch_content_prefetch(current_user, str(resolved_module_id), unit_id)
         return JSONResponse(
             content={
