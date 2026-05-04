@@ -15,6 +15,7 @@ from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.api.deps import get_db
 from app.api.deps_local_auth import AuthenticatedUser, get_current_user, require_active_subscription
+from app.api.v1._task_status import mark_dispatched as mark_task_dispatched
 from app.api.v1.schemas.quiz import (
     ErrorResponse,
     QuizAttemptRequest,
@@ -248,6 +249,7 @@ async def generate_quiz(
             task_id=task.id,
         )
 
+        await mark_task_dispatched(task.id)
         return JSONResponse(
             content={
                 "status": "generating",

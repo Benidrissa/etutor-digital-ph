@@ -43,6 +43,11 @@ celery_app.conf.update(
     task_always_eager=False,
     task_eager_propagates=True,
     task_ignore_result=False,
+    # Without this, AsyncResult.state is "PENDING" both for queued tasks
+    # AND for unknown task IDs — making "stuck on Generating" indistinguishable
+    # from a worker outage in /content/status. STARTED transitions let the
+    # status endpoint surface real progress.
+    task_track_started=True,
     result_expires=3600,  # 1 hour
     result_backend_always_retry=True,
     result_backend_max_retries=3,
