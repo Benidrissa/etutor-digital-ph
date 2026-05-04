@@ -40,6 +40,8 @@ class FlashcardGenerationService:
         country: str,
         level: int,
         session: AsyncSession,
+        force_regenerate: bool = False,
+        quality_constraints: list[str] | None = None,
     ) -> FlashcardSetResponse:
         """Get existing flashcard set or generate new one.
 
@@ -65,7 +67,7 @@ class FlashcardGenerationService:
             level=level,
         )
 
-        # Check cache first
+        # Check cache first (unless quality loop forced regen with constraints).
         existing_content = await self._get_cached_flashcard_set(
             module_id=module_id,
             language=language,
@@ -74,8 +76,20 @@ class FlashcardGenerationService:
             session=session,
         )
 
-        if existing_content:
+        if existing_content and not force_regenerate:
             logger.info("Returning cached flashcard set", content_id=str(existing_content.id))
+            return self._build_response_from_content(existing_content, cached=True)
+
+        # Honour the manual-edit lock even when force_regenerate is set (#2215).
+        if (
+            existing_content
+            and force_regenerate
+            and getattr(existing_content, "is_manually_edited", False)
+        ):
+            logger.info(
+                "Returning manually-edited flashcard set (locked, ignoring force_regenerate)",
+                content_id=str(existing_content.id),
+            )
             return self._build_response_from_content(existing_content, cached=True)
 
         # Generate new flashcard set
@@ -86,6 +100,8 @@ class FlashcardGenerationService:
             country=country,
             level=level,
             session=session,
+            existing_content=existing_content if force_regenerate else None,
+            quality_constraints=quality_constraints,
         )
 
         return self._build_response_from_content(generated_content, cached=False)
@@ -128,6 +144,8 @@ class FlashcardGenerationService:
         country: str,
         level: int,
         session: AsyncSession,
+        existing_content: GeneratedContent | None = None,
+        quality_constraints: list[str] | None = None,
     ) -> GeneratedContent:
         """Generate new flashcard set using Claude AI and RAG.
 
@@ -204,6 +222,12 @@ class FlashcardGenerationService:
 
         logger.info("Calling Claude API for flashcard generation")
 
+        # Append quality-loop constraints if provided (#2215).
+        if quality_constraints:
+            from app.ai.prompts.quality import constraints_block_from_report
+
+            rag_context = rag_context + constraints_block_from_report(quality_constraints)
+
         # Call Claude API
         try:
             response = await self.claude_service.generate_structured_content(
@@ -236,7 +260,26 @@ class FlashcardGenerationService:
             logger.error("Claude API call failed", error=str(e))
             raise ValueError(f"Content generation failed: {str(e)}")
 
-        # Store in database
+        # Store in database. When called via the quality regen loop the
+        # caller passes ``existing_content``; we overwrite that row in
+        # place (and bump revision implicitly via the caller's pre-image
+        # snapshot in ``generated_content_revisions``) instead of
+        # inserting a new row that would race the unique index.
+        new_content_payload = {"flashcards": flashcard_data}
+        new_sources = self._extract_sources_from_flashcards(flashcard_data)
+        if existing_content is not None:
+            existing_content.content = new_content_payload
+            existing_content.sources_cited = new_sources
+            existing_content.country_context = country
+            existing_content.validated = False
+            await session.commit()
+            await session.refresh(existing_content)
+            logger.info(
+                "Flashcard set regenerated in place",
+                content_id=str(existing_content.id),
+            )
+            return existing_content
+
         content_id = uuid.uuid4()
         generated_content = GeneratedContent(
             id=content_id,
@@ -244,8 +287,8 @@ class FlashcardGenerationService:
             content_type="flashcard",
             language=language,
             level=level,
-            content={"flashcards": flashcard_data},
-            sources_cited=self._extract_sources_from_flashcards(flashcard_data),
+            content=new_content_payload,
+            sources_cited=new_sources,
             country_context=country,
             validated=False,
         )

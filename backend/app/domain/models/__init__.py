@@ -6,6 +6,16 @@ from app.domain.models.certificate import Certificate, CertificateTemplate
 from app.domain.models.content import GeneratedContent
 from app.domain.models.conversation import TutorConversation, TutorMessage
 from app.domain.models.course import Course, UserCourseEnrollment
+from app.domain.models.course_quality import (
+    CourseGlossaryTerm,
+    CourseQualityRun,
+    GeneratedContentRevision,
+    GlossaryConsistencyStatus,
+    QualityRunKind,
+    QualityRunStatus,
+    UnitQualityAssessment,
+    UnitQualityStatus,
+)
 from app.domain.models.course_resource import CourseResource
 from app.domain.models.credit import CreditAccount, CreditPackage, CreditTransaction
 from app.domain.models.curriculum import Curriculum, CurriculumCourse
@@ -60,13 +70,21 @@ __all__ = [
     "Certificate",
     "CertificateTemplate",
     "Course",
+    "CourseGlossaryTerm",
     "CoursePreAssessment",
+    "CourseQualityRun",
     "CourseResource",
     "Curriculum",
     "CurriculumCourse",
     "CreditAccount",
     "CreditPackage",
     "CreditTransaction",
+    "GeneratedContentRevision",
+    "GlossaryConsistencyStatus",
+    "QualityRunKind",
+    "QualityRunStatus",
+    "UnitQualityAssessment",
+    "UnitQualityStatus",
     "DocumentChunk",
     "GeneratedAudio",
     "GeneratedContent",
