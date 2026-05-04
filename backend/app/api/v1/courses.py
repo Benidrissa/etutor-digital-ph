@@ -1,11 +1,13 @@
 """Public course catalog and learner enrollment endpoints."""
 
 import uuid
+from collections.abc import Iterable
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import exists, select
+from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
 from app.api.deps import get_db as get_db_session
@@ -93,8 +95,27 @@ def _taxonomy_by_type(categories: list[TaxonomyCategory], cat_type: str) -> list
     ]
 
 
-def _course_to_list_item(course: Course, enrolled: bool = False) -> CourseListItem:
+def _compute_course_hours(modules: Iterable[Module] | None, fallback: int) -> int:
+    # Course duration shown to users is the sum of its modules' hours. The Course
+    # column is the admin-set AI-target (input to syllabus generation), used only
+    # as a fallback for courses that don't have modules yet (drafts, pre-syllabus).
+    if not modules:
+        return fallback
+    total = sum(m.estimated_hours or 0 for m in modules)
+    return total if total > 0 else fallback
+
+
+def _course_to_list_item(
+    course: Course,
+    enrolled: bool = False,
+    estimated_hours: int | None = None,
+) -> CourseListItem:
     cats = course.taxonomy_categories or []
+    if estimated_hours is None:
+        # Caller didn't pre-compute — derive from the loaded modules relationship.
+        # The query MUST have used selectinload(Course.modules); otherwise this
+        # raises MissingGreenlet in async context.
+        estimated_hours = _compute_course_hours(course.modules, course.estimated_hours)
     return CourseListItem(
         id=str(course.id),
         slug=course.slug,
@@ -105,7 +126,7 @@ def _course_to_list_item(course: Course, enrolled: bool = False) -> CourseListIt
         course_domain=_taxonomy_by_type(cats, "domain"),
         course_level=_taxonomy_by_type(cats, "level"),
         audience_type=_taxonomy_by_type(cats, "audience"),
-        estimated_hours=course.estimated_hours,
+        estimated_hours=estimated_hours,
         module_count=course.module_count,
         cover_image_url=course.cover_image_url,
         languages=course.languages,
@@ -158,6 +179,7 @@ async def list_published_courses(
     """Browse published courses. No auth required. Use ?curriculum= to scope to a curriculum."""
     stmt = (
         select(Course)
+        .options(selectinload(Course.modules))
         .where(Course.status == "published", Course.visibility != "private")
         .order_by(Course.published_at.desc())
     )
@@ -302,11 +324,15 @@ async def my_enrollments(
     - limit: max number of courses to return
     """
     uid = uuid.UUID(current_user.id)
-    stmt = select(Course).join(
-        UserCourseEnrollment,
-        (UserCourseEnrollment.course_id == Course.id)
-        & (UserCourseEnrollment.user_id == uid)
-        & (UserCourseEnrollment.status == "active"),
+    stmt = (
+        select(Course)
+        .options(selectinload(Course.modules))
+        .join(
+            UserCourseEnrollment,
+            (UserCourseEnrollment.course_id == Course.id)
+            & (UserCourseEnrollment.user_id == uid)
+            & (UserCourseEnrollment.status == "active"),
+        )
     )
 
     if order_by == "last_accessed":
@@ -402,7 +428,11 @@ async def get_course_detail(
         )
         enrolled = enroll_result.scalar_one_or_none() is not None
 
-    base = _course_to_list_item(course, enrolled=enrolled)
+    base = _course_to_list_item(
+        course,
+        enrolled=enrolled,
+        estimated_hours=_compute_course_hours(modules, course.estimated_hours),
+    )
     return CourseDetailResponse(
         **base.model_dump(),
         syllabus_json=course.syllabus_json,

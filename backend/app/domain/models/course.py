@@ -28,6 +28,10 @@ class Course(Base):
     description_fr: Mapped[str | None] = mapped_column(Text)
     description_en: Mapped[str | None] = mapped_column(Text)
     languages: Mapped[str] = mapped_column(String, server_default="fr,en")
+    # Admin-set AI-target total hours, fed into the syllabus generation prompt as a soft
+    # target. Not the displayed course duration — the API computes that as SUM(modules.
+    # estimated_hours) and only falls back to this column for courses without modules
+    # yet (drafts, pre-syllabus). See #2223.
     estimated_hours: Mapped[int] = mapped_column(server_default="20")
     module_count: Mapped[int] = mapped_column(server_default="0")
     status: Mapped[str] = mapped_column(
