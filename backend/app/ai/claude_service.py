@@ -232,6 +232,149 @@ class ClaudeService:
             "raw_response": True,
         }
 
+    async def generate_structured_content_cached(
+        self,
+        system_blocks: list[dict[str, Any]],
+        user_message: str,
+        content_type: str,
+        max_retries: int = 1,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Generate structured JSON with cache-aware system blocks.
+
+        Mirrors :meth:`generate_structured_content` but takes
+        pre-assembled system *blocks* (each a ``{"type": "text",
+        "text": ..., "cache_control": {"type": "ephemeral"}}`` dict)
+        instead of a flat string. Anthropic stores each block at the
+        cache breakpoint in front of it; subsequent calls with the
+        identical block sequence read from cache at ~10% of the
+        write-side input cost.
+
+        Used by the course-quality auditor: a 20-unit course pass
+        builds the (rubric + syllabus + source summaries + glossary)
+        prefix once and reuses it 19 times, dropping prefix input cost
+        by ~85%.
+
+        Returns a tuple of ``(parsed_json, usage_dict)`` so the caller
+        can persist token + cache statistics into
+        ``unit_quality_assessments``.
+        """
+        last_error: str | None = None
+        last_preview: str = ""
+        last_content_text: str = ""
+        last_usage: dict[str, Any] = {}
+
+        eff_max_tokens = max_tokens if max_tokens is not None else self._max_tokens
+        eff_temperature = temperature if temperature is not None else self._temperature
+
+        for attempt in range(max_retries + 1):
+            if attempt == 0:
+                effective_user_message = user_message
+            else:
+                effective_user_message = (
+                    "Your previous response was not valid JSON.\n"
+                    f"Parse error: {last_error}\n"
+                    f"Response preview: {last_preview!r}\n\n"
+                    "Respond with STRICT, valid JSON only. No prose, no markdown "
+                    "fences, no trailing commas, no unescaped quotes inside strings. "
+                    "Match the schema in the original system prompt exactly.\n\n"
+                    f"{user_message}"
+                )
+
+            try:
+                response = await self.client.messages.create(
+                    model="claude-sonnet-4-6",
+                    max_tokens=eff_max_tokens,
+                    system=system_blocks,
+                    messages=[{"role": "user", "content": effective_user_message}],
+                    temperature=eff_temperature,
+                )
+            except Exception as e:
+                logger.error(
+                    "Claude cached call failed",
+                    content_type=content_type,
+                    error=str(e),
+                )
+                raise
+
+            usage = getattr(response, "usage", None)
+            last_usage = {
+                "input_tokens": getattr(usage, "input_tokens", None),
+                "output_tokens": getattr(usage, "output_tokens", None),
+                "cache_creation_input_tokens": getattr(usage, "cache_creation_input_tokens", None),
+                "cache_read_input_tokens": getattr(usage, "cache_read_input_tokens", None),
+            }
+
+            if not response.content or len(response.content) == 0:
+                raise ValueError("Empty response from Claude API")
+
+            is_truncated = response.stop_reason == "max_tokens"
+            if is_truncated:
+                logger.warning(
+                    "Claude cached response truncated at max_tokens",
+                    content_type=content_type,
+                    usage=last_usage,
+                )
+
+            content_text = ""
+            for block in response.content:
+                if hasattr(block, "text"):
+                    content_text += block.text
+            last_content_text = content_text
+
+            try:
+                parsed = self._extract_json(content_text)
+            except json.JSONDecodeError as e:
+                last_error = str(e)
+                last_preview = content_text[:200]
+                if is_truncated:
+                    raise ValueError(
+                        f"Cached response truncated for {content_type}; JSON incomplete."
+                    ) from e
+                if attempt < max_retries:
+                    logger.warning(
+                        "JSON parse failed (cached call), retrying with strict-JSON nudge",
+                        content_type=content_type,
+                        attempt=attempt + 1,
+                        error=last_error,
+                        response_preview=last_preview,
+                    )
+                    continue
+                logger.error(
+                    "Cached structured content parse failed after retries",
+                    content_type=content_type,
+                    error=last_error,
+                    response_preview=last_preview,
+                    attempts=max_retries + 1,
+                )
+                return (
+                    {
+                        "content": content_text,
+                        "type": content_type,
+                        "raw_response": True,
+                    },
+                    last_usage,
+                )
+
+            logger.info(
+                "Cached structured content generated",
+                content_type=content_type,
+                response_length=len(content_text),
+                attempt=attempt + 1,
+                usage=last_usage,
+            )
+            return parsed, last_usage
+
+        return (
+            {
+                "content": last_content_text,
+                "type": content_type,
+                "raw_response": True,
+            },
+            last_usage,
+        )
+
     @staticmethod
     def _extract_json(content_text: str) -> dict[str, Any]:
         """
