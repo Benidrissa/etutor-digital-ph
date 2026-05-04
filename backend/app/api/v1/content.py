@@ -98,9 +98,7 @@ async def get_generation_status(task_id: str) -> JSONResponse:
             return JSONResponse({"status": "failed", "error": "task_lost"})
         age_s = (datetime.now(tz=UTC) - marker).total_seconds()
         if age_s > TASK_STALL_THRESHOLD_S:
-            logger.warning(
-                "content.status.task_stalled", task_id=task_id, age_s=age_s
-            )
+            logger.warning("content.status.task_stalled", task_id=task_id, age_s=age_s)
             return JSONResponse({"status": "failed", "error": "task_stalled"})
         return JSONResponse({"status": "pending"})
     elif state == "STARTED":
