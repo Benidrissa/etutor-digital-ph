@@ -41,6 +41,7 @@ class QuizService:
         session: AsyncSession,
         force_regenerate: bool = False,
         user_id: UUID | None = None,
+        quality_constraints: list[str] | None = None,
     ) -> QuizResponse:
         """
         Get existing quiz from cache or generate new one using RAG + Claude API.
@@ -158,6 +159,7 @@ class QuizService:
                 country=country,
                 level=level,
                 num_questions=num_questions,
+                quality_constraints=quality_constraints,
             )
 
             # Store in cache. module_unit_uuid was resolved at the top of this
@@ -246,6 +248,7 @@ class QuizService:
         level: int,
         num_questions: int,
         session: AsyncSession | None = None,
+        quality_constraints: list[str] | None = None,
     ) -> QuizContent:
         """
         Generate quiz content using RAG retrieval and Claude API.
@@ -361,6 +364,12 @@ class QuizService:
                 all_units_summary=all_units_summary,
                 course=course,
             )
+
+            # Append quality-loop constraints if provided (#2215).
+            if quality_constraints:
+                from app.ai.prompts.quality import constraints_block_from_report
+
+                user_message = user_message + constraints_block_from_report(quality_constraints)
 
             response = await self.claude_service.generate_structured_content(
                 system_prompt, user_message, "quiz"

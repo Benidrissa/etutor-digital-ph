@@ -90,6 +90,7 @@ class LessonGenerationService:
         session: AsyncSession,
         force_regenerate: bool = False,
         user_id: uuid.UUID | None = None,
+        quality_constraints: list[str] | None = None,
     ) -> LessonResponse:
         """
         Get cached lesson or generate new one.
@@ -187,7 +188,13 @@ class LessonGenerationService:
         )
 
         lesson_response = await self._generate_lesson_content(
-            module, unit_id, language, country, level, session
+            module,
+            unit_id,
+            language,
+            country,
+            level,
+            session,
+            quality_constraints=quality_constraints,
         )
 
         # Cache the generated content
@@ -540,6 +547,7 @@ class LessonGenerationService:
         country: str,
         level: int,
         session: AsyncSession,
+        quality_constraints: list[str] | None = None,
     ) -> LessonResponse:
         """Generate new lesson content using RAG + Claude."""
         # Resolve unit metadata once — used for prompt grounding and RAG query.
@@ -616,6 +624,12 @@ class LessonGenerationService:
             unit_title=unit_title,
             unit_description=unit_description,
         )
+
+        # Append quality-loop constraints if provided (#2215).
+        if quality_constraints:
+            from app.ai.prompts.quality import constraints_block_from_report
+
+            user_message = user_message + constraints_block_from_report(quality_constraints)
 
         # Get non-streaming response for structured parsing
         response = await self.claude_service.generate_lesson_content(system_prompt, user_message)
@@ -1055,6 +1069,7 @@ class CaseStudyGenerationService:
         session: AsyncSession,
         force_regenerate: bool = False,
         user_id: uuid.UUID | None = None,
+        quality_constraints: list[str] | None = None,
     ) -> CaseStudyResponse:
         """
         Get cached case study or generate new one.
@@ -1122,7 +1137,13 @@ class CaseStudyGenerationService:
         )
 
         case_study_response = await self._generate_case_study_content(
-            module, unit_id, language, country, level, session
+            module,
+            unit_id,
+            language,
+            country,
+            level,
+            session,
+            quality_constraints=quality_constraints,
         )
 
         await self._cache_case_study_content(case_study_response, session)
@@ -1381,6 +1402,7 @@ class CaseStudyGenerationService:
         country: str,
         level: int,
         session: AsyncSession,
+        quality_constraints: list[str] | None = None,
     ) -> CaseStudyResponse:
         """Generate new case study content using RAG + Claude."""
         unit = await self._resolve_unit(module, unit_id, session)
@@ -1446,6 +1468,12 @@ class CaseStudyGenerationService:
             unit_title=resolved_unit_title,
             unit_description=resolved_unit_description,
         )
+
+        # Append quality-loop constraints if provided (#2215).
+        if quality_constraints:
+            from app.ai.prompts.quality import constraints_block_from_report
+
+            user_message = user_message + constraints_block_from_report(quality_constraints)
 
         logger.debug(
             "Case study system prompt preview (non-streaming)",

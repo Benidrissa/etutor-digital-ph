@@ -275,6 +275,22 @@ def generate_lesson_task(
             result=result,
             task_id=self.request.id,
         )
+        # Auto-trigger per-unit quality assessment (#2215). Best-effort
+        # — never block the generation result on the assessment task.
+        try:
+            if result.get("status") == "complete" and result.get("content_id"):
+                from app.tasks.quality_assessment import assess_unit_task
+
+                assess_unit_task.apply_async(
+                    kwargs={"content_id": result["content_id"]},
+                    priority=5,
+                )
+        except Exception as exc:
+            logger.warning(
+                "Quality auto-assess dispatch failed (non-fatal)",
+                content_id=result.get("content_id"),
+                error=str(exc),
+            )
         return result
     except Exception as exc:
         logger.error(
@@ -364,6 +380,20 @@ def generate_case_study_task(
             result=result,
             task_id=self.request.id,
         )
+        try:
+            if result.get("status") == "complete" and result.get("content_id"):
+                from app.tasks.quality_assessment import assess_unit_task
+
+                assess_unit_task.apply_async(
+                    kwargs={"content_id": result["content_id"]},
+                    priority=5,
+                )
+        except Exception as exc:
+            logger.warning(
+                "Quality auto-assess dispatch failed (non-fatal)",
+                content_id=result.get("content_id"),
+                error=str(exc),
+            )
         return result
     except Exception as exc:
         logger.error(
@@ -457,6 +487,20 @@ def generate_quiz_task(
             result=result,
             task_id=self.request.id,
         )
+        try:
+            if result.get("status") == "complete" and result.get("content_id"):
+                from app.tasks.quality_assessment import assess_unit_task
+
+                assess_unit_task.apply_async(
+                    kwargs={"content_id": result["content_id"]},
+                    priority=5,
+                )
+        except Exception as exc:
+            logger.warning(
+                "Quality auto-assess dispatch failed (non-fatal)",
+                content_id=result.get("content_id"),
+                error=str(exc),
+            )
         return result
     except Exception as exc:
         logger.error(
@@ -753,6 +797,20 @@ def generate_flashcard_task(
             result=result,
             task_id=self.request.id,
         )
+        try:
+            if result.get("status") == "complete" and result.get("content_id"):
+                from app.tasks.quality_assessment import assess_unit_task
+
+                assess_unit_task.apply_async(
+                    kwargs={"content_id": result["content_id"]},
+                    priority=5,
+                )
+        except Exception as exc:
+            logger.warning(
+                "Quality auto-assess dispatch failed (non-fatal)",
+                content_id=result.get("content_id"),
+                error=str(exc),
+            )
         return result
     except Exception as exc:
         logger.error(
