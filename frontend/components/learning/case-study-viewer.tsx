@@ -173,7 +173,18 @@ export function CaseStudyViewer({
             setForceRegenerate(false);
           } else if (statusRes.status === 'failed') {
             const rawError = statusRes.error?.trim();
-            const msg = rawError && rawError.length <= 200 ? rawError : t('generationFailed');
+            // Backend uses sentinel error codes for worker-health failures
+            // (see _task_status.py); translate them to user-facing copy.
+            let msg: string;
+            if (rawError === 'task_lost') {
+              msg = t('generationLost');
+            } else if (rawError === 'task_stalled') {
+              msg = t('generationStalled');
+            } else if (rawError && rawError.length <= 200) {
+              msg = rawError;
+            } else {
+              msg = t('generationFailed');
+            }
             setError(msg);
             setIsGenerating(false);
             setIsLoading(false);
@@ -205,10 +216,20 @@ export function CaseStudyViewer({
 
         const res = result.data;
         if ('status' in res && res.status === 'generating') {
+          // Without a task_id we'd poll /content/status/undefined forever
+          // and never escape the spinner. Surface a real error instead.
+          const taskId = (res as GeneratingResponse).task_id;
+          if (!taskId) {
+            setError(t('generationFailed'));
+            setIsGenerating(false);
+            setIsLoading(false);
+            setIsRefreshing(false);
+            return;
+          }
           setIsLoading(false);
           setIsGenerating(true);
           pollStartRef.current = Date.now();
-          pollStatus((res as GeneratingResponse).task_id, pollStartRef.current);
+          pollStatus(taskId, pollStartRef.current);
         } else {
           setCaseStudyData(res as CaseStudyData);
           setIsLoading(false);
