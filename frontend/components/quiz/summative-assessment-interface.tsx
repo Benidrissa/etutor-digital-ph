@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { Clock, ChevronLeft, ChevronRight, AlertCircle, Timer } from 'lucide-react';
 
@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import type { Quiz, QuizAnswerSubmission, SummativeAssessmentResponse } from '@/lib/api';
 import { submitSummativeAssessmentAttempt } from '@/lib/api';
+import { loadQuizState, saveQuizState, clearQuizState } from '@/lib/quiz-state-persistence';
 
 interface SummativeAssessmentInterfaceProps {
   assessment: Quiz;
@@ -24,28 +25,64 @@ interface QuestionState {
   timeSpentSeconds: number;
 }
 
+interface PersistedSummativeState {
+  currentQuestionIndex: number;
+  questionStates: QuestionState[];
+  startTime: number;
+  // Persist remaining time so a reload can't be exploited to reset the clock
+  // back to a full timeLimit window.
+  timeRemaining: number;
+}
+
 const TIMER_WARNING_MINUTES = 5; // Show warning when 5 minutes left
 
-export function SummativeAssessmentInterface({ 
-  assessment, 
-  onComplete, 
+export function SummativeAssessmentInterface({
+  assessment,
+  onComplete,
   onError,
-  timeLimit = 30 
+  timeLimit = 30
 }: SummativeAssessmentInterfaceProps) {
   const t = useTranslations('SummativeAssessment');
-  
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [questionStates, setQuestionStates] = useState<QuestionState[]>(
-    assessment.content.questions.map(() => ({
-      selectedOption: null,
-      timeSpentSeconds: 0,
-    }))
+
+  // Assessment IDs are unique per generation, so a regenerate auto-invalidates this key.
+  const storageKey = `summative-state:v1:${assessment.id}`;
+  const [restored] = useState(() => loadQuizState<PersistedSummativeState>(storageKey));
+
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(
+    restored?.currentQuestionIndex ?? 0,
   );
-  const [startTime] = useState(Date.now());
-  const [questionStartTime, setQuestionStartTime] = useState(Date.now());
-  const [timeRemaining, setTimeRemaining] = useState(timeLimit * 60); // Convert to seconds
+  const [questionStates, setQuestionStates] = useState<QuestionState[]>(
+    restored?.questionStates ??
+      assessment.content.questions.map(() => ({
+        selectedOption: null,
+        timeSpentSeconds: 0,
+      })),
+  );
+  const [startTime] = useState(restored?.startTime ?? Date.now());
+  // Reconstruct questionStartTime so the per-second tick keeps adding to the
+  // already-recorded time on the current question instead of resetting to 0.
+  const [questionStartTime, setQuestionStartTime] = useState(() => {
+    const seconds = restored?.questionStates[restored.currentQuestionIndex]?.timeSpentSeconds ?? 0;
+    return Date.now() - seconds * 1000;
+  });
+  const [timeRemaining, setTimeRemaining] = useState(
+    restored?.timeRemaining ?? timeLimit * 60,
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showTimeWarning, setShowTimeWarning] = useState(false);
+  const [showTimeWarning, setShowTimeWarning] = useState(
+    (restored?.timeRemaining ?? timeLimit * 60) <= TIMER_WARNING_MINUTES * 60,
+  );
+
+  // Persist on every meaningful state change. Question-state writes are debounced
+  // by the 1Hz tick; timeRemaining writes once per second is fine for ~30 min sessions.
+  useEffect(() => {
+    saveQuizState<PersistedSummativeState>(storageKey, {
+      currentQuestionIndex,
+      questionStates,
+      startTime,
+      timeRemaining,
+    });
+  }, [storageKey, currentQuestionIndex, questionStates, startTime, timeRemaining]);
   
   const currentQuestion = assessment.content.questions[currentQuestionIndex];
   const currentState = questionStates[currentQuestionIndex];
@@ -72,6 +109,7 @@ export function SummativeAssessmentInterface({
         total_time_seconds: totalTimeSeconds,
       });
 
+      clearQuizState(storageKey);
       onComplete(result);
     } catch (error) {
       console.error('Auto-submit failed:', error);
@@ -79,7 +117,7 @@ export function SummativeAssessmentInterface({
     } finally {
       setIsSubmitting(false);
     }
-  }, [assessment, questionStates, startTime, isSubmitting, onComplete, onError, t]);
+  }, [assessment, questionStates, startTime, isSubmitting, onComplete, onError, t, storageKey]);
 
   // Timer countdown effect
   useEffect(() => {
@@ -123,8 +161,15 @@ export function SummativeAssessmentInterface({
     return () => clearInterval(interval);
   }, [currentQuestionIndex, questionStartTime]);
   
-  // Reset question start time when question changes
+  // Reset question start time when question changes. Skip the first run so
+  // the reconstructed questionStartTime (which preserves already-recorded
+  // time on a restored attempt) isn't clobbered on mount.
+  const didMountRef = useRef(false);
   useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
     setQuestionStartTime(Date.now());
   }, [currentQuestionIndex]);
   
@@ -174,7 +219,8 @@ export function SummativeAssessmentInterface({
         answers,
         total_time_seconds: totalTimeSeconds,
       });
-      
+
+      clearQuizState(storageKey);
       onComplete(result);
     } catch (error) {
       console.error('Assessment submission failed:', error);
@@ -182,8 +228,8 @@ export function SummativeAssessmentInterface({
     } finally {
       setIsSubmitting(false);
     }
-  }, [assessment, questionStates, startTime, isSubmitting, onComplete, onError, t]);
-  
+  }, [assessment, questionStates, startTime, isSubmitting, onComplete, onError, t, storageKey]);
+
   const formatTime = (seconds: number): string => {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;

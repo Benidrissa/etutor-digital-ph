@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { Clock, ChevronLeft, ChevronRight, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 
@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import type { Quiz, QuizAnswerSubmission, QuizAttemptResponse } from '@/lib/api';
 import { ApiError, submitQuizAttempt } from '@/lib/api';
 import { scoreQuizOffline } from '@/lib/offline/offline-quiz-scorer';
+import { loadQuizState, saveQuizState, clearQuizState } from '@/lib/quiz-state-persistence';
 
 interface QuizInterfaceProps {
   quiz: Quiz;
@@ -28,20 +29,48 @@ interface QuestionState {
   showFeedback: boolean;
 }
 
+interface PersistedQuizState {
+  currentQuestionIndex: number;
+  questionStates: QuestionState[];
+  startTime: number;
+}
+
 export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps) {
   const t = useTranslations('Quiz');
-  
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [questionStates, setQuestionStates] = useState<QuestionState[]>(
-    quiz.content.questions.map(() => ({
-      selectedOption: null,
-      timeSpentSeconds: 0,
-      showFeedback: false,
-    }))
+
+  // Quiz IDs are unique per generation, so a regenerate auto-invalidates this key.
+  const storageKey = `quiz-state:v1:${quiz.id}`;
+  const [restored] = useState(() => loadQuizState<PersistedQuizState>(storageKey));
+
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(
+    restored?.currentQuestionIndex ?? 0,
   );
-  const [startTime] = useState(Date.now());
-  const [questionStartTime, setQuestionStartTime] = useState(Date.now());
+  const [questionStates, setQuestionStates] = useState<QuestionState[]>(
+    restored?.questionStates ??
+      quiz.content.questions.map(() => ({
+        selectedOption: null,
+        timeSpentSeconds: 0,
+        showFeedback: false,
+      })),
+  );
+  const [startTime] = useState(restored?.startTime ?? Date.now());
+  // Reconstruct questionStartTime so the per-second tick keeps adding to the
+  // already-recorded time on the current question instead of resetting to 0.
+  const [questionStartTime, setQuestionStartTime] = useState(() => {
+    const seconds = restored?.questionStates[restored.currentQuestionIndex]?.timeSpentSeconds ?? 0;
+    return Date.now() - seconds * 1000;
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Persist on every meaningful state change. State is small (<10 questions),
+  // so writing on every keystroke-equivalent is cheap.
+  useEffect(() => {
+    saveQuizState<PersistedQuizState>(storageKey, {
+      currentQuestionIndex,
+      questionStates,
+      startTime,
+    });
+  }, [storageKey, currentQuestionIndex, questionStates, startTime]);
   
   const currentQuestion = quiz.content.questions[currentQuestionIndex];
   const currentState = questionStates[currentQuestionIndex];
@@ -63,8 +92,15 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
     return () => clearInterval(interval);
   }, [currentQuestionIndex, questionStartTime, currentState.showFeedback]);
   
-  // Reset question start time when question changes
+  // Reset question start time when question changes. Skip the first run so
+  // the reconstructed questionStartTime (which preserves already-recorded
+  // time on a restored attempt) isn't clobbered on mount.
+  const didMountRef = useRef(false);
   useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
     setQuestionStartTime(Date.now());
   }, [currentQuestionIndex]);
   
@@ -118,6 +154,7 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
             answers,
             total_time_seconds: totalTimeSeconds,
           });
+          clearQuizState(storageKey);
           onComplete(result);
           return;
         } catch (serverErr) {
@@ -136,6 +173,7 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
         answersMap[a.question_id] = a.selected_option;
       }
       const offlineResult = await scoreQuizOffline(quiz, answersMap, totalTimeSeconds);
+      clearQuizState(storageKey);
       onComplete(offlineResult);
     } catch (error) {
       console.error('Quiz submission failed:', error);
@@ -153,7 +191,7 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
     } finally {
       setIsSubmitting(false);
     }
-  }, [quiz, questionStates, startTime, isSubmitting, onComplete, onError, t]);
+  }, [quiz, questionStates, startTime, isSubmitting, onComplete, onError, t, storageKey]);
 
   const handleNextQuestion = useCallback(() => {
     if (currentQuestionIndex < totalQuestions - 1) {
