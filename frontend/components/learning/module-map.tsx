@@ -188,31 +188,39 @@ export function ModuleMap({ onModuleClick, courseId }: ModuleMapProps) {
         );
       })}
 
-      {courseGroups.length > 0 && (
-        <div className="mt-8 rounded-lg bg-teal-50 p-6 text-center">
-          <h3 className="text-lg font-semibold text-teal-900">
-            {t('overallProgress')}
-          </h3>
-          <div className="mt-4 space-y-2">
-            {courseGroups.map((group) => {
-              const progress = getGroupProgress(group.modules);
-              return (
-                <div key={group.courseId} className="flex items-center justify-between">
-                  <span className="text-sm text-teal-700">
-                    {group.courseName}
-                  </span>
-                  <span className="text-sm font-medium text-teal-800">
-                    {progress.completedModules}/{progress.totalModules} {t('modulesCompleted')}
-                  </span>
-                </div>
-              );
-            })}
+      {courseGroups.length > 0 && (() => {
+        const totalHours = courseGroups.reduce(
+          (sum, g) => sum + g.modules.reduce((s, m) => s + (m.estimatedHours ?? 0), 0),
+          0,
+        );
+        return (
+          <div className="mt-8 rounded-lg bg-teal-50 p-6 text-center">
+            <h3 className="text-lg font-semibold text-teal-900">
+              {t('overallProgress')}
+            </h3>
+            <div className="mt-4 space-y-2">
+              {courseGroups.map((group) => {
+                const progress = getGroupProgress(group.modules);
+                return (
+                  <div key={group.courseId} className="flex items-center justify-between">
+                    <span className="text-sm text-teal-700">
+                      {group.courseName}
+                    </span>
+                    <span className="text-sm font-medium text-teal-800">
+                      {progress.completedModules}/{progress.totalModules} {t('modulesCompleted')}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            {totalHours > 0 && (
+              <div className="mt-4 text-xs text-teal-600">
+                {t('estimatedCompletion', { hours: totalHours })}
+              </div>
+            )}
           </div>
-          <div className="mt-4 text-xs text-teal-600">
-            {t('estimatedCompletion')}
-          </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

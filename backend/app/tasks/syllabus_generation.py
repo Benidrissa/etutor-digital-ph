@@ -515,6 +515,16 @@ def generate_course_syllabus(
             )
             session.execute(delete(Module).where(Module.course_id == uuid.UUID(course_id)))
 
+            # If Claude omits per-module hours, divide the target across modules
+            # rather than slapping a flat 20h per module (which inflated the
+            # displayed course total — see #2223).
+            target_total_hours = estimated_hours or course_hours or 0
+            fallback_per_module = (
+                max(1, target_total_hours // len(module_dicts))
+                if module_dicts and target_total_hours > 0
+                else 1
+            )
+
             saved_modules = []
             for i, m in enumerate(module_dicts):
                 module_id = uuid.uuid4()
@@ -526,7 +536,7 @@ def generate_course_syllabus(
                     title_en=m["title_en"],
                     description_fr=m.get("description_fr"),
                     description_en=m.get("description_en"),
-                    estimated_hours=m.get("estimated_hours", 20),
+                    estimated_hours=m.get("estimated_hours") or fallback_per_module,
                     bloom_level=m.get("bloom_level"),
                     course_id=uuid.UUID(course_id),
                     books_sources=books_sources,
