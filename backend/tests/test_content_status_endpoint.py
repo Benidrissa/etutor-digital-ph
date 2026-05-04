@@ -57,9 +57,7 @@ async def test_pending_with_old_marker_returns_task_stalled():
     """PENDING + marker older than threshold => no worker picked it up."""
     fake_async_result = MagicMock()
     fake_async_result.state = "PENDING"
-    stale = datetime.now(tz=UTC) - timedelta(
-        seconds=content_module.TASK_STALL_THRESHOLD_S + 5
-    )
+    stale = datetime.now(tz=UTC) - timedelta(seconds=content_module.TASK_STALL_THRESHOLD_S + 5)
 
     with (
         patch.object(content_module, "AsyncResult", return_value=fake_async_result),
