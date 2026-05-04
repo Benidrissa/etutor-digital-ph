@@ -185,12 +185,25 @@ export function LessonViewer({
             setForceRegenerate(false);
           } else if (statusRes.status === 'failed') {
             const rawError = statusRes.error?.trim();
-            const isNoContent = rawError?.toLowerCase().includes('no relevant') ||
-              rawError?.toLowerCase().includes('rag') ||
-              rawError?.toLowerCase().includes('no results') ||
-              rawError?.toLowerCase().includes('0 results');
-            const fallback = isNoContent ? t('noContentFound') : t('generationFailed');
-            const msg = !isNoContent && rawError && rawError.length <= 200 ? rawError : fallback;
+            const lowered = rawError?.toLowerCase();
+            const isNoContent = lowered?.includes('no relevant') ||
+              lowered?.includes('rag') ||
+              lowered?.includes('no results') ||
+              lowered?.includes('0 results');
+            // Backend uses sentinel error codes for worker-health failures
+            // (see _task_status.py); translate them to user-facing copy.
+            let msg: string;
+            if (rawError === 'task_lost') {
+              msg = t('generationLost');
+            } else if (rawError === 'task_stalled') {
+              msg = t('generationStalled');
+            } else if (isNoContent) {
+              msg = t('noContentFound');
+            } else if (rawError && rawError.length <= 200) {
+              msg = rawError;
+            } else {
+              msg = t('generationFailed');
+            }
             stopGenerating(msg, isNoContent ? 'no_content' : 'generation');
           } else {
             pollStatus(taskId, startTime);
@@ -217,6 +230,13 @@ export function LessonViewer({
 
         const res = result.data;
         if ('status' in res && res.status === 'generating') {
+          // Without a task_id we'd poll /content/status/undefined forever
+          // and never escape the spinner. Surface a real error instead.
+          const taskId = (res as GeneratingResponse).task_id;
+          if (!taskId) {
+            stopGenerating(t('generationFailed'), 'generation');
+            return;
+          }
           setIsLoading(false);
           setIsGenerating(true);
           setIsSlowGeneration(false);
@@ -224,7 +244,7 @@ export function LessonViewer({
           slowWarningTimerRef.current = setTimeout(() => {
             if (!cancelled) setIsSlowGeneration(true);
           }, UX_SLOW_WARNING_MS);
-          pollStatus((res as GeneratingResponse).task_id, pollStartRef.current);
+          pollStatus(taskId, pollStartRef.current);
         } else {
           const lesson = res as LessonData;
           setLessonData(lesson);
