@@ -69,6 +69,23 @@
     "flashcard_reviewed": "Flashcard reviewed",
     "tutor_message_sent": "Tutor message sent"
   },
+  "AdminSettingsCategories": {
+    "quiz": "Quiz & Assessment",
+    "progress": "Progress & Unlocking",
+    "flashcards": "Flashcards (FSRS)",
+    "placement": "Placement Test",
+    "auth": "Auth & Security",
+    "rate_limiting": "Rate Limiting",
+    "ai": "AI & Content Generation",
+    "ai_prompts": "AI Prompt Templates",
+    "tutor": "AI Tutor",
+    "pagination": "Pagination",
+    "payments": "Payments & Billing",
+    "marketplace": "Marketplace",
+    "subscription": "Subscriptions",
+    "syllabus": "Syllabus",
+    "video_summary": "Video Summaries"
+  },
   "Auth": {
     "login": "Sign in",
     "register": "Create account",
