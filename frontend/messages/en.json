@@ -87,6 +87,8 @@
     "video_summary": "Video Summaries"
   },
   "Auth": {
+    "invitationOnlyBanner": "Registration is currently invitation-only. Have a code? Redeem it here.",
+    "invitationOnlyHaveCode": "I have a code",
     "login": "Sign in",
     "register": "Create account",
     "email": "Email address",

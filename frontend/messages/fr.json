@@ -87,6 +87,8 @@
     "video_summary": "Résumés vidéo"
   },
   "Auth": {
+    "invitationOnlyBanner": "Les inscriptions sont actuellement sur invitation. Vous avez un code ? Activez-le ici.",
+    "invitationOnlyHaveCode": "J'ai un code",
     "login": "Se connecter",
     "register": "Créer un compte",
     "email": "Adresse email",
