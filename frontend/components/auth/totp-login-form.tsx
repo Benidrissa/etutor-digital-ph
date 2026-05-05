@@ -275,8 +275,8 @@ export function TOTPLoginForm({ redirectTo }: { redirectTo?: string }) {
             </button>
           </div>
 
-          {/* Registration Link */}
-          {registrationEnabled && (
+          {/* Registration Link or invitation-only banner (#2110) */}
+          {registrationEnabled ? (
             <div className="text-center text-sm">
               <span className="text-muted-foreground">{t('noAccount')} </span>
               <Link
@@ -284,6 +284,16 @@ export function TOTPLoginForm({ redirectTo }: { redirectTo?: string }) {
                 className="font-medium text-primary hover:underline"
               >
                 {t('signUp')}
+              </Link>
+            </div>
+          ) : (
+            <div className="rounded-md border border-stone-200 bg-stone-50 p-3 text-center text-sm text-stone-600">
+              {t('invitationOnlyBanner')}{' '}
+              <Link
+                href="/activate"
+                className="font-medium text-primary hover:underline"
+              >
+                {t('invitationOnlyHaveCode')}
               </Link>
             </div>
           )}
