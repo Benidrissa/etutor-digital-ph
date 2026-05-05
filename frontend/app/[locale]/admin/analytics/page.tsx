@@ -30,6 +30,7 @@ const PERIODS = [7, 30, 90] as const;
 
 export default function AnalyticsPage() {
   const t = useTranslations("Admin.analytics");
+  const tEvent = useTranslations("AnalyticsEventTypes");
   const [period, setPeriod] = useState<number>(7);
   const [data, setData] = useState<AnalyticsSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,7 +62,7 @@ export default function AnalyticsPage() {
 
   const eventsByTypeData = data
     ? Object.entries(data.events_by_type).map(([name, count]) => ({
-        name: name.replace(/_/g, " "),
+        name: tEvent.has(name) ? tEvent(name) : name.replace(/_/g, " "),
         count,
       }))
     : [];
