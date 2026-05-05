@@ -178,11 +178,18 @@ class AuthClient {
 
   private setTokens(authResponse: AuthResponse): void {
     this.accessToken = authResponse.access_token;
+    // refresh_token is held in memory for the lifetime of this tab only.
+    // It is NOT persisted to localStorage anymore (#2112) — the HttpOnly
+    // `refresh_token` cookie set by the backend is the canonical store, and
+    // duplicating it in JS-readable storage defeats the HttpOnly protection.
+    // Subsequent /refresh + /logout calls rely on the browser auto-attaching
+    // the cookie; the backend reads from cookie when body is absent.
     this.refreshToken = authResponse.refresh_token;
 
     if (typeof window !== 'undefined') {
       localStorage.setItem('access_token', authResponse.access_token);
-      localStorage.setItem('refresh_token', authResponse.refresh_token);
+      // Migration: clear any pre-#2112 persisted refresh_token on next login.
+      localStorage.removeItem('refresh_token');
       localStorage.setItem('user', JSON.stringify(authResponse.user));
       // Set cookie for server-side middleware auth check
       const maxAge = authResponse.expires_in || 900;
@@ -263,18 +270,15 @@ class AuthClient {
   }
 
   /**
-   * Refresh access token using refresh token.
-   * Sends the localStorage token if present; otherwise relies on the
-   * HttpOnly refresh_token cookie (backend reads cookie when body omitted).
+   * Refresh access token using the HttpOnly refresh_token cookie.
+   * No body is sent — the backend reads the token from the cookie that
+   * the browser auto-attaches. (Pre-#2112 this also forwarded a body
+   * copy from localStorage; that path is retired.)
    */
   async refreshAccessToken(): Promise<void> {
-    const body = this.refreshToken
-      ? JSON.stringify({ refresh_token: this.refreshToken })
-      : JSON.stringify({});
-
     const response = await this.apiCall<RefreshTokenResponse>('/refresh', {
       method: 'POST',
-      body,
+      body: JSON.stringify({}),
     });
 
     this.accessToken = response.access_token;
@@ -287,21 +291,20 @@ class AuthClient {
   }
 
   /**
-   * Logout user and clear tokens
+   * Logout user and clear tokens.
+   * Calls the backend with no body — the HttpOnly refresh_token cookie
+   * is the source of truth, the server reads it from there and clears
+   * it via Set-Cookie. (#2112)
    */
   async logout(): Promise<void> {
-    if (this.refreshToken) {
-      try {
-        await this.apiCall('/logout', {
-          method: 'POST',
-          body: JSON.stringify({
-            refresh_token: this.refreshToken,
-          }),
-        });
-      } catch (error) {
-        // Don't throw on logout errors, just clear tokens
-        console.warn('Logout request failed:', error);
-      }
+    try {
+      await this.apiCall('/logout', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+    } catch (error) {
+      // Don't throw on logout errors, just clear tokens locally.
+      console.warn('Logout request failed:', error);
     }
 
     this.clearTokens();
