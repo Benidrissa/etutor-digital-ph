@@ -89,9 +89,7 @@ async def _assert_course_access(
     not the course owner. ``admin`` and ``sub_admin`` bypass the
     ownership check.
     """
-    row = await session.execute(
-        select(Course.created_by).where(Course.id == course_id)
-    )
+    row = await session.execute(select(Course.created_by).where(Course.id == course_id))
     result = row.first()
     if result is None:
         raise HTTPException(status_code=404, detail="Course not found")
@@ -595,17 +593,11 @@ async def list_review_queue(
     omitted — the surface is a triage queue, not a directory.
     """
     needs_review_count = func.coalesce(
-        func.sum(
-            case((GeneratedContent.quality_status == "needs_review", 1), else_=0)
-        ),
+        func.sum(case((GeneratedContent.quality_status == "needs_review", 1), else_=0)),
         0,
     ).label("units_needs_review")
     needs_review_final_count = func.coalesce(
-        func.sum(
-            case(
-                (GeneratedContent.quality_status == "needs_review_final", 1), else_=0
-            )
-        ),
+        func.sum(case((GeneratedContent.quality_status == "needs_review_final", 1), else_=0)),
         0,
     ).label("units_needs_review_final")
     failed_count = func.coalesce(
@@ -617,9 +609,7 @@ async def list_review_queue(
         0,
     ).label("units_passing")
     total_count = func.coalesce(func.count(GeneratedContent.id), 0).label("units_total")
-    last_assessed_at = func.max(GeneratedContent.quality_assessed_at).label(
-        "last_assessed_at"
-    )
+    last_assessed_at = func.max(GeneratedContent.quality_assessed_at).label("last_assessed_at")
 
     base_q = (
         select(
