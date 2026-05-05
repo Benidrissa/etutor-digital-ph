@@ -27,6 +27,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { useSettings } from '@/lib/settings-context';
 
 const FEATURES = [
   { titleKey: 'featureSmartCourseTitle', descKey: 'featureSmartCourseDesc', icon: Upload },
@@ -55,8 +56,14 @@ const TRUST = [
 
 export default function AboutPage() {
   const t = useTranslations('About');
+  const tAuth = useTranslations('Auth');
   const pathname = usePathname();
   const locale = pathname.split('/')[1] || 'fr';
+  // When self-registration is disabled, swap the secondary CTA from
+  // 'Become an expert' (which routes to /register and dead-ends at /login)
+  // to 'I have a code' (which routes to /activate). See #2110.
+  const { getSetting } = useSettings();
+  const registrationEnabled = getSetting<boolean>('auth-self-registration-enabled', false);
 
   return (
     <div className="min-h-dvh bg-white">
@@ -99,9 +106,9 @@ export default function AboutPage() {
                 {t('ctaBrowse')}
               </Button>
             </Link>
-            <Link href={`/${locale}/register`}>
+            <Link href={`/${locale}/${registrationEnabled ? 'register' : 'activate'}`}>
               <Button size="lg" variant="outline" className="px-8">
-                {t('ctaExpert')}
+                {registrationEnabled ? t('ctaExpert') : tAuth('invitationOnlyHaveCode')}
               </Button>
             </Link>
           </div>
@@ -237,9 +244,9 @@ export default function AboutPage() {
                 {t('ctaBrowse')}
               </Button>
             </Link>
-            <Link href={`/${locale}/register`}>
+            <Link href={`/${locale}/${registrationEnabled ? 'register' : 'activate'}`}>
               <Button size="lg" variant="outline" className="px-8">
-                {t('ctaExpert')}
+                {registrationEnabled ? t('ctaExpert') : tAuth('invitationOnlyHaveCode')}
               </Button>
             </Link>
           </div>
