@@ -69,6 +69,23 @@
     "flashcard_reviewed": "Flashcard révisée",
     "tutor_message_sent": "Message au tuteur"
   },
+  "AdminSettingsCategories": {
+    "quiz": "Quiz et évaluations",
+    "progress": "Progression et déverrouillage",
+    "flashcards": "Flashcards (FSRS)",
+    "placement": "Test de positionnement",
+    "auth": "Authentification et sécurité",
+    "rate_limiting": "Limitation de débit",
+    "ai": "IA et génération de contenu",
+    "ai_prompts": "Modèles de prompts IA",
+    "tutor": "Tuteur IA",
+    "pagination": "Pagination",
+    "payments": "Paiements et facturation",
+    "marketplace": "Place de marché",
+    "subscription": "Abonnements",
+    "syllabus": "Syllabus",
+    "video_summary": "Résumés vidéo"
+  },
   "Auth": {
     "login": "Se connecter",
     "register": "Créer un compte",
