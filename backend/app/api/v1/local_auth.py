@@ -109,9 +109,15 @@ class VerifyMagicLinkRequest(BaseModel):
 
 
 class LogoutRequest(BaseModel):
-    """Logout request."""
+    """Logout request.
 
-    refresh_token: str
+    `refresh_token` is optional in the body — the handler reads it from the
+    HttpOnly `refresh_token` cookie when absent (the canonical path). Body
+    is kept as a fallback so older clients that still send it keep working
+    during the cross-deploy migration window. See #2112.
+    """
+
+    refresh_token: str | None = None
 
 
 class RegisterPasswordRequest(BaseModel):
@@ -515,35 +521,43 @@ async def verify_magic_link(
 
 @router.post("/logout")
 async def logout(
-    request: LogoutRequest, response: Response, db=Depends(get_db_session)
+    http_request: Request,
+    response: Response,
+    payload: LogoutRequest | None = None,
+    db=Depends(get_db_session),
 ) -> dict[str, str]:
     """Logout user by invalidating refresh token.
 
-    Args:
-        request: Refresh token to invalidate
+    Reads the token from the request body, falling back to the
+    `refresh_token` HttpOnly cookie. The cookie path is the canonical
+    one — clients should call this with no body and let the browser
+    attach the cookie automatically. The body fallback is kept for
+    cross-deploy compatibility with older clients (see #2112).
 
-    Returns:
-        Logout confirmation
+    Returns logout confirmation. Always 200 — failures are logged and
+    swallowed so the cookie still gets cleared on the client.
     """
+    token = (payload.refresh_token if payload else None) or http_request.cookies.get(
+        "refresh_token"
+    )
+
     try:
-        auth_service = LocalAuthService(db)
-        success = await auth_service.logout(request.refresh_token)
-
-        # Clear refresh token cookie
-        response.delete_cookie(key="refresh_token", httponly=True, secure=True, samesite="lax")
-
-        if success:
-            logger.info("User logged out successfully")
-            return {"message": "Logged out successfully"}
-        else:
-            logger.warning("Logout failed")
-            return {"message": "Logout failed"}
-
+        if token:
+            auth_service = LocalAuthService(db)
+            success = await auth_service.logout(token)
+            if success:
+                logger.info("User logged out successfully")
+            else:
+                logger.warning("Logout: token invalidation returned False")
     except Exception as e:
         logger.error("Logout error", error=str(e))
-        # Don't raise error for logout, just clear cookie
+    finally:
+        # Always clear the refresh-token cookie on the client, even if the
+        # server-side invalidation failed (best-effort logout — the cookie
+        # being gone is what actually logs the user out from this device).
         response.delete_cookie(key="refresh_token", httponly=True, secure=True, samesite="lax")
-        return {"message": "Logged out"}
+
+    return {"message": "Logged out"}
 
 
 # =============================================================================
