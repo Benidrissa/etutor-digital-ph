@@ -1,13 +1,20 @@
-"""Admin endpoints for the course quality agent (#2215).
+"""Admin endpoints for the course quality agent (#2215, review UI #2249).
 
-Six endpoints cover the full admin loop:
+The agent runs **autonomously** after each lesson generation; these
+endpoints exist for human review and override of what the agent
+already flagged. Endpoints:
+
+Per-course (router prefix ``/admin/courses``):
 
 - ``POST /admin/courses/{course_id}/quality/runs`` — enqueue a sweep
   (idempotent via day-bucketed key + partial unique on active runs)
 - ``GET  /admin/courses/{course_id}/quality/runs`` — list runs
 - ``GET  /admin/courses/{course_id}/quality/runs/{run_id}`` — one run
   with per-unit summary
+- ``GET  /admin/courses/{course_id}/quality/summary`` — dashboard tile
 - ``GET  /admin/courses/{course_id}/quality/glossary`` — read glossary
+- ``GET  /admin/courses/{course_id}/units/{content_id}/quality`` —
+  per-unit drill-in with dimension scores + flags
 - ``POST /admin/courses/{course_id}/units/{content_id}/quality/regenerate``
   — targeted retry; respects ``is_manually_edited`` and the max-attempt cap
 - ``POST /admin/courses/{course_id}/units/{content_id}/quality/resolve``
@@ -16,8 +23,13 @@ Six endpoints cover the full admin loop:
 - ``POST /admin/courses/{course_id}/units/{content_id}/quality/unlock``
   — clears ``is_manually_edited`` so a future run can re-evaluate
 
-All gated by ``require_role(admin, sub_admin)`` to match the rest of
-``admin_courses.py``.
+Cross-course (router prefix ``/admin/quality``):
+
+- ``GET  /admin/quality/review-queue`` — courses sorted by
+  attention-needed for the top-level review surface
+
+Roles: ``admin``, ``sub_admin`` see any course; ``expert`` is gated
+to courses they own (``Course.created_by == user.id``).
 """
 
 from __future__ import annotations
@@ -27,7 +39,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import desc, func, select
+from sqlalchemy import case, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -36,10 +48,14 @@ from app.api.deps_local_auth import AuthenticatedUser, require_role
 from app.api.v1.schemas.quality import (
     CourseQualityRunDetail,
     CourseQualityRunSummary,
+    DimensionScores,
     GlossaryEntryResponse,
+    QualityFlag,
     RegenerateUnitRequest,
     ResolveUnitRequest,
+    ReviewQueueEntry,
     RunQualityCheckRequest,
+    UnitQualityDetail,
     UnitQualitySummary,
     to_decimal_safe,
 )
@@ -48,6 +64,7 @@ from app.domain.models.course import Course
 from app.domain.models.course_quality import (
     CourseGlossaryTerm,
     CourseQualityRun,
+    UnitQualityAssessment,
 )
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
@@ -55,6 +72,38 @@ from app.domain.models.user import UserRole
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/admin/courses", tags=["Admin - Quality"])
+review_router = APIRouter(prefix="/admin/quality", tags=["Admin - Quality"])
+
+_QUALITY_ROLES = (UserRole.admin, UserRole.sub_admin, UserRole.expert)
+
+
+async def _assert_course_access(
+    session: AsyncSession,
+    course_id: uuid.UUID,
+    user: AuthenticatedUser,
+) -> uuid.UUID | None:
+    """Verify the course exists and the caller may access it.
+
+    Returns the course's ``created_by`` value (or ``None``). Raises
+    404 when the course is missing, 403 when an ``expert`` caller is
+    not the course owner. ``admin`` and ``sub_admin`` bypass the
+    ownership check.
+    """
+    row = await session.execute(
+        select(Course.created_by).where(Course.id == course_id)
+    )
+    result = row.first()
+    if result is None:
+        raise HTTPException(status_code=404, detail="Course not found")
+    created_by: uuid.UUID | None = result[0]
+    if user.role == UserRole.expert.value and (
+        created_by is None or str(created_by) != str(user.id)
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this course's quality data.",
+        )
+    return created_by
 
 
 @router.post(
@@ -65,7 +114,7 @@ router = APIRouter(prefix="/admin/courses", tags=["Admin - Quality"])
 async def start_quality_run(
     course_id: uuid.UUID,
     payload: RunQualityCheckRequest,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
+    current_user: AuthenticatedUser = Depends(require_role(*_QUALITY_ROLES)),
     session: AsyncSession = Depends(get_db_session),
 ) -> CourseQualityRunSummary:
     """Queue a course quality sweep.
@@ -80,9 +129,7 @@ async def start_quality_run(
     from app.domain.services.quality_agent_service import CourseQualityService
     from app.tasks.quality_assessment import assess_course_task
 
-    course_check = await session.execute(select(Course.id).where(Course.id == course_id))
-    if course_check.scalar_one_or_none() is None:
-        raise HTTPException(status_code=404, detail="Course not found")
+    await _assert_course_access(session, course_id, current_user)
 
     service = CourseQualityService(ClaudeService(), semantic_retriever=None)
     idempotency_key = None if payload.force else None  # default: service derives day-bucketed
@@ -145,10 +192,11 @@ async def start_quality_run(
 async def list_quality_runs(
     course_id: uuid.UUID,
     limit: int = 20,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
+    current_user: AuthenticatedUser = Depends(require_role(*_QUALITY_ROLES)),
     session: AsyncSession = Depends(get_db_session),
 ) -> list[CourseQualityRunSummary]:
     """Most recent runs first."""
+    await _assert_course_access(session, course_id, current_user)
     rows = await session.execute(
         select(CourseQualityRun)
         .where(CourseQualityRun.course_id == course_id)
@@ -175,7 +223,7 @@ async def list_quality_runs(
 async def get_quality_run(
     course_id: uuid.UUID,
     run_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
+    current_user: AuthenticatedUser = Depends(require_role(*_QUALITY_ROLES)),
     session: AsyncSession = Depends(get_db_session),
 ) -> CourseQualityRunDetail:
     """Run detail + per-unit roll-up.
@@ -185,6 +233,7 @@ async def get_quality_run(
     ``unit_quality_assessments`` history (latest score lives on the
     GC row already).
     """
+    await _assert_course_access(session, course_id, current_user)
     run = await session.get(CourseQualityRun, run_id)
     if run is None or run.course_id != course_id:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -231,7 +280,7 @@ async def get_quality_run(
 async def get_course_glossary(
     course_id: uuid.UUID,
     language: str | None = None,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
+    current_user: AuthenticatedUser = Depends(require_role(*_QUALITY_ROLES)),
     session: AsyncSession = Depends(get_db_session),
 ) -> list[GlossaryEntryResponse]:
     """Read the canonical glossary for a course.
@@ -241,6 +290,7 @@ async def get_course_glossary(
     decide whether to manually edit the canonical definition or
     trigger a regenerate of the affected units.
     """
+    await _assert_course_access(session, course_id, current_user)
     q = (
         select(CourseGlossaryTerm, ModuleUnit)
         .join(
@@ -281,7 +331,7 @@ async def regenerate_unit_with_constraints(
     course_id: uuid.UUID,
     content_id: uuid.UUID,
     payload: RegenerateUnitRequest,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
+    current_user: AuthenticatedUser = Depends(require_role(*_QUALITY_ROLES)),
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """Targeted regenerate for a flagged unit.
@@ -293,6 +343,8 @@ async def regenerate_unit_with_constraints(
     from ``generated_content.quality_flags``.
     """
     from app.tasks.quality_assessment import assess_and_regenerate_unit_task
+
+    await _assert_course_access(session, course_id, current_user)
 
     gc = await session.get(GeneratedContent, content_id)
     if gc is None:
@@ -330,7 +382,7 @@ async def resolve_unit_quality(
     course_id: uuid.UUID,
     content_id: uuid.UUID,
     payload: ResolveUnitRequest,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
+    current_user: AuthenticatedUser = Depends(require_role(*_QUALITY_ROLES)),
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """Mark a flagged unit as resolved without regenerating.
@@ -340,6 +392,7 @@ async def resolve_unit_quality(
     Future quality runs will still re-score the row, but this one is
     cleared from the current run's ``needs_review`` queue.
     """
+    await _assert_course_access(session, course_id, current_user)
     gc = await session.get(GeneratedContent, content_id)
     if gc is None:
         raise HTTPException(status_code=404, detail="Content not found")
@@ -365,7 +418,7 @@ async def resolve_unit_quality(
 async def unlock_unit_for_quality(
     course_id: uuid.UUID,
     content_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
+    current_user: AuthenticatedUser = Depends(require_role(*_QUALITY_ROLES)),
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """Clear ``is_manually_edited`` so the agent can re-evaluate.
@@ -373,6 +426,7 @@ async def unlock_unit_for_quality(
     Required before a quality run will touch a row the admin
     previously locked via the ``PUT .../content/{id}`` editor.
     """
+    await _assert_course_access(session, course_id, current_user)
     gc = await session.get(GeneratedContent, content_id)
     if gc is None:
         raise HTTPException(status_code=404, detail="Content not found")
@@ -392,7 +446,7 @@ async def unlock_unit_for_quality(
 )
 async def get_quality_summary(
     course_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
+    current_user: AuthenticatedUser = Depends(require_role(*_QUALITY_ROLES)),
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """Course-level quality dashboard tile.
@@ -400,9 +454,7 @@ async def get_quality_summary(
     Returns: total units, units passing/failing/locked, latest run
     summary, glossary drift count.
     """
-    course_check = await session.execute(select(Course.id).where(Course.id == course_id))
-    if course_check.scalar_one_or_none() is None:
-        raise HTTPException(status_code=404, detail="Course not found")
+    await _assert_course_access(session, course_id, current_user)
 
     counts_q = await session.execute(
         select(
@@ -450,3 +502,216 @@ async def get_quality_summary(
             else None
         ),
     }
+
+
+@router.get(
+    "/{course_id}/units/{content_id}/quality",
+    response_model=UnitQualityDetail,
+)
+async def get_unit_quality_detail(
+    course_id: uuid.UUID,
+    content_id: uuid.UUID,
+    current_user: AuthenticatedUser = Depends(require_role(*_QUALITY_ROLES)),
+    session: AsyncSession = Depends(get_db_session),
+) -> UnitQualityDetail:
+    """Per-unit drill-in for the review UI.
+
+    Returns the hot fields from ``generated_content`` plus the latest
+    ``unit_quality_assessments`` row's ``dimension_scores`` so the UI
+    can render the dimension bars without a second round-trip.
+    """
+    await _assert_course_access(session, course_id, current_user)
+
+    gc = await session.get(GeneratedContent, content_id)
+    if gc is None:
+        raise HTTPException(status_code=404, detail="Content not found")
+
+    module = await session.get(Module, gc.module_id)
+    if module is None or module.course_id != course_id:
+        raise HTTPException(status_code=404, detail="Content does not belong to this course")
+
+    unit_number: str | None = None
+    if gc.module_unit_id is not None:
+        mu = await session.get(ModuleUnit, gc.module_unit_id)
+        if mu is not None:
+            unit_number = mu.unit_number
+
+    latest_q = await session.execute(
+        select(UnitQualityAssessment)
+        .where(UnitQualityAssessment.generated_content_id == content_id)
+        .order_by(desc(UnitQualityAssessment.attempt_number))
+        .limit(1)
+    )
+    latest = latest_q.scalar_one_or_none()
+
+    dimensions: DimensionScores | None = None
+    if latest is not None and latest.dimension_scores:
+        try:
+            dimensions = DimensionScores.model_validate(latest.dimension_scores)
+        except Exception:
+            # Tolerate legacy rows where the JSONB shape differs from
+            # the current schema; the UI degrades to "no chart" rather
+            # than 500-ing on the read path.
+            dimensions = None
+
+    flags = [QualityFlag.model_validate(f) for f in (gc.quality_flags or [])]
+
+    return UnitQualityDetail(
+        generated_content_id=gc.id,
+        unit_number=unit_number,
+        content_type=gc.content_type,
+        language=gc.language,
+        quality_score=to_decimal_safe(gc.quality_score),
+        quality_status=gc.quality_status,  # type: ignore[arg-type]
+        flag_count=len(flags),
+        regeneration_attempts=gc.regeneration_attempts or 0,
+        is_manually_edited=bool(gc.is_manually_edited),
+        validated=bool(gc.validated),
+        quality_assessed_at=gc.quality_assessed_at,
+        last_quality_run_id=gc.last_quality_run_id,
+        quality_flags=flags,
+        dimension_scores=dimensions,
+        latest_attempt_id=(latest.id if latest else None),
+        latest_attempt_number=(latest.attempt_number if latest else None),
+        latest_attempt_score=to_decimal_safe(latest.score) if latest else None,
+    )
+
+
+# ---- cross-course review queue ----
+
+
+@review_router.get("/review-queue", response_model=list[ReviewQueueEntry])
+async def list_review_queue(
+    limit: int = 100,
+    has_issues: bool = True,
+    current_user: AuthenticatedUser = Depends(require_role(*_QUALITY_ROLES)),
+    session: AsyncSession = Depends(get_db_session),
+) -> list[ReviewQueueEntry]:
+    """Cross-course review queue, sorted by attention-needed.
+
+    Owner-scoped for ``expert`` callers (only courses where
+    ``Course.created_by == user.id``). When ``has_issues`` is true
+    (default), courses with no flagged units and no glossary drift are
+    omitted — the surface is a triage queue, not a directory.
+    """
+    needs_review_count = func.coalesce(
+        func.sum(
+            case((GeneratedContent.quality_status == "needs_review", 1), else_=0)
+        ),
+        0,
+    ).label("units_needs_review")
+    needs_review_final_count = func.coalesce(
+        func.sum(
+            case(
+                (GeneratedContent.quality_status == "needs_review_final", 1), else_=0
+            )
+        ),
+        0,
+    ).label("units_needs_review_final")
+    failed_count = func.coalesce(
+        func.sum(case((GeneratedContent.quality_status == "failed", 1), else_=0)),
+        0,
+    ).label("units_failed")
+    passing_count = func.coalesce(
+        func.sum(case((GeneratedContent.quality_status == "passing", 1), else_=0)),
+        0,
+    ).label("units_passing")
+    total_count = func.coalesce(func.count(GeneratedContent.id), 0).label("units_total")
+    last_assessed_at = func.max(GeneratedContent.quality_assessed_at).label(
+        "last_assessed_at"
+    )
+
+    base_q = (
+        select(
+            Course.id.label("course_id"),
+            Course.title_fr.label("course_title_fr"),
+            Course.title_en.label("course_title_en"),
+            Course.created_by.label("owner_id"),
+            total_count,
+            passing_count,
+            needs_review_count,
+            needs_review_final_count,
+            failed_count,
+            last_assessed_at,
+        )
+        .select_from(Course)
+        .join(Module, Module.course_id == Course.id, isouter=True)
+        .join(GeneratedContent, GeneratedContent.module_id == Module.id, isouter=True)
+        .group_by(Course.id, Course.title_fr, Course.title_en, Course.created_by)
+    )
+    if current_user.role == UserRole.expert.value:
+        base_q = base_q.where(Course.created_by == uuid.UUID(str(current_user.id)))
+
+    base_q = base_q.order_by(
+        desc(needs_review_final_count + failed_count),
+        desc(needs_review_count),
+        desc(Course.created_at),
+    ).limit(max(1, min(limit, 500)))
+
+    course_rows = (await session.execute(base_q)).all()
+
+    if not course_rows:
+        return []
+
+    course_ids = [row.course_id for row in course_rows]
+
+    drift_q = await session.execute(
+        select(
+            CourseGlossaryTerm.course_id,
+            func.count().label("drift_count"),
+        )
+        .where(CourseGlossaryTerm.course_id.in_(course_ids))
+        .where(CourseGlossaryTerm.consistency_status == "drift_detected")
+        .group_by(CourseGlossaryTerm.course_id)
+    )
+    drift_by_course: dict[uuid.UUID, int] = {
+        row.course_id: int(row.drift_count) for row in drift_q.all()
+    }
+
+    # Latest run per course (one round-trip via correlated subquery would
+    # be tighter; iterate for clarity since N is bounded by ``limit``).
+    last_run_q = await session.execute(
+        select(CourseQualityRun)
+        .where(CourseQualityRun.course_id.in_(course_ids))
+        .order_by(CourseQualityRun.course_id, desc(CourseQualityRun.created_at))
+    )
+    last_run_by_course: dict[uuid.UUID, CourseQualityRun] = {}
+    for run in last_run_q.scalars().all():
+        last_run_by_course.setdefault(run.course_id, run)
+
+    out: list[ReviewQueueEntry] = []
+    for row in course_rows:
+        drift = drift_by_course.get(row.course_id, 0)
+        nrf = int(row.units_needs_review_final or 0)
+        nr = int(row.units_needs_review or 0)
+        failed = int(row.units_failed or 0)
+        if has_issues and (nrf + nr + failed + drift) == 0:
+            continue
+        last_run = last_run_by_course.get(row.course_id)
+        last_run_dto: CourseQualityRunSummary | None = None
+        if last_run is not None:
+            last_run_dto = CourseQualityRunSummary.model_validate(
+                {
+                    **last_run.__dict__,
+                    "id": last_run.id,
+                    "course_id": last_run.course_id,
+                    "overall_score": to_decimal_safe(last_run.overall_score),
+                }
+            )
+        out.append(
+            ReviewQueueEntry(
+                course_id=row.course_id,
+                course_title_fr=row.course_title_fr,
+                course_title_en=row.course_title_en,
+                owner_id=row.owner_id,
+                units_total=int(row.units_total or 0),
+                units_passing=int(row.units_passing or 0),
+                units_needs_review=nr,
+                units_needs_review_final=nrf,
+                units_failed=failed,
+                glossary_drift_count=drift,
+                last_assessed_at=row.last_assessed_at,
+                last_run=last_run_dto,
+            )
+        )
+    return out
