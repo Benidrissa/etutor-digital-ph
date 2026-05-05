@@ -199,7 +199,7 @@ export function ModuleProgressOverlay({
                             <div className="flex items-center gap-1 text-stone-600 shrink-0">
                               {getTypeIcon(unit)}
                               <span className="text-sm font-medium">
-                                {t('unitNumber', { number: unit.order_index })}
+                                {t('unitNumber', { number: unit.unit_number })}
                               </span>
                             </div>
                             <div className="flex items-center gap-1 text-sm text-stone-500 shrink-0">
