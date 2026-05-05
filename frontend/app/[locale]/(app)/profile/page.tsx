@@ -1,5 +1,16 @@
+import type { Metadata } from "next";
 import { ProfileClient } from "./profile-client";
 import { getTranslations } from "next-intl/server";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "Profile" });
+  return { title: t("title"), description: t("description") };
+}
 
 export default async function ProfilePage() {
   const t = await getTranslations("Profile");
