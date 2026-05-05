@@ -43,6 +43,7 @@ const LEVEL_LABELS: Record<number, { fr: string; en: string; color: string }> = 
 
 export function AdminModuleCard({ module, onEdit }: AdminModuleCardProps) {
   const t = useTranslations('AdminSyllabus');
+  const tBloom = useTranslations('BloomTaxonomy');
   const locale = useLocale() as 'fr' | 'en';
 
   const title = locale === 'fr' ? module.title_fr : module.title_en;
@@ -64,8 +65,10 @@ export function AdminModuleCard({ module, onEdit }: AdminModuleCardProps) {
               {locale === 'fr' ? levelLabel.fr : levelLabel.en}
             </Badge>
             {module.bloom_level && (
-              <Badge variant="secondary" className="text-xs shrink-0 capitalize">
-                {module.bloom_level}
+              <Badge variant="secondary" className="text-xs shrink-0">
+                {tBloom.has(module.bloom_level)
+                  ? tBloom(module.bloom_level)
+                  : module.bloom_level}
               </Badge>
             )}
           </div>

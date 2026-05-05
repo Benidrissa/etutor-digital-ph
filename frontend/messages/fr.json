@@ -55,6 +55,14 @@
     "qbankTests": "Tests de révision",
     "qbankTestsDescription": "Lancez directement un test depuis la liste disponible"
   },
+  "BloomTaxonomy": {
+    "remember": "Mémoriser",
+    "understand": "Comprendre",
+    "apply": "Appliquer",
+    "analyze": "Analyser",
+    "evaluate": "Évaluer",
+    "create": "Créer"
+  },
   "Auth": {
     "login": "Se connecter",
     "register": "Créer un compte",
