@@ -12,22 +12,20 @@ import {
 } from "@/lib/api";
 import { PromptEditor } from "./prompt-editor";
 
-const CATEGORY_LABELS: Record<string, string> = {
-  quiz: "Quiz & Assessment",
-  progress: "Progress & Unlocking",
-  flashcards: "Flashcards (FSRS)",
-  placement: "Placement Test",
-  auth: "Auth & Security",
-  rate_limiting: "Rate Limiting",
-  ai: "AI & Content Generation",
-  ai_prompts: "AI Prompt Templates",
-  tutor: "AI Tutor",
-  pagination: "Pagination",
-  payments: "Payments & Billing",
-};
+// Category labels for tabs + section headings. Localized via the
+// `AdminSettingsCategories` namespace; new categories emitted by the
+// backend (e.g. `marketplace`, `subscription`, `syllabus`,
+// `video_summary` observed during sweep #2128 F-011) fall back to a
+// space-replaced version of the slug until translations are added.
+function formatCategoryFallback(slug: string): string {
+  return slug.replace(/_/g, " ");
+}
 
 export function SettingsClient() {
   const t = useTranslations("Admin.settings");
+  const tCat = useTranslations("AdminSettingsCategories");
+  const categoryLabel = (slug: string) =>
+    tCat.has(slug) ? tCat(slug) : formatCategoryFallback(slug);
   const [categories, setCategories] = useState<SettingsByCategory[]>([]);
   const [activeTab, setActiveTab] = useState("");
   const [loading, setLoading] = useState(true);
@@ -100,7 +98,7 @@ export function SettingsClient() {
                 : "bg-muted text-muted-foreground hover:bg-muted/80"
             }`}
           >
-            {CATEGORY_LABELS[cat.category] || cat.category}
+            {categoryLabel(cat.category)}
           </button>
         ))}
       </div>
@@ -108,7 +106,7 @@ export function SettingsClient() {
         <div className="space-y-1">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-lg font-semibold">
-              {CATEGORY_LABELS[activeCategory.category] || activeCategory.category}
+              {categoryLabel(activeCategory.category)}
             </h2>
             <button onClick={() => handleResetCategory(activeCategory.category)}
               className="rounded-md border border-destructive/30 px-3 py-1 text-xs text-destructive hover:bg-destructive/10"
