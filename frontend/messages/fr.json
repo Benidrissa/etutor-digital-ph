@@ -1312,6 +1312,78 @@
       "removeMember": "Retirer le membre",
       "confirmDelete": "Supprimer ce groupe ?",
       "confirmDeleteDesc": "Cela supprimera le groupe et révoquera tout accès aux curricula accordé via ce groupe."
+    },
+    "qualityAgent": {
+      "pageTitle": "Revue qualité",
+      "pageDescription": "Examinez ce que l'agent qualité autonome a signalé pour ce cours.",
+      "backToCourses": "Retour aux cours",
+      "loading": "Chargement des données qualité…",
+      "error": "Impossible de charger les données qualité.",
+      "noData": "Aucune donnée qualité pour l'instant.",
+      "runInProgress": {
+        "title": "Une analyse qualité est en cours.",
+        "body": "Les compteurs et statuts ci-dessous se rafraîchiront automatiquement."
+      },
+      "tiles": {
+        "unitsTotal": "Unités totales",
+        "needsReview": "À examiner",
+        "needsReviewHint": "signalées",
+        "glossaryDrift": "Dérive de glossaire",
+        "driftHint": "termes divergents",
+        "lastRun": "Dernière analyse",
+        "noRun": "Aucune analyse"
+      },
+      "sections": {
+        "needsReview": "Unités à examiner",
+        "glossaryDrift": "Dérive de glossaire",
+        "runsLog": "Analyses récentes"
+      },
+      "needsReview": {
+        "noRun": "L'agent n'a pas encore évalué ce cours — les unités apparaîtront ici après la prochaine génération de leçon.",
+        "allClear": "Rien à signaler dans la dernière analyse. L'agent est satisfait de ce cours.",
+        "unit": "Unité",
+        "type": "Type",
+        "language": "Langue",
+        "status": "Statut",
+        "score": "Score",
+        "flags": "Signalements",
+        "attempts": "Reprises",
+        "lastAssessed": "Dernière éval."
+      },
+      "runsLog": {
+        "empty": "Aucune analyse pour ce cours.",
+        "status": "Statut",
+        "kind": "Type",
+        "started": "Démarrée",
+        "score": "Score",
+        "units": "Unités (réussies/total)",
+        "credits": "Crédits (dépensés/budget)",
+        "open": "Ouvrir"
+      },
+      "runStatus": {
+        "queued": "En attente",
+        "scoring": "Évaluation",
+        "regenerating": "Régénération",
+        "completed": "Terminée",
+        "failed": "Échec",
+        "cancelled": "Annulée"
+      },
+      "runKind": {
+        "full": "Analyse complète",
+        "targeted": "Ciblée",
+        "glossary_only": "Glossaire seul"
+      },
+      "unitStatus": {
+        "pending": "En attente",
+        "scoring": "Évaluation",
+        "passing": "Validée",
+        "needs_review": "À examiner",
+        "regenerating": "Régénération",
+        "needs_review_final": "Examen final",
+        "manual_override": "Validation manuelle",
+        "failed": "Échec"
+      },
+      "glossaryDriftBody": "{count, plural, one {# terme a des définitions divergentes entre les unités.} other {# termes ont des définitions divergentes entre les unités.}}"
     }
   },
   "Courses": {
@@ -1718,7 +1790,8 @@
       "lockHint": "Les leçons enregistrées sont verrouillées et ne seront jamais régénérées.",
       "generateError": "Échec de la génération de l'aperçu de la leçon.",
       "noModules": "Aucun module trouvé. Générez d'abord un programme."
-    }
+    },
+    "reviewQuality": "Revue qualité"
   },
   "AdminSyllabus": {
     "pageTitle": "Gestion du syllabus",

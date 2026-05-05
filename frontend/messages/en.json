@@ -1312,6 +1312,78 @@
       "removeMember": "Remove member",
       "confirmDelete": "Delete this group?",
       "confirmDeleteDesc": "This will remove the group and revoke any curriculum access granted via this group."
+    },
+    "qualityAgent": {
+      "pageTitle": "Quality review",
+      "pageDescription": "Review what the autonomous quality agent has flagged for this course.",
+      "backToCourses": "Back to courses",
+      "loading": "Loading quality data…",
+      "error": "Could not load quality data.",
+      "noData": "No quality data yet.",
+      "runInProgress": {
+        "title": "A quality run is in progress.",
+        "body": "Counts and unit statuses below will refresh automatically."
+      },
+      "tiles": {
+        "unitsTotal": "Total units",
+        "needsReview": "Needs review",
+        "needsReviewHint": "flagged",
+        "glossaryDrift": "Glossary drift",
+        "driftHint": "terms diverge",
+        "lastRun": "Latest run",
+        "noRun": "No run yet"
+      },
+      "sections": {
+        "needsReview": "Units needing review",
+        "glossaryDrift": "Glossary drift",
+        "runsLog": "Recent runs"
+      },
+      "needsReview": {
+        "noRun": "The agent has not assessed this course yet — units will appear here after the next lesson generation.",
+        "allClear": "Nothing flagged in the latest run. The agent is happy with this course.",
+        "unit": "Unit",
+        "type": "Type",
+        "language": "Lang",
+        "status": "Status",
+        "score": "Score",
+        "flags": "Flags",
+        "attempts": "Retries",
+        "lastAssessed": "Last assessed"
+      },
+      "runsLog": {
+        "empty": "No runs yet for this course.",
+        "status": "Status",
+        "kind": "Kind",
+        "started": "Started",
+        "score": "Score",
+        "units": "Units (passing/total)",
+        "credits": "Credits (spent/budget)",
+        "open": "Open"
+      },
+      "runStatus": {
+        "queued": "Queued",
+        "scoring": "Scoring",
+        "regenerating": "Regenerating",
+        "completed": "Completed",
+        "failed": "Failed",
+        "cancelled": "Cancelled"
+      },
+      "runKind": {
+        "full": "Full sweep",
+        "targeted": "Targeted",
+        "glossary_only": "Glossary only"
+      },
+      "unitStatus": {
+        "pending": "Pending",
+        "scoring": "Scoring",
+        "passing": "Passing",
+        "needs_review": "Needs review",
+        "regenerating": "Regenerating",
+        "needs_review_final": "Final review",
+        "manual_override": "Manual override",
+        "failed": "Failed"
+      },
+      "glossaryDriftBody": "{count, plural, one {# term has divergent definitions across units.} other {# terms have divergent definitions across units.}}"
     }
   },
   "Courses": {
@@ -1718,7 +1790,8 @@
       "lockHint": "Saved lessons are locked and will never be regenerated.",
       "generateError": "Failed to generate lesson preview.",
       "noModules": "No modules found. Generate a syllabus first."
-    }
+    },
+    "reviewQuality": "Review quality"
   },
   "AdminSyllabus": {
     "pageTitle": "Syllabus Management",
