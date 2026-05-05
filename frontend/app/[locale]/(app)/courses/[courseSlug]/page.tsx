@@ -90,6 +90,7 @@ const LEVEL_COLORS: Record<string, string> = {
 export default function CourseDetailPage() {
   const t = useTranslations("Courses");
   const tDetail = useTranslations("CourseDetail");
+  const tBloom = useTranslations("BloomTaxonomy");
   const locale = useLocale() as "fr" | "en";
   const params = useParams();
   const router = useRouter();
@@ -343,7 +344,9 @@ export default function CourseDetailPage() {
                         <span>{mod.units.length} {tDetail("units")}</span>
                         {mod.bloom_level && (
                           <Badge variant="outline" className="text-[10px] py-0">
-                            {mod.bloom_level}
+                            {tBloom.has(mod.bloom_level)
+                              ? tBloom(mod.bloom_level)
+                              : mod.bloom_level}
                           </Badge>
                         )}
                       </div>
