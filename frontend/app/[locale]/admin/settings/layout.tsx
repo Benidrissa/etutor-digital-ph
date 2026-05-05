@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
-import { QBankDiscoveryClient } from "./client";
 
 export async function generateMetadata({
   params,
@@ -8,10 +7,14 @@ export async function generateMetadata({
   params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  const t = await getTranslations({ locale, namespace: "qbank" });
-  return { title: t("banksTitle") };
+  const t = await getTranslations({ locale, namespace: "Admin.settings" });
+  return { title: t("title") };
 }
 
-export default function QBankDiscoveryPage() {
-  return <QBankDiscoveryClient />;
+export default function AdminSettingsLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return <>{children}</>;
 }
