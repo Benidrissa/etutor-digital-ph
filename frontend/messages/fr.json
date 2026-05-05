@@ -1383,7 +1383,61 @@
         "manual_override": "Validation manuelle",
         "failed": "Échec"
       },
-      "glossaryDriftBody": "{count, plural, one {# terme a des définitions divergentes entre les unités.} other {# termes ont des définitions divergentes entre les unités.}}"
+      "glossaryDriftBody": "{count, plural, one {# terme a des définitions divergentes entre les unités.} other {# termes ont des définitions divergentes entre les unités.}}",
+      "unit": {
+        "pageTitle": "Détail qualité d'une unité",
+        "pageDescription": "Ce que l'agent qualité autonome a signalé sur cette unité, et les actions de validation manuelle disponibles.",
+        "backToCourseQuality": "Retour à la qualité du cours",
+        "headerLine": "Unité {unit_number} · {type} · {language}",
+        "lastAssessed": "Dernière évaluation",
+        "attempts": "{count, plural, one {# reprise} other {# reprises}}",
+        "lockedShort": "Modifiée manuellement",
+        "locked": "Cette unité est modifiée manuellement — l'agent l'ignorera lors des prochaines analyses jusqu'à ce que vous la déverrouilliez.",
+        "weight": "{weight} %",
+        "notAssessed": "L'agent n'a pas encore évalué cette unité — elle apparaîtra ici après la prochaine génération de leçon.",
+        "noFlags": "Aucun signalement pour cette évaluation.",
+        "crossUnitRef": "Référence inter-unités : unité {unit}",
+        "suggestedFix": "Correction suggérée",
+        "sections": {
+          "dimensions": "Dimensions du barème",
+          "flags": "{count, plural, =0 {Aucun signalement} one {# signalement} other {# signalements}}"
+        },
+        "actions": {
+          "title": "Valider la décision de l'agent",
+          "help": "Valider marque l'unité comme conforme sans relancer l'agent.",
+          "helpLocked": "Valider marque l'unité comme conforme. Déverrouiller libère le verrou manuel afin que l'agent puisse la réévaluer lors de sa prochaine analyse.",
+          "resolve": "Valider",
+          "resolveSubmit": "Marquer comme conforme",
+          "unlock": "Déverrouiller pour réévaluation",
+          "note": "Note (optionnel)",
+          "notePlaceholder": "Pourquoi marquez-vous cette unité comme conforme ?",
+          "submitting": "Envoi…",
+          "cancel": "Annuler",
+          "error": "Action échouée"
+        }
+      },
+      "dimensions": {
+        "terminology_consistency": "Cohérence terminologique",
+        "source_grounding": "Ancrage dans les sources",
+        "syllabus_alignment": "Alignement avec le syllabus",
+        "internal_contradictions": "Contradictions internes",
+        "pedagogical_fit": "Adéquation pédagogique",
+        "structural_completeness": "Complétude structurelle"
+      },
+      "flagCategory": {
+        "terminology_drift": "Dérive terminologique",
+        "ungrounded_claim": "Affirmation non sourcée",
+        "syllabus_scope_drift": "Hors-scope du syllabus",
+        "internal_contradiction": "Contradiction interne",
+        "pedagogical_mismatch": "Inadéquation pédagogique",
+        "structural_gap": "Lacune structurelle"
+      },
+      "severity": {
+        "low": "Faible",
+        "medium": "Moyen",
+        "high": "Élevé",
+        "blocking": "Bloquant"
+      }
     }
   },
   "Courses": {
