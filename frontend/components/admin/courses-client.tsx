@@ -35,7 +35,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
-import { apiFetch, ApiError, API_BASE } from '@/lib/api';
+import { apiFetch, ApiError, API_BASE, getCourseTaxonomy, type TaxonomyResponse } from '@/lib/api';
 import { authClient, AuthError } from '@/lib/auth';
 import { CourseForm } from '@/components/admin/course-form';
 import { CourseWizardClient } from '@/components/admin/course-wizard-client';
@@ -75,6 +75,29 @@ function useAdminCourses() {
     queryKey: ['admin', 'courses'],
     queryFn: () => apiFetch<AdminCourse[]>('/api/v1/admin/courses'),
   });
+}
+
+// Admin courses API returns taxonomy as raw `string[]` of values (e.g.
+// "health_sciences"); the public courses API returns labeled objects.
+// Fetch the taxonomy once and build a value→label lookup so admin chips
+// localize correctly. See sweep finding F-013/F-024 in #2128.
+function useTaxonomyLookup(locale: string) {
+  const { data } = useQuery<TaxonomyResponse>({
+    queryKey: ['admin', 'taxonomy'],
+    queryFn: getCourseTaxonomy,
+    staleTime: 5 * 60 * 1000, // 5 min — taxonomy rarely changes
+  });
+  return useCallback(
+    (kind: 'domain' | 'level' | 'audience', value: string) => {
+      if (!data) return value.replace(/_/g, ' ');
+      const list =
+        kind === 'domain' ? data.domains : kind === 'level' ? data.levels : data.audience_types;
+      const item = list.find((i) => i.value === value);
+      if (!item) return value.replace(/_/g, ' ');
+      return locale === 'fr' ? item.label_fr : item.label_en;
+    },
+    [data, locale],
+  );
 }
 
 export function CoursesClient() {
@@ -549,6 +572,7 @@ function CourseRow({
 }) {
   const t = useTranslations('AdminCourses');
   const locale = useLocale();
+  const taxonomyLabel = useTaxonomyLookup(locale);
 
   const title = locale === 'fr' ? course.title_fr : course.title_en;
 
@@ -586,12 +610,12 @@ function CourseRow({
             <div className="flex gap-1 flex-wrap">
               {course.course_domain?.map((d) => (
                 <span key={d} className="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">
-                  {d.replace(/_/g, ' ')}
+                  {taxonomyLabel('domain', d)}
                 </span>
               ))}
               {course.course_level?.map((l) => (
                 <span key={l} className="text-[10px] font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-full px-1.5 py-0.5">
-                  {l}
+                  {taxonomyLabel('level', l)}
                 </span>
               ))}
             </div>
