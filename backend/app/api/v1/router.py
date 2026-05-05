@@ -7,6 +7,8 @@ from app.api.v1.admin_curricula import router as admin_curricula_router
 from app.api.v1.admin_groups import router as admin_groups_router
 from app.api.v1.admin_quality import (
     review_router as admin_quality_review_router,
+)
+from app.api.v1.admin_quality import (
     router as admin_quality_router,
 )
 from app.api.v1.admin_settings import router as admin_settings_router

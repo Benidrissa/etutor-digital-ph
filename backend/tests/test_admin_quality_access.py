@@ -10,7 +10,7 @@ elsewhere.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -27,7 +27,6 @@ from app.domain.models.module import Module
 from app.domain.models.user import User, UserRole
 from app.domain.services.jwt_auth_service import JWTAuthService
 from app.main import app
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -173,8 +172,8 @@ async def seeded(db_session):
         run_kind="full",
         status="completed",
         triggered_by_user_id=admin.id,
-        started_at=datetime.now(timezone.utc),
-        finished_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
+        finished_at=datetime.now(UTC),
         budget_credits=200,
         spent_credits=12,
     )
@@ -230,9 +229,7 @@ async def test_review_queue_admin_sees_all_courses_with_issues(http_client, seed
     assert str(seeded["other_course"].id) not in course_ids
 
 
-async def test_review_queue_admin_with_has_issues_false_includes_clean_courses(
-    http_client, seeded
-):
+async def test_review_queue_admin_with_has_issues_false_includes_clean_courses(http_client, seeded):
     headers = _headers(seeded["admin"].id, "admin")
     r = await http_client.get(
         "/api/v1/admin/quality/review-queue?has_issues=false", headers=headers
@@ -326,8 +323,7 @@ async def test_summary_learner_forbidden(http_client, seeded):
 async def test_unit_quality_detail_admin(http_client, seeded):
     headers = _headers(seeded["admin"].id, "admin")
     r = await http_client.get(
-        f"/api/v1/admin/courses/{seeded['owned_course'].id}/units/"
-        f"{seeded['gc'].id}/quality",
+        f"/api/v1/admin/courses/{seeded['owned_course'].id}/units/{seeded['gc'].id}/quality",
         headers=headers,
     )
     assert r.status_code == 200
@@ -345,8 +341,7 @@ async def test_unit_quality_detail_admin(http_client, seeded):
 async def test_unit_quality_detail_expert_owner(http_client, seeded):
     headers = _headers(seeded["expert_owner"].id, "expert")
     r = await http_client.get(
-        f"/api/v1/admin/courses/{seeded['owned_course'].id}/units/"
-        f"{seeded['gc'].id}/quality",
+        f"/api/v1/admin/courses/{seeded['owned_course'].id}/units/{seeded['gc'].id}/quality",
         headers=headers,
     )
     assert r.status_code == 200
@@ -355,8 +350,7 @@ async def test_unit_quality_detail_expert_owner(http_client, seeded):
 async def test_unit_quality_detail_expert_non_owner_forbidden(http_client, seeded):
     headers = _headers(seeded["expert_other"].id, "expert")
     r = await http_client.get(
-        f"/api/v1/admin/courses/{seeded['owned_course'].id}/units/"
-        f"{seeded['gc'].id}/quality",
+        f"/api/v1/admin/courses/{seeded['owned_course'].id}/units/{seeded['gc'].id}/quality",
         headers=headers,
     )
     assert r.status_code == 403
@@ -406,8 +400,7 @@ async def test_unlock_unit_expert_owner(http_client, seeded, db_session):
 
     headers = _headers(seeded["expert_owner"].id, "expert")
     r = await http_client.post(
-        f"/api/v1/admin/courses/{seeded['owned_course'].id}/units/"
-        f"{seeded['gc'].id}/quality/unlock",
+        f"/api/v1/admin/courses/{seeded['owned_course'].id}/units/{seeded['gc'].id}/quality/unlock",
         headers=headers,
     )
     assert r.status_code == 200
@@ -417,8 +410,7 @@ async def test_unlock_unit_expert_owner(http_client, seeded, db_session):
 async def test_unlock_unit_expert_non_owner_forbidden(http_client, seeded):
     headers = _headers(seeded["expert_other"].id, "expert")
     r = await http_client.post(
-        f"/api/v1/admin/courses/{seeded['owned_course'].id}/units/"
-        f"{seeded['gc'].id}/quality/unlock",
+        f"/api/v1/admin/courses/{seeded['owned_course'].id}/units/{seeded['gc'].id}/quality/unlock",
         headers=headers,
     )
     assert r.status_code == 403
@@ -460,8 +452,7 @@ async def test_runs_list_expert_owner(http_client, seeded):
 async def test_run_detail_expert_non_owner_forbidden(http_client, seeded):
     headers = _headers(seeded["expert_other"].id, "expert")
     r = await http_client.get(
-        f"/api/v1/admin/courses/{seeded['owned_course'].id}/quality/runs/"
-        f"{seeded['run'].id}",
+        f"/api/v1/admin/courses/{seeded['owned_course'].id}/quality/runs/{seeded['run'].id}",
         headers=headers,
     )
     assert r.status_code == 403
