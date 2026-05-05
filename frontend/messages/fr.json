@@ -63,6 +63,12 @@
     "evaluate": "Évaluer",
     "create": "Créer"
   },
+  "AnalyticsEventTypes": {
+    "lesson_viewed": "Leçon consultée",
+    "quiz_completed": "Quiz terminé",
+    "flashcard_reviewed": "Flashcard révisée",
+    "tutor_message_sent": "Message au tuteur"
+  },
   "Auth": {
     "login": "Se connecter",
     "register": "Créer un compte",
