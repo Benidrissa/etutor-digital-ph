@@ -29,7 +29,7 @@ export default async function AdminUnitQualityPage({
     contentId: string;
   }>;
 }) {
-  const { courseId, contentId } = await params;
+  const { courseId, runId, contentId } = await params;
   const t = await getTranslations("Admin.qualityAgent");
 
   return (
@@ -38,7 +38,7 @@ export default async function AdminUnitQualityPage({
         <h1 className="text-2xl font-bold">{t("unit.pageTitle")}</h1>
         <p className="text-muted-foreground mt-1">{t("unit.pageDescription")}</p>
       </div>
-      <UnitQualityClient courseId={courseId} contentId={contentId} />
+      <UnitQualityClient courseId={courseId} runId={runId} contentId={contentId} />
     </div>
   );
 }
