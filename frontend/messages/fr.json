@@ -1414,7 +1414,8 @@
           "submitting": "Envoi…",
           "cancel": "Annuler",
           "error": "Action échouée"
-        }
+        },
+        "backToRun": "Retour à l'analyse"
       },
       "dimensions": {
         "terminology_consistency": "Cohérence terminologique",
@@ -1437,6 +1438,37 @@
         "medium": "Moyen",
         "high": "Élevé",
         "blocking": "Bloquant"
+      },
+      "runDetail": {
+        "pageTitle": "Détail d'une analyse",
+        "pageDescription": "Trace d'audit d'une analyse qualité de ce cours.",
+        "headerLine": "Analyse {kind}",
+        "backToCourseQuality": "Retour à la qualité du cours",
+        "loading": "Chargement du détail de l'analyse…",
+        "error": "Impossible de charger le détail de l'analyse.",
+        "notFound": "Analyse introuvable.",
+        "started": "Démarrée",
+        "finished": "Terminée",
+        "duration": "Durée",
+        "credits": "Crédits",
+        "unitsCounter": "Unités (réussies/total)",
+        "regenerated": "Régénérées",
+        "unitsTitle": "{count, plural, =0 {Aucune unité} one {# unité} other {# unités}}",
+        "filterLabel": "Filtrer :",
+        "filterAll": "Toutes",
+        "filterFlagged": "Signalées",
+        "emptyAll": "Cette analyse n'a pas encore d'unités — l'évaluation est probablement en attente.",
+        "emptyFiltered": "Aucune unité ne correspond au filtre.",
+        "col": {
+          "unit": "Unité",
+          "type": "Type",
+          "language": "Langue",
+          "status": "Statut",
+          "score": "Score",
+          "flags": "Signalements",
+          "attempts": "Reprises",
+          "lastAssessed": "Dernière éval."
+        }
       }
     }
   },
