@@ -1383,7 +1383,61 @@
         "manual_override": "Manual override",
         "failed": "Failed"
       },
-      "glossaryDriftBody": "{count, plural, one {# term has divergent definitions across units.} other {# terms have divergent definitions across units.}}"
+      "glossaryDriftBody": "{count, plural, one {# term has divergent definitions across units.} other {# terms have divergent definitions across units.}}",
+      "unit": {
+        "pageTitle": "Unit quality detail",
+        "pageDescription": "What the autonomous quality agent flagged on this specific unit, and the override actions you can take.",
+        "backToCourseQuality": "Back to course quality",
+        "headerLine": "Unit {unit_number} · {type} · {language}",
+        "lastAssessed": "Last assessed",
+        "attempts": "{count, plural, one {# retry} other {# retries}}",
+        "lockedShort": "Manually edited",
+        "locked": "This unit is manually edited — the agent will skip it on future runs until you unlock it.",
+        "weight": "{weight}%",
+        "notAssessed": "The agent has not assessed this unit yet — it will appear here after the next lesson generation.",
+        "noFlags": "No flags recorded for this assessment.",
+        "crossUnitRef": "Cross-unit reference: unit {unit}",
+        "suggestedFix": "Suggested fix",
+        "sections": {
+          "dimensions": "Rubric dimensions",
+          "flags": "{count, plural, =0 {No flags} one {# flag} other {# flags}}"
+        },
+        "actions": {
+          "title": "Override the agent's verdict",
+          "help": "Resolve marks the unit as passing without re-running the agent.",
+          "helpLocked": "Resolve marks the unit as passing. Unlock clears the manual-edit lock so the agent can re-evaluate on its next run.",
+          "resolve": "Resolve",
+          "resolveSubmit": "Mark passing",
+          "unlock": "Unlock for re-evaluation",
+          "note": "Note (optional)",
+          "notePlaceholder": "Why are you marking this unit as passing?",
+          "submitting": "Submitting…",
+          "cancel": "Cancel",
+          "error": "Action failed"
+        }
+      },
+      "dimensions": {
+        "terminology_consistency": "Terminology consistency",
+        "source_grounding": "Source grounding",
+        "syllabus_alignment": "Syllabus alignment",
+        "internal_contradictions": "Internal contradictions",
+        "pedagogical_fit": "Pedagogical fit",
+        "structural_completeness": "Structural completeness"
+      },
+      "flagCategory": {
+        "terminology_drift": "Terminology drift",
+        "ungrounded_claim": "Ungrounded claim",
+        "syllabus_scope_drift": "Syllabus scope drift",
+        "internal_contradiction": "Internal contradiction",
+        "pedagogical_mismatch": "Pedagogical mismatch",
+        "structural_gap": "Structural gap"
+      },
+      "severity": {
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "blocking": "Blocking"
+      }
     }
   },
   "Courses": {
