@@ -1336,7 +1336,8 @@
       "sections": {
         "needsReview": "Unités à examiner",
         "glossaryDrift": "Dérive de glossaire",
-        "runsLog": "Analyses récentes"
+        "runsLog": "Analyses récentes",
+        "glossary": "Glossaire"
       },
       "needsReview": {
         "noRun": "L'agent n'a pas encore évalué ce cours — les unités apparaîtront ici après la prochaine génération de leçon.",
@@ -1468,7 +1469,32 @@
           "attempts": "Reprises",
           "lastAssessed": "Dernière éval."
         }
-      }
+      },
+      "glossary": {
+        "pageTitle": "Glossaire du cours",
+        "pageDescription": "Termes canoniques que l'agent qualité autonome utilise pour détecter la dérive terminologique dans ce cours.",
+        "backToCourseQuality": "Retour à la qualité du cours",
+        "loading": "Chargement du glossaire…",
+        "error": "Impossible de charger le glossaire.",
+        "empty": "Aucun terme de glossaire n'a encore été extrait pour cette langue.",
+        "language": "Langue",
+        "driftSummary": "{count, plural, one {# terme avec dérive} other {# termes avec dérive}}",
+        "driftDetailsLabel": "Détails de la dérive",
+        "col": {
+          "term": "Terme",
+          "definition": "Définition canonique",
+          "firstUnit": "Première unité",
+          "occurrences": "Occurrences",
+          "status": "Statut"
+        },
+        "consistency": {
+          "consistent": "Cohérent",
+          "drift_detected": "Dérive",
+          "unsourced": "Non sourcé"
+        }
+      },
+      "glossaryNoDrift": "Aucune dérive terminologique détectée pour ce cours.",
+      "viewGlossary": "Voir le glossaire complet"
     }
   },
   "Courses": {

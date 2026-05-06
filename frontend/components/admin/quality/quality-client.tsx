@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -89,16 +90,24 @@ export function QualityClient({ courseId }: { courseId: string }) {
         <NeedsReviewQueue courseId={courseId} latestRun={runDetailQ.data ?? null} />
       </section>
 
-      {summary.glossary_drift_count > 0 && (
-        <section>
-          <h2 className="mb-3 text-lg font-semibold">{t("sections.glossaryDrift")}</h2>
-          <div className="rounded-md border bg-muted/20 p-4 text-sm">
-            <p className="text-muted-foreground">
+      <section>
+        <h2 className="mb-3 text-lg font-semibold">{t("sections.glossary")}</h2>
+        <div className="rounded-md border bg-muted/20 p-4 text-sm">
+          {summary.glossary_drift_count > 0 ? (
+            <p className="mb-2 text-amber-900 dark:text-amber-300">
               {t("glossaryDriftBody", { count: summary.glossary_drift_count })}
             </p>
-          </div>
-        </section>
-      )}
+          ) : (
+            <p className="mb-2 text-muted-foreground">{t("glossaryNoDrift")}</p>
+          )}
+          <Link
+            href={`/admin/courses/${courseId}/quality/glossary`}
+            className="text-sm text-primary hover:underline"
+          >
+            {t("viewGlossary")} →
+          </Link>
+        </div>
+      </section>
 
       <section>
         <h2 className="mb-3 text-lg font-semibold">{t("sections.runsLog")}</h2>
