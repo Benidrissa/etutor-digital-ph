@@ -1336,7 +1336,8 @@
       "sections": {
         "needsReview": "Units needing review",
         "glossaryDrift": "Glossary drift",
-        "runsLog": "Recent runs"
+        "runsLog": "Recent runs",
+        "glossary": "Glossary"
       },
       "needsReview": {
         "noRun": "The agent has not assessed this course yet — units will appear here after the next lesson generation.",
@@ -1468,7 +1469,32 @@
           "attempts": "Retries",
           "lastAssessed": "Last assessed"
         }
-      }
+      },
+      "glossary": {
+        "pageTitle": "Course glossary",
+        "pageDescription": "Canonical terms the autonomous quality agent uses to detect terminology drift across this course.",
+        "backToCourseQuality": "Back to course quality",
+        "loading": "Loading glossary…",
+        "error": "Could not load glossary.",
+        "empty": "No glossary terms have been extracted for this language yet.",
+        "language": "Language",
+        "driftSummary": "{count, plural, one {# term with drift} other {# terms with drift}}",
+        "driftDetailsLabel": "Drift details",
+        "col": {
+          "term": "Term",
+          "definition": "Canonical definition",
+          "firstUnit": "First unit",
+          "occurrences": "Occurrences",
+          "status": "Status"
+        },
+        "consistency": {
+          "consistent": "Consistent",
+          "drift_detected": "Drift",
+          "unsourced": "Unsourced"
+        }
+      },
+      "glossaryNoDrift": "No glossary drift detected for this course.",
+      "viewGlossary": "View full glossary"
     }
   },
   "Courses": {
