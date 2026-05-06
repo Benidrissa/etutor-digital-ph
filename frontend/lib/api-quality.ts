@@ -220,6 +220,48 @@ export function getReviewQueue(opts?: {
   );
 }
 
+// ---- override mutations (admin/sub_admin/expert-owner only) ----
+
+export interface ResolveUnitResponse {
+  content_id: string;
+  quality_status: "passing";
+  note: string | null;
+}
+
+export interface UnlockUnitResponse {
+  content_id: string;
+  is_manually_edited: false;
+}
+
+export function resolveUnit(
+  courseId: string,
+  contentId: string,
+  body: { note: string | null },
+): Promise<ResolveUnitResponse> {
+  return apiFetch<ResolveUnitResponse>(
+    `/api/v1/admin/courses/${courseId}/units/${contentId}/quality/resolve`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export function unlockUnit(
+  courseId: string,
+  contentId: string,
+): Promise<UnlockUnitResponse> {
+  return apiFetch<UnlockUnitResponse>(
+    `/api/v1/admin/courses/${courseId}/units/${contentId}/quality/unlock`,
+    { method: "POST" },
+  );
+}
+
+// Note: Regenerate is intentionally NOT exposed in the UI. Assessment is
+// autonomous (`assess_unit_task` runs after every lesson generation), and
+// surfacing a "regenerate this unit" button on the review page would
+// reframe the agent as something humans drive.
+
 // ---- run-state helpers ----
 
 const ACTIVE_RUN_STATUSES: ReadonlySet<RunStatus> = new Set([
