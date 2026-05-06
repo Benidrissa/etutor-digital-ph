@@ -1442,7 +1442,6 @@
       "runDetail": {
         "pageTitle": "Détail d'une analyse",
         "pageDescription": "Trace d'audit d'une analyse qualité de ce cours.",
-        "headerLine": "Analyse {kind}",
         "backToCourseQuality": "Retour à la qualité du cours",
         "loading": "Chargement du détail de l'analyse…",
         "error": "Impossible de charger le détail de l'analyse.",

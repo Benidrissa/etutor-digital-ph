@@ -112,7 +112,7 @@ export function RunDetailClient({
           {t("backToCourseQuality")}
         </Link>
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-xl font-bold">{t("headerLine", { kind: tKind(run.run_kind) })}</h2>
+          <h2 className="text-xl font-bold">{tKind(run.run_kind)}</h2>
           <RunStatusBadge status={run.status} />
           <ScorePill score={run.overall_score} />
         </div>
