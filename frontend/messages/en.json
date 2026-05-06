@@ -1442,7 +1442,6 @@
       "runDetail": {
         "pageTitle": "Run detail",
         "pageDescription": "Audit trail of one quality run for this course.",
-        "headerLine": "{kind} run",
         "backToCourseQuality": "Back to course quality",
         "loading": "Loading run detail…",
         "error": "Could not load run detail.",
