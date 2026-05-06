@@ -1414,7 +1414,8 @@
           "submitting": "Submitting…",
           "cancel": "Cancel",
           "error": "Action failed"
-        }
+        },
+        "backToRun": "Back to run"
       },
       "dimensions": {
         "terminology_consistency": "Terminology consistency",
@@ -1437,6 +1438,37 @@
         "medium": "Medium",
         "high": "High",
         "blocking": "Blocking"
+      },
+      "runDetail": {
+        "pageTitle": "Run detail",
+        "pageDescription": "Audit trail of one quality run for this course.",
+        "headerLine": "{kind} run",
+        "backToCourseQuality": "Back to course quality",
+        "loading": "Loading run detail…",
+        "error": "Could not load run detail.",
+        "notFound": "Run not found.",
+        "started": "Started",
+        "finished": "Finished",
+        "duration": "Duration",
+        "credits": "Credits",
+        "unitsCounter": "Units (passing/total)",
+        "regenerated": "Regenerated",
+        "unitsTitle": "{count, plural, =0 {No units} one {# unit} other {# units}}",
+        "filterLabel": "Filter:",
+        "filterAll": "All",
+        "filterFlagged": "Flagged",
+        "emptyAll": "This run has no units yet — the worker may not have started scoring.",
+        "emptyFiltered": "No units match the selected filter.",
+        "col": {
+          "unit": "Unit",
+          "type": "Type",
+          "language": "Lang",
+          "status": "Status",
+          "score": "Score",
+          "flags": "Flags",
+          "attempts": "Retries",
+          "lastAssessed": "Last assessed"
+        }
       }
     }
   },
