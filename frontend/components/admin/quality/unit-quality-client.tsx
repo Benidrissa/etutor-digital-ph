@@ -27,9 +27,11 @@ function fmtDate(iso: string | null, locale: string): string {
 
 export function UnitQualityClient({
   courseId,
+  runId,
   contentId,
 }: {
   courseId: string;
+  runId: string | null;
   contentId: string;
 }) {
   const t = useTranslations("Admin.qualityAgent");
@@ -71,11 +73,15 @@ export function UnitQualityClient({
     <div className="flex flex-col gap-6 p-4">
       <div className="flex flex-col gap-2">
         <Link
-          href={`/admin/courses/${courseId}/quality`}
+          href={
+            runId
+              ? `/admin/courses/${courseId}/quality/runs/${runId}`
+              : `/admin/courses/${courseId}/quality`
+          }
           className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
-          {t("unit.backToCourseQuality")}
+          {runId ? t("unit.backToRun") : t("unit.backToCourseQuality")}
         </Link>
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-xl font-bold">
