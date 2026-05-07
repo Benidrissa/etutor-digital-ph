@@ -16,6 +16,12 @@ import type { Quiz, QuizAnswerSubmission, QuizAttemptResponse } from '@/lib/api'
 import { ApiError, submitQuizAttempt } from '@/lib/api';
 import { scoreQuizOffline } from '@/lib/offline/offline-quiz-scorer';
 import { loadQuizState, saveQuizState, clearQuizState } from '@/lib/quiz-state-persistence';
+import {
+  buildQuizDisplayOrders,
+  displayToOriginal,
+  displayedOptions,
+  isValidPermutation,
+} from '@/lib/quiz-shuffle';
 
 interface QuizInterfaceProps {
   quiz: Quiz;
@@ -33,6 +39,10 @@ interface PersistedQuizState {
   currentQuestionIndex: number;
   questionStates: QuestionState[];
   startTime: number;
+  // Per-question permutation. Each entry maps display position -> original
+  // index. Persisted so a mid-attempt refresh keeps the same shuffle and the
+  // already-stored selectedOption indices stay valid.
+  displayOrders: number[][];
 }
 
 export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps) {
@@ -40,7 +50,22 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
 
   // Quiz IDs are unique per generation, so a regenerate auto-invalidates this key.
   const storageKey = `quiz-state:v1:${quiz.id}`;
-  const [restored] = useState(() => loadQuizState<PersistedQuizState>(storageKey));
+  const [restored] = useState<PersistedQuizState | null>(() => {
+    const raw = loadQuizState<PersistedQuizState>(storageKey);
+    if (!raw) return null;
+    // Pre-shuffle entries lack displayOrders. Discard the whole restored
+    // attempt rather than rebuilding orders alongside stale selectedOption
+    // indices — the latter would silently mis-grade.
+    if (!Array.isArray(raw.displayOrders) || raw.displayOrders.length !== quiz.content.questions.length) {
+      return null;
+    }
+    for (let i = 0; i < raw.displayOrders.length; i++) {
+      if (!isValidPermutation(raw.displayOrders[i], quiz.content.questions[i].options.length)) {
+        return null;
+      }
+    }
+    return raw;
+  });
 
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(
     restored?.currentQuestionIndex ?? 0,
@@ -54,6 +79,9 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
       })),
   );
   const [startTime] = useState(restored?.startTime ?? Date.now());
+  const [displayOrders] = useState<number[][]>(
+    () => restored?.displayOrders ?? buildQuizDisplayOrders(quiz.content.questions),
+  );
   // Reconstruct questionStartTime so the per-second tick keeps adding to the
   // already-recorded time on the current question instead of resetting to 0.
   const [questionStartTime, setQuestionStartTime] = useState(() => {
@@ -69,8 +97,9 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
       currentQuestionIndex,
       questionStates,
       startTime,
+      displayOrders,
     });
-  }, [storageKey, currentQuestionIndex, questionStates, startTime]);
+  }, [storageKey, currentQuestionIndex, questionStates, startTime, displayOrders]);
   
   const currentQuestion = quiz.content.questions[currentQuestionIndex];
   const currentState = questionStates[currentQuestionIndex];
@@ -259,14 +288,15 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
         <CardContent className="space-y-4">
           {/* Answer Options */}
           <div className="space-y-3">
-            {currentQuestion.options.map((option, index) => {
-              const isSelected = currentState.selectedOption === index;
+            {displayedOptions(currentQuestion, displayOrders[currentQuestionIndex]).map((option, displayIdx) => {
+              const originalIdx = displayToOriginal(displayOrders[currentQuestionIndex], displayIdx);
+              const isSelected = currentState.selectedOption === originalIdx;
               const showResult = currentState.showFeedback;
-              const isCorrectOption = index === currentQuestion.correct_answer;
-              
+              const isCorrectOption = originalIdx === currentQuestion.correct_answer;
+
               let buttonVariant: "default" | "outline" | "secondary" = "outline";
               let className = "min-h-11 h-auto p-4 text-left justify-start";
-              
+
               if (showResult) {
                 if (isSelected && isCorrectOption) {
                   className += " bg-green-50 border-green-500 text-green-900";
@@ -278,21 +308,21 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
               } else if (isSelected) {
                 buttonVariant = "default";
               }
-              
+
               return (
                 <Button
-                  key={index}
+                  key={originalIdx}
                   variant={buttonVariant}
-                  onClick={() => handleOptionSelect(index)}
+                  onClick={() => handleOptionSelect(originalIdx)}
                   disabled={showResult}
                   className={`w-full ${className}`}
                 >
                   <div className="flex items-center gap-3 w-full">
                     <div className="w-6 h-6 rounded-full border-2 flex-shrink-0 flex items-center justify-center text-xs font-medium">
-                      {String.fromCharCode(65 + index)}
+                      {String.fromCharCode(65 + displayIdx)}
                     </div>
                     <span className="flex-1 text-wrap">{option}</span>
-                    
+
                     {showResult && isSelected && (
                       <div className="flex-shrink-0">
                         {isCorrectOption ? (
@@ -302,7 +332,7 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
                         )}
                       </div>
                     )}
-                    
+
                     {showResult && !isSelected && isCorrectOption && (
                       <div className="flex-shrink-0">
                         <CheckCircle className="w-5 h-5 text-green-600" />
