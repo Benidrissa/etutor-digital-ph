@@ -1494,7 +1494,28 @@
         }
       },
       "glossaryNoDrift": "Aucune dérive terminologique détectée pour ce cours.",
-      "viewGlossary": "Voir le glossaire complet"
+      "viewGlossary": "Voir le glossaire complet",
+      "reviewQueue": {
+        "pageTitle": "Revue qualité",
+        "pageDescription": "Triage transversal de ce que l'agent qualité autonome a signalé sur l'ensemble des cours.",
+        "intro": "Cours triés par attention nécessaire : unités bloquées (revue finale), unités en échec, puis unités à examiner.",
+        "filterHasIssues": "Masquer les cours sans signalement",
+        "loading": "Chargement de la file de revue…",
+        "error": "Impossible de charger la file de revue.",
+        "emptyClean": "Aucun cours ne nécessite d'attention pour le moment. L'agent autonome est satisfait.",
+        "emptyAll": "Aucun cours à afficher.",
+        "col": {
+          "course": "Cours",
+          "attention": "Attention",
+          "passing": "Réussies/Total",
+          "drift": "Dérive",
+          "lastAssessed": "Dernière éval.",
+          "lastRun": "Dernière analyse"
+        }
+      }
+    },
+    "quality": {
+      "title": "Qualité"
     }
   },
   "Courses": {

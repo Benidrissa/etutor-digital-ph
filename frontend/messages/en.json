@@ -1494,7 +1494,28 @@
         }
       },
       "glossaryNoDrift": "No glossary drift detected for this course.",
-      "viewGlossary": "View full glossary"
+      "viewGlossary": "View full glossary",
+      "reviewQueue": {
+        "pageTitle": "Quality review",
+        "pageDescription": "Cross-course triage of what the autonomous quality agent has flagged.",
+        "intro": "Courses sorted by attention needed: stalled units (final review), failed units, then needs-review units.",
+        "filterHasIssues": "Hide all-passing courses",
+        "loading": "Loading review queue…",
+        "error": "Could not load review queue.",
+        "emptyClean": "No courses currently need attention. The autonomous agent is happy.",
+        "emptyAll": "No courses to display.",
+        "col": {
+          "course": "Course",
+          "attention": "Attention",
+          "passing": "Passing/Total",
+          "drift": "Drift",
+          "lastAssessed": "Last assessed",
+          "lastRun": "Last run"
+        }
+      }
+    },
+    "quality": {
+      "title": "Quality"
     }
   },
   "Courses": {
