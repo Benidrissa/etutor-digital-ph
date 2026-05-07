@@ -12,6 +12,12 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import type { Quiz, QuizAnswerSubmission, SummativeAssessmentResponse } from '@/lib/api';
 import { submitSummativeAssessmentAttempt } from '@/lib/api';
 import { loadQuizState, saveQuizState, clearQuizState } from '@/lib/quiz-state-persistence';
+import {
+  buildQuizDisplayOrders,
+  displayToOriginal,
+  displayedOptions,
+  isValidPermutation,
+} from '@/lib/quiz-shuffle';
 
 interface SummativeAssessmentInterfaceProps {
   assessment: Quiz;
@@ -32,6 +38,10 @@ interface PersistedSummativeState {
   // Persist remaining time so a reload can't be exploited to reset the clock
   // back to a full timeLimit window.
   timeRemaining: number;
+  // Per-question permutation. Each entry maps display position -> original
+  // index. Persisted so a mid-attempt refresh keeps the same shuffle and the
+  // already-stored selectedOption indices stay valid.
+  displayOrders: number[][];
 }
 
 const TIMER_WARNING_MINUTES = 5; // Show warning when 5 minutes left
@@ -46,7 +56,19 @@ export function SummativeAssessmentInterface({
 
   // Assessment IDs are unique per generation, so a regenerate auto-invalidates this key.
   const storageKey = `summative-state:v1:${assessment.id}`;
-  const [restored] = useState(() => loadQuizState<PersistedSummativeState>(storageKey));
+  const [restored] = useState<PersistedSummativeState | null>(() => {
+    const raw = loadQuizState<PersistedSummativeState>(storageKey);
+    if (!raw) return null;
+    if (!Array.isArray(raw.displayOrders) || raw.displayOrders.length !== assessment.content.questions.length) {
+      return null;
+    }
+    for (let i = 0; i < raw.displayOrders.length; i++) {
+      if (!isValidPermutation(raw.displayOrders[i], assessment.content.questions[i].options.length)) {
+        return null;
+      }
+    }
+    return raw;
+  });
 
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(
     restored?.currentQuestionIndex ?? 0,
@@ -59,6 +81,9 @@ export function SummativeAssessmentInterface({
       })),
   );
   const [startTime] = useState(restored?.startTime ?? Date.now());
+  const [displayOrders] = useState<number[][]>(
+    () => restored?.displayOrders ?? buildQuizDisplayOrders(assessment.content.questions),
+  );
   // Reconstruct questionStartTime so the per-second tick keeps adding to the
   // already-recorded time on the current question instead of resetting to 0.
   const [questionStartTime, setQuestionStartTime] = useState(() => {
@@ -81,8 +106,9 @@ export function SummativeAssessmentInterface({
       questionStates,
       startTime,
       timeRemaining,
+      displayOrders,
     });
-  }, [storageKey, currentQuestionIndex, questionStates, startTime, timeRemaining]);
+  }, [storageKey, currentQuestionIndex, questionStates, startTime, timeRemaining, displayOrders]);
   
   const currentQuestion = assessment.content.questions[currentQuestionIndex];
   const currentState = questionStates[currentQuestionIndex];
@@ -303,19 +329,20 @@ export function SummativeAssessmentInterface({
         <CardContent className="space-y-4">
           {/* Answer Options */}
           <div className="space-y-3">
-            {currentQuestion.options.map((option, index) => {
-              const isSelected = currentState.selectedOption === index;
-              
+            {displayedOptions(currentQuestion, displayOrders[currentQuestionIndex]).map((option, displayIdx) => {
+              const originalIdx = displayToOriginal(displayOrders[currentQuestionIndex], displayIdx);
+              const isSelected = currentState.selectedOption === originalIdx;
+
               return (
                 <Button
-                  key={index}
+                  key={originalIdx}
                   variant={isSelected ? "default" : "outline"}
-                  onClick={() => handleOptionSelect(index)}
+                  onClick={() => handleOptionSelect(originalIdx)}
                   className="w-full min-h-11 h-auto p-4 text-left justify-start"
                 >
                   <div className="flex items-center gap-3 w-full">
                     <div className="w-6 h-6 rounded-full border-2 flex-shrink-0 flex items-center justify-center text-xs font-medium">
-                      {String.fromCharCode(65 + index)}
+                      {String.fromCharCode(65 + displayIdx)}
                     </div>
                     <span className="flex-1 text-wrap">{option}</span>
                   </div>
