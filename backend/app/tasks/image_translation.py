@@ -20,7 +20,7 @@ import asyncio
 import httpx
 import structlog
 from celery import Task
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -139,8 +139,21 @@ async def _run_backfill_with_factory(
 ) -> dict:
     async with session_factory() as session:
         stmt = select(SourceImage).where(
-            SourceImage.caption.is_not(None),
-            func.length(func.trim(SourceImage.caption)) > 0,
+            or_(
+                and_(
+                    SourceImage.caption.is_not(None),
+                    func.length(func.trim(SourceImage.caption)) > 0,
+                ),
+                # #2272: ingest now also translates rows that have no
+                # caption but do have figure_number + surrounding_text.
+                # Backfill follows so legacy rows with the same shape get
+                # picked up without requiring a re-extract.
+                SourceImage.figure_number.is_not(None),
+                and_(
+                    SourceImage.surrounding_text.is_not(None),
+                    func.length(func.trim(SourceImage.surrounding_text)) > 0,
+                ),
+            ),
             or_(
                 SourceImage.caption_fr.is_(None),
                 SourceImage.caption_en.is_(None),
@@ -188,9 +201,18 @@ async def _run_backfill_with_factory(
 
         async def _translate_one(img):
             async with sem:
+                # Mirror the ingest fallback chain (#2272) so caption-less rows
+                # with figure_number + surrounding_text translate cleanly.
+                translator_input = (img.caption or "").strip()
+                if not translator_input and img.surrounding_text:
+                    translator_input = img.surrounding_text.strip()[:200]
+                if not translator_input and img.figure_number:
+                    translator_input = img.figure_number
+                if not translator_input:
+                    return img, None, ValueError("no translatable text")
                 try:
                     result = await translate_figure_caption(
-                        caption=img.caption or "",
+                        caption=translator_input,
                         image_type=img.image_type,
                         figure_number=img.figure_number,
                     )

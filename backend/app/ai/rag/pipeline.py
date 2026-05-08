@@ -281,23 +281,40 @@ class RAGPipeline:
             caption_en: str | None = None
             alt_text_fr: str | None = None
             alt_text_en: str | None = None
-            if img.caption and img.caption.strip():
-                try:
-                    translation = await translate_figure_caption(
-                        caption=img.caption,
-                        image_type=img.image_type,
-                        figure_number=img.figure_number,
-                    )
-                    caption_fr = translation.caption_fr
-                    caption_en = translation.caption_en
-                    alt_text_fr = translation.alt_text_fr
-                    alt_text_en = translation.alt_text_en
-                except Exception as exc:
+            # Broader gate than "caption is non-empty" (#2272): figures whose
+            # caption block didn't survive extraction still have a figure
+            # number + surrounding text, and that's enough for Claude to
+            # write a usable FR/EN caption + alt text. Without this fallback
+            # locale columns stayed NULL and the frontend dropped to the
+            # English caption (or just "Figure X.Y" when even that was empty).
+            translator_input = (img.caption or "").strip()
+            if not translator_input and img.surrounding_text:
+                translator_input = img.surrounding_text.strip()[:200]
+            if not translator_input and img.figure_number:
+                translator_input = img.figure_number
+            if translator_input:
+                last_exc: Exception | None = None
+                for _ in range(2):
+                    try:
+                        translation = await translate_figure_caption(
+                            caption=translator_input,
+                            image_type=img.image_type,
+                            figure_number=img.figure_number,
+                        )
+                        caption_fr = translation.caption_fr
+                        caption_en = translation.caption_en
+                        alt_text_fr = translation.alt_text_fr
+                        alt_text_en = translation.alt_text_en
+                        last_exc = None
+                        break
+                    except Exception as exc:
+                        last_exc = exc
+                if last_exc is not None:
                     logger.warning(
-                        "Failed to translate figure caption, storing without locale fields",
+                        "Failed to translate figure caption after retry; storing NULL locales",
                         source=source,
                         figure_number=img.figure_number,
-                        error=str(exc),
+                        error=str(last_exc),
                     )
 
             figure_kind: str | None = None

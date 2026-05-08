@@ -554,6 +554,106 @@ class TestRasterizeFullPageAsFigure:
 
         assert result is None
 
+    def test_caption_bbox_anchors_metadata_to_caption_block(self):
+        """When caption_bbox is provided, metadata is taken from that block.
+
+        Without anchoring, ``_extract_figure_metadata`` was given ``page.rect``
+        and grabbed the FIRST 'Figure X.Y' anywhere on the page — including
+        body-text references that came before the real caption (#2272).
+        """
+        body = "Earlier we showed Figure 9.9 in chapter 9."
+        caption_text = "Figure 1.3 Types of Competitive Advantage"
+        page = MagicMock()
+        page.get_text.side_effect = lambda mode=None: (
+            f"{body} {caption_text}"
+            if mode != "dict"
+            else {
+                "blocks": [
+                    {
+                        "type": 0,
+                        "bbox": (50, 50, 562, 100),
+                        "lines": [{"spans": [{"text": body}]}],
+                    },
+                    {
+                        "type": 0,
+                        "bbox": (50, 700, 562, 750),
+                        "lines": [{"spans": [{"text": caption_text}]}],
+                    },
+                ]
+            }
+        )
+        page.rect = pymupdf.Rect(0, 0, 612, 792)
+        mock_pixmap = MagicMock()
+        mock_pixmap.tobytes.return_value = _make_minimal_png(612, 792)
+        mock_pixmap.width = 612
+        mock_pixmap.height = 792
+        page.get_pixmap.return_value = mock_pixmap
+
+        patterns = _build_figure_patterns(BOOKS["generic"])
+        caption_bbox = pymupdf.Rect(50, 700, 562, 750)
+        result = self.extractor._rasterize_full_page_as_figure(
+            page, 1, patterns, caption_bbox=caption_bbox
+        )
+
+        assert result is not None
+        assert result.figure_number is not None
+        assert "1.3" in result.figure_number
+        # The caption picked up the text after "Figure 1.3", not the
+        # body-text "Figure 9.9" elsewhere on the page.
+        assert result.caption is not None
+        assert "Competitive Advantage" in result.caption
+
+
+class TestFindLeadingCaptionBlock:
+    """Tests for the block-leading caption detection helper."""
+
+    def setup_method(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.extractor = PDFImageExtractor(Path(self.temp_dir))
+
+    def teardown_method(self):
+        import shutil
+
+        shutil.rmtree(self.temp_dir)
+
+    def _patterns(self):
+        return _build_figure_patterns(BOOKS["generic"])
+
+    def test_block_leading_match_returns_bbox(self):
+        page = MagicMock()
+        page.get_text.return_value = {
+            "blocks": [
+                {
+                    "type": 0,
+                    "bbox": (10, 600, 600, 650),
+                    "lines": [{"spans": [{"text": "Figure 1.3 A diagram"}]}],
+                }
+            ]
+        }
+        bbox = self.extractor._find_leading_caption_block(page, self._patterns())
+        assert bbox is not None
+        assert bbox.x0 == 10 and bbox.y0 == 600
+
+    def test_inline_reference_returns_none(self):
+        page = MagicMock()
+        page.get_text.return_value = {
+            "blocks": [
+                {
+                    "type": 0,
+                    "bbox": (10, 100, 600, 150),
+                    "lines": [{"spans": [{"text": "As shown in Figure 1.3, the result holds."}]}],
+                }
+            ]
+        }
+        bbox = self.extractor._find_leading_caption_block(page, self._patterns())
+        assert bbox is None
+
+    def test_get_text_dict_failure_returns_none(self):
+        page = MagicMock()
+        page.get_text.side_effect = RuntimeError("pdf failure")
+        bbox = self.extractor._find_leading_caption_block(page, self._patterns())
+        assert bbox is None
+
 
 class TestExtractNonXrefFigures:
     """Tests for the multi-strategy non-xref figure extraction."""
@@ -643,14 +743,55 @@ class TestExtractNonXrefFigures:
         results = self.extractor._extract_non_xref_figures(page, 1, patterns, [existing_bbox])
         assert len(results) >= 1
 
-    def test_no_drawings_figure_text_triggers_full_page(self):
+    def test_no_drawings_inline_figure_reference_does_not_trigger(self):
+        """Body-text page that only mentions 'Figure X.Y' inline must NOT rasterize.
+
+        Regression #2272: full body-text pages were being indexed as figures
+        whenever the text contained any 'Figure X.Y' substring, including
+        passing references like '...as shown in Figure 1.1...'.
+        """
         page = MagicMock()
         page.get_drawings.return_value = []
+        body_text = "Some body text mentioning Figure 3 in the middle of a sentence"
         page.get_text.side_effect = lambda mode=None: (
-            "Figure 3 shows the distribution" if mode != "dict" else {"blocks": []}
+            body_text
+            if mode != "dict"
+            else {
+                "blocks": [
+                    {
+                        "type": 0,
+                        "bbox": (50, 100, 562, 150),
+                        "lines": [{"spans": [{"text": body_text}]}],
+                    }
+                ]
+            }
         )
         page.rect = pymupdf.Rect(0, 0, 612, 792)
 
+        patterns = self._make_figure_patterns()
+
+        results = self.extractor._extract_non_xref_figures(page, 1, patterns, [])
+        assert results == []
+
+    def test_drawings_with_block_leading_caption_triggers_full_page(self):
+        """One drawing + a 'Figure X.Y …' block-leading caption rasterizes."""
+        page = MagicMock()
+        page.get_drawings.return_value = [{"rect": pymupdf.Rect(100, 100, 300, 300)}]
+        caption_text = "Figure 1.3 Types of Competitive Advantage"
+        page.get_text.side_effect = lambda mode=None: (
+            caption_text
+            if mode != "dict"
+            else {
+                "blocks": [
+                    {
+                        "type": 0,
+                        "bbox": (50, 600, 562, 650),
+                        "lines": [{"spans": [{"text": caption_text}]}],
+                    }
+                ]
+            }
+        )
+        page.rect = pymupdf.Rect(0, 0, 612, 792)
         mock_pixmap = MagicMock()
         mock_pixmap.tobytes.return_value = _make_minimal_png(612, 792)
         mock_pixmap.width = 612
@@ -661,6 +802,33 @@ class TestExtractNonXrefFigures:
 
         results = self.extractor._extract_non_xref_figures(page, 1, patterns, [])
         assert len(results) == 1
+        assert results[0].figure_number is not None
+        assert "1.3" in results[0].figure_number
+
+    def test_drawings_with_only_inline_reference_does_not_trigger(self):
+        """Drawings present but no block-leading caption (only mid-block reference) → no rasterize."""
+        page = MagicMock()
+        page.get_drawings.return_value = [{"rect": pymupdf.Rect(100, 100, 300, 300)}]
+        body_text = "...as discussed in Figure 1.1, the data shows..."
+        page.get_text.side_effect = lambda mode=None: (
+            body_text
+            if mode != "dict"
+            else {
+                "blocks": [
+                    {
+                        "type": 0,
+                        "bbox": (50, 100, 562, 150),
+                        "lines": [{"spans": [{"text": body_text}]}],
+                    }
+                ]
+            }
+        )
+        page.rect = pymupdf.Rect(0, 0, 612, 792)
+
+        patterns = self._make_figure_patterns()
+
+        results = self.extractor._extract_non_xref_figures(page, 1, patterns, [])
+        assert results == []
 
     def test_no_drawings_no_figure_text_returns_empty(self):
         page = MagicMock()

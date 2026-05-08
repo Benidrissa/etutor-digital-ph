@@ -23,6 +23,7 @@ def _make_row(
     rag_collection_id: str | None = "course-1",
     image_type: str = "diagram",
     figure_number: str | None = "1.1",
+    surrounding_text: str | None = None,
 ) -> MagicMock:
     row = MagicMock()
     row.id = uuid.uuid4()
@@ -34,6 +35,7 @@ def _make_row(
     row.rag_collection_id = rag_collection_id
     row.image_type = image_type
     row.figure_number = figure_number
+    row.surrounding_text = surrounding_text
     return row
 
 
@@ -179,6 +181,80 @@ class TestRunBackfillWithFactory:
         assert fail_row.caption_fr is None
         for row in ok_rows:
             assert row.caption_fr == "caption_fr"
+
+    async def test_caption_none_but_surrounding_text_translated_via_fallback(self):
+        """#2272: rows with NULL caption + figure_number translate using surrounding_text."""
+        captured: dict[str, str] = {}
+
+        async def _capture(*, caption, **_):
+            captured["input"] = caption
+            return _translation()
+
+        rows = [
+            _make_row(
+                caption=None,
+                figure_number="1.4",
+                surrounding_text="A surveillance dashboard with weekly case counts.",
+            )
+        ]
+        session = _FakeSession(rows)
+        task = MagicMock()
+        mock_tx = AsyncMock(side_effect=_capture)
+        with patch.object(image_translation, "translate_figure_caption", new=mock_tx):
+            result = await image_translation._run_backfill_with_factory(
+                task=task,
+                rag_collection_id=None,
+                limit=None,
+                dry_run=False,
+                session_factory=_FakeSessionFactory(session),
+            )
+
+        assert result["translated"] == 1
+        assert captured["input"].startswith("A surveillance dashboard")
+        assert rows[0].caption_fr == "caption_fr"
+
+    async def test_caption_and_surrounding_text_none_uses_figure_number_fallback(self):
+        """When caption + surrounding_text are both empty, figure_number is the input."""
+        captured: dict[str, str] = {}
+
+        async def _capture(*, caption, **_):
+            captured["input"] = caption
+            return _translation()
+
+        rows = [_make_row(caption=None, figure_number="2.7", surrounding_text=None)]
+        session = _FakeSession(rows)
+        task = MagicMock()
+        mock_tx = AsyncMock(side_effect=_capture)
+        with patch.object(image_translation, "translate_figure_caption", new=mock_tx):
+            result = await image_translation._run_backfill_with_factory(
+                task=task,
+                rag_collection_id=None,
+                limit=None,
+                dry_run=False,
+                session_factory=_FakeSessionFactory(session),
+            )
+
+        assert result["translated"] == 1
+        assert captured["input"] == "2.7"
+
+    async def test_row_with_no_translatable_text_is_marked_failed(self):
+        """Edge case: row leaks past the SQL filter with no usable input → counted failed."""
+        rows = [_make_row(caption=None, figure_number=None, surrounding_text=None)]
+        session = _FakeSession(rows)
+        task = MagicMock()
+        mock_tx = AsyncMock(return_value=_translation())
+        with patch.object(image_translation, "translate_figure_caption", new=mock_tx):
+            result = await image_translation._run_backfill_with_factory(
+                task=task,
+                rag_collection_id=None,
+                limit=None,
+                dry_run=False,
+                session_factory=_FakeSessionFactory(session),
+            )
+
+        assert result["translated"] == 0
+        assert result["failed"] == 1
+        mock_tx.assert_not_awaited()
 
     async def test_empty_eligible_set_returns_noop(self):
         session = _FakeSession([])
