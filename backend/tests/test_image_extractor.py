@@ -641,13 +641,7 @@ class TestFindLeadingCaptionBlock:
                 {
                     "type": 0,
                     "bbox": (10, 100, 600, 150),
-                    "lines": [
-                        {
-                            "spans": [
-                                {"text": "As shown in Figure 1.3, the result holds."}
-                            ]
-                        }
-                    ],
+                    "lines": [{"spans": [{"text": "As shown in Figure 1.3, the result holds."}]}],
                 }
             ]
         }
