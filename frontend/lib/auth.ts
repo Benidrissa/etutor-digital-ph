@@ -342,19 +342,25 @@ class AuthClient {
 
   /**
    * Get a valid (non-expired) access token, refreshing if needed.
-   * Throws AuthError if no refresh token is available or refresh fails.
+   * Throws AuthError if refresh fails.
    */
   async getValidToken(): Promise<string> {
     if (this.accessToken && !this.isTokenExpired(this.accessToken)) {
       return this.accessToken;
     }
 
-    if (!this.refreshToken) {
+    // Access token missing or expired. The HttpOnly refresh_token cookie is
+    // the canonical store (#2112) — try /refresh unconditionally and let the
+    // backend decide whether the session is still alive. The in-memory
+    // this.refreshToken is null after a page reload and must not gate this.
+    try {
+      await this.refreshAccessToken();
+    } catch (err) {
       this.clearTokens();
-      throw new AuthError('Session expired. Please log in again.', 401);
+      throw err instanceof AuthError
+        ? err
+        : new AuthError('Session expired. Please log in again.', 401);
     }
-
-    await this.refreshAccessToken();
 
     if (!this.accessToken) {
       this.clearTokens();
