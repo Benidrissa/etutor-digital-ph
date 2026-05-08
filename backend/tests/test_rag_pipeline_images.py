@@ -284,6 +284,164 @@ class TestRAGPipelineProcessPDFImages:
         assert mock_session.add.call_count == 3
 
     @pytest.mark.asyncio
+    async def test_translation_runs_when_caption_missing_but_figure_number_set(self):
+        """#2272: figure with empty caption + figure_number should still translate.
+
+        Pre-fix the gate `if img.caption and img.caption.strip()` skipped
+        translation entirely, so caption_fr/caption_en stayed NULL and the
+        frontend dropped to the (also NULL) raw caption fallback. The fix
+        runs translation with surrounding_text as the input.
+        """
+        from app.ai.translation.figure_translator import FigureTranslation
+
+        pdf_path = Path(self.temp_dir) / "test.pdf"
+        pdf_path.touch()
+
+        fake_image = _make_extracted_image(
+            caption=None,
+            figure_number="Figure 1.2",
+            surrounding_text="A diagram showing the surveillance system architecture.",
+        )
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=MagicMock())
+
+        translation_stub = FigureTranslation(
+            caption_fr="Architecture du système de surveillance",
+            caption_en="Surveillance system architecture",
+            alt_text_fr="Schéma d'architecture",
+            alt_text_en="Architecture diagram",
+        )
+
+        with (
+            patch(
+                "app.ai.rag.pipeline.PDFImageExtractor.extract_images_from_pdf",
+                return_value=[fake_image],
+            ),
+            patch(
+                "app.ai.rag.pipeline.S3StorageService.upload_bytes",
+                new_callable=AsyncMock,
+                return_value="http://minio/key.webp",
+            ),
+            patch(
+                "app.ai.rag.pipeline.translate_figure_caption",
+                new_callable=AsyncMock,
+                return_value=translation_stub,
+            ) as mock_translate,
+            patch.object(
+                ImageLinker, "link_images_to_chunks", new_callable=AsyncMock, return_value=0
+            ),
+        ):
+            count = await self.pipeline.process_pdf_images(
+                pdf_path=str(pdf_path),
+                source="donaldson",
+                session=mock_session,
+            )
+
+        assert count == 1
+        mock_translate.assert_called_once()
+        call_kwargs = mock_translate.call_args.kwargs
+        assert call_kwargs["figure_number"] == "Figure 1.2"
+        # surrounding_text was used as the input (truncated to 200 chars).
+        assert call_kwargs["caption"].startswith("A diagram showing")
+
+        added_image = mock_session.add.call_args[0][0]
+        assert added_image.caption_fr == "Architecture du système de surveillance"
+        assert added_image.caption_en == "Surveillance system architecture"
+        assert added_image.alt_text_fr == "Schéma d'architecture"
+        assert added_image.alt_text_en == "Architecture diagram"
+
+    @pytest.mark.asyncio
+    async def test_translation_retries_once_on_failure(self):
+        """Transient translation failures retry once before giving up."""
+        from app.ai.translation.figure_translator import FigureTranslation
+
+        pdf_path = Path(self.temp_dir) / "test.pdf"
+        pdf_path.touch()
+
+        fake_image = _make_extracted_image()
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=MagicMock())
+
+        translation_stub = FigureTranslation(
+            caption_fr="FR", caption_en="EN", alt_text_fr="FR alt", alt_text_en="EN alt"
+        )
+
+        translate_mock = AsyncMock(side_effect=[RuntimeError("transient"), translation_stub])
+
+        with (
+            patch(
+                "app.ai.rag.pipeline.PDFImageExtractor.extract_images_from_pdf",
+                return_value=[fake_image],
+            ),
+            patch(
+                "app.ai.rag.pipeline.S3StorageService.upload_bytes",
+                new_callable=AsyncMock,
+                return_value="http://minio/key.webp",
+            ),
+            patch("app.ai.rag.pipeline.translate_figure_caption", translate_mock),
+            patch.object(
+                ImageLinker, "link_images_to_chunks", new_callable=AsyncMock, return_value=0
+            ),
+        ):
+            count = await self.pipeline.process_pdf_images(
+                pdf_path=str(pdf_path),
+                source="donaldson",
+                session=mock_session,
+            )
+
+        assert count == 1
+        assert translate_mock.call_count == 2
+        added_image = mock_session.add.call_args[0][0]
+        assert added_image.caption_fr == "FR"
+
+    @pytest.mark.asyncio
+    async def test_translation_failure_after_retry_stores_with_null_locale(self):
+        """Two consecutive translation failures: row stored with NULL locale columns."""
+        pdf_path = Path(self.temp_dir) / "test.pdf"
+        pdf_path.touch()
+
+        fake_image = _make_extracted_image()
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=MagicMock())
+
+        translate_mock = AsyncMock(
+            side_effect=[RuntimeError("first fail"), RuntimeError("second fail")]
+        )
+
+        with (
+            patch(
+                "app.ai.rag.pipeline.PDFImageExtractor.extract_images_from_pdf",
+                return_value=[fake_image],
+            ),
+            patch(
+                "app.ai.rag.pipeline.S3StorageService.upload_bytes",
+                new_callable=AsyncMock,
+                return_value="http://minio/key.webp",
+            ),
+            patch("app.ai.rag.pipeline.translate_figure_caption", translate_mock),
+            patch.object(
+                ImageLinker, "link_images_to_chunks", new_callable=AsyncMock, return_value=0
+            ),
+        ):
+            count = await self.pipeline.process_pdf_images(
+                pdf_path=str(pdf_path),
+                source="donaldson",
+                session=mock_session,
+            )
+
+        assert count == 1
+        assert translate_mock.call_count == 2
+        added_image = mock_session.add.call_args[0][0]
+        assert added_image.caption_fr is None
+        assert added_image.caption_en is None
+
+    @pytest.mark.asyncio
     async def test_rag_collection_id_stored_in_db_record(self):
         pdf_path = Path(self.temp_dir) / "test.pdf"
         pdf_path.touch()
