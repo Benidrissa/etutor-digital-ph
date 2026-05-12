@@ -8,7 +8,6 @@ import { Search, Download, Upload, UserPlus, MoreVertical, UserCheck, UserX, Shi
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-
 import {
   AlertDialog,
   AlertDialogContent,
@@ -404,15 +403,15 @@ export function UserListClient() {
               : t("userCount", { count: users.length })}
           </p>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="table-fixed w-full text-sm">
               <thead>
                 <tr className="border-b text-muted-foreground text-left">
                   <th className="pb-2 pr-4">{t("name")}</th>
-                  <th className="pb-2 pr-4">{t("role")}</th>
-                  <th className="pb-2 pr-4">{t("contact")}</th>
-                  <th className="pb-2 pr-4">{t("country")}</th>
-                  <th className="pb-2 pr-4">Level</th>
-                  <th className="pb-2" />
+                  <th className="pb-2 pr-4 w-28">{t("role")}</th>
+                  <th className="pb-2 pr-4 w-48">{t("contact")}</th>
+                  <th className="pb-2 pr-4 w-28">{t("country")}</th>
+                  <th className="pb-2 pr-4 w-24">{t("levelHeader")}</th>
+                  <th className="pb-2 w-12" />
                 </tr>
               </thead>
               <tbody>
@@ -595,7 +594,7 @@ function UserRow({
       <td className="py-2 pr-4">
         <Badge variant={roleVariant}>{tRoles(user.role)}</Badge>
       </td>
-      <td className="py-2 pr-4 max-w-[200px]">
+      <td className="py-2 pr-4">
         {user.email && <p className="truncate text-muted-foreground text-xs">{user.email}</p>}
         {user.phone_number && <p className="truncate text-muted-foreground text-xs">{user.phone_number}</p>}
       </td>
