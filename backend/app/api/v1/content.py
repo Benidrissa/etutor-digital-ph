@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.ai.claude_service import ClaudeService
 from app.ai.rag.embeddings import EmbeddingService
@@ -1490,7 +1491,11 @@ async def get_module_units(
         )
 
     try:
-        module_query = select(Module).where(Module.id == resolved_module_id)
+        module_query = (
+            select(Module)
+            .options(selectinload(Module.course))
+            .where(Module.id == resolved_module_id)
+        )
         module_result = await session.execute(module_query)
         module = module_result.scalar_one_or_none()
 
@@ -1545,6 +1550,7 @@ async def get_module_units(
             learning_objectives_fr=module.learning_objectives_fr,
             learning_objectives_en=module.learning_objectives_en,
             units=public_units,
+            course_slug=module.course.slug if module.course else None,
         )
 
     except HTTPException:
