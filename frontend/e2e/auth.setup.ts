@@ -21,6 +21,12 @@ import path from 'node:path';
 
 import { applyAuthToLocalStorage, loginViaApi, PERSONAS, type Persona } from './fixtures/auth';
 
+// Serial mode — running 4 persona setup tests in parallel races on
+// page.context().storageState() and some files end up missing localStorage
+// entries set by an earlier evaluate. Serial setup keeps all 4 outputs
+// complete; total cost ~6s vs the parallel cost of flaky CI.
+setup.describe.configure({ mode: 'serial' });
+
 const STAGING_URL =
   process.env.STAGING_URL ?? 'https://etutor.elearning.portfolio2.kimbetien.com';
 
