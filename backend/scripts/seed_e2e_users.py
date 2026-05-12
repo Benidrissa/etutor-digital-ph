@@ -63,10 +63,10 @@ from app.domain.services.password_service import PasswordService
 logger = structlog.get_logger(__name__)
 
 _ENV_PASSWORD_KEYS = {
-    "e2e-learner@sira-test.local":    "E2E_LEARNER_PASSWORD",
-    "e2e-org-owner@sira-test.local":  "E2E_ORG_OWNER_PASSWORD",
-    "e2e-sub-admin@sira-test.local":  "E2E_SUB_ADMIN_PASSWORD",
-    "e2e-admin@sira-test.local":      "E2E_ADMIN_PASSWORD",
+    "e2e-learner@sira-test.local": "E2E_LEARNER_PASSWORD",
+    "e2e-org-owner@sira-test.local": "E2E_ORG_OWNER_PASSWORD",
+    "e2e-sub-admin@sira-test.local": "E2E_SUB_ADMIN_PASSWORD",
+    "e2e-admin@sira-test.local": "E2E_ADMIN_PASSWORD",
 }
 
 
@@ -80,8 +80,7 @@ def _load_passwords() -> dict[str, str]:
         passwords[email] = val
     if missing:
         raise RuntimeError(
-            f"Required env vars not set: {', '.join(missing)}\n"
-            "See script docstring for usage."
+            f"Required env vars not set: {', '.join(missing)}\nSee script docstring for usage."
         )
     return passwords
 
@@ -113,6 +112,7 @@ def _make_fixtures(passwords: dict[str, str]) -> list[dict]:
             "role": UserRole.admin,
         },
     ]
+
 
 ORG_NAME = "E2E Test Org"
 ORG_SLUG = "e2e-test-org"
