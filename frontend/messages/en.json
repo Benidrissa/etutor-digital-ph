@@ -271,6 +271,7 @@
   },
   "ModuleOverview": {
     "backToModules": "Back to Modules",
+    "backToCourse": "Back to course",
     "level": "Level {level}",
     "estimatedDuration": "Estimated duration",
     "hours": "{count, plural, one {# hour} other {# hours}}",
