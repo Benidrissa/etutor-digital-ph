@@ -1095,6 +1095,7 @@
       "role": "Rôle",
       "language": "Langue",
       "country": "Pays",
+      "contact": "Contact",
       "creating": "Création...",
       "userCreated": "Utilisateur créé avec succès",
       "importTitle": "Importer des utilisateurs depuis CSV",
