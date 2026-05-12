@@ -4,13 +4,22 @@ Idempotent: re-runs are safe and skip rows that already exist.
 Closes part of issue #2109 (production-readiness epic #2123).
 
 Usage:
-    cd backend && DATABASE_URL=postgresql://... python scripts/seed_e2e_users.py
+    cd backend && \
+      DATABASE_URL=postgresql://... \
+      E2E_LEARNER_PASSWORD=... \
+      E2E_ORG_OWNER_PASSWORD=... \
+      E2E_SUB_ADMIN_PASSWORD=... \
+      E2E_ADMIN_PASSWORD=... \
+      python scripts/seed_e2e_users.py
 
-Output:
-    Prints a credentials manifest to stdout. Operator copies it into
-    1Password (vault: sira-staging-test) and GitHub Actions secrets:
-    E2E_LEARNER_PASSWORD, E2E_ORG_OWNER_PASSWORD,
-    E2E_SUB_ADMIN_PASSWORD, E2E_ADMIN_PASSWORD.
+Required env vars:
+    E2E_LEARNER_PASSWORD     — password for e2e-learner@sira-test.local
+    E2E_ORG_OWNER_PASSWORD   — password for e2e-org-owner@sira-test.local
+    E2E_SUB_ADMIN_PASSWORD   — password for e2e-sub-admin@sira-test.local
+    E2E_ADMIN_PASSWORD       — password for e2e-admin@sira-test.local
+
+Store in 1Password (vault: sira-staging-test) and as GitHub Actions secrets
+under the same names.
 
 Provisions on the target DB:
     Users:
@@ -53,32 +62,57 @@ from app.domain.services.password_service import PasswordService
 
 logger = structlog.get_logger(__name__)
 
-FIXTURES = [
-    {
-        "email": "e2e-learner@sira-test.local",
-        "name": "E2E Learner",
-        "password": "E2E-Learner-2026!",
-        "role": UserRole.user,
-    },
-    {
-        "email": "e2e-org-owner@sira-test.local",
-        "name": "E2E Org Owner",
-        "password": "E2E-OrgOwner-2026!",
-        "role": UserRole.user,
-    },
-    {
-        "email": "e2e-sub-admin@sira-test.local",
-        "name": "E2E Sub Admin",
-        "password": "E2E-SubAdmin-2026!",
-        "role": UserRole.sub_admin,
-    },
-    {
-        "email": "e2e-admin@sira-test.local",
-        "name": "E2E Admin",
-        "password": "E2E-Admin-2026!",
-        "role": UserRole.admin,
-    },
-]
+_ENV_PASSWORD_KEYS = {
+    "e2e-learner@sira-test.local":    "E2E_LEARNER_PASSWORD",
+    "e2e-org-owner@sira-test.local":  "E2E_ORG_OWNER_PASSWORD",
+    "e2e-sub-admin@sira-test.local":  "E2E_SUB_ADMIN_PASSWORD",
+    "e2e-admin@sira-test.local":      "E2E_ADMIN_PASSWORD",
+}
+
+
+def _load_passwords() -> dict[str, str]:
+    passwords: dict[str, str] = {}
+    missing: list[str] = []
+    for email, env_key in _ENV_PASSWORD_KEYS.items():
+        val = os.environ.get(env_key, "").strip()
+        if not val:
+            missing.append(env_key)
+        passwords[email] = val
+    if missing:
+        raise RuntimeError(
+            f"Required env vars not set: {', '.join(missing)}\n"
+            "See script docstring for usage."
+        )
+    return passwords
+
+
+def _make_fixtures(passwords: dict[str, str]) -> list[dict]:
+    return [
+        {
+            "email": "e2e-learner@sira-test.local",
+            "name": "E2E Learner",
+            "password": passwords["e2e-learner@sira-test.local"],
+            "role": UserRole.user,
+        },
+        {
+            "email": "e2e-org-owner@sira-test.local",
+            "name": "E2E Org Owner",
+            "password": passwords["e2e-org-owner@sira-test.local"],
+            "role": UserRole.user,
+        },
+        {
+            "email": "e2e-sub-admin@sira-test.local",
+            "name": "E2E Sub Admin",
+            "password": passwords["e2e-sub-admin@sira-test.local"],
+            "role": UserRole.sub_admin,
+        },
+        {
+            "email": "e2e-admin@sira-test.local",
+            "name": "E2E Admin",
+            "password": passwords["e2e-admin@sira-test.local"],
+            "role": UserRole.admin,
+        },
+    ]
 
 ORG_NAME = "E2E Test Org"
 ORG_SLUG = "e2e-test-org"
@@ -210,6 +244,9 @@ async def upsert_enrollment(session: AsyncSession, *, user_id, course_id) -> Non
 
 
 async def seed() -> None:
+    passwords = _load_passwords()
+    fixtures = _make_fixtures(passwords)
+
     database_url = os.environ.get(
         "DATABASE_URL",
         "postgresql+asyncpg://postgres:postgres@localhost:5432/santepublique",
@@ -225,7 +262,7 @@ async def seed() -> None:
     async with Session() as session:
         # Users
         users: dict[str, User] = {}
-        for fixture in FIXTURES:
+        for fixture in fixtures:
             users[fixture["email"]] = await upsert_user(session, fixture, hasher)
         await session.commit()
 
@@ -306,9 +343,9 @@ async def seed() -> None:
     print("=" * 60)
     print(f"DB target: {database_url.split('@')[-1] if '@' in database_url else database_url}")
     print()
-    print("Credentials:")
-    for f in FIXTURES:
-        print(f"  {f['email']:40s} | password: {f['password']}")
+    print("Accounts seeded (passwords sourced from env vars — see below):")
+    for email, env_key in _ENV_PASSWORD_KEYS.items():
+        print(f"  {email:40s} | ${env_key}")
     print()
     print(f"Org slug:                       {ORG_SLUG}")
     print(f"Published course slug:          {COURSE_PUBLISHED_SLUG}")
@@ -317,10 +354,9 @@ async def seed() -> None:
     print(f"Private curriculum slug:        {CURRICULUM_PRIVATE_SLUG}")
     print(f"Activation code:                {ACTIVATION_CODE}")
     print()
-    print("GH Actions secrets to set:")
-    for f in FIXTURES:
-        env_name = f["email"].split("@")[0].replace("-", "_").upper() + "_PASSWORD"
-        print(f"  {env_name}={f['password']}")
+    print("Required GH Actions secrets:")
+    for env_key in _ENV_PASSWORD_KEYS.values():
+        print(f"  {env_key}")
     print("=" * 60)
 
 
