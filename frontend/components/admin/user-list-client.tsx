@@ -47,7 +47,7 @@ type PendingAction =
   | { type: "reactivate"; user: AdminUser }
   | { type: "promote"; user: AdminUser; newRole: "expert" | "admin" | "user" };
 
-const PAGE_SIZE = 50;
+const PAGE_SIZES = [10, 25, 50, 100] as const;
 
 function buildFilterQuery(params: {
   search: string;
@@ -72,10 +72,11 @@ function useAdminUsers(params: {
   role: string;
   isActive: string;
   offset: number;
+  limit: number;
 }) {
   const query = buildFilterQuery(params);
   query.set("offset", String(params.offset));
-  query.set("limit", String(PAGE_SIZE));
+  query.set("limit", String(params.limit));
 
   return useQuery<AdminUser[]>({
     queryKey: ["admin", "users", params],
@@ -113,6 +114,11 @@ export function UserListClient() {
   const [role, setRole] = useState("");
   const [isActive, setIsActive] = useState("");
   const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState<number>(50);
+  // px widths per column [name, role, contact, country, level, actions]; undefined = auto
+  const [colWidths, setColWidths] = useState<(number | undefined)[]>(
+    [undefined, 112, 192, 112, 96, 48]
+  );
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -134,7 +140,7 @@ export function UserListClient() {
 
   const filterParams = { search: debouncedSearch, country, level, role, isActive };
 
-  const { data: users, isLoading, error } = useAdminUsers({ ...filterParams, offset });
+  const { data: users, isLoading, error } = useAdminUsers({ ...filterParams, offset, limit: pageSize });
   const { data: countData } = useAdminUserCount(filterParams);
 
   const statusMutation = useMutation({
@@ -272,6 +278,26 @@ export function UserListClient() {
     URL.revokeObjectURL(url);
   };
 
+  const startResize = (e: React.MouseEvent, colIndex: number) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = colWidths[colIndex] ?? 96;
+    const onMove = (ev: MouseEvent) => {
+      const delta = ev.clientX - startX;
+      setColWidths((prev) => {
+        const next = [...prev];
+        next[colIndex] = Math.max(60, startWidth + delta);
+        return next;
+      });
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
+
   const confirmTitle =
     pendingAction?.type === "deactivate"
       ? t("confirmDeactivate")
@@ -405,13 +431,27 @@ export function UserListClient() {
           <div className="overflow-x-auto">
             <table className="table-fixed w-full text-sm">
               <thead>
-                <tr className="border-b text-muted-foreground text-left">
-                  <th className="pb-2 pr-4">{t("name")}</th>
-                  <th className="pb-2 pr-4 w-28">{t("role")}</th>
-                  <th className="pb-2 pr-4 w-48">{t("contact")}</th>
-                  <th className="pb-2 pr-4 w-28">{t("country")}</th>
-                  <th className="pb-2 pr-4 w-24">{t("levelHeader")}</th>
-                  <th className="pb-2 w-12" />
+                <tr className="border-b text-muted-foreground text-left select-none">
+                  <th className="pb-2 pr-4 relative" style={colWidths[0] !== undefined ? { width: colWidths[0] } : undefined}>
+                    {t("name")}
+                  </th>
+                  <th className="pb-2 pr-4 relative" style={{ width: colWidths[1] }}>
+                    {t("role")}
+                    <span className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-border" onMouseDown={(e) => startResize(e, 1)} />
+                  </th>
+                  <th className="pb-2 pr-4 relative" style={{ width: colWidths[2] }}>
+                    {t("contact")}
+                    <span className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-border" onMouseDown={(e) => startResize(e, 2)} />
+                  </th>
+                  <th className="pb-2 pr-4 relative" style={{ width: colWidths[3] }}>
+                    {t("country")}
+                    <span className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-border" onMouseDown={(e) => startResize(e, 3)} />
+                  </th>
+                  <th className="pb-2 pr-4 relative" style={{ width: colWidths[4] }}>
+                    {t("levelHeader")}
+                    <span className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-border" onMouseDown={(e) => startResize(e, 4)} />
+                  </th>
+                  <th className="pb-2" style={{ width: colWidths[5] }} />
                 </tr>
               </thead>
               <tbody>
@@ -432,36 +472,49 @@ export function UserListClient() {
               </tbody>
             </table>
           </div>
-          {countData && countData.count > PAGE_SIZE && (
+          {countData && countData.count > 0 && (
             <div className="flex items-center justify-between gap-3 pt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-11 min-w-11 gap-2"
-                disabled={offset === 0}
-                onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-                aria-label={t("prevPage")}
-              >
-                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-                <span className="hidden sm:inline">{t("prevPage")}</span>
-              </Button>
-              <span className="text-sm text-muted-foreground">
-                {t("pageIndicator", {
-                  page: Math.floor(offset / PAGE_SIZE) + 1,
-                  total: Math.ceil(countData.count / PAGE_SIZE),
-                })}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-11 min-w-11 gap-2"
-                disabled={offset + PAGE_SIZE >= countData.count}
-                onClick={() => setOffset(offset + PAGE_SIZE)}
-                aria-label={t("nextPage")}
-              >
-                <span className="hidden sm:inline">{t("nextPage")}</span>
-                <ChevronRight className="h-4 w-4" aria-hidden="true" />
-              </Button>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span>Rows</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => { setPageSize(Number(e.target.value)); setOffset(0); }}
+                  className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+                  aria-label="Rows per page"
+                >
+                  {PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="min-h-11 min-w-11 gap-2"
+                  disabled={offset === 0}
+                  onClick={() => setOffset(Math.max(0, offset - pageSize))}
+                  aria-label={t("prevPage")}
+                >
+                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                  <span className="hidden sm:inline">{t("prevPage")}</span>
+                </Button>
+                <span className="text-sm text-muted-foreground">
+                  {t("pageIndicator", {
+                    page: Math.floor(offset / pageSize) + 1,
+                    total: Math.ceil(countData.count / pageSize),
+                  })}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="min-h-11 min-w-11 gap-2"
+                  disabled={offset + pageSize >= countData.count}
+                  onClick={() => setOffset(offset + pageSize)}
+                  aria-label={t("nextPage")}
+                >
+                  <span className="hidden sm:inline">{t("nextPage")}</span>
+                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              </div>
             </div>
           )}
         </div>
