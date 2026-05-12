@@ -94,10 +94,6 @@ jobs:
   e2e:
     name: E2E Persona Suite (Playwright vs staging)
     runs-on: ubuntu-latest
-    # Non-blocking until fixture accounts are seeded on staging and
-    # E2E_*_PASSWORD secrets are configured in repo settings (#2109 runbook).
-    # Remove continue-on-error once the first clean green run is confirmed.
-    continue-on-error: true
     # Skip on push events (avoid running twice for PR + push). PR runs are
     # what gate merges. Workflow_dispatch keeps manual ad-hoc runs available.
     if: github.event_name != 'push' || github.ref == 'refs/heads/main'
