@@ -3,6 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const STAGING_URL =
   process.env.STAGING_URL || 'https://etutor.elearning.portfolio2.kimbetien.com';
+const PROD_URL = process.env.PROD_URL || 'https://app.sira-donnia.org';
 
 // Persona projects (#2116) authenticate via auth.setup.ts and load the saved
 // storageState file. New specs go under e2e/specs/{persona}/. Old flat specs
@@ -44,12 +45,12 @@ export default defineConfig({
     // they're migrated or retired (cleanup follow-up to #2116).
     {
       name: 'chromium',
-      testIgnore: ['**/specs/**', '**/auth.setup.ts'],
+      testIgnore: ['**/specs/**', '**/smoke/**', '**/auth.setup.ts'],
       use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'mobile-chrome',
-      testIgnore: ['**/specs/**', '**/auth.setup.ts'],
+      testIgnore: ['**/specs/**', '**/smoke/**', '**/auth.setup.ts'],
       use: { ...devices['Pixel 5'] },
     },
 
@@ -67,6 +68,15 @@ export default defineConfig({
     personaProject('03-org-owner'),
     personaProject('04-sub-admin'),
     personaProject('05-admin'),
+
+    // Production read-only smoke (#2116-5). Anonymous-only; targets PROD_URL
+    // (default https://sira-donnia.org). Run hourly via cron in #2118.
+    // Invoke locally with `--project=smoke`. No setup dependency — no auth.
+    {
+      name: 'smoke',
+      testDir: './e2e/smoke',
+      use: { ...devices['Desktop Chrome'], baseURL: PROD_URL },
+    },
   ],
 
   webServer:
