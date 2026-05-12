@@ -657,7 +657,7 @@ function UserRow({
       </td>
       <td className="py-2 pr-4 text-muted-foreground whitespace-nowrap text-xs">{user.country ?? "—"}</td>
       <td className="py-2 pr-4 text-muted-foreground whitespace-nowrap text-xs">{t("level", { level: user.current_level })}</td>
-      <td className="py-2 pr-4 text-muted-foreground whitespace-nowrap text-xs">{new Date(user.created_at).toLocaleDateString()}</td>
+      <td className="py-2 pr-4 text-muted-foreground whitespace-nowrap text-xs">{user.created_at.slice(0, 10)}</td>
       <td className="py-2">
         <DropdownMenu>
           <DropdownMenuTrigger
