@@ -1095,6 +1095,8 @@
       "role": "Role",
       "language": "Language",
       "country": "Country",
+      "contact": "Contact",
+      "levelHeader": "Level",
       "creating": "Creating...",
       "userCreated": "User created successfully",
       "importTitle": "Import Users from CSV",
