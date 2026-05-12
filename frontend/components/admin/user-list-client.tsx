@@ -8,7 +8,6 @@ import { Search, Download, Upload, UserPlus, MoreVertical, UserCheck, UserX, Shi
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -403,21 +402,35 @@ export function UserListClient() {
               ? t("userCountTotal", { count: countData.count })
               : t("userCount", { count: users.length })}
           </p>
-          <div className="flex flex-col gap-2">
-            {users.map((user) => (
-              <UserCard
-                key={user.id}
-                user={user}
-                onDeactivate={(u) => setPendingAction({ type: "deactivate", user: u })}
-                onReactivate={(u) => setPendingAction({ type: "reactivate", user: u })}
-                onPromote={(u, r) => setPendingAction({ type: "promote", user: u, newRole: r })}
-                onViewDetails={(u) =>
-                  startTransition(() =>
-                    router.push(`/${locale}/admin/users/${u.id}`)
-                  )
-                }
-              />
-            ))}
+          <div className="overflow-x-auto">
+            <table className="table-fixed w-full text-sm">
+              <thead>
+                <tr className="border-b text-muted-foreground text-left">
+                  <th className="pb-2 pr-4">{t("name")}</th>
+                  <th className="pb-2 pr-4 w-28">{t("role")}</th>
+                  <th className="pb-2 pr-4 w-48">{t("contact")}</th>
+                  <th className="pb-2 pr-4 w-28">{t("country")}</th>
+                  <th className="pb-2 pr-4 w-24">{t("levelHeader")}</th>
+                  <th className="pb-2 w-12" />
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((user) => (
+                  <UserRow
+                    key={user.id}
+                    user={user}
+                    onDeactivate={(u) => setPendingAction({ type: "deactivate", user: u })}
+                    onReactivate={(u) => setPendingAction({ type: "reactivate", user: u })}
+                    onPromote={(u, r) => setPendingAction({ type: "promote", user: u, newRole: r })}
+                    onViewDetails={(u) =>
+                      startTransition(() =>
+                        router.push(`/${locale}/admin/users/${u.id}`)
+                      )
+                    }
+                  />
+                ))}
+              </tbody>
+            </table>
           </div>
           {countData && countData.count > PAGE_SIZE && (
             <div className="flex items-center justify-between gap-3 pt-2">
@@ -546,7 +559,7 @@ export function UserListClient() {
   );
 }
 
-function UserCard({
+function UserRow({
   user,
   onDeactivate,
   onReactivate,
@@ -565,34 +578,29 @@ function UserCard({
   const roleVariant = user.role === "admin" ? "destructive" : user.role === "expert" ? "secondary" : "outline";
 
   return (
-    <Card className="p-4">
-      <div className="flex items-start justify-between gap-3">
+    <tr className="border-b last:border-0 align-middle hover:bg-muted/40 transition-colors">
+      <td className="py-2 pr-4">
         <button
-          className="flex flex-col gap-1 text-left min-w-0 flex-1"
+          className="flex items-center gap-2 text-left font-medium hover:underline"
           onClick={() => onViewDetails(user)}
           aria-label={t("viewDetails")}
         >
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-sm truncate">{user.name}</span>
-            <Badge variant={roleVariant}>{tRoles(user.role)}</Badge>
-            {!user.is_active && (
-              <Badge variant="destructive">{t("inactive")}</Badge>
-            )}
-          </div>
-          {user.email && (
-            <span className="text-xs text-muted-foreground truncate">{user.email}</span>
+          {user.name}
+          {!user.is_active && (
+            <Badge variant="destructive" className="text-xs">{t("inactive")}</Badge>
           )}
-          {user.phone_number && (
-            <span className="text-xs text-muted-foreground truncate">{user.phone_number}</span>
-          )}
-          <div className="flex items-center gap-3 mt-1 flex-wrap">
-            {user.country && (
-              <span className="text-xs text-muted-foreground">{user.country}</span>
-            )}
-            <span className="text-xs text-muted-foreground">{t("level", { level: user.current_level })}</span>
-          </div>
         </button>
-
+      </td>
+      <td className="py-2 pr-4">
+        <Badge variant={roleVariant}>{tRoles(user.role)}</Badge>
+      </td>
+      <td className="py-2 pr-4">
+        {user.email && <p className="truncate text-muted-foreground text-xs">{user.email}</p>}
+        {user.phone_number && <p className="truncate text-muted-foreground text-xs">{user.phone_number}</p>}
+      </td>
+      <td className="py-2 pr-4 text-muted-foreground whitespace-nowrap text-xs">{user.country ?? "—"}</td>
+      <td className="py-2 pr-4 text-muted-foreground whitespace-nowrap text-xs">{t("level", { level: user.current_level })}</td>
+      <td className="py-2">
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -642,7 +650,7 @@ function UserCard({
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
-    </Card>
+      </td>
+    </tr>
   );
 }
