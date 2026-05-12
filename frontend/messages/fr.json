@@ -1097,6 +1097,7 @@
       "country": "Pays",
       "contact": "Contact",
       "levelHeader": "Niveau",
+      "createdAt": "Créé le",
       "creating": "Création...",
       "userCreated": "Utilisateur créé avec succès",
       "importTitle": "Importer des utilisateurs depuis CSV",

@@ -115,9 +115,9 @@ export function UserListClient() {
   const [isActive, setIsActive] = useState("");
   const [offset, setOffset] = useState(0);
   const [pageSize, setPageSize] = useState<number>(50);
-  // px widths per column [name, role, contact, country, level, actions]; undefined = auto
+  // px widths per column [name, role, contact, country, level, created, actions]; undefined = auto
   const [colWidths, setColWidths] = useState<(number | undefined)[]>(
-    [undefined, 112, 192, 112, 96, 48]
+    [undefined, 112, 192, 112, 96, 112, 48]
   );
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -451,7 +451,11 @@ export function UserListClient() {
                     {t("levelHeader")}
                     <span className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-border" onMouseDown={(e) => startResize(e, 4)} />
                   </th>
-                  <th className="pb-2" style={{ width: colWidths[5] }} />
+                  <th className="pb-2 pr-4 relative" style={{ width: colWidths[5] }}>
+                    {t("createdAt")}
+                    <span className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-border" onMouseDown={(e) => startResize(e, 5)} />
+                  </th>
+                  <th className="pb-2" style={{ width: colWidths[6] }} />
                 </tr>
               </thead>
               <tbody>
@@ -653,6 +657,7 @@ function UserRow({
       </td>
       <td className="py-2 pr-4 text-muted-foreground whitespace-nowrap text-xs">{user.country ?? "—"}</td>
       <td className="py-2 pr-4 text-muted-foreground whitespace-nowrap text-xs">{t("level", { level: user.current_level })}</td>
+      <td className="py-2 pr-4 text-muted-foreground whitespace-nowrap text-xs">{new Date(user.created_at).toLocaleDateString()}</td>
       <td className="py-2">
         <DropdownMenu>
           <DropdownMenuTrigger
