@@ -72,6 +72,7 @@ class ModuleDetailWithProgressResponse(BaseModel):
     time_spent_minutes: int = 0
     last_accessed: str | None = None
     units: list[UnitProgressDetail] = Field(default_factory=list)
+    course_slug: str | None = None
 
 
 class CompleteLessonRequest(BaseModel):

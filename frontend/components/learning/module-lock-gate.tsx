@@ -78,6 +78,7 @@ export function ModuleLockGate({ moduleId, language }: ModuleLockGateProps) {
               quiz_score_avg: null,
               time_spent_minutes: 0,
               last_accessed: null,
+              course_slug: pub.course_slug,
               units: pub.units.map((u) => ({
                 id: u.id,
                 unit_number: u.unit_number,
@@ -104,13 +105,15 @@ export function ModuleLockGate({ moduleId, language }: ModuleLockGateProps) {
 
   const status = moduleData?.status ?? 'locked';
 
+  const backHref = moduleData?.course_slug ? `/courses/${moduleData.course_slug}` : '/modules';
+
   if (loading) {
     return (
       <div className="container mx-auto max-w-4xl px-4 py-6">
         <div className="mb-6">
           <Link href="/modules" className="inline-flex items-center text-stone-600 hover:text-stone-900 transition-colors">
             <ChevronLeft className="w-4 h-4 mr-1" />
-            {t('backToModules')}
+            {t('backToCourse')}
           </Link>
         </div>
         <div className="animate-pulse space-y-4">
@@ -129,9 +132,9 @@ export function ModuleLockGate({ moduleId, language }: ModuleLockGateProps) {
     return (
       <div className="container mx-auto max-w-4xl px-4 py-6">
         <div className="mb-6">
-          <Link href="/modules" className="inline-flex items-center text-stone-600 hover:text-stone-900 transition-colors">
+          <Link href={backHref} className="inline-flex items-center text-stone-600 hover:text-stone-900 transition-colors">
             <ChevronLeft className="w-4 h-4 mr-1" />
-            {t('backToModules')}
+            {t('backToCourse')}
           </Link>
         </div>
 
@@ -168,9 +171,9 @@ export function ModuleLockGate({ moduleId, language }: ModuleLockGateProps) {
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6">
       <div className="mb-6">
-        <Link href="/modules" className="inline-flex items-center text-stone-600 hover:text-stone-900 transition-colors">
+        <Link href={backHref} className="inline-flex items-center text-stone-600 hover:text-stone-900 transition-colors">
           <ChevronLeft className="w-4 h-4 mr-1" />
-          {t('backToModules')}
+          {t('backToCourse')}
         </Link>
       </div>
 

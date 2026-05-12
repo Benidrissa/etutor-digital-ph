@@ -309,6 +309,7 @@ class ModuleUnitsResponse(BaseModel):
     learning_objectives_fr: list[str] | None = None
     learning_objectives_en: list[str] | None = None
     units: list[PublicUnitDetail] = Field(default_factory=list)
+    course_slug: str | None = None
 
 
 class ErrorResponse(BaseModel):
