@@ -284,11 +284,13 @@ async def export_users_csv(
 
         if search:
             pattern = f"%{search}%"
-            stmt = stmt.where(or_(
-                User.name.ilike(pattern),
-                User.email.ilike(pattern),
-                User.phone_number.ilike(pattern),
-            ))
+            stmt = stmt.where(
+                or_(
+                    User.name.ilike(pattern),
+                    User.email.ilike(pattern),
+                    User.phone_number.ilike(pattern),
+                )
+            )
         if country:
             stmt = stmt.where(User.country == country)
         if level is not None:
@@ -373,11 +375,13 @@ async def count_users(
 
         if search:
             pattern = f"%{search}%"
-            stmt = stmt.where(or_(
-                User.name.ilike(pattern),
-                User.email.ilike(pattern),
-                User.phone_number.ilike(pattern),
-            ))
+            stmt = stmt.where(
+                or_(
+                    User.name.ilike(pattern),
+                    User.email.ilike(pattern),
+                    User.phone_number.ilike(pattern),
+                )
+            )
         if country:
             stmt = stmt.where(User.country == country)
         if level is not None:
@@ -415,11 +419,13 @@ async def list_users(
 
         if search:
             pattern = f"%{search}%"
-            stmt = stmt.where(or_(
-                User.name.ilike(pattern),
-                User.email.ilike(pattern),
-                User.phone_number.ilike(pattern),
-            ))
+            stmt = stmt.where(
+                or_(
+                    User.name.ilike(pattern),
+                    User.email.ilike(pattern),
+                    User.phone_number.ilike(pattern),
+                )
+            )
         if country:
             stmt = stmt.where(User.country == country)
         if level is not None:
