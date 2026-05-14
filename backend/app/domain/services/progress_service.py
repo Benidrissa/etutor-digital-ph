@@ -10,6 +10,7 @@ from uuid import UUID
 import structlog
 from sqlalchemy import case, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.domain.models.course import UserCourseEnrollment
 from app.domain.models.lesson_reading import LessonReading
@@ -448,7 +449,9 @@ class ProgressService:
         Return module detail with units and per-unit completion status,
         merging DB data with progress records.
         """
-        module_result = await self.db.execute(select(Module).where(Module.id == module_id))
+        module_result = await self.db.execute(
+            select(Module).options(selectinload(Module.course)).where(Module.id == module_id)
+        )
         module = module_result.scalar_one_or_none()
         if not module:
             raise ValueError(f"Module {module_id} not found")
@@ -509,6 +512,7 @@ class ProgressService:
                 progress.last_accessed.isoformat() if progress and progress.last_accessed else None
             ),
             "units": units_data,
+            "course_slug": module.course.slug if module.course else None,
         }
 
     # ------------------------------------------------------------------

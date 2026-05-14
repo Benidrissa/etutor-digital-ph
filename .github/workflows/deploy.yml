@@ -301,6 +301,7 @@ jobs:
           host: 167.86.115.58
           username: deploy
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 30m
           envs: GHCR_USER,GHCR_TOKEN,POSTGRES_PASSWORD,ANTHROPIC_API_KEY,OPENAI_API_KEY,GOOGLE_API_KEY,SENTRY_DSN,NEXT_PUBLIC_SENTRY_DSN,NEXT_PUBLIC_POSTHOG_KEY,NEXT_PUBLIC_POSTHOG_HOST,SMS_RELAY_API_KEY,SMS_RELAY_TRUSTED_SENDERS,MINIO_ACCESS_KEY,MINIO_SECRET_KEY,HEYGEN_API_KEY,DEPLOY_SHA
           script: |
             set -e
@@ -329,8 +330,27 @@ jobs:
             HEYGEN_API_KEY=${HEYGEN_API_KEY}
             EOF
 
-            # Pull new images (only changed layers transferred)
-            docker compose pull backend frontend mms-tts
+            # Capture previous deploy SHA so the smoke gate can roll back.
+            PREV_SHA=""
+            [ -f .deploy-sha ] && PREV_SHA=$(cat .deploy-sha)
+
+            # Pre-deploy DB backup — gzip to ~1/10 of raw size; prune after 7d.
+            BACKUP_FILE="/tmp/pre-deploy-${DEPLOY_SHA:0:7}-$(date +%s).sql.gz"
+            echo "Pre-deploy backup → $BACKUP_FILE"
+            docker exec etutor-postgres pg_dump -U postgres santepublique_aof | gzip > "$BACKUP_FILE"
+            echo "Backup: $(du -sh $BACKUP_FILE | cut -f1)"
+            find /tmp -name 'pre-deploy-*.sql.gz' -mtime +7 -delete 2>/dev/null || true
+
+            # Pull the exact SHA image built by this CI run and retag as :latest
+            # so docker-compose.yml (which references :latest) picks it up.
+            SHORT_SHA="${DEPLOY_SHA:0:7}"
+            docker pull "ghcr.io/benidrissa/etutor-digital-ph/backend:${SHORT_SHA}"
+            docker pull "ghcr.io/benidrissa/etutor-digital-ph/frontend:${SHORT_SHA}"
+            docker tag "ghcr.io/benidrissa/etutor-digital-ph/backend:${SHORT_SHA}" \
+                       "ghcr.io/benidrissa/etutor-digital-ph/backend:latest"
+            docker tag "ghcr.io/benidrissa/etutor-digital-ph/frontend:${SHORT_SHA}" \
+                       "ghcr.io/benidrissa/etutor-digital-ph/frontend:latest"
+            docker compose pull mms-tts || echo "::warning::mms-tts pull skipped (rebuilt only when infra/ changes)"
             docker compose pull nllb || echo "::warning::nllb pull failed, continuing with existing image"
 
             # Restart services
@@ -350,6 +370,29 @@ jobs:
             # Wait for services to be healthy
             sleep 15
             docker compose ps
+
+            # Post-deploy smoke gate: verify the API is healthy.
+            # On failure, re-pull and restart with the previous SHA images.
+            echo "Post-deploy health check..."
+            HEALTH_URL="https://api.elearning.portfolio2.kimbetien.com/health"
+            if ! curl -sf --retry 3 --retry-delay 5 "$HEALTH_URL" > /dev/null; then
+              echo "::error::Health check FAILED at $HEALTH_URL — rolling back to ${PREV_SHA:0:7}"
+              if [ -n "$PREV_SHA" ]; then
+                PREV_SHORT="${PREV_SHA:0:7}"
+                docker pull "ghcr.io/benidrissa/etutor-digital-ph/backend:${PREV_SHORT}" || true
+                docker pull "ghcr.io/benidrissa/etutor-digital-ph/frontend:${PREV_SHORT}" || true
+                docker tag "ghcr.io/benidrissa/etutor-digital-ph/backend:${PREV_SHORT}" \
+                           "ghcr.io/benidrissa/etutor-digital-ph/backend:latest" || true
+                docker tag "ghcr.io/benidrissa/etutor-digital-ph/frontend:${PREV_SHORT}" \
+                           "ghcr.io/benidrissa/etutor-digital-ph/frontend:latest" || true
+                docker compose up -d --remove-orphans --force-recreate backend frontend
+                sleep 15
+                echo "$PREV_SHA" > .deploy-sha
+              fi
+              docker logout ghcr.io
+              exit 1
+            fi
+            echo "Health check passed."
 
             # Cleanup old images
             docker image prune -f
@@ -447,6 +490,7 @@ jobs:
           # SSH key for the prod host — MUST be set explicitly as PROD_*
           # (staging DEPLOY_SSH_KEY won't have access to 94.250.201.110).
           key: ${{ secrets.PROD_DEPLOY_SSH_KEY }}
+          command_timeout: 30m
           envs: GHCR_USER,GHCR_TOKEN,POSTGRES_PASSWORD,ANTHROPIC_API_KEY,OPENAI_API_KEY,GOOGLE_API_KEY,SENTRY_DSN,NEXT_PUBLIC_SENTRY_DSN,NEXT_PUBLIC_POSTHOG_KEY,NEXT_PUBLIC_POSTHOG_HOST,SMS_RELAY_API_KEY,SMS_RELAY_TRUSTED_SENDERS,MINIO_ACCESS_KEY,MINIO_SECRET_KEY,HEYGEN_API_KEY,DEPLOY_SHA
           script: |
             set -e
@@ -471,11 +515,26 @@ jobs:
             HEYGEN_API_KEY=${HEYGEN_API_KEY}
             EOF
 
-            # Pull new images. mms-tts is an optional sidecar (audio TTS);
-            # its pull currently fails on a ghcr permissions issue tracked
-            # elsewhere. Don't let that block the backend/frontend rollout.
-            docker compose pull backend frontend
-            docker compose pull mms-tts || echo "::warning::mms-tts pull failed, continuing with existing image"
+            # Capture previous deploy SHA for rollback.
+            PREV_SHA=""
+            [ -f .deploy-sha ] && PREV_SHA=$(cat .deploy-sha)
+
+            # Pre-deploy DB backup.
+            BACKUP_FILE="/tmp/pre-deploy-${DEPLOY_SHA:0:7}-$(date +%s).sql.gz"
+            echo "Pre-deploy backup → $BACKUP_FILE"
+            docker exec etutor-postgres pg_dump -U postgres santepublique_aof | gzip > "$BACKUP_FILE"
+            echo "Backup: $(du -sh $BACKUP_FILE | cut -f1)"
+            find /tmp -name 'pre-deploy-*.sql.gz' -mtime +7 -delete 2>/dev/null || true
+
+            # Pull exact SHA images built by this CI run.
+            SHORT_SHA="${DEPLOY_SHA:0:7}"
+            docker pull "ghcr.io/benidrissa/etutor-digital-ph/backend:${SHORT_SHA}"
+            docker pull "ghcr.io/benidrissa/etutor-digital-ph/frontend:${SHORT_SHA}"
+            docker tag "ghcr.io/benidrissa/etutor-digital-ph/backend:${SHORT_SHA}" \
+                       "ghcr.io/benidrissa/etutor-digital-ph/backend:latest"
+            docker tag "ghcr.io/benidrissa/etutor-digital-ph/frontend:${SHORT_SHA}" \
+                       "ghcr.io/benidrissa/etutor-digital-ph/frontend:latest"
+            docker compose pull mms-tts || echo "::warning::mms-tts pull skipped (rebuilt only when infra/ changes)"
             docker compose pull nllb || echo "::warning::nllb pull failed, continuing with existing image"
 
             docker compose up -d --remove-orphans
@@ -491,6 +550,28 @@ jobs:
 
             sleep 15
             docker compose ps
+
+            # Post-deploy smoke gate.
+            echo "Post-deploy health check..."
+            HEALTH_URL="https://api.sira-donnia.org/health"
+            if ! curl -sf --retry 3 --retry-delay 5 "$HEALTH_URL" > /dev/null; then
+              echo "::error::Health check FAILED at $HEALTH_URL — rolling back to ${PREV_SHA:0:7}"
+              if [ -n "$PREV_SHA" ]; then
+                PREV_SHORT="${PREV_SHA:0:7}"
+                docker pull "ghcr.io/benidrissa/etutor-digital-ph/backend:${PREV_SHORT}" || true
+                docker pull "ghcr.io/benidrissa/etutor-digital-ph/frontend:${PREV_SHORT}" || true
+                docker tag "ghcr.io/benidrissa/etutor-digital-ph/backend:${PREV_SHORT}" \
+                           "ghcr.io/benidrissa/etutor-digital-ph/backend:latest" || true
+                docker tag "ghcr.io/benidrissa/etutor-digital-ph/frontend:${PREV_SHORT}" \
+                           "ghcr.io/benidrissa/etutor-digital-ph/frontend:latest" || true
+                docker compose up -d --remove-orphans --force-recreate backend frontend
+                sleep 15
+                echo "$PREV_SHA" > .deploy-sha
+              fi
+              docker logout ghcr.io
+              exit 1
+            fi
+            echo "Health check passed."
 
             docker image prune -f
             docker logout ghcr.io

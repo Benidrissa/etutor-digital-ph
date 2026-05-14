@@ -195,6 +195,55 @@ class CourseQualityRunDetail(CourseQualityRunSummary):
     units: list[UnitQualitySummary] = Field(default_factory=list)
 
 
+class UnitQualityDetail(BaseModel):
+    """Per-unit detail with full flags + dimension scores for the drill-in view.
+
+    Combines hot fields from ``GeneratedContent`` (state, flags) with
+    the latest ``UnitQualityAssessment`` row's dimension scores so the
+    UI can render the radar/bar chart without a second round-trip.
+    """
+
+    generated_content_id: uuid.UUID
+    unit_number: str | None
+    content_type: str
+    language: str
+    quality_score: float | None
+    quality_status: QualityStatus
+    flag_count: int
+    regeneration_attempts: int
+    is_manually_edited: bool
+    validated: bool
+    quality_assessed_at: datetime | None
+    last_quality_run_id: uuid.UUID | None
+    quality_flags: list[QualityFlag] = Field(default_factory=list)
+    dimension_scores: DimensionScores | None = None
+    latest_attempt_id: uuid.UUID | None = None
+    latest_attempt_number: int | None = None
+    latest_attempt_score: float | None = None
+
+
+class ReviewQueueEntry(BaseModel):
+    """One row in the cross-course review queue.
+
+    Sorted server-side by ``(units_needs_review_final + units_failed)``
+    desc, then ``units_needs_review`` desc, then ``glossary_drift_count``
+    desc — courses needing attention first.
+    """
+
+    course_id: uuid.UUID
+    course_title_fr: str
+    course_title_en: str
+    owner_id: uuid.UUID | None
+    units_total: int
+    units_passing: int
+    units_needs_review: int
+    units_needs_review_final: int
+    units_failed: int
+    glossary_drift_count: int
+    last_assessed_at: datetime | None
+    last_run: CourseQualityRunSummary | None = None
+
+
 class RunQualityCheckRequest(BaseModel):
     """Request body for ``POST /admin/courses/{id}/quality/runs``."""
 
