@@ -73,7 +73,7 @@ export function ModuleMap({ onModuleClick, courseId }: ModuleMapProps) {
             modules: progressData.map(apiProgressToModule),
           }]);
         } else {
-          const enrollments = await getMyEnrollments();
+          const enrollments = await getMyEnrollments({ orderBy: 'last_accessed' });
           if (cancelled) return;
           const progressResults = await Promise.all(
             enrollments.map((course: CourseWithEnrollment) =>
