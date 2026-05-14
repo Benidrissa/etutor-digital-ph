@@ -28,6 +28,8 @@ export class OrgPage {
 
   async gotoCodes(slug: string, locale: 'fr' | 'en' = 'fr'): Promise<void> {
     await this.page.goto(`/${locale}/org/${slug}/codes`);
+    // Wait for the async useEffect API call to populate the codes list
+    await this.page.waitForLoadState('networkidle');
   }
 
   async gotoMembers(slug: string, locale: 'fr' | 'en' = 'fr'): Promise<void> {
