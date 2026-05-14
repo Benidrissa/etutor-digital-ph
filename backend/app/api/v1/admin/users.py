@@ -145,14 +145,22 @@ async def create_user(
         created_at=datetime.utcnow(),
     )
     db.add(user)
+    await db.flush()  # ensure user.id is persisted before FK reference in audit log
 
-    await _write_audit_log(
-        db,
-        current_user,
-        user,
-        AdminAction.create_user,
-        details=f"created with role {request.role.value}",
-    )
+    try:
+        await _write_audit_log(
+            db,
+            current_user,
+            user,
+            AdminAction.create_user,
+            details=f"created with role {request.role.value}",
+        )
+    except Exception:
+        logger.warning(
+            "audit_log_write_failed",
+            admin_id=current_user.id,
+            action="create_user",
+        )
     await db.commit()
     await db.refresh(user)
 
