@@ -25,7 +25,7 @@ export function DashboardClient({ curriculumSlug }: { curriculumSlug?: string })
 
   useEffect(() => {
     let cancelled = false;
-    getMyEnrollments()
+    getMyEnrollments({ orderBy: 'last_accessed' })
       .then((data) => {
         if (!cancelled) {
           setEnrollments(data);
