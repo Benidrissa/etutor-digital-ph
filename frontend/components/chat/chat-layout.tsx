@@ -2,9 +2,10 @@
 
 import { ChatProvider, useChatContext, ChatPanel, FloatingChatButton } from '@/components/chat';
 import { usePathname } from 'next/navigation';
+import { cn } from '@/lib/utils';
 
 function ChatUIComponents() {
-  const { isOpen, openChat, closeChat } = useChatContext();
+  const { isOpen, closeChat, toggleChat } = useChatContext();
   const pathname = usePathname();
   
   // Extract moduleId from pathname if we're in a module page
@@ -21,7 +22,12 @@ function ChatUIComponents() {
 
   return (
     <>
-      {!hideFab && <FloatingChatButton onClick={openChat} />}
+      {!hideFab && (
+        <FloatingChatButton
+          onClick={toggleChat}
+          className={cn(isOpen && 'md:hidden')}
+        />
+      )}
       <ChatPanel 
         isOpen={isOpen} 
         onClose={closeChat}
