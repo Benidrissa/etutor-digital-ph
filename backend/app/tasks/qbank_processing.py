@@ -72,6 +72,23 @@ async def _process_pdf_async(task, bank_id: str, pdf_filename: str) -> dict:
         logger.warning("No questions extracted from PDF", bank_id=bank_id)
         return {"bank_id": bank_id, "questions_created": 0, "errors": []}
 
+    # Deduplicate by normalized question text (case-insensitive, strip whitespace)
+    seen_texts: set[str] = set()
+    deduped = []
+    for q in extracted:
+        key = (q.question_text or "").strip().lower()
+        if key and key not in seen_texts:
+            seen_texts.add(key)
+            deduped.append(q)
+        else:
+            logger.info(
+                "Skipping duplicate question",
+                bank_id=bank_id,
+                page=q.page_number,
+                text=(q.question_text or "")[:60],
+            )
+    extracted = deduped
+
     # Store images and create DB rows
     storage = S3StorageService()
     engine = create_engine(settings.database_url_sync, pool_pre_ping=True)
@@ -90,7 +107,25 @@ async def _process_pdf_async(task, bank_id: str, pdf_filename: str) -> dict:
         )
         next_order = (max_order or 0) + 1
 
+        # Collect existing question texts to skip re-insertion across uploads
+        from sqlalchemy import text as sql_text  # noqa: F401 (unused alias kept for clarity)
+
+        existing_texts_result = session.execute(
+            select(QBankQuestion.question_text).where(QBankQuestion.question_bank_id == bank_uuid)
+        )
+        existing_texts = {
+            (row[0] or "").strip().lower() for row in existing_texts_result.all() if row[0]
+        }
+
         for idx, q in enumerate(extracted):
+            key = (q.question_text or "").strip().lower()
+            if key and key in existing_texts:
+                logger.info(
+                    "Skipping already-existing question",
+                    bank_id=bank_id,
+                    page=q.page_number,
+                )
+                continue
             try:
                 # Upload image to MinIO directly — we're already in an async
                 # context, so await the coroutine. A previous nested
