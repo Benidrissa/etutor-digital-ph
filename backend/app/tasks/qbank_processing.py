@@ -108,8 +108,6 @@ async def _process_pdf_async(task, bank_id: str, pdf_filename: str) -> dict:
         next_order = (max_order or 0) + 1
 
         # Collect existing question texts to skip re-insertion across uploads
-        from sqlalchemy import text as sql_text  # noqa: F401 (unused alias kept for clarity)
-
         existing_texts_result = session.execute(
             select(QBankQuestion.question_text).where(QBankQuestion.question_bank_id == bank_uuid)
         )
