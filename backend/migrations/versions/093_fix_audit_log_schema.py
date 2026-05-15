@@ -24,7 +24,6 @@ that already have the correct schema.
 from __future__ import annotations
 
 from alembic import op
-import sqlalchemy as sa
 
 
 revision = "093_fix_audit_log_schema"
