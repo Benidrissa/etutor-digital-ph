@@ -11,7 +11,6 @@ causes course deletion to fail because PostgreSQL blocks module row deletion.
 
 from collections.abc import Sequence
 
-import sqlalchemy as sa
 from alembic import op
 
 revision: str = "092_fix_cascade_fk_module_units_summative_attempts"
