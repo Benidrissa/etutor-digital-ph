@@ -538,6 +538,19 @@ export function ChatPanel({
           className
         )}
       >
+        {/* Desktop floating close button — absolutely positioned top-right, visible regardless of header overflow */}
+        {!embedded && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className="hidden md:flex absolute top-1 right-1 h-8 w-8 z-10 rounded-full"
+            aria-label={t('closeChat')}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between p-3 border-b bg-background shrink-0 gap-2 flex-nowrap">
           <div className="flex items-center gap-2 shrink-0">
@@ -625,7 +638,7 @@ export function ChatPanel({
               variant="ghost"
               size="icon"
               onClick={onClose}
-              className="h-11 w-11"
+              className="h-11 w-11 md:hidden"
             >
               <X className="h-4 w-4" />
             </Button>
