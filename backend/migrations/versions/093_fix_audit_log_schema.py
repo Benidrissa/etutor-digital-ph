@@ -23,7 +23,6 @@ that already have the correct schema.
 
 from alembic import op
 
-
 revision = "093_fix_audit_log_schema"
 down_revision = "092_fix_cascade_fk_module_units_summative_attempts"
 branch_labels = None
