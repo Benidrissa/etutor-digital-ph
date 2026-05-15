@@ -1,0 +1,41 @@
+name: Sync dev → main
+
+on:
+  push:
+    branches: [dev]
+
+# Only one sync job at a time; do not cancel an in-flight sync.
+concurrency:
+  group: dev-to-main
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Create or enable auto-merge on dev→main PR
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: |
+          PR_NUMBER=$(gh pr list \
+            --base main --head dev \
+            --state open \
+            --json number \
+            --jq '.[0].number' \
+            --repo "${{ github.repository }}")
+
+          if [ -z "$PR_NUMBER" ]; then
+            PR_URL=$(gh pr create \
+              --base main --head dev \
+              --title "sync: dev → main" \
+              --body "Automated sync: squash-merges dev into main." \
+              --repo "${{ github.repository }}")
+            PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
+          fi
+
+          # Squash merge required by main ruleset.
+          gh pr merge "$PR_NUMBER" --auto --squash \
+            --repo "${{ github.repository }}"
