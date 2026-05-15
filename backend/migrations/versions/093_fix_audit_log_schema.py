@@ -21,8 +21,6 @@ conditional type-change so it is safe to run multiple times or on tenants
 that already have the correct schema.
 """
 
-from __future__ import annotations
-
 from alembic import op
 
 
