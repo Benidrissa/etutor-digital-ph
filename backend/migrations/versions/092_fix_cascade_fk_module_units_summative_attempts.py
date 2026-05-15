@@ -1,7 +1,7 @@
 """fix ON DELETE CASCADE on module_units and summative_assessment_attempts
 
 Revision ID: 092_fix_cascade_fk_module_units_summative_attempts
-Revises: 091_relax_module_progress_locked_post_2125
+Revises: 091
 Create Date: 2026-05-15
 
 Both tables were created without ondelete in their FK constraints (defaulting to
@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "092_fix_cascade_fk_module_units_summative_attempts"
-down_revision: str | None = "091_relax_module_progress_locked_post_2125"
+down_revision: str | None = "091"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
