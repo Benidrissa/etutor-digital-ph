@@ -170,6 +170,7 @@ def assess_and_regenerate_unit_task(
     content_id: str,
     run_id: str | None = None,
     triggered_by_user_id: str | None = None,
+    override_constraints: list[str] | None = None,
 ) -> dict:
     """Run the bounded assess→regenerate loop for one unit."""
 
@@ -195,6 +196,7 @@ def assess_and_regenerate_unit_task(
                     run_id=run_uuid,
                     session=session,
                     triggered_by_user_id=user_uuid,
+                    override_constraints=override_constraints or None,
                 )
                 await session.commit()
                 return {
@@ -304,6 +306,7 @@ def assess_course_task(
     async def _run() -> dict:
         from datetime import datetime
 
+        from sqlalchemy import func as sa_func
         from sqlalchemy import select
 
         from app.ai.claude_service import ClaudeService
@@ -312,7 +315,7 @@ def assess_course_task(
         from app.ai.rag.retriever import SemanticRetriever
         from app.domain.models.content import GeneratedContent
         from app.domain.models.course import Course
-        from app.domain.models.course_quality import CourseQualityRun
+        from app.domain.models.course_quality import CourseQualityRun, UnitQualityAssessment
         from app.domain.models.module import Module
         from app.domain.services.quality_agent_service import CourseQualityService
         from app.infrastructure.config.settings import settings
@@ -415,13 +418,21 @@ def assess_course_task(
                             if (gc.regeneration_attempts or 0) > attempts_before:
                                 regenerated += 1
                             processed += 1
+
+                            # Accumulate cost so the budget guard is meaningful.
+                            cost_row = await session.execute(
+                                select(
+                                    sa_func.coalesce(
+                                        sa_func.sum(UnitQualityAssessment.cost_cents), 0
+                                    )
+                                ).where(UnitQualityAssessment.run_id == run.id)
+                            )
+                            run.spent_credits = int(cost_row.scalar())
+
                             await session.commit()
 
                             # Course-level early exit check.
                             if processed >= 5:
-                                # Only check after some real data accumulated.
-                                from sqlalchemy import func as sa_func
-
                                 stat_q = select(
                                     sa_func.count().label("total"),
                                     sa_func.count()

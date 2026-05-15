@@ -364,6 +364,7 @@ async def regenerate_unit_with_constraints(
             kwargs={
                 "content_id": str(content_id),
                 "triggered_by_user_id": str(current_user.id),
+                "override_constraints": payload.constraints or None,
             },
             priority=5,
         )

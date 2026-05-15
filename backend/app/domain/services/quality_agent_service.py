@@ -689,7 +689,6 @@ class CourseQualityService:
 
         gc.quality_status = "regenerating"
         gc.regeneration_attempts = (gc.regeneration_attempts or 0) + 1
-        gc.content_revision = (gc.content_revision or 1) + 1
         await session.flush()
 
         # Resolve unit_id string for the generator API.
@@ -760,6 +759,10 @@ class CourseQualityService:
         else:
             raise ValueError(f"Unknown content_type for regeneration: {gc.content_type}")
 
+        # Increment revision only after a successful generator call.
+        gc.content_revision = (gc.content_revision or 1) + 1
+        await session.flush()
+
         # Refresh the row from the DB after the generator overwrote it.
         await session.refresh(gc)
         return gc
@@ -771,6 +774,7 @@ class CourseQualityService:
         session: AsyncSession,
         cached_blocks: list[dict[str, Any]] | None = None,
         triggered_by_user_id: uuid.UUID | None = None,
+        override_constraints: list[str] | None = None,
     ) -> UnitQualityAssessment:
         """Full assess → (regen → reassess)*N loop for a single unit.
 
@@ -817,11 +821,17 @@ class CourseQualityService:
                 )
                 break
 
-            # Regenerate.
+            # Regenerate. Admin override_constraints apply on attempt 1 only;
+            # subsequent passes use the LLM-derived constraints from the last report.
+            constraints_to_use = (
+                override_constraints
+                if override_constraints and attempt == 1
+                else last_report.regeneration_constraints
+            )
             try:
                 await self.regenerate_with_constraints(
                     content_id=content_id,
-                    constraints=last_report.regeneration_constraints,
+                    constraints=constraints_to_use,
                     session=session,
                     triggered_by_user_id=triggered_by_user_id,
                     trigger="quality_loop",
