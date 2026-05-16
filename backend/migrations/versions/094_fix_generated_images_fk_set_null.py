@@ -24,9 +24,7 @@ depends_on = None
 
 def upgrade() -> None:
     # generated_images.module_id → modules.id
-    op.drop_constraint(
-        "generated_images_module_id_fkey", "generated_images", type_="foreignkey"
-    )
+    op.drop_constraint("generated_images_module_id_fkey", "generated_images", type_="foreignkey")
     op.create_foreign_key(
         "generated_images_module_id_fkey",
         "generated_images",
@@ -37,9 +35,7 @@ def upgrade() -> None:
     )
 
     # generated_images.lesson_id → generated_content.id
-    op.drop_constraint(
-        "generated_images_lesson_id_fkey", "generated_images", type_="foreignkey"
-    )
+    op.drop_constraint("generated_images_lesson_id_fkey", "generated_images", type_="foreignkey")
     op.create_foreign_key(
         "generated_images_lesson_id_fkey",
         "generated_images",
@@ -51,9 +47,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint(
-        "generated_images_lesson_id_fkey", "generated_images", type_="foreignkey"
-    )
+    op.drop_constraint("generated_images_lesson_id_fkey", "generated_images", type_="foreignkey")
     op.create_foreign_key(
         "generated_images_lesson_id_fkey",
         "generated_images",
@@ -62,9 +56,7 @@ def downgrade() -> None:
         ["id"],
     )
 
-    op.drop_constraint(
-        "generated_images_module_id_fkey", "generated_images", type_="foreignkey"
-    )
+    op.drop_constraint("generated_images_module_id_fkey", "generated_images", type_="foreignkey")
     op.create_foreign_key(
         "generated_images_module_id_fkey",
         "generated_images",
