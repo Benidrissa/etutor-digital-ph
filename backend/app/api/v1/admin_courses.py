@@ -1,5 +1,6 @@
 """Admin endpoints for course management (CRUD, publish, RAG indexation)."""
 
+import hashlib
 import re
 import shutil
 import uuid
@@ -17,7 +18,11 @@ from structlog import get_logger
 from app.api.deps import get_db as get_db_session
 from app.api.deps_local_auth import AuthenticatedUser, require_role
 from app.domain.models.course import Course, UserCourseEnrollment
-from app.domain.models.course_resource import EXTRACTION_STATUS_DONE, CourseResource
+from app.domain.models.course_resource import (
+    EXTRACTION_STATUS_DONE,
+    EXTRACTION_STATUS_PENDING,
+    CourseResource,
+)
 from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
@@ -1609,19 +1614,66 @@ async def upload_course_resource(
             detail="File does not appear to be a valid PDF",
         )
 
+    file_hash = hashlib.sha256(data).hexdigest()
+
     safe_name = re.sub(r"[^\w.\-]", "_", Path(file.filename or "resource.pdf").name)
     if not safe_name.lower().endswith(".pdf"):
         safe_name += ".pdf"
+
+    # File-hash dedup: if an identical PDF was already extracted for any course,
+    # create a thin CourseResource reference without re-writing to disk or
+    # re-running the extraction task.
+    donor_result = await db.execute(
+        select(CourseResource)
+        .where(
+            CourseResource.file_hash == file_hash,
+            CourseResource.extraction_status == EXTRACTION_STATUS_DONE,
+        )
+        .limit(1)
+    )
+    donor = donor_result.scalar_one_or_none()
+
+    if donor is not None:
+        resource = CourseResource(
+            course_id=course_id,
+            filename=Path(safe_name).stem,
+            parent_filename=donor.parent_filename,
+            raw_text=donor.raw_text,
+            toc_json=donor.toc_json,
+            char_count=donor.char_count,
+            content_hash=donor.content_hash,
+            file_hash=file_hash,
+            summary_text=donor.summary_text,
+            summary_model=donor.summary_model,
+            summary_status=donor.summary_status,
+            extraction_status=EXTRACTION_STATUS_DONE,
+        )
+        db.add(resource)
+        if course.creation_step == "upload":
+            course.creation_step = "info"
+        await db.commit()
+        await db.refresh(resource)
+        logger.info(
+            "Course resource deduped from existing file_hash — skipped extraction",
+            course_id=str(course_id),
+            filename=safe_name,
+            file_hash=file_hash,
+            donor_id=str(donor.id),
+            resource_id=str(resource.id),
+        )
+        return {
+            "course_id": str(course_id),
+            "name": safe_name,
+            "size_bytes": len(data),
+            "resource_id": str(resource.id),
+            "extraction_status": EXTRACTION_STATUS_DONE,
+        }
 
     course_dir = UPLOAD_DIR / str(course_id)
     course_dir.mkdir(parents=True, exist_ok=True)
     dest = course_dir / safe_name
     dest.write_bytes(data)
 
-    from app.domain.models.course_resource import (
-        EXTRACTION_STATUS_PENDING,
-        CourseResource,
-    )
     from app.tasks.resource_extraction import extract_course_resource
 
     resource = CourseResource(
@@ -1630,6 +1682,7 @@ async def upload_course_resource(
         parent_filename=None,
         raw_text="",
         char_count=0,
+        file_hash=file_hash,
         extraction_status=EXTRACTION_STATUS_PENDING,
     )
     db.add(resource)

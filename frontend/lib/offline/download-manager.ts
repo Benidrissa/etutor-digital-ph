@@ -460,7 +460,7 @@ async function downloadUnitQuiz(
 
 // Cache name MUST stay aligned with `pages-${CACHE_VERSION}` in frontend/sw.ts.
 // Bump both together when changing.
-const PAGES_CACHE_NAME = "pages-v6-offline-routes";
+const PAGES_CACHE_NAME = "pages-v7-status-no-cache";
 
 /**
  * Pre-fetch a same-origin page and stash it in the SW page cache so an offline
