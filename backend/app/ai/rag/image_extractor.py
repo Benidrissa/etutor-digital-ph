@@ -40,6 +40,26 @@ HIGH_DRAWING_COUNT_THRESHOLD = 2000
 RASTERIZE_DPI = 200
 
 
+def _avg_hash_hex(image_bytes: bytes) -> str | None:
+    """Return a 16-char hex 64-bit average hash, or None on error.
+
+    The same algorithm used for within-PDF deduplication; exposing it here
+    allows the RAG pipeline to persist the hash and detect cross-course duplicates.
+    """
+    try:
+        from PIL import Image
+
+        img = Image.open(io.BytesIO(image_bytes)).convert("L").resize((8, 8), Image.LANCZOS)
+        pixels = list(img.tobytes())
+        avg = sum(pixels) / len(pixels)
+        bits = 0
+        for px in pixels:
+            bits = (bits << 1) | (1 if px >= avg else 0)
+        return f"{bits:016x}"
+    except Exception:
+        return None
+
+
 @dataclass
 class ExtractedImage:
     """Represents an image extracted from a PDF with rich metadata."""
@@ -57,6 +77,7 @@ class ExtractedImage:
     surrounding_text: str
     chapter: str | None
     section: str | None
+    image_hash: str | None = None
 
 
 # Multi-part numbering pattern: matches "1", "1.5", "2-8", "12.3.4", "1-2-3".
@@ -746,14 +767,18 @@ class PDFImageExtractor:
         """Remove near-duplicate images using average hash (8x8 grayscale, Hamming distance < 5).
 
         When duplicates found, keeps the higher-resolution one.
+        Persists the hash on each surviving image for cross-course dedup in the pipeline.
         """
         if len(images) <= 1:
+            if images:
+                images[0].image_hash = _avg_hash_hex(images[0].image_bytes)
             return images
 
-        from PIL import Image
-
-        def avg_hash(img_bytes: bytes) -> int | None:
+        def _hash_int(img_bytes: bytes) -> int | None:
+            """Return raw 64-bit integer for Hamming comparison."""
             try:
+                from PIL import Image
+
                 img = Image.open(io.BytesIO(img_bytes)).convert("L").resize((8, 8), Image.LANCZOS)
                 pixels = list(img.tobytes())
                 avg = sum(pixels) / len(pixels)
@@ -772,7 +797,7 @@ class PDFImageExtractor:
                 xor >>= 1
             return count
 
-        hashes: list[int | None] = [avg_hash(img.image_bytes) for img in images]
+        hashes: list[int | None] = [_hash_int(img.image_bytes) for img in images]
         keep = [True] * len(images)
 
         for i in range(len(images)):
@@ -790,7 +815,11 @@ class PDFImageExtractor:
                         keep[i] = False
                         break
 
-        return [img for img, k in zip(images, keep, strict=True) if k]
+        survivors = [img for img, k in zip(images, keep, strict=True) if k]
+        # Persist the hex hash on each survivor for cross-course dedup.
+        for img in survivors:
+            img.image_hash = _avg_hash_hex(img.image_bytes)
+        return survivors
 
     def extract_all_pdfs(self) -> dict[str, list[ExtractedImage]]:
         """Extract images from all PDFs in resources_path.
