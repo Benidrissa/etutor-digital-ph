@@ -18,6 +18,7 @@ import { apiFetch } from '@/lib/api';
 import { prewarmPage } from './download-manager';
 
 const PREWARM_V6_DONE_KEY = 'offline_prewarm_v6_done';
+const PREWARM_V7_DONE_KEY = 'offline_prewarm_v7_done';
 
 export type SyncStatus =
   | { state: 'idle' }
@@ -53,14 +54,16 @@ class SyncManager {
     this.onlineHandler = () => {
       this.syncNow();
       this.runV6PrewarmMigration();
+      this.runV7PrewarmMigration();
     };
     window.addEventListener('online', this.onlineHandler);
 
     // Also run on startup in case the app is already online — covers the
-    // common case where a v5 user opens the app online without a network
+    // common case where a v5/v6 user opens the app online without a network
     // toggle.
     if (typeof navigator !== 'undefined' && navigator.onLine) {
       this.runV6PrewarmMigration();
+      this.runV7PrewarmMigration();
     }
   }
 
@@ -160,6 +163,44 @@ class SyncManager {
         }
       }
       localStorage.setItem(PREWARM_V6_DONE_KEY, '1');
+    } catch {
+      // best-effort; failure must not break sync
+    }
+  }
+
+  /**
+   * One-shot migration for users who downloaded a module under SW v6.
+   * The v7 cache-version bump (adding progress no-cache) renamed the pages
+   * cache from `pages-v6-offline-routes` to `pages-v7-status-no-cache`.
+   * Without this, previously-prewarm pages are invisible to the v7 SW and
+   * offline navigation falls through to /offline.html.
+   */
+  async runV7PrewarmMigration(): Promise<void> {
+    if (typeof window === 'undefined') return;
+    try {
+      if (localStorage.getItem(PREWARM_V7_DONE_KEY)) return;
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+
+      const modules = await getOfflineModulesByStatus('downloaded');
+      for (const mod of modules) {
+        const entries = await getOfflineContentByModule(mod.moduleId);
+        const flashcardKey = `__module_${mod.moduleId}__`;
+        const seen = new Set<string>();
+        for (const entry of entries) {
+          if (entry.unitId === flashcardKey) continue;
+          const key = `${entry.locale}|${entry.unitId}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          await prewarmPage(
+            `/${entry.locale}/modules/${mod.moduleId}/units/${entry.unitId}`,
+          );
+        }
+        const locales = new Set(entries.map((e) => e.locale));
+        for (const loc of locales) {
+          await prewarmPage(`/${loc}/modules/${mod.moduleId}`);
+        }
+      }
+      localStorage.setItem(PREWARM_V7_DONE_KEY, '1');
     } catch {
       // best-effort; failure must not break sync
     }
