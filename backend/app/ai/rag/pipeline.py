@@ -329,9 +329,7 @@ class RAGPipeline:
             # Cross-course image dedup: reuse existing storage + computed fields.
             if img.image_hash:
                 donor_result = await session.execute(
-                    select(SourceImage)
-                    .where(SourceImage.image_hash == img.image_hash)
-                    .limit(1)
+                    select(SourceImage).where(SourceImage.image_hash == img.image_hash).limit(1)
                 )
                 donor_img = donor_result.scalar_one_or_none()
                 if donor_img is not None:
