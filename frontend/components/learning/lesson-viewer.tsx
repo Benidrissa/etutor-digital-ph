@@ -306,6 +306,16 @@ export function LessonViewer({
 
   const handleMarkComplete = async () => {
     setCompleteError(null);
+    if (!isOnline) {
+      // Offline: queue for replay when reconnected. Optimistically show completed (#2151).
+      await addOfflineAction({
+        actionType: 'case_study_complete',
+        payload: { module_id: moduleId, unit_id: unitId },
+      });
+      setIsCompleted(true);
+      onComplete?.();
+      return;
+    }
     try {
       await apiFetch(`/api/v1/progress/complete-lesson`, {
         method: 'POST',
@@ -604,7 +614,7 @@ export function LessonViewer({
       <div className="mt-8 text-center">
         <Button
           onClick={handleMarkComplete}
-          disabled={isCompleted || isLoading || isGenerating || !isOnline}
+          disabled={isCompleted || isLoading || isGenerating}
           className="min-h-11 px-8"
           size="lg"
         >
