@@ -248,6 +248,14 @@ async def complete_lesson(
 
         unit_type = await service.get_unit_type(request.module_id, request.unit_id)
 
+        # Safety net for AI-syllabus mislabelling: if module_units.unit_type says
+        # "quiz" but the actual GeneratedContent for this unit is a case study,
+        # trust the content and skip the quiz gate (#2163).
+        if unit_type not in ("case-study", "scenario", "lesson", None):
+            has_case = await service.unit_has_case_content(request.module_id, request.unit_id)
+            if has_case:
+                unit_type = "case-study"
+
         if unit_type in ("case-study", "scenario", "lesson", None):
             progress = await service.mark_unit_complete_no_quiz(
                 user_id=user_id,
