@@ -1181,17 +1181,15 @@ def prefetch_next_lessons_task(
         current_idx = -1
         if current_unit_id:
             for i, u in enumerate(all_units):
-                uid = f"M{module.module_number:02d}-U{u.order_index + 1:02d}"
-                has_dot = "." in u.unit_number
-                ordinal = int(u.unit_number.split(".")[-1]) if has_dot else 0
-                alt_uid = f"M{module.module_number:02d}-U{ordinal:02d}" if has_dot else uid
-                if uid == current_unit_id or alt_uid == current_unit_id:
+                # Use canonical unit_number ("1.1") — the M01-U01 format was
+                # removed by migration 081 (#1897).
+                if u.unit_number == current_unit_id:
                     current_idx = i
                     break
 
         next_units: list[tuple[str, str]] = []
         for u in all_units[current_idx + 1 :]:
-            uid = f"M{module.module_number:02d}-U{u.order_index + 1:02d}"
+            uid = u.unit_number
             raw_type = (u.unit_type or "").lower().replace("-", "_").replace(" ", "_")
             if "quiz" in raw_type or "evaluation" in raw_type or "évaluation" in raw_type:
                 content_type = "quiz"
@@ -1687,7 +1685,7 @@ def pregenerate_on_publish_task(self, course_id: str) -> dict:
                 case_study_service = CaseStudyGenerationService(ClaudeService(), retriever)
 
                 for unit in units:
-                    unit_id = f"M{module.module_number:02d}-U{unit.order_index + 1:02d}"
+                    unit_id = unit.unit_number  # canonical "1.1" format (#1898)
                     raw_type = (unit.unit_type or "").lower().replace("-", "_").replace(" ", "_")
                     if "quiz" in raw_type or "evaluation" in raw_type or "évaluation" in raw_type:
                         content_type = "quiz"
