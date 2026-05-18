@@ -184,6 +184,39 @@ def _safe_task_meta(task_result: AsyncResult) -> tuple[str, dict]:
 
 _TERMINAL_TASK_STATES = frozenset({"SUCCESS", "FAILURE", "REVOKED"})
 
+# Custom states published by the RAG indexation task via update_state().
+# When a worker dies after publishing one of these states but before finishing,
+# AsyncResult still reports the custom state (it stays in Redis until TTL).
+# We detect death by: custom state + chunks_processed == 0 + eta == 0 + progress > 0
+# — meaning the task published its initial meta but never completed a chunk (#2054).
+_CUSTOM_INDEXATION_STATES = frozenset({"EXTRACTING", "EMBEDDING", "LINKING"})
+
+
+def _is_zombie_task(state: str, meta: dict, chunks_indexed: int, images_indexed: int) -> bool:
+    """Return True when a task is provably dead despite appearing active in Redis.
+
+    Detects the signature of a worker that published its initial progress update
+    (so meta is non-empty and state is a custom RAG state) but then died without
+    processing any chunks — distinguishable from a truly active task by
+    ``chunks_processed == 0`` AND ``estimated_seconds_remaining == 0``.
+
+    The second guard (chunks_indexed OR images_indexed > 0) ensures we only
+    self-heal when there's durable DB evidence that prior indexation already ran —
+    i.e. the task that died had already committed some work.
+    """
+    if state not in _CUSTOM_INDEXATION_STATES:
+        return False
+    if not meta:
+        return False
+    chunks_processed = meta.get("chunks_processed", -1)
+    eta = meta.get("estimated_seconds_remaining", -1)
+    progress = meta.get("progress", 0)
+    # Task published initial meta (progress > 0) but ETA zeroed and no chunks
+    # processed — classic dead-worker signature.
+    dead_signal = chunks_processed == 0 and eta == 0 and progress > 0
+    has_prior_data = chunks_indexed > 0 or images_indexed > 0
+    return dead_signal and has_prior_data
+
 
 def _diagnose_indexation_pointer(
     course: Course,
@@ -1347,13 +1380,19 @@ async def get_rag_index_status(
             and effective_task_id == course.indexation_task_id
             and (chunks_indexed > 0 or images_indexed > 0)
         )
-        if is_evicted_pointer:
+        is_zombie = (
+            effective_task_id == course.indexation_task_id
+            and _is_zombie_task(state, meta, chunks_indexed, images_indexed)
+        )
+        if is_evicted_pointer or is_zombie:
             course.indexation_task_id = None
             await db.commit()
             logger.info(
-                "Cleared evicted indexation_task_id pointer",
+                "Cleared stale indexation_task_id pointer",
                 course_id=str(course_id),
                 task_id=effective_task_id,
+                reason="zombie" if is_zombie else "evicted",
+                task_state=state,
             )
         else:
             response["task"] = {
