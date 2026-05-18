@@ -18,6 +18,7 @@ import { SourceCitations } from './source-citations';
 import { apiFetch, getModuleDetailWithProgress } from '@/lib/api';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { loadCaseStudy, OfflineContentNotAvailable } from '@/lib/offline/content-loader';
+import { addOfflineAction } from '@/lib/offline/db';
 import { OfflineBadge } from '@/components/shared/offline-badge';
 import { useNetworkStatus } from '@/lib/hooks/use-network-status';
 import { loadQuizState, saveQuizState, clearQuizState } from '@/lib/quiz-state-persistence';
@@ -289,6 +290,17 @@ export function CaseStudyViewer({
 
   const handleMarkComplete = async () => {
     setCompleteError(null);
+    if (!isOnline) {
+      // Offline: queue for replay when reconnected. Optimistically show completed (#2151).
+      await addOfflineAction({
+        actionType: 'case_study_complete',
+        payload: { module_id: moduleId, unit_id: unitId },
+      });
+      if (storageKey) clearQuizState(storageKey);
+      setIsCompleted(true);
+      onComplete?.();
+      return;
+    }
     try {
       await apiFetch(`/api/v1/progress/complete-lesson`, {
         method: 'POST',
