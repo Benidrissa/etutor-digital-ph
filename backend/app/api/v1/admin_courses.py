@@ -1380,9 +1380,8 @@ async def get_rag_index_status(
             and effective_task_id == course.indexation_task_id
             and (chunks_indexed > 0 or images_indexed > 0)
         )
-        is_zombie = (
-            effective_task_id == course.indexation_task_id
-            and _is_zombie_task(state, meta, chunks_indexed, images_indexed)
+        is_zombie = effective_task_id == course.indexation_task_id and _is_zombie_task(
+            state, meta, chunks_indexed, images_indexed
         )
         if is_evicted_pointer or is_zombie:
             course.indexation_task_id = None
