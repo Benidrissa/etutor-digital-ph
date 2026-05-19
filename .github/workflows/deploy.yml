@@ -113,7 +113,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/benidrissa/etutor-digital-ph/mms-tts
           tags: |
@@ -149,7 +149,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/benidrissa/etutor-digital-ph/nllb
           tags: |
@@ -203,7 +203,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ matrix.image }}
           tags: |
