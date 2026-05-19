@@ -34,7 +34,7 @@ dependencies = [
     "qrcode[pil]>=8.2",
     "aiosmtplib>=3.0.0",
     "sentry-sdk[fastapi]>=2.19.0",
-    "google-cloud-texttospeech>=2.29.0",
+    "google-cloud-texttospeech>=2.36.0",
     "reportlab>=4.0",
 ]
 
