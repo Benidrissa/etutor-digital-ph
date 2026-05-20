@@ -1,5 +1,6 @@
 """RAG pipeline for processing documents into searchable chunks with embeddings."""
 
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -51,6 +52,7 @@ class RAGPipeline:
         level: int | None = None,
         session: AsyncSession | None = None,
         course_resource_id: UUID | None = None,
+        content_hash: str | None = None,
     ) -> int:
         """
         Process a single PDF document through the complete RAG pipeline.
@@ -62,6 +64,9 @@ class RAGPipeline:
             session: Database session (will create one if not provided)
             course_resource_id: FK back to ``course_resources.id`` (#2186) so
                 stored chunks know their originating PDF.
+            content_hash: SHA-256 of the resource's extracted text. When set,
+                the pipeline checks if another course already has chunks for
+                this content and clones them instead of re-embedding.
 
         Returns:
             Number of chunks processed
@@ -69,6 +74,24 @@ class RAGPipeline:
         pdf_path = Path(pdf_path)
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+
+        # Content-hash dedup: clone from a donor course instead of re-embedding.
+        if content_hash and course_resource_id:
+            async with async_session_factory() as _dedup_session:
+                donors = await self._find_donor_chunks(
+                    content_hash, course_resource_id, _dedup_session
+                )
+                if donors:
+                    cloned = await self._clone_chunks(
+                        donors, source, course_resource_id, _dedup_session
+                    )
+                    logger.info(
+                        "Cloned chunks from donor — skipped embedding API",
+                        cloned=cloned,
+                        source=source,
+                        content_hash=content_hash,
+                    )
+                    return cloned
 
         logger.info("Starting PDF processing", pdf_path=str(pdf_path), source=source)
 
@@ -184,6 +207,59 @@ class RAGPipeline:
 
         return stored_count
 
+    async def _find_donor_chunks(
+        self,
+        content_hash: str,
+        new_resource_id: UUID,
+        session: AsyncSession,
+    ) -> list[DocumentChunk]:
+        """Return existing chunks from another course resource with the same content_hash.
+
+        Uses ix_course_resources_content_hash + ix_document_chunks_course_resource_id.
+        """
+        from app.domain.models.course_resource import CourseResource
+
+        result = await session.execute(
+            select(DocumentChunk)
+            .join(CourseResource, CourseResource.id == DocumentChunk.course_resource_id)
+            .where(
+                CourseResource.content_hash == content_hash,
+                DocumentChunk.course_resource_id != new_resource_id,
+                DocumentChunk.course_resource_id.is_not(None),
+            )
+            .order_by(DocumentChunk.chunk_index)
+            .limit(5000)
+        )
+        return list(result.scalars().all())
+
+    async def _clone_chunks(
+        self,
+        donor_chunks: list[DocumentChunk],
+        new_source: str,
+        new_resource_id: UUID,
+        session: AsyncSession,
+    ) -> int:
+        """Insert copies of donor_chunks under new_source/new_resource_id without re-embedding."""
+        cloned = 0
+        for donor in donor_chunks:
+            db_chunk = DocumentChunk(
+                id=uuid.uuid4(),
+                content=donor.content,
+                embedding=donor.embedding,
+                source=new_source,
+                chapter=donor.chapter,
+                page=donor.page,
+                level=donor.level,
+                language=donor.language,
+                token_count=donor.token_count,
+                chunk_index=donor.chunk_index,
+                course_resource_id=new_resource_id,
+            )
+            session.add(db_chunk)
+            cloned += 1
+        await session.commit()
+        return cloned
+
     async def process_pdf_images(
         self,
         pdf_path: str | Path,
@@ -250,6 +326,63 @@ class RAGPipeline:
             prefix = rag_collection_id or source
             key = f"source-images/{prefix}/{readable_name}/{img.page_number}_{safe_label}.webp"
 
+            # Cross-course image dedup: reuse existing storage + computed fields.
+            if img.image_hash:
+                donor_result = await session.execute(
+                    select(SourceImage).where(SourceImage.image_hash == img.image_hash).limit(1)
+                )
+                donor_img = donor_result.scalar_one_or_none()
+                if donor_img is not None:
+                    cloned_img = SourceImage(
+                        id=uuid4(),
+                        source=source,
+                        rag_collection_id=rag_collection_id,
+                        image_hash=img.image_hash,
+                        # Reuse all expensive computed fields from donor:
+                        storage_key=donor_img.storage_key,
+                        storage_url=donor_img.storage_url,
+                        storage_key_fr=donor_img.storage_key_fr,
+                        storage_url_fr=donor_img.storage_url_fr,
+                        embedding=donor_img.embedding,
+                        caption_fr=donor_img.caption_fr,
+                        caption_en=donor_img.caption_en,
+                        alt_text_fr=donor_img.alt_text_fr,
+                        alt_text_en=donor_img.alt_text_en,
+                        figure_kind=donor_img.figure_kind,
+                        image_type=donor_img.image_type,
+                        width=donor_img.width,
+                        height=donor_img.height,
+                        file_size_bytes=donor_img.file_size_bytes,
+                        original_format=donor_img.original_format,
+                        format=donor_img.format,
+                        # Keep per-document positional metadata:
+                        page_number=img.page_number,
+                        chapter=img.chapter,
+                        section=img.section,
+                        surrounding_text=img.surrounding_text,
+                        figure_number=img.figure_number,
+                        caption=img.caption,
+                        attribution=img.attribution,
+                    )
+                    session.add(cloned_img)
+                    await session.commit()
+                    stored_count += 1
+                    logger.debug(
+                        "Reused image from donor — skipped MinIO upload and Claude API",
+                        source=source,
+                        image_hash=img.image_hash,
+                        figure=img.figure_number,
+                    )
+                    if progress_callback is not None:
+                        try:
+                            progress_callback(stored_count, len(images), figure_label)
+                        except Exception as cb_exc:
+                            logger.debug(
+                                "image progress_callback raised, ignoring",
+                                error=str(cb_exc),
+                            )
+                    continue
+
             try:
                 storage_url = await storage.upload_bytes(
                     key=key,
@@ -281,23 +414,40 @@ class RAGPipeline:
             caption_en: str | None = None
             alt_text_fr: str | None = None
             alt_text_en: str | None = None
-            if img.caption and img.caption.strip():
-                try:
-                    translation = await translate_figure_caption(
-                        caption=img.caption,
-                        image_type=img.image_type,
-                        figure_number=img.figure_number,
-                    )
-                    caption_fr = translation.caption_fr
-                    caption_en = translation.caption_en
-                    alt_text_fr = translation.alt_text_fr
-                    alt_text_en = translation.alt_text_en
-                except Exception as exc:
+            # Broader gate than "caption is non-empty" (#2272): figures whose
+            # caption block didn't survive extraction still have a figure
+            # number + surrounding text, and that's enough for Claude to
+            # write a usable FR/EN caption + alt text. Without this fallback
+            # locale columns stayed NULL and the frontend dropped to the
+            # English caption (or just "Figure X.Y" when even that was empty).
+            translator_input = (img.caption or "").strip()
+            if not translator_input and img.surrounding_text:
+                translator_input = img.surrounding_text.strip()[:200]
+            if not translator_input and img.figure_number:
+                translator_input = img.figure_number
+            if translator_input:
+                last_exc: Exception | None = None
+                for _ in range(2):
+                    try:
+                        translation = await translate_figure_caption(
+                            caption=translator_input,
+                            image_type=img.image_type,
+                            figure_number=img.figure_number,
+                        )
+                        caption_fr = translation.caption_fr
+                        caption_en = translation.caption_en
+                        alt_text_fr = translation.alt_text_fr
+                        alt_text_en = translation.alt_text_en
+                        last_exc = None
+                        break
+                    except Exception as exc:
+                        last_exc = exc
+                if last_exc is not None:
                     logger.warning(
-                        "Failed to translate figure caption, storing without locale fields",
+                        "Failed to translate figure caption after retry; storing NULL locales",
                         source=source,
                         figure_number=img.figure_number,
-                        error=str(exc),
+                        error=str(last_exc),
                     )
 
             figure_kind: str | None = None
@@ -374,6 +524,7 @@ class RAGPipeline:
                 id=uuid4(),
                 source=source,
                 rag_collection_id=rag_collection_id,
+                image_hash=img.image_hash,
                 figure_number=img.figure_number,
                 caption=img.caption,
                 caption_fr=caption_fr,

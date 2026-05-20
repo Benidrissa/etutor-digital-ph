@@ -66,6 +66,9 @@ export function QuizContainer({
 
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollStartRef = useRef<number>(0);
+  // Freeze country on first hydration so a network blip that briefly flips
+  // currentUser.country cannot restart a live quiz session (#2226).
+  const frozenCountryRef = useRef<string | null>(null);
   const { isOnline } = useNetworkStatus();
 
   useEffect(() => {
@@ -73,6 +76,12 @@ export function QuizContainer({
     // `resolvedCountry` flips from default → real country mid-mount and re-fires
     // this effect, dispatching a duplicate Celery task for the same logical request.
     if (!isHydrated) return;
+    // Don't restart the effect while the learner is actively answering or has
+    // already finished — a dependency flap (e.g. country ref settling) must not
+    // wipe in-progress answers (#2226).
+    if (state === 'in-progress' || state === 'completed') return;
+    if (frozenCountryRef.current === null) frozenCountryRef.current = resolvedCountry;
+    const country = frozenCountryRef.current;
 
     let stale = false;
     if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
@@ -163,7 +172,7 @@ export function QuizContainer({
         setError('');
 
         const result = await loadQuiz<Quiz | GeneratingResponse>(
-          moduleId, unitId, language, level, resolvedCountry,
+          moduleId, unitId, language, level, country,
           unitQuestionsCount, forceRegenerate,
         );
         if (stale) return;
@@ -217,7 +226,7 @@ export function QuizContainer({
       if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moduleId, unitId, language, resolvedCountry, level, retryCount, forceRegenerate, isHydrated]);
+  }, [moduleId, unitId, language, level, retryCount, forceRegenerate, isHydrated, state]);
   
   const handleStartQuiz = () => {
     setState('in-progress');

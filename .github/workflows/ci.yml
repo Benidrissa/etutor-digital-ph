@@ -90,3 +90,57 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  e2e:
+    name: E2E Persona Suite (Playwright vs staging)
+    runs-on: ubuntu-latest
+    # Skip on push events (avoid running twice for PR + push). PR runs are
+    # what gate merges. Workflow_dispatch keeps manual ad-hoc runs available.
+    if: github.event_name != 'push' || github.ref == 'refs/heads/main'
+    needs: frontend
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run persona suite against staging
+        env:
+          STAGING_URL: https://etutor.elearning.portfolio2.kimbetien.com
+          NO_WEB_SERVER: "1"
+          E2E_LEARNER_PASSWORD: ${{ secrets.E2E_LEARNER_PASSWORD }}
+          E2E_ORG_OWNER_PASSWORD: ${{ secrets.E2E_ORG_OWNER_PASSWORD }}
+          E2E_SUB_ADMIN_PASSWORD: ${{ secrets.E2E_SUB_ADMIN_PASSWORD }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+        run: |
+          npx playwright test \
+            --project=setup \
+            --project=01-anonymous \
+            --project=02-learner \
+            --project=03-org-owner \
+            --project=04-sub-admin \
+            --project=05-admin \
+            --reporter=line,html
+
+      - name: Upload Playwright trace + report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.run_id }}
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          retention-days: 14

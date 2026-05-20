@@ -8,7 +8,6 @@ import { Search, Download, Upload, UserPlus, MoreVertical, UserCheck, UserX, Shi
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -48,7 +47,7 @@ type PendingAction =
   | { type: "reactivate"; user: AdminUser }
   | { type: "promote"; user: AdminUser; newRole: "expert" | "admin" | "user" };
 
-const PAGE_SIZE = 50;
+const PAGE_SIZES = [10, 25, 50, 100] as const;
 
 function buildFilterQuery(params: {
   search: string;
@@ -73,10 +72,11 @@ function useAdminUsers(params: {
   role: string;
   isActive: string;
   offset: number;
+  limit: number;
 }) {
   const query = buildFilterQuery(params);
   query.set("offset", String(params.offset));
-  query.set("limit", String(PAGE_SIZE));
+  query.set("limit", String(params.limit));
 
   return useQuery<AdminUser[]>({
     queryKey: ["admin", "users", params],
@@ -114,6 +114,11 @@ export function UserListClient() {
   const [role, setRole] = useState("");
   const [isActive, setIsActive] = useState("");
   const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState<number>(50);
+  // px widths per column [name, role, contact, country, level, created, actions]; undefined = auto
+  const [colWidths, setColWidths] = useState<(number | undefined)[]>(
+    [undefined, 112, 192, 112, 96, 112, 48]
+  );
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -135,7 +140,7 @@ export function UserListClient() {
 
   const filterParams = { search: debouncedSearch, country, level, role, isActive };
 
-  const { data: users, isLoading, error } = useAdminUsers({ ...filterParams, offset });
+  const { data: users, isLoading, error } = useAdminUsers({ ...filterParams, offset, limit: pageSize });
   const { data: countData } = useAdminUserCount(filterParams);
 
   const statusMutation = useMutation({
@@ -273,6 +278,26 @@ export function UserListClient() {
     URL.revokeObjectURL(url);
   };
 
+  const startResize = (e: React.MouseEvent, colIndex: number) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = colWidths[colIndex] ?? 96;
+    const onMove = (ev: MouseEvent) => {
+      const delta = ev.clientX - startX;
+      setColWidths((prev) => {
+        const next = [...prev];
+        next[colIndex] = Math.max(60, startWidth + delta);
+        return next;
+      });
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
+
   const confirmTitle =
     pendingAction?.type === "deactivate"
       ? t("confirmDeactivate")
@@ -403,52 +428,97 @@ export function UserListClient() {
               ? t("userCountTotal", { count: countData.count })
               : t("userCount", { count: users.length })}
           </p>
-          <div className="flex flex-col gap-2">
-            {users.map((user) => (
-              <UserCard
-                key={user.id}
-                user={user}
-                onDeactivate={(u) => setPendingAction({ type: "deactivate", user: u })}
-                onReactivate={(u) => setPendingAction({ type: "reactivate", user: u })}
-                onPromote={(u, r) => setPendingAction({ type: "promote", user: u, newRole: r })}
-                onViewDetails={(u) =>
-                  startTransition(() =>
-                    router.push(`/${locale}/admin/users/${u.id}`)
-                  )
-                }
-              />
-            ))}
+          <div className="overflow-x-auto">
+            <table className="table-fixed w-full text-sm">
+              <thead>
+                <tr className="border-b text-muted-foreground text-left select-none">
+                  <th className="pb-2 pr-4 relative" style={colWidths[0] !== undefined ? { width: colWidths[0] } : undefined}>
+                    {t("name")}
+                  </th>
+                  <th className="pb-2 pr-4 relative" style={{ width: colWidths[1] }}>
+                    {t("role")}
+                    <span className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-border" onMouseDown={(e) => startResize(e, 1)} />
+                  </th>
+                  <th className="pb-2 pr-4 relative" style={{ width: colWidths[2] }}>
+                    {t("contact")}
+                    <span className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-border" onMouseDown={(e) => startResize(e, 2)} />
+                  </th>
+                  <th className="pb-2 pr-4 relative" style={{ width: colWidths[3] }}>
+                    {t("country")}
+                    <span className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-border" onMouseDown={(e) => startResize(e, 3)} />
+                  </th>
+                  <th className="pb-2 pr-4 relative" style={{ width: colWidths[4] }}>
+                    {t("levelHeader")}
+                    <span className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-border" onMouseDown={(e) => startResize(e, 4)} />
+                  </th>
+                  <th className="pb-2 pr-4 relative" style={{ width: colWidths[5] }}>
+                    {t("createdAt")}
+                    <span className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-border" onMouseDown={(e) => startResize(e, 5)} />
+                  </th>
+                  <th className="pb-2" style={{ width: colWidths[6] }} />
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((user) => (
+                  <UserRow
+                    key={user.id}
+                    user={user}
+                    onDeactivate={(u) => setPendingAction({ type: "deactivate", user: u })}
+                    onReactivate={(u) => setPendingAction({ type: "reactivate", user: u })}
+                    onPromote={(u, r) => setPendingAction({ type: "promote", user: u, newRole: r })}
+                    onViewDetails={(u) =>
+                      startTransition(() =>
+                        router.push(`/${locale}/admin/users/${u.id}`)
+                      )
+                    }
+                  />
+                ))}
+              </tbody>
+            </table>
           </div>
-          {countData && countData.count > PAGE_SIZE && (
+          {countData && countData.count > 0 && (
             <div className="flex items-center justify-between gap-3 pt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-11 min-w-11 gap-2"
-                disabled={offset === 0}
-                onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-                aria-label={t("prevPage")}
-              >
-                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-                <span className="hidden sm:inline">{t("prevPage")}</span>
-              </Button>
-              <span className="text-sm text-muted-foreground">
-                {t("pageIndicator", {
-                  page: Math.floor(offset / PAGE_SIZE) + 1,
-                  total: Math.ceil(countData.count / PAGE_SIZE),
-                })}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-11 min-w-11 gap-2"
-                disabled={offset + PAGE_SIZE >= countData.count}
-                onClick={() => setOffset(offset + PAGE_SIZE)}
-                aria-label={t("nextPage")}
-              >
-                <span className="hidden sm:inline">{t("nextPage")}</span>
-                <ChevronRight className="h-4 w-4" aria-hidden="true" />
-              </Button>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span>Rows</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => { setPageSize(Number(e.target.value)); setOffset(0); }}
+                  className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+                  aria-label="Rows per page"
+                >
+                  {PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="min-h-11 min-w-11 gap-2"
+                  disabled={offset === 0}
+                  onClick={() => setOffset(Math.max(0, offset - pageSize))}
+                  aria-label={t("prevPage")}
+                >
+                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                  <span className="hidden sm:inline">{t("prevPage")}</span>
+                </Button>
+                <span className="text-sm text-muted-foreground">
+                  {t("pageIndicator", {
+                    page: Math.floor(offset / pageSize) + 1,
+                    total: Math.ceil(countData.count / pageSize),
+                  })}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="min-h-11 min-w-11 gap-2"
+                  disabled={offset + pageSize >= countData.count}
+                  onClick={() => setOffset(offset + pageSize)}
+                  aria-label={t("nextPage")}
+                >
+                  <span className="hidden sm:inline">{t("nextPage")}</span>
+                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -546,7 +616,7 @@ export function UserListClient() {
   );
 }
 
-function UserCard({
+function UserRow({
   user,
   onDeactivate,
   onReactivate,
@@ -565,34 +635,30 @@ function UserCard({
   const roleVariant = user.role === "admin" ? "destructive" : user.role === "expert" ? "secondary" : "outline";
 
   return (
-    <Card className="p-4">
-      <div className="flex items-start justify-between gap-3">
+    <tr className="border-b last:border-0 align-middle hover:bg-muted/40 transition-colors">
+      <td className="py-2 pr-4">
         <button
-          className="flex flex-col gap-1 text-left min-w-0 flex-1"
+          className="flex items-center gap-2 text-left font-medium hover:underline"
           onClick={() => onViewDetails(user)}
           aria-label={t("viewDetails")}
         >
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-sm truncate">{user.name}</span>
-            <Badge variant={roleVariant}>{tRoles(user.role)}</Badge>
-            {!user.is_active && (
-              <Badge variant="destructive">{t("inactive")}</Badge>
-            )}
-          </div>
-          {user.email && (
-            <span className="text-xs text-muted-foreground truncate">{user.email}</span>
+          {user.name}
+          {!user.is_active && (
+            <Badge variant="destructive" className="text-xs">{t("inactive")}</Badge>
           )}
-          {user.phone_number && (
-            <span className="text-xs text-muted-foreground truncate">{user.phone_number}</span>
-          )}
-          <div className="flex items-center gap-3 mt-1 flex-wrap">
-            {user.country && (
-              <span className="text-xs text-muted-foreground">{user.country}</span>
-            )}
-            <span className="text-xs text-muted-foreground">{t("level", { level: user.current_level })}</span>
-          </div>
         </button>
-
+      </td>
+      <td className="py-2 pr-4">
+        <Badge variant={roleVariant}>{tRoles(user.role)}</Badge>
+      </td>
+      <td className="py-2 pr-4">
+        {user.email && <p className="truncate text-muted-foreground text-xs">{user.email}</p>}
+        {user.phone_number && <p className="truncate text-muted-foreground text-xs">{user.phone_number}</p>}
+      </td>
+      <td className="py-2 pr-4 text-muted-foreground whitespace-nowrap text-xs">{user.country ?? "—"}</td>
+      <td className="py-2 pr-4 text-muted-foreground whitespace-nowrap text-xs">{t("level", { level: user.current_level })}</td>
+      <td className="py-2 pr-4 text-muted-foreground whitespace-nowrap text-xs">{user.created_at.slice(0, 10)}</td>
+      <td className="py-2">
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -642,7 +708,7 @@ function UserCard({
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
-    </Card>
+      </td>
+    </tr>
   );
 }

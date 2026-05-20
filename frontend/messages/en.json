@@ -271,6 +271,7 @@
   },
   "ModuleOverview": {
     "backToModules": "Back to Modules",
+    "backToCourse": "Back to course",
     "level": "Level {level}",
     "estimatedDuration": "Estimated duration",
     "hours": "{count, plural, one {# hour} other {# hours}}",
@@ -1094,6 +1095,9 @@
       "role": "Role",
       "language": "Language",
       "country": "Country",
+      "contact": "Contact",
+      "levelHeader": "Level",
+      "createdAt": "Created",
       "creating": "Creating...",
       "userCreated": "User created successfully",
       "importTitle": "Import Users from CSV",
@@ -1312,6 +1316,210 @@
       "removeMember": "Remove member",
       "confirmDelete": "Delete this group?",
       "confirmDeleteDesc": "This will remove the group and revoke any curriculum access granted via this group."
+    },
+    "qualityAgent": {
+      "pageTitle": "Quality review",
+      "pageDescription": "Review what the autonomous quality agent has flagged for this course.",
+      "backToCourses": "Back to courses",
+      "loading": "Loading quality data…",
+      "error": "Could not load quality data.",
+      "noData": "No quality data yet.",
+      "runInProgress": {
+        "title": "A quality run is in progress.",
+        "body": "Counts and unit statuses below will refresh automatically."
+      },
+      "tiles": {
+        "unitsTotal": "Total units",
+        "needsReview": "Needs review",
+        "needsReviewHint": "flagged",
+        "glossaryDrift": "Glossary drift",
+        "driftHint": "terms diverge",
+        "lastRun": "Latest run",
+        "noRun": "No run yet"
+      },
+      "sections": {
+        "needsReview": "Units needing review",
+        "glossaryDrift": "Glossary drift",
+        "runsLog": "Recent runs",
+        "glossary": "Glossary"
+      },
+      "needsReview": {
+        "noRun": "The agent has not assessed this course yet — units will appear here after the next lesson generation.",
+        "allClear": "Nothing flagged in the latest run. The agent is happy with this course.",
+        "unit": "Unit",
+        "type": "Type",
+        "language": "Lang",
+        "status": "Status",
+        "score": "Score",
+        "flags": "Flags",
+        "attempts": "Retries",
+        "lastAssessed": "Last assessed"
+      },
+      "runsLog": {
+        "empty": "No runs yet for this course.",
+        "status": "Status",
+        "kind": "Kind",
+        "started": "Started",
+        "score": "Score",
+        "units": "Units (passing/total)",
+        "credits": "Credits (spent/budget)",
+        "open": "Open"
+      },
+      "runStatus": {
+        "queued": "Queued",
+        "scoring": "Scoring",
+        "regenerating": "Regenerating",
+        "completed": "Completed",
+        "failed": "Failed",
+        "cancelled": "Cancelled"
+      },
+      "runKind": {
+        "full": "Full sweep",
+        "targeted": "Targeted",
+        "glossary_only": "Glossary only"
+      },
+      "unitStatus": {
+        "pending": "Pending",
+        "scoring": "Scoring",
+        "passing": "Passing",
+        "needs_review": "Needs review",
+        "regenerating": "Regenerating",
+        "needs_review_final": "Final review",
+        "manual_override": "Manual override",
+        "failed": "Failed"
+      },
+      "glossaryDriftBody": "{count, plural, one {# term has divergent definitions across units.} other {# terms have divergent definitions across units.}}",
+      "unit": {
+        "pageTitle": "Unit quality detail",
+        "pageDescription": "What the autonomous quality agent flagged on this specific unit, and the override actions you can take.",
+        "backToCourseQuality": "Back to course quality",
+        "headerLine": "Unit {unit_number} · {type} · {language}",
+        "lastAssessed": "Last assessed",
+        "attempts": "{count, plural, one {# retry} other {# retries}}",
+        "lockedShort": "Manually edited",
+        "locked": "This unit is manually edited — the agent will skip it on future runs until you unlock it.",
+        "weight": "{weight}%",
+        "notAssessed": "The agent has not assessed this unit yet — it will appear here after the next lesson generation.",
+        "noFlags": "No flags recorded for this assessment.",
+        "crossUnitRef": "Cross-unit reference: unit {unit}",
+        "suggestedFix": "Suggested fix",
+        "sections": {
+          "dimensions": "Rubric dimensions",
+          "flags": "{count, plural, =0 {No flags} one {# flag} other {# flags}}"
+        },
+        "actions": {
+          "title": "Override the agent's verdict",
+          "help": "Resolve marks the unit as passing without re-running the agent.",
+          "helpLocked": "Resolve marks the unit as passing. Unlock clears the manual-edit lock so the agent can re-evaluate on its next run.",
+          "resolve": "Resolve",
+          "resolveSubmit": "Mark passing",
+          "unlock": "Unlock for re-evaluation",
+          "note": "Note (optional)",
+          "notePlaceholder": "Why are you marking this unit as passing?",
+          "submitting": "Submitting…",
+          "cancel": "Cancel",
+          "error": "Action failed"
+        },
+        "backToRun": "Back to run"
+      },
+      "dimensions": {
+        "terminology_consistency": "Terminology consistency",
+        "source_grounding": "Source grounding",
+        "syllabus_alignment": "Syllabus alignment",
+        "internal_contradictions": "Internal contradictions",
+        "pedagogical_fit": "Pedagogical fit",
+        "structural_completeness": "Structural completeness"
+      },
+      "flagCategory": {
+        "terminology_drift": "Terminology drift",
+        "ungrounded_claim": "Ungrounded claim",
+        "syllabus_scope_drift": "Syllabus scope drift",
+        "internal_contradiction": "Internal contradiction",
+        "pedagogical_mismatch": "Pedagogical mismatch",
+        "structural_gap": "Structural gap"
+      },
+      "severity": {
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "blocking": "Blocking"
+      },
+      "runDetail": {
+        "pageTitle": "Run detail",
+        "pageDescription": "Audit trail of one quality run for this course.",
+        "backToCourseQuality": "Back to course quality",
+        "loading": "Loading run detail…",
+        "error": "Could not load run detail.",
+        "notFound": "Run not found.",
+        "started": "Started",
+        "finished": "Finished",
+        "duration": "Duration",
+        "credits": "Credits",
+        "unitsCounter": "Units (passing/total)",
+        "regenerated": "Regenerated",
+        "unitsTitle": "{count, plural, =0 {No units} one {# unit} other {# units}}",
+        "filterLabel": "Filter:",
+        "filterAll": "All",
+        "filterFlagged": "Flagged",
+        "emptyAll": "This run has no units yet — the worker may not have started scoring.",
+        "emptyFiltered": "No units match the selected filter.",
+        "col": {
+          "unit": "Unit",
+          "type": "Type",
+          "language": "Lang",
+          "status": "Status",
+          "score": "Score",
+          "flags": "Flags",
+          "attempts": "Retries",
+          "lastAssessed": "Last assessed"
+        }
+      },
+      "glossary": {
+        "pageTitle": "Course glossary",
+        "pageDescription": "Canonical terms the autonomous quality agent uses to detect terminology drift across this course.",
+        "backToCourseQuality": "Back to course quality",
+        "loading": "Loading glossary…",
+        "error": "Could not load glossary.",
+        "empty": "No glossary terms have been extracted for this language yet.",
+        "language": "Language",
+        "driftSummary": "{count, plural, one {# term with drift} other {# terms with drift}}",
+        "driftDetailsLabel": "Drift details",
+        "col": {
+          "term": "Term",
+          "definition": "Canonical definition",
+          "firstUnit": "First unit",
+          "occurrences": "Occurrences",
+          "status": "Status"
+        },
+        "consistency": {
+          "consistent": "Consistent",
+          "drift_detected": "Drift",
+          "unsourced": "Unsourced"
+        }
+      },
+      "glossaryNoDrift": "No glossary drift detected for this course.",
+      "viewGlossary": "View full glossary",
+      "reviewQueue": {
+        "pageTitle": "Quality review",
+        "pageDescription": "Cross-course triage of what the autonomous quality agent has flagged.",
+        "intro": "Courses sorted by attention needed: stalled units (final review), failed units, then needs-review units.",
+        "filterHasIssues": "Hide all-passing courses",
+        "loading": "Loading review queue…",
+        "error": "Could not load review queue.",
+        "emptyClean": "No courses currently need attention. The autonomous agent is happy.",
+        "emptyAll": "No courses to display.",
+        "col": {
+          "course": "Course",
+          "attention": "Attention",
+          "passing": "Passing/Total",
+          "drift": "Drift",
+          "lastAssessed": "Last assessed",
+          "lastRun": "Last run"
+        }
+      }
+    },
+    "quality": {
+      "title": "Quality"
     }
   },
   "Courses": {
@@ -1718,7 +1926,8 @@
       "lockHint": "Saved lessons are locked and will never be regenerated.",
       "generateError": "Failed to generate lesson preview.",
       "noModules": "No modules found. Generate a syllabus first."
-    }
+    },
+    "reviewQuality": "Review quality"
   },
   "AdminSyllabus": {
     "pageTitle": "Syllabus Management",

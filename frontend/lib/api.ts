@@ -221,6 +221,7 @@ export interface ModuleDetailWithProgressResponse {
   time_spent_minutes: number;
   last_accessed: string | null;
   units: UnitProgressDetail[];
+  course_slug?: string;
 }
 
 export interface LessonAccessRequest {
@@ -284,6 +285,7 @@ export interface ModuleUnitsResponse {
   learning_objectives_fr?: string[];
   learning_objectives_en?: string[];
   units: PublicUnitDetail[];
+  course_slug?: string;
 }
 
 export async function getModuleUnits(

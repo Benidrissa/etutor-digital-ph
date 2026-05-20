@@ -18,6 +18,7 @@ import { SourceCitations } from './source-citations';
 import { apiFetch, getModuleDetailWithProgress } from '@/lib/api';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { loadCaseStudy, OfflineContentNotAvailable } from '@/lib/offline/content-loader';
+import { addOfflineAction } from '@/lib/offline/db';
 import { OfflineBadge } from '@/components/shared/offline-badge';
 import { useNetworkStatus } from '@/lib/hooks/use-network-status';
 import { loadQuizState, saveQuizState, clearQuizState } from '@/lib/quiz-state-persistence';
@@ -112,6 +113,8 @@ export function CaseStudyViewer({
 
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollStartRef = useRef<number>(0);
+  // Freeze country on first hydration so a network blip cannot reload live content (#2226).
+  const frozenCountryRef = useRef<string | null>(null);
 
   const { user: currentUser, isHydrated } = useCurrentUser();
   const country = countryContext || currentUser?.country || 'CI';
@@ -155,6 +158,11 @@ export function CaseStudyViewer({
     // Wait for the localStorage-backed user to settle before fetching, otherwise
     // `country` flips mid-mount and re-fires this effect with a duplicate Celery task.
     if (!isHydrated) return;
+    // Don't re-fetch while content is already displayed and the learner didn't
+    // explicitly ask to regenerate — a reconnect must not wipe the case study (#2226).
+    if (caseStudyData !== null && !forceRegenerate) return;
+    if (frozenCountryRef.current === null) frozenCountryRef.current = country;
+    const resolvedCountry = frozenCountryRef.current;
 
     let cancelled = false;
     if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
@@ -179,7 +187,7 @@ export function CaseStudyViewer({
 
           if (statusRes.status === 'complete') {
             const caseRes = await apiFetch<CaseStudyData>(
-              `/api/v1/content/cases/${moduleId}/${unitId}?language=${language}&level=${level}&country=${country}`
+              `/api/v1/content/cases/${moduleId}/${unitId}?language=${language}&level=${level}&country=${resolvedCountry}`
             );
             if (cancelled) return;
             setCaseStudyData(caseRes);
@@ -224,7 +232,7 @@ export function CaseStudyViewer({
         setError(null);
 
         const result = await loadCaseStudy<CaseStudyData | GeneratingResponse>(
-          moduleId, unitId, language, level, country, forceRegenerate
+          moduleId, unitId, language, level, resolvedCountry, forceRegenerate
         );
         if (cancelled) return;
 
@@ -271,7 +279,7 @@ export function CaseStudyViewer({
       if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moduleId, unitId, language, level, country, forceRegenerate, isHydrated]);
+  }, [moduleId, unitId, language, level, forceRegenerate, isHydrated, caseStudyData]);
 
   const handleRefresh = () => {
     if (storageKey) clearQuizState(storageKey);
@@ -282,6 +290,17 @@ export function CaseStudyViewer({
 
   const handleMarkComplete = async () => {
     setCompleteError(null);
+    if (!isOnline) {
+      // Offline: queue for replay when reconnected. Optimistically show completed (#2151).
+      await addOfflineAction({
+        actionType: 'case_study_complete',
+        payload: { module_id: moduleId, unit_id: unitId },
+      });
+      if (storageKey) clearQuizState(storageKey);
+      setIsCompleted(true);
+      onComplete?.();
+      return;
+    }
     try {
       await apiFetch(`/api/v1/progress/complete-lesson`, {
         method: 'POST',

@@ -145,14 +145,22 @@ async def create_user(
         created_at=datetime.utcnow(),
     )
     db.add(user)
+    await db.flush()  # ensure user.id is persisted before FK reference in audit log
 
-    await _write_audit_log(
-        db,
-        current_user,
-        user,
-        AdminAction.create_user,
-        details=f"created with role {request.role.value}",
-    )
+    try:
+        await _write_audit_log(
+            db,
+            current_user,
+            user,
+            AdminAction.create_user,
+            details=f"created with role {request.role.value}",
+        )
+    except Exception:
+        logger.warning(
+            "audit_log_write_failed",
+            admin_id=current_user.id,
+            action="create_user",
+        )
     await db.commit()
     await db.refresh(user)
 
@@ -284,7 +292,13 @@ async def export_users_csv(
 
         if search:
             pattern = f"%{search}%"
-            stmt = stmt.where(or_(User.name.ilike(pattern), User.email.ilike(pattern)))
+            stmt = stmt.where(
+                or_(
+                    User.name.ilike(pattern),
+                    User.email.ilike(pattern),
+                    User.phone_number.ilike(pattern),
+                )
+            )
         if country:
             stmt = stmt.where(User.country == country)
         if level is not None:
@@ -369,7 +383,13 @@ async def count_users(
 
         if search:
             pattern = f"%{search}%"
-            stmt = stmt.where(or_(User.name.ilike(pattern), User.email.ilike(pattern)))
+            stmt = stmt.where(
+                or_(
+                    User.name.ilike(pattern),
+                    User.email.ilike(pattern),
+                    User.phone_number.ilike(pattern),
+                )
+            )
         if country:
             stmt = stmt.where(User.country == country)
         if level is not None:
@@ -407,7 +427,13 @@ async def list_users(
 
         if search:
             pattern = f"%{search}%"
-            stmt = stmt.where(or_(User.name.ilike(pattern), User.email.ilike(pattern)))
+            stmt = stmt.where(
+                or_(
+                    User.name.ilike(pattern),
+                    User.email.ilike(pattern),
+                    User.phone_number.ilike(pattern),
+                )
+            )
         if country:
             stmt = stmt.where(User.country == country)
         if level is not None:

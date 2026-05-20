@@ -40,6 +40,26 @@ HIGH_DRAWING_COUNT_THRESHOLD = 2000
 RASTERIZE_DPI = 200
 
 
+def _avg_hash_hex(image_bytes: bytes) -> str | None:
+    """Return a 16-char hex 64-bit average hash, or None on error.
+
+    The same algorithm used for within-PDF deduplication; exposing it here
+    allows the RAG pipeline to persist the hash and detect cross-course duplicates.
+    """
+    try:
+        from PIL import Image
+
+        img = Image.open(io.BytesIO(image_bytes)).convert("L").resize((8, 8), Image.LANCZOS)
+        pixels = list(img.tobytes())
+        avg = sum(pixels) / len(pixels)
+        bits = 0
+        for px in pixels:
+            bits = (bits << 1) | (1 if px >= avg else 0)
+        return f"{bits:016x}"
+    except Exception:
+        return None
+
+
 @dataclass
 class ExtractedImage:
     """Represents an image extracted from a PDF with rich metadata."""
@@ -57,6 +77,7 @@ class ExtractedImage:
     surrounding_text: str
     chapter: str | None
     section: str | None
+    image_hash: str | None = None
 
 
 # Multi-part numbering pattern: matches "1", "1.5", "2-8", "12.3.4", "1-2-3".
@@ -546,6 +567,41 @@ class PDFImageExtractor:
         pixmap = page.get_pixmap(dpi=dpi, clip=clipped)
         return pixmap.tobytes("png"), pixmap.width, pixmap.height
 
+    def _find_leading_caption_block(
+        self,
+        page: pymupdf.Page,
+        figure_patterns: list[re.Pattern],
+    ) -> pymupdf.Rect | None:
+        """Return the bbox of the first text block whose leading text matches a figure pattern.
+
+        Body-text references like "...as shown in Figure 1.1..." sit mid-block
+        and never satisfy this; real captions are block-leading. Distinguishing
+        the two is what stops body-text pages being indexed as figures.
+        """
+        try:
+            page_dict = page.get_text("dict")
+        except Exception:
+            return None
+        for block in page_dict.get("blocks", []):
+            if block.get("type") != 0:
+                continue
+            lines = block.get("lines") or []
+            if not lines:
+                continue
+            spans = lines[0].get("spans") or []
+            if not spans:
+                continue
+            leading = " ".join(span.get("text", "") for span in spans).lstrip()
+            if not leading:
+                continue
+            for pattern in figure_patterns:
+                if pattern.match(leading):
+                    bbox = block.get("bbox")
+                    if bbox:
+                        return pymupdf.Rect(bbox)
+                    return None
+        return None
+
     def _extract_non_xref_figures(
         self,
         page: pymupdf.Page,
@@ -558,7 +614,11 @@ class PDFImageExtractor:
         Strategy (in order):
         1. High drawing count (>= HIGH_DRAWING_COUNT_THRESHOLD): full-page rasterize once
         2. Moderate drawings (> 3): detect vector regions, rasterize each with clip
-        3. Figure text found but no drawings: full-page rasterize (existing behavior)
+        3. Few/no drawings: full-page rasterize ONLY when (a) there is at least
+           one drawing or embedded raster on the page AND (b) at least one
+           figure pattern matches the start of a text block (typical caption
+           position). Inline references like "...shown in Figure 1.1..." are
+           always mid-block, so they no longer trigger the fallback (#2272).
         4. Otherwise: skip
         """
         results: list[ExtractedImage] = []
@@ -626,13 +686,18 @@ class PDFImageExtractor:
                 )
             return results
 
-        page_text = page.get_text()
-        for pattern in figure_patterns:
-            if pattern.search(page_text):
-                extracted = self._rasterize_full_page_as_figure(page, page_number, figure_patterns)
+        has_visual_content = drawing_count >= 1 or len(already_extracted_bboxes) >= 1
+        if has_visual_content:
+            caption_bbox = self._find_leading_caption_block(page, figure_patterns)
+            if caption_bbox is not None:
+                extracted = self._rasterize_full_page_as_figure(
+                    page,
+                    page_number,
+                    figure_patterns,
+                    caption_bbox=caption_bbox,
+                )
                 if extracted:
                     results.append(extracted)
-                break
 
         return results
 
@@ -641,16 +706,17 @@ class PDFImageExtractor:
         page: pymupdf.Page,
         page_number: int,
         figure_patterns: list[re.Pattern],
+        caption_bbox: pymupdf.Rect | None = None,
     ) -> "ExtractedImage | None":
-        """Rasterize entire page when it contains figure content (vector or text-referenced)."""
-        page_text = page.get_text()
-        figure_number: str | None = None
-        for pattern in figure_patterns:
-            m = pattern.search(page_text)
-            if m:
-                figure_number = m.group(0).strip()
-                break
+        """Rasterize entire page when it contains figure content (vector or text-referenced).
 
+        When ``caption_bbox`` is provided, metadata (figure number, caption,
+        surrounding text) is anchored to that block instead of ``page.rect``.
+        Anchoring is the difference between picking up the actual caption
+        and grabbing the first stray "Figure X.Y" mention anywhere on the
+        page (#2272). The caller from the high-drawing-count path passes
+        None and keeps legacy behaviour.
+        """
         try:
             pixmap = page.get_pixmap(dpi=RASTERIZE_DPI)
             png_bytes = pixmap.tobytes("png")
@@ -668,9 +734,17 @@ class PDFImageExtractor:
             w = pixmap.width
             h = pixmap.height
 
-        image_bbox = page.rect
+        image_bbox = caption_bbox if caption_bbox is not None else page.rect
         metadata = self._extract_figure_metadata(page, image_bbox, figure_patterns)
         surrounding_text = self._extract_surrounding_text(page, image_bbox, SURROUNDING_CHAR_LIMIT)
+        figure_number = metadata.get("figure_number")
+        if figure_number is None:
+            page_text = page.get_text()
+            for pattern in figure_patterns:
+                m = pattern.search(page_text)
+                if m:
+                    figure_number = m.group(0).strip()
+                    break
         image_type = self._classify_image_type(metadata.get("caption"), w, h)
 
         return ExtractedImage(
@@ -680,7 +754,7 @@ class PDFImageExtractor:
             original_format="png",
             file_size_bytes=len(webp_bytes),
             page_number=page_number,
-            figure_number=figure_number or metadata.get("figure_number"),
+            figure_number=figure_number,
             caption=metadata.get("caption"),
             attribution=metadata.get("attribution"),
             image_type=image_type,
@@ -693,14 +767,18 @@ class PDFImageExtractor:
         """Remove near-duplicate images using average hash (8x8 grayscale, Hamming distance < 5).
 
         When duplicates found, keeps the higher-resolution one.
+        Persists the hash on each surviving image for cross-course dedup in the pipeline.
         """
         if len(images) <= 1:
+            if images:
+                images[0].image_hash = _avg_hash_hex(images[0].image_bytes)
             return images
 
-        from PIL import Image
-
-        def avg_hash(img_bytes: bytes) -> int | None:
+        def _hash_int(img_bytes: bytes) -> int | None:
+            """Return raw 64-bit integer for Hamming comparison."""
             try:
+                from PIL import Image
+
                 img = Image.open(io.BytesIO(img_bytes)).convert("L").resize((8, 8), Image.LANCZOS)
                 pixels = list(img.tobytes())
                 avg = sum(pixels) / len(pixels)
@@ -719,7 +797,7 @@ class PDFImageExtractor:
                 xor >>= 1
             return count
 
-        hashes: list[int | None] = [avg_hash(img.image_bytes) for img in images]
+        hashes: list[int | None] = [_hash_int(img.image_bytes) for img in images]
         keep = [True] * len(images)
 
         for i in range(len(images)):
@@ -737,7 +815,11 @@ class PDFImageExtractor:
                         keep[i] = False
                         break
 
-        return [img for img, k in zip(images, keep, strict=True) if k]
+        survivors = [img for img, k in zip(images, keep, strict=True) if k]
+        # Persist the hex hash on each survivor for cross-course dedup.
+        for img in survivors:
+            img.image_hash = _avg_hash_hex(img.image_bytes)
+        return survivors
 
     def extract_all_pdfs(self) -> dict[str, list[ExtractedImage]]:
         """Extract images from all PDFs in resources_path.

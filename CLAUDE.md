@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Auth:** Local FastAPI auth — passwordless TOTP MFA (Microsoft/Google Authenticator) + email magic link recovery. JWTs issued by backend (pyotp + python-jose).
 - **AI/RAG:** Anthropic Claude API, Claude Agent SDK, Anthropic Python SDK, pgvector (PostgreSQL), OpenAI text-embedding-3-small (1536 dims)
 - **Payments:** Credit system (in-app currency), Paystack (mobile money, cards), SMS-based subscriptions (Orange Money, Wave)
-- **Deploy:** GitHub Actions → Docker images → ghcr.io → VPS (Traefik reverse proxy), Sentry + PostHog
+- **Deploy:** GitHub Actions → Docker images → ghcr.io → VPS (Traefik reverse proxy), Sentry + PostHog. See [DEPLOY.md](DEPLOY.md) for the full runbook.
 
 ## Architecture (3-layer)
 

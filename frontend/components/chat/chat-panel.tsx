@@ -531,13 +531,26 @@ export function ChatPanel({
             ? 'flex flex-col h-full w-full bg-background'
             : cn(
                 'fixed inset-0 z-50 flex flex-col bg-background',
-                'md:relative md:inset-auto md:w-96 md:border-l',
+                'md:fixed md:inset-auto md:bottom-24 md:right-4 md:w-96 md:max-h-[600px] md:rounded-xl md:shadow-2xl md:border md:overflow-hidden',
                 'transition-transform duration-300 ease-in-out',
                 isOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'
               ),
           className
         )}
       >
+        {/* Desktop floating close button — absolutely positioned top-right, visible regardless of header overflow */}
+        {!embedded && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className="hidden md:flex absolute top-1 right-1 h-8 w-8 z-10 rounded-full"
+            aria-label={t('closeChat')}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between p-3 border-b bg-background shrink-0 gap-2 flex-nowrap">
           <div className="flex items-center gap-2 shrink-0">

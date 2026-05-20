@@ -74,6 +74,7 @@ class SourceImage(Base):
     alt_text_en: Mapped[str | None] = mapped_column(Text, nullable=True)
     figure_kind: Mapped[str | None] = mapped_column(Text, nullable=True)
     semantic_tags: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    image_hash: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     linked_chunks: Mapped[list[SourceImageChunk]] = relationship(

@@ -12,6 +12,7 @@ import {
   Sparkles,
   Loader2,
   AlertCircle,
+  Activity,
   BookOpen,
   Database,
   ImageOff,
@@ -408,6 +409,7 @@ export function CoursesClient() {
                 onDelete={(c) => setPendingAction({ type: 'delete', course: c })}
                 onGenerateStructure={(c) => setPendingAction({ type: 'generate', course: c })}
                 onEdit={(c) => { setEditingCourse(c); setFormOpen(true); }}
+                onReviewQuality={(c) => router.push(`/admin/courses/${c.id}/quality`)}
                 onResumeWizard={() => openWizardResume(course)}
               />
             ))}
@@ -559,6 +561,7 @@ function CourseRow({
   onDelete,
   onGenerateStructure,
   onEdit,
+  onReviewQuality,
   onResumeWizard,
 }: {
   course: AdminCourse;
@@ -568,6 +571,7 @@ function CourseRow({
   onDelete: (c: AdminCourse) => void;
   onGenerateStructure: (c: AdminCourse) => void;
   onEdit: (c: AdminCourse) => void;
+  onReviewQuality: (c: AdminCourse) => void;
   onResumeWizard: () => void;
 }) {
   const t = useTranslations('AdminCourses');
@@ -668,6 +672,10 @@ function CourseRow({
               <DropdownMenuItem onClick={() => onEdit(course)}>
                 <BookOpen className="mr-2 h-4 w-4" />
                 {t('editCourse')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onReviewQuality(course)}>
+                <Activity className="mr-2 h-4 w-4" />
+                {t('reviewQuality')}
               </DropdownMenuItem>
               {!isPublished && (
                 <DropdownMenuItem

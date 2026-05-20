@@ -10,6 +10,7 @@ from uuid import UUID
 import structlog
 from sqlalchemy import case, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.domain.models.course import UserCourseEnrollment
 from app.domain.models.lesson_reading import LessonReading
@@ -240,6 +241,30 @@ class ProgressService:
         row = result.first()
         return row[0] if row is not None else None
 
+    async def unit_has_case_content(self, module_id: UUID, unit_id: str) -> bool:
+        """Return True if the unit has a case-study GeneratedContent row.
+
+        Used as a safety net in complete_lesson to bypass the quiz gate when
+        module_units.unit_type was mislabelled 'quiz' by AI syllabus generation
+        but the actual content is a case study (#2163).
+        """
+        from app.domain.models.content import GeneratedContent
+        from app.domain.services._unit_resolution import resolve_module_unit_id
+
+        unit_uuid = await resolve_module_unit_id(self.db, module_id, unit_id)
+        q = select(GeneratedContent.id).where(
+            GeneratedContent.content_type == "case",
+        )
+        if unit_uuid is not None:
+            q = q.where(GeneratedContent.module_unit_id == unit_uuid)
+        else:
+            q = q.where(
+                GeneratedContent.module_id == module_id,
+                GeneratedContent.content["unit_id"].astext == unit_id,
+            )
+        result = await self.db.execute(q.limit(1))
+        return result.scalar_one_or_none() is not None
+
     async def mark_unit_complete_no_quiz(
         self,
         user_id: UUID,
@@ -273,9 +298,13 @@ class ProgressService:
                 GeneratedContent.module_unit_id == progress_unit_uuid
             )
         else:
+            # Unit not found in module_units (legacy/seeded content): match by
+            # content.unit_id JSON field. Do NOT restrict to module_unit_id IS NULL —
+            # newer content rows may have module_unit_id set even without a matching
+            # module_units row, and excluding them silently skips the LessonReading
+            # write, causing completion to not persist across refreshes (#2175).
             content_query = content_query.where(
                 GeneratedContent.module_id == module_id,
-                GeneratedContent.module_unit_id.is_(None),
                 GeneratedContent.content["unit_id"].astext == unit_id,
             )
         content_query = content_query.order_by(
@@ -448,7 +477,9 @@ class ProgressService:
         Return module detail with units and per-unit completion status,
         merging DB data with progress records.
         """
-        module_result = await self.db.execute(select(Module).where(Module.id == module_id))
+        module_result = await self.db.execute(
+            select(Module).options(selectinload(Module.course)).where(Module.id == module_id)
+        )
         module = module_result.scalar_one_or_none()
         if not module:
             raise ValueError(f"Module {module_id} not found")
@@ -509,6 +540,7 @@ class ProgressService:
                 progress.last_accessed.isoformat() if progress and progress.last_accessed else None
             ),
             "units": units_data,
+            "course_slug": module.course.slug if module.course else None,
         }
 
     # ------------------------------------------------------------------

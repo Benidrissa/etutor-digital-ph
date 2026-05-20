@@ -8,6 +8,7 @@ from pathlib import Path
 from celery.result import AsyncResult
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import func, select
 
 from app.api.deps import get_db_session
 from app.api.deps_local_auth import AuthenticatedUser, get_current_user
@@ -378,7 +379,13 @@ async def get_bank(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Question bank not found.",
             )
-    return _bank_response(bank)
+    q_count_result = await db.execute(
+        select(func.count())
+        .select_from(QBankQuestion)
+        .where(QBankQuestion.question_bank_id == bank_id)
+    )
+    q_count = q_count_result.scalar_one()
+    return _bank_response(bank, question_count=q_count)
 
 
 @router.patch("/banks/{bank_id}", response_model=QuestionBankResponse)
@@ -397,7 +404,13 @@ async def update_bank(
             detail="Only platform admins can make a question bank public.",
         )
     bank = await _svc.update_bank(db, bank_id, uuid.UUID(current_user.id), **updates)
-    return _bank_response(bank)
+    q_count_result = await db.execute(
+        select(func.count())
+        .select_from(QBankQuestion)
+        .where(QBankQuestion.question_bank_id == bank_id)
+    )
+    q_count = q_count_result.scalar_one()
+    return _bank_response(bank, question_count=q_count)
 
 
 @router.delete("/banks/{bank_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -60,7 +60,9 @@ async def _check_subscription_or_first_unit(user: AuthenticatedUser, unit_id: st
         return
 
     free_count = SettingsCache.instance().get("subscription-free-units-count", 2)
-    m = re.search(r"-U0*(\d+)$", unit_id.upper()) if unit_id else None
+    # Canonical unit_number is "X.Y" (e.g. "1.2"). The legacy M01-U02 regex
+    # never matched after migration 081 removed that format (#1897).
+    m = re.match(r"^\d+\.(\d+)$", unit_id) if unit_id else None
     if m and int(m.group(1)) <= free_count:
         return
 
