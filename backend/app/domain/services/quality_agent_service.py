@@ -600,6 +600,178 @@ class CourseQualityService:
 
         return run
 
+    # ---- Structural consistency check (no Claude) -----------------------
+
+    async def assess_course_structure(
+        self,
+        course_id: uuid.UUID,
+        session: AsyncSession,
+    ) -> CourseQualityRun:
+        """Check syllabus structural consistency without any Claude calls.
+
+        Compares declared hours against the sum of unit minutes, flags thin
+        modules, unrealistic unit durations, and missing bilingual metadata.
+        Creates a CourseQualityRun with run_kind='structural' and
+        status='completed' (instant — no Celery continuation needed).
+
+        Idempotent: at most one structural run per course per UTC day.
+        """
+        day = datetime.utcnow().strftime("%Y-%m-%d")
+        key_src = f"structural:{course_id}:{day}"
+        idempotency_key = hashlib.sha256(key_src.encode()).hexdigest()[:64]
+
+        course = await session.get(Course, course_id)
+        if course is None:
+            raise ValueError(f"Course {course_id} not found")
+
+        modules_result = await session.execute(
+            select(Module).where(Module.course_id == course_id).order_by(Module.module_number)
+        )
+        modules = list(modules_result.scalars().all())
+
+        findings: list[dict] = []
+        target_hours = course.estimated_hours or 0
+        sum_module_hours = sum(m.estimated_hours or 0 for m in modules)
+        sum_unit_minutes_total = 0
+
+        for module in modules:
+            units_result = await session.execute(
+                select(ModuleUnit)
+                .where(ModuleUnit.module_id == module.id)
+                .order_by(ModuleUnit.order_index)
+            )
+            units = list(units_result.scalars().all())
+
+            unit_minutes = sum(u.estimated_minutes or 0 for u in units)
+            sum_unit_minutes_total += unit_minutes
+
+            if len(units) < 2:
+                findings.append({
+                    "check": "thin_module",
+                    "severity": "warning",
+                    "module_number": module.module_number,
+                    "unit_count": len(units),
+                    "detail": f"Module {module.module_number} has only {len(units)} unit(s); recommend ≥ 2.",
+                })
+
+            module_hours = module.estimated_hours or 0
+            if module_hours > 0 and unit_minutes > 0:
+                module_as_minutes = module_hours * 60
+                divergence = abs(unit_minutes - module_as_minutes) / module_as_minutes
+                if divergence > 0.30:
+                    findings.append({
+                        "check": "module_hours_vs_units",
+                        "severity": "warning",
+                        "module_number": module.module_number,
+                        "module_hours": module_hours,
+                        "unit_minutes_sum": unit_minutes,
+                        "detail": (
+                            f"Module {module.module_number}: declared {module_hours}h"
+                            f" but units sum to {unit_minutes}min ({unit_minutes/60:.1f}h),"
+                            f" divergence {divergence*100:.0f}%."
+                        ),
+                    })
+
+            if not module.learning_objectives_fr or not module.learning_objectives_en:
+                findings.append({
+                    "check": "missing_module_objectives",
+                    "severity": "warning",
+                    "module_number": module.module_number,
+                    "detail": f"Module {module.module_number} is missing learning objectives in one or both languages.",
+                })
+
+            for unit in units:
+                mins = unit.estimated_minutes or 0
+                if mins < 5 or mins > 180:
+                    findings.append({
+                        "check": "unrealistic_unit_minutes",
+                        "severity": "warning",
+                        "unit_number": unit.unit_number,
+                        "estimated_minutes": mins,
+                        "detail": f"Unit {unit.unit_number}: {mins}min is outside the 5–180 min range.",
+                    })
+                if not unit.title_fr or not unit.title_en:
+                    findings.append({
+                        "check": "missing_unit_title",
+                        "severity": "warning",
+                        "unit_number": unit.unit_number,
+                        "detail": f"Unit {unit.unit_number} is missing title in one or both languages.",
+                    })
+
+        if target_hours > 0 and sum_module_hours > 0:
+            divergence = abs(sum_module_hours - target_hours) / target_hours
+            if divergence > 0.20:
+                findings.append({
+                    "check": "course_hours_vs_modules",
+                    "severity": "warning",
+                    "target_hours": target_hours,
+                    "module_hours_sum": sum_module_hours,
+                    "detail": (
+                        f"course.estimated_hours={target_hours}h but"
+                        f" SUM(modules.hours)={sum_module_hours}h,"
+                        f" divergence {divergence*100:.0f}%."
+                    ),
+                })
+
+        if target_hours > 0 and sum_unit_minutes_total > 0:
+            unit_hours = sum_unit_minutes_total / 60
+            divergence = abs(unit_hours - target_hours) / target_hours
+            if divergence > 0.25:
+                findings.append({
+                    "check": "course_hours_vs_unit_minutes",
+                    "severity": "warning",
+                    "target_hours": target_hours,
+                    "unit_hours_sum": round(unit_hours, 2),
+                    "detail": (
+                        f"course.estimated_hours={target_hours}h but"
+                        f" units total {sum_unit_minutes_total}min ({unit_hours:.1f}h),"
+                        f" divergence {divergence*100:.0f}%."
+                    ),
+                })
+
+        now = datetime.utcnow()
+        run = CourseQualityRun(
+            course_id=course_id,
+            run_kind="structural",
+            status="completed",
+            triggered_by_user_id=None,
+            budget_credits=0,
+            spent_credits=0,
+            idempotency_key=idempotency_key,
+            started_at=now,
+            finished_at=now,
+            notes=json.dumps(findings) if findings else None,
+        )
+        session.add(run)
+        try:
+            await session.flush()
+        except IntegrityError:
+            await session.rollback()
+            existing_q = await session.execute(
+                select(CourseQualityRun).where(
+                    and_(
+                        CourseQualityRun.course_id == course_id,
+                        CourseQualityRun.idempotency_key == idempotency_key,
+                    )
+                )
+            )
+            existing = existing_q.scalar_one_or_none()
+            if existing is not None:
+                logger.info(
+                    "Structural QA run already exists for today",
+                    course_id=str(course_id),
+                    run_id=str(existing.id),
+                )
+                return existing
+            raise
+
+        logger.info(
+            "Structural QA completed",
+            course_id=str(course_id),
+            finding_count=len(findings),
+        )
+        return run
+
     async def finalize_run(
         self,
         run_id: uuid.UUID,
