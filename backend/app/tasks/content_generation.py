@@ -1784,7 +1784,6 @@ def pregenerate_on_publish_task(self, course_id: str) -> dict:
             # Auto-trigger a full course quality sweep now that the first
             # units are generated. Best-effort — never block the publish.
             try:
-                from app.ai.claude_service import ClaudeService
                 from app.domain.services.quality_agent_service import CourseQualityService
                 from app.tasks.quality_assessment import assess_course_task
 
