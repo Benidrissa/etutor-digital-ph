@@ -69,6 +69,67 @@ def _make_session_factory(settings):
     return engine, factory
 
 
+# ---- 0. Structural consistency check (no Claude) ----------------------
+
+
+@celery_app.task(
+    bind=True,
+    base=QualityCallbackTask,
+    autoretry_for=(Exception,),
+    retry_kwargs={"max_retries": 1, "countdown": 30},
+    soft_time_limit=120,
+    time_limit=180,
+    rate_limit="5/m",
+)
+def assess_course_structure_task(self, course_id: str) -> dict:
+    """Check structural consistency of a course's syllabus (no Claude calls).
+
+    Triggered automatically after ``generate_course_syllabus`` completes.
+    Compares declared hours against unit-minutes, flags thin modules,
+    unrealistic unit durations, and missing bilingual metadata.  Writes
+    findings into a ``CourseQualityRun`` row with ``run_kind='structural'``.
+    """
+
+    async def _run() -> dict:
+        from app.ai.claude_service import ClaudeService
+        from app.domain.services.quality_agent_service import CourseQualityService
+        from app.infrastructure.config.settings import settings
+
+        engine, session_factory = _make_session_factory(settings)
+        try:
+            async with session_factory() as session:
+                service = CourseQualityService(ClaudeService(), semantic_retriever=None)
+                run = await service.assess_course_structure(
+                    course_id=uuid.UUID(course_id),
+                    session=session,
+                )
+                await session.commit()
+                findings = []
+                if run.notes:
+                    import json as _json
+
+                    findings = _json.loads(run.notes)
+                return {
+                    "status": "complete",
+                    "run_id": str(run.id),
+                    "course_id": course_id,
+                    "findings_count": len(findings),
+                }
+        finally:
+            await engine.dispose()
+
+    try:
+        return asyncio.run(_run())
+    except Exception as exc:
+        logger.error(
+            "assess_course_structure_task failed",
+            course_id=course_id,
+            exception=str(exc),
+            task_id=self.request.id,
+        )
+        return {"status": "failed", "error": str(exc), "course_id": course_id}
+
+
 # ---- 1. Per-unit assessment (cheap path) ------------------------------
 
 

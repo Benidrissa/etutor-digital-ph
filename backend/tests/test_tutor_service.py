@@ -150,7 +150,7 @@ async def test_send_message_yields_content_type_chunks(
             return_value=sample_conversation,
         ),
         patch.object(
-            tutor_service,
+            tutor_service.session_manager,
             "_get_previous_compact",
             new_callable=AsyncMock,
             return_value=None,
@@ -217,7 +217,7 @@ async def test_send_message_yields_sources_cited_type(
             return_value=sample_conversation,
         ),
         patch.object(
-            tutor_service,
+            tutor_service.session_manager,
             "_get_previous_compact",
             new_callable=AsyncMock,
             return_value=None,
@@ -354,7 +354,7 @@ async def test_send_message_never_yields_text_type(tutor_service, sample_user, s
             return_value=sample_conversation,
         ),
         patch.object(
-            tutor_service,
+            tutor_service.session_manager,
             "_get_previous_compact",
             new_callable=AsyncMock,
             return_value=None,
