@@ -69,6 +69,11 @@ export function QuizContainer({
   // Freeze country on first hydration so a network blip that briefly flips
   // currentUser.country cannot restart a live quiz session (#2226).
   const frozenCountryRef = useRef<string | null>(null);
+  // Track state via ref so the in-progress/completed guard can read it without
+  // making `state` an effect dependency — including it caused an infinite
+  // restart loop that killed the poll timer before it could fire.
+  const stateRef = useRef<QuizState>(state);
+  useEffect(() => { stateRef.current = state; }, [state]);
   const { isOnline } = useNetworkStatus();
 
   useEffect(() => {
@@ -79,7 +84,7 @@ export function QuizContainer({
     // Don't restart the effect while the learner is actively answering or has
     // already finished — a dependency flap (e.g. country ref settling) must not
     // wipe in-progress answers (#2226).
-    if (state === 'in-progress' || state === 'completed') return;
+    if (stateRef.current === 'in-progress' || stateRef.current === 'completed') return;
     if (frozenCountryRef.current === null) frozenCountryRef.current = resolvedCountry;
     const country = frozenCountryRef.current;
 
@@ -226,7 +231,7 @@ export function QuizContainer({
       if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moduleId, unitId, language, level, retryCount, forceRegenerate, isHydrated, state]);
+  }, [moduleId, unitId, language, level, retryCount, forceRegenerate, isHydrated]);
   
   const handleStartQuiz = () => {
     setState('in-progress');
