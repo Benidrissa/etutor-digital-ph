@@ -638,7 +638,7 @@ export function ChatPanel({
               variant="ghost"
               size="icon"
               onClick={onClose}
-              className="h-11 w-11"
+              className="h-11 w-11 md:hidden"
             >
               <X className="h-4 w-4" />
             </Button>

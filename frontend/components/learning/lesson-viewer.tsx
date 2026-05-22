@@ -349,6 +349,12 @@ export function LessonViewer({
     tr: ({ children, ...props }: React.HTMLAttributes<HTMLTableRowElement>) => (
       <tr className="even:bg-gray-50" {...props}>{children}</tr>
     ),
+    // Inline markdown images default to intrinsic pixel size in @tailwindcss/typography.
+    // Override to fill the text column, matching LessonImage and SourceImage (#2094).
+    img: ({ src, alt }: React.ImgHTMLAttributes<HTMLImageElement>) => (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={src} alt={alt ?? ''} className="w-full h-auto rounded-lg my-4" />
+    ),
   };
 
 

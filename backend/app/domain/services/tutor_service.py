@@ -1015,12 +1015,14 @@ class SessionManager:
         ctx.learner_memory = await self.learner_memory_service.format_for_prompt(user.id, session)
 
         if is_new_conversation:
-            # Scope cross-session continuity to the same module/course (#1997).
-            # The conversation row carries module_id; course_id is resolved
-            # via the Module FK when needed.
+            # Scope cross-session continuity to the same course (#1997).
+            # Prefer the durable course_id on the conversation row (written by
+            # _get_or_create_conversation from the client's course_id). Fall back
+            # to resolving via module_id → Module.course_id for conversations
+            # created before migration 085 added the column.
             module_id = getattr(conversation, "module_id", None)
-            course_id: uuid.UUID | None = None
-            if module_id is not None:
+            course_id: uuid.UUID | None = getattr(conversation, "course_id", None)
+            if course_id is None and module_id is not None:
                 module = await session.get(Module, module_id)
                 course_id = getattr(module, "course_id", None) if module else None
             prior = await self._get_previous_compact(
@@ -2349,23 +2351,6 @@ class TutorService:
             async with contextlib.AsyncExitStack():
                 with contextlib.suppress(Exception):
                     await engine.dispose()
-
-    async def _get_previous_compact(
-        self, user_id: uuid.UUID, current_conversation_id: uuid.UUID, session: AsyncSession
-    ) -> str | None:
-        """Return the compacted_context from the most recent prior conversation (cross-session)."""
-        result = await session.execute(
-            select(TutorConversation)
-            .where(
-                TutorConversation.user_id == user_id,
-                TutorConversation.id != current_conversation_id,
-                TutorConversation.compacted_context.isnot(None),
-            )
-            .order_by(TutorConversation.created_at.desc())
-            .limit(1)
-        )
-        prev = result.scalar_one_or_none()
-        return prev.compacted_context if prev else None
 
     def _extract_activity_suggestions(
         self, response: str, context_type: str | None, user_level: int

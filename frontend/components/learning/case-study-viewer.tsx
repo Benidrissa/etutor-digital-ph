@@ -363,6 +363,10 @@ export function CaseStudyViewer({
     code: ({ children, ...props }: React.HTMLAttributes<HTMLElement>) => (
       <code className="bg-gray-100 rounded px-1.5 py-0.5 text-sm font-mono" {...props}>{children}</code>
     ),
+    img: ({ src, alt }: React.ImgHTMLAttributes<HTMLImageElement>) => (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={src} alt={alt ?? ''} className="w-full h-auto rounded-lg my-4" />
+    ),
   };
 
   if (error) {

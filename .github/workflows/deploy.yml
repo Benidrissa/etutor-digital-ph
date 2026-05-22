@@ -313,22 +313,39 @@ jobs:
             # years ago and left us blind when the token rotated.
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 
-            # Write .env
-            cat > .env << EOF
-            POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-            ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-            OPENAI_API_KEY=${OPENAI_API_KEY}
-            GOOGLE_API_KEY=${GOOGLE_API_KEY}
-            SENTRY_DSN=${SENTRY_DSN}
-            NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN}
-            NEXT_PUBLIC_POSTHOG_KEY=${NEXT_PUBLIC_POSTHOG_KEY}
-            NEXT_PUBLIC_POSTHOG_HOST=${NEXT_PUBLIC_POSTHOG_HOST}
-            SMS_RELAY_API_KEY=${SMS_RELAY_API_KEY}
-            SMS_RELAY_TRUSTED_SENDERS=${SMS_RELAY_TRUSTED_SENDERS}
-            MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
-            MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
-            HEYGEN_API_KEY=${HEYGEN_API_KEY}
-            EOF
+            # Write managed secrets to a temp file, then merge with any
+            # host-specific overrides (e.g. ENABLE_FIGURE_VISION) that are
+            # not part of the managed set — those survive each deploy (#1934).
+            cat > .env.deploy << 'ENVEOF'
+POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+OPENAI_API_KEY=${OPENAI_API_KEY}
+GOOGLE_API_KEY=${GOOGLE_API_KEY}
+SENTRY_DSN=${SENTRY_DSN}
+NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN}
+NEXT_PUBLIC_POSTHOG_KEY=${NEXT_PUBLIC_POSTHOG_KEY}
+NEXT_PUBLIC_POSTHOG_HOST=${NEXT_PUBLIC_POSTHOG_HOST}
+SMS_RELAY_API_KEY=${SMS_RELAY_API_KEY}
+SMS_RELAY_TRUSTED_SENDERS=${SMS_RELAY_TRUSTED_SENDERS}
+MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+HEYGEN_API_KEY=${HEYGEN_API_KEY}
+ENVEOF
+            # Expand secrets inside the file (heredoc used 'ENVEOF' to suppress
+            # shell expansion above, so expand now via envsubst).
+            envsubst < .env.deploy > .env.deploy.expanded && mv .env.deploy.expanded .env.deploy
+
+            # Preserve host-specific keys not managed by CI (e.g. ENABLE_FIGURE_VISION).
+            # Managed keys always win; host overrides are kept for unmanaged keys only.
+            MANAGED_KEYS=$(grep -oE '^[A-Z_0-9]+' .env.deploy | paste -sd '|')
+            if [ -f .env ] && [ -n "$MANAGED_KEYS" ]; then
+              grep -vE "^(${MANAGED_KEYS})=" .env > .env.host 2>/dev/null || true
+              cat .env.host .env.deploy > .env
+              rm -f .env.host
+            else
+              cp .env.deploy .env
+            fi
+            rm -f .env.deploy
 
             # Capture previous deploy SHA so the smoke gate can roll back.
             PREV_SHA=""
@@ -505,21 +522,31 @@ jobs:
             # Fresh GHCR login every deploy, same pattern as staging (#1651).
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 
-            cat > .env << EOF
-            POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-            ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-            OPENAI_API_KEY=${OPENAI_API_KEY}
-            GOOGLE_API_KEY=${GOOGLE_API_KEY}
-            SENTRY_DSN=${SENTRY_DSN}
-            NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN}
-            NEXT_PUBLIC_POSTHOG_KEY=${NEXT_PUBLIC_POSTHOG_KEY}
-            NEXT_PUBLIC_POSTHOG_HOST=${NEXT_PUBLIC_POSTHOG_HOST}
-            SMS_RELAY_API_KEY=${SMS_RELAY_API_KEY}
-            SMS_RELAY_TRUSTED_SENDERS=${SMS_RELAY_TRUSTED_SENDERS}
-            MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
-            MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
-            HEYGEN_API_KEY=${HEYGEN_API_KEY}
-            EOF
+            cat > .env.deploy << 'ENVEOF'
+POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+OPENAI_API_KEY=${OPENAI_API_KEY}
+GOOGLE_API_KEY=${GOOGLE_API_KEY}
+SENTRY_DSN=${SENTRY_DSN}
+NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN}
+NEXT_PUBLIC_POSTHOG_KEY=${NEXT_PUBLIC_POSTHOG_KEY}
+NEXT_PUBLIC_POSTHOG_HOST=${NEXT_PUBLIC_POSTHOG_HOST}
+SMS_RELAY_API_KEY=${SMS_RELAY_API_KEY}
+SMS_RELAY_TRUSTED_SENDERS=${SMS_RELAY_TRUSTED_SENDERS}
+MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+HEYGEN_API_KEY=${HEYGEN_API_KEY}
+ENVEOF
+            envsubst < .env.deploy > .env.deploy.expanded && mv .env.deploy.expanded .env.deploy
+            MANAGED_KEYS=$(grep -oE '^[A-Z_0-9]+' .env.deploy | paste -sd '|')
+            if [ -f .env ] && [ -n "$MANAGED_KEYS" ]; then
+              grep -vE "^(${MANAGED_KEYS})=" .env > .env.host 2>/dev/null || true
+              cat .env.host .env.deploy > .env
+              rm -f .env.host
+            else
+              cp .env.deploy .env
+            fi
+            rm -f .env.deploy
 
             # Capture previous deploy SHA for rollback.
             PREV_SHA=""
