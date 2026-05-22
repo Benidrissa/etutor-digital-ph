@@ -479,7 +479,7 @@ async def test_tool_use_loop_executes_tool_and_gets_final_response(
             return_value=sample_conversation,
         ),
         patch.object(
-            tutor_service,
+            tutor_service.session_manager,
             "_get_previous_compact",
             new_callable=AsyncMock,
             return_value=None,
@@ -550,7 +550,7 @@ async def test_max_tool_calls_enforced(
             return_value=sample_conversation,
         ),
         patch.object(
-            tutor_service,
+            tutor_service.session_manager,
             "_get_previous_compact",
             new_callable=AsyncMock,
             return_value=None,
@@ -617,7 +617,7 @@ async def test_no_tool_use_yields_content_chunks(
             return_value=sample_conversation,
         ),
         patch.object(
-            tutor_service,
+            tutor_service.session_manager,
             "_get_previous_compact",
             new_callable=AsyncMock,
             return_value=None,
@@ -679,7 +679,7 @@ async def test_finished_chunk_includes_tool_calls_made(
             return_value=sample_conversation,
         ),
         patch.object(
-            tutor_service,
+            tutor_service.session_manager,
             "_get_previous_compact",
             new_callable=AsyncMock,
             return_value=None,
