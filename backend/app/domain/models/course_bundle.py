@@ -63,12 +63,8 @@ class CourseBundle(Base):
     file_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     file_count: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     course: Mapped[Course] = relationship("Course")
     requester: Mapped[User | None] = relationship("User", foreign_keys=[requested_by])

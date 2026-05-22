@@ -122,7 +122,7 @@ def _embed_audio(audio_bytes: bytes) -> str:
     label_html = '<p style="font-size:.85rem;color:#6b7280;margin-bottom:.3rem">🔊 Audio</p>'
     return (
         f"{label_html}"
-        f'<audio controls>'
+        f"<audio controls>"
         f'<source src="data:audio/ogg;base64,{b64}" type="audio/ogg; codecs=opus">'
         f"</audio>"
     )
@@ -161,18 +161,22 @@ async def _fetch_audio(
 ) -> bytes | None:
     try:
         row = (
-            await session.execute(
-                select(GeneratedAudio)
-                .where(
-                    GeneratedAudio.module_id == module_id,
-                    GeneratedAudio.unit_id == unit_id,
-                    GeneratedAudio.language == lang,
-                    GeneratedAudio.status == "ready",
-                    GeneratedAudio.media_type == "audio",
+            (
+                await session.execute(
+                    select(GeneratedAudio)
+                    .where(
+                        GeneratedAudio.module_id == module_id,
+                        GeneratedAudio.unit_id == unit_id,
+                        GeneratedAudio.language == lang,
+                        GeneratedAudio.status == "ready",
+                        GeneratedAudio.media_type == "audio",
+                    )
+                    .limit(1)
                 )
-                .limit(1)
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         if row is None or not row.storage_key:
             return None
         return await storage.download_bytes(row.storage_key)
@@ -278,7 +282,11 @@ class BundleService:
 
         questions_html = ""
         for q in c.questions:
-            diff_cls = f"diff-{q.difficulty}" if q.difficulty in ("easy", "medium", "hard") else "diff-medium"
+            diff_cls = (
+                f"diff-{q.difficulty}"
+                if q.difficulty in ("easy", "medium", "hard")
+                else "diff-medium"
+            )
             diff_label = q.difficulty.capitalize()
             options_html = ""
             for i, opt in enumerate(q.options):
@@ -297,7 +305,11 @@ class BundleService:
 
         pass_label = "Score de passage" if lang == "fr" else "Passing score"
         time_label = "Limite de temps" if lang == "fr" else "Time limit"
-        time_val = f"{c.time_limit_minutes} min" if c.time_limit_minutes else ("—" if lang == "en" else "—")
+        time_val = (
+            f"{c.time_limit_minutes} min"
+            if c.time_limit_minutes
+            else ("—" if lang == "en" else "—")
+        )
         type_label = "Quiz"
         meta = f'<span class="badge diff-medium">{type_label}</span> · {_level_label(level, lang)}'
 
@@ -390,7 +402,7 @@ class BundleService:
   <div class="flashcard-def"><b>{ex_label}:</b> {escape(fc.example_aof)}</div>
 </div>"""
 
-        title = f'{type_label} — {module_title}'
+        title = f"{type_label} — {module_title}"
         return _html_shell(
             lang=lang,
             title=title,

@@ -15,9 +15,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(
-        "CREATE TYPE bundlestatus AS ENUM ('pending', 'generating', 'ready', 'failed')"
-    )
+    op.execute("CREATE TYPE bundlestatus AS ENUM ('pending', 'generating', 'ready', 'failed')")
 
     op.create_table(
         "course_bundles",
@@ -67,9 +65,7 @@ def upgrade() -> None:
 
     op.create_index("ix_course_bundles_course_id", "course_bundles", ["course_id"])
     op.create_index("ix_course_bundles_status", "course_bundles", ["status"])
-    op.create_index(
-        "ix_course_bundles_requested_by", "course_bundles", ["requested_by"]
-    )
+    op.create_index("ix_course_bundles_requested_by", "course_bundles", ["requested_by"])
 
 
 def downgrade() -> None:
