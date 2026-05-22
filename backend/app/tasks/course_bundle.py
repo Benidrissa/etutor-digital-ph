@@ -37,18 +37,12 @@ def _make_session_factory(settings):
         create_async_engine,
     )
 
-    engine = create_async_engine(
-        settings.database_url, echo=False, pool_size=3, max_overflow=1
-    )
-    factory = async_sessionmaker(
-        engine, class_=AsyncSession, expire_on_commit=False
-    )
+    engine = create_async_engine(settings.database_url, echo=False, pool_size=3, max_overflow=1)
+    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     return engine, factory
 
 
-async def _mark_bundle_failed(
-    bundle_id: str, error_msg: str, settings
-) -> None:
+async def _mark_bundle_failed(bundle_id: str, error_msg: str, settings) -> None:
     """Best-effort status update on unhandled task failure."""
     from app.domain.models.course_bundle import CourseBundle
 
@@ -104,9 +98,7 @@ def generate_course_bundle_task(self, bundle_id: str) -> dict:
         engine, session_factory = _make_session_factory(settings)
         try:
             async with session_factory() as session:
-                bundle = await session.get(
-                    CourseBundle, uuid.UUID(bundle_id)
-                )
+                bundle = await session.get(CourseBundle, uuid.UUID(bundle_id))
                 if bundle is None:
                     logger.error(
                         "bundle_task.bundle_not_found",
@@ -120,11 +112,7 @@ def generate_course_bundle_task(self, bundle_id: str) -> dict:
                 result = await session.execute(
                     sa_select(Course)
                     .where(Course.id == bundle.course_id)
-                    .options(
-                        selectinload(Course.modules).selectinload(
-                            Module.units
-                        )
-                    )
+                    .options(selectinload(Course.modules).selectinload(Module.units))
                 )
                 course = result.scalar_one_or_none()
                 if course is None:
@@ -141,43 +129,33 @@ def generate_course_bundle_task(self, bundle_id: str) -> dict:
                 lesson_svc = LessonGenerationService(claude, retriever)
                 case_svc = CaseStudyGenerationService(claude, retriever)
                 quiz_svc = QuizService(claude, retriever)
-                flashcard_svc = FlashcardGenerationService(
-                    claude, retriever
-                )
+                flashcard_svc = FlashcardGenerationService(claude, retriever)
                 bundle_svc = BundleService()
                 storage = S3StorageService()  # noqa: F841 — used by svc
 
                 lang = bundle.language
                 level = bundle.level
                 country = bundle.country
-                course_title = (
-                    course.title_fr if lang == "fr" else course.title_en
-                )
+                course_title = course.title_fr if lang == "fr" else course.title_en
 
-                sorted_modules = sorted(
-                    course.modules, key=lambda m: m.module_number
-                )
+                sorted_modules = sorted(course.modules, key=lambda m: m.module_number)
                 zip_files: list[tuple[str, bytes]] = []
                 errors: list[str] = []
                 total_units = sum(len(m.units) for m in sorted_modules)
                 done = 0
 
                 for mod in sorted_modules:
-                    mod_title = (
-                        mod.title_fr if lang == "fr" else mod.title_en
-                    )
+                    mod_title = mod.title_fr if lang == "fr" else mod.title_en
                     mn = mod.module_number
 
                     # Module-level flashcards
                     try:
-                        fc_resp = (
-                            await flashcard_svc.get_or_generate_flashcard_set(
-                                module_id=mod.id,
-                                language=lang,
-                                country=country,
-                                level=level,
-                                session=session,
-                            )
+                        fc_resp = await flashcard_svc.get_or_generate_flashcard_set(
+                            module_id=mod.id,
+                            language=lang,
+                            country=country,
+                            level=level,
+                            session=session,
                         )
                         fc_html = await bundle_svc.render_flashcards(
                             module_title=mod_title,
@@ -197,40 +175,30 @@ def generate_course_bundle_task(self, bundle_id: str) -> dict:
                         errors.append(err)
                         logger.warning("bundle_task.flashcard_failed", error=err)
 
-                    sorted_units = sorted(
-                        mod.units, key=lambda u: u.order_index
-                    )
+                    sorted_units = sorted(mod.units, key=lambda u: u.order_index)
                     for unit in sorted_units:
                         un = unit.unit_number
-                        unit_title = (
-                            unit.title_fr
-                            if lang == "fr"
-                            else unit.title_en
-                        )
+                        unit_title = unit.title_fr if lang == "fr" else unit.title_en
                         unit_type = (unit.unit_type or "lesson").lower()
 
                         done += 1
                         self.update_state(
                             state="PROGRESS",
                             meta={
-                                "progress": int(
-                                    done * 100 / max(total_units, 1)
-                                ),
+                                "progress": int(done * 100 / max(total_units, 1)),
                                 "current_file": f"{mn}.{un}",
                             },
                         )
 
                         # Lesson — generated for all units
                         try:
-                            lesson_resp = (
-                                await lesson_svc.get_or_generate_lesson(
-                                    module_id=mod.id,
-                                    unit_id=un,
-                                    language=lang,
-                                    country=country,
-                                    level=level,
-                                    session=session,
-                                )
+                            lesson_resp = await lesson_svc.get_or_generate_lesson(
+                                module_id=mod.id,
+                                unit_id=un,
+                                language=lang,
+                                country=country,
+                                level=level,
+                                session=session,
                             )
                             lesson_html = await bundle_svc.render_lesson(
                                 resp=lesson_resp,
@@ -248,23 +216,19 @@ def generate_course_bundle_task(self, bundle_id: str) -> dict:
                         except Exception as exc:
                             err = f"Module {mn} unit {un} lesson: {exc}"
                             errors.append(err)
-                            logger.warning(
-                                "bundle_task.lesson_failed", error=err
-                            )
+                            logger.warning("bundle_task.lesson_failed", error=err)
 
                         # Quiz — only for quiz-typed units
                         if unit_type == "quiz":
                             try:
-                                quiz_resp = (
-                                    await quiz_svc.get_or_generate_quiz(
-                                        module_id=mod.id,
-                                        unit_id=un,
-                                        language=lang,
-                                        country=country,
-                                        level=level,
-                                        num_questions=10,
-                                        session=session,
-                                    )
+                                quiz_resp = await quiz_svc.get_or_generate_quiz(
+                                    module_id=mod.id,
+                                    unit_id=un,
+                                    language=lang,
+                                    country=country,
+                                    level=level,
+                                    num_questions=10,
+                                    session=session,
                                 )
                                 quiz_html = await bundle_svc.render_quiz(
                                     resp=quiz_resp,
@@ -280,35 +244,27 @@ def generate_course_bundle_task(self, bundle_id: str) -> dict:
                                     )
                                 )
                             except Exception as exc:
-                                err = (
-                                    f"Module {mn} unit {un} quiz: {exc}"
-                                )
+                                err = f"Module {mn} unit {un} quiz: {exc}"
                                 errors.append(err)
-                                logger.warning(
-                                    "bundle_task.quiz_failed", error=err
-                                )
+                                logger.warning("bundle_task.quiz_failed", error=err)
 
                         # Case study — only for case-typed units
                         if unit_type in ("case", "case_study"):
                             try:
-                                case_resp = (
-                                    await case_svc.get_or_generate_case_study(
-                                        module_id=mod.id,
-                                        unit_id=un,
-                                        language=lang,
-                                        country=country,
-                                        level=level,
-                                        session=session,
-                                    )
+                                case_resp = await case_svc.get_or_generate_case_study(
+                                    module_id=mod.id,
+                                    unit_id=un,
+                                    language=lang,
+                                    country=country,
+                                    level=level,
+                                    session=session,
                                 )
-                                case_html = (
-                                    await bundle_svc.render_case_study(
-                                        resp=case_resp,
-                                        module_title=mod_title,
-                                        unit_title=unit_title,
-                                        course_title=course_title,
-                                        session=session,
-                                    )
+                                case_html = await bundle_svc.render_case_study(
+                                    resp=case_resp,
+                                    module_title=mod_title,
+                                    unit_title=unit_title,
+                                    course_title=course_title,
+                                    session=session,
                                 )
                                 zip_files.append(
                                     (
@@ -317,13 +273,9 @@ def generate_course_bundle_task(self, bundle_id: str) -> dict:
                                     )
                                 )
                             except Exception as exc:
-                                err = (
-                                    f"Module {mn} unit {un} case: {exc}"
-                                )
+                                err = f"Module {mn} unit {un} case: {exc}"
                                 errors.append(err)
-                                logger.warning(
-                                    "bundle_task.case_failed", error=err
-                                )
+                                logger.warning("bundle_task.case_failed", error=err)
 
                 if not zip_files:
                     bundle.status = "failed"
@@ -339,12 +291,8 @@ def generate_course_bundle_task(self, bundle_id: str) -> dict:
                     meta={"progress": 99, "current_file": "zipping"},
                 )
                 zip_bytes = bundle_svc.build_zip(zip_files)
-                key = (
-                    f"bundles/{bundle.course_id}/{bundle_id}/{lang}.zip"
-                )
-                url = await storage.upload_bytes(
-                    key, zip_bytes, "application/zip"
-                )
+                key = f"bundles/{bundle.course_id}/{bundle_id}/{lang}.zip"
+                url = await storage.upload_bytes(key, zip_bytes, "application/zip")
 
                 bundle.status = "ready"
                 bundle.storage_key = key
@@ -353,10 +301,7 @@ def generate_course_bundle_task(self, bundle_id: str) -> dict:
                 bundle.file_count = len(zip_files)
                 bundle.completed_at = datetime.now(UTC)
                 if errors:
-                    bundle.error_message = (
-                        f"{len(errors)} unit(s) failed: "
-                        + "; ".join(errors[:3])
-                    )
+                    bundle.error_message = f"{len(errors)} unit(s) failed: " + "; ".join(errors[:3])
                 await session.commit()
 
                 logger.info(
@@ -383,12 +328,10 @@ def generate_course_bundle_task(self, bundle_id: str) -> dict:
             bundle_id=bundle_id,
             error=str(exc),
         )
+        import contextlib
+
         from app.infrastructure.config.settings import settings
 
-        try:
-            asyncio.run(
-                _mark_bundle_failed(bundle_id, str(exc), settings)
-            )
-        except Exception:
-            pass
+        with contextlib.suppress(Exception):
+            asyncio.run(_mark_bundle_failed(bundle_id, str(exc), settings))
         raise
