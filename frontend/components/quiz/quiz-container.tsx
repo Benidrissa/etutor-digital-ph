@@ -61,7 +61,8 @@ export function QuizContainer({
   const [result, setResult] = useState<QuizAttemptResponse | null>(null);
   const [error, setError] = useState<string>('');
   const [retryCount, setRetryCount] = useState(0);
-  const [forceRegenerate, setForceRegenerate] = useState(false);
+  // forceRegenerate is tracked via forceRegenerateRef (below) — not state — so
+  // that resetting it after a fetch does not re-trigger the main useEffect.
   const [contentSource, setContentSource] = useState<'api' | 'indexeddb'>('api');
 
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -74,6 +75,10 @@ export function QuizContainer({
   // restart loop that killed the poll timer before it could fire.
   const stateRef = useRef<QuizState>(state);
   useEffect(() => { stateRef.current = state; }, [state]);
+  // Track forceRegenerate via ref for the same reason: setForceRegenerate(false)
+  // inside pollStatus/fetchQuiz was re-triggering the effect and killing the
+  // poll timer, causing an infinite POST loop (#2376).
+  const forceRegenerateRef = useRef(false);
   const { isOnline } = useNetworkStatus();
 
   useEffect(() => {
@@ -118,7 +123,6 @@ export function QuizContainer({
             if (cached) {
               setQuiz(cached.content as Quiz);
               setContentSource('indexeddb');
-              setForceRegenerate(false);
               setState('ready');
               return;
             }
@@ -144,13 +148,12 @@ export function QuizContainer({
               module_id: moduleId,
               unit_id: unitId,
               language,
-              country: resolvedCountry,
+              country,
               level,
               num_questions: unitQuestionsCount,
             });
             if (stale) return;
             setQuiz(quizData);
-            setForceRegenerate(false);
             setState('ready');
           } else if (statusRes.status === 'failed') {
             const rawError = statusRes.error?.trim();
@@ -178,15 +181,17 @@ export function QuizContainer({
 
         const result = await loadQuiz<Quiz | GeneratingResponse>(
           moduleId, unitId, language, level, country,
-          unitQuestionsCount, forceRegenerate,
+          unitQuestionsCount, forceRegenerateRef.current,
         );
+        // Reset immediately so a subsequent retryCount-triggered run doesn't
+        // re-force generation unless the user explicitly clicked Refresh again.
+        forceRegenerateRef.current = false;
         if (stale) return;
 
         setContentSource(result.source);
 
         if (result.source === 'indexeddb') {
           setQuiz(result.data as Quiz);
-          setForceRegenerate(false);
           setState('ready');
           return;
         }
@@ -198,7 +203,6 @@ export function QuizContainer({
           pollStatus((rawData as GeneratingResponse).task_id, pollStartRef.current);
         } else {
           setQuiz(rawData as Quiz);
-          setForceRegenerate(false);
           setState('ready');
         }
       } catch (err) {
@@ -231,7 +235,7 @@ export function QuizContainer({
       if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moduleId, unitId, language, level, retryCount, forceRegenerate, isHydrated]);
+  }, [moduleId, unitId, language, level, retryCount, isHydrated]);
   
   const handleStartQuiz = () => {
     setState('in-progress');
@@ -268,7 +272,8 @@ export function QuizContainer({
   const handleRefreshContent = () => {
     setResult(null);
     setQuiz(null);
-    setForceRegenerate(true);
+    forceRegenerateRef.current = true;
+    setRetryCount(prev => prev + 1);
   };
   
   const handleContinue = () => {
