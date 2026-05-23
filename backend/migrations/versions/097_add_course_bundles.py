@@ -15,7 +15,13 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE TYPE bundlestatus AS ENUM ('pending', 'generating', 'ready', 'failed')")
+    # Idempotent enum creation — staging may have the type from a prior
+    # partial migration run that failed before the table was created.
+    op.execute(
+        "DO $$ BEGIN "
+        "CREATE TYPE bundlestatus AS ENUM ('pending', 'generating', 'ready', 'failed'); "
+        "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+    )
 
     op.create_table(
         "course_bundles",

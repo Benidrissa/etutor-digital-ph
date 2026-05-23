@@ -532,6 +532,39 @@ async def publish_course(
             course_id=str(course_id),
             error=str(exc),
         )
+    # Schedule a quality sweep as a backstop (countdown=180 lets pregenerate
+    # finish first). The day-bucketed idempotency key in assess_course() collapses
+    # this and the pregenerate task's own quality trigger into a single run (#2358).
+    try:
+        from app.ai.claude_service import ClaudeService
+        from app.domain.services.quality_agent_service import CourseQualityService
+        from app.tasks.quality_assessment import assess_course_task as _qa_task
+
+        qa_svc = CourseQualityService(ClaudeService(), semantic_retriever=None)
+        qa_run = await qa_svc.assess_course(
+            course_id=course_id,
+            triggered_by_user_id=None,
+            session=db,
+            run_kind="full",
+        )
+        await db.commit()
+        if qa_run.status == "queued":
+            _qa_task.apply_async(
+                kwargs={"run_id": str(qa_run.id)},
+                priority=4,
+                countdown=180,
+            )
+            logger.info(
+                "publish_course: quality sweep scheduled",
+                course_id=str(course_id),
+                run_id=str(qa_run.id),
+            )
+    except Exception as _exc:
+        logger.warning(
+            "publish_course: quality sweep scheduling failed (non-blocking)",
+            course_id=str(course_id),
+            error=str(_exc),
+        )
     return _course_to_response(course, image_count=img_count)
 
 
