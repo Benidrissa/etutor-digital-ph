@@ -31,6 +31,7 @@ celery_app = Celery(
         "app.tasks.syllabus_generation",
         "app.tasks.subscription",
         "app.tasks.sms_relay",
+        "app.tasks.course_bundle",
     ],
 )
 
