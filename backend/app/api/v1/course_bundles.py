@@ -72,9 +72,7 @@ class BundleListItem(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────────
 
 
-async def _get_course_or_404(
-    course_id: uuid.UUID, session: AsyncSession
-) -> Course:
+async def _get_course_or_404(course_id: uuid.UUID, session: AsyncSession) -> Course:
     course = await session.get(Course, course_id)
     if course is None:
         raise HTTPException(status_code=404, detail="Course not found")
@@ -86,9 +84,7 @@ def _expert_owns_course(user: AuthenticatedUser, course: Course) -> bool:
 
 
 def _guard_expert(user: AuthenticatedUser, course: Course) -> None:
-    if user.role == UserRole.expert.value and not _expert_owns_course(
-        user, course
-    ):
+    if user.role == UserRole.expert.value and not _expert_owns_course(user, course):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Experts can only bundle their own courses",
@@ -115,9 +111,7 @@ def _bundle_download_url(bundle: CourseBundle, user: AuthenticatedUser) -> str |
     return f"/api/v1/admin/bundles/{bundle.id}/download"
 
 
-def _bundle_to_status(
-    bundle: CourseBundle, user: AuthenticatedUser
-) -> BundleStatusResponse:
+def _bundle_to_status(bundle: CourseBundle, user: AuthenticatedUser) -> BundleStatusResponse:
     progress, current_file = 0, None
     if bundle.status == "generating" and bundle.task_id:
         progress, current_file = _celery_progress(bundle.task_id)
@@ -144,9 +138,7 @@ def _bundle_to_status(
 async def create_course_bundle(
     course_id: uuid.UUID,
     body: BundleCreateRequest,
-    current_user: AuthenticatedUser = Depends(
-        require_role(*_ADMIN_ROLES)
-    ),
+    current_user: AuthenticatedUser = Depends(require_role(*_ADMIN_ROLES)),
     session: AsyncSession = Depends(get_db_session),
 ) -> BundleCreatedResponse:
     """Trigger bundle generation for a course. Returns immediately with a bundle_id."""
@@ -189,9 +181,7 @@ async def create_course_bundle(
 async def get_bundle_status(
     course_id: uuid.UUID,
     bundle_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(
-        require_role(*_ADMIN_ROLES)
-    ),
+    current_user: AuthenticatedUser = Depends(require_role(*_ADMIN_ROLES)),
     session: AsyncSession = Depends(get_db_session),
 ) -> BundleStatusResponse:
     """Poll the status of a bundle job."""
@@ -213,9 +203,7 @@ async def list_bundles(
     course_id: uuid.UUID | None = None,
     bundle_status: str | None = None,
     limit: int = 50,
-    current_user: AuthenticatedUser = Depends(
-        require_role(*_ADMIN_ROLES)
-    ),
+    current_user: AuthenticatedUser = Depends(require_role(*_ADMIN_ROLES)),
     session: AsyncSession = Depends(get_db_session),
 ) -> list[BundleListItem]:
     """List course bundles.
@@ -223,14 +211,10 @@ async def list_bundles(
     Admin/sub_admin see all bundles. Experts see only bundles for their
     own courses.
     """
-    q = select(CourseBundle, Course).join(
-        Course, Course.id == CourseBundle.course_id
-    )
+    q = select(CourseBundle, Course).join(Course, Course.id == CourseBundle.course_id)
 
     if current_user.role == UserRole.expert.value:
-        q = q.where(
-            Course.created_by == uuid.UUID(current_user.id)
-        )
+        q = q.where(Course.created_by == uuid.UUID(current_user.id))
 
     if course_id is not None:
         q = q.where(CourseBundle.course_id == course_id)
@@ -244,9 +228,7 @@ async def list_bundles(
     items: list[BundleListItem] = []
     for bundle, course in rows:
         lang = bundle.language
-        course_title = (
-            course.title_fr if lang == "fr" else course.title_en
-        )
+        course_title = course.title_fr if lang == "fr" else course.title_en
         items.append(
             BundleListItem(
                 bundle_id=str(bundle.id),
@@ -258,11 +240,7 @@ async def list_bundles(
                 file_count=bundle.file_count,
                 file_size_bytes=bundle.file_size_bytes,
                 created_at=bundle.created_at.isoformat(),
-                completed_at=(
-                    bundle.completed_at.isoformat()
-                    if bundle.completed_at
-                    else None
-                ),
+                completed_at=(bundle.completed_at.isoformat() if bundle.completed_at else None),
                 download_url=_bundle_download_url(bundle, current_user),
                 error_message=bundle.error_message,
             )
@@ -273,9 +251,7 @@ async def list_bundles(
 @router.get("/admin/bundles/{bundle_id}/download")
 async def download_bundle(
     bundle_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(
-        require_role(*_ADMIN_ROLES)
-    ),
+    current_user: AuthenticatedUser = Depends(require_role(*_ADMIN_ROLES)),
     session: AsyncSession = Depends(get_db_session),
 ) -> StreamingResponse:
     """Stream the ZIP archive from MinIO.
@@ -295,9 +271,7 @@ async def download_bundle(
     _guard_expert(current_user, course)
 
     if bundle.status != "ready" or not bundle.storage_key:
-        raise HTTPException(
-            status_code=409, detail="Bundle is not ready yet"
-        )
+        raise HTTPException(status_code=409, detail="Bundle is not ready yet")
 
     storage = S3StorageService()
     try:
@@ -332,9 +306,7 @@ async def download_bundle(
 )
 async def delete_bundle(
     bundle_id: uuid.UUID,
-    current_user: AuthenticatedUser = Depends(
-        require_role(*_ADMIN_ROLES)
-    ),
+    current_user: AuthenticatedUser = Depends(require_role(*_ADMIN_ROLES)),
     session: AsyncSession = Depends(get_db_session),
 ) -> None:
     """Delete a bundle and its MinIO object."""
