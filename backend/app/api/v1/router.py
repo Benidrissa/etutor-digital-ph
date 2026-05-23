@@ -16,6 +16,9 @@ from app.api.v1.admin_taxonomy import router as admin_taxonomy_router
 from app.api.v1.analytics import router as analytics_router
 from app.api.v1.certificates import router as certificates_router
 from app.api.v1.content import router as content_router
+from app.api.v1.course_bundles import (
+    router as course_bundles_router,
+)
 from app.api.v1.course_preassessment import router as course_preassessment_router
 from app.api.v1.courses import router as courses_router
 from app.api.v1.curricula import router as curricula_router
@@ -85,3 +88,4 @@ api_v1_router.include_router(org_codes_router)
 api_v1_router.include_router(org_reports_router)
 api_v1_router.include_router(qbank_router)
 api_v1_router.include_router(certificates_router)
+api_v1_router.include_router(course_bundles_router)

@@ -30,4 +30,9 @@ test.describe('@sub-admin admin pages', () => {
     await page.goto('/fr/admin/taxonomy');
     await expect(page.locator('main h1')).toContainText(/taxonom/i);
   });
+
+  test('/fr/admin/quality renders quality review queue', async ({ page }) => {
+    await page.goto('/fr/admin/quality');
+    await expect(page.locator('main h1')).toContainText(/qualit/i);
+  });
 });

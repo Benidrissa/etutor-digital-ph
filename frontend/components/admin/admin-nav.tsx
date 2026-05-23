@@ -50,6 +50,7 @@ export function AdminNav() {
     { href: `/${locale}/admin/users`, label: t("users.title"), adminOnly: false, badge: 0 },
     { href: `/${locale}/admin/courses`, label: t("courses.title"), adminOnly: false, badge: 0 },
     { href: `/${locale}/admin/quality`, label: t("quality.title"), adminOnly: false, badge: attentionCount },
+    { href: `/${locale}/admin/bundles`, label: t("bundles.nav"), adminOnly: false, badge: 0 },
     { href: `/${locale}/admin/curricula`, label: t("curricula.title"), adminOnly: false, badge: 0 },
     { href: `/${locale}/admin/groups`, label: t("groups.title"), adminOnly: false, badge: 0 },
     { href: `/${locale}/admin/taxonomy`, label: t("taxonomy.title"), adminOnly: false, badge: 0 },
