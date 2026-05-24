@@ -441,7 +441,11 @@ export function ChatPanel({
               } else if (chunk.type === 'error') {
                 const errorCode = chunk.data?.code;
                 fullContent =
-                  errorCode === 'limit_reached' ? t('errorLimitReached') : t('error');
+                  errorCode === 'limit_reached'
+                    ? t('errorLimitReached')
+                    : errorCode === 'api_quota_exhausted'
+                      ? t('errorServiceUnavailable')
+                      : t('error');
                 if (errorCode === 'limit_reached') {
                   setLimitReached(true);
                 }
