@@ -80,7 +80,6 @@ export function BundleTrigger({ courseId, onSuccess }: BundleTriggerProps) {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Language */}
               <div className="space-y-2">
                 <label className="text-sm font-medium">{t("language")}</label>
                 <div className="flex gap-3">
@@ -103,7 +102,6 @@ export function BundleTrigger({ courseId, onSuccess }: BundleTriggerProps) {
                 </div>
               </div>
 
-              {/* Level */}
               <div className="space-y-2">
                 <label className="text-sm font-medium">{t("level")}</label>
                 <select
@@ -119,9 +117,7 @@ export function BundleTrigger({ courseId, onSuccess }: BundleTriggerProps) {
                 </select>
               </div>
 
-              {error && (
-                <p className="text-sm text-destructive">{error}</p>
-              )}
+              {error && <p className="text-sm text-destructive">{error}</p>}
 
               <div className="flex justify-end gap-2 pt-2">
                 <Button

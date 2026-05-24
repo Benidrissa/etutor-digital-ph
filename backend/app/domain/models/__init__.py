@@ -6,6 +6,7 @@ from app.domain.models.certificate import Certificate, CertificateTemplate
 from app.domain.models.content import GeneratedContent
 from app.domain.models.conversation import TutorConversation, TutorMessage
 from app.domain.models.course import Course, UserCourseEnrollment
+from app.domain.models.course_bundle import CourseBundle
 from app.domain.models.course_quality import (
     CourseGlossaryTerm,
     CourseQualityRun,
@@ -70,6 +71,7 @@ __all__ = [
     "Certificate",
     "CertificateTemplate",
     "Course",
+    "CourseBundle",
     "CourseGlossaryTerm",
     "CoursePreAssessment",
     "CourseQualityRun",

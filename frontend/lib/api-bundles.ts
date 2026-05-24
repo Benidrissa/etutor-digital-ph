@@ -84,9 +84,10 @@ export async function downloadBundle(
   filename: string,
 ): Promise<void> {
   const headers = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/v1/admin/bundles/${bundleId}/download`, {
-    headers,
-  });
+  const res = await fetch(
+    `${API_BASE}/api/v1/admin/bundles/${bundleId}/download`,
+    { headers },
+  );
   if (!res.ok) throw new Error(`Download failed: ${res.status}`);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
