@@ -459,4 +459,3 @@ class TestRehydrateSourceImageRefs:
         session = _FakeSession([])
         out = await LessonGenerationService._rehydrate_source_image_refs(cached, session)
         assert len(out) == 2  # second entry skipped entirely; third parsed but no DB overlay
-
