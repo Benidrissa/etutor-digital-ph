@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { getTranslations } from "next-intl/server";
+import { BundleTrigger } from "@/components/admin/bundle-trigger";
 import { QualityClient } from "@/components/admin/quality/quality-client";
 
 export async function generateMetadata({
@@ -34,8 +35,15 @@ export default async function AdminCourseQualityPage({
           <ArrowLeft className="size-4" />
           {t("backToCourses")}
         </Link>
-        <h1 className="text-2xl font-bold">{t("pageTitle")}</h1>
-        <p className="text-muted-foreground mt-1">{t("pageDescription")}</p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold">{t("pageTitle")}</h1>
+            <p className="text-muted-foreground mt-1">
+              {t("pageDescription")}
+            </p>
+          </div>
+          <BundleTrigger courseId={courseId} />
+        </div>
       </div>
       <QualityClient courseId={courseId} />
     </div>

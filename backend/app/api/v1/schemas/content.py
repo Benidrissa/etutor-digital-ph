@@ -30,7 +30,15 @@ class LessonGenerationRequest(BaseModel):
 
 
 class SourceImageRef(BaseModel):
-    """Reference to a source image extracted from a reference PDF."""
+    """Reference to a source image extracted from a reference PDF.
+
+    The frontend fetches the actual image bytes via
+    ``/api/v1/source-images/{id}/data?lang=<locale>`` — the ``id`` field is
+    the only locator needed.  Internal MinIO storage URLs are intentionally
+    absent from this schema so they never reach the browser (#1610).
+    """
+
+    model_config = {"extra": "ignore"}
 
     id: str = Field(..., description="UUID of the source image")
     figure_number: str | None = Field(None, description="Figure number e.g. '1.3'")
@@ -40,13 +48,6 @@ class SourceImageRef(BaseModel):
     attribution: str | None = Field(None, description="Source attribution text")
     image_type: str = Field(
         ..., description="Image type: diagram, photo, chart, formula, icon, unknown"
-    )
-    storage_url: str | None = Field(
-        None, description="CDN URL to the default (usually English) image"
-    )
-    storage_url_fr: str | None = Field(
-        None,
-        description="CDN URL to the French-variant image, when Phase 2 has produced one. NULL means the backend /data endpoint will fall back to storage_url for fr requests.",
     )
     alt_text_fr: str | None = Field(None, description="French alt text")
     alt_text_en: str | None = Field(None, description="English alt text")

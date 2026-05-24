@@ -552,3 +552,80 @@ async def test_persist_user_message_commit_durability_invariant(tutor_service, s
 
     # commit() — not just flush() — is required for cross-session visibility.
     assert mock_session.commit.await_count >= 1
+
+
+# ---------------------------------------------------------------------------
+# _prepare_conversation_history — orphaned user-turn guard (#2385)
+# ---------------------------------------------------------------------------
+
+
+async def test_prepare_conversation_history_strips_trailing_orphaned_user_turn(
+    tutor_service, sample_conversation
+):
+    """Orphaned user turn at the end (from a prior failed API call) must be
+    dropped so the Anthropic API never receives consecutive user messages."""
+    sample_conversation.messages = [
+        {"role": "user", "content": "Q1", "timestamp": "t0"},
+        {"role": "assistant", "content": "A1", "timestamp": "t1"},
+        # Orphaned: persisted before the API call that failed, no reply saved.
+        {"role": "user", "content": "Q2", "timestamp": "t2"},
+    ]
+    sample_conversation.compacted_context = None
+
+    result = await tutor_service._prepare_conversation_history(sample_conversation)
+
+    assert result[-1]["role"] == "assistant", (
+        "History must end with assistant turn so a new user message can be appended "
+        "without producing consecutive user messages (Anthropic 400)."
+    )
+    assert result[-1]["content"] == "A1"
+
+
+async def test_prepare_conversation_history_strips_multiple_trailing_orphaned_user_turns(
+    tutor_service, sample_conversation
+):
+    """Multiple orphaned user turns (from N failed retries) are all stripped."""
+    sample_conversation.messages = [
+        {"role": "user", "content": "Q1", "timestamp": "t0"},
+        {"role": "assistant", "content": "A1", "timestamp": "t1"},
+        {"role": "user", "content": "Q2_retry1", "timestamp": "t2"},
+        {"role": "user", "content": "Q2_retry2", "timestamp": "t3"},
+        {"role": "user", "content": "Q2_retry3", "timestamp": "t4"},
+    ]
+    sample_conversation.compacted_context = None
+
+    result = await tutor_service._prepare_conversation_history(sample_conversation)
+
+    assert result[-1]["role"] == "assistant"
+    assert result[-1]["content"] == "A1"
+    # Only the valid exchange survives
+    assert len(result) == 2
+
+
+async def test_prepare_conversation_history_empty_conversation(tutor_service, sample_conversation):
+    """Brand-new conversation with no messages returns empty list (not an error)."""
+    sample_conversation.messages = []
+    sample_conversation.compacted_context = None
+
+    result = await tutor_service._prepare_conversation_history(sample_conversation)
+
+    assert result == []
+
+
+async def test_prepare_conversation_history_preserves_healthy_history(
+    tutor_service, sample_conversation
+):
+    """Healthy alternating history is returned unchanged."""
+    sample_conversation.messages = [
+        {"role": "user", "content": "Q1", "timestamp": "t0"},
+        {"role": "assistant", "content": "A1", "timestamp": "t1"},
+        {"role": "user", "content": "Q2", "timestamp": "t2"},
+        {"role": "assistant", "content": "A2", "timestamp": "t3"},
+    ]
+    sample_conversation.compacted_context = None
+
+    result = await tutor_service._prepare_conversation_history(sample_conversation)
+
+    assert len(result) == 4
+    assert result[-1]["role"] == "assistant"
+    assert result[-1]["content"] == "A2"

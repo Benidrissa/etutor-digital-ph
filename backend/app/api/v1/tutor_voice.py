@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 
 import httpx
 import structlog
@@ -22,6 +23,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.prompts.tutor import get_socratic_system_prompt
+
+if TYPE_CHECKING:
+    from app.ai.prompts.tutor import TutorContext
 from app.api.deps import get_db_session
 from app.api.deps_local_auth import AuthenticatedUser, get_current_user
 from app.api.v1.schemas.tutor_voice import (
@@ -192,7 +196,40 @@ async def _minutes_used_today(user_id: uuid.UUID, db: AsyncSession) -> int:
     return (int(seconds) + 59) // 60
 
 
-_VOICE_MODE_SUFFIX = """
+def _get_voice_mode_suffix(context: TutorContext) -> str:
+    """Build the voice-call suffix injected after the main system prompt.
+
+    The text tutor is grounded by RAG chunks + conversation history, so the
+    country-context line ("Focus paludisme, méningite, malnutrition") is just
+    background colour.  The voice tutor has NEITHER — it gets only the system
+    prompt — so the model latches onto the specific topics it names.  This
+    suffix explicitly anchors the session to the current course/module and
+    blocks country-topic drift (#1960).
+    """
+    course_label = context.course_title or "la formation en cours"
+    if context.module_title:
+        module_ref = (
+            f"Module {context.module_number}: {context.module_title}"
+            if context.module_number
+            else context.module_title
+        )
+        opening_directive = (
+            f"Open by welcoming the learner and asking one Socratic question "
+            f"grounded in {module_ref} of the course «{course_label}»."
+            if context.user_language != "fr"
+            else f"Commence par accueillir l'apprenant et pose une question "
+            f"socratique ancrée dans le {module_ref} du cours «{course_label}»."
+        )
+    else:
+        opening_directive = (
+            f"Open by welcoming the learner and asking which topic within "
+            f"«{course_label}» they'd like to explore today."
+            if context.user_language != "fr"
+            else f"Commence par accueillir l'apprenant et demande-lui quel "
+            f"sujet du cours «{course_label}» il souhaite explorer aujourd'hui."
+        )
+
+    return f"""
 
 ## Voice-call mode (spoken output)
 
@@ -201,7 +238,17 @@ You are now in a **live voice call** with the learner. Adapt your responses:
 - Use natural spoken phrasing. Do not use markdown, bullet points, or source_image markers.
 - Still follow the Socratic pedagogy above: ask probing questions, guide rather than lecture.
 - If you'd normally cite a source, say it briefly in speech ("as covered in Chapter 4") rather than a formal citation.
-- If the learner asks you to speak louder / slower / in a different language, acknowledge and comply."""
+- If the learner asks you to speak louder / slower / in a different language, acknowledge and comply.
+
+## Voice-call anchoring (CRITICAL — override country-context drift)
+
+{opening_directive}
+
+- **Every reply MUST stay anchored in «{course_label}»** and what the learner just said.
+- The "Pays" line above (e.g. "Focus paludisme, méningite, malnutrition") is BACKGROUND COLOUR ONLY. \
+Do NOT bring up country-specific health priorities, diseases, or statistics unless the learner \
+explicitly asks about them. Treat them as reference material, not a conversation starter.
+- If the learner's message is off-topic, gently redirect to the course content with a question."""
 
 
 @router.post("/voice-session", response_model=VoiceSessionResponse)
@@ -249,7 +296,7 @@ async def create_voice_session(
         locale=body.locale,
         session=db,
     )
-    instructions = get_socratic_system_prompt(context, []) + _VOICE_MODE_SUFFIX
+    instructions = get_socratic_system_prompt(context, []) + _get_voice_mode_suffix(context)
 
     voice = "alloy" if body.locale == "en" else "shimmer"
     openai_payload: dict[str, object] = {

@@ -4,6 +4,9 @@ Uses a mocked async session because the integration db_session fixture is
 blocked on #554 (Base.metadata.create_all vs Alembic-managed enum types).
 The interesting logic here is the round-up-to-minutes rule and the cap
 clamp formula; both are pure arithmetic once the DB returns a seconds sum.
+
+Also covers _get_voice_mode_suffix (#1960) — verifies the dynamic suffix
+anchors to course/module and suppresses country-topic drift.
 """
 
 from __future__ import annotations
@@ -63,6 +66,62 @@ class TestMinutesUsedToday:
 
         session = _session_returning_seconds(None)
         assert await _minutes_used_today(uuid.uuid4(), session) == 0
+
+
+class TestVoiceModeSuffix:
+    """_get_voice_mode_suffix anchors to course/module and blocks country drift (#1960)."""
+
+    def _make_context(self, **kwargs):
+        from app.ai.prompts.tutor import TutorContext
+
+        defaults = {
+            "user_level": 2,
+            "user_language": "fr",
+            "user_country": "BF",
+        }
+        defaults.update(kwargs)
+        return TutorContext(**defaults)
+
+    def test_contains_anti_drift_instruction(self):
+        from app.api.v1.tutor_voice import _get_voice_mode_suffix
+
+        ctx = self._make_context(course_title="Santé Publique en Afrique de l'Ouest")
+        suffix = _get_voice_mode_suffix(ctx)
+        assert "BACKGROUND COLOUR ONLY" in suffix
+        assert "Do NOT bring up country-specific" in suffix or "ne pas" in suffix.lower()
+
+    def test_no_module_asks_for_topic(self):
+        from app.api.v1.tutor_voice import _get_voice_mode_suffix
+
+        ctx = self._make_context(course_title="Marketing Digital", module_title=None)
+        suffix = _get_voice_mode_suffix(ctx)
+        assert "Marketing Digital" in suffix
+
+    def test_with_module_anchors_to_module(self):
+        from app.api.v1.tutor_voice import _get_voice_mode_suffix
+
+        ctx = self._make_context(
+            course_title="Santé Publique",
+            module_title="Épidémiologie",
+            module_number=3,
+        )
+        suffix = _get_voice_mode_suffix(ctx)
+        assert "Épidémiologie" in suffix
+        assert "Santé Publique" in suffix
+
+    def test_en_suffix_uses_english_phrases(self):
+        from app.api.v1.tutor_voice import _get_voice_mode_suffix
+
+        ctx = self._make_context(user_language="en", course_title="Public Health")
+        suffix = _get_voice_mode_suffix(ctx)
+        assert "Public Health" in suffix
+
+    def test_fallback_course_label_when_no_title(self):
+        from app.api.v1.tutor_voice import _get_voice_mode_suffix
+
+        ctx = self._make_context(course_title=None)
+        suffix = _get_voice_mode_suffix(ctx)
+        assert "la formation en cours" in suffix
 
 
 class TestDurationClamp:

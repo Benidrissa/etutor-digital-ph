@@ -2,12 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import {
-  Download,
-  Loader2,
-  Package,
-  Trash2,
-} from "lucide-react";
+import { Download, Loader2, Package, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   type BundleListItem,
@@ -51,8 +46,6 @@ export function BundlesClient() {
   const load = useCallback(async () => {
     try {
       const data = await listBundles({ limit: 100 });
-
-      // Detect transitions to "ready" or "failed" for notifications
       const prev = prevStatusRef.current;
       for (const b of data) {
         const was = prev[b.bundle_id];
@@ -64,7 +57,6 @@ export function BundlesClient() {
       prevStatusRef.current = Object.fromEntries(
         data.map((b) => [b.bundle_id, b.status]),
       );
-
       setBundles(data);
       setError(null);
     } catch {
@@ -78,7 +70,6 @@ export function BundlesClient() {
     load();
   }, [load]);
 
-  // Auto-poll every 3s while any bundle is generating or pending
   useEffect(() => {
     const hasActive = bundles.some(
       (b) => b.status === "generating" || b.status === "pending",
@@ -96,8 +87,10 @@ export function BundlesClient() {
   async function handleDownload(b: BundleListItem) {
     setDownloading(b.bundle_id);
     try {
-      const filename = `${b.course_title}_${b.language}.zip`
-        .replace(/[^a-zA-Z0-9_.-]/g, "_");
+      const filename = `${b.course_title}_${b.language}.zip`.replace(
+        /[^a-zA-Z0-9_.-]/g,
+        "_",
+      );
       await downloadBundle(b.bundle_id, filename);
     } catch {
       showToast(t("error"));
@@ -119,11 +112,10 @@ export function BundlesClient() {
     }
   }
 
-  function statusBadge(status: string) {
-    const label = t(`status.${status}` as Parameters<typeof t>[0]);
+  function statusBadge(bundleStatus: string) {
+    const label = t(`status.${bundleStatus}` as Parameters<typeof t>[0]);
     const cls: Record<string, string> = {
-      pending:
-        "bg-muted text-muted-foreground",
+      pending: "bg-muted text-muted-foreground",
       generating:
         "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
       ready:
@@ -133,9 +125,9 @@ export function BundlesClient() {
     };
     return (
       <span
-        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${cls[status] ?? cls.pending}`}
+        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${cls[bundleStatus] ?? cls.pending}`}
       >
-        {status === "generating" && (
+        {bundleStatus === "generating" && (
           <Loader2 className="size-3 animate-spin" />
         )}
         {label}
@@ -160,7 +152,6 @@ export function BundlesClient() {
         </div>
       )}
 
-      {/* Delete confirmation overlay */}
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-lg bg-background p-6 shadow-xl">
@@ -208,12 +199,16 @@ export function BundlesClient() {
             <thead className="border-b bg-muted/50 text-xs font-medium text-muted-foreground">
               <tr>
                 <th className="px-4 py-3 text-left">{t("table.course")}</th>
-                <th className="px-4 py-3 text-left">{t("table.language")}</th>
+                <th className="px-4 py-3 text-left">
+                  {t("table.language")}
+                </th>
                 <th className="px-4 py-3 text-left">{t("table.level")}</th>
                 <th className="px-4 py-3 text-left">{t("table.status")}</th>
                 <th className="px-4 py-3 text-left">{t("table.size")}</th>
                 <th className="px-4 py-3 text-left">{t("table.created")}</th>
-                <th className="px-4 py-3 text-right">{t("table.actions")}</th>
+                <th className="px-4 py-3 text-right">
+                  {t("table.actions")}
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -222,7 +217,7 @@ export function BundlesClient() {
                   <td className="px-4 py-3 font-medium">
                     {b.course_title}
                     {b.error_message && b.status === "failed" && (
-                      <p className="mt-0.5 text-xs text-destructive/80 truncate max-w-[200px]">
+                      <p className="mt-0.5 max-w-[200px] truncate text-xs text-destructive/80">
                         {b.error_message}
                       </p>
                     )}
