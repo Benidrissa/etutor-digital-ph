@@ -7,6 +7,7 @@ Create Date: 2026-05-21
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
 
 revision: str = "097_add_course_bundles"
 down_revision: str | None = "096_add_file_hash_to_course_resources"
@@ -43,7 +44,7 @@ def upgrade() -> None:
         sa.Column("country", sa.String(4), server_default="SN", nullable=False),
         sa.Column(
             "status",
-            sa.Enum(
+            PG_ENUM(
                 "pending",
                 "generating",
                 "ready",
