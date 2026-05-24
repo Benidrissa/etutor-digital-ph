@@ -2224,6 +2224,14 @@ class TutorService:
                     }
                 )
 
+        # Strip trailing orphaned user turns — messages persisted before a
+        # failed API call that never received an assistant reply (#2385).
+        # Anthropic requires strictly alternating user/assistant turns; leaving
+        # these in causes a 400 on the next request and creates an infinite
+        # retry cascade where every subsequent attempt also fails.
+        while claude_messages and claude_messages[-1]["role"] == "user":
+            claude_messages.pop()
+
         return claude_messages
 
     async def _persist_user_message(
