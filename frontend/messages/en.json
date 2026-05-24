@@ -437,6 +437,7 @@
     "modeExplanatory": "Explanatory Mode",
     "modeSocraticTooltip": "Guided questions",
     "modeExplanatoryTooltip": "Direct answers",
+    "voiceCall": "Voice call",
     "fileUpload": {
       "attach": "Attach a file",
       "attachAriaLabel": "Attach a file",
