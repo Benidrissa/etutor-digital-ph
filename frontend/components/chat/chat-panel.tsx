@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { track } from '@/lib/analytics';
 import { Link } from '@/i18n/routing';
-import { X, MoreVertical, Trash2, Menu, HelpCircle, BookOpen, GraduationCap, ChevronDown, Globe } from 'lucide-react';
+import { X, MoreVertical, Trash2, Menu, HelpCircle, BookOpen, GraduationCap, ChevronDown, Globe, Phone } from 'lucide-react';
 import { getMyEnrollments, type CourseWithEnrollment, API_BASE } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import {
@@ -595,9 +595,15 @@ export function ChatPanel({
                 {activeCourseLabel}
               </span>
             ) : null}
-            {/* Voice-call button hidden until voice tutor has proper RAG
-                grounding (#1960). Backend endpoints stay live so existing
-                in-flight sessions complete cleanly. */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowVoiceCall(true)}
+              className="h-11 w-11"
+              title={t('voiceCall')}
+            >
+              <Phone className="h-4 w-4" />
+            </Button>
             <Button
               variant={tutorMode === 'socratic' ? 'default' : 'outline'}
               size="sm"
