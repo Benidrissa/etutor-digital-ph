@@ -126,10 +126,12 @@ async def test_compact_summarize_up_to_constant():
 
 
 async def test_prepare_history_no_compact_returns_all_when_short(tutor_service, sample_user):
-    """With no compacted_context and a conversation under the cap, all messages are returned."""
-    conv = _make_conversation(sample_user.id, n_messages=15)
+    """With no compacted_context and a healthy conversation under the cap, all messages are
+    returned. Uses an even message count so the last turn is assistant (no orphaned user turn
+    to strip — see #2385)."""
+    conv = _make_conversation(sample_user.id, n_messages=14)
     history = await tutor_service._prepare_conversation_history(conv)
-    assert len(history) == 15
+    assert len(history) == 14
 
 
 async def test_prepare_history_no_compact_caps_long_conversation(tutor_service, sample_user):
