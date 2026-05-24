@@ -9,7 +9,8 @@ from datetime import datetime
 from typing import Any
 
 import structlog
-from anthropic import AsyncAnthropic, BadRequestError as AnthropicBadRequestError
+from anthropic import AsyncAnthropic
+from anthropic import BadRequestError as AnthropicBadRequestError
 from anthropic.types import MessageParam, ToolResultBlockParam, ToolUseBlock
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
