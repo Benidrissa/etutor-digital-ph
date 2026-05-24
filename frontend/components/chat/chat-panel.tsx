@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { track } from '@/lib/analytics';
 import { Link } from '@/i18n/routing';
-import { X, MoreVertical, Trash2, Menu, HelpCircle, BookOpen, GraduationCap, ChevronDown, Globe, Phone } from 'lucide-react';
+import { X, MoreVertical, Trash2, Menu, HelpCircle, BookOpen, GraduationCap, ChevronDown, Globe } from 'lucide-react';
 import { getMyEnrollments, type CourseWithEnrollment, API_BASE } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import {
@@ -26,7 +26,6 @@ import {
 import { ChatMessage as ChatMessageComponent, type ChatMessage } from './chat-message';
 import { ChatInput } from './chat-input';
 import { ChatSuggestions } from './chat-suggestions';
-import { VoiceCallModal } from './voice-call-modal';
 import { TypingIndicator } from './typing-indicator';
 import { UsageCounter } from './usage-counter';
 import { ChatSkeleton } from './chat-skeleton';
@@ -81,7 +80,6 @@ export function ChatPanel({
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [showClearDialog, setShowClearDialog] = useState(false);
-  const [showVoiceCall, setShowVoiceCall] = useState(false);
   const [currentUsage, setCurrentUsage] = useState(0);
   const [maxDailyUsage, setMaxDailyUsage] = useState(200);
   const [limitReached, setLimitReached] = useState(false);
@@ -595,15 +593,9 @@ export function ChatPanel({
                 {activeCourseLabel}
               </span>
             ) : null}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setShowVoiceCall(true)}
-              className="h-11 w-11"
-              title={t('voiceCall')}
-            >
-              <Phone className="h-4 w-4" />
-            </Button>
+            {/* Voice-call button hidden — feature not yet complete (#1960).
+                Backend endpoints stay live so in-flight sessions close cleanly.
+                Re-enable once voice RAG grounding and UX are finalized. */}
             <Button
               variant={tutorMode === 'socratic' ? 'default' : 'outline'}
               size="sm"
@@ -706,14 +698,6 @@ export function ChatPanel({
           />
         </div>
       </div>
-
-      {/* Voice Call Modal */}
-      <VoiceCallModal
-        open={showVoiceCall}
-        onOpenChange={setShowVoiceCall}
-        courseId={activeCourseId}
-        moduleId={moduleId ?? null}
-      />
 
       {/* Clear History Dialog */}
       <AlertDialog open={showClearDialog} onOpenChange={setShowClearDialog}>
