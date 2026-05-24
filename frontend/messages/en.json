@@ -409,6 +409,7 @@
     "allConversationsCleared": "All conversations deleted",
     "error": "Something went wrong. Please try again.",
     "errorLimitReached": "Daily message limit reached. Come back tomorrow.",
+    "errorServiceUnavailable": "AI service is temporarily unavailable. Please try again later.",
     "upgradePrompt": "Subscribe to continue — 1,000 XOF/month",
     "errorDescription": "Failed to send message. Please try again.",
     "retry": "Retry",

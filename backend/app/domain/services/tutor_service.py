@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Any
 
 import structlog
-from anthropic import AsyncAnthropic
+from anthropic import AsyncAnthropic, BadRequestError as AnthropicBadRequestError
 from anthropic.types import MessageParam, ToolResultBlockParam, ToolUseBlock
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -1755,6 +1755,13 @@ class TutorService:
                 "finished": True,
             }
 
+        except AnthropicBadRequestError as e:
+            code = "api_quota_exhausted" if "credit balance" in str(e).lower() else "tutor_error"
+            logger.error("Error in tutor chat", error=str(e), user_id=str(user_id))
+            yield {
+                "type": "error",
+                "data": {"code": code, "message": "An error occurred. Please try again."},
+            }
         except Exception as e:
             logger.error("Error in tutor chat", error=str(e), user_id=str(user_id))
             yield {
