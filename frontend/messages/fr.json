@@ -409,6 +409,7 @@
     "allConversationsCleared": "Toutes les conversations supprimées",
     "error": "Une erreur s'est produite. Veuillez réessayer.",
     "errorLimitReached": "Limite de messages quotidiens atteinte. Revenez demain.",
+    "errorServiceUnavailable": "Le service IA est temporairement indisponible. Veuillez réessayer plus tard.",
     "upgradePrompt": "S'abonner pour continuer — 1 000 FCFA/mois",
     "errorDescription": "Échec de l'envoi du message. Veuillez réessayer.",
     "retry": "Réessayer",
