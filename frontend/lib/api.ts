@@ -318,20 +318,43 @@ export async function apiFetch<T>(
     ...(options?.headers as Record<string, string>),
   };
 
+  let authed = false;
   if (typeof window !== "undefined") {
     try {
       const { authClient } = await import("./auth");
       const token = await authClient.getValidToken();
       headers["Authorization"] = `Bearer ${token}`;
+      authed = true;
     } catch {
       // No valid token — proceed without auth header (unauthenticated call)
     }
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  let res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers,
   });
+
+  // Self-heal a single 401 by refreshing via the HttpOnly cookie and retrying,
+  // covering tokens that lapse between getValidToken() and the request or are
+  // rejected for clock skew. Request bodies here are JSON strings, safe to reuse.
+  if (res.status === 401 && authed && typeof window !== "undefined") {
+    try {
+      const { authClient } = await import("./auth");
+      await authClient.refreshAccessToken();
+      const token = authClient.getAccessToken();
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+        res = await fetch(`${API_BASE}${path}`, {
+          ...options,
+          headers,
+        });
+      }
+    } catch {
+      // Refresh failed — fall through to the normal error handling below.
+    }
+  }
+
   if (!res.ok) {
     let message = `API error: ${res.status}`;
     let code: string | undefined;
