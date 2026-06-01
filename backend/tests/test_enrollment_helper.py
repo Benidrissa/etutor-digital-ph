@@ -74,11 +74,7 @@ async def test_non_first_modules_get_not_started_not_locked() -> None:
 
     await enroll_user_in_course(db, user_id, course_id)
 
-    added = [
-        c.args[0]
-        for c in db.add.call_args_list
-        if isinstance(c.args[0], UserModuleProgress)
-    ]
+    added = [c.args[0] for c in db.add.call_args_list if isinstance(c.args[0], UserModuleProgress)]
     non_first = [p for p in added if p.module_id != modules[0].id]
     assert len(non_first) == 2, "Should have progress rows for modules 2 and 3"
     for prog in non_first:
