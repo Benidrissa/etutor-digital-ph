@@ -1852,10 +1852,24 @@ class TutorService:
         if isinstance(user_id, str):
             user_id = uuid.UUID(user_id)
 
+        # Sort by last activity, not creation time (#2407). The sidebar shows each
+        # thread's last-message timestamp, so ordering by created_at made threads
+        # look unsorted (a recently-active old thread sat below newer-but-idle ones).
+        # tutor_messages holds a durable row per message (#1978), so MAX(created_at)
+        # is a reliable last-activity key; fall back to created_at for legacy/empty
+        # threads that have no rows there.
+        last_activity = func.coalesce(
+            select(func.max(TutorMessage.created_at))
+            .where(TutorMessage.conversation_id == TutorConversation.id)
+            .correlate(TutorConversation)
+            .scalar_subquery(),
+            TutorConversation.created_at,
+        )
+
         query = (
             select(TutorConversation)
             .where(TutorConversation.user_id == user_id)
-            .order_by(TutorConversation.created_at.desc())
+            .order_by(last_activity.desc())
             .limit(limit)
             .offset(offset)
         )

@@ -411,6 +411,32 @@ async def test_list_conversations_returns_required_fields(
     assert "preview" in conv
 
 
+async def test_list_conversations_orders_by_last_activity(tutor_service, sample_user):
+    """Threads must be ordered by last activity, not creation time (#2407).
+
+    DB integration tests in this repo are skipped (conftest's create_all can't
+    emit enum types behind create_type=False), so we assert the invariant on the
+    constructed SELECT: its ORDER BY must reference the last-message timestamp
+    from tutor_messages (via coalesce/max), not plain tutor_conversations.created_at.
+    """
+    mock_session = AsyncMock(spec=AsyncSession)
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = []
+    mock_count_result = MagicMock()
+    mock_count_result.scalar.return_value = 0
+    mock_session.execute = AsyncMock(side_effect=[mock_result, mock_count_result])
+
+    await tutor_service.list_conversations(user_id=sample_user.id, session=mock_session)
+
+    # First execute() is the list query; compile it to inspect the ORDER BY.
+    list_stmt = mock_session.execute.call_args_list[0].args[0]
+    compiled = str(list_stmt.compile()).lower()
+    order_clause = compiled.split("order by", 1)[1]
+    assert "coalesce" in order_clause
+    assert "tutor_messages.created_at" in order_clause
+    assert "desc" in order_clause
+
+
 async def test_get_conversation_returns_none_for_wrong_user(tutor_service, sample_user):
     """get_conversation must return None when the conversation belongs to another user."""
     mock_session = AsyncMock(spec=AsyncSession)
