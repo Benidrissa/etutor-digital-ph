@@ -150,7 +150,7 @@ async def test_send_message_yields_content_type_chunks(
             return_value=sample_conversation,
         ),
         patch.object(
-            tutor_service,
+            tutor_service.session_manager,
             "_get_previous_compact",
             new_callable=AsyncMock,
             return_value=None,
@@ -217,7 +217,7 @@ async def test_send_message_yields_sources_cited_type(
             return_value=sample_conversation,
         ),
         patch.object(
-            tutor_service,
+            tutor_service.session_manager,
             "_get_previous_compact",
             new_callable=AsyncMock,
             return_value=None,
@@ -354,7 +354,7 @@ async def test_send_message_never_yields_text_type(tutor_service, sample_user, s
             return_value=sample_conversation,
         ),
         patch.object(
-            tutor_service,
+            tutor_service.session_manager,
             "_get_previous_compact",
             new_callable=AsyncMock,
             return_value=None,
@@ -409,6 +409,32 @@ async def test_list_conversations_returns_required_fields(
     assert "message_count" in conv
     assert "last_message_at" in conv
     assert "preview" in conv
+
+
+async def test_list_conversations_orders_by_last_activity(tutor_service, sample_user):
+    """Threads must be ordered by last activity, not creation time (#2407).
+
+    DB integration tests in this repo are skipped (conftest's create_all can't
+    emit enum types behind create_type=False), so we assert the invariant on the
+    constructed SELECT: its ORDER BY must reference the last-message timestamp
+    from tutor_messages (via coalesce/max), not plain tutor_conversations.created_at.
+    """
+    mock_session = AsyncMock(spec=AsyncSession)
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = []
+    mock_count_result = MagicMock()
+    mock_count_result.scalar.return_value = 0
+    mock_session.execute = AsyncMock(side_effect=[mock_result, mock_count_result])
+
+    await tutor_service.list_conversations(user_id=sample_user.id, session=mock_session)
+
+    # First execute() is the list query; compile it to inspect the ORDER BY.
+    list_stmt = mock_session.execute.call_args_list[0].args[0]
+    compiled = str(list_stmt.compile()).lower()
+    order_clause = compiled.split("order by", 1)[1]
+    assert "coalesce" in order_clause
+    assert "tutor_messages.created_at" in order_clause
+    assert "desc" in order_clause
 
 
 async def test_get_conversation_returns_none_for_wrong_user(tutor_service, sample_user):
@@ -552,3 +578,80 @@ async def test_persist_user_message_commit_durability_invariant(tutor_service, s
 
     # commit() — not just flush() — is required for cross-session visibility.
     assert mock_session.commit.await_count >= 1
+
+
+# ---------------------------------------------------------------------------
+# _prepare_conversation_history — orphaned user-turn guard (#2385)
+# ---------------------------------------------------------------------------
+
+
+async def test_prepare_conversation_history_strips_trailing_orphaned_user_turn(
+    tutor_service, sample_conversation
+):
+    """Orphaned user turn at the end (from a prior failed API call) must be
+    dropped so the Anthropic API never receives consecutive user messages."""
+    sample_conversation.messages = [
+        {"role": "user", "content": "Q1", "timestamp": "t0"},
+        {"role": "assistant", "content": "A1", "timestamp": "t1"},
+        # Orphaned: persisted before the API call that failed, no reply saved.
+        {"role": "user", "content": "Q2", "timestamp": "t2"},
+    ]
+    sample_conversation.compacted_context = None
+
+    result = await tutor_service._prepare_conversation_history(sample_conversation)
+
+    assert result[-1]["role"] == "assistant", (
+        "History must end with assistant turn so a new user message can be appended "
+        "without producing consecutive user messages (Anthropic 400)."
+    )
+    assert result[-1]["content"] == "A1"
+
+
+async def test_prepare_conversation_history_strips_multiple_trailing_orphaned_user_turns(
+    tutor_service, sample_conversation
+):
+    """Multiple orphaned user turns (from N failed retries) are all stripped."""
+    sample_conversation.messages = [
+        {"role": "user", "content": "Q1", "timestamp": "t0"},
+        {"role": "assistant", "content": "A1", "timestamp": "t1"},
+        {"role": "user", "content": "Q2_retry1", "timestamp": "t2"},
+        {"role": "user", "content": "Q2_retry2", "timestamp": "t3"},
+        {"role": "user", "content": "Q2_retry3", "timestamp": "t4"},
+    ]
+    sample_conversation.compacted_context = None
+
+    result = await tutor_service._prepare_conversation_history(sample_conversation)
+
+    assert result[-1]["role"] == "assistant"
+    assert result[-1]["content"] == "A1"
+    # Only the valid exchange survives
+    assert len(result) == 2
+
+
+async def test_prepare_conversation_history_empty_conversation(tutor_service, sample_conversation):
+    """Brand-new conversation with no messages returns empty list (not an error)."""
+    sample_conversation.messages = []
+    sample_conversation.compacted_context = None
+
+    result = await tutor_service._prepare_conversation_history(sample_conversation)
+
+    assert result == []
+
+
+async def test_prepare_conversation_history_preserves_healthy_history(
+    tutor_service, sample_conversation
+):
+    """Healthy alternating history is returned unchanged."""
+    sample_conversation.messages = [
+        {"role": "user", "content": "Q1", "timestamp": "t0"},
+        {"role": "assistant", "content": "A1", "timestamp": "t1"},
+        {"role": "user", "content": "Q2", "timestamp": "t2"},
+        {"role": "assistant", "content": "A2", "timestamp": "t3"},
+    ]
+    sample_conversation.compacted_context = None
+
+    result = await tutor_service._prepare_conversation_history(sample_conversation)
+
+    assert len(result) == 4
+    assert result[-1]["role"] == "assistant"
+    assert result[-1]["content"] == "A2"

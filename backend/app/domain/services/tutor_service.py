@@ -10,6 +10,7 @@ from typing import Any
 
 import structlog
 from anthropic import AsyncAnthropic
+from anthropic import BadRequestError as AnthropicBadRequestError
 from anthropic.types import MessageParam, ToolResultBlockParam, ToolUseBlock
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -1755,6 +1756,13 @@ class TutorService:
                 "finished": True,
             }
 
+        except AnthropicBadRequestError as e:
+            code = "api_quota_exhausted" if "credit balance" in str(e).lower() else "tutor_error"
+            logger.error("Error in tutor chat", error=str(e), user_id=str(user_id))
+            yield {
+                "type": "error",
+                "data": {"code": code, "message": "An error occurred. Please try again."},
+            }
         except Exception as e:
             logger.error("Error in tutor chat", error=str(e), user_id=str(user_id))
             yield {
@@ -1844,10 +1852,24 @@ class TutorService:
         if isinstance(user_id, str):
             user_id = uuid.UUID(user_id)
 
+        # Sort by last activity, not creation time (#2407). The sidebar shows each
+        # thread's last-message timestamp, so ordering by created_at made threads
+        # look unsorted (a recently-active old thread sat below newer-but-idle ones).
+        # tutor_messages holds a durable row per message (#1978), so MAX(created_at)
+        # is a reliable last-activity key; fall back to created_at for legacy/empty
+        # threads that have no rows there.
+        last_activity = func.coalesce(
+            select(func.max(TutorMessage.created_at))
+            .where(TutorMessage.conversation_id == TutorConversation.id)
+            .correlate(TutorConversation)
+            .scalar_subquery(),
+            TutorConversation.created_at,
+        )
+
         query = (
             select(TutorConversation)
             .where(TutorConversation.user_id == user_id)
-            .order_by(TutorConversation.created_at.desc())
+            .order_by(last_activity.desc())
             .limit(limit)
             .offset(offset)
         )
@@ -2223,6 +2245,14 @@ class TutorService:
                         "content": content,
                     }
                 )
+
+        # Strip trailing orphaned user turns — messages persisted before a
+        # failed API call that never received an assistant reply (#2385).
+        # Anthropic requires strictly alternating user/assistant turns; leaving
+        # these in causes a 400 on the next request and creates an infinite
+        # retry cascade where every subsequent attempt also fails.
+        while claude_messages and claude_messages[-1]["role"] == "user":
+            claude_messages.pop()
 
         return claude_messages
 

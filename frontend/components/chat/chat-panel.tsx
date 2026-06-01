@@ -26,7 +26,6 @@ import {
 import { ChatMessage as ChatMessageComponent, type ChatMessage } from './chat-message';
 import { ChatInput } from './chat-input';
 import { ChatSuggestions } from './chat-suggestions';
-import { VoiceCallModal } from './voice-call-modal';
 import { TypingIndicator } from './typing-indicator';
 import { UsageCounter } from './usage-counter';
 import { ChatSkeleton } from './chat-skeleton';
@@ -81,7 +80,6 @@ export function ChatPanel({
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [showClearDialog, setShowClearDialog] = useState(false);
-  const [showVoiceCall, setShowVoiceCall] = useState(false);
   const [currentUsage, setCurrentUsage] = useState(0);
   const [maxDailyUsage, setMaxDailyUsage] = useState(200);
   const [limitReached, setLimitReached] = useState(false);
@@ -441,7 +439,11 @@ export function ChatPanel({
               } else if (chunk.type === 'error') {
                 const errorCode = chunk.data?.code;
                 fullContent =
-                  errorCode === 'limit_reached' ? t('errorLimitReached') : t('error');
+                  errorCode === 'limit_reached'
+                    ? t('errorLimitReached')
+                    : errorCode === 'api_quota_exhausted'
+                      ? t('errorServiceUnavailable')
+                      : t('error');
                 if (errorCode === 'limit_reached') {
                   setLimitReached(true);
                 }
@@ -595,9 +597,9 @@ export function ChatPanel({
                 {activeCourseLabel}
               </span>
             ) : null}
-            {/* Voice-call button hidden until voice tutor has proper RAG
-                grounding (#1960). Backend endpoints stay live so existing
-                in-flight sessions complete cleanly. */}
+            {/* Voice-call button hidden — feature not yet complete (#1960).
+                Backend endpoints stay live so in-flight sessions close cleanly.
+                Re-enable once voice RAG grounding and UX are finalized. */}
             <Button
               variant={tutorMode === 'socratic' ? 'default' : 'outline'}
               size="sm"
@@ -700,14 +702,6 @@ export function ChatPanel({
           />
         </div>
       </div>
-
-      {/* Voice Call Modal */}
-      <VoiceCallModal
-        open={showVoiceCall}
-        onOpenChange={setShowVoiceCall}
-        courseId={activeCourseId}
-        moduleId={moduleId ?? null}
-      />
 
       {/* Clear History Dialog */}
       <AlertDialog open={showClearDialog} onOpenChange={setShowClearDialog}>

@@ -622,6 +622,25 @@ def generate_course_syllabus(
         },
     )
 
+    # Auto-trigger structural QA (no Claude, pure DB checks). Best-effort —
+    # never block the syllabus result on this. Small countdown so the sync
+    # session's commit is visible to a fresh async session.
+    try:
+        from app.tasks.quality_assessment import assess_course_structure_task
+
+        assess_course_structure_task.apply_async(
+            kwargs={"course_id": course_id},
+            priority=5,
+            countdown=5,
+        )
+        logger.info("Structural QA dispatched", course_id=course_id)
+    except Exception as _exc:
+        logger.warning(
+            "Structural QA dispatch failed (non-fatal)",
+            course_id=course_id,
+            error=str(_exc),
+        )
+
     return {
         "status": "complete",
         "modules_count": len(saved_modules),

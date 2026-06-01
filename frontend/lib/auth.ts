@@ -349,12 +349,16 @@ class AuthClient {
       return this.accessToken;
     }
 
-    if (!this.refreshToken) {
+    // Access token missing/expired: refresh via the HttpOnly refresh_token
+    // cookie. Do NOT gate on this.refreshToken — it is null after any page
+    // load since the refresh token is never persisted to localStorage (#2112),
+    // so gating here permanently blocked recovery once the access token aged out.
+    try {
+      await this.refreshAccessToken();
+    } catch {
       this.clearTokens();
       throw new AuthError('Session expired. Please log in again.', 401);
     }
-
-    await this.refreshAccessToken();
 
     if (!this.accessToken) {
       this.clearTokens();

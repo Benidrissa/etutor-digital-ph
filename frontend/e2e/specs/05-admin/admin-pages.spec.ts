@@ -32,4 +32,9 @@ test.describe('@admin admin pages', () => {
     await page.goto('/fr/admin/analytics');
     await expect(page.locator('main h1')).toContainText(/analy/i);
   });
+
+  test('/fr/admin/quality renders quality review queue', async ({ page }) => {
+    await page.goto('/fr/admin/quality');
+    await expect(page.locator('main h1')).toContainText(/qualit/i);
+  });
 });
