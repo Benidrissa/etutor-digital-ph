@@ -1,0 +1,41 @@
+name: Staging Seed E2E Fixtures
+
+# Re-seeds the E2E fixture users, org, activation codes, and courses on staging.
+# Run whenever the staging database loses its e2e-* fixtures (e.g., after a reset
+# or after data cleanup removed the seed courses).
+#
+# Idempotent: seed_e2e_users.py uses upsert — safe to run multiple times.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  seed:
+    name: Run seed_e2e_users.py on staging
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH and run seed script
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 167.86.115.58
+          username: deploy
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: E2E_LEARNER_PASSWORD,E2E_ORG_OWNER_PASSWORD,E2E_SUB_ADMIN_PASSWORD,E2E_ADMIN_PASSWORD
+          script: |
+            set -e
+            cd ~/etutor
+            echo "Running seed_e2e_users.py..."
+            docker compose exec -T \
+              -e PYTHONPATH=/app \
+              -e E2E_LEARNER_PASSWORD="$E2E_LEARNER_PASSWORD" \
+              -e E2E_ORG_OWNER_PASSWORD="$E2E_ORG_OWNER_PASSWORD" \
+              -e E2E_SUB_ADMIN_PASSWORD="$E2E_SUB_ADMIN_PASSWORD" \
+              -e E2E_ADMIN_PASSWORD="$E2E_ADMIN_PASSWORD" \
+              backend \
+              uv run python scripts/seed_e2e_users.py
+            echo "Seed complete."
+        env:
+          E2E_LEARNER_PASSWORD: ${{ secrets.E2E_LEARNER_PASSWORD }}
+          E2E_ORG_OWNER_PASSWORD: ${{ secrets.E2E_ORG_OWNER_PASSWORD }}
+          E2E_SUB_ADMIN_PASSWORD: ${{ secrets.E2E_SUB_ADMIN_PASSWORD }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}

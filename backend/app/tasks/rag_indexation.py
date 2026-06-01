@@ -241,6 +241,25 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                         "estimated_seconds_remaining": _remaining(extract_progress),
                     },
                 )
+                # Content-hash dedup: clone from donor course if same text already indexed.
+                if res.content_hash:
+                    async with async_session_factory() as _dedup_session:
+                        donors = await pipeline._find_donor_chunks(
+                            res.content_hash, res.id, _dedup_session
+                        )
+                        if donors:
+                            cloned = await pipeline._clone_chunks(
+                                donors, rag_collection_id, res.id, _dedup_session
+                            )
+                            total_chunks += cloned
+                            logger.info(
+                                "Cloned chunks from donor — skipped embedding API (DB path)",
+                                filename=resource_name,
+                                cloned=cloned,
+                                course_id=course_id,
+                            )
+                            continue
+
                 text = res.raw_text
                 language = detect_language(text)
                 chunks = list(
@@ -295,7 +314,9 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
         # Build pdf_path → course_resource_id lookup so chunks land with
         # their originating PDF identity (#2186). Resolves by `filename` or
         # `parent_filename` (DB stores stems without extension).
+        # Also capture content_hash for cross-course chunk dedup.
         resource_id_by_stem: dict[str, uuid.UUID] = {}
+        resource_hash_by_stem: dict[str, str] = {}
         if pdf_files:
             from sqlalchemy import create_engine, select
             from sqlalchemy.orm import Session
@@ -312,14 +333,19 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                                 CourseResource.id,
                                 CourseResource.filename,
                                 CourseResource.parent_filename,
+                                CourseResource.content_hash,
                             ).where(CourseResource.course_id == uuid.UUID(course_id))
                         )
                     ).all()
-                    for rid, fname, parent in res_rows:
+                    for rid, fname, parent, chash in res_rows:
                         if fname:
                             resource_id_by_stem.setdefault(fname, rid)
+                            if chash:
+                                resource_hash_by_stem.setdefault(fname, chash)
                         if parent:
                             resource_id_by_stem.setdefault(parent, rid)
+                            if chash:
+                                resource_hash_by_stem.setdefault(parent, chash)
             finally:
                 _eng.dispose()
 
@@ -371,10 +397,14 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
             resource_id = resource_id_by_stem.get(pdf_path.stem) or resource_id_by_stem.get(
                 pdf_path.name
             )
+            content_hash = resource_hash_by_stem.get(pdf_path.stem) or resource_hash_by_stem.get(
+                pdf_path.name
+            )
             chunks = await pipeline.process_pdf_document(
                 pdf_path=str(pdf_path),
                 source=rag_collection_id,
                 course_resource_id=resource_id,
+                content_hash=content_hash,
             )
             total_chunks += chunks
 

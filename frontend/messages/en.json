@@ -409,6 +409,7 @@
     "allConversationsCleared": "All conversations deleted",
     "error": "Something went wrong. Please try again.",
     "errorLimitReached": "Daily message limit reached. Come back tomorrow.",
+    "errorServiceUnavailable": "AI service is temporarily unavailable. Please try again later.",
     "upgradePrompt": "Subscribe to continue — 1,000 XOF/month",
     "errorDescription": "Failed to send message. Please try again.",
     "retry": "Retry",
@@ -1520,6 +1521,51 @@
     },
     "quality": {
       "title": "Quality"
+    },
+    "bundles": {
+      "pageTitle": "Course Packages",
+      "pageDescription": "Download a course as a flat ZIP of self-contained HTML files for offline use.",
+      "backToCourses": "Back to courses",
+      "newBundle": "New Package",
+      "nav": "Packages",
+      "table": {
+        "course": "Course",
+        "language": "Language",
+        "level": "Level",
+        "status": "Status",
+        "size": "Size",
+        "created": "Created",
+        "actions": "Actions"
+      },
+      "status": {
+        "pending": "Queued",
+        "generating": "Generating…",
+        "ready": "Ready",
+        "failed": "Failed"
+      },
+      "download": "Download",
+      "delete": "Delete",
+      "deleteConfirm": "Delete this bundle? This cannot be undone.",
+      "empty": "No packages yet. Trigger one from the course quality page.",
+      "loading": "Loading packages…",
+      "error": "Could not load packages.",
+      "toastReady": "Package ready — click Download.",
+      "toastFailed": "Package generation failed.",
+      "trigger": {
+        "title": "Package course",
+        "description": "Generate an offline ZIP archive. Missing content will be created automatically.",
+        "language": "Language",
+        "level": "Content level",
+        "submit": "Generate package",
+        "submitting": "Starting…",
+        "successToast": "Package generation started — visit Packages to download when ready."
+      },
+      "levelLabels": {
+        "1": "Beginner",
+        "2": "Intermediate",
+        "3": "Advanced",
+        "4": "Expert"
+      }
     }
   },
   "Courses": {

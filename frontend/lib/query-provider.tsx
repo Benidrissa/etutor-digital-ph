@@ -8,7 +8,15 @@ export function QueryProvider({ children }: { children: ReactNode }) {
     () =>
       new QueryClient({
         defaultOptions: {
-          queries: { staleTime: 5 * 60 * 1000, retry: 1 },
+          queries: {
+            staleTime: 5 * 60 * 1000,
+            retry: 1,
+            // Prevent TanStack Query from refetching on network reconnect or
+            // window focus — both are disruptive on flaky 3G (#2226). Components
+            // that need fresh data use explicit invalidation or refetchInterval.
+            refetchOnReconnect: false,
+            refetchOnWindowFocus: false,
+          },
         },
       })
   );

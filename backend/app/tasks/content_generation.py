@@ -279,9 +279,9 @@ def generate_lesson_task(
         # — never block the generation result on the assessment task.
         try:
             if result.get("status") == "complete" and result.get("content_id"):
-                from app.tasks.quality_assessment import assess_unit_task
+                from app.tasks.quality_assessment import assess_and_regenerate_unit_task
 
-                assess_unit_task.apply_async(
+                assess_and_regenerate_unit_task.apply_async(
                     kwargs={"content_id": result["content_id"]},
                     priority=5,
                 )
@@ -382,9 +382,9 @@ def generate_case_study_task(
         )
         try:
             if result.get("status") == "complete" and result.get("content_id"):
-                from app.tasks.quality_assessment import assess_unit_task
+                from app.tasks.quality_assessment import assess_and_regenerate_unit_task
 
-                assess_unit_task.apply_async(
+                assess_and_regenerate_unit_task.apply_async(
                     kwargs={"content_id": result["content_id"]},
                     priority=5,
                 )
@@ -489,9 +489,9 @@ def generate_quiz_task(
         )
         try:
             if result.get("status") == "complete" and result.get("content_id"):
-                from app.tasks.quality_assessment import assess_unit_task
+                from app.tasks.quality_assessment import assess_and_regenerate_unit_task
 
-                assess_unit_task.apply_async(
+                assess_and_regenerate_unit_task.apply_async(
                     kwargs={"content_id": result["content_id"]},
                     priority=5,
                 )
@@ -799,9 +799,9 @@ def generate_flashcard_task(
         )
         try:
             if result.get("status") == "complete" and result.get("content_id"):
-                from app.tasks.quality_assessment import assess_unit_task
+                from app.tasks.quality_assessment import assess_and_regenerate_unit_task
 
-                assess_unit_task.apply_async(
+                assess_and_regenerate_unit_task.apply_async(
                     kwargs={"content_id": result["content_id"]},
                     priority=5,
                 )
@@ -1181,17 +1181,15 @@ def prefetch_next_lessons_task(
         current_idx = -1
         if current_unit_id:
             for i, u in enumerate(all_units):
-                uid = f"M{module.module_number:02d}-U{u.order_index + 1:02d}"
-                has_dot = "." in u.unit_number
-                ordinal = int(u.unit_number.split(".")[-1]) if has_dot else 0
-                alt_uid = f"M{module.module_number:02d}-U{ordinal:02d}" if has_dot else uid
-                if uid == current_unit_id or alt_uid == current_unit_id:
+                # Use canonical unit_number ("1.1") — the M01-U01 format was
+                # removed by migration 081 (#1897).
+                if u.unit_number == current_unit_id:
                     current_idx = i
                     break
 
         next_units: list[tuple[str, str]] = []
         for u in all_units[current_idx + 1 :]:
-            uid = f"M{module.module_number:02d}-U{u.order_index + 1:02d}"
+            uid = u.unit_number
             raw_type = (u.unit_type or "").lower().replace("-", "_").replace(" ", "_")
             if "quiz" in raw_type or "evaluation" in raw_type or "évaluation" in raw_type:
                 content_type = "quiz"
@@ -1687,7 +1685,7 @@ def pregenerate_on_publish_task(self, course_id: str) -> dict:
                 case_study_service = CaseStudyGenerationService(ClaudeService(), retriever)
 
                 for unit in units:
-                    unit_id = f"M{module.module_number:02d}-U{unit.order_index + 1:02d}"
+                    unit_id = unit.unit_number  # canonical "1.1" format (#1898)
                     raw_type = (unit.unit_type or "").lower().replace("-", "_").replace(" ", "_")
                     if "quiz" in raw_type or "evaluation" in raw_type or "évaluation" in raw_type:
                         content_type = "quiz"
@@ -1783,6 +1781,39 @@ def pregenerate_on_publish_task(self, course_id: str) -> dict:
                                 error=str(exc),
                             )
 
+            # Auto-trigger a full course quality sweep now that the first
+            # units are generated. Best-effort — never block the publish.
+            try:
+                from app.domain.services.quality_agent_service import CourseQualityService
+                from app.tasks.quality_assessment import assess_course_task
+
+                async with session_factory() as qa_session:
+                    svc = CourseQualityService(ClaudeService(), semantic_retriever=None)
+                    run = await svc.assess_course(
+                        course_id=uuid.UUID(course_id),
+                        triggered_by_user_id=None,
+                        session=qa_session,
+                        run_kind="full",
+                    )
+                    await qa_session.commit()
+                if run.status == "queued":
+                    assess_course_task.apply_async(
+                        kwargs={"run_id": str(run.id)},
+                        priority=4,
+                        countdown=30,
+                    )
+                    logger.info(
+                        "pregenerate_on_publish: auto quality sweep dispatched",
+                        course_id=course_id,
+                        run_id=str(run.id),
+                    )
+            except Exception as _exc:
+                logger.warning(
+                    "pregenerate_on_publish: auto quality sweep dispatch failed (non-fatal)",
+                    course_id=course_id,
+                    error=str(_exc),
+                )
+
         finally:
             await engine.dispose()
 
@@ -1796,6 +1827,61 @@ def pregenerate_on_publish_task(self, course_id: str) -> dict:
             result=result,
             task_id=self.request.id,
         )
+        # The quality block inside _run() only fires when generation reaches the
+        # end of the loop.  Early returns ("no_module", "no_units") bypass it.
+        # Backstop: fire quality here too when real content exists — the service's
+        # day-bucketed idempotency key collapses both triggers to one run (#2358).
+        if not result.get("reason"):
+            try:
+                from sqlalchemy.ext.asyncio import (
+                    AsyncSession,
+                    async_sessionmaker,
+                    create_async_engine,
+                )
+
+                from app.ai.claude_service import ClaudeService as _ClaudeService
+                from app.domain.services.quality_agent_service import (
+                    CourseQualityService as _CourseQualityService,
+                )
+                from app.infrastructure.config.settings import settings as _cfg
+                from app.tasks.quality_assessment import assess_course_task
+
+                async def _trigger_quality() -> None:
+                    _engine = create_async_engine(
+                        _cfg.database_url, echo=False, pool_size=2, max_overflow=1
+                    )
+                    _sf = async_sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
+                    try:
+                        async with _sf() as qa_session:
+                            svc = _CourseQualityService(_ClaudeService(), semantic_retriever=None)
+                            run = await svc.assess_course(
+                                course_id=uuid.UUID(course_id),
+                                triggered_by_user_id=None,
+                                session=qa_session,
+                                run_kind="full",
+                            )
+                            await qa_session.commit()
+                        if run.status == "queued":
+                            assess_course_task.apply_async(
+                                kwargs={"run_id": str(run.id)},
+                                priority=4,
+                                countdown=30,
+                            )
+                            logger.info(
+                                "pregenerate_on_publish: backstop quality sweep dispatched",
+                                course_id=course_id,
+                                run_id=str(run.id),
+                            )
+                    finally:
+                        await _engine.dispose()
+
+                asyncio.run(_trigger_quality())
+            except Exception as _exc:
+                logger.warning(
+                    "pregenerate_on_publish: backstop quality dispatch failed (non-fatal)",
+                    course_id=course_id,
+                    error=str(_exc),
+                )
         return result
     except Exception as exc:
         logger.error(

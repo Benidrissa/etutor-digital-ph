@@ -409,6 +409,7 @@
     "allConversationsCleared": "Toutes les conversations supprimées",
     "error": "Une erreur s'est produite. Veuillez réessayer.",
     "errorLimitReached": "Limite de messages quotidiens atteinte. Revenez demain.",
+    "errorServiceUnavailable": "Le service IA est temporairement indisponible. Veuillez réessayer plus tard.",
     "upgradePrompt": "S'abonner pour continuer — 1 000 FCFA/mois",
     "errorDescription": "Échec de l'envoi du message. Veuillez réessayer.",
     "retry": "Réessayer",
@@ -1520,6 +1521,51 @@
     },
     "quality": {
       "title": "Qualité"
+    },
+    "bundles": {
+      "pageTitle": "Packages de cours",
+      "pageDescription": "Téléchargez un cours sous forme d'archive ZIP de fichiers HTML autonomes pour une utilisation hors-ligne.",
+      "backToCourses": "Retour aux cours",
+      "newBundle": "Nouveau package",
+      "nav": "Packages",
+      "table": {
+        "course": "Cours",
+        "language": "Langue",
+        "level": "Niveau",
+        "status": "Statut",
+        "size": "Taille",
+        "created": "Créé le",
+        "actions": "Actions"
+      },
+      "status": {
+        "pending": "En attente",
+        "generating": "Génération…",
+        "ready": "Prêt",
+        "failed": "Échoué"
+      },
+      "download": "Télécharger",
+      "delete": "Supprimer",
+      "deleteConfirm": "Supprimer ce package ? Cette action est irréversible.",
+      "empty": "Aucun package. Lancez-en un depuis la page qualité d'un cours.",
+      "loading": "Chargement des packages…",
+      "error": "Impossible de charger les packages.",
+      "toastReady": "Package prêt — cliquez sur Télécharger.",
+      "toastFailed": "La génération du package a échoué.",
+      "trigger": {
+        "title": "Packager le cours",
+        "description": "Générez une archive ZIP hors-ligne. Le contenu manquant sera créé automatiquement.",
+        "language": "Langue",
+        "level": "Niveau de contenu",
+        "submit": "Générer le package",
+        "submitting": "Démarrage…",
+        "successToast": "Génération démarrée — consultez les Packages pour télécharger quand c'est prêt."
+      },
+      "levelLabels": {
+        "1": "Débutant",
+        "2": "Intermédiaire",
+        "3": "Avancé",
+        "4": "Expert"
+      }
     }
   },
   "Courses": {

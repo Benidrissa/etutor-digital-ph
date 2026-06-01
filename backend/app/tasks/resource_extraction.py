@@ -144,6 +144,8 @@ def extract_course_resource(self, resource_id: str) -> dict:
                 resource.toc_json = toc or None
                 resource.char_count = len(full_text)
                 resource.content_hash = hashlib.sha256(full_text.encode("utf-8")).hexdigest()
+                if not resource.file_hash:
+                    resource.file_hash = hashlib.sha256(data).hexdigest()
                 resource.extraction_status = EXTRACTION_STATUS_DONE
                 session.commit()
                 new_resource_ids.append(resource_id)
@@ -165,6 +167,8 @@ def extract_course_resource(self, resource_id: str) -> dict:
                 resource.content_hash = hashlib.sha256(
                     (resource.raw_text or "").encode("utf-8")
                 ).hexdigest()
+                if not resource.file_hash:
+                    resource.file_hash = hashlib.sha256(data).hexdigest()
                 resource.filename = f"{parent_stem}_part1"
                 resource.parent_filename = parent_stem
                 resource.extraction_status = EXTRACTION_STATUS_DONE
