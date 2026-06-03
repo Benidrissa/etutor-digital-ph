@@ -98,10 +98,27 @@ services:
       SMS_RELAY_TRUSTED_SENDERS: ${SMS_RELAY_TRUSTED_SENDERS}
       MMS_TTS_URL: ${MMS_TTS_URL:-http://mms-tts:5050}
       NLLB_URL: ${NLLB_URL:-http://nllb:5060}
+      # Email / SMTP relay. GoDaddy contract: localhost:25, no auth, no TLS,
+      # with `v=spf1 include:secureserver.net -all` on the sending domain's DNS.
+      # SMTP_* are relay-agnostic — set them in the server .env to point at any
+      # other relay (host Postfix via host.docker.internal, an authenticated
+      # provider, or a local Mailpit catch-all for staging verification).
+      SMTP_HOST: ${SMTP_HOST:-localhost}
+      SMTP_PORT: ${SMTP_PORT:-25}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-false}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      FROM_EMAIL: ${FROM_EMAIL:-noreply@sira-donnia.org}
+      FROM_NAME: ${FROM_NAME:-Sira}
+      FRONTEND_URL: https://etutor.elearning.portfolio2.kimbetien.com
     volumes:
       - ./config:/app/config
       - ./resources:/app/resources
       - uploads:/app/uploads
+    extra_hosts:
+      # Lets SMTP_HOST=host.docker.internal target a Postfix/Mailpit relay on
+      # the VPS host without code changes.
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
@@ -192,10 +209,22 @@ services:
       SMS_RELAY_TRUSTED_SENDERS: ${SMS_RELAY_TRUSTED_SENDERS}
       MMS_TTS_URL: ${MMS_TTS_URL:-http://mms-tts:5050}
       NLLB_URL: ${NLLB_URL:-http://nllb:5060}
+      # Email / SMTP relay — same contract as the backend. Celery sends mail
+      # too (e.g. SMS-relay alerts), so it needs the same SMTP config.
+      SMTP_HOST: ${SMTP_HOST:-localhost}
+      SMTP_PORT: ${SMTP_PORT:-25}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-false}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      FROM_EMAIL: ${FROM_EMAIL:-noreply@sira-donnia.org}
+      FROM_NAME: ${FROM_NAME:-Sira}
+      FRONTEND_URL: https://etutor.elearning.portfolio2.kimbetien.com
     volumes:
       - ./config:/app/config
       - ./resources:/app/resources
       - uploads:/app/uploads
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
