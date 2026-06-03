@@ -30,13 +30,14 @@ test.describe('Modules Page', () => {
     await expect(page.getByText('Foundations of Public Health').first()).toBeVisible();
   });
 
-  test('locked modules have disabled buttons', async ({ page }) => {
+  test('no modules are locked for a freshly enrolled learner (post-#2125)', async ({ page }) => {
+    // After #2125 removed sequential gating, all enrolled modules should be accessible.
+    // #2143 fixed the frontend mapping: not_started → not-started (accessible), not locked.
     await page.goto('/en/modules');
-    // Look for disabled "Start" buttons (locked modules)
-    const disabledButtons = page.locator('button:disabled', { hasText: 'Start' });
-    // There should be some locked modules
+    // Disabled "Start" buttons signal locked modules — there should be none post-#2125.
+    const disabledButtons = page.locator('button:disabled', { hasText: /Start/ });
     const count = await disabledButtons.count();
-    expect(count).toBeGreaterThan(0);
+    expect(count).toBe(0);
   });
 
   test('shows overall progress summary section', async ({ page }) => {

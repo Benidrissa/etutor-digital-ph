@@ -98,10 +98,27 @@ services:
       SMS_RELAY_TRUSTED_SENDERS: ${SMS_RELAY_TRUSTED_SENDERS}
       MMS_TTS_URL: http://mms-tts:5050
       NLLB_URL: http://nllb:5060
+      # Email / SMTP relay. GoDaddy contract: localhost:25, no auth, no TLS,
+      # with `v=spf1 include:secureserver.net -all` on sira-donnia.org DNS.
+      # SMTP_* are relay-agnostic — set them in the server .env to point at any
+      # other relay (host Postfix via host.docker.internal, or an authenticated
+      # provider). FROM_EMAIL/FRONTEND_URL are fixed per environment.
+      SMTP_HOST: ${SMTP_HOST:-localhost}
+      SMTP_PORT: ${SMTP_PORT:-25}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-false}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      FROM_EMAIL: noreply@sira-donnia.org
+      FROM_NAME: Sira
+      FRONTEND_URL: https://app.sira-donnia.org
     volumes:
       - ./config:/app/config
       - ./resources:/app/resources
       - uploads:/app/uploads
+    extra_hosts:
+      # Lets SMTP_HOST=host.docker.internal target a Postfix relay on the VPS
+      # host without code changes.
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
@@ -192,10 +209,22 @@ services:
       SMS_RELAY_TRUSTED_SENDERS: ${SMS_RELAY_TRUSTED_SENDERS}
       MMS_TTS_URL: http://mms-tts:5050
       NLLB_URL: http://nllb:5060
+      # Email / SMTP relay — same contract as the backend. Celery sends mail
+      # too (e.g. SMS-relay alerts), so it needs the same SMTP config.
+      SMTP_HOST: ${SMTP_HOST:-localhost}
+      SMTP_PORT: ${SMTP_PORT:-25}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-false}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      FROM_EMAIL: noreply@sira-donnia.org
+      FROM_NAME: Sira
+      FRONTEND_URL: https://app.sira-donnia.org
     volumes:
       - ./config:/app/config
       - ./resources:/app/resources
       - uploads:/app/uploads
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
