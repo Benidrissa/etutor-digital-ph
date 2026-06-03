@@ -36,6 +36,16 @@ class EmailService:
     def _is_synthetic(email: str) -> bool:
         return email.endswith("@sira.app")
 
+    @staticmethod
+    def _locale(language: str) -> str:
+        """Map a user language to a frontend URL locale segment.
+
+        The Next.js app routes everything under `/{locale}/...` (next-intl,
+        locales fr/en). Links in emails MUST include the locale prefix — a
+        bare path like `/magic-link` or `/auth/magic-link` 404s.
+        """
+        return language if language in ("fr", "en") else "fr"
+
     async def _send(
         self,
         to_email: str,
@@ -93,7 +103,7 @@ class EmailService:
     async def send_magic_link(self, email: str, magic_token: str, language: str = "fr") -> bool:
         if self._is_synthetic(email):
             return False
-        magic_url = f"{self.frontend_url}/auth/magic-link?token={magic_token}"
+        magic_url = f"{self.frontend_url}/{self._locale(language)}/magic-link?token={magic_token}"
 
         if language == "en":
             subject = "Reset your Sira account access"
@@ -139,7 +149,7 @@ class EmailService:
     async def send_welcome_email(self, email: str, name: str, language: str = "fr") -> bool:
         if self._is_synthetic(email):
             return False
-        dashboard_url = f"{self.frontend_url}/dashboard"
+        dashboard_url = f"{self.frontend_url}/{self._locale(language)}/dashboard"
 
         if language == "en":
             subject = f"Welcome to Sira, {name}!"
