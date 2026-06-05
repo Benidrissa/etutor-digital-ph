@@ -2067,7 +2067,16 @@
     "banner": "Access all courses for 1,000 XOF/month",
     "bannerCTA": "Subscribe",
     "upgradePrompt": "Subscribe to continue — 1,000 XOF/month",
-    "navLabel": "Subscription"
+    "navLabel": "Subscription",
+    "selectMethod": "Choose a payment method",
+    "methodOrangeMoney": "Orange Money",
+    "methodWave": "Wave",
+    "methodCard": "Bank card",
+    "payNow": "Pay 1,000 FCFA",
+    "redirecting": "Redirecting…",
+    "verifyingPayment": "Verifying your payment…",
+    "paymentError": "Payment could not be started. Please try again.",
+    "noMethods": "No payment method is available right now."
   },
   "AdminCurricula": {
     "pageTitle": "Curriculum Management",
