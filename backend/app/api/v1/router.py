@@ -38,6 +38,7 @@ from app.api.v1.org_codes import router as org_codes_router
 from app.api.v1.org_curricula import router as org_curricula_router
 from app.api.v1.org_reports import router as org_reports_router
 from app.api.v1.organizations import router as organizations_router
+from app.api.v1.payments import router as payments_router
 from app.api.v1.placement import router as placement_router
 from app.api.v1.progress import router as progress_router
 from app.api.v1.qbank import router as qbank_router
@@ -81,6 +82,7 @@ api_v1_router.include_router(course_preassessment_router)
 api_v1_router.include_router(sms_relay_router)
 api_v1_router.include_router(source_images_router)
 api_v1_router.include_router(subscriptions_router)
+api_v1_router.include_router(payments_router)
 api_v1_router.include_router(activation_codes_router)
 api_v1_router.include_router(organizations_router)
 api_v1_router.include_router(org_curricula_router)
