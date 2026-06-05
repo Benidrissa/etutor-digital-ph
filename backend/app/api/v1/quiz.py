@@ -832,9 +832,12 @@ async def submit_summative_assessment_attempt(
                 },
             )
 
-        # Check if user can attempt
+        # Check if user can attempt. can_attempt_summative_assessment is a route
+        # handler, so when called directly we must pass current_user explicitly —
+        # otherwise it keeps its Depends() default and `current_user.id` raises,
+        # surfacing as a 500 "Failed to check attempt eligibility" on submit.
         can_attempt_response = await can_attempt_summative_assessment(
-            assessment_content.module_id, session
+            assessment_content.module_id, session, current_user
         )
 
         if not can_attempt_response.can_attempt:
