@@ -71,9 +71,10 @@ Your task is to write a short spoken audio summary script for a single lesson.
 
 Guidelines:
 - Write in {lang_label}
+- Start IMMEDIATELY with the lesson's actual content. Do NOT open with a meta-sentence about the audio summary, the platform, or the listener's country/region (e.g. never say things like "This audio summary lets you review your content whether you are in Burkina Faso or Senegal…")
 - Length: approximately 500 words — about 3-4 minutes of spoken audio
 - Style: {style}
-- Structure: brief intro → key concepts recap → main takeaway
+- Structure: open directly on the first key concept → recap the key concepts → main takeaway
 - Use simple language accessible on 2G/3G with limited bandwidth
 - {context_note}
 - DO NOT include headers, bullet points, or markdown — write plain spoken prose

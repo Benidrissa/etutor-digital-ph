@@ -36,6 +36,15 @@ class TestBuildLessonAudioSystemPrompt:
         prompt = _build_lesson_audio_system_prompt("en")
         assert "Output only the script text" in prompt
 
+    def test_prompt_forbids_meta_preamble(self):
+        # The script must open on lesson content, not a country/region framing
+        # sentence like "...whether you are in Burkina Faso or Senegal".
+        prompt = _build_lesson_audio_system_prompt("en")
+        assert "Start IMMEDIATELY" in prompt
+        assert "country/region" in prompt
+        # And the old "brief intro" framing must be gone.
+        assert "brief intro" not in prompt
+
 
 class TestEstimateDuration:
     def test_minimum_duration_is_one(self):
