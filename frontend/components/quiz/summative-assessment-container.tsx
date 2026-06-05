@@ -207,12 +207,24 @@ export function SummativeAssessmentContainer({
   
   if (state === 'taking' && assessment) {
     return (
-      <SummativeAssessmentInterface
-        assessment={assessment}
-        onComplete={handleAssessmentComplete}
-        onError={handleAssessmentError}
-        timeLimit={summativeTimeLimit}
-      />
+      <div className="space-y-4">
+        {error && (
+          <div className="max-w-4xl mx-auto px-4 pt-4">
+            <Alert className="bg-red-50 border-red-200">
+              <AlertTriangle className="w-4 h-4" />
+              <AlertDescription className="text-red-800">
+                {error}
+              </AlertDescription>
+            </Alert>
+          </div>
+        )}
+        <SummativeAssessmentInterface
+          assessment={assessment}
+          onComplete={handleAssessmentComplete}
+          onError={handleAssessmentError}
+          timeLimit={summativeTimeLimit}
+        />
+      </div>
     );
   }
   
