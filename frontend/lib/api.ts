@@ -1509,6 +1509,31 @@ export async function fetchOrgCredits(
   );
 }
 
+// Payments — provider-API checkout (Orange Money / Wave / Paystack)
+export type PaymentProvider = "orange_money" | "wave" | "paystack";
+
+export async function fetchEnabledPaymentProviders(): Promise<PaymentProvider[]> {
+  const data = await apiFetch<{ providers: PaymentProvider[] }>(
+    "/api/v1/payments/providers",
+  );
+  return data.providers;
+}
+
+export async function initializePayment(
+  provider: PaymentProvider,
+  paymentType: "access" | "messages" = "access",
+  amountXof?: number,
+): Promise<{ checkout_url: string; reference: string; provider: string }> {
+  return apiFetch("/api/v1/payments/initialize", {
+    method: "POST",
+    body: JSON.stringify({
+      provider,
+      payment_type: paymentType,
+      amount_xof: amountXof,
+    }),
+  });
+}
+
 // Organization Curricula
 export async function fetchOrgCurricula(
   orgId: string,

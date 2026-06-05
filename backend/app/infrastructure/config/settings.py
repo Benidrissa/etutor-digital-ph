@@ -95,6 +95,11 @@ class Settings(BaseSettings):
     # Subscription webhook
     subscription_webhook_secret: str = ""
 
+    # Payment provider webhooks (Orange Money / Wave / Paystack). Public HTTPS
+    # origin where providers can reach /api/v1/payments/webhook/{provider}. When
+    # empty, the initialize endpoint falls back to the incoming request origin.
+    payments_callback_base_url: str = ""
+
     # HeyGen (lesson summary video rendering) — see issue #1791.
     # The API key is required to create videos; the webhook secret is used
     # to HMAC-verify the async completion callback; the callback base URL is

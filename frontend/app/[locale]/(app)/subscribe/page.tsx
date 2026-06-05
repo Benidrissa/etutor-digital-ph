@@ -2,10 +2,16 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
+import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { apiFetch, getPublicSettings } from "@/lib/api";
+import {
+  apiFetch,
+  fetchEnabledPaymentProviders,
+  initializePayment,
+  type PaymentProvider,
+} from "@/lib/api";
 import {
   Phone,
   CheckCircle,
@@ -14,6 +20,8 @@ import {
   Gift,
   ArrowRight,
   Smartphone,
+  CreditCard,
+  Loader2,
 } from "lucide-react";
 
 interface SubscriptionStatus {
@@ -25,8 +33,18 @@ interface SubscriptionStatus {
   free_tier?: { daily_messages: number; first_lesson_free: boolean };
 }
 
+const PROVIDER_META: Record<
+  PaymentProvider,
+  { labelKey: string; icon: typeof Smartphone; accent: string }
+> = {
+  orange_money: { labelKey: "methodOrangeMoney", icon: Smartphone, accent: "text-orange-600" },
+  wave: { labelKey: "methodWave", icon: Smartphone, accent: "text-sky-600" },
+  paystack: { labelKey: "methodCard", icon: CreditCard, accent: "text-emerald-600" },
+};
+
 export default function SubscribePage() {
   const t = useTranslations("Subscribe");
+  const searchParams = useSearchParams();
   const [status, setStatus] = useState<SubscriptionStatus | null>(null);
   const [phone, setPhone] = useState("");
   const [currentPhone, setCurrentPhone] = useState<string | null>(null);
@@ -36,7 +54,11 @@ export default function SubscribePage() {
     text: string;
   } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [orangeMoneyNumber, setOrangeMoneyNumber] = useState<string | null>(null);
+  const [providers, setProviders] = useState<PaymentProvider[]>([]);
+  const [selectedProvider, setSelectedProvider] = useState<PaymentProvider | null>(null);
+  const [payLoading, setPayLoading] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -60,14 +82,53 @@ export default function SubscribePage() {
         }
       })
       .catch(() => {});
-    // Fetch Orange Money number from platform settings
-    getPublicSettings()
-      .then((settings) => {
-        const num = settings["payments-orange-money-number"];
-        if (typeof num === "string" && num) setOrangeMoneyNumber(num);
+    // Which payment methods has the admin enabled?
+    fetchEnabledPaymentProviders()
+      .then((list) => {
+        setProviders(list);
+        if (list.length > 0) setSelectedProvider(list[0]);
       })
       .catch(() => {});
   }, [fetchStatus]);
+
+  // Handle the provider's return redirect (/subscribe?status=success&ref=…):
+  // verify the reference then poll subscription status until it flips active.
+  useEffect(() => {
+    const returnStatus = searchParams.get("status");
+    const ref = searchParams.get("ref");
+    if (returnStatus !== "success" || !ref) return;
+
+    let cancelled = false;
+    setVerifying(true);
+    (async () => {
+      try {
+        await apiFetch(`/api/v1/payments/verify/${ref}`).catch(() => {});
+        for (let i = 0; i < 5 && !cancelled; i++) {
+          await fetchStatus();
+          await new Promise((r) => setTimeout(r, 2000));
+        }
+      } finally {
+        if (!cancelled) setVerifying(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, fetchStatus]);
+
+  const handlePay = async () => {
+    if (!selectedProvider) return;
+    setPayLoading(true);
+    setPayError(null);
+    try {
+      const { checkout_url } = await initializePayment(selectedProvider, "access");
+      window.location.href = checkout_url;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : t("paymentError");
+      setPayError(msg);
+      setPayLoading(false);
+    }
+  };
 
   const handlePhoneSave = async () => {
     setPhoneLoading(true);
@@ -79,7 +140,6 @@ export default function SubscribePage() {
       });
       setCurrentPhone(phone);
       setPhoneMessage({ type: "success", text: t("phoneSuccess") });
-      // Re-fetch subscription in case payment was pending for this phone
       fetchStatus();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error";
@@ -107,6 +167,16 @@ export default function SubscribePage() {
         <h1 className="text-2xl font-bold text-stone-900">{t("title")}</h1>
         <p className="text-stone-600 mt-1">{t("subtitle")}</p>
       </div>
+
+      {/* Verifying a returning payment */}
+      {verifying && !isActive && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="flex items-center gap-3 pt-6">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            <span className="text-sm text-stone-700">{t("verifyingPayment")}</span>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Current subscription status */}
       {isActive && !isAdmin && (
@@ -182,55 +252,71 @@ export default function SubscribePage() {
         </Card>
       )}
 
-      {/* Payment instructions */}
-      {!isAdmin && (
+      {/* Payment method selector + checkout */}
+      {!isAdmin && !isActive && providers.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
-              <Smartphone className="h-5 w-5" />
-              {t("instructions")}
+              <CreditCard className="h-5 w-5" />
+              {t("selectMethod")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Orange Money number */}
-            <div className="rounded-lg bg-orange-50 border border-orange-200 p-4 text-center">
-              <p className="text-xs text-orange-600 mb-1">
-                {t("orangeMoneyLabel")}
-              </p>
-              <p className="text-2xl font-bold text-orange-700 tracking-wider">
-                {orangeMoneyNumber ?? t("orangeMoneyNumber")}
-              </p>
-              <p className="text-sm font-medium text-orange-600 mt-1">
-                {t("amount")}
-              </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {providers.map((p) => {
+                const meta = PROVIDER_META[p];
+                const Icon = meta.icon;
+                const selected = selectedProvider === p;
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setSelectedProvider(p)}
+                    aria-pressed={selected}
+                    className={`flex min-h-[44px] items-center gap-3 rounded-lg border p-3 text-left transition ${
+                      selected
+                        ? "border-primary ring-1 ring-primary bg-primary/5"
+                        : "border-stone-200 hover:border-stone-300"
+                    }`}
+                  >
+                    <Icon className={`h-5 w-5 ${meta.accent}`} />
+                    <span className="text-sm font-medium">{t(meta.labelKey)}</span>
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Steps */}
-            <div className="space-y-3">
-              <div className="flex items-start gap-3">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">
-                  1
+            <Button
+              onClick={handlePay}
+              disabled={payLoading || !selectedProvider}
+              className="w-full min-h-[44px]"
+            >
+              {payLoading ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {t("redirecting")}
                 </span>
-                <span className="text-sm">{t("step1")}</span>
-              </div>
-              <div className="flex items-start gap-3">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">
-                  2
-                </span>
-                <span className="text-sm">{t("step2")}</span>
-              </div>
-              <div className="flex items-start gap-3">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">
-                  3
-                </span>
-                <span className="text-sm">{t("step3")}</span>
-              </div>
-            </div>
+              ) : (
+                t("payNow")
+              )}
+            </Button>
+
+            {payError && <p className="text-sm text-red-600">{payError}</p>}
           </CardContent>
         </Card>
       )}
 
-      {/* Phone number input */}
+      {/* No payment method configured */}
+      {!isAdmin && !isActive && providers.length === 0 && (
+        <Card>
+          <CardContent className="flex items-start gap-3 pt-6">
+            <Clock className="h-5 w-5 text-stone-400 mt-0.5" />
+            <p className="text-sm text-stone-500">{t("noMethods")}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Phone number input (optional — links phone for receipts/recovery) */}
       {!isAdmin && (
         <Card>
           <CardHeader className="pb-3">

@@ -2067,7 +2067,16 @@
     "banner": "Accédez à tous les cours pour 1 000 FCFA/mois",
     "bannerCTA": "S'abonner",
     "upgradePrompt": "Abonnez-vous pour continuer — 1 000 FCFA/mois",
-    "navLabel": "Abonnement"
+    "navLabel": "Abonnement",
+    "selectMethod": "Choisissez un moyen de paiement",
+    "methodOrangeMoney": "Orange Money",
+    "methodWave": "Wave",
+    "methodCard": "Carte bancaire",
+    "payNow": "Payer 1 000 FCFA",
+    "redirecting": "Redirection…",
+    "verifyingPayment": "Vérification de votre paiement…",
+    "paymentError": "Le paiement n'a pas pu être initié. Réessayez.",
+    "noMethods": "Aucun moyen de paiement n'est disponible pour le moment."
   },
   "AdminCurricula": {
     "pageTitle": "Gestion des Curricula",

@@ -32,6 +32,16 @@ class PaymentStatus(enum.StrEnum):
     expired = "expired"
 
 
+class PaymentProvider(enum.StrEnum):
+    """Payment rail a SubscriptionPayment came through. Stored as a plain string
+    column (NOT a PG enum) so new values don't require a migration and db_session
+    tests don't hit the conftest PG-ENUM materialization limitation."""
+
+    orange_money = "orange_money"
+    wave = "wave"
+    paystack = "paystack"
+
+
 class Subscription(Base):
     __tablename__ = "subscriptions"
 
@@ -86,6 +96,17 @@ class SubscriptionPayment(Base):
         server_default="pending",
         default=PaymentStatus.pending,
     )
+    # Payment rail + settlement currency. Plain string columns (not PG enums) —
+    # default to the historical SMS path so existing rows need no backfill.
+    provider: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="orange_money", default="orange_money"
+    )
+    currency: Mapped[str] = mapped_column(
+        String(8), nullable=False, server_default="XOF", default="XOF"
+    )
+    # Provider's own transaction id (Paystack reference, Wave session id, OM
+    # pay_token) for reconciliation. Our external_reference stays the lookup key.
+    provider_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped[User | None] = relationship(back_populates="subscription_payments")
