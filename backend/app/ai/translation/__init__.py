@@ -7,6 +7,10 @@ from app.ai.translation.complex_overlay import (
     render_overlay_svg,
     translate_labels,
 )
+from app.ai.translation.figure_caption_reader import (
+    FigureCaptionRead,
+    read_figure_caption,
+)
 from app.ai.translation.figure_classifier import (
     FigureClassification,
     FigureKind,
@@ -28,6 +32,7 @@ from app.ai.translation.svg_rederiver import (
 __all__ = [
     "DiagramLabel",
     "DiagramLabels",
+    "FigureCaptionRead",
     "FigureClassification",
     "FigureKind",
     "FigureTranslation",
@@ -37,6 +42,7 @@ __all__ = [
     "classify_figure",
     "extract_flowchart_structure",
     "extract_label_positions",
+    "read_figure_caption",
     "render_overlay_svg",
     "render_svg",
     "translate_figure_caption",

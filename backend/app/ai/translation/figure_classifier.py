@@ -27,6 +27,7 @@ import anthropic
 import structlog
 from pydantic import BaseModel, Field, ValidationError
 
+from app.ai.translation.vision_provider import get_vision_provider
 from app.infrastructure.config.settings import get_settings
 
 logger = structlog.get_logger(__name__)
@@ -156,42 +157,43 @@ async def classify_figure(
         # Cost kill-switch (#1928). Caller catches and treats as a skip.
         raise RuntimeError("figure vision is disabled (ENABLE_FIGURE_VISION=false)")
 
-    if client is None:
-        if not settings.anthropic_api_key:
-            raise ValueError("ANTHROPIC_API_KEY is required to classify figures")
-        client = anthropic.AsyncAnthropic(
-            api_key=settings.anthropic_api_key,
-            timeout=60.0,
+    if client is not None:
+        # Injected Anthropic client (tests / explicit override): use it directly.
+        encoded = base64.standard_b64encode(image_bytes).decode("ascii")
+        response = await client.messages.create(
+            model=_CLASSIFIER_MODEL,
+            max_tokens=_MAX_TOKENS,
+            system=_SYSTEM_PROMPT,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": image_media_type,
+                                "data": encoded,
+                            },
+                        },
+                        {"type": "text", "text": _USER_PROMPT},
+                    ],
+                }
+            ],
+            temperature=0.0,
+        )
+        text = "".join(block.text for block in response.content if hasattr(block, "text"))
+    else:
+        # Production path: whichever vision provider is configured (#2435).
+        provider = get_vision_provider()
+        text = await provider.complete_json(
+            image_bytes=image_bytes,
+            image_media_type=image_media_type,
+            system=_SYSTEM_PROMPT,
+            user_prompt=_USER_PROMPT,
+            max_tokens=_MAX_TOKENS,
         )
 
-    encoded = base64.standard_b64encode(image_bytes).decode("ascii")
-    response = await client.messages.create(
-        model=_CLASSIFIER_MODEL,
-        max_tokens=_MAX_TOKENS,
-        system=_SYSTEM_PROMPT,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": image_media_type,
-                            "data": encoded,
-                        },
-                    },
-                    {"type": "text", "text": _USER_PROMPT},
-                ],
-            }
-        ],
-        temperature=0.0,
-    )
-
-    text = ""
-    for block in response.content:
-        if hasattr(block, "text"):
-            text += block.text
     if not text.strip():
         raise ValueError("empty classifier response")
 
