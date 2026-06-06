@@ -7,6 +7,7 @@ from pathlib import Path
 
 import structlog
 from celery import Task
+from celery.exceptions import SoftTimeLimitExceeded
 
 from app.tasks.celery_app import celery_app
 
@@ -107,15 +108,30 @@ class RAGTask(Task):
         finalize_indexation_state(course_id, transition=("indexing", "generated"))
 
 
+# NOTE: SoftTimeLimitExceeded is deliberately excluded from autoretry. It is a
+# subclass of Exception, so `autoretry_for=(Exception,)` would otherwise treat a
+# time-limit hit as a transient error and re-run the entire (tens-of-minutes)
+# pipeline — redoing all the per-image Claude work and re-surfacing a hard error
+# in the wizard even though the work had actually completed. We catch it inside
+# the task instead and finalize the partial result as a success. The limits
+# below are sized for image-heavy courses (per-image embedding + classify +
+# FR/EN translate + flowchart SVG re-derivation can run ~20 min on 300+ images).
 @celery_app.task(
     bind=True,
     base=RAGTask,
     autoretry_for=(Exception,),
     retry_kwargs={"max_retries": 2, "countdown": 60},
-    rate_limit="2/h",
-    time_limit=1800,
-    soft_time_limit=1500,
-    ignore_result=True,
+    rate_limit="6/h",
+    time_limit=3600,
+    soft_time_limit=3300,
+    # ignore_result must stay False (the global default). With ignore_result=True
+    # the result backend never stores this task's STARTED/custom states, so
+    # AsyncResult.state reads PENDING for a *live* task — which (a) makes the
+    # trigger-side duplicate guard (_diagnose_indexation_pointer) misclassify a
+    # running task as evicted and dispatch a second concurrent run, and (b) stops
+    # /index-status from surfacing live progress, tripping the wizard's stale
+    # watchdog. The global config sets task_ignore_result=False + track_started
+    # for exactly this reason; do not re-add the override here.
     acks_late=False,  # Acknowledge immediately to prevent duplicate dispatch
 )
 def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict:
@@ -560,6 +576,37 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
             "status": "complete",
             "chunks_stored": total_chunks,
             "images_stored": total_images,
+            "files_processed": len(pdf_files),
+            "rag_collection_id": rag_collection_id,
+        }
+
+    except SoftTimeLimitExceeded:
+        # Ran past the soft time limit (image-heavy course). Everything
+        # processed so far is already committed — text chunks per PDF and
+        # source images per image — so finalize as a SUCCESS rather than let
+        # autoretry re-run the whole pipeline and re-surface an error in the
+        # wizard. The Liens step shows the real link count; the admin can
+        # "Relancer le linker" or re-index if anything is missing. Returning
+        # normally drives RAGTask.on_success → creation_step 'indexed'.
+        logger.warning(
+            "RAG indexation hit soft time limit — finalizing partial result",
+            task_id=self.request.id,
+            course_id=course_id,
+            rag_collection_id=rag_collection_id,
+        )
+        self.update_state(
+            state="COMPLETE",
+            meta={
+                "step": "complete",
+                "step_label": "Indexation terminée (limite de temps atteinte)",
+                "progress": 100,
+                "files_total": len(pdf_files),
+                "files_processed": len(pdf_files),
+                "estimated_seconds_remaining": 0,
+            },
+        )
+        return {
+            "status": "partial_timeout",
             "files_processed": len(pdf_files),
             "rag_collection_id": rag_collection_id,
         }

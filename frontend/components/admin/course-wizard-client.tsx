@@ -761,7 +761,16 @@ export function CourseWizardClient({
           task: status.task,
         });
 
-        const newProgress = status.task?.progress ?? 0;
+        // Composite activity signal, not just task.progress: during the image
+        // phase the rounded integer progress can plateau for minutes while
+        // images are still committed one-by-one. images_indexed/chunks_indexed
+        // are live DB counts that advance per item, so the stale watchdog
+        // won't false-fire on long image-heavy courses.
+        const newProgress =
+          (status.task?.progress ?? 0) +
+          (status.images_indexed ?? 0) +
+          (status.chunks_indexed ?? 0) +
+          (status.task?.files_processed ?? 0);
         if (newProgress !== lastIndexProgressValueRef.current) {
           lastIndexProgressValueRef.current = newProgress;
           lastIndexProgressTimeRef.current = Date.now();
@@ -782,6 +791,11 @@ export function CourseWizardClient({
           });
           setIsIndexing(false);
           setIndexStaleWarning(false);
+          // Clear any error banner left over from a transient stall/timeout
+          // earlier in this same run — otherwise the red "Erreur lors de
+          // l'indexation." persists until a page refresh even though
+          // indexation actually succeeded.
+          setIndexError(null);
           queryClient.invalidateQueries({ queryKey: ["admin-courses"] });
           return;
         }
@@ -798,7 +812,7 @@ export function CourseWizardClient({
 
         if (lastIndexProgressTimeRef.current !== null) {
           const staleSince = Date.now() - lastIndexProgressTimeRef.current;
-          if (staleSince > 2 * 60 * 1000) {
+          if (staleSince > 5 * 60 * 1000) {
             setIndexError(t("index.error"));
             setIsIndexing(false);
             setIndexStaleWarning(false);
