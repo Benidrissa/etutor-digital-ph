@@ -38,12 +38,21 @@ class TestFireAndForgetTasksIgnoreResult:
             "frontend polls AsyncResult.state for SUCCESS to enable the Next button"
         )
 
-    def test_index_course_resources_ignores_result(self):
+    def test_index_course_resources_stores_result(self):
         from app.tasks.rag_indexation import index_course_resources
 
-        assert index_course_resources.ignore_result is True, (
-            "index_course_resources must have ignore_result=True — "
-            "state is tracked via courses.creation_step, not Celery backend"
+        # Same exception as generate_course_syllabus: the wizard polls
+        # /index-status (which reads AsyncResult state/progress/meta) and the
+        # duplicate-dispatch guard (_diagnose_indexation_pointer) reads
+        # AsyncResult.state. With ignore_result=True a *live* task read back as
+        # PENDING — misclassified as evicted, dispatching a second concurrent
+        # run, and hiding progress. So results MUST be tracked. The #1121
+        # Redis-poisoning defence is preserved by the global
+        # result_backend_always_retry config (see TestCeleryConfigDefences),
+        # not by suppressing this task's results.
+        assert index_course_resources.ignore_result is False, (
+            "index_course_resources must have ignore_result=False — "
+            "/index-status and the duplicate-dispatch guard poll AsyncResult.state"
         )
 
     def test_reindex_course_images_ignores_result(self):
