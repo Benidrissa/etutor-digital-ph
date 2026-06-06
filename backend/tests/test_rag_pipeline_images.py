@@ -477,6 +477,139 @@ class TestRAGPipelineProcessPDFImages:
         assert added_image.rag_collection_id == "rag-col-123"
 
 
+class TestRAGPipelineDedupTranslation:
+    """#2428: cross-course dedup must not persist NULL FR/EN captions.
+
+    The dedup branch clones computed fields from an ``image_hash`` donor and
+    skips the normal translation block. When the donor itself lacked
+    ``caption_fr``/``caption_en`` the clone inherited NULLs, and the frontend
+    silently fell back to the English caption for FR learners.
+    """
+
+    def setup_method(self):
+        self.embedding_service = AsyncMock()
+        self.embedding_service.generate_embedding = AsyncMock(return_value=[0.1] * 1536)
+        self.pipeline = RAGPipeline(self.embedding_service)
+        self.temp_dir = tempfile.mkdtemp()
+
+    def teardown_method(self):
+        import shutil
+
+        shutil.rmtree(self.temp_dir)
+
+    def _donor(self, **overrides):
+        from app.domain.models.source_image import SourceImage
+
+        defaults = dict(
+            source="scutchfield",
+            page_number=1,
+            image_hash="hash123",
+            storage_key="source-images/scutchfield/1_Figure_1.webp",
+            storage_url="http://minio/key.webp",
+            embedding=[0.2] * 1536,
+            caption_fr=None,
+            caption_en=None,
+            alt_text_fr=None,
+            alt_text_en=None,
+            figure_kind="photo",
+            image_type="diagram",
+            width=300,
+            height=200,
+        )
+        defaults.update(overrides)
+        return SourceImage(**defaults)
+
+    @pytest.mark.asyncio
+    async def test_dedup_translates_when_donor_has_null_captions(self):
+        from app.ai.translation.figure_translator import FigureTranslation
+
+        pdf_path = Path(self.temp_dir) / "Donaldson_test.pdf"
+        pdf_path.touch()
+
+        fake_image = _make_extracted_image(image_hash="hash123")
+        donor = self._donor(caption_fr=None, caption_en=None)
+
+        donor_result = MagicMock()
+        donor_result.scalar_one_or_none = MagicMock(return_value=donor)
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=donor_result)
+
+        translation_stub = FigureTranslation(
+            caption_fr="Légende française",
+            caption_en="English caption",
+            alt_text_fr="Texte alternatif",
+            alt_text_en="Alt text",
+        )
+
+        with (
+            patch(
+                "app.ai.rag.pipeline.PDFImageExtractor.extract_images_from_pdf",
+                return_value=[fake_image],
+            ),
+            patch(
+                "app.ai.rag.pipeline.translate_figure_caption",
+                new_callable=AsyncMock,
+                return_value=translation_stub,
+            ) as mock_translate,
+            patch.object(
+                ImageLinker, "link_images_to_chunks", new_callable=AsyncMock, return_value=0
+            ),
+        ):
+            count = await self.pipeline.process_pdf_images(
+                pdf_path=str(pdf_path),
+                source="donaldson",
+                session=mock_session,
+            )
+
+        assert count == 1
+        mock_translate.assert_called_once()
+        cloned = mock_session.add.call_args[0][0]
+        assert cloned.caption_fr == "Légende française"
+        assert cloned.caption_en == "English caption"
+
+    @pytest.mark.asyncio
+    async def test_dedup_reuses_donor_captions_without_retranslating(self):
+        pdf_path = Path(self.temp_dir) / "Donaldson_test.pdf"
+        pdf_path.touch()
+
+        fake_image = _make_extracted_image(image_hash="hash123")
+        donor = self._donor(caption_fr="Déjà traduit", caption_en="Already translated")
+
+        donor_result = MagicMock()
+        donor_result.scalar_one_or_none = MagicMock(return_value=donor)
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=donor_result)
+
+        with (
+            patch(
+                "app.ai.rag.pipeline.PDFImageExtractor.extract_images_from_pdf",
+                return_value=[fake_image],
+            ),
+            patch(
+                "app.ai.rag.pipeline.translate_figure_caption",
+                new_callable=AsyncMock,
+            ) as mock_translate,
+            patch.object(
+                ImageLinker, "link_images_to_chunks", new_callable=AsyncMock, return_value=0
+            ),
+        ):
+            count = await self.pipeline.process_pdf_images(
+                pdf_path=str(pdf_path),
+                source="donaldson",
+                session=mock_session,
+            )
+
+        assert count == 1
+        mock_translate.assert_not_called()
+        cloned = mock_session.add.call_args[0][0]
+        assert cloned.caption_fr == "Déjà traduit"
+        assert cloned.caption_en == "Already translated"
+
+
 class TestRAGPipelineClearSourceImages:
     def setup_method(self):
         self.embedding_service = AsyncMock()

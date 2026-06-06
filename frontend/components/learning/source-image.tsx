@@ -32,8 +32,15 @@ export function SourceImage({
     ? (alt_text_fr ?? caption_fr ?? captionFallback ?? t('defaultAlt'))
     : (alt_text_en ?? caption_en ?? captionFallback ?? t('defaultAlt'));
 
-  const figureLabel = figure_number
-    ? `${figure_number}${caption ? ` — ${caption}` : ''}`
+  // Strip any leading figure-word already baked into figure_number (extraction
+  // stores mixed formats: "1.3", "Figure 1.3", "Fig. 2-8", "Schéma 3"), then
+  // prefix the localized label — restores the "Figure N" tag dropped in #844
+  // without re-introducing the double-prefix it fixed.
+  const bareNumber = figure_number
+    ?.replace(/^(figures?|fig\.?|schémas?|tableaux?|graphiques?|diagrammes?|encadrés?|illustrations?)\s*/i, '')
+    .trim();
+  const figureLabel = bareNumber
+    ? `${t('figure')} ${bareNumber}${caption ? ` — ${caption}` : ''}`
     : caption ?? '';
 
   return (
