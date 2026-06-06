@@ -42,6 +42,25 @@ _PAGE_ADJACENCY = 1
 _SEMANTIC_TOP_K = 3
 _SEMANTIC_DIST_MAX = 0.35  # cosine distance; ~0.65 cosine similarity
 
+# When several images share a figure_number, an explicit "Figure X" citation
+# must resolve to the *real* figure — not a mis-extracted body-text crop or a
+# decorative element. Lower rank = preferred. NULL/unknown kinds rank between
+# photo and decorative so an unclassified-but-plausible figure still beats a
+# known body-text crop. (#2431)
+_FIGURE_KIND_RANK = {
+    "complex_diagram": 0,
+    "clean_flowchart": 0,
+    "chart": 0,
+    "table": 0,
+    "formula": 0,
+    "micrograph": 0,
+    "photo_with_callouts": 0,
+    "photo": 1,
+    "decorative": 3,
+    "body_text": 4,
+}
+_DEFAULT_KIND_RANK = 2  # NULL / not-yet-classified
+
 
 def _normalize_figure_number(raw: str) -> str:
     """Normalise figure numbers so that '1-3' and '1.3' compare equal."""
@@ -147,19 +166,43 @@ class ImageLinker:
         chunks = chunks_result.all()
 
         images_result = await session.execute(
-            select(SourceImage.id, SourceImage.figure_number).where(
+            select(
+                SourceImage.id,
+                SourceImage.figure_number,
+                SourceImage.figure_kind,
+                SourceImage.width,
+                SourceImage.height,
+                SourceImage.file_size_bytes,
+            ).where(
                 SourceImage.source == source,
                 SourceImage.figure_number.isnot(None),
             )
         )
-        figure_map: dict[str, object] = {}
-        for image_id, figure_number in images_result.all():
-            if figure_number:
-                # Extract just the number from "Figure 1.2" -> "1.2"
-                num_match = _FIGURE_RE.search(figure_number)
-                raw = num_match.group(1) if num_match else figure_number
-                key = _normalize_figure_number(raw)
-                figure_map[key] = image_id
+        # Group images by normalised figure number, then keep the BEST one per
+        # number instead of last-writer-wins: real figures beat photos beat
+        # unclassified beat decorative/body-text crops; ties break on larger
+        # rendered area then file size. Stops an explicit "Figure X" citation
+        # resolving to a mis-extracted body-text crop when a real figure with
+        # the same number exists. (#2431)
+        candidates: dict[str, list] = {}
+        for image_id, figure_number, figure_kind, width, height, file_size in images_result.all():
+            if not figure_number:
+                continue
+            # Extract just the number from "Figure 1.2" -> "1.2"
+            num_match = _FIGURE_RE.search(figure_number)
+            raw = num_match.group(1) if num_match else figure_number
+            key = _normalize_figure_number(raw)
+            candidates.setdefault(key, []).append((image_id, figure_kind, width, height, file_size))
+
+        def _rank(cand: tuple) -> tuple:
+            _id, kind, width, height, file_size = cand
+            kind_rank = _FIGURE_KIND_RANK.get(kind, _DEFAULT_KIND_RANK)
+            area = (width or 0) * (height or 0)
+            return (kind_rank, -area, -(file_size or 0))
+
+        figure_map: dict[str, object] = {
+            key: min(cands, key=_rank)[0] for key, cands in candidates.items()
+        }
 
         existing_pairs = await self._get_existing_pairs(source, session)
 

@@ -42,6 +42,7 @@ FigureKind = Literal[
     "micrograph",
     "decorative",
     "complex_diagram",
+    "body_text",
 ]
 
 _ALLOWED_KINDS: set[str] = {
@@ -54,6 +55,7 @@ _ALLOWED_KINDS: set[str] = {
     "micrograph",
     "decorative",
     "complex_diagram",
+    "body_text",
 }
 
 _CLASSIFIER_MODEL = "claude-haiku-4-5"
@@ -85,13 +87,19 @@ _USER_PROMPT = (
     "no information.\n"
     "- complex_diagram: anatomical plate, multi-panel figure, dense "
     "labelled illustration with many text annotations. Anything that is "
-    "clearly a diagram but too dense for clean_flowchart.\n\n"
+    "clearly a diagram but too dense for clean_flowchart.\n"
+    "- body_text: NOT a figure at all — a screenshot of running paragraph "
+    "or multi-column body text (sentences/prose), a page header/footer, or "
+    "a block of references. Mis-extracted page text, not an illustration, "
+    "chart, table, or diagram.\n\n"
     "Reply with a JSON object containing exactly one field:\n"
     '  {"kind": "<one of the values above>"}\n\n'
     "Rules:\n"
     "- Pick the single best fit. If torn between two, prefer the more "
     "conservative classification (e.g. complex_diagram over "
     "clean_flowchart when in doubt, photo over photo_with_callouts).\n"
+    "- Use body_text ONLY when the image is essentially prose/page text with "
+    "no figure content; a real table or labelled diagram is NOT body_text.\n"
     "- Do not invent new kinds. Reply with JSON only."
 )
 
