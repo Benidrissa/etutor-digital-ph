@@ -175,3 +175,61 @@ class TestImageIndexTaskCallbacks:
             )
 
         mock_finalize.assert_called_once_with("course-abc")
+
+
+class TestSoftTimeLimitHandling:
+    """Image-heavy courses can run past the soft time limit. The task must
+    finalize the partial (already-committed) result as a SUCCESS instead of
+    letting ``autoretry_for=(Exception,)`` re-run the whole pipeline and
+    re-surface a hard error in the wizard. Regression guard for the
+    course-creation "Erreur lors de l'indexation." bug.
+    """
+
+    def test_soft_time_limit_finalizes_partial_without_retrying(self) -> None:
+        from pathlib import Path
+
+        from celery.exceptions import SoftTimeLimitExceeded
+
+        import app.tasks.rag_indexation as mod
+
+        task = mod.index_course_resources
+
+        course_path = MagicMock()
+        course_path.exists.return_value = True
+        # One PDF on disk so we reach the asyncio.run try-block (skip DB path).
+        course_path.glob.return_value = [Path("/tmp/nonexistent-for-test.pdf")]
+
+        def _raise_soft_timeout(coro):
+            # Close the un-run coroutine to avoid a "never awaited" warning,
+            # then simulate Celery raising at the soft time limit.
+            coro.close()
+            raise SoftTimeLimitExceeded()
+
+        with (
+            patch.object(mod, "UPLOAD_DIR") as mock_upload_dir,
+            patch("asyncio.run", side_effect=_raise_soft_timeout),
+            patch.object(task, "update_state") as mock_update_state,
+        ):
+            mock_upload_dir.__truediv__.return_value = course_path
+
+            # Must NOT raise — raising would trigger autoretry of a ~20-min run.
+            result = task.run("course-x", "collection-x")
+
+        assert result["status"] == "partial_timeout"
+        assert result["rag_collection_id"] == "collection-x"
+        # Finalized as COMPLETE (drives RAGTask.on_success → 'indexed'),
+        # never re-raised into the autoretry path.
+        assert any(
+            call.kwargs.get("state") == "COMPLETE"
+            for call in mock_update_state.call_args_list
+        )
+
+    def test_decorator_keeps_result_tracking_and_realistic_limits(self) -> None:
+        """ignore_result must stay False (so AsyncResult.state is readable for
+        the duplicate-dispatch guard and /index-status), and the time budget
+        must comfortably exceed an image-heavy run."""
+        from app.tasks.rag_indexation import index_course_resources
+
+        assert index_course_resources.ignore_result is False
+        assert index_course_resources.soft_time_limit >= 3000
+        assert index_course_resources.time_limit > index_course_resources.soft_time_limit
