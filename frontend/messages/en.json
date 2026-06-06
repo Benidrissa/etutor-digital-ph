@@ -1723,6 +1723,19 @@
         "hide": "Hide attached files",
         "noFiles": "No resources attached"
       },
+      "sourceStatus": {
+        "failed": "Extraction failed",
+        "extracting": "Extracting…",
+        "usedChunks": "{count, plural, one {# fragment indexed} other {# fragments indexed}}",
+        "notIndexed": "Extracted, not indexed",
+        "extracted": "Extracted"
+      },
+      "sourcesUsage": {
+        "title": "Sources used by the course",
+        "loading": "Loading sources…",
+        "error": "Failed to load sources — retry",
+        "droppedWarning": "{count, plural, one {# source was not indexed and will not be used by the course.} other {# sources were not indexed and will not be used by the course.}}"
+      },
       "generate": {
         "title": "Generate syllabus",
         "description": "The AI agent will analyze your resources and generate the course structure.",
@@ -1973,7 +1986,13 @@
       "generateError": "Failed to generate lesson preview.",
       "noModules": "No modules found. Generate a syllabus first."
     },
-    "reviewQuality": "Review quality"
+    "reviewQuality": "Review quality",
+    "viewSources": "Sources used",
+    "sourcesPage": {
+      "pageTitle": "Course sources",
+      "pageDescription": "Check which sources were extracted and indexed (actually used by the course).",
+      "backToCourses": "Back to courses"
+    }
   },
   "AdminSyllabus": {
     "pageTitle": "Syllabus Management",

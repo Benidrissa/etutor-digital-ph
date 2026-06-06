@@ -1723,6 +1723,19 @@
         "hide": "Masquer les fichiers joints",
         "noFiles": "Aucune ressource jointe"
       },
+      "sourceStatus": {
+        "failed": "Échec extraction",
+        "extracting": "Extraction…",
+        "usedChunks": "{count, plural, one {# fragment indexé} other {# fragments indexés}}",
+        "notIndexed": "Extrait, non indexé",
+        "extracted": "Extrait"
+      },
+      "sourcesUsage": {
+        "title": "Sources utilisées par le cours",
+        "loading": "Chargement des sources…",
+        "error": "Échec du chargement des sources — réessayer",
+        "droppedWarning": "{count, plural, one {# source n'a pas été indexée et ne sera pas utilisée par le cours.} other {# sources n'ont pas été indexées et ne seront pas utilisées par le cours.}}"
+      },
       "generate": {
         "title": "Générer le syllabus",
         "description": "L'agent IA va analyser vos ressources et générer la structure du cours.",
@@ -1973,7 +1986,13 @@
       "generateError": "Échec de la génération de l'aperçu de la leçon.",
       "noModules": "Aucun module trouvé. Générez d'abord un programme."
     },
-    "reviewQuality": "Revue qualité"
+    "reviewQuality": "Revue qualité",
+    "viewSources": "Sources utilisées",
+    "sourcesPage": {
+      "pageTitle": "Sources du cours",
+      "pageDescription": "Vérifiez quelles sources ont été extraites et indexées (réellement utilisées par le cours).",
+      "backToCourses": "Retour aux formations"
+    }
   },
   "AdminSyllabus": {
     "pageTitle": "Gestion du syllabus",

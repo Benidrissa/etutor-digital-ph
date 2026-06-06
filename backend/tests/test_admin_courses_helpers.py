@@ -330,3 +330,82 @@ def test_diagnose_pointer_returns_live_for_pending_with_meta(monkeypatch):
     course = SimpleNamespace(indexation_task_id="t-1")
     verdict, _state, _meta = _diagnose_indexation_pointer(course, require_progress=False)
     assert verdict == "live"
+
+
+# ---- list_course_resources: per-source "really used" status (DB-driven) ----
+
+
+class _ResourcesResult:
+    """Scriptable stand-in for a SQLAlchemy Result across the endpoint's queries."""
+
+    def __init__(self, *, scalar=None, scalars_all=None, rows=None):
+        self._scalar = scalar
+        self._scalars_all = scalars_all
+        self._rows = rows
+
+    def scalar_one_or_none(self):
+        return self._scalar
+
+    def scalars(self):
+        from unittest.mock import MagicMock
+
+        inner = MagicMock()
+        inner.all.return_value = self._scalars_all
+        return inner
+
+    def all(self):
+        return self._rows
+
+
+async def test_list_course_resources_reports_per_source_chunk_counts(tmp_path, monkeypatch):
+    """DB-driven listing: resources missing from disk still appear, and each
+    carries chunks_indexed (the "used in RAG" signal). A failed source shows
+    chunks_indexed=0; an indexed source shows its count.
+    """
+    import uuid as _uuid
+    from datetime import UTC, datetime
+    from unittest.mock import AsyncMock
+
+    from app.api.v1 import admin_courses
+    from app.api.v1.admin_courses import list_course_resources
+
+    course_id = _uuid.uuid4()
+    used = SimpleNamespace(
+        id=_uuid.uuid4(),
+        filename="indexed_source",
+        char_count=4200,
+        extraction_status="done",
+        extracted_at=datetime(2026, 6, 6, tzinfo=UTC),
+    )
+    dropped = SimpleNamespace(
+        id=_uuid.uuid4(),
+        filename="Donor_Alignment",  # uploaded as .PDF / file_not_found → not on disk
+        char_count=None,
+        extraction_status="failed",
+        extracted_at=datetime(2026, 6, 6, tzinfo=UTC),
+    )
+
+    course = SimpleNamespace(id=course_id, rag_collection_id="rag-collection-1")
+
+    db = SimpleNamespace()
+    db.execute = AsyncMock(
+        side_effect=[
+            _ResourcesResult(scalar=course),  # SELECT Course
+            _ResourcesResult(scalars_all=[used, dropped]),  # SELECT CourseResource
+            _ResourcesResult(rows=[(used.id, 12)]),  # grouped chunk counts
+        ]
+    )
+
+    # No files on disk → both resources still listed (DB-driven), on_disk False.
+    monkeypatch.setattr(admin_courses, "UPLOAD_DIR", tmp_path)
+
+    resp = await list_course_resources(course_id=course_id, current_user=None, db=db)
+
+    by_id = {f["resource_id"]: f for f in resp["files"]}
+    assert by_id[str(used.id)]["chunks_indexed"] == 12
+    assert by_id[str(used.id)]["extraction_status"] == "done"
+    assert by_id[str(dropped.id)]["chunks_indexed"] == 0
+    assert by_id[str(dropped.id)]["extraction_status"] == "failed"
+    assert by_id[str(dropped.id)]["on_disk"] is False
+    # The dropped source is visible even though it has no file on disk.
+    assert len(resp["files"]) == 2

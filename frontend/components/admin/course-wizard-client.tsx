@@ -40,6 +40,8 @@ import {
   CourseResourceUploadStep,
   useCourseResourceUpload,
 } from "@/components/admin/course-resource-upload-step";
+import { SourceStatusBadge } from "@/components/admin/source-status-badge";
+import { CourseSourcesUsage } from "@/components/admin/course-sources-usage";
 
 type WizardStep = "upload" | "info" | "generate" | "index" | "publish";
 
@@ -153,6 +155,7 @@ function AttachedResources({
                 <p className="truncate text-xs font-medium">{f.name}</p>
                 <p className="text-xs text-muted-foreground">{formatBytes(f.size_bytes)}</p>
               </div>
+              <SourceStatusBadge status={f.extraction_status} chunks={f.chunks_indexed} />
             </div>
           ))}
         </div>
@@ -1498,6 +1501,16 @@ export function CourseWizardClient({
                         </Button>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {courseId && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">{t("sourcesUsage.title")}</p>
+                    <CourseSourcesUsage
+                      courseId={courseId}
+                      refreshKey={indexStatus?.chunks_indexed}
+                    />
                   </div>
                 )}
               </div>
