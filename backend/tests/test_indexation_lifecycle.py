@@ -220,8 +220,7 @@ class TestSoftTimeLimitHandling:
         # Finalized as COMPLETE (drives RAGTask.on_success → 'indexed'),
         # never re-raised into the autoretry path.
         assert any(
-            call.kwargs.get("state") == "COMPLETE"
-            for call in mock_update_state.call_args_list
+            call.kwargs.get("state") == "COMPLETE" for call in mock_update_state.call_args_list
         )
 
     def test_decorator_keeps_result_tracking_and_realistic_limits(self) -> None:
