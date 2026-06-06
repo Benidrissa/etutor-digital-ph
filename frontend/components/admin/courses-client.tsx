@@ -410,6 +410,7 @@ export function CoursesClient() {
                 onGenerateStructure={(c) => setPendingAction({ type: 'generate', course: c })}
                 onEdit={(c) => { setEditingCourse(c); setFormOpen(true); }}
                 onReviewQuality={(c) => router.push(`/admin/courses/${c.id}/quality`)}
+                onViewSources={(c) => router.push(`/admin/courses/${c.id}/sources`)}
                 onResumeWizard={() => openWizardResume(course)}
               />
             ))}
@@ -562,6 +563,7 @@ function CourseRow({
   onGenerateStructure,
   onEdit,
   onReviewQuality,
+  onViewSources,
   onResumeWizard,
 }: {
   course: AdminCourse;
@@ -572,6 +574,7 @@ function CourseRow({
   onGenerateStructure: (c: AdminCourse) => void;
   onEdit: (c: AdminCourse) => void;
   onReviewQuality: (c: AdminCourse) => void;
+  onViewSources: (c: AdminCourse) => void;
   onResumeWizard: () => void;
 }) {
   const t = useTranslations('AdminCourses');
@@ -676,6 +679,10 @@ function CourseRow({
               <DropdownMenuItem onClick={() => onReviewQuality(course)}>
                 <Activity className="mr-2 h-4 w-4" />
                 {t('reviewQuality')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onViewSources(course)}>
+                <Database className="mr-2 h-4 w-4" />
+                {t('viewSources')}
               </DropdownMenuItem>
               {!isPublished && (
                 <DropdownMenuItem

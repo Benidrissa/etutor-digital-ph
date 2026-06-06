@@ -65,6 +65,8 @@ import {
   CourseResourceUploadStep,
   useCourseResourceUpload,
 } from "@/components/admin/course-resource-upload-step";
+import { SourceStatusBadge } from "@/components/admin/source-status-badge";
+import { CourseSourcesUsage } from "@/components/admin/course-sources-usage";
 
 const EXTRACTING_STATUSES = new Set(["pending", "extracting"]);
 
@@ -150,6 +152,7 @@ function AttachedResources({
                 <p className="truncate text-xs font-medium">{f.name}</p>
                 <p className="text-xs text-muted-foreground">{formatBytes(f.size_bytes)}</p>
               </div>
+              <SourceStatusBadge status={f.extraction_status} chunks={f.chunks_indexed} />
             </div>
           ))}
         </div>
@@ -809,7 +812,16 @@ export function AICourseWizard({
 
         setIndexStatus(buildIndexStatus(status));
 
-        const newProgress = status.task?.progress ?? 0;
+        // Composite activity signal, not just task.progress: during the image
+        // phase the rounded integer progress can plateau for minutes while
+        // images are still committed one-by-one. images_indexed/chunks_indexed
+        // are live DB counts that advance per item, so the stale watchdog
+        // won't false-fire on long image-heavy courses.
+        const newProgress =
+          (status.task?.progress ?? 0) +
+          (status.images_indexed ?? 0) +
+          (status.chunks_indexed ?? 0) +
+          (status.task?.files_processed ?? 0);
         if (newProgress !== lastIndexProgressValueRef.current) {
           lastIndexProgressValueRef.current = newProgress;
           lastIndexProgressTimeRef.current = Date.now();
@@ -823,6 +835,11 @@ export function AICourseWizard({
           setIndexStatus(buildIndexStatus({ ...status, indexed: true }));
           setIsIndexing(false);
           setIndexStaleWarning(false);
+          // Clear any error banner left over from a transient stall/timeout
+          // earlier in this same run — otherwise the red "Erreur lors de
+          // l'indexation." persists until a page refresh even though
+          // indexation actually succeeded.
+          setIndexError(null);
           queryClient.invalidateQueries({ queryKey: ["admin-courses"] });
           // Auto-advance indexation → linker when text+image extraction
           // completes. Stop there — the admin must explicitly click Suivant
@@ -841,7 +858,7 @@ export function AICourseWizard({
           return;
         }
 
-        if (lastIndexProgressTimeRef.current !== null && Date.now() - lastIndexProgressTimeRef.current > 2 * 60 * 1000) {
+        if (lastIndexProgressTimeRef.current !== null && Date.now() - lastIndexProgressTimeRef.current > 5 * 60 * 1000) {
           setIndexError(t("index.error"));
           setIsIndexing(false);
           return;
@@ -1693,6 +1710,18 @@ export function AICourseWizard({
                       )}
                       {tAi("linker.retryButton")}
                     </Button>
+                  )}
+
+                  {courseId && (
+                    <div className="space-y-2 pt-1">
+                      <p className="text-sm font-medium">
+                        {t("sourcesUsage.title")}
+                      </p>
+                      <CourseSourcesUsage
+                        courseId={courseId}
+                        refreshKey={indexStatus?.chunks_indexed}
+                      />
+                    </div>
                   )}
                 </div>
               );

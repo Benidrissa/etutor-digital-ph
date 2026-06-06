@@ -515,3 +515,53 @@ def test_dimension_scores_rejects_negative():
             pedagogical_fit=80,
             structural_completeness=80,
         )
+
+
+# ---- build_quality_context eager-loads first_unit (greenlet regression) ----
+
+
+async def test_build_quality_context_eager_loads_glossary_first_unit():
+    """Regression: the glossary loop reads ``t.first_unit.unit_number``. On an
+    AsyncSession a lazy relationship access raises ``greenlet_spawn has not
+    been called``, failing the whole assess_course_task sweep. The query must
+    eager-load ``first_unit`` via selectinload.
+    """
+    import uuid
+    from unittest.mock import AsyncMock, MagicMock
+
+    from app.domain.models.course import Course
+    from app.domain.models.course_quality import CourseGlossaryTerm
+    from app.domain.services.quality_agent_service import CourseQualityService
+
+    captured: list = []
+
+    course = MagicMock()
+    course.syllabus_context = None
+    course.syllabus_json = None
+    course.objectives_json = None
+
+    def _result_for(stmt):
+        captured.append(stmt)
+        result = MagicMock()
+        entity = stmt.column_descriptions[0]["entity"]
+        if entity is Course:
+            result.scalar_one_or_none.return_value = course
+        else:
+            scalars = MagicMock()
+            scalars.all.return_value = []
+            result.scalars.return_value = scalars
+        return result
+
+    session = MagicMock()
+    session.execute = AsyncMock(side_effect=_result_for)
+
+    service = CourseQualityService(MagicMock(), MagicMock())
+    await service.build_quality_context(course_id=uuid.uuid4(), language="fr", session=session)
+
+    gloss_stmts = [s for s in captured if s.column_descriptions[0]["entity"] is CourseGlossaryTerm]
+    assert gloss_stmts, "glossary query was not executed"
+    option_paths = " ".join(str(o.path) for o in gloss_stmts[0]._with_options)
+    assert "first_unit" in option_paths, (
+        "glossary query must selectinload(CourseGlossaryTerm.first_unit) to "
+        "avoid a lazy-load greenlet error in the Celery sweep"
+    )

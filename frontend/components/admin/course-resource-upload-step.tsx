@@ -102,9 +102,10 @@ export function useCourseResourceUpload(
         if (cancelled) return;
         const serverFiles: UploadedFile[] = (data.files ?? []).map((f) => ({
           name: f.name,
-          size_bytes: f.size_bytes,
+          size_bytes: f.size_bytes ?? 0,
           status: "uploaded" as const,
           extraction_status: f.extraction_status,
+          chunks_indexed: f.chunks_indexed,
         }));
         setFiles((prev) => {
           const localNames = new Set(prev.map((f) => f.name));

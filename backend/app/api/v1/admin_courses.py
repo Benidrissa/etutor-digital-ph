@@ -1613,7 +1613,15 @@ async def list_course_resources(
     current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> dict:
-    """List uploaded resource files for a course."""
+    """List a course's uploaded resources with their real extraction + indexation status.
+
+    DB-driven (CourseResource is the source of truth), not disk-driven: a resource
+    whose file is missing/failed (#2424), deduped (no file on disk), or saved with an
+    uppercase ``.PDF`` would otherwise be invisible. Each entry carries
+    ``chunks_indexed`` — the count of DocumentChunk rows tied to this resource via
+    ``course_resource_id`` — which is the definitive "this source is actually used in
+    RAG" signal admins need (>0 = used, 0 = not used).
+    """
     result = await db.execute(select(Course).where(Course.id == course_id))
     course = result.scalar_one_or_none()
     if not course:
@@ -1622,25 +1630,54 @@ async def list_course_resources(
     from app.domain.models.course_resource import CourseResource
 
     db_resources_result = await db.execute(
-        select(CourseResource).where(CourseResource.course_id == course_id)
+        select(CourseResource)
+        .where(CourseResource.course_id == course_id)
+        .order_by(CourseResource.extracted_at)
     )
-    db_resources = {r.filename: r for r in db_resources_result.scalars().all()}
+    db_resources = list(db_resources_result.scalars().all())
+
+    # Per-resource indexed-chunk counts in one grouped query (mirrors the
+    # aggregate count in /index-status). Chunks carry course_resource_id since
+    # #2186; legacy chunks with NULL are simply uncounted.
+    chunks_by_resource: dict[uuid.UUID, int] = {}
+    if course.rag_collection_id:
+        counts_result = await db.execute(
+            select(DocumentChunk.course_resource_id, func.count())
+            .where(DocumentChunk.source == course.rag_collection_id)
+            .where(DocumentChunk.course_resource_id.isnot(None))
+            .group_by(DocumentChunk.course_resource_id)
+        )
+        chunks_by_resource = {rid: n for rid, n in counts_result.all()}
 
     course_dir = UPLOAD_DIR / str(course_id)
-    if not course_dir.exists():
-        return {"course_id": str(course_id), "files": []}
+
+    def _disk_file(stem: str):
+        # Case-insensitive: files uploaded as ".PDF" were written verbatim (#2424).
+        if not course_dir.exists():
+            return None
+        for candidate in course_dir.glob("*"):
+            if candidate.suffix.lower() == ".pdf" and candidate.stem == stem:
+                return candidate
+        return None
 
     files = []
-    for f in sorted(course_dir.glob("*.pdf")):
-        stat = f.stat()
-        stem = f.stem
-        db_res = db_resources.get(stem)
+    for r in db_resources:
+        disk = _disk_file(r.filename)
+        stat = disk.stat() if disk else None
         files.append(
             {
-                "name": f.name,
-                "size_bytes": stat.st_size,
-                "uploaded_at": datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
-                "extraction_status": db_res.extraction_status if db_res else "done",
+                "resource_id": str(r.id),
+                "name": disk.name if disk else f"{r.filename}.pdf",
+                "size_bytes": stat.st_size if stat else None,
+                "uploaded_at": (
+                    datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat()
+                    if stat
+                    else r.extracted_at.isoformat()
+                ),
+                "extraction_status": r.extraction_status,
+                "char_count": r.char_count,
+                "chunks_indexed": chunks_by_resource.get(r.id, 0),
+                "on_disk": disk is not None,
             }
         )
 
@@ -1688,7 +1725,13 @@ async def upload_course_resource(
     file_hash = hashlib.sha256(data).hexdigest()
 
     safe_name = re.sub(r"[^\w.\-]", "_", Path(file.filename or "resource.pdf").name)
-    if not safe_name.lower().endswith(".pdf"):
+    # Normalise the extension to a lowercase ".pdf". Files uploaded with an
+    # uppercase ".PDF" were written verbatim, but extract_course_resource looks
+    # for "<stem>.pdf" and globs "*.pdf" — both case-sensitive on Linux — so the
+    # source was silently dropped ("PDF file not found on disk").
+    if safe_name.lower().endswith(".pdf"):
+        safe_name = safe_name[: -len(".pdf")] + ".pdf"
+    else:
         safe_name += ".pdf"
 
     # File-hash dedup: if an identical PDF was already extracted for any course,
