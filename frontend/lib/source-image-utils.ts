@@ -22,8 +22,11 @@ export function splitWithSourceImageMarkers(
     const meta = imageMap.get(match[1]);
     if (meta) {
       parts.push({ type: 'source_image', meta });
-    } else {
-      parts.push({ type: 'markdown', text: text.slice(match.index, SOURCE_IMAGE_RE.lastIndex) });
+    } else if (process.env.NODE_ENV !== 'production') {
+      // Orphan marker: model cited an image whose ref was dropped (e.g. by the
+      // max-5 cap during lesson generation). Skip it so the literal
+      // {{source_image:…}} string never leaks into rendered text.
+      console.debug('Dropping orphan source_image marker', match[1]);
     }
     lastIndex = SOURCE_IMAGE_RE.lastIndex;
   }
