@@ -19,12 +19,15 @@ import {
   canAttemptSummativeAssessment
 } from '@/lib/api';
 import { useSettings } from '@/lib/settings-context';
+import { useCurrentUser } from '@/lib/hooks/use-current-user';
 
 interface SummativeAssessmentContainerProps {
   moduleId: string;
   language: string;
-  country: string;
-  level: number;
+  /** Optional override; defaults to the connected user's country. */
+  country?: string;
+  /** Optional override; defaults to the connected user's current level. */
+  level?: number;
   onComplete?: () => void;
   onRetry?: () => void;
 }
@@ -42,6 +45,11 @@ export function SummativeAssessmentContainer({
   const t = useTranslations('SummativeAssessment');
   const { getSetting } = useSettings();
   const summativeTimeLimit = getSetting<number>("quiz-summative-time-limit-minutes", 30);
+  // Contextualize the assessment to the connected learner, mirroring the
+  // unit-quiz pattern (quiz-container.tsx). Props act as optional overrides.
+  const { user: currentUser, isHydrated } = useCurrentUser();
+  const resolvedCountry = country || currentUser?.country || 'CI';
+  const resolvedLevel = level || currentUser?.current_level || 1;
   
   const [state, setState] = useState<AssessmentState>('checking');
   const [assessment, setAssessment] = useState<Quiz | null>(null);
@@ -77,8 +85,8 @@ export function SummativeAssessmentContainer({
       const assessmentData = await generateSummativeAssessment({
         module_id: moduleId,
         language,
-        country,
-        level,
+        country: resolvedCountry,
+        level: resolvedLevel,
       });
       
       setAssessment(assessmentData);
@@ -294,6 +302,7 @@ export function SummativeAssessmentContainer({
               onClick={handleStartAssessment}
               size="lg"
               className="min-h-12 px-8"
+              disabled={!isHydrated}
             >
               <PlayCircle className="w-5 h-5 mr-2" />
               {t('startAssessment')}

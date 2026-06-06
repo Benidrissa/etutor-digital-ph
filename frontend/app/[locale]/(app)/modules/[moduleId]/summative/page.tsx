@@ -27,8 +27,6 @@ export default async function SummativePage({ params }: SummativePageProps) {
       moduleId={moduleId}
       locale={locale}
       language={language}
-      country="senegal"
-      level={1}
     />
   );
 }

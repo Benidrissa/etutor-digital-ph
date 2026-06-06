@@ -9,16 +9,12 @@ interface SummativePageClientProps {
   moduleId: string;
   locale: string;
   language: string;
-  country: string;
-  level: number;
 }
 
 export function SummativePageClient({
   moduleId,
   locale,
   language,
-  country,
-  level,
 }: SummativePageClientProps) {
   const router = useRouter();
   // Bumping the key remounts the container with fresh state — used to reset
@@ -33,8 +29,6 @@ export function SummativePageClient({
           key={retryKey}
           moduleId={moduleId}
           language={language}
-          country={country}
-          level={level}
           onComplete={() => {
             router.push(`/${locale}/modules`);
           }}
