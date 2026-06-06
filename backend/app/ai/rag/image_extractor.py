@@ -38,6 +38,13 @@ VECTOR_CLUSTER_GAP_PT = 10
 VECTOR_MIN_REGION_PX = 100
 HIGH_DRAWING_COUNT_THRESHOLD = 2000
 RASTERIZE_DPI = 200
+# Body-text rejection for the few-drawings full-page fallback (#2435). A page
+# that merely opens with "Figure 4.2 shows…" plus a stray rule must not become
+# a full-page "figure". Reject when text dominates the page AND the vector/visual
+# region is negligible — that's prose, not an illustration. A genuine full-page
+# figure (chart/diagram) has low text coverage, so it clears this gate.
+TEXT_DENSITY_REJECT_FRACTION = 0.45
+MIN_DRAWING_COVERAGE_FRACTION = 0.10
 
 
 def _avg_hash_hex(image_bytes: bytes) -> str | None:
@@ -701,6 +708,48 @@ class PDFImageExtractor:
 
         return results
 
+    def _text_coverage_fraction(self, page: pymupdf.Page) -> float:
+        """Fraction of the page area covered by text blocks (#2435).
+
+        Text blocks don't overlap, so the summed block area is a good proxy.
+        High values mean a prose page; genuine figures sit well below.
+        """
+        try:
+            page_dict = page.get_text("dict")
+        except Exception:
+            return 0.0
+        page_area = abs(page.rect.get_area()) or 1.0
+        text_area = 0.0
+        for block in page_dict.get("blocks", []):
+            if block.get("type") != 0:
+                continue
+            bbox = block.get("bbox")
+            if bbox:
+                text_area += abs(pymupdf.Rect(bbox).get_area())
+        return min(text_area / page_area, 1.0)
+
+    def _drawings_coverage_fraction(self, page: pymupdf.Page) -> float:
+        """Fraction of the page covered by the bounding box of all vector drawings (#2435).
+
+        A real chart/diagram clusters drawings into a substantial region; a prose
+        page's drawings are thin rules with negligible area.
+        """
+        try:
+            drawings = page.get_drawings()
+        except Exception:
+            return 0.0
+        page_area = abs(page.rect.get_area()) or 1.0
+        union: pymupdf.Rect | None = None
+        for drawing in drawings:
+            rect = drawing.get("rect")
+            if rect is None:
+                continue
+            r = pymupdf.Rect(rect)
+            union = r if union is None else (union | r)
+        if union is None:
+            return 0.0
+        return min(abs(union.get_area()) / page_area, 1.0)
+
     def _rasterize_full_page_as_figure(
         self,
         page: pymupdf.Page,
@@ -717,6 +766,25 @@ class PDFImageExtractor:
         page (#2272). The caller from the high-drawing-count path passes
         None and keeps legacy behaviour.
         """
+        # The few-drawings fallback (caption_bbox set) is where body-text pages
+        # leak in (#2435/#2272). Reject a page dominated by prose with negligible
+        # visual area before rasterizing it as a figure. The high-drawing path
+        # (caption_bbox is None) keeps its legacy behaviour.
+        if caption_bbox is not None:
+            text_cov = self._text_coverage_fraction(page)
+            draw_cov = self._drawings_coverage_fraction(page)
+            if (
+                text_cov >= TEXT_DENSITY_REJECT_FRACTION
+                and draw_cov < MIN_DRAWING_COVERAGE_FRACTION
+            ):
+                logger.info(
+                    "Skipping full-page raster — body-text page, not a figure",
+                    page=page_number,
+                    text_coverage=round(text_cov, 2),
+                    drawing_coverage=round(draw_cov, 2),
+                )
+                return None
+
         try:
             pixmap = page.get_pixmap(dpi=RASTERIZE_DPI)
             png_bytes = pixmap.tobytes("png")
