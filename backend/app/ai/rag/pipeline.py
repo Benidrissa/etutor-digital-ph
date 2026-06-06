@@ -22,6 +22,7 @@ from app.ai.translation import (
     classify_figure,
     extract_flowchart_structure,
     extract_label_positions,
+    read_figure_caption,
     render_overlay_svg,
     render_svg,
     translate_figure_caption,
@@ -473,6 +474,28 @@ class RAGPipeline:
                 )
                 continue
 
+            # Read the real caption from the image + detect body-text crops
+            # (#2435). The PyMuPDF extractor often leaves caption empty (the
+            # translator then echoes the bare figure number, e.g. "Figure 4.2")
+            # or rasterizes a page of body text as a figure. A cheap vision call
+            # recovers the printed caption and flags non-figures.
+            vision_body_text = False
+            try:
+                cap_read = await read_figure_caption(image_bytes=img.image_bytes)
+                if cap_read.is_body_text:
+                    vision_body_text = True
+                elif cap_read.caption:
+                    img.caption = cap_read.caption
+            except RuntimeError:
+                pass  # vision disabled (kill-switch) — keep the heuristic caption
+            except Exception as exc:
+                logger.warning(
+                    "Failed to read figure caption via vision, keeping heuristic",
+                    source=source,
+                    figure_number=img.figure_number,
+                    error=str(exc),
+                )
+
             caption_text = " ".join(filter(None, [img.caption, img.surrounding_text]))
             embedding: list[float] | None = None
             if caption_text.strip():
@@ -494,16 +517,23 @@ class RAGPipeline:
             )
 
             figure_kind: str | None = None
-            try:
-                classification = await classify_figure(image_bytes=img.image_bytes)
-                figure_kind = classification.kind
-            except Exception as exc:
-                logger.warning(
-                    "Failed to classify figure, storing without figure_kind",
-                    source=source,
-                    figure_number=img.figure_number,
-                    error=str(exc),
-                )
+            if vision_body_text:
+                # The caption reader already determined this crop is page text,
+                # not a figure (#2435). Tag it so the retriever excludes it and
+                # purge_body_text_figures (#2431) can remove it; skip the extra
+                # classification call.
+                figure_kind = "body_text"
+            else:
+                try:
+                    classification = await classify_figure(image_bytes=img.image_bytes)
+                    figure_kind = classification.kind
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to classify figure, storing without figure_kind",
+                        source=source,
+                        figure_number=img.figure_number,
+                        error=str(exc),
+                    )
 
             storage_key_fr: str | None = None
             storage_url_fr: str | None = None

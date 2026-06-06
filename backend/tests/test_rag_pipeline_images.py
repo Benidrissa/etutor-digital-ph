@@ -717,3 +717,122 @@ class TestRAGPipelineClearSourceImages:
 
         assert count == 3
         assert mock_delete.call_count == 3
+
+
+class TestRAGPipelineVisionCaption:
+    """#2435: vision reads the real caption + flags body-text crops at ingest."""
+
+    def setup_method(self):
+        self.embedding_service = AsyncMock()
+        self.embedding_service.generate_embedding = AsyncMock(return_value=[0.1] * 1536)
+        self.pipeline = RAGPipeline(self.embedding_service)
+        self.temp_dir = tempfile.mkdtemp()
+
+    def teardown_method(self):
+        import shutil
+
+        shutil.rmtree(self.temp_dir)
+
+    @pytest.mark.asyncio
+    async def test_vision_caption_feeds_translator_not_figure_number(self):
+        from app.ai.translation.figure_caption_reader import FigureCaptionRead
+        from app.ai.translation.figure_translator import FigureTranslation
+
+        pdf_path = Path(self.temp_dir) / "test.pdf"
+        pdf_path.touch()
+        # Extractor left caption empty; only the figure number is known.
+        fake_image = _make_extracted_image(caption=None, figure_number="Figure 4.2")
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=MagicMock())
+
+        translation_stub = FigureTranslation(
+            caption_fr="La courbe d'apprentissage",
+            caption_en="The learning curve",
+            alt_text_fr="courbe",
+            alt_text_en="curve",
+        )
+
+        with (
+            patch(
+                "app.ai.rag.pipeline.PDFImageExtractor.extract_images_from_pdf",
+                return_value=[fake_image],
+            ),
+            patch(
+                "app.ai.rag.pipeline.S3StorageService.upload_bytes",
+                new_callable=AsyncMock,
+                return_value="http://minio/k.webp",
+            ),
+            patch(
+                "app.ai.rag.pipeline.read_figure_caption",
+                new_callable=AsyncMock,
+                return_value=FigureCaptionRead(
+                    caption="The Learning Curve and the Cost of Production", is_body_text=False
+                ),
+            ),
+            patch(
+                "app.ai.rag.pipeline.translate_figure_caption",
+                new_callable=AsyncMock,
+                return_value=translation_stub,
+            ) as mock_translate,
+            patch("app.ai.rag.pipeline.classify_figure", new_callable=AsyncMock) as mock_classify,
+            patch.object(
+                ImageLinker, "link_images_to_chunks", new_callable=AsyncMock, return_value=0
+            ),
+        ):
+            mock_classify.return_value = MagicMock(kind="chart")
+            count = await self.pipeline.process_pdf_images(
+                pdf_path=str(pdf_path), source="donaldson", session=mock_session
+            )
+
+        assert count == 1
+        # The real caption (not "Figure 4.2") was fed to translation.
+        assert (
+            mock_translate.call_args.kwargs["caption"]
+            == "The Learning Curve and the Cost of Production"
+        )
+        added = mock_session.add.call_args[0][0]
+        assert added.caption == "The Learning Curve and the Cost of Production"
+
+    @pytest.mark.asyncio
+    async def test_body_text_crop_tagged_and_classification_skipped(self):
+        from app.ai.translation.figure_caption_reader import FigureCaptionRead
+
+        pdf_path = Path(self.temp_dir) / "test.pdf"
+        pdf_path.touch()
+        fake_image = _make_extracted_image(figure_number="Figure 4.1")
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=MagicMock())
+
+        with (
+            patch(
+                "app.ai.rag.pipeline.PDFImageExtractor.extract_images_from_pdf",
+                return_value=[fake_image],
+            ),
+            patch(
+                "app.ai.rag.pipeline.S3StorageService.upload_bytes",
+                new_callable=AsyncMock,
+                return_value="http://minio/k.webp",
+            ),
+            patch(
+                "app.ai.rag.pipeline.read_figure_caption",
+                new_callable=AsyncMock,
+                return_value=FigureCaptionRead(caption=None, is_body_text=True),
+            ),
+            patch("app.ai.rag.pipeline.translate_figure_caption", new_callable=AsyncMock),
+            patch("app.ai.rag.pipeline.classify_figure", new_callable=AsyncMock) as mock_classify,
+            patch.object(
+                ImageLinker, "link_images_to_chunks", new_callable=AsyncMock, return_value=0
+            ),
+        ):
+            count = await self.pipeline.process_pdf_images(
+                pdf_path=str(pdf_path), source="donaldson", session=mock_session
+            )
+
+        assert count == 1
+        added = mock_session.add.call_args[0][0]
+        assert added.figure_kind == "body_text"
+        mock_classify.assert_not_called()

@@ -59,7 +59,19 @@ class Settings(BaseSettings):
     # Issue #1928 — staging burned ~$30 in 4 hours of repeated backfills.
     enable_figure_vision: bool = True
 
-    # Google AI (Gemini TTS)
+    # Figure-vision provider selection (#2435). The classifier + caption reader
+    # call whichever provider is configured here. Gemini 2.5 Flash-Lite is the
+    # cheapest accurate VLM (~$0.10/$0.40 per 1M; a figure image bills ~258
+    # tokens) and is reached through its OpenAI-compatible endpoint, so it
+    # reuses the OpenAI client and needs no extra dependency. Switch to
+    # "anthropic" (Haiku) or "openai" without code changes.
+    figure_vision_provider: str = "gemini"  # gemini | anthropic | openai
+    figure_vision_gemini_model: str = "gemini-2.5-flash-lite"
+    figure_vision_anthropic_model: str = "claude-haiku-4-5"
+    figure_vision_openai_model: str = "gpt-4o-mini"
+    gemini_openai_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
+    # Google AI (Gemini TTS + figure vision)
     google_api_key: str = ""
 
     # OpenAI Embeddings
