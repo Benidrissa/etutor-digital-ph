@@ -75,6 +75,7 @@ class TestClassifyFigure:
             "micrograph",
             "decorative",
             "complex_diagram",
+            "body_text",
         ],
     )
     async def test_each_allowed_kind_parses(self, kind: str):

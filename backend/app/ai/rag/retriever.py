@@ -23,6 +23,9 @@ logger = structlog.get_logger()
 # at retrieval time so the lesson generator never sees them as candidates.
 _STOCK_THUMB_MAX_WIDTH = 200
 _STOCK_THUMB_KINDS = ("photo", "decorative")
+# Kinds that are never figures and must never surface in a lesson/tutor, even
+# at full size — mis-extracted page text. (#2431)
+_EXCLUDED_KINDS = ("body_text",)
 
 # High-precision SourceImageChunk reference types. PR #2066 added
 # `semantic` (caption-vs-chunk cosine similarity) which expanded the
@@ -326,6 +329,13 @@ class SemanticRetriever:
                             SourceImage.width <= _STOCK_THUMB_MAX_WIDTH,
                         ),
                     )
+                ),
+                # Never surface mis-extracted body-text crops, regardless of
+                # size (they're large, so the stock-thumb filter misses them).
+                # NULL kinds are kept — they're not yet classified. (#2431)
+                or_(
+                    SourceImage.figure_kind.is_(None),
+                    SourceImage.figure_kind.notin_(_EXCLUDED_KINDS),
                 ),
             )
             .order_by(
