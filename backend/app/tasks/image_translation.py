@@ -31,6 +31,7 @@ from app.ai.translation import (
     classify_figure,
     extract_flowchart_structure,
     extract_label_positions,
+    read_figure_caption,
     render_overlay_svg,
     render_svg,
     translate_figure_caption,
@@ -437,6 +438,196 @@ async def _run_kind_backfill_with_factory(
             "status": "complete",
             "eligible": total,
             "classified": classified,
+            "failed": failed,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Caption recovery via vision (#2435)
+# ---------------------------------------------------------------------------
+#
+# Existing rows where the extractor never captured a caption show the bare
+# figure number ("Figure 4.2") because the translator was fed the figure number
+# as a fallback. Re-read the real caption from the stored image, then re-translate.
+# A row the model says is body-text gets tagged figure_kind=body_text (feeds the
+# #2431 purge). Mirrors backfill_figure_kinds (per-task engine, kill-switch,
+# batched HTTP-GET under a semaphore).
+
+
+@celery_app.task(
+    bind=True,
+    base=FigureClassificationTask,
+    time_limit=3600,
+    soft_time_limit=3300,
+    ignore_result=True,
+    acks_late=False,
+)
+def backfill_figure_captions(
+    self,
+    rag_collection_id: str | None = None,
+    limit: int | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Recover real captions for rows whose caption is missing or equals the figure number."""
+    return asyncio.run(
+        _run_caption_backfill(
+            task=self,
+            rag_collection_id=rag_collection_id,
+            limit=limit,
+            dry_run=dry_run,
+        )
+    )
+
+
+async def _run_caption_backfill(
+    task: Task,
+    rag_collection_id: str | None,
+    limit: int | None,
+    dry_run: bool,
+) -> dict:
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        return await _run_caption_backfill_with_factory(
+            task=task,
+            rag_collection_id=rag_collection_id,
+            limit=limit,
+            dry_run=dry_run,
+            session_factory=session_factory,
+        )
+    finally:
+        await engine.dispose()
+
+
+async def _run_caption_backfill_with_factory(
+    task: Task,
+    rag_collection_id: str | None,
+    limit: int | None,
+    dry_run: bool,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> dict:
+    if not settings.enable_figure_vision:
+        logger.info("caption backfill short-circuit: vision disabled")
+        return {"status": "disabled", "eligible": 0, "recovered": 0, "body_text": 0, "failed": 0}
+    async with session_factory() as session:
+        # Rows whose caption is missing or is just the figure number — exactly
+        # the degenerate "Figure 4.2" case — and that still have a fetchable image.
+        stmt = select(SourceImage).where(
+            SourceImage.storage_url.is_not(None),
+            or_(
+                SourceImage.caption.is_(None),
+                func.btrim(SourceImage.caption) == "",
+                SourceImage.caption == SourceImage.figure_number,
+            ),
+        )
+        if rag_collection_id is not None:
+            stmt = stmt.where(SourceImage.rag_collection_id == rag_collection_id)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+
+        rows = (await session.execute(stmt)).scalars().all()
+        total = len(rows)
+        logger.info(
+            "Caption backfill: eligible rows",
+            total=total,
+            rag_collection_id=rag_collection_id,
+            dry_run=dry_run,
+        )
+        task.update_state(
+            state="READING_CAPTIONS",
+            meta={"step": "reading", "total": total, "processed": 0, "recovered": 0, "failed": 0},
+        )
+        if dry_run or total == 0:
+            return {
+                "status": "dry_run" if dry_run else "noop",
+                "eligible": total,
+                "recovered": 0,
+                "body_text": 0,
+                "failed": 0,
+            }
+
+        recovered = 0
+        body_text = 0
+        failed = 0
+        sem = asyncio.Semaphore(_CONCURRENCY)
+
+        async with httpx.AsyncClient(timeout=30.0) as http:
+
+            async def _read_one(img):
+                async with sem:
+                    try:
+                        upstream = await http.get(img.storage_url)
+                        upstream.raise_for_status()
+                        image_bytes = upstream.content
+                    except Exception as exc:  # noqa: BLE001
+                        return img, None, ("fetch", exc)
+                    try:
+                        result = await read_figure_caption(image_bytes=image_bytes)
+                        return img, result, None
+                    except Exception as exc:  # noqa: BLE001
+                        return img, None, ("read", exc)
+
+            processed = 0
+            for batch_start in range(0, total, _BATCH_SIZE):
+                batch = rows[batch_start : batch_start + _BATCH_SIZE]
+                outcomes = await asyncio.gather(*(_read_one(img) for img in batch))
+                for img, result, err in outcomes:
+                    if err is not None:
+                        stage, exc = err
+                        failed += 1
+                        logger.warning(
+                            "Caption %s failed for source image, skipping",
+                            stage,
+                            source_image_id=str(img.id),
+                            figure_number=img.figure_number,
+                            error=str(exc),
+                        )
+                        continue
+                    if result.is_body_text:
+                        img.figure_kind = "body_text"
+                        session.add(img)
+                        body_text += 1
+                        continue
+                    if not result.caption:
+                        continue
+                    img.caption = result.caption
+                    try:
+                        translation = await translate_figure_caption(
+                            caption=result.caption,
+                            image_type=img.image_type,
+                            figure_number=img.figure_number,
+                        )
+                        img.caption_fr = translation.caption_fr
+                        img.caption_en = translation.caption_en
+                        img.alt_text_fr = translation.alt_text_fr
+                        img.alt_text_en = translation.alt_text_en
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning(
+                            "Re-translate after caption recovery failed; stored raw caption only",
+                            source_image_id=str(img.id),
+                            error=str(exc),
+                        )
+                    session.add(img)
+                    recovered += 1
+                await session.commit()
+                processed = batch_start + len(batch)
+                task.update_state(
+                    state="READING_CAPTIONS",
+                    meta={
+                        "step": "reading",
+                        "total": total,
+                        "processed": processed,
+                        "recovered": recovered,
+                        "body_text": body_text,
+                        "failed": failed,
+                    },
+                )
+
+        return {
+            "status": "complete",
+            "eligible": total,
+            "recovered": recovered,
+            "body_text": body_text,
             "failed": failed,
         }
 
