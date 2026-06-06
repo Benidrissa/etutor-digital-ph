@@ -92,8 +92,12 @@ def extract_course_resource(self, resource_id: str) -> dict:
         pdf_path = course_dir / f"{original_filename}.pdf"
 
         if not pdf_path.exists():
-            for candidate in course_dir.glob("*.pdf"):
-                if candidate.stem == original_filename:
+            # Case-insensitive fallback: files uploaded with an uppercase ".PDF"
+            # were written verbatim, and the lowercase lookup + "*.pdf" glob
+            # above are case-sensitive on Linux. Match on the extension lowercased
+            # so existing ".PDF" uploads are recovered without re-uploading.
+            for candidate in course_dir.glob("*"):
+                if candidate.suffix.lower() == ".pdf" and candidate.stem == original_filename:
                     pdf_path = candidate
                     break
 

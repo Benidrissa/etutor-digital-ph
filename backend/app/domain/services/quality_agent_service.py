@@ -42,6 +42,7 @@ import structlog
 from sqlalchemy import and_, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.ai.claude_service import ClaudeService
 from app.ai.prompts.quality import (
@@ -184,11 +185,16 @@ class CourseQualityService:
             summary_parts.append(f"### {r.filename}\n{r.summary_text.strip()[:6000]}")
         source_summaries_block = "\n\n".join(summary_parts) or "(no source summaries available)"
 
-        # Glossary
+        # Glossary. Eager-load first_unit: the loop below reads
+        # ``t.first_unit.unit_number``, and a lazy relationship access on an
+        # AsyncSession raises "greenlet_spawn has not been called". This runs
+        # in the Celery sweep (assess_course_task) outside any per-unit
+        # try/except, so the lazy load would fail the whole run.
         gloss_result = await session.execute(
             select(CourseGlossaryTerm)
             .where(CourseGlossaryTerm.course_id == course_id)
             .where(CourseGlossaryTerm.language == language)
+            .options(selectinload(CourseGlossaryTerm.first_unit))
         )
         terms = list(gloss_result.scalars().all())
         glossary_parts: list[str] = []
