@@ -65,6 +65,8 @@ import {
   CourseResourceUploadStep,
   useCourseResourceUpload,
 } from "@/components/admin/course-resource-upload-step";
+import { SourceStatusBadge } from "@/components/admin/source-status-badge";
+import { CourseSourcesUsage } from "@/components/admin/course-sources-usage";
 
 const EXTRACTING_STATUSES = new Set(["pending", "extracting"]);
 
@@ -150,6 +152,7 @@ function AttachedResources({
                 <p className="truncate text-xs font-medium">{f.name}</p>
                 <p className="text-xs text-muted-foreground">{formatBytes(f.size_bytes)}</p>
               </div>
+              <SourceStatusBadge status={f.extraction_status} chunks={f.chunks_indexed} />
             </div>
           ))}
         </div>
@@ -1693,6 +1696,18 @@ export function AICourseWizard({
                       )}
                       {tAi("linker.retryButton")}
                     </Button>
+                  )}
+
+                  {courseId && (
+                    <div className="space-y-2 pt-1">
+                      <p className="text-sm font-medium">
+                        {t("sourcesUsage.title")}
+                      </p>
+                      <CourseSourcesUsage
+                        courseId={courseId}
+                        refreshKey={indexStatus?.chunks_indexed}
+                      />
+                    </div>
                   )}
                 </div>
               );

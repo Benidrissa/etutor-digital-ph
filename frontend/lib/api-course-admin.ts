@@ -22,6 +22,23 @@ export interface UploadedFile {
   status: "queued" | "uploading" | "uploaded" | "error";
   error?: string;
   extraction_status?: ExtractionStatus;
+  // Count of DocumentChunk rows tied to this resource — the definitive
+  // "this source is actually used in RAG" signal (>0 used, 0 not used).
+  chunks_indexed?: number;
+}
+
+// Per-source status as returned by GET /admin/courses/{id}/resources. The
+// endpoint is DB-driven, so failed / deduped / missing-on-disk sources all
+// appear here (they were previously invisible).
+export interface CourseResourceStatus {
+  resource_id: string;
+  name: string;
+  size_bytes: number | null;
+  uploaded_at: string;
+  extraction_status: ExtractionStatus;
+  char_count: number | null;
+  chunks_indexed: number;
+  on_disk: boolean;
 }
 
 export interface CourseInfo {
@@ -152,7 +169,7 @@ export async function deleteCourseResource(
 
 export async function getCourseResources(
   courseId: string
-): Promise<{ files: Array<{ name: string; size_bytes: number; extraction_status?: ExtractionStatus }> }> {
+): Promise<{ course_id: string; files: CourseResourceStatus[] }> {
   return apiFetch(`/api/v1/admin/courses/${courseId}/resources`);
 }
 
