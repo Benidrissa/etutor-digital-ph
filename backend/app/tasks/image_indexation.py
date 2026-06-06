@@ -368,42 +368,177 @@ async def _run_purge_with_factory(
         )
 
         if dry_run:
-            preview = [
-                {
-                    "id": str(img.id),
-                    "rag_collection_id": img.rag_collection_id,
-                    "page_number": img.page_number,
-                    "figure_number": img.figure_number,
-                    "width": img.width,
-                    "height": img.height,
-                    "storage_key": img.storage_key,
-                }
-                for img in rows[:20]
-            ]
-            return {"status": "dry_run", "eligible": total, "preview": preview}
+            return {"status": "dry_run", "eligible": total, "preview": _purge_preview(rows)}
 
-        deleted = 0
-        storage_failed = 0
-        for img in rows:
-            for key in (img.storage_key, img.storage_key_fr):
-                if not key:
-                    continue
-                try:
-                    await storage.delete_object(key)
-                except Exception as exc:  # noqa: BLE001
-                    storage_failed += 1
-                    logger.warning(
-                        "Failed to delete orphan-figure object from storage",
-                        source_image_id=str(img.id),
-                        key=key,
-                        error=str(exc),
-                    )
-            await session.delete(img)
-            deleted += 1
-        await session.commit()
+        deleted, storage_failed = await _delete_image_rows(session, rows, storage)
 
         logger.info(
             "Orphan-figure purge complete",
+            deleted=deleted,
+            storage_failed=storage_failed,
+            rag_collection_id=rag_collection_id,
+        )
+        return {
+            "status": "complete",
+            "eligible": total,
+            "deleted": deleted,
+            "storage_failed": storage_failed,
+        }
+
+
+def _purge_preview(rows: list) -> list[dict]:
+    """First 20 rows summarised for a purge dry-run response."""
+    return [
+        {
+            "id": str(img.id),
+            "rag_collection_id": img.rag_collection_id,
+            "page_number": img.page_number,
+            "figure_number": img.figure_number,
+            "figure_kind": img.figure_kind,
+            "width": img.width,
+            "height": img.height,
+            "storage_key": img.storage_key,
+        }
+        for img in rows[:20]
+    ]
+
+
+async def _delete_image_rows(session, rows: list, storage) -> tuple[int, int]:
+    """Delete source-image rows + their MinIO objects. Returns (deleted, storage_failed).
+
+    A MinIO failure is logged and counted but never blocks the DB delete — the
+    junction rows cascade and any baked-in ``{{source_image:UUID}}`` lesson
+    marker becomes a no-op orphan (dropped client-side, #2428).
+    """
+    deleted = 0
+    storage_failed = 0
+    for img in rows:
+        for key in (img.storage_key, img.storage_key_fr):
+            if not key:
+                continue
+            try:
+                await storage.delete_object(key)
+            except Exception as exc:  # noqa: BLE001
+                storage_failed += 1
+                logger.warning(
+                    "Failed to delete figure object from storage",
+                    source_image_id=str(img.id),
+                    key=key,
+                    error=str(exc),
+                )
+        await session.delete(img)
+        deleted += 1
+    await session.commit()
+    return deleted, storage_failed
+
+
+# ---------------------------------------------------------------------------
+# Cleanup for mis-extracted body-text crops (#2431)
+# ---------------------------------------------------------------------------
+#
+# The vision classifier (figure_classifier `body_text`) flags source_images
+# whose binary is a screenshot of running page text, not a figure. Duplicate
+# figure_numbers used to let an explicit "Figure X" citation resolve to one of
+# these crops (last-writer-wins in the linker, since fixed). Purge them so they
+# never render; lessons that cited a now-deleted image drop the orphan
+# {{source_image:UUID}} marker cleanly client-side (#2428). Unlike the
+# full-page purge above, this keys purely on the classified kind, so it catches
+# captioned, non-full-page crops too. Run `backfill_figure_kinds` first.
+
+
+class PurgeBodyTextFiguresTask(Task):
+    """Celery base for the body-text figure purge."""
+
+    def on_success(self, retval, task_id, args, kwargs):
+        logger.info("Body-text figure purge completed", task_id=task_id, result=retval)
+
+    def on_failure(self, exc, task_id, args, kwargs, einfo):
+        logger.error("Body-text figure purge failed", task_id=task_id, exception=str(exc))
+
+
+@celery_app.task(
+    bind=True,
+    base=PurgeBodyTextFiguresTask,
+    time_limit=1800,
+    soft_time_limit=1500,
+    ignore_result=True,
+    acks_late=False,
+)
+def purge_body_text_figures(
+    self,
+    rag_collection_id: str | None = None,
+    limit: int | None = None,
+    dry_run: bool = True,
+) -> dict:
+    """Delete ``source_images`` classified as ``body_text`` (mis-extracted page text).
+
+    Requires ``figure_kind`` to be populated first (run ``backfill_figure_kinds``).
+    Args mirror :func:`purge_orphan_full_page_figures`.
+    """
+    return asyncio.run(
+        _run_body_text_purge(
+            rag_collection_id=rag_collection_id,
+            limit=limit,
+            dry_run=dry_run,
+        )
+    )
+
+
+async def _run_body_text_purge(
+    rag_collection_id: str | None,
+    limit: int | None,
+    dry_run: bool,
+) -> dict:
+    from app.infrastructure.config.settings import settings
+    from app.infrastructure.storage.s3 import S3StorageService
+
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        return await _run_body_text_purge_with_factory(
+            rag_collection_id=rag_collection_id,
+            limit=limit,
+            dry_run=dry_run,
+            session_factory=session_factory,
+            storage=S3StorageService(),
+        )
+    finally:
+        await engine.dispose()
+
+
+async def _run_body_text_purge_with_factory(
+    rag_collection_id: str | None,
+    limit: int | None,
+    dry_run: bool,
+    session_factory: async_sessionmaker[AsyncSession],
+    storage,
+) -> dict:
+    from app.domain.models.source_image import SourceImage
+
+    async with session_factory() as session:
+        stmt = select(SourceImage).where(SourceImage.figure_kind == "body_text")
+        if rag_collection_id is not None:
+            stmt = stmt.where(SourceImage.rag_collection_id == rag_collection_id)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+
+        rows = (await session.execute(stmt)).scalars().all()
+        total = len(rows)
+
+        logger.info(
+            "Body-text figure purge: eligible rows",
+            total=total,
+            rag_collection_id=rag_collection_id,
+            dry_run=dry_run,
+        )
+
+        if dry_run:
+            return {"status": "dry_run", "eligible": total, "preview": _purge_preview(rows)}
+
+        deleted, storage_failed = await _delete_image_rows(session, rows, storage)
+
+        logger.info(
+            "Body-text figure purge complete",
             deleted=deleted,
             storage_failed=storage_failed,
             rag_collection_id=rag_collection_id,

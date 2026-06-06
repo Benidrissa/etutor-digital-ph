@@ -143,7 +143,7 @@ class TestExplicitLinkage:
 
         session.execute.side_effect = [
             _make_execute_result([(chunk_id, "See Figure 1.3 for the diagram.")]),
-            _make_execute_result([(img_id, "1.3")]),
+            _make_execute_result([(img_id, "1.3", None, None, None, None)]),
             _make_execute_result([]),
             _make_execute_result([(img_id, 5, "chapter_1")]),
             _make_execute_result([(chunk_id, 5, "chapter_1")]),
@@ -161,6 +161,38 @@ class TestExplicitLinkage:
         assert explicit_rows[0].document_chunk_id == chunk_id
 
     @pytest.mark.asyncio
+    async def test_explicit_link_prefers_real_figure_over_body_text_dup(self):
+        """Two images share 'Figure 1.4' — the citation must link the real
+        figure, not the (larger, first-listed) mis-extracted body-text crop.
+        Guards the duplicate-figure_number binary-mismatch bug (#2431)."""
+        linker = ImageLinker()
+        session = _mock_session()
+        img_bad = _uuid()  # body_text crop — listed first AND larger
+        img_good = _uuid()  # the real chart
+        chunk_id = _uuid()
+
+        session.execute.side_effect = [
+            _make_execute_result([(chunk_id, "See Figure 1.4 for the data.")]),
+            _make_execute_result(
+                [
+                    (img_bad, "Figure 1.4", "body_text", 1024, 900, 95000),
+                    (img_good, "Figure 1.4", "chart", 800, 600, 30000),
+                ]
+            ),
+            _make_execute_result([]),
+            _make_execute_result([]),
+            _make_execute_result([]),
+            _make_execute_result([]),
+        ]
+
+        await linker.link_images_to_chunks("donaldson", session)
+
+        added = session.add_all.call_args[0][0]
+        explicit_rows = [r for r in added if r.reference_type == "explicit"]
+        assert len(explicit_rows) == 1
+        assert explicit_rows[0].source_image_id == img_good
+
+    @pytest.mark.asyncio
     async def test_explicit_link_dash_figure_number(self):
         """DB stores '1-3', text says 'Figure 1.3' — must still match after normalisation."""
         linker = ImageLinker()
@@ -170,7 +202,7 @@ class TestExplicitLinkage:
 
         session.execute.side_effect = [
             _make_execute_result([(chunk_id, "See Figure 1.3 for the diagram.")]),
-            _make_execute_result([(img_id, "1-3")]),
+            _make_execute_result([(img_id, "1-3", None, None, None, None)]),
             _make_execute_result([]),
             _make_execute_result([(img_id, 5, None)]),
             _make_execute_result([(chunk_id, 5, None)]),
@@ -194,7 +226,7 @@ class TestExplicitLinkage:
 
         session.execute.side_effect = [
             _make_execute_result([(chunk_id, "As shown in Fig. 2.1, the data reveals...")]),
-            _make_execute_result([(img_id, "2.1")]),
+            _make_execute_result([(img_id, "2.1", None, None, None, None)]),
             _make_execute_result([]),
             _make_execute_result([(img_id, 10, None)]),
             _make_execute_result([(chunk_id, 10, None)]),
@@ -216,7 +248,7 @@ class TestExplicitLinkage:
 
         session.execute.side_effect = [
             _make_execute_result([(chunk_id, "No figures mentioned here.")]),
-            _make_execute_result([(img_id, "1.3")]),
+            _make_execute_result([(img_id, "1.3", None, None, None, None)]),
             _make_execute_result([]),
             _make_execute_result([(img_id, 3, None)]),
             _make_execute_result([]),
@@ -255,7 +287,7 @@ class TestExplicitLinkage:
 
         session.execute.side_effect = [
             _make_execute_result([(chunk_id, "Figure 1.3 is important.")]),
-            _make_execute_result([(img_id, "1.3")]),
+            _make_execute_result([(img_id, "1.3", None, None, None, None)]),
             _make_execute_result([(img_id,)]),
             _make_execute_result([(img_id, chunk_id)]),
             _make_execute_result([(img_id, 5, None)]),
@@ -378,7 +410,7 @@ class TestContextualLinkage:
 
         session.execute.side_effect = [
             _make_execute_result([(chunk_id, "See Figure 2.0 here.")]),
-            _make_execute_result([(img_id, "2.0")]),
+            _make_execute_result([(img_id, "2.0", None, None, None, None)]),
             _make_execute_result([]),
             _make_execute_result([(img_id, 10, None)]),
             _make_execute_result([(chunk_id, 10, None)]),
@@ -510,7 +542,12 @@ class TestEdgeCases:
 
         session.execute.side_effect = [
             _make_execute_result([(chunk_id, "See Figure 1.1 and Figure 2.2.")]),
-            _make_execute_result([(img1_id, "1.1"), (img2_id, "2.2")]),
+            _make_execute_result(
+                [
+                    (img1_id, "1.1", None, None, None, None),
+                    (img2_id, "2.2", None, None, None, None),
+                ]
+            ),
             _make_execute_result([]),
             _make_execute_result([(img1_id, 4, None), (img2_id, 9, None)]),
             _make_execute_result([(chunk_id, 4, None)]),
@@ -567,7 +604,7 @@ class TestEdgeCases:
 
         session.execute.side_effect = [
             _make_execute_result([(chunk_id, "Figure 3.0 here.")]),
-            _make_execute_result([(img_id, "3.0")]),
+            _make_execute_result([(img_id, "3.0", None, None, None, None)]),
             _make_execute_result([]),
             _make_execute_result([(img_id, 2, None)]),
             _make_execute_result([(chunk_id, 99, None)]),
@@ -703,7 +740,7 @@ class TestSemanticLinkage:
 
         session.execute.side_effect = [
             _make_execute_result([(chunk_id, "See Figure 1.3 for the diagram.")]),
-            _make_execute_result([(img_id, "1.3")]),
+            _make_execute_result([(img_id, "1.3", None, None, None, None)]),
             _make_execute_result([]),  # no pre-existing pairs
             _make_execute_result([(img_id, 5, None)]),  # contextual images
             _make_execute_result([(chunk_id, 5, None)]),  # contextual chunks
