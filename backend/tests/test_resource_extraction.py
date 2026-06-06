@@ -121,6 +121,70 @@ class TestExtractCourseResourceTask:
         assert mock_resource.extraction_status == EXTRACTION_STATUS_DONE
         assert mock_resource.raw_text
 
+    def test_task_finds_uppercase_pdf_extension(self, tmp_path):
+        """Regression: a file uploaded with an uppercase ``.PDF`` extension is
+        written verbatim, but the lookup builds ``<stem>.pdf`` and globs
+        ``*.pdf`` — both case-sensitive on Linux — so the source was silently
+        dropped. The fallback must match the extension case-insensitively.
+        """
+        from app.tasks.resource_extraction import extract_course_resource
+
+        course_id = uuid.uuid4()
+        resource_id = uuid.uuid4()
+
+        pdf_dir = tmp_path / str(course_id)
+        pdf_dir.mkdir(parents=True)
+        # Uppercase extension on disk; DB stores the bare stem.
+        (pdf_dir / "Donor_Alignment.PDF").write_bytes(_make_minimal_pdf())
+
+        mock_resource = MagicMock()
+        mock_resource.id = resource_id
+        mock_resource.course_id = course_id
+        mock_resource.filename = "Donor_Alignment"
+        mock_resource.extraction_status = EXTRACTION_STATUS_PENDING
+
+        mock_course = MagicMock()
+        mock_course.id = course_id
+        mock_course.creation_mode = "legacy"
+        mock_course.rag_collection_id = None
+        mock_course.indexation_task_id = None
+
+        class MockSession:
+            def get(self, model, pk):
+                from app.domain.models.course import Course
+                from app.domain.models.course_resource import CourseResource
+
+                if model is CourseResource:
+                    return mock_resource
+                if model is Course:
+                    return mock_course
+                return None
+
+            def add(self, _obj):
+                pass
+
+            def commit(self):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                pass
+
+        with (
+            patch("app.tasks.resource_extraction.UPLOAD_DIR", tmp_path),
+            patch(
+                "app.tasks.resource_extraction.Session",
+                side_effect=lambda *a, **k: MockSession(),
+            ),
+        ):
+            result = extract_course_resource(str(resource_id))
+
+        assert result["status"] == "done"
+        assert mock_resource.extraction_status == EXTRACTION_STATUS_DONE
+        assert mock_resource.raw_text
+
     def test_task_marks_failed_when_pdf_missing(self, tmp_path):
         from app.tasks.resource_extraction import extract_course_resource
 

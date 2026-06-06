@@ -533,6 +533,7 @@ def assess_course_task(
                                 content_id=str(gc.id),
                                 run_id=run_id,
                                 error=str(e),
+                                exc_info=True,
                             )
                             # Roll back the failed unit's tx but keep the sweep going.
                             await session.rollback()
@@ -565,5 +566,6 @@ def assess_course_task(
             run_id=run_id,
             exception=str(exc),
             task_id=self.request.id,
+            exc_info=True,
         )
         return {"status": "failed", "error": str(exc), "run_id": run_id}

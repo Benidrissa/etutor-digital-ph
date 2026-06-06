@@ -1688,7 +1688,13 @@ async def upload_course_resource(
     file_hash = hashlib.sha256(data).hexdigest()
 
     safe_name = re.sub(r"[^\w.\-]", "_", Path(file.filename or "resource.pdf").name)
-    if not safe_name.lower().endswith(".pdf"):
+    # Normalise the extension to a lowercase ".pdf". Files uploaded with an
+    # uppercase ".PDF" were written verbatim, but extract_course_resource looks
+    # for "<stem>.pdf" and globs "*.pdf" — both case-sensitive on Linux — so the
+    # source was silently dropped ("PDF file not found on disk").
+    if safe_name.lower().endswith(".pdf"):
+        safe_name = safe_name[: -len(".pdf")] + ".pdf"
+    else:
         safe_name += ".pdf"
 
     # File-hash dedup: if an identical PDF was already extracted for any course,
