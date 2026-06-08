@@ -7,17 +7,21 @@ pytest-asyncio event-loop conflict that keeps the integration suite skipped
 
 from __future__ import annotations
 
+import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
 
+from app.api.v1 import admin_courses
 from app.api.v1.admin_courses import (
+    SuggestMetadataResponse,
     _diagnose_indexation_pointer,
     _require_extracted_sources,
     _require_indexed_sources,
     _safe_task_meta,
+    suggest_course_metadata,
 )
 
 
@@ -409,3 +413,102 @@ async def test_list_course_resources_reports_per_source_chunk_counts(tmp_path, m
     assert by_id[str(dropped.id)]["on_disk"] is False
     # The dropped source is visible even though it has no file on disk.
     assert len(resp["files"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# #2452 — suggest-metadata routes through the pluggable provider (not the
+# Anthropic SDK), so non-Anthropic content models (e.g. Moonshot) work.
+# ---------------------------------------------------------------------------
+
+
+class _Result:
+    def __init__(self, scalar=None, rows=None):
+        self._scalar = scalar
+        self._rows = rows or []
+
+    def scalar_one_or_none(self):
+        return self._scalar
+
+    def __iter__(self):
+        return iter(self._rows)
+
+
+class _QueuedDB:
+    """Async DB stub returning queued execute() results in order."""
+
+    def __init__(self, results):
+        self._results = list(results)
+
+    async def execute(self, *args, **kwargs):
+        return self._results.pop(0)
+
+
+def _fake_course():
+    return SimpleNamespace(
+        languages="fr,en",
+        objectives_json={"fr": ["Comprendre X"], "en": ["Understand X"]},
+        taxonomy_categories=[SimpleNamespace(slug="public_health", type="domain")],
+        estimated_hours=20,
+    )
+
+
+def _patch_model(monkeypatch, model: str):
+    import app.domain.services.platform_settings_service as pss
+
+    monkeypatch.setattr(
+        pss.SettingsCache,
+        "instance",
+        staticmethod(lambda: SimpleNamespace(get=lambda k, d=None: model)),
+    )
+
+
+@pytest.mark.asyncio
+async def test_suggest_metadata_routes_through_resolve_provider(monkeypatch):
+    monkeypatch.setattr(admin_courses, "_require_extracted_sources", AsyncMock(return_value=None))
+    _patch_model(monkeypatch, "moonshot-v1-128k")
+
+    captured: dict = {}
+
+    class _Provider:
+        async def complete(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(
+                text='{"title_fr": "Titre", "title_en": "Title", '
+                '"description_fr": "Desc fr", "description_en": "Desc en"}',
+                stop_reason="end_turn",
+                usage={},
+            )
+
+    def _fake_resolve(model):
+        captured["resolved_model"] = model
+        return _Provider()
+
+    monkeypatch.setattr("app.ai.providers.resolve_provider", _fake_resolve)
+
+    db = _QueuedDB([_Result(scalar=_fake_course()), _Result(rows=[("Some extracted text",)])])
+
+    resp = await suggest_course_metadata(course_id=uuid.uuid4(), db=db)
+
+    assert isinstance(resp, SuggestMetadataResponse)
+    assert resp.title_fr == "Titre" and resp.description_en == "Desc en"
+    # Routed through the configured (non-Anthropic) model via the provider, JSON mode on.
+    assert captured["resolved_model"] == "moonshot-v1-128k"
+    assert captured["model"] == "moonshot-v1-128k"
+    assert captured["json_object"] is True
+
+
+@pytest.mark.asyncio
+async def test_suggest_metadata_missing_provider_key_returns_503(monkeypatch):
+    monkeypatch.setattr(admin_courses, "_require_extracted_sources", AsyncMock(return_value=None))
+    _patch_model(monkeypatch, "moonshot-v1-128k")
+
+    def _raise(model):
+        raise ValueError("MOONSHOT_API_KEY required for model 'moonshot-v1-128k'")
+
+    monkeypatch.setattr("app.ai.providers.resolve_provider", _raise)
+
+    db = _QueuedDB([_Result(scalar=_fake_course()), _Result(rows=[("text",)])])
+
+    with pytest.raises(HTTPException) as exc:
+        await suggest_course_metadata(course_id=uuid.uuid4(), db=db)
+    assert exc.value.status_code == 503
