@@ -82,6 +82,7 @@ COURSE_PASSING_RATIO = 0.92  # for early exit
 DEFAULT_BUDGET_FULL = 200
 DEFAULT_BUDGET_TARGETED = 50
 
+
 def normalize_term(text: str) -> str:
     """Lowercase + strip accents + collapse whitespace.
 

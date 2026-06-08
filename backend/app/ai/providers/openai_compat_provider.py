@@ -158,9 +158,7 @@ class OpenAICompatLLMProvider:
             if delta and delta.content:
                 yield delta.content
 
-    def build_tool_result_messages(
-        self, results: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
+    def build_tool_result_messages(self, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return [
             {"role": "tool", "tool_call_id": r["tool_call_id"], "content": r["content"]}
             for r in results
