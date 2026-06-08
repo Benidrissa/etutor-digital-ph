@@ -365,6 +365,34 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 0.0, "max": 1.5},
     ),
     SettingDef(
+        "ai-model-content",
+        "ai",
+        "claude-sonnet-4-6",
+        "string",
+        "Model — content generation",
+        "Claude model for lessons, quizzes, flashcards, case studies, "
+        "pre-assessments, course syllabi and video scripts.",
+    ),
+    SettingDef(
+        "ai-model-quality",
+        "ai",
+        "claude-sonnet-4-6",
+        "string",
+        "Model — quality auditor",
+        "Claude model for the course-quality auditor. Haiku is a cheaper "
+        "option once detection accuracy has been benchmarked.",
+    ),
+    SettingDef(
+        "ai-model-image-metadata",
+        "ai",
+        "claude-haiku-4-5",
+        "string",
+        "Model — image metadata",
+        "Claude model for image concept/tag extraction and alt-text "
+        "(low-stakes structured calls). Override to a larger model if "
+        "quality regresses.",
+    ),
+    SettingDef(
         "ai-rag-default-top-k",
         "ai",
         8,
@@ -401,6 +429,23 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 600, "max": 7200},
     ),
     # ── Tutor ──────────────────────────────────────────────
+    SettingDef(
+        "tutor-model",
+        "tutor",
+        "claude-sonnet-4-6",
+        "string",
+        "Model — tutor response",
+        "Claude model for the main tutor conversation loop.",
+    ),
+    SettingDef(
+        "tutor-suggestions-model",
+        "tutor",
+        "claude-haiku-4-5",
+        "string",
+        "Model — tutor suggestions / mini-quiz",
+        "Claude model for the tutor mini-quiz tool (bounded structured "
+        "output). Override to a larger model if quality regresses.",
+    ),
     SettingDef(
         "tutor-response-max-tokens",
         "tutor",

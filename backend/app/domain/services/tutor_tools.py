@@ -542,7 +542,7 @@ Respond ONLY with valid JSON in this exact format:
 }}"""
 
         response = await self.anthropic.messages.create(
-            model="claude-sonnet-4-6",
+            model=SettingsCache.instance().get("tutor-suggestions-model", "claude-haiku-4-5"),
             messages=[{"role": "user", "content": prompt}],
             max_tokens=SettingsCache.instance().get("tutor-suggestions-max-tokens", 800),
             temperature=SettingsCache.instance().get("tutor-suggestions-temperature", 0.5),

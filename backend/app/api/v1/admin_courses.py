@@ -717,15 +717,20 @@ Respond with ONLY this JSON object, no other text:
 
     from anthropic import Anthropic
 
+    from app.domain.services.platform_settings_service import SettingsCache
+
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="AI service not configured",
         )
+    # Was hardcoded to the deprecated claude-sonnet-4-20250514 (retires
+    # 2026-06-15). Use the config-driven content model (default Sonnet 4.6).
+    model = SettingsCache.instance().get("ai-model-content", "claude-sonnet-4-6")
     client = Anthropic(api_key=api_key)
     response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model=model,
         max_tokens=1024,
         system=(
             "You are a curriculum design expert. You propose clear, accurate, "
