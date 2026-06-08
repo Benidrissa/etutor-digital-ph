@@ -81,6 +81,7 @@ services:
       APP_ENV: production
       CORS_ORIGINS: https://etutor.elearning.portfolio2.kimbetien.com
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY}
       # Cost kill-switch for Vision-backed figure tasks (#1928). Default
       # true preserves behaviour; flip to false in .env + recreate the
       # worker to stop Claude Vision spend on backfills + ingest.
@@ -192,6 +193,7 @@ services:
       APP_ENV: production
       CORS_ORIGINS: https://etutor.elearning.portfolio2.kimbetien.com
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY}
       # Cost kill-switch for Vision-backed figure tasks (#1928). Default
       # true preserves behaviour; flip to false in .env + recreate the
       # worker to stop Claude Vision spend on backfills + ingest.

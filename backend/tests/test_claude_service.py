@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.ai.providers.base import LLMResult
+
 
 def _make_response(text: str, stop_reason: str = "end_turn"):
     """Build a mock Claude API response."""
@@ -38,6 +40,25 @@ def claude_service():
 
                 service = ClaudeService()
                 service.client = AsyncMock()
+
+                # ClaudeService now routes through a provider (#2443). Keep the
+                # existing tests' `client.messages.create` mocking intact by
+                # making the fake provider's complete() call it and adapt the
+                # Anthropic-style mock response into an LLMResult.
+                async def _fake_complete(**kwargs):
+                    resp = await service.client.messages.create(**kwargs)
+                    text = "".join(
+                        b.text for b in resp.content if getattr(b, "type", None) == "text"
+                    )
+                    return LLMResult(
+                        text=text,
+                        stop_reason=resp.stop_reason,
+                        usage={"output_tokens": getattr(resp.usage, "output_tokens", None)},
+                    )
+
+                fake_provider = MagicMock()
+                fake_provider.complete = AsyncMock(side_effect=_fake_complete)
+                service._provider = lambda: fake_provider
                 return service
 
 

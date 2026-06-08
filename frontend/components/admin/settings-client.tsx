@@ -184,6 +184,13 @@ function SettingRow({ setting, saving, onSave, onReset, t }: {
               className="rounded border bg-background px-2 py-1 text-sm">
               <option value="true">true</option><option value="false">false</option>
             </select>
+          ) : setting.allowed_options && setting.allowed_options.length > 0 ? (
+            <select value={draft} onChange={(e) => setDraft(e.target.value)}
+              className="rounded border bg-background px-2 py-1 text-sm">
+              {setting.allowed_options.map((opt) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
           ) : (
             <input type={setting.value_type === "integer" || setting.value_type === "float" ? "number" : "text"}
               step={setting.value_type === "float" ? "0.1" : "1"}

@@ -854,6 +854,7 @@ export interface PlatformSetting {
   validation_rules: { min?: number; max?: number } | null;
   is_sensitive: boolean;
   is_default: boolean;
+  allowed_options?: string[] | null;
 }
 
 export interface SettingsByCategory {
