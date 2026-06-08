@@ -623,7 +623,7 @@ class LessonVideoService:
     ) -> tuple[str, dict]:
         anthropic_client = self._claude.client
         async with anthropic_client.messages.stream(
-            model="claude-sonnet-4-6",
+            model=SettingsCache.instance().get("ai-model-content", "claude-sonnet-4-6"),
             max_tokens=4000,
             system=system_prompt,
             messages=[{"role": "user", "content": user_message}],

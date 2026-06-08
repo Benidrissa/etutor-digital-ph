@@ -137,6 +137,12 @@ class CourseQualityService:
     ):
         self.claude_service = claude_service
         self.semantic_retriever = semantic_retriever
+        # Auditor model is config-driven; defaults to Sonnet. Switching to a
+        # cheaper model (e.g. claude-haiku-4-5) is opt-in pending a detection-
+        # accuracy benchmark — note calculate_cost_cents() assumes Sonnet pricing.
+        from app.domain.services.platform_settings_service import SettingsCache
+
+        self._model = SettingsCache.instance().get("ai-model-quality", "claude-sonnet-4-6")
 
     # ---- Context builder (cached prefix) ----------------------------
 
@@ -305,6 +311,7 @@ class CourseQualityService:
             ],
             user_message=user_message,
             content_type="glossary_extraction",
+            model=self._model,
         )
         if parsed.get("raw_response"):
             logger.error(
@@ -453,6 +460,7 @@ class CourseQualityService:
             system_blocks=cached_blocks,
             user_message=user_message,
             content_type=f"quality_audit_{gc.content_type}",
+            model=self._model,
         )
 
         if parsed.get("raw_response"):
@@ -499,7 +507,7 @@ class CourseQualityService:
             score=Decimal(final_score),
             dimension_scores=report.dimension_scores.model_dump(),
             flags=[f.model_dump() for f in report.flags],
-            model="claude-sonnet-4-6",
+            model=self._model,
             tokens_in=usage.get("input_tokens"),
             tokens_out=usage.get("output_tokens"),
             cache_read_tokens=usage.get("cache_read_input_tokens"),

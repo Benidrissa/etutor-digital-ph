@@ -205,7 +205,10 @@ class ImageGenerationService:
         """Use Claude API to extract key concept, DALL-E prompt, and semantic tags."""
         import anthropic
 
+        from app.domain.services.platform_settings_service import SettingsCache
+
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=600.0)
+        model = SettingsCache.instance().get("ai-model-image-metadata", "claude-haiku-4-5")
 
         language_name = "French" if language == "fr" else "English"
 
@@ -262,7 +265,7 @@ class ImageGenerationService:
         )
 
         message = await client.messages.create(
-            model="claude-sonnet-4-6",
+            model=model,
             max_tokens=400,
             messages=[
                 {
@@ -381,10 +384,13 @@ class ImageGenerationService:
         """Generate bilingual alt-text for the image."""
         import anthropic
 
+        from app.domain.services.platform_settings_service import SettingsCache
+
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=600.0)
+        model = SettingsCache.instance().get("ai-model-image-metadata", "claude-haiku-4-5")
 
         message = await client.messages.create(
-            model="claude-sonnet-4-6",
+            model=model,
             max_tokens=100,
             messages=[
                 {

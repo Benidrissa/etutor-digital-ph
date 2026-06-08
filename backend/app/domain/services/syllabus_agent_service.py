@@ -138,11 +138,14 @@ class SyllabusAgentService:
         module_id: uuid.UUID | None,
     ) -> AsyncGenerator[str, None]:
         """Run the Claude tool_use agent loop."""
+        from app.domain.services.platform_settings_service import SettingsCache
+
         max_iterations = 5
+        model = SettingsCache.instance().get("ai-model-content", "claude-sonnet-4-6")
 
         for _ in range(max_iterations):
             response = await self._client.messages.create(
-                model="claude-sonnet-4-6",
+                model=model,
                 max_tokens=8192,
                 system=self._system_prompt,
                 tools=self._tools,

@@ -1422,10 +1422,11 @@ class TutorService:
             sources_cited: list[dict[str, Any]] = []
             source_image_refs: list[dict[str, Any]] = []
             api_messages: list[MessageParam] = list(conversation_history)
+            tutor_model = _sc().get("tutor-model", "claude-sonnet-4-6")
 
             while tool_call_count <= MAX_TOOL_CALLS:
                 response = await self.anthropic.messages.create(
-                    model="claude-sonnet-4-6",
+                    model=tutor_model,
                     system=system_prompt,
                     messages=api_messages,
                     tools=TOOL_DEFINITIONS,
@@ -1442,7 +1443,7 @@ class TutorService:
                     if usage is not None:
                         logger.info(
                             "tutor_claude_call",
-                            model="claude-sonnet-4-6",
+                            model=tutor_model,
                             input_tokens=getattr(usage, "input_tokens", None),
                             output_tokens=getattr(usage, "output_tokens", None),
                             cache_read=getattr(usage, "cache_read_input_tokens", None),
@@ -2341,7 +2342,7 @@ class TutorService:
                 )
 
                 compact_response = await self.anthropic.messages.create(
-                    model="claude-sonnet-4-6",
+                    model=_sc().get("tutor-model", "claude-sonnet-4-6"),
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=_sc().get("tutor-compaction-max-tokens", 600),
                     temperature=_sc().get("tutor-compaction-temperature", 0.3),
