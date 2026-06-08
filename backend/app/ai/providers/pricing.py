@@ -1,0 +1,48 @@
+"""Per-model pricing for generation cost accounting (#2443).
+
+Replaces the Sonnet-hardcoded constants in ``quality_agent_service``. Cents per
+million tokens. ``cache_write`` / ``cache_read`` apply only to Anthropic prompt
+caching; OpenAI-compatible providers report cached input under ``cache_read`` at
+their own (lower) rate, or 0 when unsupported.
+
+Re-verify against each vendor's official pricing when it changes.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+# cents per 1M tokens: (input, output, cache_write, cache_read)
+_PRICING: dict[str, dict[str, int]] = {
+    "claude-sonnet-4-6": {"input": 300, "output": 1500, "cache_write": 375, "cache_read": 30},
+    "claude-haiku-4-5": {"input": 100, "output": 500, "cache_write": 125, "cache_read": 10},
+    "claude-opus-4-6": {"input": 500, "output": 2500, "cache_write": 625, "cache_read": 50},
+    # Moonshot Kimi K2.6 — $0.95 / $4.00 per 1M; auto prefix-cache ~$0.16/M input.
+    "kimi-k2.6": {"input": 95, "output": 400, "cache_write": 0, "cache_read": 16},
+}
+
+_DEFAULT = {"input": 300, "output": 1500, "cache_write": 375, "cache_read": 30}
+
+
+def get_pricing(model: str) -> dict[str, int]:
+    return _PRICING.get(model, _DEFAULT)
+
+
+def calculate_cost_cents(model: str, usage: dict[str, Any]) -> int:
+    """Cost of one call in integer cents, using ``model``'s pricing table.
+
+    ``usage`` keys: ``input_tokens``, ``output_tokens``,
+    ``cache_creation_input_tokens``, ``cache_read_input_tokens``.
+    """
+    p = get_pricing(model)
+    inp = int(usage.get("input_tokens") or 0)
+    out = int(usage.get("output_tokens") or 0)
+    cwrite = int(usage.get("cache_creation_input_tokens") or 0)
+    cread = int(usage.get("cache_read_input_tokens") or 0)
+    cents = (
+        inp * p["input"]
+        + out * p["output"]
+        + cwrite * p["cache_write"]
+        + cread * p["cache_read"]
+    ) / 1_000_000
+    return int(round(cents))

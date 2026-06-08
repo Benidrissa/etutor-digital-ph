@@ -82,14 +82,6 @@ COURSE_PASSING_RATIO = 0.92  # for early exit
 DEFAULT_BUDGET_FULL = 200
 DEFAULT_BUDGET_TARGETED = 50
 
-# Approximate Claude Sonnet 4.6 pricing (cents per million tokens)
-# Used for cost_cents accounting; refresh when pricing changes.
-PRICING_INPUT_CENTS_PER_M = 300  # $3 / M
-PRICING_OUTPUT_CENTS_PER_M = 1500  # $15 / M
-PRICING_CACHE_WRITE_CENTS_PER_M = 375  # ~25% premium on writes
-PRICING_CACHE_READ_CENTS_PER_M = 30  # ~10% of input
-
-
 def normalize_term(text: str) -> str:
     """Lowercase + strip accents + collapse whitespace.
 
@@ -103,25 +95,17 @@ def normalize_term(text: str) -> str:
     return s
 
 
-def calculate_cost_cents(usage: dict[str, Any]) -> int:
-    """Compute the cost of one Claude call in integer cents.
+def calculate_cost_cents(usage: dict[str, Any], model: str = "claude-sonnet-4-6") -> int:
+    """Compute the cost of one LLM call in integer cents for ``model``.
 
-    ``usage`` keys: ``input_tokens``, ``output_tokens``,
+    Delegates to the per-model pricing table (``app.ai.providers.pricing``).
+    ``model`` defaults to Sonnet so existing single-argument callers are
+    unchanged. ``usage`` keys: ``input_tokens``, ``output_tokens``,
     ``cache_creation_input_tokens``, ``cache_read_input_tokens``.
-    Anthropic reports cache reads + cache writes SEPARATELY from the
-    main ``input_tokens`` field (which is then the *uncached* portion).
     """
-    inp = int(usage.get("input_tokens") or 0)
-    out = int(usage.get("output_tokens") or 0)
-    cwrite = int(usage.get("cache_creation_input_tokens") or 0)
-    cread = int(usage.get("cache_read_input_tokens") or 0)
-    cents = (
-        inp * PRICING_INPUT_CENTS_PER_M
-        + out * PRICING_OUTPUT_CENTS_PER_M
-        + cwrite * PRICING_CACHE_WRITE_CENTS_PER_M
-        + cread * PRICING_CACHE_READ_CENTS_PER_M
-    ) / 1_000_000
-    return int(round(cents))
+    from app.ai.providers.pricing import calculate_cost_cents as _calc
+
+    return _calc(model, usage)
 
 
 # ---- Service ------------------------------------------------------------
@@ -138,8 +122,9 @@ class CourseQualityService:
         self.claude_service = claude_service
         self.semantic_retriever = semantic_retriever
         # Auditor model is config-driven; defaults to Sonnet. Switching to a
-        # cheaper model (e.g. claude-haiku-4-5) is opt-in pending a detection-
-        # accuracy benchmark — note calculate_cost_cents() assumes Sonnet pricing.
+        # cheaper model (e.g. claude-haiku-4-5 / kimi-k2.6) is opt-in pending a
+        # detection-accuracy benchmark; cost_cents uses the per-model pricing
+        # table, so the recorded cost stays correct after a switch.
         from app.domain.services.platform_settings_service import SettingsCache
 
         self._model = SettingsCache.instance().get("ai-model-quality", "claude-sonnet-4-6")
@@ -499,7 +484,7 @@ class CourseQualityService:
         gc.quality_status = "passing" if not needs_regen else "needs_review"
 
         # Persist the assessment row.
-        cost = calculate_cost_cents(usage)
+        cost = calculate_cost_cents(usage, self._model)
         assessment = UnitQualityAssessment(
             run_id=run_id,
             generated_content_id=content_id,

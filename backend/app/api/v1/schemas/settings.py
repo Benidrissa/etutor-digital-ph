@@ -16,6 +16,7 @@ class SettingResponse(BaseModel):
     validation_rules: dict | None = None
     is_sensitive: bool = False
     is_default: bool = True
+    allowed_options: list[str] | None = None
 
 
 class SettingUpdateRequest(BaseModel):

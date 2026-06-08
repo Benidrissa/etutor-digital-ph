@@ -1,12 +1,12 @@
 """Course content creator agent — generates full course structure via Claude API."""
 
-import os
 import uuid
 from typing import Any
 
 import structlog
 
 from app.ai.model_registry import get_model_caps
+from app.ai.providers import resolve_provider
 
 # ── Tool-use schema for structured syllabus output ──────────────────
 # Claude is forced to call this tool, ensuring every unit has an
@@ -444,19 +444,7 @@ class CourseAgentService:
         estimated_hours, bloom_level, and a sequential module_number.
         Falls back to 2 placeholder modules if ANTHROPIC_API_KEY is not set.
         """
-        api_key = os.getenv("ANTHROPIC_API_KEY", "")
-        if not api_key:
-            logger.warning(
-                "ANTHROPIC_API_KEY not set — returning placeholder modules",
-                course=title_en,
-            )
-            return _PLACEHOLDER_MODULES
-
         try:
-            import anthropic
-
-            client = anthropic.AsyncAnthropic(api_key=api_key)
-
             domains_str = ", ".join(course_domain) if course_domain else "General"
             levels_str = ", ".join(course_level) if course_level else "All levels"
             audience_str = ", ".join(audience_type) if audience_type else "Professionals"
@@ -516,38 +504,36 @@ class CourseAgentService:
                     audience_type=audience_type,
                 )
 
-            # Use tool_use to enforce structured JSON output
-            async with client.messages.stream(
-                model=_model,
-                max_tokens=64000,
+            # Force structured output via the save_syllabus tool, through the
+            # provider resolved from the active content model (Anthropic or an
+            # OpenAI-compatible backend such as Moonshot Kimi).
+            provider = resolve_provider(_model)
+            result = await provider.complete(
+                system="",
                 messages=[{"role": "user", "content": prompt}],
+                max_tokens=64000,
+                temperature=0.7,
+                model=_model,
                 tools=[SYLLABUS_TOOL],
                 tool_choice={"type": "tool", "name": "save_syllabus"},
-            ) as stream:
-                message = await stream.get_final_message()
+            )
 
-            # Extract modules from tool_use block
+            # Extract modules from the tool call
             modules_raw = None
-            for block in message.content:
-                if block.type == "tool_use" and block.name == "save_syllabus":
-                    modules_raw = block.input.get("modules", [])
-                    break
+            if result.tool_calls:
+                modules_raw = result.tool_calls[0].input.get("modules", [])
 
-            # Fallback: if tool_use failed, try raw text parsing
+            # Fallback: if the tool call failed, try raw text parsing
             if not modules_raw:
                 logger.warning(
                     "tool_use extraction failed, falling back to text",
                     course=title_en,
-                    stop_reason=message.stop_reason,
+                    stop_reason=result.stop_reason,
                 )
-                for block in message.content:
-                    if hasattr(block, "text") and block.text:
-                        raw = block.text.strip()
-                        if raw.startswith("```"):
-                            raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-                        modules_raw = _try_parse_modules(raw)
-                        if modules_raw:
-                            break
+                raw = (result.text or "").strip()
+                if raw.startswith("```"):
+                    raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+                modules_raw = _try_parse_modules(raw)
 
             if not modules_raw:
                 raise ValueError("Failed to extract modules from tool_use or text")
