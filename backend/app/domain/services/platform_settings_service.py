@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -77,10 +78,20 @@ def _write_overrides(data: dict[str, Any]) -> None:
 
 
 class SettingsCache:
-    """Process-local cache for synchronous access."""
+    """Process-local cache for synchronous access.
+
+    Auto-reloads when the backing ``platform_settings.json`` changes on disk, so
+    a separate process (e.g. the Celery worker) picks up admin updates written by
+    the API process without a restart — the file lives on a shared volume. The
+    staleness check is mtime-based and throttled to at most once per
+    ``_CHECK_INTERVAL`` seconds to keep ``get()`` cheap on hot paths.
+    """
 
     _instance: SettingsCache | None = None
     _data: dict[str, Any] = {}
+    _mtime: float | None = None
+    _last_check: float = 0.0
+    _CHECK_INTERVAL = 2.0
 
     @classmethod
     def instance(cls) -> SettingsCache:
@@ -89,11 +100,29 @@ class SettingsCache:
         return cls._instance
 
     def get(self, key: str, default: Any = None) -> Any:
+        self._maybe_refresh()
         return self._data.get(key, default)
+
+    @staticmethod
+    def _file_mtime() -> float | None:
+        try:
+            return _SETTINGS_FILE.stat().st_mtime
+        except OSError:
+            return None
+
+    def _maybe_refresh(self) -> None:
+        """Reload if the settings file changed, checked at most once per interval."""
+        now = time.monotonic()
+        if now - self._last_check < self._CHECK_INTERVAL:
+            return
+        self._last_check = now
+        if self._file_mtime() != self._mtime:
+            self.refresh()
 
     def refresh(self) -> None:
         overrides = _read_overrides()
         self._data = {d.key: overrides.get(d.key, d.default) for d in SETTING_DEFINITIONS}
+        self._mtime = self._file_mtime()
         logger.debug("settings_cache.refreshed", count=len(self._data))
 
 
