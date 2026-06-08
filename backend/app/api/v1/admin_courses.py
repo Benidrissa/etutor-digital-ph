@@ -713,33 +713,43 @@ Respond with ONLY this JSON object, no other text:
 }}"""
 
     import json as json_module
-    import os
 
-    from anthropic import Anthropic
-
+    from app.ai.providers import resolve_provider
     from app.domain.services.platform_settings_service import SettingsCache
 
-    api_key = os.getenv("ANTHROPIC_API_KEY", "")
-    if not api_key:
+    # Was hardcoded to the deprecated claude-sonnet-4-20250514 (retires
+    # 2026-06-15). Use the config-driven content model (default Sonnet 4.6),
+    # routed through the pluggable provider so non-Anthropic models (e.g.
+    # Moonshot) work too instead of 404ing against the Anthropic SDK.
+    model = SettingsCache.instance().get("ai-model-content", "claude-sonnet-4-6")
+    system_prompt = (
+        "You are a curriculum design expert. You propose clear, accurate, "
+        "and compelling course titles and descriptions based on source materials "
+        "and learning objectives. Always respond with valid JSON only."
+    )
+    try:
+        result = await resolve_provider(model).complete(
+            system=system_prompt,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=1024,
+            temperature=0.7,
+            model=model,
+            json_object=True,
+        )
+    except ValueError as exc:
+        # Registry raises when the configured model's API key is unset.
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="AI service not configured",
-        )
-    # Was hardcoded to the deprecated claude-sonnet-4-20250514 (retires
-    # 2026-06-15). Use the config-driven content model (default Sonnet 4.6).
-    model = SettingsCache.instance().get("ai-model-content", "claude-sonnet-4-6")
-    client = Anthropic(api_key=api_key)
-    response = client.messages.create(
-        model=model,
-        max_tokens=1024,
-        system=(
-            "You are a curriculum design expert. You propose clear, accurate, "
-            "and compelling course titles and descriptions based on source materials "
-            "and learning objectives. Always respond with valid JSON only."
-        ),
-        messages=[{"role": "user", "content": prompt}],
-    )
-    response_text = response.content[0].text.strip()
+        ) from exc
+    except Exception as exc:
+        logger.error("suggest_metadata generation failed", model=model, error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="AI generation failed",
+        ) from exc
+
+    response_text = (result.text or "").strip()
 
     # Parse JSON from response
     try:
