@@ -51,6 +51,16 @@ class Settings(BaseSettings):
     # Anthropic Claude API
     anthropic_api_key: str = ""
 
+    # Pluggable content-generation providers (#2443). The active model is the
+    # admin-selected `ai-model-content` setting; the registry resolves it to a
+    # provider by prefix. Keys are server-side only (never exposed to clients).
+    # Kimi K2.6 is served over Moonshot's OpenAI-compatible endpoint — keep prod
+    # use gated on a data-residency compliance review (China-based servers).
+    moonshot_api_key: str = ""
+    moonshot_base_url: str = "https://api.moonshot.ai/v1"
+    openrouter_api_key: str = ""
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+
     # Cost kill-switch for Vision-backed figure tasks (classifier, flowchart
     # SVG re-deriver, complex_diagram overlay extractor). Set to False in an
     # environment that shouldn't spend on Claude Vision — backfills and the

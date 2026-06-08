@@ -21,6 +21,9 @@ class SettingDef:
     description: str = ""
     validation: dict | None = None
     is_sensitive: bool = False
+    # When set, the value must be one of these; the admin UI renders a
+    # single-select dropdown instead of a free-text field (#2443).
+    allowed_options: list[str] | None = None
 
 
 SETTING_DEFINITIONS: list[SettingDef] = [
@@ -370,8 +373,12 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "claude-sonnet-4-6",
         "string",
         "Model — content generation",
-        "Claude model for lessons, quizzes, flashcards, case studies, "
-        "pre-assessments, course syllabi and video scripts.",
+        "Model for lessons, quizzes, flashcards, case studies, pre-assessments, "
+        "course syllabi and video scripts. Resolved to a provider by prefix "
+        "(claude-* → Anthropic; kimi-* → Moonshot). NOTE: kimi-k2.6 runs on "
+        "China-based servers — confirm data-residency compliance before using it "
+        "for production user content.",
+        allowed_options=["claude-sonnet-4-6", "claude-haiku-4-5", "kimi-k2.6"],
     ),
     SettingDef(
         "ai-model-quality",

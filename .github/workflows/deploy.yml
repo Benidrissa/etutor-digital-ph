@@ -282,6 +282,9 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Kimi K2.6 content generation (#2443), OpenAI-compatible. Optional —
+          # only used when ai-model-content is set to a kimi-* model.
+          MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
@@ -302,7 +305,7 @@ jobs:
           username: deploy
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           command_timeout: 30m
-          envs: GHCR_USER,GHCR_TOKEN,POSTGRES_PASSWORD,ANTHROPIC_API_KEY,OPENAI_API_KEY,GOOGLE_API_KEY,SENTRY_DSN,NEXT_PUBLIC_SENTRY_DSN,NEXT_PUBLIC_POSTHOG_KEY,NEXT_PUBLIC_POSTHOG_HOST,SMS_RELAY_API_KEY,SMS_RELAY_TRUSTED_SENDERS,MINIO_ACCESS_KEY,MINIO_SECRET_KEY,HEYGEN_API_KEY,DEPLOY_SHA
+          envs: GHCR_USER,GHCR_TOKEN,POSTGRES_PASSWORD,ANTHROPIC_API_KEY,MOONSHOT_API_KEY,OPENAI_API_KEY,GOOGLE_API_KEY,SENTRY_DSN,NEXT_PUBLIC_SENTRY_DSN,NEXT_PUBLIC_POSTHOG_KEY,NEXT_PUBLIC_POSTHOG_HOST,SMS_RELAY_API_KEY,SMS_RELAY_TRUSTED_SENDERS,MINIO_ACCESS_KEY,MINIO_SECRET_KEY,HEYGEN_API_KEY,DEPLOY_SHA
           script: |
             set -e
             cd ~/etutor
@@ -320,6 +323,7 @@ jobs:
             printf '%s\n' \
               "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}" \
               "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" \
+              "MOONSHOT_API_KEY=${MOONSHOT_API_KEY}" \
               "OPENAI_API_KEY=${OPENAI_API_KEY}" \
               "GOOGLE_API_KEY=${GOOGLE_API_KEY}" \
               "SENTRY_DSN=${SENTRY_DSN}" \
@@ -490,6 +494,9 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           POSTGRES_PASSWORD: ${{ secrets.PROD_POSTGRES_PASSWORD || secrets.POSTGRES_PASSWORD }}
           ANTHROPIC_API_KEY: ${{ secrets.PROD_ANTHROPIC_API_KEY || secrets.ANTHROPIC_API_KEY }}
+          # Kimi K2.6 content generation (#2443). Optional — only used when
+          # ai-model-content is a kimi-* model (gated on compliance review).
+          MOONSHOT_API_KEY: ${{ secrets.PROD_MOONSHOT_API_KEY || secrets.MOONSHOT_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.PROD_OPENAI_API_KEY || secrets.OPENAI_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.PROD_GOOGLE_API_KEY || secrets.GOOGLE_API_KEY }}
           SENTRY_DSN: ${{ secrets.PROD_SENTRY_DSN || secrets.SENTRY_DSN }}
@@ -511,7 +518,7 @@ jobs:
           # (staging DEPLOY_SSH_KEY won't have access to 94.250.201.110).
           key: ${{ secrets.PROD_DEPLOY_SSH_KEY }}
           command_timeout: 30m
-          envs: GHCR_USER,GHCR_TOKEN,POSTGRES_PASSWORD,ANTHROPIC_API_KEY,OPENAI_API_KEY,GOOGLE_API_KEY,SENTRY_DSN,NEXT_PUBLIC_SENTRY_DSN,NEXT_PUBLIC_POSTHOG_KEY,NEXT_PUBLIC_POSTHOG_HOST,SMS_RELAY_API_KEY,SMS_RELAY_TRUSTED_SENDERS,MINIO_ACCESS_KEY,MINIO_SECRET_KEY,HEYGEN_API_KEY,DEPLOY_SHA
+          envs: GHCR_USER,GHCR_TOKEN,POSTGRES_PASSWORD,ANTHROPIC_API_KEY,MOONSHOT_API_KEY,OPENAI_API_KEY,GOOGLE_API_KEY,SENTRY_DSN,NEXT_PUBLIC_SENTRY_DSN,NEXT_PUBLIC_POSTHOG_KEY,NEXT_PUBLIC_POSTHOG_HOST,SMS_RELAY_API_KEY,SMS_RELAY_TRUSTED_SENDERS,MINIO_ACCESS_KEY,MINIO_SECRET_KEY,HEYGEN_API_KEY,DEPLOY_SHA
           script: |
             set -e
             cd ~/etutor
@@ -522,6 +529,7 @@ jobs:
             printf '%s\n' \
               "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}" \
               "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" \
+              "MOONSHOT_API_KEY=${MOONSHOT_API_KEY}" \
               "OPENAI_API_KEY=${OPENAI_API_KEY}" \
               "GOOGLE_API_KEY=${GOOGLE_API_KEY}" \
               "SENTRY_DSN=${SENTRY_DSN}" \

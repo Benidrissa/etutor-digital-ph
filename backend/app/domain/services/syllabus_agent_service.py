@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.ai.prompts.syllabus_agent import get_syllabus_agent_system_prompt, get_tool_definitions
+from app.ai.providers import resolve_provider
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.domain.models.course import Course
@@ -142,55 +143,52 @@ class SyllabusAgentService:
 
         max_iterations = 5
         model = SettingsCache.instance().get("ai-model-content", "claude-sonnet-4-6")
+        provider = resolve_provider(model)
 
         for _ in range(max_iterations):
-            response = await self._client.messages.create(
-                model=model,
-                max_tokens=8192,
+            result = await provider.complete(
                 system=self._system_prompt,
-                tools=self._tools,
                 messages=messages,
+                max_tokens=8192,
+                temperature=0.7,
+                model=model,
+                tools=self._tools,
             )
 
-            if response.stop_reason == "tool_use":
-                tool_results = []
-                tool_use_blocks = []
+            if result.stop_reason == "tool_use":
+                if result.text.strip():
+                    payload = {"type": "content", "data": {"text": result.text}}
+                    yield f"data: {json.dumps(payload)}\n\n"
 
-                for block in response.content:
-                    if block.type == "text" and block.text.strip():
-                        yield f"data: {json.dumps({'type': 'content', 'data': {'text': block.text}})}\n\n"
-                    elif block.type == "tool_use":
-                        tool_use_blocks.append(block)
-                        tool_result = await self._execute_tool(
-                            tool_name=block.name,
-                            tool_input=block.input,
-                            admin_id=admin_id,
-                            admin_email=admin_email,
-                            session=session,
-                            module_id=module_id,
-                        )
-                        yield f"data: {json.dumps({'type': 'tool_call', 'data': {'tool': block.name, 'result_summary': self._summarize_tool_result(block.name, tool_result)}})}\n\n"
-                        tool_results.append(
-                            {
-                                "type": "tool_result",
-                                "tool_use_id": block.id,
-                                "content": json.dumps(tool_result),
-                            }
-                        )
+                tool_results = []
+                for call in result.tool_calls:
+                    tool_result = await self._execute_tool(
+                        tool_name=call.name,
+                        tool_input=call.input,
+                        admin_id=admin_id,
+                        admin_email=admin_email,
+                        session=session,
+                        module_id=module_id,
+                    )
+                    summary = self._summarize_tool_result(call.name, tool_result)
+                    event = {
+                        "type": "tool_call",
+                        "data": {"tool": call.name, "result_summary": summary},
+                    }
+                    yield f"data: {json.dumps(event)}\n\n"
+                    tool_results.append(
+                        {"tool_call_id": call.id, "content": json.dumps(tool_result)}
+                    )
 
                 messages = [
                     *messages,
-                    {"role": "assistant", "content": response.content},
-                    {"role": "user", "content": tool_results},
+                    result.assistant_message,
+                    *provider.build_tool_result_messages(tool_results),
                 ]
 
             else:
-                full_text = ""
-                for block in response.content:
-                    if hasattr(block, "text"):
-                        full_text += block.text
-
-                yield f"data: {json.dumps({'type': 'content', 'data': {'text': full_text}})}\n\n"
+                payload = {"type": "content", "data": {"text": result.text}}
+                yield f"data: {json.dumps(payload)}\n\n"
                 yield f"data: {json.dumps({'type': 'done', 'data': {}})}\n\n"
                 return
 
