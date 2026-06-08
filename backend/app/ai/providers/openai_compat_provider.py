@@ -10,6 +10,10 @@ Normalizes the OpenAI surface to the provider interface:
   * Anthropic tool schema → ``{"type": "function", "function": {...}}``;
   * ``tool_calls`` (arguments JSON string) → :class:`ToolCall`;
   * ``prompt_tokens`` / ``completion_tokens`` → ``input_tokens`` / ``output_tokens``.
+
+Backends that reject a forced single-tool ``tool_choice`` (Moonshot accepts only
+``none``/``auto``) set ``supports_forced_tool_choice=False``; ``complete()`` then
+emulates the forced tool with JSON mode and returns a synthetic ``ToolCall``.
 """
 
 from __future__ import annotations
@@ -58,8 +62,17 @@ class OpenAICompatLLMProvider:
     supports_cache_control = False
     is_anthropic = False
 
-    def __init__(self, *, api_key: str, base_url: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        base_url: str | None = None,
+        supports_forced_tool_choice: bool = True,
+    ) -> None:
         self._client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=_TIMEOUT_SECONDS)
+        # Moonshot accepts only tool_choice none/auto — never a forced single
+        # tool. When False, complete() emulates a forced tool via JSON mode.
+        self._supports_forced_tool_choice = supports_forced_tool_choice
 
     async def complete(
         self,
@@ -73,14 +86,32 @@ class OpenAICompatLLMProvider:
         tool_choice: dict[str, Any] | None = None,
         json_object: bool = False,
     ) -> LLMResult:
-        msgs = [{"role": "system", "content": flatten_system(system)}, *messages]
+        system_text = flatten_system(system)
+
+        # A forced single-tool call the backend can't express (Moonshot) is
+        # emulated with JSON mode: ask for a JSON object matching the tool's
+        # input_schema, then surface the parsed object as a synthetic ToolCall
+        # so call sites keep reading result.tool_calls[0] unchanged.
+        forced_name = (
+            tool_choice.get("name") if tool_choice and tool_choice.get("type") == "tool" else None
+        )
+        emulate_tool = bool(forced_name and tools and not self._supports_forced_tool_choice)
+
         kwargs: dict[str, Any] = {
             "model": model,
             "max_tokens": max_tokens,
             "temperature": temperature,
-            "messages": msgs,
         }
-        if tools:
+        if emulate_tool:
+            forced_tool = next((t for t in tools if t.get("name") == forced_name), tools[0])
+            schema = forced_tool.get("input_schema", {"type": "object", "properties": {}})
+            system_text += (
+                f"\n\nRespond with ONLY a single JSON object — no prose, no markdown — that "
+                f"conforms to this JSON schema for `{forced_name}`:\n"
+                f"{json.dumps(schema, ensure_ascii=False)}"
+            )
+            kwargs["response_format"] = {"type": "json_object"}
+        elif tools:
             kwargs["tools"] = _to_openai_tools(tools)
             if tool_choice:
                 kwargs["tool_choice"] = _to_openai_tool_choice(tool_choice)
@@ -89,29 +120,11 @@ class OpenAICompatLLMProvider:
             # forced tool already constrains the output shape.
             kwargs["response_format"] = {"type": "json_object"}
 
+        kwargs["messages"] = [{"role": "system", "content": system_text}, *messages]
+
         response = await self._client.chat.completions.create(**kwargs)
-        choice = response.choices[0]
-        msg = choice.message
-
-        tool_calls: list[ToolCall] = []
-        for tc in msg.tool_calls or []:
-            try:
-                args = json.loads(tc.function.arguments or "{}")
-            except json.JSONDecodeError:
-                logger.warning("tool_call arguments not valid JSON", name=tc.function.name)
-                args = {}
-            tool_calls.append(ToolCall(id=tc.id, name=tc.function.name, input=args))
-
-        assistant_message: dict[str, Any] = {"role": "assistant", "content": msg.content or ""}
-        if msg.tool_calls:
-            assistant_message["tool_calls"] = [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-                }
-                for tc in msg.tool_calls
-            ]
+        msg = response.choices[0].message
+        content = msg.content or ""
 
         usage = getattr(response, "usage", None)
         cached = 0
@@ -124,8 +137,60 @@ class OpenAICompatLLMProvider:
             "cache_creation_input_tokens": 0,
             "cache_read_input_tokens": cached,
         }
+
+        if emulate_tool:
+            try:
+                parsed = json.loads(content)
+            except json.JSONDecodeError:
+                logger.warning("emulated forced-tool JSON not parseable", name=forced_name)
+                return LLMResult(
+                    text=content,
+                    tool_calls=[],
+                    stop_reason="end_turn",
+                    usage=usage_dict,
+                    assistant_message={"role": "assistant", "content": content},
+                )
+            synthetic = ToolCall(id=f"call_{forced_name}", name=forced_name, input=parsed)
+            return LLMResult(
+                text="",
+                tool_calls=[synthetic],
+                stop_reason="tool_use",
+                usage=usage_dict,
+                assistant_message={
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": synthetic.id,
+                            "type": "function",
+                            "function": {"name": forced_name, "arguments": content},
+                        }
+                    ],
+                },
+            )
+
+        tool_calls: list[ToolCall] = []
+        for tc in msg.tool_calls or []:
+            try:
+                args = json.loads(tc.function.arguments or "{}")
+            except json.JSONDecodeError:
+                logger.warning("tool_call arguments not valid JSON", name=tc.function.name)
+                args = {}
+            tool_calls.append(ToolCall(id=tc.id, name=tc.function.name, input=args))
+
+        assistant_message: dict[str, Any] = {"role": "assistant", "content": content}
+        if msg.tool_calls:
+            assistant_message["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                }
+                for tc in msg.tool_calls
+            ]
+
         return LLMResult(
-            text=msg.content or "",
+            text=content,
             tool_calls=tool_calls,
             stop_reason="tool_use" if tool_calls else "end_turn",
             usage=usage_dict,

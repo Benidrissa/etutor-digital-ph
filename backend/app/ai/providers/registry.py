@@ -37,6 +37,9 @@ def resolve_provider(model: str) -> LLMProvider:
         return OpenAICompatLLMProvider(
             api_key=settings.moonshot_api_key,
             base_url=settings.moonshot_base_url,
+            # Moonshot's API rejects a forced single-tool tool_choice on every
+            # model — the provider emulates it via JSON mode instead.
+            supports_forced_tool_choice=False,
         )
 
     if m.startswith("gpt") or m.startswith("openai"):
