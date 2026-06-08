@@ -40,6 +40,7 @@ from sqlalchemy.orm import selectinload
 
 from app.ai.claude_service import ClaudeService
 from app.ai.prompts.audience import detect_audience
+from app.ai.providers import resolve_provider
 from app.domain.models.generated_audio import GeneratedAudio
 from app.domain.models.module import Module
 from app.domain.services.platform_settings_service import SettingsCache
@@ -621,23 +622,20 @@ class LessonVideoService:
         system_prompt: str,
         user_message: str,
     ) -> tuple[str, dict]:
-        anthropic_client = self._claude.client
-        async with anthropic_client.messages.stream(
-            model=SettingsCache.instance().get("ai-model-content", "claude-sonnet-4-6"),
-            max_tokens=4000,
+        model = SettingsCache.instance().get("ai-model-content", "claude-sonnet-4-6")
+        result = await resolve_provider(model).complete(
             system=system_prompt,
             messages=[{"role": "user", "content": user_message}],
+            max_tokens=4000,
+            temperature=0.7,
+            model=model,
             tools=[VIDEO_SCRIPT_TOOL],
             tool_choice={"type": "tool", "name": "save_video_script"},
-        ) as stream:
-            message = await stream.get_final_message()
+        )
 
-        for block in message.content:
-            if (
-                getattr(block, "type", None) == "tool_use"
-                and getattr(block, "name", None) == "save_video_script"
-            ):
-                payload = block.input or {}
+        for call in result.tool_calls:
+            if call.name == "save_video_script":
+                payload = call.input or {}
                 scenes = payload.get("scenes") or []
                 narration_parts: list[str] = []
                 for scene in scenes:
@@ -651,10 +649,10 @@ class LessonVideoService:
                     "scenes": scenes,
                 }
                 if not script:
-                    raise ValueError("Claude returned empty video script")
+                    raise ValueError("LLM returned empty video script")
                 return script, metadata
 
-        raise ValueError("Claude did not invoke the save_video_script tool")
+        raise ValueError("LLM did not invoke the save_video_script tool")
 
     def _heygen_callback_url(self) -> str | None:
         base = (settings.heygen_callback_base_url or "").rstrip("/")

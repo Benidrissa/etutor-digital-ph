@@ -53,6 +53,8 @@ def _validate_value(defn: SettingDef, raw: Any) -> Any:
             raise ValueError(f"'{defn.key}' must be >= {lo}")
         if hi is not None and isinstance(val, (int, float)) and val > hi:
             raise ValueError(f"'{defn.key}' must be <= {hi}")
+    if defn.allowed_options is not None and val not in defn.allowed_options:
+        raise ValueError(f"'{defn.key}' must be one of {defn.allowed_options}")
     return val
 
 
@@ -208,6 +210,7 @@ class PlatformSettingsService:
             "validation_rules": defn.validation,
             "is_sensitive": defn.is_sensitive,
             "is_default": current == defn.default,
+            "allowed_options": defn.allowed_options,
         }
 
     @staticmethod

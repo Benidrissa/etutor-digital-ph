@@ -3,26 +3,55 @@
 import json
 import re
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from typing import Any
 
 import anthropic
 import structlog
-from anthropic.types import Message
 
+from app.ai.providers import resolve_provider
+from app.ai.providers.base import LLMProvider
 from app.domain.services.platform_settings_service import SettingsCache
 from app.infrastructure.config.settings import get_settings
 
 logger = structlog.get_logger()
 
 
+@dataclass
+class _TextBlock:
+    text: str
+    type: str = "text"
+
+
+@dataclass
+class _ContentMessage:
+    """Minimal provider-neutral stand-in for an Anthropic ``Message``.
+
+    Content-generation callers only read ``.content`` (a list of blocks with
+    ``.text``); this lets ``generate_lesson_content`` return the same shape
+    whether the active provider is Anthropic or OpenAI-compatible.
+    """
+
+    content: list[_TextBlock]
+    stop_reason: str
+    usage: dict[str, Any]
+
+
 class ClaudeService:
-    """Service for interacting with Claude API for content generation."""
+    """Service for content generation, routed through a pluggable provider.
+
+    The active model is the admin-selected ``ai-model-content`` setting; it is
+    resolved to a provider (Anthropic, or an OpenAI-compatible backend such as
+    Moonshot Kimi) at call time. The class name is retained for compatibility
+    with existing call sites.
+    """
 
     def __init__(self):
         self.settings = get_settings()
         if not self.settings.anthropic_api_key:
             raise ValueError("ANTHROPIC_API_KEY is required")
 
+        # Retained for callers that still reach the raw Anthropic client directly.
         self.client = anthropic.AsyncAnthropic(
             api_key=self.settings.anthropic_api_key,
             timeout=600.0,
@@ -32,6 +61,10 @@ class ClaudeService:
         self._max_tokens = _cache.get("ai-max-tokens-content", 64000)
         self._temperature = _cache.get("ai-temperature-content", 0.7)
         self._model = _cache.get("ai-model-content", "claude-sonnet-4-6")
+
+    def _provider(self) -> LLMProvider:
+        """Resolve the provider for the configured content model."""
+        return resolve_provider(self._model)
 
     async def generate_lesson_content_stream(
         self,
@@ -49,45 +82,48 @@ class ClaudeService:
             AsyncGenerator for streaming text chunks
         """
         try:
-            async with self.client.messages.stream(
-                model=self._model,
-                max_tokens=self._max_tokens,
+            async for chunk in self._provider().stream(
                 system=system_prompt,
-                messages=[{"role": "user", "content": user_message}],
+                user_message=user_message,
+                max_tokens=self._max_tokens,
                 temperature=self._temperature,
-            ) as stream_manager:
-                async for event in stream_manager:
-                    if event.type == "content_block_delta" and event.delta.type == "text_delta":
-                        yield event.delta.text
+                model=self._model,
+            ):
+                yield chunk
 
         except Exception as e:
-            logger.error("Claude API streaming call failed", error=str(e))
+            logger.error("LLM streaming call failed", model=self._model, error=str(e))
             raise
 
     async def generate_lesson_content(
         self,
         system_prompt: str,
         user_message: str,
-    ) -> Message:
+    ) -> _ContentMessage:
         """
-        Generate lesson content using Claude API without streaming.
+        Generate lesson content (non-streaming) via the active provider.
 
         Args:
             system_prompt: System prompt for pedagogical context
             user_message: User message with RAG context and requirements
 
         Returns:
-            Message object from Claude API
+            A message-like object whose ``.content`` is a single text block
+            (provider-neutral; callers accumulate ``block.text``).
         """
         try:
-            response = await self.client.messages.create(
-                model=self._model,
-                max_tokens=self._max_tokens,
+            result = await self._provider().complete(
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
+                max_tokens=self._max_tokens,
                 temperature=self._temperature,
+                model=self._model,
             )
-            return response
+            return _ContentMessage(
+                content=[_TextBlock(text=result.text)],
+                stop_reason=result.stop_reason,
+                usage=result.usage,
+            )
 
         except Exception as e:
             logger.error("Claude API call failed", error=str(e))
@@ -139,12 +175,13 @@ class ClaudeService:
                 )
 
             try:
-                response = await self.client.messages.create(
-                    model=self._model,
-                    max_tokens=self._max_tokens,
+                result = await self._provider().complete(
                     system=system_prompt,
                     messages=[{"role": "user", "content": effective_user_message}],
+                    max_tokens=self._max_tokens,
                     temperature=self._temperature,
+                    model=self._model,
+                    json_object=True,
                 )
             except Exception as e:
                 logger.error(
@@ -154,21 +191,17 @@ class ClaudeService:
                 )
                 raise
 
-            if not response.content or len(response.content) == 0:
-                raise ValueError("Empty response from Claude API")
+            content_text = result.text
+            if not content_text:
+                raise ValueError("Empty response from LLM provider")
 
-            is_truncated = response.stop_reason == "max_tokens"
+            is_truncated = result.stop_reason == "max_tokens"
             if is_truncated:
                 logger.warning(
-                    "Claude response truncated at max_tokens",
+                    "LLM response truncated at max_tokens",
                     content_type=content_type,
-                    usage_output=getattr(response.usage, "output_tokens", None),
+                    usage_output=result.usage.get("output_tokens"),
                 )
-
-            content_text = ""
-            for block in response.content:
-                if hasattr(block, "text"):
-                    content_text += block.text
 
             last_content_text = content_text
 
@@ -286,44 +319,38 @@ class ClaudeService:
                 )
 
             try:
-                response = await self.client.messages.create(
-                    model=eff_model,
-                    max_tokens=eff_max_tokens,
+                # Provider resolved from eff_model (the auditor may run a
+                # different model than the content path). Non-Anthropic providers
+                # strip cache_control from the system blocks automatically.
+                result = await resolve_provider(eff_model).complete(
                     system=system_blocks,
                     messages=[{"role": "user", "content": effective_user_message}],
+                    max_tokens=eff_max_tokens,
                     temperature=eff_temperature,
+                    model=eff_model,
+                    json_object=True,
                 )
             except Exception as e:
                 logger.error(
-                    "Claude cached call failed",
+                    "Cached structured call failed",
                     content_type=content_type,
                     error=str(e),
                 )
                 raise
 
-            usage = getattr(response, "usage", None)
-            last_usage = {
-                "input_tokens": getattr(usage, "input_tokens", None),
-                "output_tokens": getattr(usage, "output_tokens", None),
-                "cache_creation_input_tokens": getattr(usage, "cache_creation_input_tokens", None),
-                "cache_read_input_tokens": getattr(usage, "cache_read_input_tokens", None),
-            }
+            last_usage = result.usage
 
-            if not response.content or len(response.content) == 0:
-                raise ValueError("Empty response from Claude API")
+            content_text = result.text
+            if not content_text:
+                raise ValueError("Empty response from LLM provider")
 
-            is_truncated = response.stop_reason == "max_tokens"
+            is_truncated = result.stop_reason == "max_tokens"
             if is_truncated:
                 logger.warning(
-                    "Claude cached response truncated at max_tokens",
+                    "Cached response truncated at max_tokens",
                     content_type=content_type,
                     usage=last_usage,
                 )
-
-            content_text = ""
-            for block in response.content:
-                if hasattr(block, "text"):
-                    content_text += block.text
             last_content_text = content_text
 
             try:
