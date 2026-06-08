@@ -40,9 +40,6 @@ def calculate_cost_cents(model: str, usage: dict[str, Any]) -> int:
     cwrite = int(usage.get("cache_creation_input_tokens") or 0)
     cread = int(usage.get("cache_read_input_tokens") or 0)
     cents = (
-        inp * p["input"]
-        + out * p["output"]
-        + cwrite * p["cache_write"]
-        + cread * p["cache_read"]
+        inp * p["input"] + out * p["output"] + cwrite * p["cache_write"] + cread * p["cache_read"]
     ) / 1_000_000
     return int(round(cents))

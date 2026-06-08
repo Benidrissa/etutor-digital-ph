@@ -99,9 +99,7 @@ class AnthropicLLMProvider:
                 if event.type == "content_block_delta" and event.delta.type == "text_delta":
                     yield event.delta.text
 
-    def build_tool_result_messages(
-        self, results: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
+    def build_tool_result_messages(self, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return [
             {
                 "role": "user",

@@ -78,9 +78,7 @@ class LLMProvider(Protocol):
         model: str,
     ) -> AsyncGenerator[str, None]: ...
 
-    def build_tool_result_messages(
-        self, results: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
+    def build_tool_result_messages(self, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Encode ``[{"tool_call_id": str, "content": str}, ...]`` as the
         next-turn message(s) in this provider's native shape."""
         ...
@@ -94,6 +92,4 @@ def flatten_system(system: str | list[dict[str, Any]]) -> str:
     """
     if isinstance(system, str):
         return system
-    return "\n\n".join(
-        block.get("text", "") for block in system if isinstance(block, dict)
-    )
+    return "\n\n".join(block.get("text", "") for block in system if isinstance(block, dict))
