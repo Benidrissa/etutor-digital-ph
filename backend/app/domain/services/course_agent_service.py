@@ -489,7 +489,9 @@ class CourseAgentService:
                 objectives_json=objectives_json,
             )
 
-            _model = "claude-sonnet-4-6"
+            from app.domain.services.platform_settings_service import SettingsCache
+
+            _model = SettingsCache.instance().get("ai-model-content", "claude-sonnet-4-6")
             caps = get_model_caps(_model)
             prompt_tokens_est = len(prompt) / caps["chars_per_token"]
             available = caps["context_window_tokens"] - caps["max_output_tokens"] - 5_000

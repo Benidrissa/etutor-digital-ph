@@ -31,6 +31,7 @@ class ClaudeService:
         _cache = SettingsCache.instance()
         self._max_tokens = _cache.get("ai-max-tokens-content", 64000)
         self._temperature = _cache.get("ai-temperature-content", 0.7)
+        self._model = _cache.get("ai-model-content", "claude-sonnet-4-6")
 
     async def generate_lesson_content_stream(
         self,
@@ -49,7 +50,7 @@ class ClaudeService:
         """
         try:
             async with self.client.messages.stream(
-                model="claude-sonnet-4-6",
+                model=self._model,
                 max_tokens=self._max_tokens,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
@@ -80,7 +81,7 @@ class ClaudeService:
         """
         try:
             response = await self.client.messages.create(
-                model="claude-sonnet-4-6",
+                model=self._model,
                 max_tokens=self._max_tokens,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
@@ -139,7 +140,7 @@ class ClaudeService:
 
             try:
                 response = await self.client.messages.create(
-                    model="claude-sonnet-4-6",
+                    model=self._model,
                     max_tokens=self._max_tokens,
                     system=system_prompt,
                     messages=[{"role": "user", "content": effective_user_message}],
@@ -240,6 +241,7 @@ class ClaudeService:
         max_retries: int = 1,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        model: str | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Generate structured JSON with cache-aware system blocks.
 
@@ -267,6 +269,7 @@ class ClaudeService:
 
         eff_max_tokens = max_tokens if max_tokens is not None else self._max_tokens
         eff_temperature = temperature if temperature is not None else self._temperature
+        eff_model = model if model is not None else self._model
 
         for attempt in range(max_retries + 1):
             if attempt == 0:
@@ -284,7 +287,7 @@ class ClaudeService:
 
             try:
                 response = await self.client.messages.create(
-                    model="claude-sonnet-4-6",
+                    model=eff_model,
                     max_tokens=eff_max_tokens,
                     system=system_blocks,
                     messages=[{"role": "user", "content": effective_user_message}],
