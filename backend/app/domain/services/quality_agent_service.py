@@ -123,7 +123,7 @@ class CourseQualityService:
         self.claude_service = claude_service
         self.semantic_retriever = semantic_retriever
         # Auditor model is config-driven; defaults to Sonnet. Switching to a
-        # cheaper model (e.g. claude-haiku-4-5 / kimi-k2.6) is opt-in pending a
+        # cheaper model (e.g. claude-haiku-4-5 / moonshot-v1-128k) is opt-in pending a
         # detection-accuracy benchmark; cost_cents uses the per-model pricing
         # table, so the recorded cost stays correct after a switch.
         from app.domain.services.platform_settings_service import SettingsCache

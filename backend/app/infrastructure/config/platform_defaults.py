@@ -375,10 +375,10 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "Model — content generation",
         "Model for lessons, quizzes, flashcards, case studies, pre-assessments, "
         "course syllabi and video scripts. Resolved to a provider by prefix "
-        "(claude-* → Anthropic; kimi-* → Moonshot). NOTE: kimi-k2.6 runs on "
-        "China-based servers — confirm data-residency compliance before using it "
-        "for production user content.",
-        allowed_options=["claude-sonnet-4-6", "claude-haiku-4-5", "kimi-k2.6"],
+        "(claude-* → Anthropic; moonshot-* → Moonshot). NOTE: moonshot-v1-128k "
+        "runs on China-based servers — data-residency compliance was cleared "
+        "2026-06-08; default stays Claude.",
+        allowed_options=["claude-sonnet-4-6", "claude-haiku-4-5", "moonshot-v1-128k"],
     ),
     SettingDef(
         "ai-model-quality",

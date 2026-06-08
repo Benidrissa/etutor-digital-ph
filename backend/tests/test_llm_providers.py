@@ -148,6 +148,7 @@ class _FakeOpenAI:
 
 
 async def test_openai_compat_complete_parses_tool_calls_and_flattens_system():
+    # Native forced-tool path: backend supports a forced tool_choice (default).
     response = SimpleNamespace(
         choices=[
             SimpleNamespace(
@@ -164,7 +165,7 @@ async def test_openai_compat_complete_parses_tool_calls_and_flattens_system():
         ],
         usage=SimpleNamespace(prompt_tokens=20, completion_tokens=8, prompt_tokens_details=None),
     )
-    provider = OpenAICompatLLMProvider(api_key="sk-test", base_url="https://api.moonshot.ai/v1")
+    provider = OpenAICompatLLMProvider(api_key="sk-test")
     provider._client = _FakeOpenAI(response)
 
     result = await provider.complete(
@@ -172,7 +173,7 @@ async def test_openai_compat_complete_parses_tool_calls_and_flattens_system():
         messages=[{"role": "user", "content": "hi"}],
         max_tokens=100,
         temperature=0.5,
-        model="kimi-k2.6",
+        model="gpt-4o-mini",
         tools=[_TOOL],
         tool_choice={"type": "tool", "name": "save"},
     )
@@ -188,8 +189,67 @@ async def test_openai_compat_complete_parses_tool_calls_and_flattens_system():
     assert sent["messages"][0] == {"role": "system", "content": "sys"}
     assert sent["tools"][0]["type"] == "function"
     assert sent["tool_choice"] == {"type": "function", "function": {"name": "save"}}
+    # arbitrary temperature forwarded on a non-reasoning chat model.
+    assert sent["temperature"] == 0.5
     # assistant_message carries OpenAI-shaped tool_calls for the next turn.
     assert result.assistant_message["tool_calls"][0]["function"]["name"] == "save"
+
+
+async def test_openai_compat_emulates_forced_tool_via_json_mode():
+    # Moonshot rejects forced tool_choice → emulate via JSON mode and surface a
+    # synthetic ToolCall so call sites keep reading result.tool_calls[0].
+    response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content='{"x": 7}', tool_calls=None))],
+        usage=SimpleNamespace(prompt_tokens=12, completion_tokens=4, prompt_tokens_details=None),
+    )
+    provider = OpenAICompatLLMProvider(api_key="sk-test", supports_forced_tool_choice=False)
+    provider._client = _FakeOpenAI(response)
+
+    result = await provider.complete(
+        system="sys",
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=100,
+        temperature=0.7,
+        model="moonshot-v1-128k",
+        tools=[_TOOL],
+        tool_choice={"type": "tool", "name": "save"},
+    )
+
+    assert result.stop_reason == "tool_use"
+    assert result.tool_calls[0].name == "save"
+    assert result.tool_calls[0].input == {"x": 7}
+
+    sent = provider._client.chat.completions.kwargs
+    # No tools/tool_choice sent; JSON mode requested instead.
+    assert "tools" not in sent and "tool_choice" not in sent
+    assert sent["response_format"] == {"type": "json_object"}
+    # The tool's input_schema is injected into the system prompt.
+    assert "save" in sent["messages"][0]["content"]
+    assert "input_schema" not in sent["messages"][0]["content"]  # schema body, not the key
+    # Synthetic assistant tool_call for any follow-up turn.
+    assert result.assistant_message["tool_calls"][0]["function"]["name"] == "save"
+
+
+async def test_openai_compat_emulated_tool_bad_json_returns_no_tool_call():
+    response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="not json", tool_calls=None))],
+        usage=SimpleNamespace(prompt_tokens=5, completion_tokens=2, prompt_tokens_details=None),
+    )
+    provider = OpenAICompatLLMProvider(api_key="sk-test", supports_forced_tool_choice=False)
+    provider._client = _FakeOpenAI(response)
+
+    result = await provider.complete(
+        system="sys",
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=50,
+        temperature=0.7,
+        model="moonshot-v1-128k",
+        tools=[_TOOL],
+        tool_choice={"type": "tool", "name": "save"},
+    )
+    assert result.tool_calls == []
+    assert result.stop_reason == "end_turn"
+    assert result.text == "not json"
 
 
 async def test_openai_compat_json_object_without_tools():
@@ -205,7 +265,7 @@ async def test_openai_compat_json_object_without_tools():
         messages=[{"role": "user", "content": "hi"}],
         max_tokens=50,
         temperature=0.0,
-        model="kimi-k2.6",
+        model="moonshot-v1-128k",
         json_object=True,
     )
     assert result.text == '{"ok": true}'
@@ -239,15 +299,23 @@ def _fake_settings(monkeypatch):
 
 def test_resolve_provider_by_prefix(_fake_settings):
     assert isinstance(resolve_provider("claude-sonnet-4-6"), AnthropicLLMProvider)
-    assert isinstance(resolve_provider("kimi-k2.6"), OpenAICompatLLMProvider)
+    assert isinstance(resolve_provider("moonshot-v1-128k"), OpenAICompatLLMProvider)
     assert isinstance(resolve_provider("gpt-4o-mini"), OpenAICompatLLMProvider)
     assert isinstance(resolve_provider("moonshotai/kimi-k2.6"), OpenAICompatLLMProvider)
+
+
+def test_resolve_provider_moonshot_disables_forced_tool_choice(_fake_settings):
+    # Moonshot can't force a single tool — the provider must emulate it.
+    moonshot = resolve_provider("moonshot-v1-128k")
+    assert moonshot._supports_forced_tool_choice is False
+    # Other OpenAI-compatible backends keep native forced tool_choice.
+    assert resolve_provider("gpt-4o-mini")._supports_forced_tool_choice is True
 
 
 def test_resolve_provider_missing_key_raises(_fake_settings, monkeypatch):
     monkeypatch.setattr(_fake_settings, "moonshot_api_key", "")
     with pytest.raises(ValueError, match="MOONSHOT_API_KEY"):
-        resolve_provider("kimi-k2.6")
+        resolve_provider("moonshot-v1-128k")
 
 
 def test_resolve_provider_unknown_model_raises(_fake_settings):
@@ -262,7 +330,7 @@ def test_pricing_per_model():
     usage = {"input_tokens": 1_000_000, "output_tokens": 1_000_000}
     # Sonnet: $3 in + $15 out = 1800 cents.
     assert calculate_cost_cents("claude-sonnet-4-6", usage) == 1800
-    # Kimi K2.6: $0.95 in + $4.00 out = 495 cents.
-    assert calculate_cost_cents("kimi-k2.6", usage) == 495
+    # moonshot-v1-128k: $2.00 in + $5.00 out = 700 cents.
+    assert calculate_cost_cents("moonshot-v1-128k", usage) == 700
     # Unknown model falls back to the default (Sonnet) table.
     assert calculate_cost_cents("mystery", usage) == 1800
