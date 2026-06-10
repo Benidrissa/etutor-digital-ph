@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.providers.base import ToolCall
 from app.ai.rag.retriever import SemanticRetriever
 from app.domain.models.content import GeneratedContent
 from app.domain.models.conversation import TutorConversation
@@ -22,6 +23,8 @@ from app.domain.services.tutor_service import (
     _split_into_chunks,
 )
 from app.domain.services.tutor_tools import TOOL_DEFINITIONS, TutorToolExecutor
+from tests._provider_fakes import FakeProvider as _FakeProvider
+from tests._provider_fakes import llm as _llm
 
 
 @pytest.fixture(autouse=True)
@@ -288,28 +291,30 @@ async def test_generate_mini_quiz_returns_valid_json(tool_executor, mock_anthrop
         }
     )
 
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text=quiz_json)]
-    mock_anthropic.messages.create = AsyncMock(return_value=mock_response)
+    provider = _FakeProvider()
+    provider.complete = AsyncMock(return_value=_llm(text=quiz_json))
 
-    result_str = await tool_executor._generate_mini_quiz(
-        {"topic": "surveillance", "num_questions": 1, "difficulty": "medium"}
-    )
+    with patch("app.domain.services.tutor_tools.resolve_provider", return_value=provider):
+        result_str = await tool_executor._generate_mini_quiz(
+            {"topic": "surveillance", "num_questions": 1, "difficulty": "medium"}
+        )
     result = json.loads(result_str)
 
     assert result["topic"] == "surveillance"
     assert "questions" in result
     assert len(result["questions"]) == 1
+    # json_object must be requested so OpenAI-compatible backends return clean JSON.
+    assert provider.complete.call_args.kwargs["json_object"] is True
 
 
 async def test_generate_mini_quiz_handles_parse_error(tool_executor, mock_anthropic):
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="Not valid JSON here")]
-    mock_anthropic.messages.create = AsyncMock(return_value=mock_response)
+    provider = _FakeProvider()
+    provider.complete = AsyncMock(return_value=_llm(text="Not valid JSON here"))
 
-    result_str = await tool_executor._generate_mini_quiz(
-        {"topic": "test", "num_questions": 2, "difficulty": "easy"}
-    )
+    with patch("app.domain.services.tutor_tools.resolve_provider", return_value=provider):
+        result_str = await tool_executor._generate_mini_quiz(
+            {"topic": "test", "num_questions": 2, "difficulty": "easy"}
+        )
     result = json.loads(result_str)
 
     assert result["topic"] == "test"
@@ -432,40 +437,25 @@ async def test_tool_use_loop_executes_tool_and_gets_final_response(
     mock_session = AsyncMock(spec=AsyncSession)
     mock_session.get = AsyncMock(return_value=sample_user)
 
-    tool_use_block = MagicMock()
-    tool_use_block.__class__ = __import__("anthropic.types", fromlist=["ToolUseBlock"]).ToolUseBlock
-    tool_use_block.name = "search_knowledge_base"
-    tool_use_block.id = "tool_123"
-    tool_use_block.input = {"query": "surveillance épidémiologique"}
-
-    text_block = MagicMock()
-    text_block.text = "Excellente réflexion! Que penses-tu..."
-    del tool_use_block.__class__
-
-    from anthropic.types import ToolUseBlock
-
-    real_tool_use_block = MagicMock(spec=ToolUseBlock)
-    real_tool_use_block.name = "search_knowledge_base"
-    real_tool_use_block.id = "tool_123"
-    real_tool_use_block.input = {"query": "surveillance"}
-
-    first_response = MagicMock()
-    first_response.content = [real_tool_use_block]
-
-    second_response = MagicMock()
-    final_text = MagicMock()
-    final_text.text = "Excellente question!"
-    del final_text.__class__
-
-    class FakeTextBlock:
-        def __init__(self, text):
-            self.text = text
-
-    second_response.content = [FakeTextBlock("Excellente question! Penses-tu que...")]
-
-    mock_anthropic.messages.create = AsyncMock(side_effect=[first_response, second_response])
+    provider = _FakeProvider()
+    provider.complete.side_effect = [
+        _llm(
+            tool_calls=[
+                ToolCall(
+                    id="tool_123",
+                    name="search_knowledge_base",
+                    input={"query": "surveillance"},
+                )
+            ]
+        ),
+        _llm(text="Excellente question! Penses-tu que..."),
+    ]
 
     with (
+        patch(
+            "app.domain.services.tutor_service.resolve_provider",
+            return_value=provider,
+        ),
         patch.object(
             tutor_service,
             "_check_daily_limit",
@@ -513,6 +503,8 @@ async def test_tool_use_loop_executes_tool_and_gets_final_response(
     chunk_types = [c["type"] for c in chunks]
     assert "tool_call" in chunk_types, f"Expected tool_call chunk, got: {chunk_types}"
     assert "content" in chunk_types, f"Expected content chunk, got: {chunk_types}"
+    # Tool results must be re-encoded via the provider for the follow-up turn.
+    provider.build_tool_result_messages.assert_called_once()
 
 
 async def test_max_tool_calls_enforced(
@@ -522,21 +514,25 @@ async def test_max_tool_calls_enforced(
     mock_session = AsyncMock(spec=AsyncSession)
     mock_session.get = AsyncMock(return_value=sample_user)
 
-    from anthropic.types import ToolUseBlock
+    def make_tool_result():
+        return _llm(
+            tool_calls=[
+                ToolCall(
+                    id=f"tool_{uuid.uuid4().hex[:8]}",
+                    name="search_knowledge_base",
+                    input={"query": "test"},
+                )
+            ]
+        )
 
-    def make_tool_response():
-        tool_block = MagicMock(spec=ToolUseBlock)
-        tool_block.name = "search_knowledge_base"
-        tool_block.id = f"tool_{uuid.uuid4().hex[:8]}"
-        tool_block.input = {"query": "test"}
-        resp = MagicMock()
-        resp.content = [tool_block]
-        return resp
-
-    responses = [make_tool_response() for _ in range(MAX_TOOL_CALLS + 2)]
-    mock_anthropic.messages.create = AsyncMock(side_effect=responses)
+    provider = _FakeProvider()
+    provider.complete.side_effect = [make_tool_result() for _ in range(MAX_TOOL_CALLS + 2)]
 
     with (
+        patch(
+            "app.domain.services.tutor_service.resolve_provider",
+            return_value=provider,
+        ),
         patch.object(
             tutor_service,
             "_check_daily_limit",
@@ -585,7 +581,7 @@ async def test_max_tool_calls_enforced(
     assert len(tool_call_chunks) <= MAX_TOOL_CALLS, (
         f"Expected at most {MAX_TOOL_CALLS} tool calls, got {len(tool_call_chunks)}"
     )
-    assert mock_anthropic.messages.create.call_count <= MAX_TOOL_CALLS + 1
+    assert provider.complete.call_count <= MAX_TOOL_CALLS + 1
 
 
 async def test_no_tool_use_yields_content_chunks(
@@ -595,15 +591,16 @@ async def test_no_tool_use_yields_content_chunks(
     mock_session = AsyncMock(spec=AsyncSession)
     mock_session.get = AsyncMock(return_value=sample_user)
 
-    class FakeTextBlock:
-        def __init__(self, text):
-            self.text = text
-
-    response = MagicMock()
-    response.content = [FakeTextBlock("Excellente question! Penses-tu que la surveillance...")]
-    mock_anthropic.messages.create = AsyncMock(return_value=response)
+    provider = _FakeProvider()
+    provider.complete.return_value = _llm(
+        text="Excellente question! Penses-tu que la surveillance..."
+    )
 
     with (
+        patch(
+            "app.domain.services.tutor_service.resolve_provider",
+            return_value=provider,
+        ),
         patch.object(
             tutor_service,
             "_check_daily_limit",
@@ -657,15 +654,14 @@ async def test_finished_chunk_includes_tool_calls_made(
     mock_session = AsyncMock(spec=AsyncSession)
     mock_session.get = AsyncMock(return_value=sample_user)
 
-    class FakeTextBlock:
-        def __init__(self, text):
-            self.text = text
-
-    response = MagicMock()
-    response.content = [FakeTextBlock("Test response")]
-    mock_anthropic.messages.create = AsyncMock(return_value=response)
+    provider = _FakeProvider()
+    provider.complete.return_value = _llm(text="Test response")
 
     with (
+        patch(
+            "app.domain.services.tutor_service.resolve_provider",
+            return_value=provider,
+        ),
         patch.object(
             tutor_service,
             "_check_daily_limit",
@@ -707,6 +703,74 @@ async def test_finished_chunk_includes_tool_calls_made(
     assert len(finished_chunks) == 1
     assert "tool_calls_made" in finished_chunks[0]["data"]
     assert finished_chunks[0]["data"]["remaining_messages"] == 14
+
+
+async def test_multimodal_turn_falls_back_to_anthropic_on_non_anthropic_model(
+    tutor_service, sample_user, sample_conversation
+):
+    """When tutor-model is non-Anthropic and the turn carries file/image blocks,
+    the loop must transparently fall back to the default Claude model — the
+    OpenAI-compatible providers can't carry Anthropic content blocks (#2483).
+    """
+    mock_session = AsyncMock(spec=AsyncSession)
+    mock_session.get = AsyncMock(return_value=sample_user)
+
+    non_anthropic = _FakeProvider()
+    non_anthropic.is_anthropic = False
+    anthropic_fb = _FakeProvider()  # is_anthropic = True (class default)
+    anthropic_fb.complete.return_value = _llm(text="Voici l'analyse de l'image.")
+
+    # First resolve (configured tutor-model) → non-Anthropic; second resolve
+    # (fallback model) → Anthropic.
+    resolve_mock = MagicMock(side_effect=[non_anthropic, anthropic_fb])
+
+    image_block = {
+        "type": "image",
+        "source": {"type": "base64", "media_type": "image/png", "data": "x"},
+    }
+
+    with (
+        patch(
+            "app.domain.services.tutor_service.resolve_provider",
+            resolve_mock,
+        ),
+        patch.object(tutor_service, "_check_daily_limit", new_callable=AsyncMock, return_value=0),
+        patch.object(
+            tutor_service,
+            "_get_or_create_conversation",
+            new_callable=AsyncMock,
+            return_value=sample_conversation,
+        ),
+        patch.object(
+            tutor_service.session_manager,
+            "_get_previous_compact",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch.object(tutor_service, "_resolve_course", new_callable=AsyncMock, return_value=None),
+    ):
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.flush = AsyncMock()
+
+        chunks = await collect_chunks(
+            tutor_service.send_message(
+                user_id=sample_user.id,
+                message="Décris cette image",
+                session=mock_session,
+                file_content_blocks=[image_block],
+            )
+        )
+
+    # Resolved twice: once for the configured model, once for the fallback.
+    assert resolve_mock.call_count == 2
+    assert resolve_mock.call_args_list[1].args[0] == "claude-sonnet-4-6"
+    # The non-Anthropic provider must never be asked to complete a multimodal turn.
+    non_anthropic.complete.assert_not_called()
+    anthropic_fb.complete.assert_awaited()
+
+    content = "".join(c["data"]["text"] for c in chunks if c["type"] == "content")
+    assert "analyse de l'image" in content
 
 
 # ---------------------------------------------------------------------------

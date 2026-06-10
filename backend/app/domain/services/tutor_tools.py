@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.ai.providers import resolve_provider
 from app.ai.rag.retriever import SemanticRetriever
 from app.domain.models.content import GeneratedContent
 from app.domain.models.module import Module
@@ -541,14 +542,20 @@ Respond ONLY with valid JSON in this exact format:
   ]
 }}"""
 
-        response = await self.anthropic.messages.create(
-            model=SettingsCache.instance().get("tutor-suggestions-model", "claude-haiku-4-5"),
+        quiz_model = SettingsCache.instance().get("tutor-suggestions-model", "claude-haiku-4-5")
+        # Route through the pluggable provider (#2483) so the mini-quiz honors a
+        # non-Anthropic tutor-suggestions-model. json_object enforces clean JSON
+        # on OpenAI-compatible backends; Anthropic stays prompt-driven.
+        result = await resolve_provider(quiz_model).complete(
+            system="",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=SettingsCache.instance().get("tutor-suggestions-max-tokens", 800),
             temperature=SettingsCache.instance().get("tutor-suggestions-temperature", 0.5),
+            model=quiz_model,
+            json_object=True,
         )
 
-        quiz_text = response.content[0].text.strip()
+        quiz_text = (result.text or "").strip()
 
         try:
             if "```json" in quiz_text:
