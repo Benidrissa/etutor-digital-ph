@@ -1,4 +1,23 @@
 {
+  "Countries": {
+    "benin": "Benin",
+    "burkina-faso": "Burkina Faso",
+    "cabo-verde": "Cabo Verde",
+    "cote-divoire": "Côte d'Ivoire",
+    "gambia": "Gambia",
+    "ghana": "Ghana",
+    "guinea": "Guinea",
+    "guinea-bissau": "Guinea-Bissau",
+    "liberia": "Liberia",
+    "mali": "Mali",
+    "niger": "Niger",
+    "nigeria": "Nigeria",
+    "senegal": "Senegal",
+    "sierra-leone": "Sierra Leone",
+    "togo": "Togo",
+    "other-west-african": "Other West African",
+    "other": "Other"
+  },
   "Common": {
     "appName": "Sira",
     "loading": "Loading...",
@@ -564,26 +583,7 @@
     "step2": {
       "title": "Select Your Country",
       "description": "Choose your country for localized content",
-      "selectCountry": "Select your country",
-      "countries": {
-        "benin": "Benin",
-        "burkina-faso": "Burkina Faso",
-        "cabo-verde": "Cabo Verde",
-        "cote-divoire": "Côte d'Ivoire",
-        "gambia": "Gambia",
-        "ghana": "Ghana",
-        "guinea": "Guinea",
-        "guinea-bissau": "Guinea-Bissau",
-        "liberia": "Liberia",
-        "mali": "Mali",
-        "niger": "Niger",
-        "nigeria": "Nigeria",
-        "senegal": "Senegal",
-        "sierra-leone": "Sierra Leone",
-        "togo": "Togo",
-        "other-west-african": "Other West African",
-        "other": "Other"
-      }
+      "selectCountry": "Select your country"
     },
     "step3": {
       "title": "Professional Role",

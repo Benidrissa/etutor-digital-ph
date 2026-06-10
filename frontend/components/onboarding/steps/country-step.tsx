@@ -8,54 +8,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { COUNTRIES } from '@/lib/countries';
 
 interface CountryStepProps {
   value: string;
   onChange: (value: string) => void;
 }
 
-const countries = [
-  'benin',
-  'burkina-faso',
-  'cabo-verde',
-  'cote-divoire',
-  'gambia',
-  'ghana',
-  'guinea',
-  'guinea-bissau',
-  'liberia',
-  'mali',
-  'niger',
-  'nigeria',
-  'senegal',
-  'sierra-leone',
-  'togo',
-  'other-west-african',
-  'other'
-];
-
-const countryFlags: { [key: string]: string } = {
-  'benin': '🇧🇯',
-  'burkina-faso': '🇧🇫',
-  'cabo-verde': '🇨🇻',
-  'cote-divoire': '🇨🇮',
-  'gambia': '🇬🇲',
-  'ghana': '🇬🇭',
-  'guinea': '🇬🇳',
-  'guinea-bissau': '🇬🇼',
-  'liberia': '🇱🇷',
-  'mali': '🇲🇱',
-  'niger': '🇳🇪',
-  'nigeria': '🇳🇬',
-  'senegal': '🇸🇳',
-  'sierra-leone': '🇸🇱',
-  'togo': '🇹🇬',
-  'other-west-african': '🌍',
-  'other': '🌐'
-};
-
 export function CountryStep({ value, onChange }: CountryStepProps) {
   const t = useTranslations('Onboarding.step2');
+  const tCountries = useTranslations('Countries');
 
   return (
     <div className="space-y-6">
@@ -70,11 +32,11 @@ export function CountryStep({ value, onChange }: CountryStepProps) {
             <SelectValue placeholder={t('selectCountry')} />
           </SelectTrigger>
           <SelectContent>
-            {countries.map((country) => (
-              <SelectItem key={country} value={country}>
+            {COUNTRIES.map((country) => (
+              <SelectItem key={country.code} value={country.code}>
                 <div className="flex items-center gap-2">
-                  <span>{countryFlags[country]}</span>
-                  <span>{t(`countries.${country}`)}</span>
+                  <span>{country.flag}</span>
+                  <span>{tCountries(country.key)}</span>
                 </div>
               </SelectItem>
             ))}

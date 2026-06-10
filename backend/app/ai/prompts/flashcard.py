@@ -24,6 +24,10 @@ COUNTRY_NAMES_FR = {
     "NG": "Nigéria",
     "BJ": "Bénin",
     "TG": "Togo",
+    # Catch-all options ("Other West African" / "Other") have no single country;
+    # fall back to the regional name so prompts stay grammatical and on-domain.
+    "OWA": "Afrique de l'Ouest",
+    "OTH": "Afrique de l'Ouest",
 }
 
 COUNTRY_NAMES_EN = {
@@ -42,6 +46,10 @@ COUNTRY_NAMES_EN = {
     "NG": "Nigeria",
     "BJ": "Benin",
     "TG": "Togo",
+    # Catch-all options ("Other West African" / "Other") have no single country;
+    # fall back to the regional name so prompts stay grammatical and on-domain.
+    "OWA": "West Africa",
+    "OTH": "West Africa",
 }
 
 
