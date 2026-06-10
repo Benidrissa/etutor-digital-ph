@@ -565,3 +565,18 @@ async def test_build_quality_context_eager_loads_glossary_first_unit():
         "glossary query must selectinload(CourseGlossaryTerm.first_unit) to "
         "avoid a lazy-load greenlet error in the Celery sweep"
     )
+
+
+# ---- Auto post-generation QA: run_id is optional (#2456) --------------
+
+
+def test_unit_quality_assessment_run_id_is_nullable():
+    """Auto post-generation QA persists a per-unit score with no course run.
+
+    The whole task/service layer already treats run_id as optional, so the
+    column must be nullable — otherwise every auto-QA insert hits a NOT NULL
+    violation and the assessment never persists (#2456).
+    """
+    from app.domain.models.course_quality import UnitQualityAssessment
+
+    assert UnitQualityAssessment.__table__.c.run_id.nullable is True
