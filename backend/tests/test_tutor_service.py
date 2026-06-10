@@ -14,6 +14,7 @@ from app.domain.models.user import User
 from app.domain.services.learner_memory_service import LearnerMemoryService
 from app.domain.services.subscription_service import SubscriptionService
 from app.domain.services.tutor_service import SessionContext, TutorService
+from tests._provider_fakes import FakeProvider, llm
 
 
 @pytest.fixture
@@ -122,15 +123,14 @@ async def test_send_message_yields_content_type_chunks(
     mock_session = AsyncMock(spec=AsyncSession)
     mock_session.get = AsyncMock(return_value=sample_user)
 
-    class FakeTextBlock:
-        def __init__(self, text):
-            self.text = text
-
-    mock_response = MagicMock()
-    mock_response.content = [FakeTextBlock("Bonjour! Comment puis-je vous aider?")]
-    tutor_service.anthropic.messages.create = AsyncMock(return_value=mock_response)
+    provider = FakeProvider()
+    provider.complete.return_value = llm(text="Bonjour! Comment puis-je vous aider?")
 
     with (
+        patch(
+            "app.domain.services.tutor_service.resolve_provider",
+            return_value=provider,
+        ),
         patch.object(
             SubscriptionService,
             "get_active_subscription",
@@ -189,15 +189,14 @@ async def test_send_message_yields_sources_cited_type(
     mock_session = AsyncMock(spec=AsyncSession)
     mock_session.get = AsyncMock(return_value=sample_user)
 
-    class FakeTextBlock:
-        def __init__(self, text):
-            self.text = text
-
-    mock_response = MagicMock()
-    mock_response.content = [FakeTextBlock("Test response")]
-    tutor_service.anthropic.messages.create = AsyncMock(return_value=mock_response)
+    provider = FakeProvider()
+    provider.complete.return_value = llm(text="Test response")
 
     with (
+        patch(
+            "app.domain.services.tutor_service.resolve_provider",
+            return_value=provider,
+        ),
         patch.object(
             SubscriptionService,
             "get_active_subscription",
@@ -326,15 +325,14 @@ async def test_send_message_never_yields_text_type(tutor_service, sample_user, s
     mock_session = AsyncMock(spec=AsyncSession)
     mock_session.get = AsyncMock(return_value=sample_user)
 
-    class FakeTextBlock:
-        def __init__(self, text):
-            self.text = text
-
-    mock_response = MagicMock()
-    mock_response.content = [FakeTextBlock("Test response")]
-    tutor_service.anthropic.messages.create = AsyncMock(return_value=mock_response)
+    provider = FakeProvider()
+    provider.complete.return_value = llm(text="Test response")
 
     with (
+        patch(
+            "app.domain.services.tutor_service.resolve_provider",
+            return_value=provider,
+        ),
         patch.object(
             SubscriptionService,
             "get_active_subscription",
