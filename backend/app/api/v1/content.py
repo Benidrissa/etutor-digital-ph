@@ -1285,6 +1285,25 @@ async def get_or_generate_case_study(
             cache_result = await session.execute(cached_query)
             cached = cache_result.scalars().first()
 
+            # Country fallback: if no exact-country match, serve any country's
+            # case study (same language/level) instead of re-dispatching a fresh
+            # 3-min generation on every request. Mirrors the lesson endpoint so a
+            # learner whose country lacks a row sees content immediately while the
+            # country-specific version generates in the background (#2474).
+            is_country_fallback = False
+            if not cached:
+                fallback_query = (
+                    select(GeneratedContent)
+                    .where(GeneratedContent.module_unit_id == case_module_unit_uuid)
+                    .where(GeneratedContent.content_type == "case")
+                    .where(GeneratedContent.language == language)
+                    .where(GeneratedContent.level == level)
+                    .order_by(GeneratedContent.generated_at.desc())
+                )
+                fallback_result = await session.execute(fallback_query)
+                cached = fallback_result.scalars().first()
+                is_country_fallback = cached is not None
+
             if cached:
                 from app.api.v1.schemas.content import CaseStudyContent as _CaseStudyContent
 
@@ -1305,6 +1324,7 @@ async def get_or_generate_case_study(
                     content=_CaseStudyContent(**content_dict),
                     generated_at=cached.generated_at.isoformat(),
                     cached=True,
+                    country_fallback=is_country_fallback,
                 )
 
                 if current_user is not None:
@@ -1326,7 +1346,20 @@ async def get_or_generate_case_study(
                 logger.info(
                     "Case study cache hit",
                     case_study_id=str(case_study_response.id),
+                    country_fallback=is_country_fallback,
                 )
+                if is_country_fallback:
+                    from app.tasks.content_generation import generate_country_content_task
+
+                    generate_country_content_task.delay(
+                        module_id=str(resolved_module_id),
+                        unit_id=unit_id,
+                        content_type="case",
+                        language=language,
+                        level=level,
+                        country=country,
+                        user_id=str(current_user.id) if current_user else "",
+                    )
                 _dispatch_content_prefetch(current_user, str(resolved_module_id), unit_id)
                 return JSONResponse(
                     content=case_study_response.model_dump(mode="json"),
