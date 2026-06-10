@@ -442,7 +442,12 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "claude-sonnet-4-6",
         "string",
         "Model — tutor response",
-        "Claude model for the main tutor conversation loop.",
+        "Model for the main tutor conversation loop. Resolved to a provider by "
+        "prefix (claude-* → Anthropic; moonshot-* → Moonshot). NOTE: "
+        "non-Anthropic models lose Anthropic prompt caching (higher cost / "
+        "latency), and turns with image/PDF uploads transparently fall back to "
+        "Claude — multimodal is Anthropic-only.",
+        allowed_options=["claude-sonnet-4-6", "claude-haiku-4-5", "moonshot-v1-128k"],
     ),
     SettingDef(
         "tutor-suggestions-model",
@@ -450,8 +455,10 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "claude-haiku-4-5",
         "string",
         "Model — tutor suggestions / mini-quiz",
-        "Claude model for the tutor mini-quiz tool (bounded structured "
-        "output). Override to a larger model if quality regresses.",
+        "Model for the tutor mini-quiz tool (bounded structured output). "
+        "Resolved to a provider by prefix (claude-* → Anthropic; moonshot-* → "
+        "Moonshot). Override to a larger model if quality regresses.",
+        allowed_options=["claude-haiku-4-5", "claude-sonnet-4-6", "moonshot-v1-128k"],
     ),
     SettingDef(
         "tutor-response-max-tokens",

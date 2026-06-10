@@ -16,6 +16,7 @@ from app.domain.services.tutor_service import (
     SessionContext,
     TutorService,
 )
+from tests._provider_fakes import FakeProvider, llm
 
 
 @pytest.fixture(autouse=True)
@@ -240,13 +241,8 @@ async def test_compact_conversation_async_is_non_destructive(tutor_service, samp
     conv.compacted_through_position = 0
     conversation_id = conv.id
 
-    class FakeTextBlock:
-        def __init__(self, text):
-            self.text = text
-
-    mock_compact_response = MagicMock()
-    mock_compact_response.content = [FakeTextBlock("Résumé compact généré")]
-    tutor_service.anthropic.messages.create = AsyncMock(return_value=mock_compact_response)
+    provider = FakeProvider()
+    provider.complete.return_value = llm(text="Résumé compact généré")
 
     mock_session = AsyncMock(spec=AsyncSession)
 
@@ -265,6 +261,7 @@ async def test_compact_conversation_async_is_non_destructive(tutor_service, samp
     mock_session_factory.return_value = mock_session
 
     with (
+        patch("app.domain.services.tutor_service.resolve_provider", return_value=provider),
         patch("app.domain.services.tutor_service.create_async_engine", return_value=mock_engine),
         patch(
             "app.domain.services.tutor_service.async_sessionmaker",
@@ -302,13 +299,8 @@ async def test_compaction_does_not_decrement_counters(tutor_service, sample_user
     pre_messages = list(conv.messages)
     conversation_id = conv.id
 
-    class FakeTextBlock:
-        def __init__(self, text):
-            self.text = text
-
-    mock_compact_response = MagicMock()
-    mock_compact_response.content = [FakeTextBlock("Résumé")]
-    tutor_service.anthropic.messages.create = AsyncMock(return_value=mock_compact_response)
+    provider = FakeProvider()
+    provider.complete.return_value = llm(text="Résumé")
 
     mock_session = AsyncMock(spec=AsyncSession)
     mock_execute_result = MagicMock()
@@ -325,6 +317,7 @@ async def test_compaction_does_not_decrement_counters(tutor_service, sample_user
     mock_session_factory.return_value = mock_session
 
     with (
+        patch("app.domain.services.tutor_service.resolve_provider", return_value=provider),
         patch("app.domain.services.tutor_service.create_async_engine", return_value=mock_engine),
         patch(
             "app.domain.services.tutor_service.async_sessionmaker",
@@ -355,13 +348,8 @@ async def test_compaction_advances_position_by_actual_slice_length(tutor_service
     conv.compacted_through_position = start
     conversation_id = conv.id
 
-    class FakeTextBlock:
-        def __init__(self, text):
-            self.text = text
-
-    mock_compact_response = MagicMock()
-    mock_compact_response.content = [FakeTextBlock("Résumé partiel")]
-    tutor_service.anthropic.messages.create = AsyncMock(return_value=mock_compact_response)
+    provider = FakeProvider()
+    provider.complete.return_value = llm(text="Résumé partiel")
 
     mock_session = AsyncMock(spec=AsyncSession)
     mock_execute_result = MagicMock()
@@ -377,6 +365,7 @@ async def test_compaction_advances_position_by_actual_slice_length(tutor_service
     mock_session_factory.return_value = mock_session
 
     with (
+        patch("app.domain.services.tutor_service.resolve_provider", return_value=provider),
         patch("app.domain.services.tutor_service.create_async_engine", return_value=mock_engine),
         patch(
             "app.domain.services.tutor_service.async_sessionmaker",
@@ -397,13 +386,8 @@ async def test_message_count_updated_on_send(tutor_service, sample_user):
 
     conv = _make_conversation(sample_user.id, n_messages=4)
 
-    class FakeTextBlock:
-        def __init__(self, text):
-            self.text = text
-
-    mock_response = MagicMock()
-    mock_response.content = [FakeTextBlock("Test")]
-    tutor_service.anthropic.messages.create = AsyncMock(return_value=mock_response)
+    provider = FakeProvider()
+    provider.complete.return_value = llm(text="Test")
 
     mock_session = AsyncMock(spec=AsyncSession)
     mock_session.get = AsyncMock(return_value=sample_user)
@@ -412,6 +396,7 @@ async def test_message_count_updated_on_send(tutor_service, sample_user):
     mock_session.flush = AsyncMock()
 
     with (
+        patch("app.domain.services.tutor_service.resolve_provider", return_value=provider),
         patch.object(tutor_service, "_check_daily_limit", new_callable=AsyncMock, return_value=0),
         patch.object(
             tutor_service, "_get_or_create_conversation", new_callable=AsyncMock, return_value=conv

@@ -11,7 +11,6 @@ from typing import Any
 import structlog
 from anthropic import AsyncAnthropic
 from anthropic import BadRequestError as AnthropicBadRequestError
-from anthropic.types import MessageParam, ToolResultBlockParam, ToolUseBlock
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -24,6 +23,7 @@ from app.ai.prompts.tutor import (
     get_persona_block_text,
     get_socratic_system_prompt,
 )
+from app.ai.providers import resolve_provider
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
 from app.domain.models.content import GeneratedContent
@@ -44,6 +44,10 @@ logger = structlog.get_logger()
 
 _sc = SettingsCache.instance
 MAX_TOOL_CALLS = _sc().get("tutor-max-tool-calls", 3)
+# Image/PDF uploads only work on Anthropic content blocks; when the admin has
+# pointed ``tutor-model`` at a non-Anthropic backend, multimodal turns fall back
+# to this Claude model so uploads keep working (#2483).
+_TUTOR_MULTIMODAL_FALLBACK_MODEL = "claude-sonnet-4-6"
 # Defaults relaxed (#1978) — compaction is non-destructive so we can afford
 # a higher trigger and a much larger verbatim window. Further bumped #1995
 # (50→80, 20→40) after staging feedback that the tutor lost learner-stated
@@ -1421,50 +1425,60 @@ class TutorService:
             all_tool_calls: list[dict[str, Any]] = []
             sources_cited: list[dict[str, Any]] = []
             source_image_refs: list[dict[str, Any]] = []
-            api_messages: list[MessageParam] = list(conversation_history)
+            api_messages: list[dict[str, Any]] = list(conversation_history)
             tutor_model = _sc().get("tutor-model", "claude-sonnet-4-6")
 
+            # Resolve the provider for the configured tutor model (#2483). The id
+            # may now point at a non-Anthropic backend (Moonshot/Kimi, OpenAI,
+            # OpenRouter); resolve_provider dispatches by model prefix.
+            provider = resolve_provider(tutor_model)
+            active_model = tutor_model
+
+            # Multimodal turns (image/PDF uploads) only work on Anthropic — the
+            # OpenAI-compatible providers can't carry Anthropic content blocks.
+            # Fall back to the default Claude model for this turn so uploads keep
+            # working regardless of the admin's tutor-model choice.
+            if file_content_blocks and not provider.is_anthropic:
+                logger.info(
+                    "tutor_multimodal_anthropic_fallback",
+                    requested_model=tutor_model,
+                    fallback_model=_TUTOR_MULTIMODAL_FALLBACK_MODEL,
+                    user_id=str(user_id),
+                )
+                active_model = _TUTOR_MULTIMODAL_FALLBACK_MODEL
+                provider = resolve_provider(active_model)
+
             while tool_call_count <= MAX_TOOL_CALLS:
-                response = await self.anthropic.messages.create(
-                    model=tutor_model,
+                result = await provider.complete(
                     system=system_prompt,
                     messages=api_messages,
                     tools=TOOL_DEFINITIONS,
                     max_tokens=_sc().get("tutor-response-max-tokens", 1500),
                     temperature=_sc().get("tutor-response-temperature", 0.7),
+                    model=active_model,
                 )
 
-                # Prompt-caching telemetry (#1984). Anthropic returns
-                # ``cache_read_input_tokens`` (cache hit) and
-                # ``cache_creation_input_tokens`` (cache write). Watching
+                # Prompt-caching telemetry (#1984). ``usage`` is normalized to a
+                # dict by the provider; ``cache_*`` keys are populated on
+                # Anthropic and zero/None on other providers. Watching
                 # cache_read on turn 2+ tells us caching is actually working.
                 try:
-                    usage = getattr(response, "usage", None)
-                    if usage is not None:
-                        logger.info(
-                            "tutor_claude_call",
-                            model=tutor_model,
-                            input_tokens=getattr(usage, "input_tokens", None),
-                            output_tokens=getattr(usage, "output_tokens", None),
-                            cache_read=getattr(usage, "cache_read_input_tokens", None),
-                            cache_creation=getattr(usage, "cache_creation_input_tokens", None),
-                            user_id=str(user_id),
-                            tool_call_count=tool_call_count,
-                        )
+                    usage = result.usage or {}
+                    logger.info(
+                        "tutor_claude_call",
+                        model=active_model,
+                        input_tokens=usage.get("input_tokens"),
+                        output_tokens=usage.get("output_tokens"),
+                        cache_read=usage.get("cache_read_input_tokens"),
+                        cache_creation=usage.get("cache_creation_input_tokens"),
+                        user_id=str(user_id),
+                        tool_call_count=tool_call_count,
+                    )
                 except Exception:  # pragma: no cover — telemetry must never break the tutor
                     pass
 
-                tool_use_blocks = [
-                    block for block in response.content if isinstance(block, ToolUseBlock)
-                ]
-
-                if not tool_use_blocks:
-                    text_parts = [
-                        block.text
-                        for block in response.content
-                        if hasattr(block, "text") and block.text
-                    ]
-                    full_response = "".join(text_parts)
+                if not result.tool_calls:
+                    full_response = result.text
 
                     for chunk_text in _split_into_chunks(full_response):
                         yield {
@@ -1480,12 +1494,7 @@ class TutorService:
                         user_id=str(user_id),
                         tool_call_count=tool_call_count,
                     )
-                    text_parts = [
-                        block.text
-                        for block in response.content
-                        if hasattr(block, "text") and block.text
-                    ]
-                    full_response = "".join(text_parts)
+                    full_response = result.text
                     if full_response:
                         for chunk_text in _split_into_chunks(full_response):
                             yield {
@@ -1495,11 +1504,12 @@ class TutorService:
                             }
                     break
 
-                assistant_content: list[Any] = list(response.content)
-                api_messages.append({"role": "assistant", "content": assistant_content})
+                # Append the assistant turn in the provider's native shape before
+                # tool results, so the next call sees a well-formed history.
+                api_messages.append(result.assistant_message)
 
-                tool_results: list[ToolResultBlockParam] = []
-                for tool_block in tool_use_blocks:
+                tool_results: list[dict[str, Any]] = []
+                for tool_block in result.tool_calls:
                     tool_call_count += 1
 
                     logger.info(
@@ -1608,13 +1618,12 @@ class TutorService:
 
                     tool_results.append(
                         {
-                            "type": "tool_result",
-                            "tool_use_id": tool_block.id,
+                            "tool_call_id": tool_block.id,
                             "content": tool_result_str,
                         }
                     )
 
-                api_messages.append({"role": "user", "content": tool_results})
+                api_messages.extend(provider.build_tool_result_messages(tool_results))
 
             unique_sources = _deduplicate_sources(sources_cited)
             # Citation surface: swap any rag_collection_id UUID labels for the
@@ -2341,19 +2350,16 @@ class TutorService:
                     language=user_language,
                 )
 
-                compact_response = await self.anthropic.messages.create(
-                    model=_sc().get("tutor-model", "claude-sonnet-4-6"),
+                compact_model = _sc().get("tutor-model", "claude-sonnet-4-6")
+                compact_result = await resolve_provider(compact_model).complete(
+                    system="",
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=_sc().get("tutor-compaction-max-tokens", 600),
                     temperature=_sc().get("tutor-compaction-temperature", 0.3),
+                    model=compact_model,
                 )
 
-                compact_text_parts = [
-                    block.text
-                    for block in compact_response.content
-                    if hasattr(block, "text") and block.text
-                ]
-                new_compact = "".join(compact_text_parts).strip()
+                new_compact = (compact_result.text or "").strip()
 
                 conversation.compacted_context = new_compact
                 conversation.compacted_at = datetime.utcnow()
