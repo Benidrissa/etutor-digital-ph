@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/select";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { COUNTRIES } from "@/lib/countries";
 import {
   type SyllabusModule,
   type LessonPreviewResponse,
@@ -52,6 +53,7 @@ interface PreviewState {
 
 export function LessonPreviewStep({ courseId }: LessonPreviewStepProps) {
   const t = useTranslations("AdminCourses.lessonPreview");
+  const tCountries = useTranslations("Countries");
   const locale = useLocale();
 
   const [modules, setModules] = useState<SyllabusModule[]>([]);
@@ -206,12 +208,14 @@ export function LessonPreviewStep({ courseId }: LessonPreviewStepProps) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="SN">S\u00e9n\u00e9gal</SelectItem>
-              <SelectItem value="ML">Mali</SelectItem>
-              <SelectItem value="BF">Burkina Faso</SelectItem>
-              <SelectItem value="CI">C\u00f4te d&apos;Ivoire</SelectItem>
-              <SelectItem value="GH">Ghana</SelectItem>
-              <SelectItem value="NG">Nigeria</SelectItem>
+              {COUNTRIES.map((c) => (
+                <SelectItem key={c.code} value={c.code}>
+                  <span className="flex items-center gap-2">
+                    <span>{c.flag}</span>
+                    <span>{tCountries(c.key)}</span>
+                  </span>
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
