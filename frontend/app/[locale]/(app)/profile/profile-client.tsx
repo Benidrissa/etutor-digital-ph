@@ -25,6 +25,7 @@ import { PlacementResultsHistory } from "@/components/placement/placement-result
 import { Upload, User as UserIcon, AlertTriangle, CheckCircle, ClipboardList, LogOut, ArrowLeft } from "lucide-react";
 import { authClient } from "@/lib/auth";
 import { API_BASE } from "@/lib/api";
+import { COUNTRIES } from "@/lib/countries";
 
 const fetchUserProfile = async () => {
   const response = await fetch(`${API_BASE}/api/v1/users/me`, {
@@ -73,26 +74,6 @@ const profileSchema = z.object({
 
 type ProfileFormData = z.infer<typeof profileSchema>;
 
-const WEST_AFRICAN_COUNTRIES = [
-  { code: "BJ", name: "Benin" },
-  { code: "BF", name: "Burkina Faso" },
-  { code: "CV", name: "Cape Verde" },
-  { code: "CI", name: "Côte d'Ivoire" },
-  { code: "GM", name: "Gambia" },
-  { code: "GH", name: "Ghana" },
-  { code: "GN", name: "Guinea" },
-  { code: "GW", name: "Guinea-Bissau" },
-  { code: "LR", name: "Liberia" },
-  { code: "ML", name: "Mali" },
-  { code: "NE", name: "Niger" },
-  { code: "NG", name: "Nigeria" },
-  { code: "SN", name: "Senegal" },
-  { code: "SL", name: "Sierra Leone" },
-  { code: "TG", name: "Togo" },
-  { code: "OWA", name: "Other West African" },
-  { code: "OTH", name: "Other" },
-];
-
 const PROFESSIONAL_ROLES = [
   "doctor",
   "nurse",
@@ -110,6 +91,7 @@ const PROFESSIONAL_ROLES = [
 export function ProfileClient() {
   const t = useTranslations("Profile");
   const tPrivacy = useTranslations("Privacy");
+  const tCountries = useTranslations("Countries");
   const [isEditing, setIsEditing] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [showRecontextAlert, setShowRecontextAlert] = useState(false);
@@ -262,7 +244,10 @@ export function ProfileClient() {
                 <Badge variant="outline">{profile.preferred_language.toUpperCase()}</Badge>
                 {profile.country && (
                   <Badge variant="outline">
-                    {WEST_AFRICAN_COUNTRIES.find(c => c.code === profile.country)?.name || profile.country}
+                    {(() => {
+                      const c = COUNTRIES.find((c) => c.code === profile.country);
+                      return c ? tCountries(c.key) : profile.country;
+                    })()}
                   </Badge>
                 )}
               </div>
@@ -383,9 +368,12 @@ export function ProfileClient() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {WEST_AFRICAN_COUNTRIES.map((country) => (
+                        {COUNTRIES.map((country) => (
                           <SelectItem key={country.code} value={country.code}>
-                            {country.name}
+                            <span className="flex items-center gap-2">
+                              <span>{country.flag}</span>
+                              <span>{tCountries(country.key)}</span>
+                            </span>
                           </SelectItem>
                         ))}
                       </SelectContent>

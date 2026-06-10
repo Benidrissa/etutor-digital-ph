@@ -415,12 +415,4 @@ class PlacementService:
         if "level_3" in weak_levels:
             recommendations.append("Reinforce biostatistics and data analysis skills")
 
-        country = context.get("country", "").lower()
-        if country in ["senegal", "mali", "burkina faso", "guinea"]:
-            recommendations.append("Focus on Sahel-specific health challenges")
-        elif country in ["ghana", "nigeria", "benin", "togo"]:
-            recommendations.append("Emphasize coastal disease patterns and urban health")
-        elif country in ["cote d'ivoire", "liberia", "sierra leone"]:
-            recommendations.append("Focus on tropical disease burden in your region")
-
         return recommendations[:5]

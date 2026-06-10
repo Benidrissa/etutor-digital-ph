@@ -528,6 +528,10 @@ def _get_country_context(country: str, course_domain: str | None = None) -> str:
         "TG": "Togo",
         "CV": "Cap-Vert",
         "GM": "Gambie",
+        # Catch-all options ("Other West African" / "Other") have no single
+        # country; fall back to the regional name.
+        "OWA": "Afrique de l'Ouest",
+        "OTH": "Afrique de l'Ouest",
     }
     country_name = country_names.get(country, country)
 

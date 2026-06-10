@@ -16,6 +16,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { authClient, RegisterResponse, AuthError } from '@/lib/auth';
+import { COUNTRIES } from '@/lib/countries';
 
 // Step 1: Registration form schema
 const createRegistrationSchema = (t: (key: string) => string) => z.object({
@@ -40,6 +41,7 @@ type TOTPForm = z.infer<ReturnType<typeof createTOTPSchema>>;
 export function TOTPRegisterForm() {
   const t = useTranslations('Auth');
   const tCommon = useTranslations('Common');
+  const tCountries = useTranslations('Countries');
   const router = useRouter();
   const locale = useLocale();
   
@@ -206,21 +208,11 @@ export function TOTPRegisterForm() {
                 className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <option value="">{t('selectCountry')}</option>
-                <option value="SN">Sénégal</option>
-                <option value="GH">Ghana</option>
-                <option value="NG">Nigeria</option>
-                <option value="CI">Côte d&apos;Ivoire</option>
-                <option value="BF">Burkina Faso</option>
-                <option value="ML">Mali</option>
-                <option value="NE">Niger</option>
-                <option value="GN">Guinée</option>
-                <option value="SL">Sierra Leone</option>
-                <option value="LR">Liberia</option>
-                <option value="GW">Guinée-Bissau</option>
-                <option value="CV">Cap-Vert</option>
-                <option value="GM">Gambie</option>
-                <option value="TG">Togo</option>
-                <option value="BJ">Bénin</option>
+                {COUNTRIES.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.flag} {tCountries(c.key)}
+                  </option>
+                ))}
               </select>
               {errors.country && (
                 <p className="text-sm text-red-600">{errors.country.message}</p>

@@ -226,11 +226,6 @@ class TestGenerateRecommendations:
         recs = service._generate_recommendations(4, {}, {})
         assert any("1-12" in r or "Module 13" in r for r in recs)
 
-    def test_country_recommendation_senegal(self):
-        service = PlacementService(_make_user_repo())
-        recs = service._generate_recommendations(2, {}, {"country": "senegal"})
-        assert any("Sahel" in r for r in recs)
-
     def test_max_5_recommendations_returned(self):
         service = PlacementService(_make_user_repo())
         recs = service._generate_recommendations(
