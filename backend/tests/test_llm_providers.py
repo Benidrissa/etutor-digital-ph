@@ -273,6 +273,90 @@ async def test_openai_compat_json_object_without_tools():
     assert provider._client.chat.completions.kwargs["response_format"] == {"type": "json_object"}
 
 
+async def test_openai_compat_kimi_k26_disables_thinking_and_pins_temperature():
+    # kimi-k2.6 is a reasoning model: thinking on by default and temperature is
+    # fixed by the model. The provider must disable thinking and pin temperature
+    # to the non-thinking value (0.6), regardless of the requested temperature.
+    response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content='{"ok": true}', tool_calls=None))],
+        usage=SimpleNamespace(prompt_tokens=5, completion_tokens=3, prompt_tokens_details=None),
+    )
+    provider = OpenAICompatLLMProvider(api_key="sk-test", supports_forced_tool_choice=False)
+    provider._client = _FakeOpenAI(response)
+
+    await provider.complete(
+        system="sys",
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=50,
+        temperature=0.7,  # requested value must be overridden
+        model="kimi-k2.6",
+        json_object=True,
+    )
+
+    sent = provider._client.chat.completions.kwargs
+    assert sent["temperature"] == 0.6
+    assert sent["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
+async def test_openai_compat_moonshot_v1_keeps_temperature_and_no_thinking():
+    # Regression guard: the standard chat family (moonshot-v1-*) is unaffected —
+    # arbitrary temperature forwarded, no thinking/extra_body injected.
+    response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content='{"ok": true}', tool_calls=None))],
+        usage=SimpleNamespace(prompt_tokens=5, completion_tokens=3, prompt_tokens_details=None),
+    )
+    provider = OpenAICompatLLMProvider(api_key="sk-test")
+    provider._client = _FakeOpenAI(response)
+
+    await provider.complete(
+        system="sys",
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=50,
+        temperature=0.7,
+        model="moonshot-v1-128k",
+        json_object=True,
+    )
+
+    sent = provider._client.chat.completions.kwargs
+    assert sent["temperature"] == 0.7
+    assert "extra_body" not in sent
+
+
+async def test_openai_compat_stream_kimi_k26_overrides_apply():
+    # The tutor streams through stream(); the same override must apply there or
+    # kimi-k2.6 rejects the requested temperature.
+    class _EmptyStream:
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            raise StopAsyncIteration
+
+    class _CapturingCompletions:
+        async def create(self, **kwargs):
+            self.kwargs = kwargs
+            return _EmptyStream()
+
+    provider = OpenAICompatLLMProvider(api_key="sk-test")
+    completions = _CapturingCompletions()
+    provider._client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+
+    chunks = [
+        c
+        async for c in provider.stream(
+            system="sys",
+            user_message="hi",
+            max_tokens=50,
+            temperature=0.7,
+            model="kimi-k2.6",
+        )
+    ]
+    assert chunks == []
+    assert completions.kwargs["temperature"] == 0.6
+    assert completions.kwargs["extra_body"] == {"thinking": {"type": "disabled"}}
+    assert completions.kwargs["stream"] is True
+
+
 def test_openai_tool_result_messages_shape():
     provider = OpenAICompatLLMProvider(api_key="sk-test")
     msgs = provider.build_tool_result_messages([{"tool_call_id": "call_1", "content": "out"}])
@@ -308,6 +392,8 @@ def test_resolve_provider_moonshot_disables_forced_tool_choice(_fake_settings):
     # Moonshot can't force a single tool — the provider must emulate it.
     moonshot = resolve_provider("moonshot-v1-128k")
     assert moonshot._supports_forced_tool_choice is False
+    # kimi-k2.6 routes to Moonshot and likewise emulates forced tool_choice.
+    assert resolve_provider("kimi-k2.6")._supports_forced_tool_choice is False
     # Other OpenAI-compatible backends keep native forced tool_choice.
     assert resolve_provider("gpt-4o-mini")._supports_forced_tool_choice is True
 
@@ -332,5 +418,7 @@ def test_pricing_per_model():
     assert calculate_cost_cents("claude-sonnet-4-6", usage) == 1800
     # moonshot-v1-128k: $2.00 in + $5.00 out = 700 cents.
     assert calculate_cost_cents("moonshot-v1-128k", usage) == 700
+    # kimi-k2.6 has its own row (placeholder rates), not the default fallback.
+    assert calculate_cost_cents("kimi-k2.6", usage) == 700
     # Unknown model falls back to the default (Sonnet) table.
     assert calculate_cost_cents("mystery", usage) == 1800
