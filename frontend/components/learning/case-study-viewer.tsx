@@ -190,6 +190,14 @@ export function CaseStudyViewer({
               `/api/v1/content/cases/${moduleId}/${unitId}?language=${language}&level=${level}&country=${resolvedCountry}`
             );
             if (cancelled) return;
+            // The completion re-fetch can still return a 202 "generating"
+            // envelope (no content field) when the row was stored under a
+            // fallback country the exact-country cache query misses. Committing
+            // it would crash on content.aof_context — keep polling instead.
+            if ('status' in caseRes && (caseRes as unknown as GeneratingResponse).status === 'generating') {
+              pollStatus(taskId, startTime);
+              return;
+            }
             setCaseStudyData(caseRes);
             setIsGenerating(false);
             setIsLoading(false);
@@ -411,6 +419,31 @@ export function CaseStudyViewer({
 
   if (!caseStudyData) {
     return <LessonSkeleton />;
+  }
+
+  // Defensive guard: caseStudyData may have been set from a non-case response
+  // (e.g. a 202 generating envelope with no content field). Never let a
+  // malformed payload white-screen the page on content.aof_context.
+  if (!caseStudyData.content) {
+    return (
+      <div className="container mx-auto max-w-4xl px-4 py-6">
+        <Card className="border-red-200">
+          <CardContent className="p-6 text-center">
+            <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-3" />
+            <div className="text-red-600 font-medium mb-2">{t('error')}</div>
+            <p className="text-gray-600 mb-4">{t('loadError')}</p>
+            <Button
+              variant="outline"
+              onClick={handleRefresh}
+              className="min-h-11"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              {t('retry')}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   const { content } = caseStudyData;
