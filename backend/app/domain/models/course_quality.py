@@ -147,8 +147,8 @@ class UnitQualityAssessment(Base):
     __tablename__ = "unit_quality_assessments"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    run_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("course_quality_runs.id", ondelete="CASCADE"), index=True
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("course_quality_runs.id", ondelete="CASCADE"), nullable=True, index=True
     )
     generated_content_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("generated_content.id", ondelete="CASCADE")
@@ -168,7 +168,7 @@ class UnitQualityAssessment(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    run: Mapped[CourseQualityRun] = relationship(back_populates="assessments")
+    run: Mapped[CourseQualityRun | None] = relationship(back_populates="assessments")
 
 
 class CourseGlossaryTerm(Base):
