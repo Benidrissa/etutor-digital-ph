@@ -88,7 +88,7 @@ export function LessonViewer({
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSlowGeneration, setIsSlowGeneration] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [errorType, setErrorType] = useState<'load' | 'generation' | 'timeout' | 'no_content' | 'not_found' | 'subscription' | null>(null);
+  const [errorType, setErrorType] = useState<'load' | 'generation' | 'timeout' | 'no_content' | 'not_indexed' | 'not_found' | 'subscription' | null>(null);
   const [forceRegenerate, setForceRegenerate] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [contentSource, setContentSource] = useState<'api' | 'indexeddb'>('api');
@@ -128,7 +128,7 @@ export function LessonViewer({
     };
   }, [isHydrated, moduleId, unitId]);
 
-  const stopGenerating = (errMsg: string, type: 'load' | 'generation' | 'timeout' | 'no_content') => {
+  const stopGenerating = (errMsg: string, type: 'load' | 'generation' | 'timeout' | 'no_content' | 'not_indexed') => {
     if (slowWarningTimerRef.current) {
       clearTimeout(slowWarningTimerRef.current);
       slowWarningTimerRef.current = null;
@@ -193,11 +193,14 @@ export function LessonViewer({
               lowered?.includes('0 results');
             // Backend uses sentinel error codes for worker-health failures
             // (see _task_status.py); translate them to user-facing copy.
+            const isNotIndexed = rawError === 'course_not_indexed';
             let msg: string;
             if (rawError === 'task_lost') {
               msg = t('generationLost');
             } else if (rawError === 'task_stalled') {
               msg = t('generationStalled');
+            } else if (isNotIndexed) {
+              msg = t('contentBeingPrepared');
             } else if (isNoContent) {
               msg = t('noContentFound');
             } else if (rawError && rawError.length <= 200) {
@@ -205,7 +208,10 @@ export function LessonViewer({
             } else {
               msg = t('generationFailed');
             }
-            stopGenerating(msg, isNoContent ? 'no_content' : 'generation');
+            stopGenerating(
+              msg,
+              isNotIndexed ? 'not_indexed' : isNoContent ? 'no_content' : 'generation',
+            );
           } else {
             pollStatus(taskId, startTime);
           }
