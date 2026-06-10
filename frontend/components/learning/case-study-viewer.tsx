@@ -208,6 +208,11 @@ export function CaseStudyViewer({
             setForceRegenerate(false);
           } else if (statusRes.status === 'failed') {
             const rawError = statusRes.error?.trim();
+            const lowered = rawError?.toLowerCase();
+            const isNoContent = lowered?.includes('no relevant') ||
+              lowered?.includes('rag') ||
+              lowered?.includes('no results') ||
+              lowered?.includes('0 results');
             // Backend uses sentinel error codes for worker-health failures
             // (see _task_status.py); translate them to user-facing copy.
             let msg: string;
@@ -215,6 +220,10 @@ export function CaseStudyViewer({
               msg = t('generationLost');
             } else if (rawError === 'task_stalled') {
               msg = t('generationStalled');
+            } else if (rawError === 'course_not_indexed') {
+              msg = t('contentBeingPrepared');
+            } else if (isNoContent) {
+              msg = t('noContentFound');
             } else if (rawError && rawError.length <= 200) {
               msg = rawError;
             } else {

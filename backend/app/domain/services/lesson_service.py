@@ -21,7 +21,7 @@ from app.ai.prompts.lesson import (
     format_rag_context_for_lesson,
     get_lesson_system_prompt,
 )
-from app.ai.rag.retriever import SemanticRetriever
+from app.ai.rag.retriever import SearchResult, SemanticRetriever
 from app.api.v1.schemas.content import (
     CaseStudyContent,
     CaseStudyResponse,
@@ -35,9 +35,81 @@ from app.domain.models.course import Course
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.source_image import SourceImage
+from app.domain.services.exceptions import CourseNotIndexedError
 from app.domain.services.platform_settings_service import SettingsCache
 
 logger = structlog.get_logger()
+
+# Relaxed similarity threshold for the fallback retrieval pass (#2487). The
+# primary pass uses the default 0.3; if it returns nothing for a thin or
+# partially-indexed course, retry the same source-scoped query at this lower
+# threshold before giving up.
+RAG_FALLBACK_MIN_SIMILARITY = 0.15
+
+
+async def retrieve_with_fallback(
+    retriever: SemanticRetriever,
+    module: Module,
+    books_sources: dict | None,
+    query: str,
+    unit_id: str,
+    level: int,
+    language: str,
+    session: AsyncSession,
+) -> list[SearchResult]:
+    """Retrieve RAG chunks for a unit, degrading gracefully before failing.
+
+    Shared by the lesson and case-study generators (each resolves its own
+    ``books_sources`` and passes it in).
+
+    1. Primary pass: source-scoped search at the default 0.3 threshold.
+    2. Fallback pass: same source-scoped query at a relaxed threshold
+       (RAG_FALLBACK_MIN_SIMILARITY) — recovers thin / partially-indexed
+       courses whose unit query narrowly missed the 0.3 cutoff (#2487).
+    3. If still empty, distinguish "course not indexed at all" (zero chunks
+       under its source) from "no relevant content for this unit":
+       raise CourseNotIndexedError vs the existing ValueError.
+    """
+    chunks = await retriever.search_for_module(
+        query=query,
+        user_level=level,
+        user_language=language,
+        books_sources=books_sources,
+        top_k=8,
+        session=session,
+    )
+    if chunks:
+        return chunks
+
+    chunks = await retriever.search(
+        query=query,
+        top_k=8,
+        min_similarity=RAG_FALLBACK_MIN_SIMILARITY,
+        filters=retriever._build_module_filters(level, books_sources),
+        session=session,
+    )
+    if chunks:
+        logger.info(
+            "content.rag_fallback_hit",
+            module_id=str(module.id),
+            unit_id=unit_id,
+            min_similarity=RAG_FALLBACK_MIN_SIMILARITY,
+            results=len(chunks),
+        )
+        return chunks
+
+    source_keys = list(books_sources.keys()) if books_sources else []
+    chunk_count = await retriever.count_source_chunks(source_keys, session)
+    if chunk_count == 0:
+        logger.warning(
+            "content.course_not_indexed",
+            module_id=str(module.id),
+            unit_id=unit_id,
+            source_keys=source_keys,
+        )
+        raise CourseNotIndexedError()
+
+    raise ValueError(f"No relevant content found for module {module.id}, unit {unit_id}")
 
 
 def extract_lesson_text(content) -> str:
@@ -559,18 +631,17 @@ class LessonGenerationService:
         # Build search query
         query = await self._build_lesson_query(module, unit_id, language, session)
 
-        # Perform RAG retrieval
-        rag_chunks = await self.semantic_retriever.search_for_module(
-            query=query,
-            user_level=level,
-            user_language=language,
-            books_sources=self._resolve_books_sources(module),
-            top_k=8,
-            session=session,
+        # Perform RAG retrieval with graceful fallback (#2487)
+        rag_chunks = await retrieve_with_fallback(
+            self.semantic_retriever,
+            module,
+            self._resolve_books_sources(module),
+            query,
+            unit_id,
+            level,
+            language,
+            session,
         )
-
-        if not rag_chunks:
-            raise ValueError(f"No relevant content found for module {module.id}, unit {unit_id}")
 
         # Fetch source images linked to retrieved chunks
         chunk_ids = [
@@ -1404,17 +1475,16 @@ class CaseStudyGenerationService:
         unit = await self._resolve_unit(module, unit_id, session)
         query = await self._build_case_study_query(module, unit_id, language, session)
 
-        rag_chunks = await self.semantic_retriever.search_for_module(
-            query=query,
-            user_level=level,
-            user_language=language,
-            books_sources=self._resolve_books_sources(module),
-            top_k=8,
-            session=session,
+        rag_chunks = await retrieve_with_fallback(
+            self.semantic_retriever,
+            module,
+            self._resolve_books_sources(module),
+            query,
+            unit_id,
+            level,
+            language,
+            session,
         )
-
-        if not rag_chunks:
-            raise ValueError(f"No relevant content found for module {module.id}, unit {unit_id}")
 
         module_key = f"M{module.module_number:02d}"
         course: Course | None = module.course
