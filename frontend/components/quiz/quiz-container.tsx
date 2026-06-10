@@ -155,6 +155,17 @@ export function QuizContainer({
               num_questions: unitQuestionsCount,
             });
             if (stale) return;
+            // The completion re-fetch can still return a 202 "generating"
+            // envelope (no content field) — committing it would crash on
+            // quiz.content.title. Keep polling instead (mirrors case study).
+            if (
+              quizData &&
+              'status' in quizData &&
+              (quizData as unknown as GeneratingResponse).status === 'generating'
+            ) {
+              pollStatus(taskId, startTime);
+              return;
+            }
             setQuiz(quizData);
             setState('ready');
           } else if (statusRes.status === 'failed') {
@@ -348,6 +359,30 @@ export function QuizContainer({
     );
   }
   
+  // Defensive guard: quiz may have been set from a non-quiz response (e.g. a
+  // 202 generating envelope with no content field). Never let a malformed
+  // payload white-screen the page on quiz.content.title.
+  if (state === 'ready' && quiz && !quiz.content?.questions) {
+    return (
+      <div className="max-w-4xl mx-auto p-4">
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <AlertTriangle className="w-8 h-8 text-red-600 mb-4" />
+            <h2 className="text-lg font-semibold text-red-900 mb-2">
+              {t('error')}
+            </h2>
+            <p className="text-red-700 text-center max-w-md mb-6">
+              {error || t('networkError')}
+            </p>
+            <Button onClick={handleRetry} variant="outline">
+              {t('tryAgain')}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   // Ready to Start State
   if (state === 'ready' && quiz) {
     return (
