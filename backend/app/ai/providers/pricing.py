@@ -21,6 +21,10 @@ _PRICING: dict[str, dict[str, int]] = {
     # billed lower (cache_read ~$0.20/M, re-verify). Standard chat model: honors
     # arbitrary temperature + json_object (unlike the kimi-k2.6 reasoning model).
     "moonshot-v1-128k": {"input": 200, "output": 500, "cache_write": 0, "cache_read": 20},
+    # Moonshot kimi-k2.6 reasoning model (256K context). Placeholder rates mirror
+    # moonshot-v1-128k until confirmed.
+    # TODO(pricing): replace with confirmed kimi-k2.6 rates from the Kimi console.
+    "kimi-k2.6": {"input": 200, "output": 500, "cache_write": 0, "cache_read": 20},
 }
 
 _DEFAULT = {"input": 300, "output": 1500, "cache_write": 375, "cache_read": 30}

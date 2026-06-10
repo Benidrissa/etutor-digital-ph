@@ -32,6 +32,12 @@ _MODEL_CAPABILITIES: dict[str, dict] = {
         "max_output_tokens": 64_000,
         "chars_per_token": 3.5,
     },
+    # Moonshot kimi-k2.6 reasoning model — 256K context window.
+    "kimi-k2.6": {
+        "context_window_tokens": 256_000,
+        "max_output_tokens": 16_384,
+        "chars_per_token": 3.5,
+    },
     "_default": {
         "context_window_tokens": 200_000,
         "max_output_tokens": 8_000,

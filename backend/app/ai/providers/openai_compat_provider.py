@@ -56,6 +56,27 @@ def _to_openai_tool_choice(tool_choice: dict[str, Any]) -> Any:
     return "auto"
 
 
+# kimi-k2.6 (and the kimi-k2.x reasoning family) reject arbitrary sampling
+# params: temperature is *fixed* by the model (thinking mode → 1.0, non-thinking
+# → 0.6) and thinking is ON by default. We disable thinking — cheaper, lower
+# latency, and keeps the forced-tool/JSON-mode structured-output path reliable —
+# which pins the accepted temperature to 0.6. The standard chat family
+# (moonshot-v1-*) is unaffected and keeps arbitrary temperature + native JSON.
+_KIMI_NON_THINKING_TEMPERATURE = 0.6
+
+
+def _kimi_reasoning_overrides(model: str) -> tuple[float | None, dict[str, Any]]:
+    """Return ``(effective_temperature, extra_body)`` for a model.
+
+    For ``kimi-*`` reasoning models, force the non-thinking temperature and pass
+    ``thinking: disabled`` via ``extra_body``. Empty/``None`` for every other
+    model, leaving their call unchanged.
+    """
+    if (model or "").lower().startswith("kimi"):
+        return _KIMI_NON_THINKING_TEMPERATURE, {"thinking": {"type": "disabled"}}
+    return None, {}
+
+
 class OpenAICompatLLMProvider:
     """Any OpenAI Chat Completions backend (Moonshot / OpenRouter / OpenAI)."""
 
@@ -97,11 +118,14 @@ class OpenAICompatLLMProvider:
         )
         emulate_tool = bool(forced_name and tools and not self._supports_forced_tool_choice)
 
+        eff_temperature, extra_body = _kimi_reasoning_overrides(model)
         kwargs: dict[str, Any] = {
             "model": model,
             "max_tokens": max_tokens,
-            "temperature": temperature,
+            "temperature": eff_temperature if eff_temperature is not None else temperature,
         }
+        if extra_body:
+            kwargs["extra_body"] = extra_body
         if emulate_tool:
             forced_tool = next((t for t in tools if t.get("name") == forced_name), tools[0])
             schema = forced_tool.get("input_schema", {"type": "object", "properties": {}})
@@ -206,16 +230,20 @@ class OpenAICompatLLMProvider:
         temperature: float,
         model: str,
     ) -> AsyncGenerator[str, None]:
-        stream = await self._client.chat.completions.create(
-            model=model,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            messages=[
+        eff_temperature, extra_body = _kimi_reasoning_overrides(model)
+        create_kwargs: dict[str, Any] = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "temperature": eff_temperature if eff_temperature is not None else temperature,
+            "messages": [
                 {"role": "system", "content": flatten_system(system)},
                 {"role": "user", "content": user_message},
             ],
-            stream=True,
-        )
+            "stream": True,
+        }
+        if extra_body:
+            create_kwargs["extra_body"] = extra_body
+        stream = await self._client.chat.completions.create(**create_kwargs)
         async for chunk in stream:
             if not chunk.choices:
                 continue

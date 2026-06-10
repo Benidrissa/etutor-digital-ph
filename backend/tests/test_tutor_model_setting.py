@@ -34,3 +34,11 @@ def test_tutor_model_rejects_value_outside_allowed_options(key):
 def test_tutor_model_accepts_allowed_value(key):
     defn = DEFAULTS_BY_KEY[key]
     assert _validate_value(defn, "moonshot-v1-128k") == "moonshot-v1-128k"
+
+
+@pytest.mark.parametrize("key", ["tutor-model", "tutor-suggestions-model", "ai-model-content"])
+def test_kimi_k26_is_an_allowed_model(key):
+    # The latest Moonshot model is selectable for content generation and tutor.
+    defn = DEFAULTS_BY_KEY[key]
+    assert "kimi-k2.6" in defn.allowed_options
+    assert _validate_value(defn, "kimi-k2.6") == "kimi-k2.6"
