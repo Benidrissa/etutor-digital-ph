@@ -260,8 +260,18 @@ class SemanticRetriever:
             List of SearchResult objects filtered by user context
         """
         top_k = top_k or SettingsCache.instance().get("ai-rag-default-top-k", 8)
-        # Don't filter by language — source books are all English,
-        # Claude generates content in the user's target language
+        filters = self._build_module_filters(user_level, books_sources)
+        return await self.search(query=query, top_k=top_k, filters=filters, session=session)
+
+    @staticmethod
+    def _build_module_filters(
+        user_level: int, books_sources: dict[str, list[str]] | None
+    ) -> dict[str, Any]:
+        """Build the level + source filter dict for a module-scoped search.
+
+        Don't filter by language — source books are all English; Claude
+        generates content in the user's target language.
+        """
         filters: dict[str, Any] = {
             "level": {"$lte": user_level},
         }
@@ -289,7 +299,24 @@ class SemanticRetriever:
                     # or a mix — use the named keys as source filters.
                     filters["source"] = named_keys
 
-        return await self.search(query=query, top_k=top_k, filters=filters, session=session)
+        return filters
+
+    async def count_source_chunks(self, source_keys: list[str], session: AsyncSession) -> int:
+        """Count embedded chunks indexed under the given source keys.
+
+        Used to distinguish a course that is genuinely un-indexed (zero chunks)
+        from one that is indexed but whose chunks didn't match a unit's query.
+        Returns 0 without querying when ``source_keys`` is empty.
+        """
+        if not source_keys:
+            return 0
+        result = await session.execute(
+            text(
+                "SELECT count(*) FROM document_chunks "
+                "WHERE source = ANY(:keys) AND embedding IS NOT NULL"
+            ).bindparams(keys=source_keys),
+        )
+        return int(result.scalar() or 0)
 
     async def get_linked_images(
         self,

@@ -56,6 +56,7 @@ from app.domain.services.citation_formatter import (
     rewrite_response_citations,
     rewrite_uuid_citations_for_module,
 )
+from app.domain.services.exceptions import CourseNotIndexedError
 from app.domain.services.flashcard_service import FlashcardGenerationService
 from app.domain.services.lesson_service import CaseStudyGenerationService, LessonGenerationService
 from app.domain.services.progress_service import ProgressService
@@ -301,6 +302,12 @@ async def generate_lesson(
         await rewrite_response_citations(lesson_response, session)
         return lesson_response
 
+    except CourseNotIndexedError as e:
+        logger.warning("Course not indexed for lesson generation", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "course_not_indexed", "message": str(e)},
+        )
     except ValueError as e:
         logger.warning("Invalid lesson generation request", error=str(e))
         if "not found" in str(e).lower():
@@ -724,6 +731,12 @@ async def get_or_generate_lesson_by_module_and_unit(
             status_code=status.HTTP_202_ACCEPTED,
         )
 
+    except CourseNotIndexedError as e:
+        logger.warning("Course not indexed for lesson request", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "course_not_indexed", "message": str(e)},
+        )
     except ValueError as e:
         logger.warning("Invalid lesson request", error=str(e))
         if "not found" in str(e).lower():
@@ -1392,6 +1405,12 @@ async def get_or_generate_case_study(
             status_code=status.HTTP_202_ACCEPTED,
         )
 
+    except CourseNotIndexedError as e:
+        logger.warning("Course not indexed for case study request", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "course_not_indexed", "message": str(e)},
+        )
     except ValueError as e:
         logger.warning("Invalid case study request", error=str(e))
         if "not found" in str(e).lower():
