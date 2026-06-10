@@ -15,9 +15,10 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { LessonSkeleton } from './lesson-skeleton';
 import { SourceCitations } from './source-citations';
-import { apiFetch, getModuleDetailWithProgress } from '@/lib/api';
+import { apiFetch, getModuleDetailWithProgress, ApiError } from '@/lib/api';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { loadCaseStudy, OfflineContentNotAvailable } from '@/lib/offline/content-loader';
+import { SubscriptionRequired } from '@/components/shared/subscription-required';
 import { addOfflineAction } from '@/lib/offline/db';
 import { OfflineBadge } from '@/components/shared/offline-badge';
 import { useNetworkStatus } from '@/lib/hooks/use-network-status';
@@ -103,6 +104,7 @@ export function CaseStudyViewer({
   const [isLoading, setIsLoading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [subscriptionRequired, setSubscriptionRequired] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const [completeError, setCompleteError] = useState<string | null>(null);
   const [correctionVisible, setCorrectionVisible] = useState(false);
@@ -165,6 +167,7 @@ export function CaseStudyViewer({
     const resolvedCountry = frozenCountryRef.current;
 
     let cancelled = false;
+    setSubscriptionRequired(false);
     if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
 
     const pollStatus = (taskId: string, startTime: number) => {
@@ -190,6 +193,14 @@ export function CaseStudyViewer({
               `/api/v1/content/cases/${moduleId}/${unitId}?language=${language}&level=${level}&country=${resolvedCountry}`
             );
             if (cancelled) return;
+            // The completion re-fetch can still return a 202 "generating"
+            // envelope (no content field) when the row was stored under a
+            // fallback country the exact-country cache query misses. Committing
+            // it would crash on content.aof_context — keep polling instead.
+            if ('status' in caseRes && (caseRes as unknown as GeneratingResponse).status === 'generating') {
+              pollStatus(taskId, startTime);
+              return;
+            }
             setCaseStudyData(caseRes);
             setIsGenerating(false);
             setIsLoading(false);
@@ -264,6 +275,12 @@ export function CaseStudyViewer({
         if (cancelled) return;
         if (err instanceof OfflineContentNotAvailable) {
           setError(t('contentNotAvailableOffline'));
+        } else if (
+          err instanceof ApiError &&
+          (err.code === 'subscription_required' || err.status === 403)
+        ) {
+          setSubscriptionRequired(true);
+          setError(t('loadError'));
         } else {
           setError(t('loadError'));
         }
@@ -369,6 +386,10 @@ export function CaseStudyViewer({
     ),
   };
 
+  if (error && subscriptionRequired) {
+    return <SubscriptionRequired />;
+  }
+
   if (error) {
     return (
       <div className="container mx-auto max-w-4xl px-4 py-6">
@@ -411,6 +432,31 @@ export function CaseStudyViewer({
 
   if (!caseStudyData) {
     return <LessonSkeleton />;
+  }
+
+  // Defensive guard: caseStudyData may have been set from a non-case response
+  // (e.g. a 202 generating envelope with no content field). Never let a
+  // malformed payload white-screen the page on content.aof_context.
+  if (!caseStudyData.content) {
+    return (
+      <div className="container mx-auto max-w-4xl px-4 py-6">
+        <Card className="border-red-200">
+          <CardContent className="p-6 text-center">
+            <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-3" />
+            <div className="text-red-600 font-medium mb-2">{t('error')}</div>
+            <p className="text-gray-600 mb-4">{t('loadError')}</p>
+            <Button
+              variant="outline"
+              onClick={handleRefresh}
+              className="min-h-11"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              {t('retry')}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   const { content } = caseStudyData;
