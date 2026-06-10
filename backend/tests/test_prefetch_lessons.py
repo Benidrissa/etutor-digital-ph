@@ -288,3 +288,113 @@ class TestDispatchContentPrefetch:
         assert call_kwargs["language"] == "en"
         assert call_kwargs["country"] == "GH"
         assert call_kwargs["level"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Tests: prefetch quiz branch supplies the required num_questions arg (#2457)
+# ---------------------------------------------------------------------------
+
+
+class _FakeSessionCtx:
+    def __init__(self, session):
+        self._session = session
+
+    async def __aenter__(self):
+        return self._session
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+class TestPrefetchQuizNumQuestions:
+    """The quiz branch of ``prefetch_next_lessons_task`` must pass the
+    required ``num_questions`` arg to ``get_or_generate_quiz`` — otherwise it
+    raised ``TypeError`` and every quiz prefetch silently landed in ``errors``
+    (#2457). Drives the real task with the DB + service seams mocked so a
+    single quiz unit flows through the branch.
+    """
+
+    def test_quiz_branch_passes_num_questions_from_settings(self, module_id):
+        from app.tasks.content_generation import prefetch_next_lessons_task
+
+        # One quiz unit returned by the units query.
+        quiz_unit = MagicMock()
+        quiz_unit.unit_number = "1.2"
+        quiz_unit.unit_type = "quiz"
+        quiz_unit.order_index = 1
+
+        def _result(scalar_one=None, all_rows=None):
+            r = MagicMock()
+            r.scalar_one_or_none = MagicMock(return_value=scalar_one)
+            scalars = MagicMock()
+            scalars.all = MagicMock(return_value=all_rows or [])
+            r.scalars = MagicMock(return_value=scalars)
+            return r
+
+        # Ordered execute() results: (1) module lookup in _get_next_units,
+        # (2) units query, (3) _is_cached cache query (None = not cached).
+        session = MagicMock()
+        session.execute = AsyncMock(
+            side_effect=[
+                _result(scalar_one=MagicMock()),  # module exists
+                _result(all_rows=[quiz_unit]),  # the quiz unit
+                _result(scalar_one=None),  # not cached
+            ]
+        )
+
+        engine = MagicMock()
+        engine.dispose = AsyncMock()
+
+        quiz_service = MagicMock()
+        quiz_service.get_or_generate_quiz = AsyncMock()
+
+        settings_svc = MagicMock()
+        settings_svc.get = AsyncMock(return_value=7)
+
+        with (
+            patch(
+                "sqlalchemy.ext.asyncio.create_async_engine",
+                return_value=engine,
+            ),
+            patch(
+                "sqlalchemy.ext.asyncio.async_sessionmaker",
+                return_value=lambda: _FakeSessionCtx(session),
+            ),
+            patch("app.ai.claude_service.ClaudeService", MagicMock()),
+            patch("app.ai.rag.embeddings.EmbeddingService", MagicMock()),
+            patch("app.ai.rag.retriever.SemanticRetriever", MagicMock()),
+            patch(
+                "app.domain.services.lesson_service.LessonGenerationService",
+                MagicMock(),
+            ),
+            patch(
+                "app.domain.services.quiz_service.QuizService",
+                return_value=quiz_service,
+            ),
+            patch(
+                "app.domain.services.platform_settings_service.PlatformSettingsService",
+                return_value=settings_svc,
+            ),
+            patch(
+                "app.domain.services._unit_resolution.resolve_module_unit_id",
+                AsyncMock(return_value=None),
+            ),
+        ):
+            result = prefetch_next_lessons_task.run(
+                user_id=str(uuid.uuid4()),
+                module_id=str(module_id),
+                current_unit_id="",
+                language="fr",
+                country="SN",
+                level=1,
+            )
+
+        # The quiz prefetched cleanly (no TypeError → not in errors).
+        assert result["status"] == "complete"
+        assert "1.2:quiz" in result["prefetched"]
+        assert result["errors"] == []
+
+        # And num_questions was supplied, sourced from the platform setting.
+        quiz_service.get_or_generate_quiz.assert_awaited_once()
+        call_kwargs = quiz_service.get_or_generate_quiz.await_args.kwargs
+        assert call_kwargs["num_questions"] == 7
