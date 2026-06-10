@@ -15,9 +15,10 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { LessonSkeleton } from './lesson-skeleton';
 import { SourceCitations } from './source-citations';
-import { apiFetch, getModuleDetailWithProgress } from '@/lib/api';
+import { apiFetch, getModuleDetailWithProgress, ApiError } from '@/lib/api';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { loadCaseStudy, OfflineContentNotAvailable } from '@/lib/offline/content-loader';
+import { SubscriptionRequired } from '@/components/shared/subscription-required';
 import { addOfflineAction } from '@/lib/offline/db';
 import { OfflineBadge } from '@/components/shared/offline-badge';
 import { useNetworkStatus } from '@/lib/hooks/use-network-status';
@@ -103,6 +104,7 @@ export function CaseStudyViewer({
   const [isLoading, setIsLoading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [subscriptionRequired, setSubscriptionRequired] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const [completeError, setCompleteError] = useState<string | null>(null);
   const [correctionVisible, setCorrectionVisible] = useState(false);
@@ -165,6 +167,7 @@ export function CaseStudyViewer({
     const resolvedCountry = frozenCountryRef.current;
 
     let cancelled = false;
+    setSubscriptionRequired(false);
     if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
 
     const pollStatus = (taskId: string, startTime: number) => {
@@ -264,6 +267,12 @@ export function CaseStudyViewer({
         if (cancelled) return;
         if (err instanceof OfflineContentNotAvailable) {
           setError(t('contentNotAvailableOffline'));
+        } else if (
+          err instanceof ApiError &&
+          (err.code === 'subscription_required' || err.status === 403)
+        ) {
+          setSubscriptionRequired(true);
+          setError(t('loadError'));
         } else {
           setError(t('loadError'));
         }
@@ -368,6 +377,10 @@ export function CaseStudyViewer({
       <img src={src} alt={alt ?? ''} className="w-full h-auto rounded-lg my-4" />
     ),
   };
+
+  if (error && subscriptionRequired) {
+    return <SubscriptionRequired />;
+  }
 
   if (error) {
     return (

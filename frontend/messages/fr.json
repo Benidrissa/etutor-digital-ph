@@ -2052,6 +2052,11 @@
     "description": "Vous devez être inscrit à ce cours pour accéder à ce contenu.",
     "cta": "Voir les cours"
   },
+  "SubscriptionRequired": {
+    "title": "Abonnement requis",
+    "description": "Un abonnement est requis pour accéder à ce contenu. La première unité de chaque module est gratuite.",
+    "cta": "S'abonner"
+  },
   "Subscribe": {
     "title": "Abonnement",
     "subtitle": "Accédez à tous les cours et au tuteur IA",
