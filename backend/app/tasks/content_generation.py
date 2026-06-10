@@ -1350,8 +1350,15 @@ def prefetch_next_lessons_task(
                                 )
 
                         elif content_type == "quiz":
+                            from app.domain.services.platform_settings_service import (
+                                PlatformSettingsService,
+                            )
                             from app.domain.services.quiz_service import QuizService
 
+                            settings_svc = PlatformSettingsService()
+                            num_questions = int(
+                                await settings_svc.get("quiz-unit-questions-count") or 10
+                            )
                             quiz_service = QuizService(ClaudeService(), retriever)
                             await quiz_service.get_or_generate_quiz(
                                 module_id=module_uuid,
@@ -1359,6 +1366,7 @@ def prefetch_next_lessons_task(
                                 language=language,
                                 country=country,
                                 level=level,
+                                num_questions=num_questions,
                                 session=session,
                             )
                             prefetched.append(label)
