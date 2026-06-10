@@ -214,6 +214,35 @@ async def generate_quiz(
             cache_result = await session.execute(cached_query)
             cached = cache_result.scalars().first()
 
+            # Country fallback: if no exact-country match, serve any country's
+            # quiz (same unit/language/level) instead of re-dispatching a fresh
+            # generation on every request. Mirrors the lesson/case-study
+            # endpoints so a learner whose country lacks a row (e.g. old-course
+            # content stored under a pre-ISO country value) sees the quiz
+            # immediately while the country-specific version generates in the
+            # background (#2480).
+            is_country_fallback = False
+            if not cached:
+                fallback_query = (
+                    select(GeneratedContent)
+                    .where(GeneratedContent.content_type == "quiz")
+                    .where(GeneratedContent.language == request.language)
+                    .where(GeneratedContent.level == request.level)
+                    .order_by(GeneratedContent.generated_at.desc())
+                )
+                if quiz_unit_uuid is not None:
+                    fallback_query = fallback_query.where(
+                        GeneratedContent.module_unit_id == quiz_unit_uuid
+                    )
+                else:
+                    fallback_query = fallback_query.where(
+                        GeneratedContent.module_id == module_uuid,
+                        GeneratedContent.module_unit_id.is_(None),
+                        GeneratedContent.content["unit_id"].astext == request.unit_id,
+                    )
+                cached = (await session.execute(fallback_query)).scalars().first()
+                is_country_fallback = cached is not None
+
             if cached:
                 from app.api.v1.schemas.quiz import QuizContent as _QuizContent
 
@@ -228,8 +257,25 @@ async def generate_quiz(
                     content=_QuizContent(**content_dict),
                     generated_at=cached.generated_at.isoformat(),
                     cached=True,
+                    country_fallback=is_country_fallback,
                 )
-                logger.info("Quiz cache hit", quiz_id=str(quiz_response.id))
+                logger.info(
+                    "Quiz cache hit",
+                    quiz_id=str(quiz_response.id),
+                    country_fallback=is_country_fallback,
+                )
+                if is_country_fallback:
+                    from app.tasks.content_generation import generate_country_content_task
+
+                    generate_country_content_task.delay(
+                        module_id=str(module_uuid),
+                        unit_id=request.unit_id,
+                        content_type="quiz",
+                        language=request.language,
+                        level=request.level,
+                        country=request.country,
+                        user_id=str(current_user.id) if current_user else "",
+                    )
                 return JSONResponse(
                     content=quiz_response.model_dump(mode="json"),
                     status_code=status.HTTP_200_OK,
