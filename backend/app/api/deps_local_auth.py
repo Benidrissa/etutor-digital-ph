@@ -155,6 +155,32 @@ async def require_active_subscription(
     )
 
 
+async def _resolve_module_uuid(module_id: str | None, session) -> uuid.UUID | None:
+    """Best-effort resolution of a path ``module_id`` to its UUID.
+
+    Accepts a UUID string or a module code (``M01``). Returns ``None`` when the
+    value is absent or unresolvable — callers treat that as "couldn't scope".
+    """
+    if not module_id:
+        return None
+    try:
+        return uuid.UUID(module_id)
+    except (ValueError, AttributeError):
+        pass
+
+    import re
+
+    from ..domain.models.module import Module
+
+    code = re.match(r"^M(\d{2})$", module_id.upper())
+    if not code:
+        return None
+    result = await session.execute(
+        select(Module.id).where(Module.module_number == int(code.group(1)))
+    )
+    return result.scalars().first()
+
+
 async def require_subscription_or_first_unit(
     request: Request,
     user: AuthenticatedUser = Depends(get_current_user),
@@ -177,6 +203,7 @@ async def require_subscription_or_first_unit(
         return user
 
     unit_id = request.path_params.get("unit_id") or request.path_params.get("unitId")
+    module_id = request.path_params.get("module_id") or request.path_params.get("moduleId")
 
     free_count = SettingsCache.instance().get("subscription-free-units-count", 2)
     m = re.match(r"^\d+\.(\d+)$", unit_id) if unit_id else None
@@ -189,12 +216,19 @@ async def require_subscription_or_first_unit(
         if sub is not None:
             return user
 
-        # No subscription — fall back to DB order_index check
+        # No subscription — fall back to DB order_index check.
+        # Scope by module: a unit number like "1.3" is shared across many modules,
+        # so an unscoped lookup matches multiple rows and used to crash the request
+        # with MultipleResultsFound → unhandled 500 for learners (#2459). We resolve
+        # the module from the path and use .first() so the gate degrades to a clean
+        # 403 even if the module can't be resolved.
         if unit_id:
-            result = await session.execute(
-                select(ModuleUnit.order_index).where(ModuleUnit.unit_number == unit_id)
-            )
-            order = result.scalar_one_or_none()
+            unit_query = select(ModuleUnit.order_index).where(ModuleUnit.unit_number == unit_id)
+            module_uuid = await _resolve_module_uuid(module_id, session)
+            if module_uuid is not None:
+                unit_query = unit_query.where(ModuleUnit.module_id == module_uuid)
+            result = await session.execute(unit_query.limit(1))
+            order = result.scalars().first()
             if order is not None and order < free_count:
                 return user
         break
