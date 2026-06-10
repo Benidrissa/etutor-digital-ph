@@ -375,10 +375,16 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "Model — content generation",
         "Model for lessons, quizzes, flashcards, case studies, pre-assessments, "
         "course syllabi and video scripts. Resolved to a provider by prefix "
-        "(claude-* → Anthropic; moonshot-* → Moonshot). NOTE: moonshot-v1-128k "
-        "runs on China-based servers — data-residency compliance was cleared "
-        "2026-06-08; default stays Claude.",
-        allowed_options=["claude-sonnet-4-6", "claude-haiku-4-5", "moonshot-v1-128k"],
+        "(claude-* → Anthropic; moonshot-*/kimi-* → Moonshot). NOTE: Moonshot "
+        "models run on China-based servers — data-residency compliance was "
+        "cleared 2026-06-08. kimi-k2.6 is the latest (256K context); thinking is "
+        "disabled by default (temperature pinned to 0.6). Default stays Claude.",
+        allowed_options=[
+            "claude-sonnet-4-6",
+            "claude-haiku-4-5",
+            "moonshot-v1-128k",
+            "kimi-k2.6",
+        ],
     ),
     SettingDef(
         "ai-model-quality",
@@ -443,11 +449,17 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "string",
         "Model — tutor response",
         "Model for the main tutor conversation loop. Resolved to a provider by "
-        "prefix (claude-* → Anthropic; moonshot-* → Moonshot). NOTE: "
+        "prefix (claude-* → Anthropic; moonshot-*/kimi-* → Moonshot). NOTE: "
         "non-Anthropic models lose Anthropic prompt caching (higher cost / "
         "latency), and turns with image/PDF uploads transparently fall back to "
-        "Claude — multimodal is Anthropic-only.",
-        allowed_options=["claude-sonnet-4-6", "claude-haiku-4-5", "moonshot-v1-128k"],
+        "Claude — multimodal input is Anthropic-only here. kimi-k2.6 runs with "
+        "thinking disabled (temperature pinned to 0.6).",
+        allowed_options=[
+            "claude-sonnet-4-6",
+            "claude-haiku-4-5",
+            "moonshot-v1-128k",
+            "kimi-k2.6",
+        ],
     ),
     SettingDef(
         "tutor-suggestions-model",
@@ -456,9 +468,15 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "string",
         "Model — tutor suggestions / mini-quiz",
         "Model for the tutor mini-quiz tool (bounded structured output). "
-        "Resolved to a provider by prefix (claude-* → Anthropic; moonshot-* → "
-        "Moonshot). Override to a larger model if quality regresses.",
-        allowed_options=["claude-haiku-4-5", "claude-sonnet-4-6", "moonshot-v1-128k"],
+        "Resolved to a provider by prefix (claude-* → Anthropic; moonshot-*/"
+        "kimi-* → Moonshot). kimi-k2.6 runs with thinking disabled (temperature "
+        "pinned to 0.6). Override to a larger model if quality regresses.",
+        allowed_options=[
+            "claude-haiku-4-5",
+            "claude-sonnet-4-6",
+            "moonshot-v1-128k",
+            "kimi-k2.6",
+        ],
     ),
     SettingDef(
         "tutor-response-max-tokens",
