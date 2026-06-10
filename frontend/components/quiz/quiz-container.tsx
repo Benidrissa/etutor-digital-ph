@@ -18,6 +18,7 @@ import { loadQuiz, OfflineContentNotAvailable } from '@/lib/offline/content-load
 import { getOfflineContent } from '@/lib/offline/db';
 import { scoreQuizOffline } from '@/lib/offline/offline-quiz-scorer';
 import { OfflineBadge } from '@/components/shared/offline-badge';
+import { SubscriptionRequired } from '@/components/shared/subscription-required';
 import { useNetworkStatus } from '@/lib/hooks/use-network-status';
 
 const POLL_INTERVAL_MS = 3000;
@@ -60,6 +61,7 @@ export function QuizContainer({
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [result, setResult] = useState<QuizAttemptResponse | null>(null);
   const [error, setError] = useState<string>('');
+  const [subscriptionRequired, setSubscriptionRequired] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   // forceRegenerate is tracked via forceRegenerateRef (below) — not state — so
   // that resetting it after a fetch does not re-trigger the main useEffect.
@@ -178,6 +180,7 @@ export function QuizContainer({
       try {
         setState('loading');
         setError('');
+        setSubscriptionRequired(false);
 
         const result = await loadQuiz<Quiz | GeneratingResponse>(
           moduleId, unitId, language, level, country,
@@ -214,6 +217,7 @@ export function QuizContainer({
         } else if (err instanceof ApiError) {
           if (err.code === 'subscription_required' || err.status === 403) {
             errorMessage = t('subscriptionRequired');
+            setSubscriptionRequired(true);
           } else if (err.status === 401) {
             errorMessage = t('authRequired');
           } else {
@@ -319,6 +323,10 @@ export function QuizContainer({
   }
   
   // Error State
+  if (state === 'error' && subscriptionRequired) {
+    return <SubscriptionRequired />;
+  }
+
   if (state === 'error') {
     return (
       <div className="max-w-4xl mx-auto p-4">

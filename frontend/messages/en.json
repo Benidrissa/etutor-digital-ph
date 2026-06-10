@@ -2052,6 +2052,11 @@
     "description": "You must be enrolled in this course to access this content.",
     "cta": "Browse courses"
   },
+  "SubscriptionRequired": {
+    "title": "Subscription required",
+    "description": "A subscription is required to access this content. The first unit of each module is free.",
+    "cta": "Subscribe"
+  },
   "Subscribe": {
     "title": "Subscription",
     "subtitle": "Access all courses and AI tutor",

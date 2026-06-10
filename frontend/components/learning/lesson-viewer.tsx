@@ -25,6 +25,7 @@ import { track } from '@/lib/analytics';
 import { loadLesson, OfflineContentNotAvailable } from '@/lib/offline/content-loader';
 import { addOfflineAction } from '@/lib/offline/db';
 import { OfflineBadge } from '@/components/shared/offline-badge';
+import { SubscriptionRequired } from '@/components/shared/subscription-required';
 import { useNetworkStatus } from '@/lib/hooks/use-network-status';
 
 const POLL_INTERVAL_MS = 3000;
@@ -87,7 +88,7 @@ export function LessonViewer({
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSlowGeneration, setIsSlowGeneration] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [errorType, setErrorType] = useState<'load' | 'generation' | 'timeout' | 'no_content' | 'not_found' | null>(null);
+  const [errorType, setErrorType] = useState<'load' | 'generation' | 'timeout' | 'no_content' | 'not_found' | 'subscription' | null>(null);
   const [forceRegenerate, setForceRegenerate] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [contentSource, setContentSource] = useState<'api' | 'indexeddb'>('api');
@@ -266,6 +267,12 @@ export function LessonViewer({
         } else if (err instanceof ApiError && err.status === 404) {
           setError(t('unitNotFound'));
           setErrorType('not_found');
+        } else if (
+          err instanceof ApiError &&
+          (err.code === 'subscription_required' || err.status === 403)
+        ) {
+          setError(t('loadError'));
+          setErrorType('subscription');
         } else {
           setError(t('loadError'));
           setErrorType('load');
@@ -357,6 +364,22 @@ export function LessonViewer({
     ),
   };
 
+
+  if (error && errorType === 'subscription') {
+    return (
+      <SubscriptionRequired
+        secondaryAction={
+          <Button
+            variant="outline"
+            onClick={() => router.push(`/${locale}/modules/${moduleId}`)}
+            className="min-h-11"
+          >
+            {t('backToModule')}
+          </Button>
+        }
+      />
+    );
+  }
 
   if (error) {
     return (
