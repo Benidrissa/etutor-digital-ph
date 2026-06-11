@@ -9,7 +9,7 @@ import { FlashcardSessionSummary } from '@/components/learning/flashcard-session
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { authClient, AuthError } from '@/lib/auth';
-import { generateModuleFlashcards, getAllModuleProgress } from '@/lib/api';
+import { ApiError, generateModuleFlashcards, getAllModuleProgress } from '@/lib/api';
 
 interface FlashcardData {
   id: string;
@@ -165,11 +165,29 @@ export function FlashcardsContainer() {
         .filter((m) => m.status === 'in_progress' || m.status === 'completed')
         .map((m) => m.module_id);
       const modulesToGenerate = activeModules.length > 0 ? activeModules : ['M01'];
-      await Promise.allSettled(
+      const results = await Promise.allSettled(
         modulesToGenerate.map((moduleId) =>
           generateModuleFlashcards({ moduleId, language: locale, level: 1 })
         )
       );
+      // If every module failed because its course isn't indexed yet (#2491),
+      // surface a "being prepared" message instead of a generic empty state.
+      // Don't block when at least one module succeeded.
+      const anyFulfilled = results.some((r) => r.status === 'fulfilled');
+      const allNotIndexed =
+        !anyFulfilled &&
+        results.length > 0 &&
+        results.every(
+          (r) =>
+            r.status === 'rejected' &&
+            r.reason instanceof ApiError &&
+            r.reason.code === 'course_not_indexed'
+        );
+      if (allNotIndexed) {
+        setGenerationError(t('contentBeingPrepared'));
+        setSessionState('empty');
+        return;
+      }
       await refetch();
     } catch (err) {
       setGenerationError(err instanceof Error ? err.message : String(err));
@@ -279,7 +297,9 @@ export function FlashcardsContainer() {
           <CardContent className="text-center space-y-4 py-12">
             <div className="text-6xl">📚</div>
             <h1 className="text-2xl font-bold">{t('noFlashcardsYet')}</h1>
-            <p className="text-muted-foreground">{t('noFlashcardsDescription')}</p>
+            <p className="text-muted-foreground">
+              {generationError ?? t('noFlashcardsDescription')}
+            </p>
             <Button
               onClick={() => router.push('/modules')}
               className="w-full min-h-11"

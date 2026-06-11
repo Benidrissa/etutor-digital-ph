@@ -56,11 +56,13 @@ async def retrieve_with_fallback(
     level: int,
     language: str,
     session: AsyncSession,
+    top_k: int = 8,
 ) -> list[SearchResult]:
     """Retrieve RAG chunks for a unit, degrading gracefully before failing.
 
-    Shared by the lesson and case-study generators (each resolves its own
-    ``books_sources`` and passes it in).
+    Shared by the lesson, case-study and flashcard generators (each resolves its
+    own ``books_sources`` and passes it in). ``top_k`` defaults to the lesson/
+    case-study value of 8; the flashcard generator overrides it (#2491).
 
     1. Primary pass: source-scoped search at the default 0.3 threshold.
     2. Fallback pass: same source-scoped query at a relaxed threshold
@@ -75,7 +77,7 @@ async def retrieve_with_fallback(
         user_level=level,
         user_language=language,
         books_sources=books_sources,
-        top_k=8,
+        top_k=top_k,
         session=session,
     )
     if chunks:
@@ -83,7 +85,7 @@ async def retrieve_with_fallback(
 
     chunks = await retriever.search(
         query=query,
-        top_k=8,
+        top_k=top_k,
         min_similarity=RAG_FALLBACK_MIN_SIMILARITY,
         filters=retriever._build_module_filters(level, books_sources),
         session=session,
