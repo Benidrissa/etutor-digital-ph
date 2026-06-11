@@ -29,6 +29,7 @@ from app.domain.models.flashcard import FlashcardReview
 from app.domain.models.module import Module
 from app.domain.models.user import User
 from app.domain.services.analytics_service import AnalyticsService
+from app.domain.services.exceptions import CourseNotIndexedError
 from app.domain.services.flashcard_service import FlashcardGenerationService
 from app.domain.services.platform_settings_service import SettingsCache
 from app.domain.services.subscription_service import SubscriptionService
@@ -732,6 +733,22 @@ async def get_module_flashcards(
         )
 
         return flashcard_response
+
+    except CourseNotIndexedError as e:
+        # Must precede the ValueError handler below — CourseNotIndexedError
+        # subclasses ValueError. Flashcards are served synchronously, so this
+        # surfaces directly to the client (no polling sentinel). Emit both
+        # `error` (backend convention) and `code` (read by frontend apiFetch
+        # into ApiError.code) so the UI can show a "being prepared" state.
+        logger.warning("Course not indexed for flashcard generation", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": "course_not_indexed",
+                "code": "course_not_indexed",
+                "message": str(e),
+            },
+        )
 
     except ValueError as e:
         logger.warning("Invalid module flashcards request", error=str(e))
