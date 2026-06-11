@@ -18,6 +18,7 @@ import {
   ClipboardList,
   AlertTriangle,
   KeyRound,
+  Play,
 } from "lucide-react";
 import { apiFetch, enrollInCourse } from "@/lib/api";
 import { authClient } from "@/lib/auth";
@@ -202,6 +203,10 @@ export default function CourseDetailPage() {
 
   const title = locale === "fr" ? course.title_fr : course.title_en;
   const description = locale === "fr" ? course.description_fr : course.description_en;
+  const preassessmentBlocked =
+    course.preassessment_enabled &&
+    preassessmentStatus?.mandatory === true &&
+    preassessmentStatus?.completed === false;
 
   return (
     <div className="container mx-auto max-w-3xl px-4 py-6 space-y-6 pb-24 md:pb-6">
@@ -377,6 +382,22 @@ export default function CourseDetailPage() {
                           })}
                         </ul>
                       )}
+                      {enrolled && (
+                        <Button
+                          size="sm"
+                          className="mt-3 ml-10 min-h-11 bg-teal-600 hover:bg-teal-700"
+                          onClick={() => router.push(`/modules/${mod.id}`)}
+                          disabled={preassessmentBlocked}
+                          title={
+                            preassessmentBlocked
+                              ? tDetail("preassessmentRequiredTooltip")
+                              : undefined
+                          }
+                        >
+                          <Play className="mr-2 h-4 w-4" />
+                          {tDetail("goToModule")}
+                        </Button>
+                      )}
                     </CardContent>
                   )}
                 </Card>
@@ -393,15 +414,9 @@ export default function CourseDetailPage() {
             <Button
               className="w-full min-h-11 bg-teal-600 hover:bg-teal-700"
               onClick={() => router.push(`/modules?course_id=${course.id}`)}
-              disabled={
-                course.preassessment_enabled &&
-                preassessmentStatus?.mandatory === true &&
-                preassessmentStatus?.completed === false
-              }
+              disabled={preassessmentBlocked}
               title={
-                course.preassessment_enabled &&
-                preassessmentStatus?.mandatory === true &&
-                preassessmentStatus?.completed === false
+                preassessmentBlocked
                   ? tDetail("preassessmentRequiredTooltip")
                   : undefined
               }
