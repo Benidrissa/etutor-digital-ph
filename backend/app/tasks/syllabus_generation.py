@@ -13,6 +13,57 @@ from app.tasks.celery_app import celery_app
 logger = structlog.get_logger(__name__)
 
 
+def _normalize_module_hours(module_dicts: list[dict], target_hours: int) -> None:
+    """Rescale each module's ``estimated_hours`` in place so they sum to ``target_hours``.
+
+    The displayed course duration is ``SUM(module.estimated_hours)`` (see
+    ``_compute_course_hours`` in ``app/api/v1/courses.py``), and ``target_hours`` is the
+    admin-set AI target. The LLM routinely ignores the target (every prompt path carries a
+    per-module floor that fights it), so a 10h course can render as 23h. This deterministic
+    pass is the guarantee that holds regardless of which prompt produced the modules.
+
+    Modules keep their relative weights (a module the LLM judged twice as long stays twice as
+    long). When the LLM omits hours everywhere, we fall back to an even split. No-ops when
+    ``target_hours`` <= 0 or there are no modules.
+    """
+    if not module_dicts or target_hours <= 0:
+        return
+
+    raw = [max(0, int(m.get("estimated_hours") or 0)) for m in module_dicts]
+    actual = sum(raw)
+    n = len(module_dicts)
+
+    if actual <= 0:
+        # No usable per-module signal — divide the target evenly.
+        base = max(1, target_hours // n)
+        scaled = [base] * n
+    else:
+        scale = target_hours / actual
+        scaled = [max(1, round(h * scale)) for h in raw]
+
+    # Fix integer-rounding drift so the displayed total matches the target exactly.
+    # Distribute the remainder onto the largest modules first; never trim below 1h
+    # (so a target smaller than the module count settles at one hour each).
+    order = sorted(range(n), key=lambda i: scaled[i], reverse=True)
+    drift = target_hours - sum(scaled)
+    while drift > 0:
+        for i in order:
+            scaled[i] += 1
+            drift -= 1
+            if drift == 0:
+                break
+    while drift < 0 and any(scaled[i] > 1 for i in range(n)):
+        for i in order:  # largest first
+            if scaled[i] > 1:
+                scaled[i] -= 1
+                drift += 1
+                if drift == 0:
+                    break
+
+    for m, h in zip(module_dicts, scaled, strict=False):
+        m["estimated_hours"] = h
+
+
 class SyllabusTask(Task):
     """Base task for syllabus generation with progress tracking."""
 
@@ -469,6 +520,11 @@ def generate_course_syllabus(
             " response was unparseable. Refusing to save. Check logs for root cause."
         )
 
+    # Reconcile the LLM's per-module hours with the admin's target so the displayed
+    # course duration (SUM of module hours) actually matches it. The prompt is only a
+    # soft nudge; this is the guarantee. See #2504.
+    _normalize_module_hours(module_dicts, estimated_hours or course_hours or 0)
+
     self.update_state(
         state="SAVING",
         meta={
@@ -515,16 +571,9 @@ def generate_course_syllabus(
             )
             session.execute(delete(Module).where(Module.course_id == uuid.UUID(course_id)))
 
-            # If Claude omits per-module hours, divide the target across modules
-            # rather than slapping a flat 20h per module (which inflated the
-            # displayed course total — see #2223).
-            target_total_hours = estimated_hours or course_hours or 0
-            fallback_per_module = (
-                max(1, target_total_hours // len(module_dicts))
-                if module_dicts and target_total_hours > 0
-                else 1
-            )
-
+            # Per-module hours were already reconciled with the target by
+            # _normalize_module_hours above (see #2504 / #2223), so each module now
+            # carries a positive estimated_hours that sums to the target.
             saved_modules = []
             for i, m in enumerate(module_dicts):
                 module_id = uuid.uuid4()
@@ -536,7 +585,7 @@ def generate_course_syllabus(
                     title_en=m["title_en"],
                     description_fr=m.get("description_fr"),
                     description_en=m.get("description_en"),
-                    estimated_hours=m.get("estimated_hours") or fallback_per_module,
+                    estimated_hours=m.get("estimated_hours") or 1,
                     bloom_level=m.get("bloom_level"),
                     course_id=uuid.UUID(course_id),
                     books_sources=books_sources,
