@@ -124,7 +124,7 @@ class TestFlashcardGenerationService:
 
         session.refresh = AsyncMock(side_effect=mock_refresh)
 
-        mock_semantic_retriever.search.return_value = sample_search_results
+        mock_semantic_retriever.search_for_module.return_value = sample_search_results
         mock_claude_service.generate_structured_content.return_value = {
             "flashcards": sample_flashcard_data,
             "__complete": True,
@@ -152,7 +152,7 @@ class TestFlashcardGenerationService:
         assert result.flashcards[1].formula is not None
         assert "Incidence Rate" in result.flashcards[1].formula
 
-        mock_semantic_retriever.search.assert_called_once()
+        mock_semantic_retriever.search_for_module.assert_called_once()
         mock_claude_service.generate_structured_content.assert_called_once()
         session.add.assert_called_once()
         session.commit.assert_called_once()
@@ -206,7 +206,7 @@ class TestFlashcardGenerationService:
         assert len(result.flashcards) == 2
 
         # Verify no generation calls were made
-        mock_semantic_retriever.search.assert_not_called()
+        mock_semantic_retriever.search_for_module.assert_not_called()
         mock_claude_service.generate_structured_content.assert_not_called()
 
     @pytest.mark.asyncio
@@ -236,7 +236,12 @@ class TestFlashcardGenerationService:
         module_result.scalar_one_or_none.return_value = mock_module
         session.execute = AsyncMock(side_effect=[cache_miss_result, module_result])
 
+        # Course IS indexed (count > 0) but neither the scoped pass nor the
+        # relaxed fallback matched — retrieve_with_fallback raises a plain
+        # ValueError (not CourseNotIndexedError).
+        mock_semantic_retriever.search_for_module.return_value = []
         mock_semantic_retriever.search.return_value = []
+        mock_semantic_retriever.count_source_chunks.return_value = 5
 
         with pytest.raises(ValueError, match="No relevant content found"):
             await flashcard_service.get_or_generate_flashcard_set(
@@ -282,7 +287,7 @@ class TestFlashcardGenerationService:
 
         session.refresh = AsyncMock(side_effect=mock_refresh)
 
-        mock_semantic_retriever.search.return_value = sample_search_results
+        mock_semantic_retriever.search_for_module.return_value = sample_search_results
         mock_claude_service.generate_structured_content.side_effect = Exception("API Error")
 
         with pytest.raises(ValueError, match="Content generation failed"):
@@ -329,7 +334,7 @@ class TestFlashcardGenerationService:
 
         session.refresh = AsyncMock(side_effect=mock_refresh)
 
-        mock_semantic_retriever.search.return_value = sample_search_results
+        mock_semantic_retriever.search_for_module.return_value = sample_search_results
         mock_claude_service.generate_structured_content.return_value = "Invalid JSON"
 
         with pytest.raises(ValueError, match="Unexpected response type"):
@@ -399,7 +404,7 @@ class TestFlashcardGenerationService:
                 obj.generated_at = datetime.now(UTC)
 
         session.refresh = AsyncMock(side_effect=mock_refresh)
-        mock_semantic_retriever.search.return_value = sample_search_results
+        mock_semantic_retriever.search_for_module.return_value = sample_search_results
         mock_claude_service.generate_structured_content.return_value = {
             "flashcards": sample_flashcard_data,
             "__complete": True,
@@ -413,7 +418,7 @@ class TestFlashcardGenerationService:
             session=session,
         )
 
-        call_args = mock_semantic_retriever.search.call_args
+        call_args = mock_semantic_retriever.search_for_module.call_args
         assert "Fondements de la Santé Publique" in call_args[1]["query"]
 
     def test_extract_sources_from_flashcards(

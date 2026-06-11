@@ -15,6 +15,7 @@ from app.api.v1.schemas.content import FlashcardContent, FlashcardSetResponse
 from app.domain.models.content import GeneratedContent
 from app.domain.models.course import Course
 from app.domain.models.module import Module
+from app.domain.services.lesson_service import retrieve_with_fallback
 from app.domain.services.platform_settings_service import SettingsCache
 
 logger = structlog.get_logger()
@@ -137,6 +138,25 @@ class FlashcardGenerationService:
         result = await session.execute(query)
         return result.scalar_one_or_none()
 
+    @staticmethod
+    def _resolve_books_sources(module: Module) -> dict | None:
+        """Return books_sources for the semantic retriever.
+
+        Admin-created courses index chunks with source=rag_collection_id,
+        so always prefer that over books_sources (which may contain PDF
+        filenames that don't match the stored chunk source).
+        Legacy courses (no rag_collection_id) use books_sources as-is.
+
+        Mirrors the staticmethod on the lesson/case-study generators; the
+        services share no base class, so the resolver is duplicated (#2491).
+        """
+        course = module.course
+        if course and course.rag_collection_id:
+            return {course.rag_collection_id: []}
+        if module.books_sources:
+            return module.books_sources
+        return None
+
     async def _generate_flashcard_set(
         self,
         module_id: uuid.UUID,
@@ -182,16 +202,22 @@ class FlashcardGenerationService:
 
         logger.info("Retrieving relevant content chunks", query=query)
 
-        # Retrieve relevant chunks using RAG
-        search_results = await self.semantic_retriever.search(
-            query=query,
+        # Retrieve relevant chunks using RAG, scoped to this module's course
+        # (#2491). Reuses the lesson/case-study fallback helper so an un-indexed
+        # course raises CourseNotIndexedError instead of silently borrowing
+        # off-topic chunks from other courses. Flashcards are module-level
+        # (no unit), so "flashcards" is passed as the unit_id log label.
+        search_results = await retrieve_with_fallback(
+            self.semantic_retriever,
+            module,
+            self._resolve_books_sources(module),
+            query,
+            "flashcards",
+            level,
+            language,
+            session,
             top_k=SettingsCache.instance().get("ai-rag-flashcard-top-k", 12),
-            filters={"level": {"$lte": level}},  # Only content appropriate for user's level
-            session=session,
         )
-
-        if not search_results:
-            raise ValueError(f"No relevant content found for module {module_id}")
 
         logger.info(f"Retrieved {len(search_results)} content chunks")
 
