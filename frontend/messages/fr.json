@@ -972,6 +972,7 @@
   },
   "CourseDetail": {
     "syllabus": "Programme",
+    "goToModule": "Aller au module",
     "units": "unités",
     "backToCatalog": "Retour au catalogue",
     "notFound": "Cours non trouvé.",
