@@ -297,7 +297,20 @@ REFERENCE DOCUMENTS:
                 if total_image_annotations >= max_image_annotations:
                     break
                 fig_num = img.get("figure_number") or ""
-                caption = img.get("caption") or ""
+                # Use the lesson-language caption so Claude reasons over (and
+                # may echo) the translated figure text, not the raw English the
+                # PyMuPDF extractor pulled from the PDF (#2502). The translated
+                # variants are produced at indexation time and carried through
+                # SourceImage.to_meta_dict(); fall back across locales then the
+                # raw caption.
+                if language == "fr":
+                    caption = (
+                        img.get("caption_fr") or img.get("caption") or img.get("caption_en") or ""
+                    )
+                else:
+                    caption = (
+                        img.get("caption_en") or img.get("caption") or img.get("caption_fr") or ""
+                    )
                 img_type = img.get("image_type") or "unknown"
                 img_id = img.get("id", "")
                 label_parts = []
