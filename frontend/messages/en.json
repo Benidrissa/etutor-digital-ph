@@ -565,6 +565,7 @@
     "redirectingToLogin": "Redirecting to login...",
     "noFlashcardsYet": "No flashcards yet",
     "noFlashcardsDescription": "Complete modules to generate flashcards, or try again.",
+    "contentBeingPrepared": "This course's materials are still being prepared. Please try again soon.",
     "goToModules": "Go to Modules"
   },
   "Onboarding": {
