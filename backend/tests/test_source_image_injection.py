@@ -114,6 +114,47 @@ class TestFormatRagContextForLesson:
         result = format_rag_context_for_lesson(chunks, "q", "M01", "1.1", "fr", linked_images=None)
         assert "FIGURE DISPONIBLE" not in result
 
+    def test_fr_lesson_injects_french_caption_not_english(self):
+        """FR lessons must put the translated caption in the prompt, not the raw
+        English the extractor pulled from the PDF (#2502)."""
+        chunk_id = uuid.uuid4()
+        img = _make_image_meta(
+            caption="Steps in the Marketing Process",
+            caption_fr="Étapes du processus de marketing",
+            caption_en="Steps in the Marketing Process",
+        )
+        chunks = [_make_search_result(chunk_id=chunk_id)]
+        result = format_rag_context_for_lesson(
+            chunks, "q", "M01", "1.1", "fr", linked_images={chunk_id: [img]}
+        )
+        assert "Étapes du processus de marketing" in result
+        assert "Steps in the Marketing Process" not in result
+
+    def test_en_lesson_injects_english_caption(self):
+        chunk_id = uuid.uuid4()
+        img = _make_image_meta(
+            caption="Steps in the Marketing Process",
+            caption_fr="Étapes du processus de marketing",
+            caption_en="Steps in the Marketing Process",
+        )
+        chunks = [_make_search_result(chunk_id=chunk_id)]
+        result = format_rag_context_for_lesson(
+            chunks, "q", "M01", "1.1", "en", linked_images={chunk_id: [img]}
+        )
+        assert "Steps in the Marketing Process" in result
+        assert "Étapes du processus de marketing" not in result
+
+    def test_fr_lesson_falls_back_to_raw_caption_when_no_translation(self):
+        """When caption_fr is missing, fall back to the raw caption rather than
+        dropping the annotation entirely."""
+        chunk_id = uuid.uuid4()
+        img = _make_image_meta(caption="Raw extracted caption", caption_fr=None, caption_en=None)
+        chunks = [_make_search_result(chunk_id=chunk_id)]
+        result = format_rag_context_for_lesson(
+            chunks, "q", "M01", "1.1", "fr", linked_images={chunk_id: [img]}
+        )
+        assert "Raw extracted caption" in result
+
     def test_annotation_includes_figure_number_and_caption(self):
         chunk_id = uuid.uuid4()
         img = _make_image_meta(figure_number="2.5", caption="Epidemiology cycle")

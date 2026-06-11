@@ -517,11 +517,13 @@ class RAGPipeline:
             )
 
             figure_kind: str | None = None
-            if vision_body_text:
-                # The caption reader already determined this crop is page text,
-                # not a figure (#2435). Tag it so the retriever excludes it and
-                # purge_body_text_figures (#2431) can remove it; skip the extra
-                # classification call.
+            if vision_body_text or img.is_text_dominant:
+                # This crop is page text, not a figure — either the vision
+                # caption reader said so (#2435) or the geometric extractor
+                # heuristic flagged it (#2502, the vision-free path that works
+                # when ENABLE_FIGURE_VISION is off). Tag it so the retriever
+                # excludes it and purge_body_text_figures (#2431) can remove it;
+                # skip the extra classification call.
                 figure_kind = "body_text"
             else:
                 try:
