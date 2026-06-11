@@ -108,7 +108,9 @@ Chaque module doit contenir EXACTEMENT ces champs :
    - flashcard_count : nombre de flashcards recommandées (15-30)
    - case_study_scenario : scénario d'étude de cas ancré en AOF
 7. **source_references** : Références aux 3 livres de référence (Donaldson, Gordis, Triola)
-8. **estimated_hours** : Durée estimée (entre 15h et 25h par module)
+8. **estimated_hours** : Durée estimée par module — proportionnée à la durée
+   totale visée du cours, de sorte que la somme des modules ≈ la durée cible
+   (ne pas imposer un plancher fixe par module)
 9. **bloom_level** : Niveau Bloom cible (remember/understand/apply/analyze/evaluate/create)
 
 ### Livres de référence disponibles
