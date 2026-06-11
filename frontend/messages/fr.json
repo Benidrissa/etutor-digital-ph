@@ -2065,12 +2065,6 @@
   "Subscribe": {
     "title": "Abonnement",
     "subtitle": "Accédez à tous les cours et au tuteur IA",
-    "instructions": "Envoyez votre paiement par Orange Money au numéro ci-dessous. Votre abonnement sera activé sous 24h.",
-    "step1": "Ajoutez votre numéro de téléphone ci-dessous",
-    "step2": "Envoyez 1 000 FCFA par Orange Money au numéro indiqué",
-    "step3": "Votre accès est activé sous 24h",
-    "orangeMoneyLabel": "Numéro Orange Money de paiement",
-    "orangeMoneyNumber": "+221 77 000 0000",
     "amount": "1 000 FCFA / 4 semaines",
     "active": "Abonnement actif",
     "expired": "Abonnement expiré",

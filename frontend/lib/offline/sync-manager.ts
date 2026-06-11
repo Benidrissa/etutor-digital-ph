@@ -19,6 +19,7 @@ import { prewarmPage } from './download-manager';
 
 const PREWARM_V6_DONE_KEY = 'offline_prewarm_v6_done';
 const PREWARM_V7_DONE_KEY = 'offline_prewarm_v7_done';
+const PREWARM_V8_DONE_KEY = 'offline_prewarm_v8_done';
 
 export type SyncStatus =
   | { state: 'idle' }
@@ -55,6 +56,7 @@ class SyncManager {
       this.syncNow();
       this.runV6PrewarmMigration();
       this.runV7PrewarmMigration();
+      this.runV8PrewarmMigration();
     };
     window.addEventListener('online', this.onlineHandler);
 
@@ -64,6 +66,7 @@ class SyncManager {
     if (typeof navigator !== 'undefined' && navigator.onLine) {
       this.runV6PrewarmMigration();
       this.runV7PrewarmMigration();
+      this.runV8PrewarmMigration();
     }
   }
 
@@ -201,6 +204,45 @@ class SyncManager {
         }
       }
       localStorage.setItem(PREWARM_V7_DONE_KEY, '1');
+    } catch {
+      // best-effort; failure must not break sync
+    }
+  }
+
+  /**
+   * One-shot migration for the v8 cache-version bump (drop stale bundles so
+   * the new provider-selector /subscribe page replaces the cached old shell,
+   * #2355). Renaming the pages cache from `pages-v7-status-no-cache` to
+   * `pages-v8-subscribe-provider-ui` orphans previously-prewarmed module
+   * pages; re-warm them so offline navigation keeps hitting cache instead of
+   * /offline.html.
+   */
+  async runV8PrewarmMigration(): Promise<void> {
+    if (typeof window === 'undefined') return;
+    try {
+      if (localStorage.getItem(PREWARM_V8_DONE_KEY)) return;
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+
+      const modules = await getOfflineModulesByStatus('downloaded');
+      for (const mod of modules) {
+        const entries = await getOfflineContentByModule(mod.moduleId);
+        const flashcardKey = `__module_${mod.moduleId}__`;
+        const seen = new Set<string>();
+        for (const entry of entries) {
+          if (entry.unitId === flashcardKey) continue;
+          const key = `${entry.locale}|${entry.unitId}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          await prewarmPage(
+            `/${entry.locale}/modules/${mod.moduleId}/units/${entry.unitId}`,
+          );
+        }
+        const locales = new Set(entries.map((e) => e.locale));
+        for (const loc of locales) {
+          await prewarmPage(`/${loc}/modules/${mod.moduleId}`);
+        }
+      }
+      localStorage.setItem(PREWARM_V8_DONE_KEY, '1');
     } catch {
       // best-effort; failure must not break sync
     }
