@@ -973,6 +973,7 @@
   },
   "CourseDetail": {
     "syllabus": "Syllabus",
+    "goToModule": "Go to module",
     "units": "units",
     "backToCatalog": "Back to catalog",
     "notFound": "Course not found.",
