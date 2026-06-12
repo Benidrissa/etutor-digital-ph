@@ -17,10 +17,12 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   uploadCourseResource,
+  checkCourseResourceHash,
   deleteCourseResource,
   getCourseResources,
   type UploadedFile,
 } from "@/lib/api-course-admin";
+import { sha256Hex } from "@/lib/file-hash";
 
 const EXTRACTING_STATUSES = new Set<string>(["pending", "extracting"]);
 
@@ -129,6 +131,30 @@ export function useCourseResourceUpload(
           f.name === file.name ? { ...f, status: "uploading" as const } : f,
         ),
       );
+
+      // Pre-flight dedup: hash the PDF locally and ask the backend whether it's
+      // already indexed. On a hit the server creates a thin reference and we
+      // skip uploading the bytes — a big win on slow networks. Falls through to
+      // the full upload when WebCrypto is unavailable or there's no match.
+      const fileHash = await sha256Hex(file);
+      if (fileHash) {
+        const { deduped } = await checkCourseResourceHash(targetCourseId, {
+          file_hash: fileHash,
+          filename: file.name,
+          size_bytes: file.size,
+        });
+        if (deduped) {
+          setFiles((prev) =>
+            prev.map((f) =>
+              f.name === file.name
+                ? { ...f, status: "uploaded" as const, extraction_status: "done" as const }
+                : f,
+            ),
+          );
+          return true;
+        }
+      }
+
       const result = await uploadCourseResource(targetCourseId, file);
       if (!result.ok) {
         setFiles((prev) =>

@@ -1699,6 +1699,88 @@ async def list_course_resources(
     return {"course_id": str(course_id), "files": files}
 
 
+def _safe_pdf_name(filename: str | None) -> str:
+    """Sanitise an uploaded filename to a safe, lowercase ``.pdf`` name.
+
+    Files uploaded with an uppercase ``.PDF`` were written verbatim, but
+    extraction looks for ``<stem>.pdf`` and globs ``*.pdf`` — both
+    case-sensitive on Linux — so the source was silently dropped. Normalising
+    the extension here keeps the on-disk name and the extractor in sync.
+    """
+    safe_name = re.sub(r"[^\w.\-]", "_", Path(filename or "resource.pdf").name)
+    if safe_name.lower().endswith(".pdf"):
+        safe_name = safe_name[: -len(".pdf")] + ".pdf"
+    else:
+        safe_name += ".pdf"
+    return safe_name
+
+
+async def _dedup_resource_by_file_hash(
+    db,
+    course: Course,
+    file_hash: str,
+    safe_name: str,
+    size_bytes: int,
+) -> dict | None:
+    """Reuse an already-indexed PDF source identified by its SHA-256 file hash.
+
+    If an identical PDF was already extracted for any course, create a thin
+    ``CourseResource`` reference (reusing the donor's extracted text / TOC /
+    content_hash / summary) without writing bytes to disk or re-running the
+    extraction task. The RAG indexation step later clones the donor's embedded
+    chunks via ``content_hash`` instead of re-embedding.
+
+    Returns the upload-style response dict on a hit, or ``None`` when no donor
+    exists (the caller must then persist the bytes and enqueue extraction).
+    """
+    donor_result = await db.execute(
+        select(CourseResource)
+        .where(
+            CourseResource.file_hash == file_hash,
+            CourseResource.extraction_status == EXTRACTION_STATUS_DONE,
+        )
+        .limit(1)
+    )
+    donor = donor_result.scalar_one_or_none()
+    if donor is None:
+        return None
+
+    resource = CourseResource(
+        course_id=course.id,
+        filename=Path(safe_name).stem,
+        parent_filename=donor.parent_filename,
+        raw_text=donor.raw_text,
+        toc_json=donor.toc_json,
+        char_count=donor.char_count,
+        content_hash=donor.content_hash,
+        file_hash=file_hash,
+        summary_text=donor.summary_text,
+        summary_model=donor.summary_model,
+        summary_status=donor.summary_status,
+        extraction_status=EXTRACTION_STATUS_DONE,
+    )
+    db.add(resource)
+    if course.creation_step == "upload":
+        course.creation_step = "info"
+    await db.commit()
+    await db.refresh(resource)
+    logger.info(
+        "Course resource deduped from existing file_hash — skipped extraction",
+        course_id=str(course.id),
+        filename=safe_name,
+        file_hash=file_hash,
+        donor_id=str(donor.id),
+        resource_id=str(resource.id),
+    )
+    return {
+        "course_id": str(course.id),
+        "name": safe_name,
+        "size_bytes": size_bytes,
+        "resource_id": str(resource.id),
+        "extraction_status": EXTRACTION_STATUS_DONE,
+    }
+
+
 @router.post("/{course_id}/resources", status_code=status.HTTP_201_CREATED)
 async def upload_course_resource(
     course_id: uuid.UUID,
@@ -1738,65 +1820,15 @@ async def upload_course_resource(
         )
 
     file_hash = hashlib.sha256(data).hexdigest()
-
-    safe_name = re.sub(r"[^\w.\-]", "_", Path(file.filename or "resource.pdf").name)
-    # Normalise the extension to a lowercase ".pdf". Files uploaded with an
-    # uppercase ".PDF" were written verbatim, but extract_course_resource looks
-    # for "<stem>.pdf" and globs "*.pdf" — both case-sensitive on Linux — so the
-    # source was silently dropped ("PDF file not found on disk").
-    if safe_name.lower().endswith(".pdf"):
-        safe_name = safe_name[: -len(".pdf")] + ".pdf"
-    else:
-        safe_name += ".pdf"
+    safe_name = _safe_pdf_name(file.filename)
 
     # File-hash dedup: if an identical PDF was already extracted for any course,
-    # create a thin CourseResource reference without re-writing to disk or
-    # re-running the extraction task.
-    donor_result = await db.execute(
-        select(CourseResource)
-        .where(
-            CourseResource.file_hash == file_hash,
-            CourseResource.extraction_status == EXTRACTION_STATUS_DONE,
-        )
-        .limit(1)
-    )
-    donor = donor_result.scalar_one_or_none()
-
-    if donor is not None:
-        resource = CourseResource(
-            course_id=course_id,
-            filename=Path(safe_name).stem,
-            parent_filename=donor.parent_filename,
-            raw_text=donor.raw_text,
-            toc_json=donor.toc_json,
-            char_count=donor.char_count,
-            content_hash=donor.content_hash,
-            file_hash=file_hash,
-            summary_text=donor.summary_text,
-            summary_model=donor.summary_model,
-            summary_status=donor.summary_status,
-            extraction_status=EXTRACTION_STATUS_DONE,
-        )
-        db.add(resource)
-        if course.creation_step == "upload":
-            course.creation_step = "info"
-        await db.commit()
-        await db.refresh(resource)
-        logger.info(
-            "Course resource deduped from existing file_hash — skipped extraction",
-            course_id=str(course_id),
-            filename=safe_name,
-            file_hash=file_hash,
-            donor_id=str(donor.id),
-            resource_id=str(resource.id),
-        )
-        return {
-            "course_id": str(course_id),
-            "name": safe_name,
-            "size_bytes": len(data),
-            "resource_id": str(resource.id),
-            "extraction_status": EXTRACTION_STATUS_DONE,
-        }
+    # reuse it (thin reference, no disk write, no extraction). The client may
+    # already have short-circuited this via /resources/check-hash, but we keep
+    # the check here so the optimisation is best-effort, not load-bearing.
+    deduped = await _dedup_resource_by_file_hash(db, course, file_hash, safe_name, len(data))
+    if deduped is not None:
+        return deduped
 
     course_dir = UPLOAD_DIR / str(course_id)
     course_dir.mkdir(parents=True, exist_ok=True)
@@ -1840,6 +1872,62 @@ async def upload_course_resource(
         "resource_id": str(resource.id),
         "extraction_status": EXTRACTION_STATUS_PENDING,
     }
+
+
+class CheckResourceHashRequest(BaseModel):
+    """Pre-flight payload to check whether a PDF is already indexed.
+
+    The client computes the SHA-256 of the raw PDF bytes locally and sends only
+    the hash, so an already-indexed source is reused without uploading the file.
+    """
+
+    file_hash: str
+    filename: str
+    size_bytes: int = 0
+
+
+_HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+@router.post("/{course_id}/resources/check-hash")
+async def check_course_resource_hash(
+    course_id: uuid.UUID,
+    payload: CheckResourceHashRequest,
+    current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
+    db=Depends(get_db_session),
+) -> dict:
+    """Reuse an already-indexed PDF source without uploading the file.
+
+    The client computes the SHA-256 of the PDF locally and posts only the hash.
+    If an identical PDF was already extracted for any course, a thin
+    ``CourseResource`` reference is created here (``{"deduped": true, ...}``) and
+    the client skips the multipart upload entirely — a meaningful saving on the
+    platform's 2G/3G target networks. Otherwise ``{"deduped": false}`` is
+    returned and the client falls back to ``POST /resources``.
+
+    Restricted to admin/sub_admin — the same trust boundary as the upload
+    endpoint — because a match exposes another course's extracted text.
+    """
+    file_hash = payload.file_hash.strip().lower()
+    if not _HEX64_RE.match(file_hash):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="file_hash must be a 64-character hex SHA-256 digest",
+        )
+
+    result = await db.execute(select(Course).where(Course.id == course_id))
+    course = result.scalar_one_or_none()
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    safe_name = _safe_pdf_name(payload.filename)
+    deduped = await _dedup_resource_by_file_hash(
+        db, course, file_hash, safe_name, max(payload.size_bytes, 0)
+    )
+    if deduped is not None:
+        return {"deduped": True, **deduped}
+
+    return {"deduped": False}
 
 
 @router.delete("/{course_id}/resources/{filename}", status_code=status.HTTP_204_NO_CONTENT)

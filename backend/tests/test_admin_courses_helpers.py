@@ -512,3 +512,166 @@ async def test_suggest_metadata_missing_provider_key_returns_503(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         await suggest_course_metadata(course_id=uuid.uuid4(), db=db)
     assert exc.value.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# Client-side hash pre-check — reuse already-indexed PDF sources without
+# uploading the file. _safe_pdf_name / _dedup_resource_by_file_hash /
+# check_course_resource_hash.
+# ---------------------------------------------------------------------------
+
+from app.api.v1.admin_courses import (  # noqa: E402
+    CheckResourceHashRequest,
+    _dedup_resource_by_file_hash,
+    _safe_pdf_name,
+    check_course_resource_hash,
+)
+from app.domain.models.course_resource import (  # noqa: E402
+    EXTRACTION_STATUS_DONE,
+)
+
+
+class _HashDB:
+    """Async DB stub for the dedup helper: returns queued scalars per execute()
+    and records add()/commit(), populating ids on refresh() like the flush would.
+    """
+
+    def __init__(self, scalars):
+        self._scalars = list(scalars)
+        self.added = []
+        self.committed = False
+
+    async def execute(self, *args, **kwargs):
+        return _Result(scalar=self._scalars.pop(0))
+
+    def add(self, obj):
+        self.added.append(obj)
+
+    async def commit(self):
+        self.committed = True
+
+    async def refresh(self, obj):
+        if getattr(obj, "id", None) is None:
+            obj.id = uuid.uuid4()
+
+
+def _make_donor():
+    return SimpleNamespace(
+        id=uuid.uuid4(),
+        parent_filename=None,
+        raw_text="extracted body",
+        toc_json=None,
+        char_count=10,
+        content_hash="c" * 64,
+        summary_text=None,
+        summary_model=None,
+        summary_status=None,
+    )
+
+
+def test_safe_pdf_name_normalises_extension_and_path():
+    assert _safe_pdf_name("My Book.PDF") == "My_Book.pdf"
+    assert _safe_pdf_name("notes") == "notes.pdf"
+    assert _safe_pdf_name(None) == "resource.pdf"
+    # Path components are stripped to the basename.
+    assert _safe_pdf_name("a/b/c.pdf") == "c.pdf"
+
+
+@pytest.mark.asyncio
+async def test_dedup_by_file_hash_reuses_donor_and_advances_step():
+    donor = _make_donor()
+    course = SimpleNamespace(id=uuid.uuid4(), creation_step="upload")
+    db = _HashDB([donor])
+
+    resp = await _dedup_resource_by_file_hash(db, course, "a" * 64, "book.pdf", 123)
+
+    assert resp is not None
+    assert resp["extraction_status"] == EXTRACTION_STATUS_DONE
+    assert resp["size_bytes"] == 123
+    assert resp["name"] == "book.pdf"
+    assert db.committed is True
+    # The thin reference copies donor content + carries the file_hash.
+    assert len(db.added) == 1
+    assert db.added[0].file_hash == "a" * 64
+    assert db.added[0].content_hash == "c" * 64
+    assert db.added[0].raw_text == "extracted body"
+    # "upload" → "info" so the wizard can advance.
+    assert course.creation_step == "info"
+
+
+@pytest.mark.asyncio
+async def test_dedup_by_file_hash_returns_none_without_donor():
+    course = SimpleNamespace(id=uuid.uuid4(), creation_step="upload")
+    db = _HashDB([None])
+
+    resp = await _dedup_resource_by_file_hash(db, course, "a" * 64, "book.pdf", 0)
+
+    assert resp is None
+    assert db.committed is False
+    assert db.added == []
+    # No donor → no state change; the caller will upload + extract.
+    assert course.creation_step == "upload"
+
+
+@pytest.mark.asyncio
+async def test_check_hash_rejects_non_hex_digest():
+    with pytest.raises(HTTPException) as exc:
+        await check_course_resource_hash(
+            course_id=uuid.uuid4(),
+            payload=CheckResourceHashRequest(file_hash="not-a-hash", filename="a.pdf"),
+            current_user=None,
+            db=_HashDB([]),
+        )
+    assert exc.value.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_check_hash_404_when_course_missing():
+    with pytest.raises(HTTPException) as exc:
+        await check_course_resource_hash(
+            course_id=uuid.uuid4(),
+            payload=CheckResourceHashRequest(file_hash="a" * 64, filename="a.pdf"),
+            current_user=None,
+            db=_HashDB([None]),  # Course SELECT → None
+        )
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_check_hash_deduped_true_when_already_indexed():
+    donor = _make_donor()
+    course = SimpleNamespace(id=uuid.uuid4(), creation_step="upload")
+    db = _HashDB([course, donor])  # Course SELECT, then donor SELECT
+
+    resp = await check_course_resource_hash(
+        course_id=course.id,
+        payload=CheckResourceHashRequest(
+            file_hash="A" * 64, filename="Book.PDF", size_bytes=999
+        ),
+        current_user=None,
+        db=db,
+    )
+
+    assert resp["deduped"] is True
+    assert resp["extraction_status"] == EXTRACTION_STATUS_DONE
+    assert resp["name"] == "Book.pdf"  # normalised
+    assert resp["size_bytes"] == 999
+    # Hash is normalised to lowercase before lookup/persist.
+    assert db.added[0].file_hash == "a" * 64
+
+
+@pytest.mark.asyncio
+async def test_check_hash_deduped_false_when_new_source():
+    course = SimpleNamespace(id=uuid.uuid4(), creation_step="upload")
+    db = _HashDB([course, None])  # Course found, no donor
+
+    resp = await check_course_resource_hash(
+        course_id=course.id,
+        payload=CheckResourceHashRequest(file_hash="a" * 64, filename="new.pdf"),
+        current_user=None,
+        db=db,
+    )
+
+    assert resp == {"deduped": False}
+    assert db.added == []
+    assert db.committed is False

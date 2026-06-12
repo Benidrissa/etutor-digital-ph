@@ -156,6 +156,35 @@ export async function uploadCourseResource(
   return { ok: true };
 }
 
+/**
+ * Pre-flight: ask the backend whether a PDF (identified by its client-computed
+ * SHA-256) is already indexed. On a hit the server creates a thin resource
+ * reference and returns `{ deduped: true }`, letting the caller skip uploading
+ * the file entirely. Any non-2xx / network error resolves to `{ deduped: false }`
+ * so the caller transparently falls back to a full upload.
+ */
+export async function checkCourseResourceHash(
+  courseId: string,
+  body: { file_hash: string; filename: string; size_bytes: number }
+): Promise<{ deduped: boolean }> {
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch(
+      `${API_BASE}/api/v1/admin/courses/${courseId}/resources/check-hash`,
+      {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    );
+    if (!res.ok) return { deduped: false };
+    const data = await res.json();
+    return { deduped: Boolean(data?.deduped) };
+  } catch {
+    return { deduped: false };
+  }
+}
+
 export async function deleteCourseResource(
   courseId: string,
   filename: string
