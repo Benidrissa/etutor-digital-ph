@@ -66,6 +66,28 @@ def _get_alt_text(image: GeneratedImage, lang: str) -> str:
     return _ALT_TEXT[lang_key]
 
 
+def _get_overlay_title(image: GeneratedImage, lang: str) -> str | None:
+    """Return the overlay title in the requested language, falling back to the other."""
+    if lang == "en":
+        return image.title_en or image.title_fr
+    return image.title_fr or image.title_en
+
+
+def _get_overlay_labels(image: GeneratedImage, lang: str) -> list[str]:
+    """Flatten the bilingual overlay_labels into localized strings for the legend."""
+    if not image.overlay_labels:
+        return []
+    other = "fr" if lang == "en" else "en"
+    labels: list[str] = []
+    for item in image.overlay_labels:
+        if not isinstance(item, dict):
+            continue
+        text = (item.get(lang) or item.get(other) or "").strip()
+        if text:
+            labels.append(text)
+    return labels
+
+
 def _resolve_image_url(img: GeneratedImage) -> str | None:
     """Return a public URL for a ready image.
 
@@ -123,6 +145,8 @@ async def get_lesson_images(
                 status=img_status,
                 image_url=_resolve_image_url(img),
                 alt_text=_get_alt_text(img, lang),
+                title=_get_overlay_title(img, lang),
+                labels=_get_overlay_labels(img, lang),
                 format=img.format,
                 width=img.width,
             )

@@ -19,6 +19,14 @@ class LessonImageResponse(BaseModel):
         description="Public image URL — present only when status='ready', null otherwise",
     )
     alt_text: str = Field(..., description="Localized alt text for accessibility")
+    title: str | None = Field(
+        None,
+        description="Localized overlay title rendered as DOM text above the image",
+    )
+    labels: list[str] = Field(
+        default_factory=list,
+        description="Localized component labels rendered as a legend below the image",
+    )
     format: str = Field(default="webp", description="Image format (webp, png, jpeg)")
     width: int = Field(default=800, description="Image width in pixels")
 
@@ -30,6 +38,8 @@ class LessonImageResponse(BaseModel):
                 "status": "ready",
                 "image_url": "https://cdn.example.com/images/550e8400.webp",
                 "alt_text": "Diagramme illustrant la surveillance épidémiologique",
+                "title": "Surveillance épidémiologique",
+                "labels": ["Collecte", "Analyse", "Riposte"],
                 "format": "webp",
                 "width": 800,
             }
