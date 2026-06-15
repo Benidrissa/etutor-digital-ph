@@ -147,8 +147,8 @@ class ImageGenerationService:
             image_record.status = "generating"
             await session.flush()
 
-            image_bytes, image_url = await self._call_dalle(prompt)
-            # Keep gpt-image-1's native width (1536) — downscaling blurs fine detail.
+            image_bytes, image_url = await self._generate_image(prompt)
+            # Keep the provider's native width (~1536) — downscaling blurs fine detail.
             webp_bytes, width = _resize_to_webp(image_bytes, max_width=1536)
 
             alt_fr, alt_en = await self._generate_alt_text(concept)
@@ -379,25 +379,28 @@ class ImageGenerationService:
                 return candidate
         return None
 
-    async def _call_dalle(self, prompt: str) -> tuple[bytes, str]:
-        """Call OpenAI gpt-image-1 API and return (image_bytes, image_url)."""
-        import base64
+    async def _generate_image(self, prompt: str) -> tuple[bytes, str]:
+        """Generate the illustration via the configured image provider.
 
-        from openai import AsyncOpenAI
-
-        client = AsyncOpenAI(api_key=settings.openai_api_key)
-
-        response = await client.images.generate(
-            model="gpt-image-1",
-            prompt=prompt,
-            size="1536x1024",
-            quality="medium",
+        The backend (``gpt-image-1`` or a Gemini image model) is selected by the
+        ``ai-model-image`` platform setting and resolved by prefix; a missing
+        GOOGLE_API_KEY transparently falls back to gpt-image-1. Returns
+        ``(image_bytes, image_url)`` where the URL is a backend tag (the public
+        URL is set by the caller from the stored data endpoint).
+        """
+        from app.ai.providers.image_provider import (
+            DEFAULT_IMAGE_MODEL,
+            resolve_image_provider,
         )
+        from app.domain.services.platform_settings_service import SettingsCache
 
-        image_bytes = base64.b64decode(response.data[0].b64_json)
-        image_url = f"gpt-image-1://{id(response)}"
+        model = SettingsCache.instance().get("ai-model-image", DEFAULT_IMAGE_MODEL)
+        provider = resolve_image_provider(model)
+        image_bytes = await provider.generate(prompt, size="1536x1024")
+        return image_bytes, f"{provider.model}://generated"
 
-        return image_bytes, image_url
+    # Backwards-compatible alias: the backfill task still calls ``_call_dalle``.
+    _call_dalle = _generate_image
 
     async def _generate_alt_text(self, concept: str) -> tuple[str, str]:
         """Generate bilingual alt-text for the image."""
