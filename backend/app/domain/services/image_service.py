@@ -383,21 +383,18 @@ class ImageGenerationService:
         """Generate the illustration via the configured image provider.
 
         The backend (``gpt-image-1`` or a Gemini image model) is selected by the
-        ``ai-model-image`` platform setting and resolved by prefix; a missing
-        GOOGLE_API_KEY transparently falls back to gpt-image-1. Returns
-        ``(image_bytes, image_url)`` where the URL is a backend tag (the public
-        URL is set by the caller from the stored data endpoint).
+        ``ai-model-image`` platform setting and resolved by prefix. A missing
+        GOOGLE_API_KEY *or* any provider runtime error (e.g. Gemini quota 429)
+        transparently falls back to gpt-image-1. Returns ``(image_bytes, image_url)``
+        where the URL is a backend tag (the public URL is set by the caller from the
+        stored data endpoint).
         """
-        from app.ai.providers.image_provider import (
-            DEFAULT_IMAGE_MODEL,
-            resolve_image_provider,
-        )
+        from app.ai.providers.image_provider import DEFAULT_IMAGE_MODEL, generate_image
         from app.domain.services.platform_settings_service import SettingsCache
 
         model = SettingsCache.instance().get("ai-model-image", DEFAULT_IMAGE_MODEL)
-        provider = resolve_image_provider(model)
-        image_bytes = await provider.generate(prompt, size="1536x1024")
-        return image_bytes, f"{provider.model}://generated"
+        image_bytes, used_model = await generate_image(prompt, model=model, size="1536x1024")
+        return image_bytes, f"{used_model}://generated"
 
     # Backwards-compatible alias: the backfill task still calls ``_call_dalle``.
     _call_dalle = _generate_image
