@@ -42,6 +42,11 @@ class GeneratedImage(Base):
     width: Mapped[int] = mapped_column(Integer, server_default="512")
     alt_text_fr: Mapped[str | None] = mapped_column(Text, nullable=True)
     alt_text_en: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Overlay text rendered as real DOM text on top of the text-free illustration.
+    title_fr: Mapped[str | None] = mapped_column(Text, nullable=True)
+    title_en: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # List of {"fr": ..., "en": ...} component labels for the legend.
+    overlay_labels: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     semantic_tags: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     reuse_count: Mapped[int] = mapped_column(Integer, server_default="0")
     status: Mapped[str] = mapped_column(

@@ -385,6 +385,8 @@ export interface LessonImageResponse {
   alt_text?: string;
   alt_text_fr?: string;
   alt_text_en?: string;
+  title?: string;
+  labels?: string[];
 }
 
 interface _ApiLessonImage {
@@ -393,6 +395,8 @@ interface _ApiLessonImage {
   status: LessonImageStatus;
   image_url: string | null;
   alt_text: string;
+  title?: string | null;
+  labels?: string[];
   format: string;
   width: number;
 }
@@ -420,6 +424,8 @@ export async function getLessonImageStatus(
     alt_text: first.alt_text,
     alt_text_fr: first.alt_text,
     alt_text_en: first.alt_text,
+    title: first.title ?? undefined,
+    labels: first.labels ?? [],
   };
 }
 
