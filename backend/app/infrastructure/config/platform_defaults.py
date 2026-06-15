@@ -406,6 +406,20 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "quality regresses.",
     ),
     SettingDef(
+        "ai-model-image",
+        "ai",
+        "gemini-2.5-flash-image",
+        "string",
+        "Model — image generation",
+        "Backend that generates the text-free lesson illustration. Resolved by "
+        "prefix (gemini-*/imagen-* → Google via its OpenAI-compatible endpoint; "
+        "gpt-image-1/dall-e-* → OpenAI). NOTE: Gemini runs on Google US servers "
+        "and stamps a SynthID watermark on every image; a missing GOOGLE_API_KEY "
+        "transparently falls back to gpt-image-1. Illustrations stay text-free — "
+        "the title and labels are rendered as a DOM overlay.",
+        allowed_options=["gemini-2.5-flash-image", "gpt-image-1"],
+    ),
+    SettingDef(
         "ai-rag-default-top-k",
         "ai",
         8,

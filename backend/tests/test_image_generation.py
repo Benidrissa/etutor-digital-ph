@@ -255,7 +255,7 @@ class TestImageGenerationService:
             mock_anthropic_cls.return_value = mock_client
             mock_client.messages.create = AsyncMock(return_value=mock_claude_response)
 
-            with patch("openai.AsyncOpenAI") as mock_openai_cls:
+            with patch("app.ai.providers.image_provider.AsyncOpenAI") as mock_openai_cls:
                 result = await service.generate_for_lesson(
                     lesson_id=uuid.uuid4(),
                     module_id=uuid.uuid4(),
@@ -294,7 +294,7 @@ class TestImageGenerationService:
                 side_effect=[mock_claude_response, mock_alt_text_response]
             )
 
-            with patch("openai.AsyncOpenAI") as mock_openai_cls:
+            with patch("app.ai.providers.image_provider.AsyncOpenAI") as mock_openai_cls:
                 mock_openai = AsyncMock()
                 mock_openai_cls.return_value = mock_openai
                 mock_openai.images.generate = AsyncMock(return_value=image_api_response)
@@ -372,7 +372,7 @@ class TestImageGenerationService:
                 side_effect=[mock_claude_response, mock_alt_text_response]
             )
 
-            with patch("openai.AsyncOpenAI") as mock_openai_cls:
+            with patch("app.ai.providers.image_provider.AsyncOpenAI") as mock_openai_cls:
                 mock_openai = AsyncMock()
                 mock_openai_cls.return_value = mock_openai
                 mock_openai.images.generate = AsyncMock(return_value=image_api_response)
@@ -445,15 +445,18 @@ class TestImageGenerationService:
         source = inspect.getsource(image_service)
         assert "NO text, letters, numbers, or written words" not in source
 
-    def test_dalle_call_uses_medium_quality_landscape(self):
-        """gpt-image-1 must be invoked at medium quality, 1536x1024."""
+    def test_openai_image_provider_uses_medium_quality_landscape(self):
+        """gpt-image-1 must be invoked at medium quality; image_service requests 1536x1024."""
         import inspect
 
+        from app.ai.providers import image_provider
         from app.domain.services import image_service
 
-        source = inspect.getsource(image_service)
-        assert '"1536x1024"' in source
-        assert '"medium"' in source
+        provider_source = inspect.getsource(image_provider)
+        assert '"gpt-image-1"' in provider_source or "gpt-image-1" in provider_source
+        assert '"medium"' in provider_source
+        # image_service requests the landscape size from whichever provider runs.
+        assert '"1536x1024"' in inspect.getsource(image_service)
 
     async def test_extract_concept_localizes_to_lesson_language(
         self, service, mock_claude_response
@@ -667,7 +670,7 @@ class TestImageGenerationService:
                 side_effect=[mock_claude_response, mock_alt_text_response]
             )
 
-            with patch("openai.AsyncOpenAI") as mock_openai_cls:
+            with patch("app.ai.providers.image_provider.AsyncOpenAI") as mock_openai_cls:
                 mock_openai = AsyncMock()
                 mock_openai_cls.return_value = mock_openai
                 mock_openai.images.generate = AsyncMock(return_value=image_api_response)

@@ -558,7 +558,7 @@ class TestDallEFallbackOptimization:
                 side_effect=[mock_claude_response, alt_text_msg]
             )
 
-            with patch("openai.AsyncOpenAI") as mock_openai_cls:
+            with patch("app.ai.providers.image_provider.AsyncOpenAI") as mock_openai_cls:
                 mock_openai = AsyncMock()
                 mock_openai_cls.return_value = mock_openai
                 mock_openai.images.generate = AsyncMock(return_value=image_api_response)
@@ -614,7 +614,9 @@ class TestDallEFallbackOptimization:
             mock_anthropic_cls.return_value = mock_client
             mock_client.messages.create = AsyncMock(return_value=mock_claude_response)
 
-            with __import__("unittest.mock", fromlist=["patch"]).patch("openai.AsyncOpenAI"):
+            with __import__("unittest.mock", fromlist=["patch"]).patch(
+                "app.ai.providers.image_provider.AsyncOpenAI"
+            ):
                 result = await service.generate_for_lesson(
                     lesson_id=uuid.uuid4(),
                     module_id=uuid.uuid4(),
