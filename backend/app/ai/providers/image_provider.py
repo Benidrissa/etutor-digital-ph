@@ -107,3 +107,26 @@ def resolve_image_provider(model: str | None = None) -> ImageProvider:
 
 def _openai_provider(settings: Settings, model: str) -> OpenAIImageProvider:
     return OpenAIImageProvider(api_key=settings.openai_api_key, model=model)
+
+
+async def generate_image(prompt: str, *, model: str, size: str = "1536x1024") -> tuple[bytes, str]:
+    """Generate an image for ``model``, falling back to gpt-image-1 on any error.
+
+    The resolve-time fallback only covers a *missing* key. A present-but-unprivileged
+    key (e.g. a free-tier Gemini key with image quota 0) raises at call time
+    (429 RESOURCE_EXHAUSTED). Catch any provider error and retry once on gpt-image-1
+    so image generation never hard-fails. Returns ``(image_bytes, model_used)``.
+    """
+    provider = resolve_image_provider(model)
+    try:
+        return await provider.generate(prompt, size=size), provider.model
+    except Exception as exc:
+        if isinstance(provider, OpenAIImageProvider):
+            raise  # already on the fallback backend — nothing left to try
+        logger.warning(
+            "image provider failed — falling back to gpt-image-1",
+            provider_model=provider.model,
+            error=str(exc),
+        )
+        fallback = _openai_provider(get_settings(), _FALLBACK_IMAGE_MODEL)
+        return await fallback.generate(prompt, size=size), fallback.model

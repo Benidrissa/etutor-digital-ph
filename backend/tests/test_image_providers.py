@@ -11,6 +11,7 @@ import pytest
 from app.ai.providers.image_provider import (
     GeminiImageProvider,
     OpenAIImageProvider,
+    generate_image,
     resolve_image_provider,
 )
 
@@ -124,3 +125,59 @@ def test_default_setting_options_resolve(model):
         return_value=_settings(google="gk", openai="ok"),
     ):
         assert resolve_image_provider(model) is not None
+
+
+class TestGenerateImageFallback:
+    async def test_success_returns_model_used(self):
+        with (
+            patch(
+                "app.ai.providers.image_provider.get_settings",
+                return_value=_settings(openai="ok"),
+            ),
+            patch("app.ai.providers.image_provider.AsyncOpenAI") as mock_cls,
+        ):
+            client = MagicMock()
+            client.images.generate = AsyncMock(return_value=_fake_image_response(b"OK"))
+            mock_cls.return_value = client
+
+            data, used = await generate_image("p", model="gpt-image-1")
+            assert data == b"OK"
+            assert used == "gpt-image-1"
+
+    async def test_falls_back_to_openai_when_gemini_errors(self):
+        """A runtime Gemini error (e.g. 429 quota) must fall back to gpt-image-1."""
+        with (
+            patch(
+                "app.ai.providers.image_provider.get_settings",
+                return_value=_settings(google="gk", openai="ok"),
+            ),
+            patch("app.ai.providers.image_provider.AsyncOpenAI") as mock_cls,
+        ):
+            client = MagicMock()
+            # First call (Gemini) raises; second call (gpt-image-1 fallback) succeeds.
+            client.images.generate = AsyncMock(
+                side_effect=[RuntimeError("429 RESOURCE_EXHAUSTED"), _fake_image_response(b"FB")]
+            )
+            mock_cls.return_value = client
+
+            data, used = await generate_image("p", model="gemini-2.5-flash-image")
+            assert data == b"FB"
+            assert used == "gpt-image-1"
+            assert client.images.generate.await_count == 2
+
+    async def test_no_double_fallback_when_openai_itself_errors(self):
+        """If the backend is already gpt-image-1, an error must propagate (no loop)."""
+        with (
+            patch(
+                "app.ai.providers.image_provider.get_settings",
+                return_value=_settings(openai="ok"),
+            ),
+            patch("app.ai.providers.image_provider.AsyncOpenAI") as mock_cls,
+        ):
+            client = MagicMock()
+            client.images.generate = AsyncMock(side_effect=RuntimeError("openai down"))
+            mock_cls.return_value = client
+
+            with pytest.raises(RuntimeError):
+                await generate_image("p", model="gpt-image-1")
+            assert client.images.generate.await_count == 1
