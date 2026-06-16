@@ -288,6 +288,12 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                         "estimated_seconds_remaining": _remaining(extract_progress),
                     },
                 )
+                # Idempotent re-index: drop this resource's existing chunks first
+                # so a re-run replaces rather than appends (clone + embed paths
+                # below have no dedup of their own). Scoped by course_resource_id. #2534
+                async with async_session_factory() as _clear_session:
+                    await pipeline.clear_resource_chunks(rag_collection_id, res.id, _clear_session)
+
                 # Content-hash dedup: clone from donor course if same text already indexed.
                 if res.content_hash:
                     async with async_session_factory() as _dedup_session:
