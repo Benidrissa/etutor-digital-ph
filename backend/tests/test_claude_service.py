@@ -46,9 +46,7 @@ def claude_service():
             # Anthropic-style mock response into an LLMResult.
             async def _fake_complete(**kwargs):
                 resp = await service.client.messages.create(**kwargs)
-                text = "".join(
-                    b.text for b in resp.content if getattr(b, "type", None) == "text"
-                )
+                text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
                 return LLMResult(
                     text=text,
                     stop_reason=resp.stop_reason,
