@@ -23,6 +23,16 @@ SEMANTIC_REUSE_THRESHOLD = 0.85
 # the reuse cache from serving an old garbled-text image for a new lesson.
 STYLE_TAG = "style:illustration"
 
+# Sira serves West African learners. The Claude-authored prompt is asked to depict
+# Black West African people, but image models drift toward their (white/European)
+# training bias, so we also append this literal constraint to every prompt we send
+# to the image backend — belt-and-suspenders, since the model follows literal text.
+PEOPLE_CONSTRAINT = (
+    " Important: any human figures must be Black African people from West Africa, "
+    "with West African skin tones, hair textures and facial features. Never depict "
+    "white, Caucasian, European, Asian or other non-African people."
+)
+
 
 def _jaccard_similarity(tags_a: list[str], tags_b: list[str]) -> float:
     """Compute Jaccard coefficient between two tag lists (case-insensitive)."""
@@ -231,8 +241,8 @@ class ImageGenerationService:
             style_block = (
                 "STYLE for a children's audience: bright friendly cartoon-style flat "
                 "illustration, primary colors, rounded shapes, simple icons, optional "
-                "friendly mascot character. Keep visual complexity low. Show diverse "
-                "children where people appear."
+                "friendly mascot character. Keep visual complexity low. Where children "
+                "appear, they MUST be Black African children from West Africa."
             )
         else:
             style_block = (
@@ -255,10 +265,14 @@ class ImageGenerationService:
             "through imagery alone.\n"
             f"   - {style_block}\n"
             "   - Human figures (learners, professionals, customers, kids, etc.) ARE allowed and "
-            "even encouraged when they help convey the concept; depict diverse people and avoid "
-            "stereotypes. They are not required if the concept is purely structural.\n"
-            "   - Stay subject-agnostic: derive the visual setting from the lesson content itself "
-            "(do not assume any specific country, region, profession, or industry unless the lesson states it).\n"
+            "even encouraged when they help convey the concept. Whenever people appear they MUST "
+            "be Black African people from West Africa (West African skin tones, hair textures and "
+            "facial features); NEVER depict white, Caucasian, European, Asian or other non-African "
+            "people. Avoid stereotypes. People are not required if the concept is purely structural.\n"
+            "   - Stay subject-agnostic about the topic: derive the visual setting from the lesson "
+            "content itself (do not assume any specific profession or industry unless the lesson "
+            "states it). This does NOT override the rule above — any people shown are always Black "
+            "West Africans regardless of subject.\n"
             "   - 250-450 characters.\n"
             "   - GOOD example: 'Clean conceptual illustration: cross-section of a leaf showing a "
             "chloroplast, stomata and veins; arrows for CO2 entering, O2 leaving, water rising and "
@@ -392,7 +406,9 @@ class ImageGenerationService:
         from app.domain.services.platform_settings_service import SettingsCache
 
         model = SettingsCache.instance().get("ai-model-image", DEFAULT_IMAGE_MODEL)
-        image_bytes, used_model = await generate_image(prompt, model=model, size="1536x1024")
+        image_bytes, used_model = await generate_image(
+            prompt + PEOPLE_CONSTRAINT, model=model, size="1536x1024"
+        )
         return image_bytes, f"{used_model}://generated"
 
     # Backwards-compatible alias: the backfill task still calls ``_call_dalle``.
