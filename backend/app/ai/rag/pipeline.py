@@ -76,6 +76,15 @@ class RAGPipeline:
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF file not found: {pdf_path}")
 
+        # Idempotent re-index: drop this resource's existing chunks first so a
+        # re-run replaces rather than appends. _store_chunks' (source, chunk_index,
+        # content) guard isn't stable across runs (chunk_index resets per page) and
+        # the clone path has no guard at all, so without this a re-index doubles the
+        # chunk count. Scoped strictly by course_resource_id — siblings untouched. #2534
+        if course_resource_id:
+            async with async_session_factory() as _clear_session:
+                await self.clear_resource_chunks(source, course_resource_id, _clear_session)
+
         # Content-hash dedup: clone from a donor course instead of re-embedding.
         if content_hash and course_resource_id:
             async with async_session_factory() as _dedup_session:
@@ -802,6 +811,45 @@ class RAGPipeline:
 
         logger.info("Cleared existing chunks", source=source, count=existing_count)
         return existing_count
+
+    async def clear_resource_chunks(
+        self,
+        source: str,
+        course_resource_id: UUID,
+        session: AsyncSession | None = None,
+    ) -> int:
+        """Delete one resource's chunks, scoped by (source, course_resource_id).
+
+        Makes (re)indexing idempotent: callers clear a resource's existing chunks
+        before storing/cloning fresh ones, so a re-run replaces rather than
+        appends. Scoped strictly by ``course_resource_id`` so sibling resources in
+        the same RAG collection are untouched. See #2534.
+        """
+        session_provided = session is not None
+        if not session_provided:
+            async with async_session_factory() as session:
+                return await self._clear_resource_chunks(source, course_resource_id, session)
+        return await self._clear_resource_chunks(source, course_resource_id, session)
+
+    async def _clear_resource_chunks(
+        self, source: str, course_resource_id: UUID, session: AsyncSession
+    ) -> int:
+        result = await session.execute(
+            delete(DocumentChunk).where(
+                DocumentChunk.source == source,
+                DocumentChunk.course_resource_id == course_resource_id,
+            )
+        )
+        await session.commit()
+        deleted = result.rowcount or 0
+        if deleted:
+            logger.info(
+                "Cleared resource chunks before re-index",
+                source=source,
+                course_resource_id=str(course_resource_id),
+                count=deleted,
+            )
+        return deleted
 
     async def get_pipeline_stats(self, session: AsyncSession | None = None) -> dict[str, Any]:
         """Get statistics about the current state of the pipeline."""
