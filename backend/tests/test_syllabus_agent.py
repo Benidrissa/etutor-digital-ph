@@ -18,11 +18,6 @@ from app.main import app
 
 
 @pytest.fixture
-def mock_anthropic_client():
-    return MagicMock()
-
-
-@pytest.fixture
 def mock_semantic_retriever():
     retriever = AsyncMock(spec=SemanticRetriever)
     retriever.retrieve = AsyncMock(return_value=[])
@@ -35,9 +30,8 @@ def mock_embedding_service():
 
 
 @pytest.fixture
-def syllabus_service(mock_anthropic_client, mock_semantic_retriever, mock_embedding_service):
+def syllabus_service(mock_semantic_retriever, mock_embedding_service):
     return SyllabusAgentService(
-        anthropic_client=mock_anthropic_client,
         semantic_retriever=mock_semantic_retriever,
         embedding_service=mock_embedding_service,
     )
