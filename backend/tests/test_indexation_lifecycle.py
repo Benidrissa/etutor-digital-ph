@@ -196,7 +196,7 @@ class TestSoftTimeLimitHandling:
 
         course_path = MagicMock()
         course_path.exists.return_value = True
-        # One PDF on disk so we reach the asyncio.run try-block (skip DB path).
+        # One PDF on disk so we reach the asyncio.run try-block.
         course_path.glob.return_value = [Path("/tmp/nonexistent-for-test.pdf")]
 
         def _raise_soft_timeout(coro):
@@ -205,15 +205,25 @@ class TestSoftTimeLimitHandling:
             coro.close()
             raise SoftTimeLimitExceeded()
 
+        # The task now always loads CourseResource rows up front (to index
+        # file_hash-deduped DB-only sources alongside disk PDFs, #2525). Stub the
+        # query so it returns no DB-only resources for this disk-PDF scenario.
+        empty_session = MagicMock()
+        empty_session.execute.return_value.scalars.return_value.all.return_value = []
+        empty_session.__enter__ = lambda self: self
+        empty_session.__exit__ = lambda *a: None
+
         with (
             patch.object(mod, "UPLOAD_DIR") as mock_upload_dir,
+            patch("sqlalchemy.create_engine"),
+            patch("sqlalchemy.orm.Session", return_value=empty_session),
             patch("asyncio.run", side_effect=_raise_soft_timeout),
             patch.object(task, "update_state") as mock_update_state,
         ):
             mock_upload_dir.__truediv__.return_value = course_path
 
             # Must NOT raise — raising would trigger autoretry of a ~20-min run.
-            result = task.run("course-x", "collection-x")
+            result = task.run("11111111-1111-1111-1111-111111111111", "collection-x")
 
         assert result["status"] == "partial_timeout"
         assert result["rag_collection_id"] == "collection-x"
@@ -232,3 +242,66 @@ class TestSoftTimeLimitHandling:
         assert index_course_resources.ignore_result is False
         assert index_course_resources.soft_time_limit >= 3000
         assert index_course_resources.time_limit > index_course_resources.soft_time_limit
+
+
+class TestDbOnlyResources:
+    """Unit tests for ``_db_only_resources`` — the partition that keeps
+    file_hash-deduped uploads (no file on disk) from being silently dropped by
+    the disk-glob indexing path. See #2525.
+    """
+
+    @staticmethod
+    def _res(filename, *, raw_text="text", parent_filename=None):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            filename=filename, parent_filename=parent_filename, raw_text=raw_text
+        )
+
+    def test_deduped_db_only_resource_is_selected_when_disk_pdf_coexists(self) -> None:
+        from pathlib import Path
+
+        from app.tasks.rag_indexation import _db_only_resources
+
+        pdf_files = [Path("/u/course/Douglas.pdf")]
+        douglas = self._res("Douglas")  # on disk
+        donaldson = self._res("donaldson")  # file_hash-deduped, no file on disk
+
+        out = _db_only_resources(pdf_files, [douglas, donaldson])
+
+        # The regression: donaldson must be picked up even though a disk PDF
+        # exists — the old `if not pdf_files` gate dropped it entirely.
+        assert out == [donaldson]
+
+    def test_resource_matching_disk_stem_is_excluded(self) -> None:
+        from pathlib import Path
+
+        from app.tasks.rag_indexation import _db_only_resources
+
+        pdf_files = [Path("/u/course/Douglas.pdf")]
+        out = _db_only_resources(pdf_files, [self._res("Douglas")])
+        assert out == []
+
+    def test_split_part_excluded_when_parent_on_disk(self) -> None:
+        from pathlib import Path
+
+        from app.tasks.rag_indexation import _db_only_resources
+
+        pdf_files = [Path("/u/course/Douglas.pdf")]
+        part = self._res("Douglas_part2", parent_filename="Douglas")
+        out = _db_only_resources(pdf_files, [part])
+        assert out == []
+
+    def test_resource_without_raw_text_excluded(self) -> None:
+        from app.tasks.rag_indexation import _db_only_resources
+
+        out = _db_only_resources([], [self._res("pending", raw_text=None)])
+        assert out == []
+
+    def test_all_deduped_course_with_no_disk_files(self) -> None:
+        from app.tasks.rag_indexation import _db_only_resources
+
+        a = self._res("a")
+        b = self._res("b")
+        out = _db_only_resources([], [a, b])
+        assert out == [a, b]
