@@ -17,7 +17,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 import structlog
-from anthropic import AsyncAnthropic
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -75,11 +74,9 @@ class SyllabusAgentService:
 
     def __init__(
         self,
-        anthropic_client: AsyncAnthropic,
         semantic_retriever: SemanticRetriever,
         embedding_service: EmbeddingService,
     ) -> None:
-        self._client = anthropic_client
         self._retriever = semantic_retriever
         self._embedding_service = embedding_service
         self._system_prompt = get_syllabus_agent_system_prompt()
