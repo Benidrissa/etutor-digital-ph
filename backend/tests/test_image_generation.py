@@ -546,6 +546,59 @@ class TestImageGenerationService:
             assert "no people" not in system_prompt.lower()
             assert "no human" not in system_prompt.lower()
 
+    async def test_extract_concept_requires_west_african_people(
+        self, service, mock_claude_response
+    ):
+        """#2526: when people appear they must be Black West Africans, never European."""
+        from app.ai.prompts.audience import AudienceContext
+
+        prov_patch, complete_mock = _provider_patch(responses=mock_claude_response)
+        with prov_patch:
+            await service._extract_concept_and_tags(
+                "Some lesson.",
+                language="en",
+                audience=AudienceContext(is_kids=False),
+            )
+
+            system_prompt = complete_mock.call_args.kwargs["system"]
+            assert "West Africa" in system_prompt
+            assert "Black African" in system_prompt
+            # The model must be told NOT to default to white/European people.
+            assert "European" in system_prompt
+            # The old region-neutral "diverse people" wording must be gone.
+            assert "depict diverse people" not in system_prompt
+
+    async def test_kids_style_requires_west_african_children(self, service, mock_claude_response):
+        """#2526: the kids style branch must also require Black West African children."""
+        from app.ai.prompts.audience import AudienceContext
+
+        prov_patch, complete_mock = _provider_patch(responses=mock_claude_response)
+        with prov_patch:
+            await service._extract_concept_and_tags(
+                "Counting from 1 to 10.",
+                language="en",
+                audience=AudienceContext(is_kids=True, age_min=6, age_max=10),
+            )
+
+            system_prompt = complete_mock.call_args.kwargs["system"]
+            assert "Black African children from West Africa" in system_prompt
+
+    async def test_generate_image_appends_west_african_constraint(self, service):
+        """#2526: the literal prompt sent to the image backend must carry the constraint."""
+        from app.domain.services.image_service import PEOPLE_CONSTRAINT
+
+        gen_mock = AsyncMock(return_value=(b"img-bytes", "gpt-image-1"))
+        with patch("app.ai.providers.image_provider.generate_image", gen_mock):
+            await service._generate_image("A clean conceptual illustration.")
+
+        sent_prompt = (
+            gen_mock.call_args.args[0]
+            if gen_mock.call_args.args
+            else (gen_mock.call_args.kwargs["prompt"])
+        )
+        assert sent_prompt.endswith(PEOPLE_CONSTRAINT)
+        assert "Black African people from West Africa" in sent_prompt
+
     async def test_extract_concept_injects_style_and_audience_tags(
         self, service, mock_claude_response
     ):
