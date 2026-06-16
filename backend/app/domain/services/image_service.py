@@ -14,7 +14,6 @@ from sqlalchemy.orm import selectinload
 from app.ai.prompts.audience import AudienceContext, detect_audience
 from app.domain.models.generated_image import GeneratedImage
 from app.domain.models.source_image import SourceImage, SourceImageChunk
-from app.infrastructure.config.settings import settings
 
 logger = structlog.get_logger(__name__)
 
@@ -222,12 +221,11 @@ class ImageGenerationService:
         Returns ``(concept, prompt, tags, title_fr, title_en, labels)`` where ``labels``
         is a list of ``{"fr": ..., "en": ...}`` dicts.
         """
-        import anthropic
-
+        from app.ai.providers import resolve_provider
         from app.domain.services.platform_settings_service import SettingsCache
 
-        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=600.0)
         model = SettingsCache.instance().get("ai-model-image-metadata", "claude-haiku-4-5")
+        provider = resolve_provider(model)
 
         if audience.is_kids:
             style_block = (
@@ -285,19 +283,20 @@ class ImageGenerationService:
             "TAGS: <json_array>"
         )
 
-        message = await client.messages.create(
-            model=model,
-            max_tokens=700,
+        result = await provider.complete(
+            system=system,
             messages=[
                 {
                     "role": "user",
                     "content": f"Lesson content:\n{lesson_content[:2000]}",
                 }
             ],
-            system=system,
+            max_tokens=700,
+            temperature=1.0,
+            model=model,
         )
 
-        text = message.content[0].text if message.content else ""
+        text = result.text
         concept, prompt, tags, title_fr, title_en, labels = _parse_concept_response(text)
 
         # Inject server-side discriminator tags so the cache key always matches the
@@ -401,16 +400,14 @@ class ImageGenerationService:
 
     async def _generate_alt_text(self, concept: str) -> tuple[str, str]:
         """Generate bilingual alt-text for the image."""
-        import anthropic
-
+        from app.ai.providers import resolve_provider
         from app.domain.services.platform_settings_service import SettingsCache
 
-        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=600.0)
         model = SettingsCache.instance().get("ai-model-image-metadata", "claude-haiku-4-5")
+        provider = resolve_provider(model)
 
-        message = await client.messages.create(
-            model=model,
-            max_tokens=100,
+        result = await provider.complete(
+            system="",
             messages=[
                 {
                     "role": "user",
@@ -424,9 +421,12 @@ class ImageGenerationService:
                     ),
                 }
             ],
+            max_tokens=100,
+            temperature=1.0,
+            model=model,
         )
 
-        text = message.content[0].text if message.content else ""
+        text = result.text
         return _parse_alt_text(text, concept)
 
 

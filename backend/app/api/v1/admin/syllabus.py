@@ -6,7 +6,6 @@ import json
 import uuid
 
 import structlog
-from anthropic import AsyncAnthropic
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select, text
@@ -41,11 +40,9 @@ _require_admin = require_role(UserRole.admin, UserRole.sub_admin)
 async def get_syllabus_agent_service() -> SyllabusAgentService:
     """Dependency factory for the syllabus agent service."""
     settings = get_settings()
-    anthropic_client = AsyncAnthropic(api_key=settings.anthropic_api_key)
     embedding_service = EmbeddingService(api_key=settings.openai_api_key)
     semantic_retriever = SemanticRetriever(embedding_service)
     return SyllabusAgentService(
-        anthropic_client=anthropic_client,
         semantic_retriever=semantic_retriever,
         embedding_service=embedding_service,
     )

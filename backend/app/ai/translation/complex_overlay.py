@@ -161,7 +161,11 @@ async def extract_label_positions(
     image_media_type: str = "image/webp",
     client: anthropic.AsyncAnthropic | None = None,
 ) -> DiagramLabels:
-    """Claude Vision call: return every visible label + its approximate position."""
+    """Claude Vision call: return every visible label + its approximate position.
+
+    Vision-only and intentionally NOT settings-driven: the OpenAI-compatible path
+    used for Moonshot/Kimi has no image input, so this stays on Anthropic (#2523).
+    """
     if not image_bytes:
         raise ValueError("image_bytes must be non-empty")
     settings = get_settings()
@@ -216,34 +220,39 @@ async def translate_labels(
     """Translate every label's text into ``target_lang``, preserving ids and positions."""
     if target_lang not in {"fr", "en"}:
         raise ValueError(f"unsupported target_lang: {target_lang!r}")
-    if client is None:
-        settings = get_settings()
-        if not settings.anthropic_api_key:
-            raise ValueError("ANTHROPIC_API_KEY is required to translate labels")
-        client = anthropic.AsyncAnthropic(
-            api_key=settings.anthropic_api_key,
-            timeout=60.0,
-        )
 
     target_full = {"fr": "French", "en": "English"}[target_lang]
     payload = labels.model_dump_json()
-    response = await client.messages.create(
-        model=_TRANSLATE_MODEL,
-        max_tokens=_MAX_TOKENS,
-        system=_TRANSLATE_SYSTEM,
-        messages=[
-            {
-                "role": "user",
-                "content": _TRANSLATE_USER_TEMPLATE.format(
-                    target_lang_full=target_full, payload=payload
-                ),
-            }
-        ],
-        temperature=0.0,
-    )
-    text = "".join(
-        getattr(block, "text", "") for block in response.content if hasattr(block, "text")
-    )
+    user_content = _TRANSLATE_USER_TEMPLATE.format(target_lang_full=target_full, payload=payload)
+
+    if client is not None:
+        # Test/override path: use the injected Anthropic client directly.
+        response = await client.messages.create(
+            model=_TRANSLATE_MODEL,
+            max_tokens=_MAX_TOKENS,
+            system=_TRANSLATE_SYSTEM,
+            messages=[{"role": "user", "content": user_content}],
+            temperature=0.0,
+        )
+        text = "".join(
+            getattr(block, "text", "") for block in response.content if hasattr(block, "text")
+        )
+    else:
+        # Production: text-only translation routes through the configured content
+        # provider (Anthropic or Moonshot) so it honors ai-model-image-metadata
+        # instead of always billing Anthropic (#2523).
+        from app.ai.providers import resolve_provider
+        from app.domain.services.platform_settings_service import SettingsCache
+
+        model = SettingsCache.instance().get("ai-model-image-metadata", _TRANSLATE_MODEL)
+        result = await resolve_provider(model).complete(
+            system=_TRANSLATE_SYSTEM,
+            messages=[{"role": "user", "content": user_content}],
+            max_tokens=_MAX_TOKENS,
+            temperature=0.0,
+            model=model,
+        )
+        text = result.text
     if not text.strip():
         raise ValueError("empty label-translation response")
     translated = _parse_labels(text)

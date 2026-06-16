@@ -35,31 +35,28 @@ def claude_service():
             cache_inst.get.return_value = 64000
             mock_cache.instance.return_value = cache_inst
 
-            with patch("app.ai.claude_service.anthropic"):
-                from app.ai.claude_service import ClaudeService
+            from app.ai.claude_service import ClaudeService
 
-                service = ClaudeService()
-                service.client = AsyncMock()
+            service = ClaudeService()
+            service.client = AsyncMock()
 
-                # ClaudeService now routes through a provider (#2443). Keep the
-                # existing tests' `client.messages.create` mocking intact by
-                # making the fake provider's complete() call it and adapt the
-                # Anthropic-style mock response into an LLMResult.
-                async def _fake_complete(**kwargs):
-                    resp = await service.client.messages.create(**kwargs)
-                    text = "".join(
-                        b.text for b in resp.content if getattr(b, "type", None) == "text"
-                    )
-                    return LLMResult(
-                        text=text,
-                        stop_reason=resp.stop_reason,
-                        usage={"output_tokens": getattr(resp.usage, "output_tokens", None)},
-                    )
+            # ClaudeService now routes through a provider (#2443). Keep the
+            # existing tests' `client.messages.create` mocking intact by
+            # making the fake provider's complete() call it and adapt the
+            # Anthropic-style mock response into an LLMResult.
+            async def _fake_complete(**kwargs):
+                resp = await service.client.messages.create(**kwargs)
+                text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
+                return LLMResult(
+                    text=text,
+                    stop_reason=resp.stop_reason,
+                    usage={"output_tokens": getattr(resp.usage, "output_tokens", None)},
+                )
 
-                fake_provider = MagicMock()
-                fake_provider.complete = AsyncMock(side_effect=_fake_complete)
-                service._provider = lambda: fake_provider
-                return service
+            fake_provider = MagicMock()
+            fake_provider.complete = AsyncMock(side_effect=_fake_complete)
+            service._provider = lambda: fake_provider
+            return service
 
 
 @pytest.mark.asyncio
