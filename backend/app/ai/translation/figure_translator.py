@@ -22,8 +22,6 @@ import anthropic
 import structlog
 from pydantic import BaseModel, Field, ValidationError
 
-from app.infrastructure.config.settings import get_settings
-
 logger = structlog.get_logger(__name__)
 
 
@@ -129,28 +127,37 @@ async def translate_figure_caption(
     if not caption or not caption.strip():
         raise ValueError("caption must be non-empty")
 
-    if client is None:
-        settings = get_settings()
-        if not settings.anthropic_api_key:
-            raise ValueError("ANTHROPIC_API_KEY is required to translate figures")
-        client = anthropic.AsyncAnthropic(
-            api_key=settings.anthropic_api_key,
-            timeout=60.0,
-        )
-
     user_prompt = _build_user_prompt(caption, image_type, figure_number)
-    response = await client.messages.create(
-        model=_TRANSLATOR_MODEL,
-        max_tokens=_MAX_TOKENS,
-        system=_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_prompt}],
-        temperature=0.0,
-    )
 
-    text = ""
-    for block in response.content:
-        if hasattr(block, "text"):
-            text += block.text
+    if client is not None:
+        # Test/override path: use the injected Anthropic client directly.
+        response = await client.messages.create(
+            model=_TRANSLATOR_MODEL,
+            max_tokens=_MAX_TOKENS,
+            system=_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_prompt}],
+            temperature=0.0,
+        )
+        text = "".join(
+            getattr(block, "text", "") for block in response.content if hasattr(block, "text")
+        )
+    else:
+        # Production: text-only translation routes through the configured content
+        # provider (Anthropic or Moonshot) so it honors ai-model-image-metadata
+        # instead of always billing Anthropic (#2523).
+        from app.ai.providers import resolve_provider
+        from app.domain.services.platform_settings_service import SettingsCache
+
+        model = SettingsCache.instance().get("ai-model-image-metadata", _TRANSLATOR_MODEL)
+        result = await resolve_provider(model).complete(
+            system=_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_prompt}],
+            max_tokens=_MAX_TOKENS,
+            temperature=0.0,
+            model=model,
+        )
+        text = result.text
+
     if not text.strip():
         raise ValueError("empty translator response")
 

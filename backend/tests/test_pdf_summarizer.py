@@ -485,6 +485,35 @@ class TestSummarizeSinglePdf:
         assert result == "GPT summary"
         mock_client.chat.completions.create.assert_called_once()
 
+    def test_moonshot_model_uses_provider_complete(self):
+        """A moonshot-* summarizer model must route through the pluggable
+        provider's complete() — not the Anthropic messages.stream path (#2523)."""
+        from types import SimpleNamespace
+
+        from app.ai.pdf_summarizer import summarize_single_pdf
+
+        provider = MagicMock()
+        provider.complete = AsyncMock(return_value=SimpleNamespace(text="  Kimi summary  "))
+
+        result = asyncio.run(
+            summarize_single_pdf(provider, "Book", "text", model="moonshot-v1-128k")
+        )
+
+        assert result == "Kimi summary"
+        provider.complete.assert_awaited_once()
+        assert provider.complete.await_args.kwargs["model"] == "moonshot-v1-128k"
+
+    def test_get_summarizer_client_resolves_moonshot_provider(self):
+        """_get_summarizer_client must delegate moonshot-* to resolve_provider."""
+        from app.ai import pdf_summarizer
+
+        sentinel = object()
+        with patch("app.ai.providers.resolve_provider", return_value=sentinel) as resolve:
+            client = pdf_summarizer._get_summarizer_client("kimi-k2.6")
+
+        assert client is sentinel
+        resolve.assert_called_once_with("kimi-k2.6")
+
 
 class TestSummarizePdfsSync:
     def test_returns_one_summary_per_pdf(self):

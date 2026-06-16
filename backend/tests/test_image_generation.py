@@ -18,6 +18,33 @@ from app.domain.services.image_service import (
 )
 
 
+def _provider_patch(*, responses=None, side_effect=None):
+    """Patch image_service's resolve_provider with a fake provider (#2523).
+
+    Image metadata/alt-text now route through the pluggable provider's
+    ``complete()`` instead of a direct ``anthropic.AsyncAnthropic`` call. This
+    adapts the existing Anthropic-style mock messages (each with
+    ``.content[0].text``) into ``LLMResult`` objects. Pass ``responses`` (one
+    message or a list, consumed in order) or ``side_effect`` (e.g. an exception).
+    Returns ``(patch_cm, complete_mock)`` — assert on ``complete_mock.call_args``.
+    """
+    from app.ai.providers.base import LLMResult
+
+    complete_mock = AsyncMock()
+    if side_effect is not None:
+        complete_mock.side_effect = side_effect
+    elif isinstance(responses, (list, tuple)):
+        complete_mock.side_effect = [LLMResult(text=r.content[0].text) for r in responses]
+    else:
+        complete_mock.return_value = LLMResult(text=responses.content[0].text)
+    provider = MagicMock()
+    provider.complete = complete_mock
+    return (
+        patch("app.ai.providers.resolve_provider", return_value=provider),
+        complete_mock,
+    )
+
+
 class TestJaccardSimilarity:
     def test_identical_tags_returns_one(self):
         tags = ["malaria", "épidémiologie", "aof"]
@@ -250,21 +277,20 @@ class TestImageGenerationService:
             side_effect=[dedup_result, _empty_lesson_context_result(), reuse_result]
         )
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(return_value=mock_claude_response)
+        prov_patch, _ = _provider_patch(responses=mock_claude_response)
+        with (
+            prov_patch,
+            patch("app.ai.providers.image_provider.AsyncOpenAI") as mock_openai_cls,
+        ):
+            result = await service.generate_for_lesson(
+                lesson_id=uuid.uuid4(),
+                module_id=uuid.uuid4(),
+                unit_id="u01",
+                lesson_content="Lesson about malaria in West Africa.",
+                session=mock_session,
+            )
 
-            with patch("app.ai.providers.image_provider.AsyncOpenAI") as mock_openai_cls:
-                result = await service.generate_for_lesson(
-                    lesson_id=uuid.uuid4(),
-                    module_id=uuid.uuid4(),
-                    unit_id="u01",
-                    lesson_content="Lesson about malaria in West Africa.",
-                    session=mock_session,
-                )
-
-                mock_openai_cls.assert_not_called()
+            mock_openai_cls.assert_not_called()
 
         assert result.status == "ready"
         assert result.image_url == f"/api/v1/images/{result.id}/data"
@@ -287,13 +313,10 @@ class TestImageGenerationService:
         image_api_response = MagicMock()
         image_api_response.data = [MagicMock(b64_json=fake_b64)]
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(
-                side_effect=[mock_claude_response, mock_alt_text_response]
-            )
-
+        prov_patch, complete_mock = _provider_patch(
+            responses=[mock_claude_response, mock_alt_text_response]
+        )
+        with prov_patch:
             with patch("app.ai.providers.image_provider.AsyncOpenAI") as mock_openai_cls:
                 mock_openai = AsyncMock()
                 mock_openai_cls.return_value = mock_openai
@@ -333,11 +356,8 @@ class TestImageGenerationService:
         dedup_result = _no_existing_image_result()
         mock_session.execute = AsyncMock(return_value=dedup_result)
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(side_effect=RuntimeError("Claude API error"))
-
+        prov_patch, complete_mock = _provider_patch(side_effect=RuntimeError("Claude API error"))
+        with prov_patch:
             result = await service.generate_for_lesson(
                 lesson_id=uuid.uuid4(),
                 module_id=uuid.uuid4(),
@@ -365,25 +385,22 @@ class TestImageGenerationService:
         image_api_response = MagicMock()
         image_api_response.data = [MagicMock(b64_json=fake_b64)]
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(
-                side_effect=[mock_claude_response, mock_alt_text_response]
+        prov_patch, _ = _provider_patch(responses=[mock_claude_response, mock_alt_text_response])
+        with (
+            prov_patch,
+            patch("app.ai.providers.image_provider.AsyncOpenAI") as mock_openai_cls,
+        ):
+            mock_openai = AsyncMock()
+            mock_openai_cls.return_value = mock_openai
+            mock_openai.images.generate = AsyncMock(return_value=image_api_response)
+
+            result = await service.generate_for_lesson(
+                lesson_id=uuid.uuid4(),
+                module_id=uuid.uuid4(),
+                unit_id="u01",
+                lesson_content="Lesson content.",
+                session=mock_session,
             )
-
-            with patch("app.ai.providers.image_provider.AsyncOpenAI") as mock_openai_cls:
-                mock_openai = AsyncMock()
-                mock_openai_cls.return_value = mock_openai
-                mock_openai.images.generate = AsyncMock(return_value=image_api_response)
-
-                result = await service.generate_for_lesson(
-                    lesson_id=uuid.uuid4(),
-                    module_id=uuid.uuid4(),
-                    unit_id="u01",
-                    lesson_content="Lesson content.",
-                    session=mock_session,
-                )
 
         assert result.alt_text_fr is not None and len(result.alt_text_fr) > 0
         assert result.alt_text_en is not None and len(result.alt_text_en) > 0
@@ -402,11 +419,8 @@ class TestImageGenerationService:
             side_effect=[dedup_result, _empty_lesson_context_result(), reuse_result]
         )
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(return_value=mock_claude_response)
-
+        prov_patch, complete_mock = _provider_patch(responses=mock_claude_response)
+        with prov_patch:
             await service.generate_for_lesson(
                 lesson_id=uuid.uuid4(),
                 module_id=uuid.uuid4(),
@@ -464,18 +478,15 @@ class TestImageGenerationService:
         """When language='fr', the system prompt sent to Claude must request French labels."""
         from app.ai.prompts.audience import AudienceContext
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(return_value=mock_claude_response)
-
+        prov_patch, complete_mock = _provider_patch(responses=mock_claude_response)
+        with prov_patch:
             await service._extract_concept_and_tags(
                 "Lesson about photosynthesis.",
                 language="fr",
                 audience=AudienceContext(is_kids=False),
             )
 
-            system_prompt = mock_client.messages.create.call_args.kwargs["system"]
+            system_prompt = complete_mock.call_args.kwargs["system"]
             assert "French" in system_prompt
             assert "language-agnostic" in system_prompt.lower()
 
@@ -483,18 +494,15 @@ class TestImageGenerationService:
         """Default language='en' must request English labels in the system prompt."""
         from app.ai.prompts.audience import AudienceContext
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(return_value=mock_claude_response)
-
+        prov_patch, complete_mock = _provider_patch(responses=mock_claude_response)
+        with prov_patch:
             await service._extract_concept_and_tags(
                 "Lesson about photosynthesis.",
                 language="en",
                 audience=AudienceContext(is_kids=False),
             )
 
-            system_prompt = mock_client.messages.create.call_args.kwargs["system"]
+            system_prompt = complete_mock.call_args.kwargs["system"]
             assert "English" in system_prompt
 
     async def test_extract_concept_kids_audience_branches_style(
@@ -503,18 +511,15 @@ class TestImageGenerationService:
         """When audience.is_kids=True, the prompt must request kid-friendly cartoon style."""
         from app.ai.prompts.audience import AudienceContext
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(return_value=mock_claude_response)
-
+        prov_patch, complete_mock = _provider_patch(responses=mock_claude_response)
+        with prov_patch:
             await service._extract_concept_and_tags(
                 "Counting from 1 to 10.",
                 language="en",
                 audience=AudienceContext(is_kids=True, age_min=6, age_max=10),
             )
 
-            system_prompt = mock_client.messages.create.call_args.kwargs["system"]
+            system_prompt = complete_mock.call_args.kwargs["system"]
             # Kids style markers (cartoon, primary colors, mascot) must appear.
             assert "cartoon" in system_prompt.lower()
             assert "children" in system_prompt.lower() or "child" in system_prompt.lower()
@@ -525,18 +530,15 @@ class TestImageGenerationService:
         """The system prompt must explicitly allow human figures in the infographic."""
         from app.ai.prompts.audience import AudienceContext
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(return_value=mock_claude_response)
-
+        prov_patch, complete_mock = _provider_patch(responses=mock_claude_response)
+        with prov_patch:
             await service._extract_concept_and_tags(
                 "Some lesson.",
                 language="en",
                 audience=AudienceContext(is_kids=False),
             )
 
-            system_prompt = mock_client.messages.create.call_args.kwargs["system"]
+            system_prompt = complete_mock.call_args.kwargs["system"]
             # Humans must be explicitly allowed (not forbidden).
             assert "Human figures" in system_prompt or "human figures" in system_prompt
             assert "allowed" in system_prompt.lower()
@@ -554,11 +556,8 @@ class TestImageGenerationService:
         """
         from app.ai.prompts.audience import AudienceContext
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(return_value=mock_claude_response)
-
+        prov_patch, complete_mock = _provider_patch(responses=mock_claude_response)
+        with prov_patch:
             _, _, tags, _, _, _ = await service._extract_concept_and_tags(
                 "Counting lesson.",
                 language="fr",
@@ -663,25 +662,22 @@ class TestImageGenerationService:
         image_api_response = MagicMock()
         image_api_response.data = [MagicMock(b64_json=fake_b64)]
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(
-                side_effect=[mock_claude_response, mock_alt_text_response]
+        prov_patch, _ = _provider_patch(responses=[mock_claude_response, mock_alt_text_response])
+        with (
+            prov_patch,
+            patch("app.ai.providers.image_provider.AsyncOpenAI") as mock_openai_cls,
+        ):
+            mock_openai = AsyncMock()
+            mock_openai_cls.return_value = mock_openai
+            mock_openai.images.generate = AsyncMock(return_value=image_api_response)
+
+            result = await service.generate_for_lesson(
+                lesson_id=uuid.uuid4(),
+                module_id=uuid.uuid4(),
+                unit_id="u01",
+                lesson_content="Lesson about tuberculosis surveillance in Senegal.",
+                session=mock_session,
             )
-
-            with patch("app.ai.providers.image_provider.AsyncOpenAI") as mock_openai_cls:
-                mock_openai = AsyncMock()
-                mock_openai_cls.return_value = mock_openai
-                mock_openai.images.generate = AsyncMock(return_value=image_api_response)
-
-                result = await service.generate_for_lesson(
-                    lesson_id=uuid.uuid4(),
-                    module_id=uuid.uuid4(),
-                    unit_id="u01",
-                    lesson_content="Lesson about tuberculosis surveillance in Senegal.",
-                    session=mock_session,
-                )
 
         assert result.image_data is not None, "image_data must not be NULL after generation"
         assert len(result.image_data) > 0

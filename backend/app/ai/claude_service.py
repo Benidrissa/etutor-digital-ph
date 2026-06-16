@@ -6,7 +6,6 @@ from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Any
 
-import anthropic
 import structlog
 
 from app.ai.providers import resolve_provider
@@ -50,12 +49,6 @@ class ClaudeService:
         self.settings = get_settings()
         if not self.settings.anthropic_api_key:
             raise ValueError("ANTHROPIC_API_KEY is required")
-
-        # Retained for callers that still reach the raw Anthropic client directly.
-        self.client = anthropic.AsyncAnthropic(
-            api_key=self.settings.anthropic_api_key,
-            timeout=600.0,
-        )
 
         _cache = SettingsCache.instance()
         self._max_tokens = _cache.get("ai-max-tokens-content", 64000)
