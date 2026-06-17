@@ -69,6 +69,13 @@ class Settings(BaseSettings):
     # Issue #1928 — staging burned ~$30 in 4 hours of repeated backfills.
     enable_figure_vision: bool = True
 
+    # Drop unreadable extracted images (blank/near-uniform fills, random-noise
+    # garbage from botched colorspace/mask decodes, decode-failures) before they
+    # are persisted as source_images and linked to content (#2540). Calibrated
+    # to keep sparse line-diagrams/flowcharts. Set False to disable the filter
+    # if a real figure is ever wrongly dropped.
+    enable_image_readability_filter: bool = True
+
     # Figure-vision provider selection (#2435). The classifier + caption reader
     # call whichever provider is configured here. Gemini 2.5 Flash-Lite is the
     # cheapest accurate VLM (~$0.10/$0.40 per 1M; a figure image bills ~258
