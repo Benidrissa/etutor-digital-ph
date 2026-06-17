@@ -19,6 +19,9 @@ from pathlib import Path
 import pymupdf
 import structlog
 
+from app.ai.rag.image_quality import assess_readability
+from app.infrastructure.config.settings import get_settings
+
 logger = structlog.get_logger(__name__)
 
 # Raised from 100/100/2KB to 200/200/4KB in #2073. PDFs frequently embed
@@ -271,6 +274,7 @@ class PDFImageExtractor:
         finally:
             doc.close()
 
+        results = self._filter_unreadable(results, source)
         results = self._deduplicate_images(results)
 
         logger.info(
@@ -830,6 +834,44 @@ class PDFImageExtractor:
             chapter=metadata.get("chapter"),
             section=metadata.get("section"),
         )
+
+    def _filter_unreadable(self, images: list[ExtractedImage], source: str) -> list[ExtractedImage]:
+        """Drop images with no legible content before they are linked to courses.
+
+        Covers every extraction path (xref, vector region, full-page raster)
+        because all of them funnel into the same ``results`` list. Gated by
+        ``enable_image_readability_filter`` so it can be turned off without a
+        code change if a real figure is ever wrongly rejected. See
+        ``image_quality.assess_readability`` for the per-signal calibration.
+        """
+        if not get_settings().enable_image_readability_filter:
+            return images
+
+        kept: list[ExtractedImage] = []
+        for img in images:
+            readable, reason = assess_readability(img.image_bytes)
+            if readable:
+                kept.append(img)
+            else:
+                logger.info(
+                    "Dropping unreadable extracted image",
+                    source=source,
+                    page=img.page_number,
+                    figure_number=img.figure_number,
+                    width=img.width,
+                    height=img.height,
+                    reason=reason,
+                )
+
+        dropped = len(images) - len(kept)
+        if dropped:
+            logger.info(
+                "Unreadable image filter complete",
+                source=source,
+                dropped=dropped,
+                kept=len(kept),
+            )
+        return kept
 
     def _deduplicate_images(self, images: list[ExtractedImage]) -> list[ExtractedImage]:
         """Remove near-duplicate images using average hash (8x8 grayscale, Hamming distance < 5).
