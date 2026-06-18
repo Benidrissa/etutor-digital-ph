@@ -2065,12 +2065,6 @@
   "Subscribe": {
     "title": "Subscription",
     "subtitle": "Access all courses and AI tutor",
-    "instructions": "Send your payment via Orange Money to the number below. Your subscription will be activated within 24h.",
-    "step1": "Add your phone number below",
-    "step2": "Send 1,000 XOF via Orange Money to the number shown",
-    "step3": "Your access is activated within 24h",
-    "orangeMoneyLabel": "Orange Money payment number",
-    "orangeMoneyNumber": "+221 77 000 0000",
     "amount": "1,000 XOF / 4 weeks",
     "active": "Active subscription",
     "expired": "Subscription expired",

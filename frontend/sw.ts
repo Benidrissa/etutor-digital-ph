@@ -23,7 +23,10 @@ const DAY_IN_SECONDS = 24 * 60 * 60;
 // match `pages-${CACHE_VERSION}`) so downloaded modules render offline.
 // v7 excludes /api/v1/content/status/ from the API SWR cache so a stale
 // "generating" body can't keep the quiz spinner alive forever offline.
-const CACHE_VERSION = "v7-status-no-cache";
+// v8 drops stale bundles so clients pick up the new provider-selector
+// /subscribe page (#2355) instead of serving the cached old Orange-Money
+// manual-payment shell.
+const CACHE_VERSION = "v8-subscribe-provider-ui";
 
 const OFFLINE_FALLBACK_URL = "/offline.html";
 
