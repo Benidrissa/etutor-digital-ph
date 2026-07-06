@@ -1054,8 +1054,13 @@ export function AICourseWizard({
       setPublishSuccess(true);
       queryClient.invalidateQueries({ queryKey: ["admin-courses"] });
       onCourseCreated();
-    } catch {
-      setPublishError(t("publish.error"));
+    } catch (err) {
+      // Surface the backend's real reason instead of always blaming indexation:
+      // the publish gate passes here, so a failure is usually something else, and
+      // the hardcoded "vérifiez l'indexation" message misleads. #2543
+      setPublishError(
+        err instanceof ApiError && err.message ? err.message : t("publish.error"),
+      );
     } finally {
       setIsPublishing(false);
     }
