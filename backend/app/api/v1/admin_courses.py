@@ -1761,8 +1761,8 @@ async def upload_course_resource(
         safe_name += ".pdf"
 
     # File-hash dedup: if an identical PDF was already extracted for any course,
-    # create a thin CourseResource reference without re-writing to disk or
-    # re-running the extraction task.
+    # create a thin CourseResource reference that inherits the donor's text and
+    # skips the (expensive) extraction task.
     donor_result = await db.execute(
         select(CourseResource)
         .where(
@@ -1774,6 +1774,16 @@ async def upload_course_resource(
     donor = donor_result.scalar_one_or_none()
 
     if donor is not None:
+        # Still write the PDF to disk. Image indexation globs course_dir for
+        # *.pdf and process_pdf_images requires the file, so without the bytes a
+        # deduped course gets text but ZERO images. Writing here keeps the
+        # skip-extraction-task optimization (text is inherited from the donor)
+        # while letting the image pipeline run — its image_hash donor-clone then
+        # reuses the donor's MinIO/Claude output at near-zero cost. #2548
+        course_dir = UPLOAD_DIR / str(course_id)
+        course_dir.mkdir(parents=True, exist_ok=True)
+        (course_dir / safe_name).write_bytes(data)
+
         resource = CourseResource(
             course_id=course_id,
             filename=Path(safe_name).stem,
