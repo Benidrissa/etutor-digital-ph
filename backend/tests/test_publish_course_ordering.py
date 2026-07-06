@@ -52,12 +52,16 @@ def _patches(order, sentinel, assess_side_effect):
         order.append("build")
         return sentinel
 
-    return patch.multiple(
-        admin_courses,
-        _fetch_image_count=AsyncMock(return_value=0),
-        _course_to_response=MagicMock(side_effect=_build),
-        pregenerate_on_publish_task=MagicMock(),
-    ), qa_svc, qa_run
+    return (
+        patch.multiple(
+            admin_courses,
+            _fetch_image_count=AsyncMock(return_value=0),
+            _course_to_response=MagicMock(side_effect=_build),
+            pregenerate_on_publish_task=MagicMock(),
+        ),
+        qa_svc,
+        qa_run,
+    )
 
 
 @pytest.mark.asyncio
