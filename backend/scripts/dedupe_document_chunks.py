@@ -106,15 +106,9 @@ async def _run(session: AsyncSession, source: str | None, dry_run: bool) -> None
 
     await session.execute(text(_BUILD_DUPE_MAP.format(where=where)), params)
 
-    dup_count = (
-        await session.execute(text("SELECT count(*) FROM _dupe_map"))
-    ).scalar_one()
+    dup_count = (await session.execute(text("SELECT count(*) FROM _dupe_map"))).scalar_one()
 
-    affected = (
-        await session.execute(
-            text(_AFFECTED_SUMMARY.format(where=where)), params
-        )
-    ).all()
+    affected = (await session.execute(text(_AFFECTED_SUMMARY.format(where=where)), params)).all()
 
     mode = "[dry-run]" if dry_run else "[applied]"
     for src, total, dups in affected:
@@ -123,8 +117,10 @@ async def _run(session: AsyncSession, source: str | None, dry_run: bool) -> None
     if dry_run:
         # Roll back the temp table + any reads; write nothing.
         await session.rollback()
-        print(f"\n{mode} would remove {dup_count} duplicate chunk(s) across "
-              f"{len(affected)} collection(s). No changes written.")
+        print(
+            f"\n{mode} would remove {dup_count} duplicate chunk(s) across "
+            f"{len(affected)} collection(s). No changes written."
+        )
         return
 
     dropped = (await session.execute(text(_DROP_COLLIDING_LINKS))).rowcount
