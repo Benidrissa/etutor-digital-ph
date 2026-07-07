@@ -5,26 +5,35 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
-class QuizQuestion(BaseModel):
-    """Single quiz question with multiple choice options."""
+class PublicQuizQuestion(BaseModel):
+    """Quiz question as served to learners BEFORE submission — carries no answer key.
+
+    Summative (module-validation) assessments must only ever expose this shape
+    pre-submission; correct answers and explanations stay server-side.
+    """
 
     id: str = Field(description="Question identifier within quiz")
     question: str = Field(description="Question text")
     options: list[str] = Field(description="4 multiple choice options", min_length=4, max_length=4)
-    correct_answer: int = Field(description="Index of correct option (0-3)", ge=0, le=3)
-    explanation: str = Field(description="Explanation for the correct answer")
     sources_cited: list[str] = Field(
         description="Source citations for this question", default_factory=list
     )
     difficulty: str = Field(description="Question difficulty level", default="medium")
 
 
-class QuizContent(BaseModel):
-    """Quiz content structure matching GeneratedContent.content schema."""
+class QuizQuestion(PublicQuizQuestion):
+    """Single quiz question with multiple choice options, including the answer key."""
+
+    correct_answer: int = Field(description="Index of correct option (0-3)", ge=0, le=3)
+    explanation: str = Field(description="Explanation for the correct answer")
+
+
+class PublicQuizContent(BaseModel):
+    """Quiz content without answer keys (summative pre-submission payloads)."""
 
     title: str = Field(description="Quiz title")
     description: str = Field(description="Quiz description/instructions", default="")
-    questions: list[QuizQuestion] = Field(
+    questions: list[PublicQuizQuestion] = Field(
         description="List of quiz questions", min_length=1, max_length=20
     )
     time_limit_minutes: int | None = Field(
@@ -35,8 +44,16 @@ class QuizContent(BaseModel):
     )
 
 
-class QuizResponse(BaseModel):
-    """Complete quiz response for frontend consumption."""
+class QuizContent(PublicQuizContent):
+    """Quiz content structure matching GeneratedContent.content schema."""
+
+    questions: list[QuizQuestion] = Field(
+        description="List of quiz questions", min_length=1, max_length=20
+    )
+
+
+class PublicQuizResponse(BaseModel):
+    """Quiz response without answer keys — the only shape summative fetches may return."""
 
     id: UUID = Field(description="Quiz content ID")
     module_id: UUID = Field(description="Module this quiz belongs to")
@@ -44,13 +61,29 @@ class QuizResponse(BaseModel):
     language: str = Field(description="Content language (fr/en)")
     level: int = Field(description="Difficulty level (1-4)")
     country_context: str = Field(description="Country context for localization")
-    content: QuizContent = Field(description="Quiz content and questions")
+    content: PublicQuizContent = Field(description="Quiz content and questions")
     generated_at: str = Field(description="ISO timestamp when quiz was generated")
     cached: bool = Field(description="True if retrieved from cache")
     country_fallback: bool = Field(
         default=False,
         description="True when content is from a different country's cache; country-targeted version generating in background",
     )
+
+
+def to_public_quiz_response(resp: "QuizResponse") -> PublicQuizResponse:
+    """Strip correct_answer/explanation for pre-submission summative payloads.
+
+    Pydantic drops the extra answer fields on validation (extra="ignore" default),
+    so the returned model cannot carry an answer key even if serialized manually
+    (e.g. via JSONResponse), where response_model filtering would not apply.
+    """
+    return PublicQuizResponse.model_validate(resp.model_dump())
+
+
+class QuizResponse(PublicQuizResponse):
+    """Complete quiz response for frontend consumption."""
+
+    content: QuizContent = Field(description="Quiz content and questions")
 
     class Config:
         json_schema_extra = {
@@ -190,6 +223,20 @@ class QuizAttemptResponse(BaseModel):
         }
 
 
+class SummativeQuestionResult(BaseModel):
+    """Per-question result for a summative attempt — right/wrong only, no answer key.
+
+    The correct answer and explanation are deliberately withheld so a failed
+    attempt cannot be used to harvest answers for the retake. The full corrected
+    review is available via GET /quiz/summative/{module_id}/review after a pass.
+    """
+
+    question_id: str = Field(description="Question identifier")
+    user_answer: int = Field(description="User's selected option index")
+    is_correct: bool = Field(description="Whether user's answer was correct")
+    time_taken_seconds: int = Field(description="Time taken for this question")
+
+
 class SummativeAssessmentResponse(BaseModel):
     """Response after submitting a summative assessment attempt."""
 
@@ -200,7 +247,9 @@ class SummativeAssessmentResponse(BaseModel):
     correct_answers: int = Field(description="Number of correct answers")
     total_time_seconds: int = Field(description="Total time taken")
     passed: bool = Field(description="Whether user passed (score >= 80%)")
-    results: list[QuizAttemptResult] = Field(description="Per-question results")
+    results: list[SummativeQuestionResult] = Field(
+        description="Per-question results (no answer key)"
+    )
     domain_breakdown: dict[str, dict[str, int]] = Field(
         description="Performance breakdown by learning domain"
     )
@@ -209,6 +258,35 @@ class SummativeAssessmentResponse(BaseModel):
     next_retry_at: str | None = Field(description="ISO timestamp when retry is allowed")
     attempt_count: int = Field(description="Total number of attempts for this module")
     attempted_at: str = Field(description="ISO timestamp when attempt was submitted")
+
+
+class SummativeReviewQuestion(BaseModel):
+    """Corrected question in the post-pass summative review."""
+
+    question_id: str = Field(description="Question identifier")
+    question: str = Field(description="Question text")
+    options: list[str] = Field(description="Multiple choice options")
+    user_answer: int = Field(description="User's selected option index")
+    correct_answer: int = Field(description="Correct option index")
+    is_correct: bool = Field(description="Whether user's answer was correct")
+    explanation: str = Field(description="Explanation for the correct answer", default="")
+    sources_cited: list[str] = Field(
+        description="Source citations for this question", default_factory=list
+    )
+    difficulty: str = Field(description="Question difficulty level", default="medium")
+
+
+class SummativeReviewResponse(BaseModel):
+    """Full corrected review of a PASSED summative attempt."""
+
+    module_id: UUID = Field(description="Module the assessment belongs to")
+    assessment_id: UUID = Field(description="Assessment content ID")
+    attempt_id: UUID = Field(description="Passing attempt ID this review is built from")
+    score: float = Field(description="Score of the passing attempt (0-100)")
+    correct_answers: int = Field(description="Number of correct answers")
+    total_questions: int = Field(description="Total number of questions")
+    attempted_at: str = Field(description="ISO timestamp of the passing attempt")
+    questions: list[SummativeReviewQuestion] = Field(description="Corrected questions")
 
 
 class SummativeAssessmentAttemptCheck(BaseModel):

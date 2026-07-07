@@ -744,7 +744,19 @@
     "continueToNextModule": "Continuer au Module Suivant",
     "backToDashboard": "Retour au Tableau de Bord",
     "attemptedAt": "Terminé",
-    "attemptId": "ID de Tentative"
+    "attemptId": "ID de Tentative",
+    "correctedReview": "Corrigé de l'évaluation",
+    "correctedReviewDescription": "Revoyez chaque question avec la bonne réponse et son explication.",
+    "viewReview": "Voir le corrigé",
+    "reviewLoading": "Chargement du corrigé…",
+    "reviewLoadFailed": "Impossible de charger le corrigé. Veuillez réessayer plus tard.",
+    "yourAnswer": "Votre réponse",
+    "correctAnswer": "Bonne réponse",
+    "explanation": "Explication",
+    "source": "Source : {source}",
+    "correct": "Correct",
+    "incorrect": "Incorrect",
+    "noAnswer": "Sans réponse"
   },
   "LessonViewer": {
     "error": "Une erreur est survenue",
