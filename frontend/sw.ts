@@ -23,7 +23,10 @@ const DAY_IN_SECONDS = 24 * 60 * 60;
 // match `pages-${CACHE_VERSION}`) so downloaded modules render offline.
 // v7 excludes /api/v1/content/status/ from the API SWR cache so a stale
 // "generating" body can't keep the quiz spinner alive forever offline.
-const CACHE_VERSION = "v7-status-no-cache";
+// v8 drops api-responses-v7 entries that may hold answer-bearing summative
+// quiz GET bodies cached before the server started stripping the answer
+// key (#2550).
+const CACHE_VERSION = "v8-summative-safe";
 
 const OFFLINE_FALLBACK_URL = "/offline.html";
 

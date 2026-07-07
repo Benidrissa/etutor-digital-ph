@@ -545,14 +545,20 @@ export async function generateModuleFlashcards(params: {
 }
 
 // Quiz API Types
-export interface QuizQuestion {
+
+// Summative (module-validation) payloads never include the answer key —
+// the server strips correct_answer/explanation pre-submission (#2550)
+export interface PublicQuizQuestion {
   id: string;
   question: string;
   options: string[];
-  correct_answer: number;
-  explanation: string;
   sources_cited: string[];
   difficulty: string;
+}
+
+export interface QuizQuestion extends PublicQuizQuestion {
+  correct_answer: number;
+  explanation: string;
 }
 
 export interface QuizContent {
@@ -575,6 +581,10 @@ export interface Quiz {
   cached: boolean;
   country_fallback?: boolean;
 }
+
+export type SummativeQuiz = Omit<Quiz, "content"> & {
+  content: Omit<QuizContent, "questions"> & { questions: PublicQuizQuestion[] };
+};
 
 export interface QuizAnswerSubmission {
   question_id: string;
@@ -656,6 +666,15 @@ export interface SummativeAssessmentAttemptCheck {
   reason?: string;
 }
 
+// Right/wrong only — no answer key, so a failed attempt can't be used to
+// harvest answers for the retake (#2550)
+export interface SummativeQuestionResult {
+  question_id: string;
+  user_answer: number;
+  is_correct: boolean;
+  time_taken_seconds: number;
+}
+
 export interface SummativeAssessmentResponse {
   attempt_id: string;
   assessment_id: string;
@@ -664,13 +683,36 @@ export interface SummativeAssessmentResponse {
   correct_answers: number;
   total_time_seconds: number;
   passed: boolean;
-  results: QuizAttemptResult[];
+  results: SummativeQuestionResult[];
   domain_breakdown: Record<string, { correct: number; total: number }>;
   module_unlocked: boolean;
   can_retry: boolean;
   next_retry_at?: string;
   attempt_count: number;
   attempted_at: string;
+}
+
+export interface SummativeReviewQuestion {
+  question_id: string;
+  question: string;
+  options: string[];
+  user_answer: number;
+  correct_answer: number;
+  is_correct: boolean;
+  explanation: string;
+  sources_cited: string[];
+  difficulty: string;
+}
+
+export interface SummativeReviewResponse {
+  module_id: string;
+  assessment_id: string;
+  attempt_id: string;
+  score: number;
+  correct_answers: number;
+  total_questions: number;
+  attempted_at: string;
+  questions: SummativeReviewQuestion[];
 }
 
 // Unit Quiz Validation
@@ -695,8 +737,8 @@ export async function generateSummativeAssessment(params: {
   language: string;
   country: string;
   level: number;
-}): Promise<Quiz> {
-  return apiFetch<Quiz>("/api/v1/quiz/summative/generate", {
+}): Promise<SummativeQuiz> {
+  return apiFetch<SummativeQuiz>("/api/v1/quiz/summative/generate", {
     method: "POST",
     body: JSON.stringify({
       module_id: params.module_id,
@@ -725,6 +767,15 @@ export async function submitSummativeAssessmentAttempt(
       method: "POST",
       body: JSON.stringify(request),
     },
+  );
+}
+
+// Full corrected review — server returns 403 until the user has passed (#2550)
+export async function getSummativeReview(
+  moduleId: string,
+): Promise<SummativeReviewResponse> {
+  return apiFetch<SummativeReviewResponse>(
+    `/api/v1/quiz/summative/${moduleId}/review`,
   );
 }
 
