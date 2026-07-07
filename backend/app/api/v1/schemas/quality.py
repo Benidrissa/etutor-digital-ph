@@ -41,7 +41,7 @@ QualityStatus = Literal[
 
 RunStatus = Literal["queued", "scoring", "regenerating", "completed", "failed", "cancelled"]
 
-RunKind = Literal["full", "targeted", "glossary_only"]
+RunKind = Literal["full", "targeted", "glossary_only", "structural"]
 
 
 FlagCategory = Literal[

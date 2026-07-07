@@ -580,3 +580,49 @@ def test_unit_quality_assessment_run_id_is_nullable():
     from app.domain.models.course_quality import UnitQualityAssessment
 
     assert UnitQualityAssessment.__table__.c.run_id.nullable is True
+
+
+# ---- Structural runs must serialize in admin endpoints (#2552) --------
+
+
+def test_course_quality_run_summary_accepts_structural_run_kind():
+    """assess_course_structure() writes run_kind='structural'; every admin
+    quality endpoint serializes runs through CourseQualityRunSummary, so a
+    missing Literal member 500s the whole review queue (#2552).
+    """
+    import uuid as _uuid
+    from datetime import UTC, datetime
+
+    from app.api.v1.schemas.quality import CourseQualityRunSummary
+
+    summary = CourseQualityRunSummary.model_validate(
+        {
+            "id": _uuid.uuid4(),
+            "course_id": _uuid.uuid4(),
+            "run_kind": "structural",
+            "status": "completed",
+            "started_at": datetime.now(UTC),
+            "finished_at": datetime.now(UTC),
+            "overall_score": None,
+            "units_total": 0,
+            "units_passing": 0,
+            "units_regenerated": 0,
+            "budget_credits": 0,
+            "spent_credits": 0,
+            "triggered_by_user_id": None,
+            "notes": None,
+            "created_at": datetime.now(UTC),
+        }
+    )
+    assert summary.run_kind == "structural"
+
+
+def test_quality_run_kind_enum_matches_api_literal():
+    """The domain enum and the API Literal must stay in sync — a kind the
+    service can write but the schema rejects breaks serialization."""
+    import typing
+
+    from app.api.v1.schemas.quality import RunKind
+    from app.domain.models.course_quality import QualityRunKind
+
+    assert {m.value for m in QualityRunKind} == set(typing.get_args(RunKind))
