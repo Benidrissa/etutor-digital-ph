@@ -725,7 +725,7 @@ Respond with ONLY this JSON object, no other text:
 
     import json as json_module
 
-    from app.ai.providers import resolve_provider
+    from app.ai.providers import ProviderErrorKind, classify_provider_error, resolve_provider
     from app.domain.services.platform_settings_service import SettingsCache
 
     # Was hardcoded to the deprecated claude-sonnet-4-20250514 (retires
@@ -755,6 +755,31 @@ Respond with ONLY this JSON object, no other text:
         ) from exc
     except Exception as exc:
         logger.error("suggest_metadata generation failed", model=model, error=str(exc))
+        kind = classify_provider_error(exc)
+        if kind is ProviderErrorKind.QUOTA:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "code": "ai_provider_quota",
+                    "message": (
+                        f"The AI provider account for model '{model}' has insufficient "
+                        "balance or exhausted its quota. Recharge the provider account "
+                        "or switch the model in Admin → Settings."
+                    ),
+                },
+            ) from exc
+        if kind is ProviderErrorKind.AUTH:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "code": "ai_provider_auth",
+                    "message": (
+                        f"The API key for model '{model}' was rejected by the AI "
+                        "provider. Check the provider credentials or switch the model "
+                        "in Admin → Settings."
+                    ),
+                },
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="AI generation failed",
