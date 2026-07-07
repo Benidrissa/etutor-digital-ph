@@ -143,6 +143,52 @@ def extract_lesson_text(content) -> str:
     return "\n\n".join(parts) if parts else str(d)[:2000]
 
 
+async def update_cached_content_in_place(
+    session: AsyncSession,
+    *,
+    module_unit_uuid: uuid.UUID | None,
+    content_type: str,
+    language: str,
+    level: int,
+    country_context: str | None,
+    content: dict,
+    sources_cited: list | None,
+) -> uuid.UUID | None:
+    """Overwrite the existing cached row for this unit key, if one exists.
+
+    Returns the updated row's id, or None when no row exists (caller INSERTs)
+    or the row is manually edited (locked). Regeneration must replace the
+    cached row (#2561): the INSERT-only path silently no-ops on the unique
+    index ``idx_unique_content_per_module_unit``, and DELETE+INSERT would
+    break ``generated_images``/audio FKs. Module-level because the lesson and
+    case-study services share no base class (#2007).
+    """
+    if module_unit_uuid is None:
+        return None
+    result = await session.execute(
+        select(GeneratedContent)
+        .where(
+            and_(
+                GeneratedContent.module_unit_id == module_unit_uuid,
+                GeneratedContent.content_type == content_type,
+                GeneratedContent.language == language,
+                GeneratedContent.level == level,
+                GeneratedContent.country_context == country_context,
+            )
+        )
+        .order_by(GeneratedContent.generated_at.desc())
+    )
+    row = result.scalars().first()
+    if row is None or row.is_manually_edited:
+        return None
+    row.content = content
+    row.sources_cited = sources_cited
+    row.generated_at = datetime.utcnow()
+    row.validated = False
+    row.content_revision = (row.content_revision or 1) + 1
+    return row.id
+
+
 class LessonGenerationService:
     """Service for orchestrating lesson content generation."""
 
@@ -703,7 +749,9 @@ class LessonGenerationService:
             user_message = user_message + constraints_block_from_report(quality_constraints)
 
         # Get non-streaming response for structured parsing
-        response = await self.claude_service.generate_lesson_content(system_prompt, user_message)
+        response = await self.claude_service.generate_lesson_content(
+            system_prompt, user_message, json_object=True
+        )
 
         if not response or not response.content:
             raise ValueError("Empty response from Claude API")
@@ -800,14 +848,91 @@ class LessonGenerationService:
 
         return " ".join(query_parts)
 
+    # Top-level keys of the lesson JSON schema that follow "concepts" — used to
+    # repair a Kimi bracket slip where the closing `]` of the concepts array is
+    # omitted right before one of these keys (#2560).
+    _LESSON_KEYS_AFTER_CONCEPTS = ("aof_example", "synthesis", "key_points", "sources_cited")
+    _MISSING_BRACKET_RE = re.compile(
+        r',\s*"(?:' + "|".join((*_LESSON_KEYS_AFTER_CONCEPTS, "__complete")) + r')"\s*:'
+    )
+
+    @classmethod
+    def _loads_lesson_dict(cls, stripped: str) -> dict | None:
+        """Best-effort parse of a lesson JSON payload into a dict.
+
+        Returns None when the text cannot be interpreted as a lesson object.
+        Recovery ladder for malformed LLM output (#2560): double-encoded JSON
+        string → missing-`]`-before-top-level-key insertion (lossless) →
+        generic ``json_repair`` with stray dicts in ``concepts`` hoisted back
+        to the top level (possibly lossy).
+        """
+
+        def _as_lesson(data: object) -> dict | None:
+            if isinstance(data, dict) and ("concepts" in data or "introduction" in data):
+                return data
+            return None
+
+        try:
+            data = json.loads(stripped)
+            if isinstance(data, str):
+                # Double-encoded: the whole object serialized as a JSON string.
+                data = json.loads(data)
+            lesson = _as_lesson(data)
+            if lesson is not None:
+                return lesson
+        except (json.JSONDecodeError, ValueError, TypeError):
+            pass
+
+        if not stripped.startswith("{"):
+            return None
+
+        for m in cls._MISSING_BRACKET_RE.finditer(stripped):
+            candidate = stripped[: m.start()] + "]" + stripped[m.start() :]
+            try:
+                data = json.loads(candidate)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            lesson = _as_lesson(data)
+            if lesson is not None:
+                logger.warning(
+                    "Lesson JSON repaired: inserted missing ']' before top-level key",
+                    position=m.start(),
+                )
+                return lesson
+
+        try:
+            from json_repair import repair_json
+
+            repaired = repair_json(stripped, return_objects=True)
+        except Exception:  # noqa: BLE001 — repair is best-effort by design
+            return None
+        lesson = _as_lesson(repaired)
+        if lesson is None:
+            return None
+        # json_repair can leave the fields that followed the bracket slip
+        # nested as a dict element inside concepts — hoist them back up.
+        concepts = lesson.get("concepts")
+        if isinstance(concepts, list) and any(isinstance(c, dict) for c in concepts):
+            lesson["concepts"] = [c for c in concepts if not isinstance(c, dict)]
+            for stray in (c for c in concepts if isinstance(c, dict)):
+                for key, value in stray.items():
+                    if key in cls._LESSON_KEYS_AFTER_CONCEPTS:
+                        lesson.setdefault(key, value)
+        schema_keys = ("introduction", "concepts", *cls._LESSON_KEYS_AFTER_CONCEPTS)
+        logger.warning(
+            "Lesson JSON repaired with json_repair (possibly lossy)",
+            recovered_keys=[k for k in schema_keys if k in lesson],
+            missing_keys=[k for k in schema_keys if k not in lesson],
+        )
+        return lesson
+
     async def _parse_lesson_content(self, content_text: str, rag_chunks: list) -> LessonContent:
         """Parse generated content into structured lesson format.
 
-        Tries JSON parsing first (new prompt format), falls back to wrapping
-        raw markdown in concepts[] for backward compatibility with cached content.
+        Tries JSON parsing (with repair, #2560) first. JSON-looking text that
+        cannot be parsed or repaired raises instead of being cached raw; the
+        markdown fallback only applies to genuinely non-JSON legacy content.
         """
-        import json as _json
-
         # Extract source citations from RAG chunks
         sources_cited = []
         for chunk in rag_chunks:
@@ -830,49 +955,59 @@ class LessonGenerationService:
                 sources_cited.append(source_citation)
 
         # --- Attempt JSON parsing (new prompt format) ---
-        try:
-            stripped = content_text.strip()
-            if stripped.startswith("```"):
-                stripped = re.sub(r"^```[a-zA-Z]*\n?", "", stripped)
-                stripped = re.sub(r"\n?```$", "", stripped.rstrip())
+        stripped = content_text.strip()
+        if stripped.startswith("```"):
+            stripped = re.sub(r"^```[a-zA-Z]*\n?", "", stripped)
+            stripped = re.sub(r"\n?```$", "", stripped.rstrip())
 
-            data = _json.loads(stripped)
+        data = self._loads_lesson_dict(stripped)
 
-            if isinstance(data, dict) and ("concepts" in data or "introduction" in data):
-                raw_concepts = data.get("concepts") or []
-                concepts = (
-                    [str(c) for c in raw_concepts if str(c).strip()]
-                    if isinstance(raw_concepts, list)
-                    else [str(raw_concepts)]
-                )
-                raw_key_points = data.get("key_points") or []
-                key_points = (
-                    [str(k) for k in raw_key_points if str(k).strip()]
-                    if isinstance(raw_key_points, list)
-                    else [str(raw_key_points)]
-                )
-                raw_sources = data.get("sources_cited") or sources_cited
-                if isinstance(raw_sources, list):
-                    all_sources = [str(s) for s in raw_sources if str(s).strip()]
-                    # Merge with RAG-extracted sources
-                    for sc in sources_cited:
-                        if sc not in all_sources:
-                            all_sources.append(sc)
-                else:
-                    all_sources = sources_cited
+        if data is not None:
+            raw_concepts = data.get("concepts") or []
+            concepts = (
+                [str(c) for c in raw_concepts if str(c).strip()]
+                if isinstance(raw_concepts, list)
+                else [str(raw_concepts)]
+            )
+            raw_key_points = data.get("key_points") or []
+            key_points = (
+                [str(k) for k in raw_key_points if str(k).strip()]
+                if isinstance(raw_key_points, list)
+                else [str(raw_key_points)]
+            )
+            raw_sources = data.get("sources_cited") or sources_cited
+            if isinstance(raw_sources, list):
+                all_sources = [str(s) for s in raw_sources if str(s).strip()]
+                # Merge with RAG-extracted sources
+                for sc in sources_cited:
+                    if sc not in all_sources:
+                        all_sources.append(sc)
+            else:
+                all_sources = sources_cited
 
-                return LessonContent(
-                    introduction=str(data.get("introduction") or ""),
-                    concepts=concepts if concepts else [""],
-                    aof_example=str(data.get("aof_example") or ""),
-                    synthesis=str(data.get("synthesis") or ""),
-                    key_points=key_points,
-                    sources_cited=all_sources,
-                )
-        except (_json.JSONDecodeError, ValueError, TypeError):
-            pass
+            return LessonContent(
+                introduction=str(data.get("introduction") or ""),
+                concepts=concepts if concepts else [""],
+                aof_example=str(data.get("aof_example") or ""),
+                synthesis=str(data.get("synthesis") or ""),
+                key_points=key_points,
+                sources_cited=all_sources,
+            )
+
+        if stripped.startswith("{"):
+            # JSON-looking but unrecoverable: fail the generation rather than
+            # cache the raw blob as a single "concept" (#2560).
+            logger.error(
+                "Lesson response looks like JSON but could not be parsed or repaired",
+                response_preview=stripped[:200],
+            )
+            raise ValueError("Lesson generation returned malformed JSON that could not be repaired")
 
         # --- Fallback: old markdown format (for cached content) ---
+        logger.warning(
+            "Lesson response is not JSON — wrapping raw text in the legacy markdown fallback",
+            response_preview=stripped[:120],
+        )
         return LessonContent(
             introduction="",
             concepts=[content_text],
@@ -996,6 +1131,29 @@ class LessonGenerationService:
         content_with_unit["source_image_refs"] = [
             ref.model_dump() for ref in lesson_response.source_image_refs
         ]
+
+        updated_id = await update_cached_content_in_place(
+            session,
+            module_unit_uuid=module_unit_uuid,
+            content_type="lesson",
+            language=lesson_response.language,
+            level=lesson_response.level,
+            country_context=lesson_response.country_context,
+            content=content_with_unit,
+            sources_cited=lesson_response.content.sources_cited,
+        )
+        if updated_id is not None:
+            await session.commit()
+            # Downstream consumers (quality auto-assess, audio) must reference
+            # the surviving row, not the transient response id.
+            lesson_response.id = updated_id
+            logger.info(
+                "Updated cached lesson content in place",
+                content_id=str(updated_id),
+                module_id=str(lesson_response.module_id),
+                unit_id=lesson_response.unit_id,
+            )
+            return
 
         cached_content = GeneratedContent(
             id=lesson_response.id,
@@ -1549,7 +1707,9 @@ class CaseStudyGenerationService:
             system_prompt_len=len(system_prompt),
         )
 
-        response = await self.claude_service.generate_lesson_content(system_prompt, user_message)
+        response = await self.claude_service.generate_lesson_content(
+            system_prompt, user_message, json_object=True
+        )
 
         if not response or not response.content:
             raise ValueError("Empty response from Claude API")
@@ -1780,6 +1940,27 @@ class CaseStudyGenerationService:
 
         content_with_unit = case_study_response.content.model_dump()
         content_with_unit["unit_id"] = case_study_response.unit_id
+
+        updated_id = await update_cached_content_in_place(
+            session,
+            module_unit_uuid=module_unit_uuid,
+            content_type="case",
+            language=case_study_response.language,
+            level=case_study_response.level,
+            country_context=case_study_response.country_context,
+            content=content_with_unit,
+            sources_cited=case_study_response.content.sources_cited,
+        )
+        if updated_id is not None:
+            await session.commit()
+            case_study_response.id = updated_id
+            logger.info(
+                "Updated cached case study content in place",
+                content_id=str(updated_id),
+                module_id=str(case_study_response.module_id),
+                unit_id=case_study_response.unit_id,
+            )
+            return
 
         cached_content = GeneratedContent(
             id=case_study_response.id,

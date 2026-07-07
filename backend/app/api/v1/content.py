@@ -698,12 +698,14 @@ async def get_or_generate_lesson_by_module_and_unit(
                 language,
                 country,
                 level,
+                force_regenerate,
             )
             logger.info(
                 "Case study generation dispatched",
                 module_id=str(resolved_module_id),
                 unit_id=unit_id,
                 task_id=task.id,
+                force_regenerate=force_regenerate,
             )
         else:
             task = generate_lesson_task.delay(
@@ -712,12 +714,14 @@ async def get_or_generate_lesson_by_module_and_unit(
                 language,
                 country,
                 level,
+                force_regenerate,
             )
             logger.info(
                 "Lesson generation dispatched",
                 module_id=str(resolved_module_id),
                 unit_id=unit_id,
                 task_id=task.id,
+                force_regenerate=force_regenerate,
             )
 
         await mark_task_dispatched(task.id)
@@ -1385,6 +1389,7 @@ async def get_or_generate_case_study(
             language,
             country,
             level,
+            force_regenerate,
         )
 
         logger.info(

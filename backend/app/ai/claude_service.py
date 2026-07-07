@@ -92,6 +92,7 @@ class ClaudeService:
         self,
         system_prompt: str,
         user_message: str,
+        json_object: bool = False,
     ) -> _ContentMessage:
         """
         Generate lesson content (non-streaming) via the active provider.
@@ -99,6 +100,12 @@ class ClaudeService:
         Args:
             system_prompt: System prompt for pedagogical context
             user_message: User message with RAG context and requirements
+            json_object: Enable JSON mode on OpenAI-compat backends (Moonshot
+                Kimi) so they emit syntactically valid JSON instead of
+                occasionally dropping a bracket (#2560). Set it when the
+                caller parses the response as JSON (lessons, case studies) —
+                NOT for plain-text callers (audio scripts). Anthropic ignores
+                the flag (prompt-driven JSON).
 
         Returns:
             A message-like object whose ``.content`` is a single text block
@@ -111,6 +118,7 @@ class ClaudeService:
                 max_tokens=self._max_tokens,
                 temperature=self._temperature,
                 model=self._model,
+                json_object=json_object,
             )
             return _ContentMessage(
                 content=[_TextBlock(text=result.text)],
