@@ -76,8 +76,11 @@ class TestFormatRagContextForLesson:
             chunks, "epidemiology", "M01", "1.1", "fr", linked_images=linked
         )
         assert "FIGURE DISPONIBLE" in result
-        assert img["id"] in result
-        assert "source_image:" in result
+        # Figures are offered as short opaque tokens now, not raw UUIDs (#2594) —
+        # the model can't fabricate a UUID it never saw.
+        assert "⟦FIG1⟧" in result
+        assert img["id"] not in result
+        assert "source_image:" not in result
 
     def test_with_linked_images_appends_annotation_en(self):
         chunk_id = uuid.uuid4()
@@ -88,7 +91,8 @@ class TestFormatRagContextForLesson:
             chunks, "epidemiology", "M01", "1.1", "en", linked_images=linked
         )
         assert "FIGURE AVAILABLE" in result
-        assert img["id"] in result
+        assert "⟦FIG1⟧" in result
+        assert img["id"] not in result
 
     def test_caps_at_5_total_annotations(self):
         chunks = []
@@ -101,7 +105,7 @@ class TestFormatRagContextForLesson:
         result = format_rag_context_for_lesson(
             chunks, "query", "M01", "1.1", "en", linked_images=linked
         )
-        count = result.count("source_image:")
+        count = result.count("⟦FIG")
         assert count <= 5
 
     def test_empty_linked_images_dict_no_annotation(self):
@@ -500,3 +504,86 @@ class TestRehydrateSourceImageRefs:
         session = _FakeSession([])
         out = await LessonGenerationService._rehydrate_source_image_refs(cached, session)
         assert len(out) == 2  # second entry skipped entirely; third parsed but no DB overlay
+
+
+# ---------------------------------------------------------------------------
+# Tests: opaque figure tokens (#2594)
+# ---------------------------------------------------------------------------
+
+
+class TestAssignFigureTokens:
+    def test_maps_candidates_to_sequential_tokens(self):
+        from app.ai.prompts.lesson import assign_figure_tokens
+
+        ids = [str(uuid.uuid4()) for _ in range(3)]
+        cid = uuid.uuid4()
+        linked = {cid: [_make_image_meta(img_id=uuid.UUID(i)) for i in ids]}
+        mapping = assign_figure_tokens(linked)
+        assert list(mapping) == ["⟦FIG1⟧", "⟦FIG2⟧", "⟦FIG3⟧"]
+        assert mapping["⟦FIG1⟧"]["id"] == ids[0]
+
+    def test_dedupes_by_id_and_caps_at_five(self):
+        from app.ai.prompts.lesson import assign_figure_tokens
+
+        dup = _make_image_meta(img_id=uuid.uuid4())
+        linked = {uuid.uuid4(): [dup, dup]}  # same image twice
+        for _ in range(6):
+            linked[uuid.uuid4()] = [_make_image_meta(img_id=uuid.uuid4())]
+        mapping = assign_figure_tokens(linked)
+        assert len(mapping) == 5  # capped
+        # The duplicated image is assigned exactly one token.
+        assert sum(1 for m in mapping.values() if m["id"] == dup["id"]) == 1
+
+    def test_empty_or_none_yields_no_tokens(self):
+        from app.ai.prompts.lesson import assign_figure_tokens
+
+        assert assign_figure_tokens(None) == {}
+        assert assign_figure_tokens({}) == {}
+
+
+class TestResolveFigures:
+    def _linked(self, *img_ids):
+        cid = uuid.uuid4()
+        return {cid: [_make_image_meta(img_id=uuid.UUID(i)) for i in img_ids]}
+
+    async def test_token_rewritten_to_canonical_marker(self):
+        img_id = str(uuid.uuid4())
+        linked = self._linked(img_id)
+        text, refs = await LessonGenerationService._resolve_figures(
+            "As shown ⟦FIG1⟧ here.", linked, None
+        )
+        assert f"{{{{source_image:{img_id}}}}}" in text
+        assert "⟦FIG1⟧" not in text
+        assert [r.id for r in refs] == [img_id]
+
+    async def test_fabricated_uuid_marker_is_stripped_not_leaked(self):
+        # The model invented a UUID that resolves to no real image and to no
+        # candidate; with no session it cannot be DB-resolved either.
+        fake = str(uuid.uuid4())
+        text, refs = await LessonGenerationService._resolve_figures(
+            f"See {{{{source_image:{fake}}}}} now.", {}, None
+        )
+        assert "source_image:" not in text  # stripped, never shown raw to the learner
+        assert refs == []
+
+    async def test_invented_token_beyond_offered_set_is_dropped(self):
+        img_id = str(uuid.uuid4())
+        linked = self._linked(img_id)  # only ⟦FIG1⟧ offered
+        text, refs = await LessonGenerationService._resolve_figures(
+            "Bad ⟦FIG9⟧ and good ⟦FIG1⟧.", linked, None
+        )
+        assert "⟦FIG9⟧" not in text
+        assert "⟦FIG1⟧" not in text
+        assert f"{{{{source_image:{img_id}}}}}" in text
+        assert [r.id for r in refs] == [img_id]
+
+    async def test_mixed_valid_and_fabricated(self):
+        good = str(uuid.uuid4())
+        fake = str(uuid.uuid4())
+        linked = self._linked(good)
+        text, refs = await LessonGenerationService._resolve_figures(
+            f"⟦FIG1⟧ plus {{{{source_image:{fake}}}}}", linked, None
+        )
+        assert f"{{{{source_image:{good}}}}}" in text
+        assert fake not in text
+        assert [r.id for r in refs] == [good]

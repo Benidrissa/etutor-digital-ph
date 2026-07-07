@@ -32,6 +32,20 @@ logger = structlog.get_logger(__name__)
 _TIMEOUT_SECONDS = 600.0
 
 
+def _with_system(system_text: str, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Prepend a system message, but only when there is actual system content.
+
+    OpenAI-compatible backends (Moonshot/Kimi, Gemini's compat endpoint) reject a
+    request whose first message is a ``system`` role with empty content — e.g. Moonshot
+    returns ``400 "the message at position 0 with role 'system' must not be empty"``.
+    Callers that legitimately have no system prompt (e.g. image alt-text) must not be
+    forced to send an empty one, so we omit the system message entirely in that case.
+    """
+    if system_text and system_text.strip():
+        return [{"role": "system", "content": system_text}, *messages]
+    return list(messages)
+
+
 def _to_openai_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Anthropic ``{name, description, input_schema}`` → OpenAI function tool."""
     return [
@@ -144,7 +158,7 @@ class OpenAICompatLLMProvider:
             # forced tool already constrains the output shape.
             kwargs["response_format"] = {"type": "json_object"}
 
-        kwargs["messages"] = [{"role": "system", "content": system_text}, *messages]
+        kwargs["messages"] = _with_system(system_text, messages)
 
         response = await self._client.chat.completions.create(**kwargs)
         msg = response.choices[0].message
@@ -235,10 +249,10 @@ class OpenAICompatLLMProvider:
             "model": model,
             "max_tokens": max_tokens,
             "temperature": eff_temperature if eff_temperature is not None else temperature,
-            "messages": [
-                {"role": "system", "content": flatten_system(system)},
-                {"role": "user", "content": user_message},
-            ],
+            "messages": _with_system(
+                flatten_system(system),
+                [{"role": "user", "content": user_message}],
+            ),
             "stream": True,
         }
         if extra_body:
