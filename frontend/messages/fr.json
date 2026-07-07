@@ -387,7 +387,7 @@
     "subscriptionRequired": "Un abonnement est requis pour accéder à ce contenu. La première unité de chaque module est gratuite.",
     "authRequired": "Veuillez vous connecter pour continuer.",
     "contentNotAvailableOffline": "Ce quiz n'est pas disponible hors-ligne. Téléchargez le module pour le passer sans internet.",
-    "countryFallback": "Le contenu adapté à votre région sera disponible prochainement"
+    "countryFallback": "Contenu affiché pour une autre région — la version adaptée à votre pays se chargera automatiquement dès qu'elle sera prête."
   },
   "ChatTutor": {
     "title": "Tuteur IA",
@@ -791,7 +791,7 @@
     "unitNotFound": "Cette unité n'existe pas dans ce module.",
     "backToModule": "Retour au module",
     "contentNotAvailableOffline": "Cette leçon n'est pas disponible hors-ligne. Téléchargez le module pour y accéder sans internet.",
-    "countryFallback": "Le contenu adapté à votre région sera disponible prochainement",
+    "countryFallback": "Contenu affiché pour une autre région — la version adaptée à votre pays se chargera automatiquement dès qu'elle sera prête.",
     "markComplete": "Marquer comme Terminé",
     "completed": "Terminé",
     "completeError": "Impossible de marquer cette leçon comme terminée. Veuillez réessayer."
@@ -870,7 +870,7 @@
     "generatedOn": "Généré le {date}",
     "stretchBadge": "Défi",
     "contentNotAvailableOffline": "Cette étude de cas n'est pas disponible hors-ligne. Téléchargez le module pour y accéder sans internet.",
-    "countryFallback": "Le contenu adapté à votre région sera disponible prochainement"
+    "countryFallback": "Contenu affiché pour une autre région — la version adaptée à votre pays se chargera automatiquement dès qu'elle sera prête."
   },
   "UnitPage": {
     "backToModule": "Retour à {module}",

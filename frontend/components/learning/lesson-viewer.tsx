@@ -24,6 +24,7 @@ import { useLocale } from 'next-intl';
 import { track } from '@/lib/analytics';
 import { isProviderQuotaError } from '@/lib/generation-errors';
 import { loadLesson, OfflineContentNotAvailable } from '@/lib/offline/content-loader';
+import { isHealedLessonResponse, type SelfHealCandidate } from '@/lib/learning/country-selfheal';
 import { addOfflineAction } from '@/lib/offline/db';
 import { OfflineBadge } from '@/components/shared/offline-badge';
 import { SubscriptionRequired } from '@/components/shared/subscription-required';
@@ -32,6 +33,11 @@ import { useNetworkStatus } from '@/lib/hooks/use-network-status';
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 3 * 60 * 1000;
 const UX_SLOW_WARNING_MS = 30 * 1000;
+// When we render another country's fallback lesson, the server dispatches a
+// background job to generate the learner's own-country version. Poll for it and
+// swap it in when ready, so the learner isn't stranded on foreign content (#2581).
+const SELF_HEAL_INTERVAL_MS = 20 * 1000;
+const SELF_HEAL_MAX_ATTEMPTS = 6;
 
 interface LessonContent {
   introduction: string;
@@ -300,6 +306,45 @@ export function LessonViewer({
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moduleId, unitId, language, level, country, forceRegenerate, isHydrated]);
+
+  // Self-heal: while showing another country's fallback content, poll for the
+  // learner's own-country version (backfill dispatched server-side) and swap it
+  // in as soon as it exists — no manual refresh needed (#2581).
+  useEffect(() => {
+    if (!lessonData?.country_fallback || !isOnline) return;
+
+    let cancelled = false;
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const check = async () => {
+      if (cancelled) return;
+      attempts += 1;
+      try {
+        const fresh = await apiFetch<LessonData | GeneratingResponse>(
+          `/api/v1/content/lessons/${moduleId}/${unitId}?language=${language}&level=${level}&country=${country}`
+        );
+        if (cancelled) return;
+        if (isHealedLessonResponse(fresh as SelfHealCandidate)) {
+          setLessonData(fresh as LessonData); // healed — effect re-runs and stops
+          return;
+        }
+      } catch {
+        // transient (offline blip, 5xx) — keep trying until attempts exhausted
+      }
+      if (!cancelled && attempts < SELF_HEAL_MAX_ATTEMPTS) {
+        timer = setTimeout(check, SELF_HEAL_INTERVAL_MS);
+      }
+    };
+
+    timer = setTimeout(check, SELF_HEAL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  // lessonData?.id re-arms the poll (resets attempts) when a new lesson loads.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lessonData?.country_fallback, lessonData?.id, moduleId, unitId, language, level, country, isOnline]);
 
   const handleRetry = () => {
     if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
