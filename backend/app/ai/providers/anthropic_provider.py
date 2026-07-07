@@ -21,6 +21,18 @@ logger = structlog.get_logger(__name__)
 
 _TIMEOUT_SECONDS = 600.0
 
+# Models that reject sampling params (temperature/top_p/top_k) with a 400.
+_NO_SAMPLING_PREFIXES = (
+    "claude-opus-4-7",
+    "claude-opus-4-8",
+    "claude-sonnet-5",
+    "claude-fable-5",
+)
+
+
+def _accepts_temperature(model: str) -> bool:
+    return not model.startswith(_NO_SAMPLING_PREFIXES)
+
 
 class AnthropicLLMProvider:
     """Claude via the Anthropic Messages API."""
@@ -48,8 +60,9 @@ class AnthropicLLMProvider:
             "max_tokens": max_tokens,
             "system": system,
             "messages": messages,
-            "temperature": temperature,
         }
+        if _accepts_temperature(model):
+            kwargs["temperature"] = temperature
         if tools:
             kwargs["tools"] = tools
         if tool_choice:
@@ -88,13 +101,15 @@ class AnthropicLLMProvider:
         temperature: float,
         model: str,
     ) -> AsyncGenerator[str, None]:
-        async with self._client.messages.stream(
-            model=model,
-            max_tokens=max_tokens,
-            system=system,
-            messages=[{"role": "user", "content": user_message}],
-            temperature=temperature,
-        ) as stream_manager:
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "system": system,
+            "messages": [{"role": "user", "content": user_message}],
+        }
+        if _accepts_temperature(model):
+            kwargs["temperature"] = temperature
+        async with self._client.messages.stream(**kwargs) as stream_manager:
             async for event in stream_manager:
                 if event.type == "content_block_delta" and event.delta.type == "text_delta":
                     yield event.delta.text
