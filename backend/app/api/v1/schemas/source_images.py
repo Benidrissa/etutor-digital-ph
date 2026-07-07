@@ -11,6 +11,8 @@ class SourceImageMetadataResponse(BaseModel):
     rag_collection_id: str | None = None
     figure_number: str | None = None
     caption: str | None = None
+    caption_fr: str | None = None
+    caption_en: str | None = None
     attribution: str | None = None
     image_type: str
     page_number: int

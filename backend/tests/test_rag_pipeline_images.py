@@ -609,6 +609,51 @@ class TestRAGPipelineDedupTranslation:
         assert cloned.caption_fr == "Déjà traduit"
         assert cloned.caption_en == "Already translated"
 
+    @pytest.mark.asyncio
+    async def test_dedup_text_dominant_clone_stays_body_text(self):
+        """#2502: a text-dominant crop hash-matching a legacy donor (untagged
+        figure_kind) must not inherit the donor's kind — the clone would bypass
+        the geometric body_text guard and reach lessons via the retriever."""
+        pdf_path = Path(self.temp_dir) / "Donaldson_test.pdf"
+        pdf_path.touch()
+
+        fake_image = _make_extracted_image(image_hash="hash123", is_text_dominant=True)
+        donor = self._donor(
+            figure_kind=None,
+            caption_fr="Déjà traduit",
+            caption_en="Already translated",
+        )
+
+        donor_result = MagicMock()
+        donor_result.scalar_one_or_none = MagicMock(return_value=donor)
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=donor_result)
+
+        with (
+            patch(
+                "app.ai.rag.pipeline.PDFImageExtractor.extract_images_from_pdf",
+                return_value=[fake_image],
+            ),
+            patch(
+                "app.ai.rag.pipeline.translate_figure_caption",
+                new_callable=AsyncMock,
+            ),
+            patch.object(
+                ImageLinker, "link_images_to_chunks", new_callable=AsyncMock, return_value=0
+            ),
+        ):
+            count = await self.pipeline.process_pdf_images(
+                pdf_path=str(pdf_path),
+                source="donaldson",
+                session=mock_session,
+            )
+
+        assert count == 1
+        cloned = mock_session.add.call_args[0][0]
+        assert cloned.figure_kind == "body_text"
+
 
 class TestRAGPipelineClearSourceImages:
     def setup_method(self):
@@ -821,6 +866,48 @@ class TestRAGPipelineVisionCaption:
                 "app.ai.rag.pipeline.read_figure_caption",
                 new_callable=AsyncMock,
                 return_value=FigureCaptionRead(caption=None, is_body_text=True),
+            ),
+            patch("app.ai.rag.pipeline.translate_figure_caption", new_callable=AsyncMock),
+            patch("app.ai.rag.pipeline.classify_figure", new_callable=AsyncMock) as mock_classify,
+            patch.object(
+                ImageLinker, "link_images_to_chunks", new_callable=AsyncMock, return_value=0
+            ),
+        ):
+            count = await self.pipeline.process_pdf_images(
+                pdf_path=str(pdf_path), source="donaldson", session=mock_session
+            )
+
+        assert count == 1
+        added = mock_session.add.call_args[0][0]
+        assert added.figure_kind == "body_text"
+        mock_classify.assert_not_called()
+
+    async def test_geometric_text_dominant_tagged_body_text_with_vision_off(self):
+        """Vision-free path (#2502): the extractor's is_text_dominant flag tags
+        the row body_text even when the caption reader is disabled."""
+        pdf_path = Path(self.temp_dir) / "test.pdf"
+        pdf_path.touch()
+        fake_image = _make_extracted_image(figure_number="Figure 4.1", is_text_dominant=True)
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=MagicMock())
+
+        with (
+            patch(
+                "app.ai.rag.pipeline.PDFImageExtractor.extract_images_from_pdf",
+                return_value=[fake_image],
+            ),
+            patch(
+                "app.ai.rag.pipeline.S3StorageService.upload_bytes",
+                new_callable=AsyncMock,
+                return_value="http://minio/k.webp",
+            ),
+            # Vision disabled — read_figure_caption raises the kill-switch error.
+            patch(
+                "app.ai.rag.pipeline.read_figure_caption",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("vision disabled"),
             ),
             patch("app.ai.rag.pipeline.translate_figure_caption", new_callable=AsyncMock),
             patch("app.ai.rag.pipeline.classify_figure", new_callable=AsyncMock) as mock_classify,
