@@ -18,6 +18,7 @@ import { SourceCitations } from './source-citations';
 import { apiFetch, ApiError, getModuleDetailWithProgress } from '@/lib/api';
 import type { SourceImageMeta } from '@/lib/api';
 import { SOURCE_IMAGE_RE, splitWithSourceImageMarkers } from '@/lib/source-image-utils';
+import { normalizeMarkdown } from '@/lib/markdown-utils';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { useRouter } from 'next/navigation';
 import { useLocale } from 'next-intl';
@@ -509,7 +510,8 @@ export function LessonViewer({
     (lessonData.source_image_refs ?? []).map((img) => [img.id, img])
   );
 
-  function renderContentWithImages(text: string) {
+  function renderContentWithImages(rawText: string) {
+    const text = normalizeMarkdown(rawText);
     if (sourceImageMap.size === 0 || !SOURCE_IMAGE_RE.test(text)) {
       SOURCE_IMAGE_RE.lastIndex = 0;
       return (
@@ -634,7 +636,7 @@ export function LessonViewer({
                     <div className="w-2 h-2 bg-teal-500 rounded-full mt-3 flex-shrink-0" />
                     <div className="text-base leading-relaxed text-gray-700 prose prose-gray max-w-none prose-p:text-gray-700 prose-strong:text-gray-900 prose-p:my-0">
                       <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>
-                        {point}
+                        {normalizeMarkdown(point)}
                       </ReactMarkdown>
                     </div>
                   </li>
