@@ -17,6 +17,7 @@ _PRICING: dict[str, dict[str, int]] = {
     "claude-sonnet-4-6": {"input": 300, "output": 1500, "cache_write": 375, "cache_read": 30},
     "claude-haiku-4-5": {"input": 100, "output": 500, "cache_write": 125, "cache_read": 10},
     "claude-opus-4-6": {"input": 500, "output": 2500, "cache_write": 625, "cache_read": 50},
+    "claude-opus-4-8": {"input": 500, "output": 2500, "cache_write": 625, "cache_read": 50},
     # Moonshot moonshot-v1-128k — $2.00 / $5.00 per 1M; auto context-cache hit
     # billed lower (cache_read ~$0.20/M, re-verify). Standard chat model: honors
     # arbitrary temperature + json_object (unlike the kimi-k2.6 reasoning model).

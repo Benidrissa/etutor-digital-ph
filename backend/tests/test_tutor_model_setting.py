@@ -42,3 +42,11 @@ def test_kimi_k26_is_an_allowed_model(key):
     defn = DEFAULTS_BY_KEY[key]
     assert "kimi-k2.6" in defn.allowed_options
     assert _validate_value(defn, "kimi-k2.6") == "kimi-k2.6"
+
+
+@pytest.mark.parametrize("key", ["tutor-model", "tutor-suggestions-model", "ai-model-content"])
+def test_opus_4_8_is_an_allowed_model(key):
+    # The top Opus model is selectable for content generation and tutor (#2575).
+    defn = DEFAULTS_BY_KEY[key]
+    assert "claude-opus-4-8" in defn.allowed_options
+    assert _validate_value(defn, "claude-opus-4-8") == "claude-opus-4-8"
