@@ -549,3 +549,181 @@ async def _run_body_text_purge_with_factory(
             "deleted": deleted,
             "storage_failed": storage_failed,
         }
+
+
+# ---------------------------------------------------------------------------
+# Cleanup for unreadable extracted images (#2540)
+# ---------------------------------------------------------------------------
+#
+# ``image_quality.assess_readability`` now drops blank/near-uniform fills,
+# random-noise garbage, and undecodable/truncated streams at extraction time.
+# Courses indexed before that gate still hold such rows. This purge re-runs the
+# exact same check against the *stored* binary (downloaded from MinIO), so the
+# verdict matches new ingests, then deletes the unreadable rows. Junction rows
+# cascade; any baked-in {{source_image:UUID}} lesson marker becomes a no-op
+# orphan, dropped client-side (#2428).
+#
+# Only the primary raster (``storage_key``) is assessed — the FR variant may be
+# an SVG (flowchart/overlay re-derivation), which isn't a decodable raster.
+# Unlike the sibling purges this can't be a pure SQL predicate: readability is a
+# property of the pixels, so each candidate is downloaded and assessed. ``limit``
+# therefore caps the number of rows *scanned* (download + assess), letting the
+# job be staged across large libraries within the time limit.
+
+
+class PurgeUnreadableFiguresTask(Task):
+    """Celery base for the unreadable-image purge."""
+
+    def on_success(self, retval, task_id, args, kwargs):
+        logger.info("Unreadable-figure purge completed", task_id=task_id, result=retval)
+
+    def on_failure(self, exc, task_id, args, kwargs, einfo):
+        logger.error("Unreadable-figure purge failed", task_id=task_id, exception=str(exc))
+
+
+@celery_app.task(
+    bind=True,
+    base=PurgeUnreadableFiguresTask,
+    time_limit=1800,
+    soft_time_limit=1500,
+    ignore_result=True,
+    acks_late=False,
+)
+def purge_unreadable_figures(
+    self,
+    rag_collection_id: str | None = None,
+    limit: int | None = None,
+    dry_run: bool = True,
+) -> dict:
+    """Delete ``source_images`` whose stored binary is unreadable (#2540).
+
+    Re-runs ``assess_readability`` against the stored raster, matching the
+    extraction-time gate. Args mirror :func:`purge_orphan_full_page_figures`,
+    except ``limit`` caps the rows *scanned* (each is downloaded + assessed).
+    """
+    return asyncio.run(
+        _run_unreadable_purge(
+            rag_collection_id=rag_collection_id,
+            limit=limit,
+            dry_run=dry_run,
+        )
+    )
+
+
+async def _run_unreadable_purge(
+    rag_collection_id: str | None,
+    limit: int | None,
+    dry_run: bool,
+) -> dict:
+    from app.infrastructure.config.settings import settings
+    from app.infrastructure.storage.s3 import S3StorageService
+
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        return await _run_unreadable_purge_with_factory(
+            rag_collection_id=rag_collection_id,
+            limit=limit,
+            dry_run=dry_run,
+            session_factory=session_factory,
+            storage=S3StorageService(),
+        )
+    finally:
+        await engine.dispose()
+
+
+async def _run_unreadable_purge_with_factory(
+    rag_collection_id: str | None,
+    limit: int | None,
+    dry_run: bool,
+    session_factory: async_sessionmaker[AsyncSession],
+    storage,
+) -> dict:
+    from app.ai.rag.image_quality import assess_readability
+    from app.domain.models.source_image import SourceImage
+
+    async with session_factory() as session:
+        stmt = select(SourceImage).where(SourceImage.storage_key.is_not(None))
+        if rag_collection_id is not None:
+            stmt = stmt.where(SourceImage.rag_collection_id == rag_collection_id)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+
+        candidates = (await session.execute(stmt)).scalars().all()
+        scanned = len(candidates)
+
+        unreadable: list[tuple] = []
+        download_failed = 0
+        for img in candidates:
+            try:
+                data = await storage.download_bytes(img.storage_key)
+            except Exception as exc:  # noqa: BLE001
+                # A transient/missing object isn't proof of unreadable content —
+                # skip rather than risk deleting a recoverable row.
+                download_failed += 1
+                logger.warning(
+                    "Unreadable purge: download failed, skipping",
+                    source_image_id=str(img.id),
+                    key=img.storage_key,
+                    error=str(exc),
+                )
+                continue
+            readable, reason = assess_readability(data)
+            if not readable:
+                unreadable.append((img, reason))
+
+        total = len(unreadable)
+        logger.info(
+            "Unreadable-figure purge: assessed",
+            scanned=scanned,
+            unreadable=total,
+            download_failed=download_failed,
+            rag_collection_id=rag_collection_id,
+            dry_run=dry_run,
+        )
+
+        if dry_run:
+            return {
+                "status": "dry_run",
+                "scanned": scanned,
+                "unreadable": total,
+                "download_failed": download_failed,
+                "preview": _unreadable_preview(unreadable),
+            }
+
+        rows = [img for img, _ in unreadable]
+        deleted, storage_failed = await _delete_image_rows(session, rows, storage)
+
+        logger.info(
+            "Unreadable-figure purge complete",
+            scanned=scanned,
+            deleted=deleted,
+            storage_failed=storage_failed,
+            download_failed=download_failed,
+            rag_collection_id=rag_collection_id,
+        )
+        return {
+            "status": "complete",
+            "scanned": scanned,
+            "unreadable": total,
+            "deleted": deleted,
+            "storage_failed": storage_failed,
+            "download_failed": download_failed,
+        }
+
+
+def _unreadable_preview(pairs: list[tuple]) -> list[dict]:
+    """First 20 unreadable rows (with the rejection reason) for a dry-run."""
+    return [
+        {
+            "id": str(img.id),
+            "rag_collection_id": img.rag_collection_id,
+            "page_number": img.page_number,
+            "figure_number": img.figure_number,
+            "width": img.width,
+            "height": img.height,
+            "storage_key": img.storage_key,
+            "reason": reason,
+        }
+        for img, reason in pairs[:20]
+    ]
