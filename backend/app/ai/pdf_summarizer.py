@@ -279,11 +279,21 @@ def split_pdf_by_chapters(text: str, toc: list, max_chars: int) -> list[tuple[st
 
 
 def _get_summarizer_client(model: str):
-    """Return the appropriate API client based on model name."""
+    """Return the appropriate API client based on model name.
+
+    Moonshot/Kimi models go through the pluggable provider (#2523) so the
+    summarizer honors a ``moonshot-*`` ``syllabus-summarizer-model`` setting
+    instead of falling into the Anthropic branch and 404ing. The gpt-* and
+    claude-* paths keep their proven direct clients.
+    """
     if model.startswith("gpt-"):
         from openai import AsyncOpenAI
 
         return AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+    if model.startswith(("moonshot-", "kimi-")):
+        from app.ai.providers import resolve_provider
+
+        return resolve_provider(model)
     import anthropic
 
     return anthropic.AsyncAnthropic(
@@ -310,6 +320,16 @@ async def _call_model(
             ],
         )
         return response.choices[0].message.content.strip()
+    if model.startswith(("moonshot-", "kimi-")):
+        # client is an LLMProvider here (see _get_summarizer_client).
+        result = await client.complete(
+            system=system,
+            messages=[{"role": "user", "content": user_content}],
+            max_tokens=max_tokens,
+            temperature=1.0,
+            model=model,
+        )
+        return result.text.strip()
     async with client.messages.stream(
         model=model,
         max_tokens=max_tokens,
@@ -575,6 +595,9 @@ async def summarize_pdf_for_syllabus(
     if model.startswith("gpt-"):
         api_key = os.getenv("OPENAI_API_KEY", "")
         key_var = "OPENAI_API_KEY"
+    elif model.startswith(("moonshot-", "kimi-")):
+        api_key = os.getenv("MOONSHOT_API_KEY", "")
+        key_var = "MOONSHOT_API_KEY"
     else:
         api_key = os.getenv("ANTHROPIC_API_KEY", "")
         key_var = "ANTHROPIC_API_KEY"

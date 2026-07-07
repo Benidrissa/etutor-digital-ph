@@ -76,6 +76,15 @@ class RAGPipeline:
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF file not found: {pdf_path}")
 
+        # Idempotent re-index: drop this resource's existing chunks first so a
+        # re-run replaces rather than appends. _store_chunks' (source, chunk_index,
+        # content) guard isn't stable across runs (chunk_index resets per page) and
+        # the clone path has no guard at all, so without this a re-index doubles the
+        # chunk count. Scoped strictly by course_resource_id — siblings untouched. #2534
+        if course_resource_id:
+            async with async_session_factory() as _clear_session:
+                await self.clear_resource_chunks(source, course_resource_id, _clear_session)
+
         # Content-hash dedup: clone from a donor course instead of re-embedding.
         if content_hash and course_resource_id:
             async with async_session_factory() as _dedup_session:
@@ -214,20 +223,41 @@ class RAGPipeline:
         new_resource_id: UUID,
         session: AsyncSession,
     ) -> list[DocumentChunk]:
-        """Return existing chunks from another course resource with the same content_hash.
+        """Return existing chunks from exactly ONE other course resource sharing content_hash.
+
+        A source PDF may have been indexed in several prior courses — each keeps its own
+        `document_chunks` rows. Matching donors across *all* of them and cloning the union
+        multiplies the new collection by the number of prior courses (e.g. a file indexed
+        in 2 courses yields 2× the chunks). So pick a single donor resource and clone only
+        its chunks. #2542
 
         Uses ix_course_resources_content_hash + ix_document_chunks_course_resource_id.
         """
         from app.domain.models.course_resource import CourseResource
 
+        # Choose one donor resource deterministically (lowest id) so a re-run clones from
+        # the same donor. Restricting to a single resource_id — not just content_hash — is
+        # what prevents the cross-course multiplication.
+        donor_resource_id = (
+            await session.execute(
+                select(DocumentChunk.course_resource_id)
+                .join(CourseResource, CourseResource.id == DocumentChunk.course_resource_id)
+                .where(
+                    CourseResource.content_hash == content_hash,
+                    DocumentChunk.course_resource_id != new_resource_id,
+                    DocumentChunk.course_resource_id.is_not(None),
+                )
+                .order_by(DocumentChunk.course_resource_id)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+        if donor_resource_id is None:
+            return []
+
         result = await session.execute(
             select(DocumentChunk)
-            .join(CourseResource, CourseResource.id == DocumentChunk.course_resource_id)
-            .where(
-                CourseResource.content_hash == content_hash,
-                DocumentChunk.course_resource_id != new_resource_id,
-                DocumentChunk.course_resource_id.is_not(None),
-            )
+            .where(DocumentChunk.course_resource_id == donor_resource_id)
             .order_by(DocumentChunk.chunk_index)
             .limit(5000)
         )
@@ -240,9 +270,21 @@ class RAGPipeline:
         new_resource_id: UUID,
         session: AsyncSession,
     ) -> int:
-        """Insert copies of donor_chunks under new_source/new_resource_id without re-embedding."""
+        """Insert copies of donor_chunks under new_source/new_resource_id without re-embedding.
+
+        Deduplicates on ``(content, page, chunk_index)`` while cloning: a donor collection
+        may itself hold duplicate rows (historical over-cloning compounded the count across
+        course generations), and we must not carry that into the new collection. The key
+        uniquely identifies a logical chunk within one document, so collapsing it is safe.
+        #2542
+        """
         cloned = 0
+        seen: set[tuple[str, int | None, int]] = set()
         for donor in donor_chunks:
+            key = (donor.content, donor.page, donor.chunk_index)
+            if key in seen:
+                continue
+            seen.add(key)
             db_chunk = DocumentChunk(
                 id=uuid.uuid4(),
                 content=donor.content,
@@ -804,6 +846,45 @@ class RAGPipeline:
 
         logger.info("Cleared existing chunks", source=source, count=existing_count)
         return existing_count
+
+    async def clear_resource_chunks(
+        self,
+        source: str,
+        course_resource_id: UUID,
+        session: AsyncSession | None = None,
+    ) -> int:
+        """Delete one resource's chunks, scoped by (source, course_resource_id).
+
+        Makes (re)indexing idempotent: callers clear a resource's existing chunks
+        before storing/cloning fresh ones, so a re-run replaces rather than
+        appends. Scoped strictly by ``course_resource_id`` so sibling resources in
+        the same RAG collection are untouched. See #2534.
+        """
+        session_provided = session is not None
+        if not session_provided:
+            async with async_session_factory() as session:
+                return await self._clear_resource_chunks(source, course_resource_id, session)
+        return await self._clear_resource_chunks(source, course_resource_id, session)
+
+    async def _clear_resource_chunks(
+        self, source: str, course_resource_id: UUID, session: AsyncSession
+    ) -> int:
+        result = await session.execute(
+            delete(DocumentChunk).where(
+                DocumentChunk.source == source,
+                DocumentChunk.course_resource_id == course_resource_id,
+            )
+        )
+        await session.commit()
+        deleted = result.rowcount or 0
+        if deleted:
+            logger.info(
+                "Cleared resource chunks before re-index",
+                source=source,
+                course_resource_id=str(course_resource_id),
+                count=deleted,
+            )
+        return deleted
 
     async def get_pipeline_stats(self, session: AsyncSession | None = None) -> dict[str, Any]:
         """Get statistics about the current state of the pipeline."""

@@ -878,3 +878,48 @@ class TestRAGPipelineVisionCaption:
         added = mock_session.add.call_args[0][0]
         assert added.figure_kind == "body_text"
         mock_classify.assert_not_called()
+
+
+class TestClearResourceChunks:
+    """Idempotent re-index: clear_resource_chunks must scope deletion by both
+    source and course_resource_id so a re-run replaces (not appends) and sibling
+    resources in the same collection are untouched. See #2534.
+    """
+
+    def setup_method(self):
+        self.pipeline = RAGPipeline(AsyncMock())
+
+    @pytest.mark.asyncio
+    async def test_delete_is_scoped_by_source_and_resource_and_returns_rowcount(self):
+        import uuid
+
+        rid = uuid.uuid4()
+        captured = {}
+
+        async def _execute(stmt):
+            captured["stmt"] = stmt
+            return MagicMock(rowcount=7)
+
+        session = MagicMock()
+        session.execute = AsyncMock(side_effect=_execute)
+        session.commit = AsyncMock()
+
+        deleted = await self.pipeline._clear_resource_chunks("collection-x", rid, session)
+
+        assert deleted == 7
+        session.commit.assert_awaited_once()
+        sql = str(captured["stmt"].compile(compile_kwargs={"literal_binds": False}))
+        assert "DELETE FROM document_chunks" in sql
+        # Both predicates present — not a collection-wide wipe.
+        assert "source" in sql and "course_resource_id" in sql
+
+    @pytest.mark.asyncio
+    async def test_returns_zero_when_nothing_deleted(self):
+        import uuid
+
+        session = MagicMock()
+        session.execute = AsyncMock(return_value=MagicMock(rowcount=0))
+        session.commit = AsyncMock()
+
+        deleted = await self.pipeline._clear_resource_chunks("c", uuid.uuid4(), session)
+        assert deleted == 0

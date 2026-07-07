@@ -13,8 +13,36 @@ from app.domain.services.image_service import (
     _jaccard_similarity,
     _parse_alt_text,
     _parse_concept_response,
+    _parse_labels,
     _resize_to_webp,
 )
+
+
+def _provider_patch(*, responses=None, side_effect=None):
+    """Patch image_service's resolve_provider with a fake provider (#2523).
+
+    Image metadata/alt-text now route through the pluggable provider's
+    ``complete()`` instead of a direct ``anthropic.AsyncAnthropic`` call. This
+    adapts the existing Anthropic-style mock messages (each with
+    ``.content[0].text``) into ``LLMResult`` objects. Pass ``responses`` (one
+    message or a list, consumed in order) or ``side_effect`` (e.g. an exception).
+    Returns ``(patch_cm, complete_mock)`` — assert on ``complete_mock.call_args``.
+    """
+    from app.ai.providers.base import LLMResult
+
+    complete_mock = AsyncMock()
+    if side_effect is not None:
+        complete_mock.side_effect = side_effect
+    elif isinstance(responses, (list, tuple)):
+        complete_mock.side_effect = [LLMResult(text=r.content[0].text) for r in responses]
+    else:
+        complete_mock.return_value = LLMResult(text=responses.content[0].text)
+    provider = MagicMock()
+    provider.complete = complete_mock
+    return (
+        patch("app.ai.providers.resolve_provider", return_value=provider),
+        complete_mock,
+    )
 
 
 class TestJaccardSimilarity:
@@ -43,22 +71,66 @@ class TestJaccardSimilarity:
 
 class TestParseConceptResponse:
     def test_parses_valid_response(self):
-        text = 'CONCEPT: paludisme\nPROMPT: Malaria parasite cycle illustration\nTAGS: ["paludisme", "aof"]'
-        concept, prompt, tags = _parse_concept_response(text)
+        text = (
+            "CONCEPT: paludisme\n"
+            "PROMPT: Malaria parasite cycle illustration, no text\n"
+            "TITLE_FR: Cycle du paludisme\n"
+            "TITLE_EN: Malaria cycle\n"
+            'LABELS: [{"fr": "Moustique", "en": "Mosquito"}, {"fr": "Foie", "en": "Liver"}]\n'
+            'TAGS: ["paludisme", "aof"]'
+        )
+        concept, prompt, tags, title_fr, title_en, labels = _parse_concept_response(text)
         assert concept == "paludisme"
         assert "Malaria" in prompt
         assert "paludisme" in tags
+        assert title_fr == "Cycle du paludisme"
+        assert title_en == "Malaria cycle"
+        assert labels == [
+            {"fr": "Moustique", "en": "Mosquito"},
+            {"fr": "Foie", "en": "Liver"},
+        ]
 
     def test_defaults_when_empty(self):
-        concept, prompt, tags = _parse_concept_response("")
+        concept, prompt, tags, title_fr, title_en, labels = _parse_concept_response("")
         assert concept == "lesson concept"
         assert len(tags) > 0
-        assert "style:infographic" in tags
+        assert "style:illustration" in tags
+        # Title falls back to the concept so the overlay always has something.
+        assert title_en == "lesson concept"
+        assert title_fr == "lesson concept"
+        assert labels == []
 
     def test_tags_lowercased(self):
         text = 'CONCEPT: Malaria\nPROMPT: Illustration\nTAGS: ["MALARIA", "AOF"]'
-        _, _, tags = _parse_concept_response(text)
+        _, _, tags, _, _, _ = _parse_concept_response(text)
         assert all(t == t.lower() for t in tags)
+
+    def test_title_fr_falls_back_to_en(self):
+        text = "CONCEPT: water\nPROMPT: x\nTITLE_EN: Water cycle\nTAGS: []"
+        _, _, _, title_fr, title_en, _ = _parse_concept_response(text)
+        assert title_en == "Water cycle"
+        assert title_fr == "Water cycle"
+
+
+class TestParseLabels:
+    def test_parses_objects(self):
+        labels = _parse_labels('[{"fr": "Eau", "en": "Water"}]')
+        assert labels == [{"fr": "Eau", "en": "Water"}]
+
+    def test_string_items_used_for_both_languages(self):
+        labels = _parse_labels('["Water", "Sun"]')
+        assert labels == [
+            {"fr": "Water", "en": "Water"},
+            {"fr": "Sun", "en": "Sun"},
+        ]
+
+    def test_malformed_returns_empty(self):
+        assert _parse_labels("not json") == []
+        assert _parse_labels('{"fr": "x"}') == []
+
+    def test_missing_one_language_backfills_from_other(self):
+        labels = _parse_labels('[{"en": "Water"}]')
+        assert labels == [{"fr": "Water", "en": "Water"}]
 
 
 class TestParseAltText:
@@ -172,8 +244,11 @@ class TestImageGenerationService:
         content_block = MagicMock()
         content_block.text = (
             "CONCEPT: paludisme\n"
-            "PROMPT: Educational poster titled Paludisme with labeled life-cycle stages and arrows\n"
-            'TAGS: ["paludisme", "malaria", "aof", "épidémiologie", "style:infographic", "lang:en"]'
+            "PROMPT: Clean conceptual illustration of the malaria life cycle, no text or labels\n"
+            "TITLE_FR: Cycle du paludisme\n"
+            "TITLE_EN: Malaria life cycle\n"
+            'LABELS: [{"fr": "Moustique", "en": "Mosquito"}, {"fr": "Sang", "en": "Blood"}]\n'
+            'TAGS: ["paludisme", "malaria", "aof", "épidémiologie", "style:illustration"]'
         )
         msg.content = [content_block]
         return msg
@@ -191,7 +266,7 @@ class TestImageGenerationService:
     async def test_semantic_reuse_skips_dalle(self, service, mock_session, mock_claude_response):
         """When a matching image exists (≥85% Jaccard), DALL-E must NOT be called."""
         existing = _make_db_image(
-            ["paludisme", "malaria", "aof", "épidémiologie", "style:infographic", "lang:en"]
+            ["paludisme", "malaria", "aof", "épidémiologie", "style:illustration"]
         )
         existing.reuse_count = 0
 
@@ -202,21 +277,20 @@ class TestImageGenerationService:
             side_effect=[dedup_result, _empty_lesson_context_result(), reuse_result]
         )
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(return_value=mock_claude_response)
+        prov_patch, _ = _provider_patch(responses=mock_claude_response)
+        with (
+            prov_patch,
+            patch("app.ai.providers.image_provider.AsyncOpenAI") as mock_openai_cls,
+        ):
+            result = await service.generate_for_lesson(
+                lesson_id=uuid.uuid4(),
+                module_id=uuid.uuid4(),
+                unit_id="u01",
+                lesson_content="Lesson about malaria in West Africa.",
+                session=mock_session,
+            )
 
-            with patch("openai.AsyncOpenAI") as mock_openai_cls:
-                result = await service.generate_for_lesson(
-                    lesson_id=uuid.uuid4(),
-                    module_id=uuid.uuid4(),
-                    unit_id="u01",
-                    lesson_content="Lesson about malaria in West Africa.",
-                    session=mock_session,
-                )
-
-                mock_openai_cls.assert_not_called()
+            mock_openai_cls.assert_not_called()
 
         assert result.status == "ready"
         assert result.image_url == f"/api/v1/images/{result.id}/data"
@@ -239,14 +313,11 @@ class TestImageGenerationService:
         image_api_response = MagicMock()
         image_api_response.data = [MagicMock(b64_json=fake_b64)]
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(
-                side_effect=[mock_claude_response, mock_alt_text_response]
-            )
-
-            with patch("openai.AsyncOpenAI") as mock_openai_cls:
+        prov_patch, complete_mock = _provider_patch(
+            responses=[mock_claude_response, mock_alt_text_response]
+        )
+        with prov_patch:
+            with patch("app.ai.providers.image_provider.AsyncOpenAI") as mock_openai_cls:
                 mock_openai = AsyncMock()
                 mock_openai_cls.return_value = mock_openai
                 mock_openai.images.generate = AsyncMock(return_value=image_api_response)
@@ -264,25 +335,29 @@ class TestImageGenerationService:
             assert call_kwargs.get("model") == "gpt-image-1"
             assert call_kwargs.get("size") == "1536x1024"
             assert call_kwargs.get("quality") == "medium"
+            # The prompt passed to gpt-image-1 is the text-free prompt Claude returned.
             prompt_sent = call_kwargs.get("prompt", "")
-            assert "NO text" not in prompt_sent
-            assert "no text, letters, numbers" not in prompt_sent.lower()
+            assert "no text" in prompt_sent.lower()
 
         assert result.status == "ready"
         assert result.image_url == f"/api/v1/images/{result.id}/data"
         assert result.image_data is not None
         assert len(result.image_data) > 0
+        # Overlay text extracted by Claude must be persisted on the record.
+        assert result.title_fr == "Cycle du paludisme"
+        assert result.title_en == "Malaria life cycle"
+        assert result.overlay_labels == [
+            {"fr": "Moustique", "en": "Mosquito"},
+            {"fr": "Sang", "en": "Blood"},
+        ]
 
     async def test_failure_handling_sets_failed_status(self, service, mock_session):
         """When DALL-E raises an exception, status must be 'failed' and lesson unaffected."""
         dedup_result = _no_existing_image_result()
         mock_session.execute = AsyncMock(return_value=dedup_result)
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(side_effect=RuntimeError("Claude API error"))
-
+        prov_patch, complete_mock = _provider_patch(side_effect=RuntimeError("Claude API error"))
+        with prov_patch:
             result = await service.generate_for_lesson(
                 lesson_id=uuid.uuid4(),
                 module_id=uuid.uuid4(),
@@ -310,25 +385,22 @@ class TestImageGenerationService:
         image_api_response = MagicMock()
         image_api_response.data = [MagicMock(b64_json=fake_b64)]
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(
-                side_effect=[mock_claude_response, mock_alt_text_response]
+        prov_patch, _ = _provider_patch(responses=[mock_claude_response, mock_alt_text_response])
+        with (
+            prov_patch,
+            patch("app.ai.providers.image_provider.AsyncOpenAI") as mock_openai_cls,
+        ):
+            mock_openai = AsyncMock()
+            mock_openai_cls.return_value = mock_openai
+            mock_openai.images.generate = AsyncMock(return_value=image_api_response)
+
+            result = await service.generate_for_lesson(
+                lesson_id=uuid.uuid4(),
+                module_id=uuid.uuid4(),
+                unit_id="u01",
+                lesson_content="Lesson content.",
+                session=mock_session,
             )
-
-            with patch("openai.AsyncOpenAI") as mock_openai_cls:
-                mock_openai = AsyncMock()
-                mock_openai_cls.return_value = mock_openai
-                mock_openai.images.generate = AsyncMock(return_value=image_api_response)
-
-                result = await service.generate_for_lesson(
-                    lesson_id=uuid.uuid4(),
-                    module_id=uuid.uuid4(),
-                    unit_id="u01",
-                    lesson_content="Lesson content.",
-                    session=mock_session,
-                )
 
         assert result.alt_text_fr is not None and len(result.alt_text_fr) > 0
         assert result.alt_text_en is not None and len(result.alt_text_en) > 0
@@ -336,7 +408,7 @@ class TestImageGenerationService:
     async def test_reuse_increments_reuse_count(self, service, mock_session, mock_claude_response):
         """Reusing an existing image must increment its reuse_count."""
         existing = _make_db_image(
-            ["paludisme", "malaria", "aof", "épidémiologie", "style:infographic", "lang:en"]
+            ["paludisme", "malaria", "aof", "épidémiologie", "style:illustration"]
         )
         existing.reuse_count = 2
 
@@ -347,11 +419,8 @@ class TestImageGenerationService:
             side_effect=[dedup_result, _empty_lesson_context_result(), reuse_result]
         )
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(return_value=mock_claude_response)
-
+        prov_patch, complete_mock = _provider_patch(responses=mock_claude_response)
+        with prov_patch:
             await service.generate_for_lesson(
                 lesson_id=uuid.uuid4(),
                 module_id=uuid.uuid4(),
@@ -362,16 +431,21 @@ class TestImageGenerationService:
 
         assert existing.reuse_count == 3
 
-    def test_system_prompt_requests_infographic_style(self):
-        """System prompt for concept extraction must ask for an infographic with labels."""
+    def test_system_prompt_requests_text_free_illustration(self):
+        """System prompt must request a text-free illustration, not baked-in labels."""
         import inspect
 
         from app.domain.services import image_service
 
         source = inspect.getsource(image_service)
-        assert "INFOGRAPHIC" in source
-        assert "callout" in source.lower()
+        # Must demand a text-free image and provide structured overlay text instead.
+        assert "ABSOLUTELY NO text" in source
+        assert "TITLE_FR" in source and "TITLE_EN" in source
+        assert "LABELS" in source
         assert "subject-agnostic" in source.lower()
+        # Legacy baked-in-text infographic framing must be gone.
+        assert "labeled diagram" not in source.lower()
+        assert "callout label" not in source.lower()
         # West-Africa / public-health framing must be gone.
         assert "West African setting" not in source
         assert "public health education for West Africa" not in source
@@ -385,15 +459,18 @@ class TestImageGenerationService:
         source = inspect.getsource(image_service)
         assert "NO text, letters, numbers, or written words" not in source
 
-    def test_dalle_call_uses_medium_quality_landscape(self):
-        """gpt-image-1 must be invoked at medium quality, 1536x1024."""
+    def test_openai_image_provider_uses_medium_quality_landscape(self):
+        """gpt-image-1 must be invoked at medium quality; image_service requests 1536x1024."""
         import inspect
 
+        from app.ai.providers import image_provider
         from app.domain.services import image_service
 
-        source = inspect.getsource(image_service)
-        assert '"1536x1024"' in source
-        assert '"medium"' in source
+        provider_source = inspect.getsource(image_provider)
+        assert '"gpt-image-1"' in provider_source or "gpt-image-1" in provider_source
+        assert '"medium"' in provider_source
+        # image_service requests the landscape size from whichever provider runs.
+        assert '"1536x1024"' in inspect.getsource(image_service)
 
     async def test_extract_concept_localizes_to_lesson_language(
         self, service, mock_claude_response
@@ -401,18 +478,15 @@ class TestImageGenerationService:
         """When language='fr', the system prompt sent to Claude must request French labels."""
         from app.ai.prompts.audience import AudienceContext
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(return_value=mock_claude_response)
-
+        prov_patch, complete_mock = _provider_patch(responses=mock_claude_response)
+        with prov_patch:
             await service._extract_concept_and_tags(
                 "Lesson about photosynthesis.",
                 language="fr",
                 audience=AudienceContext(is_kids=False),
             )
 
-            system_prompt = mock_client.messages.create.call_args.kwargs["system"]
+            system_prompt = complete_mock.call_args.kwargs["system"]
             assert "French" in system_prompt
             assert "language-agnostic" in system_prompt.lower()
 
@@ -420,18 +494,15 @@ class TestImageGenerationService:
         """Default language='en' must request English labels in the system prompt."""
         from app.ai.prompts.audience import AudienceContext
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(return_value=mock_claude_response)
-
+        prov_patch, complete_mock = _provider_patch(responses=mock_claude_response)
+        with prov_patch:
             await service._extract_concept_and_tags(
                 "Lesson about photosynthesis.",
                 language="en",
                 audience=AudienceContext(is_kids=False),
             )
 
-            system_prompt = mock_client.messages.create.call_args.kwargs["system"]
+            system_prompt = complete_mock.call_args.kwargs["system"]
             assert "English" in system_prompt
 
     async def test_extract_concept_kids_audience_branches_style(
@@ -440,18 +511,15 @@ class TestImageGenerationService:
         """When audience.is_kids=True, the prompt must request kid-friendly cartoon style."""
         from app.ai.prompts.audience import AudienceContext
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(return_value=mock_claude_response)
-
+        prov_patch, complete_mock = _provider_patch(responses=mock_claude_response)
+        with prov_patch:
             await service._extract_concept_and_tags(
                 "Counting from 1 to 10.",
                 language="en",
                 audience=AudienceContext(is_kids=True, age_min=6, age_max=10),
             )
 
-            system_prompt = mock_client.messages.create.call_args.kwargs["system"]
+            system_prompt = complete_mock.call_args.kwargs["system"]
             # Kids style markers (cartoon, primary colors, mascot) must appear.
             assert "cartoon" in system_prompt.lower()
             assert "children" in system_prompt.lower() or "child" in system_prompt.lower()
@@ -462,18 +530,15 @@ class TestImageGenerationService:
         """The system prompt must explicitly allow human figures in the infographic."""
         from app.ai.prompts.audience import AudienceContext
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(return_value=mock_claude_response)
-
+        prov_patch, complete_mock = _provider_patch(responses=mock_claude_response)
+        with prov_patch:
             await service._extract_concept_and_tags(
                 "Some lesson.",
                 language="en",
                 audience=AudienceContext(is_kids=False),
             )
 
-            system_prompt = mock_client.messages.create.call_args.kwargs["system"]
+            system_prompt = complete_mock.call_args.kwargs["system"]
             # Humans must be explicitly allowed (not forbidden).
             assert "Human figures" in system_prompt or "human figures" in system_prompt
             assert "allowed" in system_prompt.lower()
@@ -481,76 +546,131 @@ class TestImageGenerationService:
             assert "no people" not in system_prompt.lower()
             assert "no human" not in system_prompt.lower()
 
-    async def test_extract_concept_injects_lang_and_audience_tags(
+    async def test_extract_concept_requires_west_african_people(
         self, service, mock_claude_response
     ):
-        """Server-side discriminator tags (lang:, audience:) must be injected into the tag list."""
+        """#2526: when people appear they must be Black West Africans, never European."""
         from app.ai.prompts.audience import AudienceContext
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(return_value=mock_claude_response)
+        prov_patch, complete_mock = _provider_patch(responses=mock_claude_response)
+        with prov_patch:
+            await service._extract_concept_and_tags(
+                "Some lesson.",
+                language="en",
+                audience=AudienceContext(is_kids=False),
+            )
 
-            _, _, tags = await service._extract_concept_and_tags(
+            system_prompt = complete_mock.call_args.kwargs["system"]
+            assert "West Africa" in system_prompt
+            assert "Black African" in system_prompt
+            # The model must be told NOT to default to white/European people.
+            assert "European" in system_prompt
+            # The old region-neutral "diverse people" wording must be gone.
+            assert "depict diverse people" not in system_prompt
+
+    async def test_kids_style_requires_west_african_children(self, service, mock_claude_response):
+        """#2526: the kids style branch must also require Black West African children."""
+        from app.ai.prompts.audience import AudienceContext
+
+        prov_patch, complete_mock = _provider_patch(responses=mock_claude_response)
+        with prov_patch:
+            await service._extract_concept_and_tags(
+                "Counting from 1 to 10.",
+                language="en",
+                audience=AudienceContext(is_kids=True, age_min=6, age_max=10),
+            )
+
+            system_prompt = complete_mock.call_args.kwargs["system"]
+            assert "Black African children from West Africa" in system_prompt
+
+    async def test_generate_image_appends_west_african_constraint(self, service):
+        """#2526: the literal prompt sent to the image backend must carry the constraint."""
+        from app.domain.services.image_service import PEOPLE_CONSTRAINT
+
+        gen_mock = AsyncMock(return_value=(b"img-bytes", "gpt-image-1"))
+        with patch("app.ai.providers.image_provider.generate_image", gen_mock):
+            await service._generate_image("A clean conceptual illustration.")
+
+        sent_prompt = (
+            gen_mock.call_args.args[0]
+            if gen_mock.call_args.args
+            else (gen_mock.call_args.kwargs["prompt"])
+        )
+        assert sent_prompt.endswith(PEOPLE_CONSTRAINT)
+        assert "Black African people from West Africa" in sent_prompt
+
+    async def test_extract_concept_injects_style_and_audience_tags(
+        self, service, mock_claude_response
+    ):
+        """style: and audience: discriminators are injected; lang: deliberately is NOT.
+
+        Text-free illustrations are language agnostic, so one image is reused across
+        FR and EN — no lang discriminator is added.
+        """
+        from app.ai.prompts.audience import AudienceContext
+
+        prov_patch, complete_mock = _provider_patch(responses=mock_claude_response)
+        with prov_patch:
+            _, _, tags, _, _, _ = await service._extract_concept_and_tags(
                 "Counting lesson.",
                 language="fr",
                 audience=AudienceContext(is_kids=True, age_min=6, age_max=10),
             )
 
             tags_lower = {t.lower() for t in tags}
-            assert "lang:fr" in tags_lower
             assert "audience:kids" in tags_lower
-            assert "style:infographic" in tags_lower
+            assert "style:illustration" in tags_lower
+            assert not any(t.startswith("lang:") for t in tags_lower)
 
-    async def test_find_reusable_image_blocks_cross_language_reuse(self, service, mock_session):
-        """An EN-tagged existing image must NOT be reused for a new FR generation."""
-        en_existing = _make_db_image(
-            ["paludisme", "malaria", "aof", "épidémiologie", "style:infographic", "lang:en"]
-        )
-
-        reuse_result = MagicMock()
-        reuse_result.scalars.return_value.all.return_value = [en_existing]
-        mock_session.execute = AsyncMock(return_value=reuse_result)
-
-        new_tags = [
-            "paludisme",
-            "malaria",
-            "aof",
-            "épidémiologie",
-            "style:infographic",
-            "lang:fr",
-        ]
-        result = await service._find_reusable_image(new_tags, mock_session)
-        assert result is None
-
-    async def test_find_reusable_image_allows_same_language_reuse(self, service, mock_session):
-        """Same-language same-style same-audience candidate with ≥85% Jaccard reuses fine."""
+    async def test_find_reusable_image_reuses_across_languages(self, service, mock_session):
+        """A text-free illustration (no lang tag) is reused regardless of lesson language."""
         existing = _make_db_image(
-            [
-                "paludisme",
-                "malaria",
-                "aof",
-                "épidémiologie",
-                "style:infographic",
-                "lang:fr",
-            ]
+            ["paludisme", "malaria", "aof", "épidémiologie", "style:illustration"]
         )
 
         reuse_result = MagicMock()
         reuse_result.scalars.return_value.all.return_value = [existing]
         mock_session.execute = AsyncMock(return_value=reuse_result)
 
+        new_tags = ["paludisme", "malaria", "aof", "épidémiologie", "style:illustration"]
+        result = await service._find_reusable_image(new_tags, mock_session)
+        assert result is existing
+
+    async def test_find_reusable_image_blocks_cross_style_reuse(self, service, mock_session):
+        """A legacy baked-text infographic must NOT be reused for a new text-free illustration."""
+        legacy = _make_db_image(
+            ["paludisme", "malaria", "aof", "épidémiologie", "style:infographic"]
+        )
+
+        reuse_result = MagicMock()
+        reuse_result.scalars.return_value.all.return_value = [legacy]
+        mock_session.execute = AsyncMock(return_value=reuse_result)
+
+        new_tags = ["paludisme", "malaria", "aof", "épidémiologie", "style:illustration"]
+        result = await service._find_reusable_image(new_tags, mock_session)
+        assert result is None
+
+    async def test_find_reusable_image_blocks_cross_audience_reuse(self, service, mock_session):
+        """An adult illustration must NOT be reused for a kids lesson."""
+        adult = _make_db_image(
+            ["paludisme", "malaria", "aof", "épidémiologie", "style:illustration"]
+        )
+
+        reuse_result = MagicMock()
+        reuse_result.scalars.return_value.all.return_value = [adult]
+        mock_session.execute = AsyncMock(return_value=reuse_result)
+
+        # New (kids) generation carries the audience:kids discriminator the adult lacks.
         new_tags = [
             "paludisme",
             "malaria",
             "aof",
             "épidémiologie",
-            "style:infographic",
-            "lang:fr",
+            "style:illustration",
+            "audience:kids",
         ]
         result = await service._find_reusable_image(new_tags, mock_session)
-        assert result is existing
+        assert result is None
 
     def test_openai_api_key_not_in_frontend_accessible_code(self):
         """Verify OPENAI_API_KEY is loaded from settings (server-side), not hardcoded."""
@@ -595,25 +715,22 @@ class TestImageGenerationService:
         image_api_response = MagicMock()
         image_api_response.data = [MagicMock(b64_json=fake_b64)]
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(
-                side_effect=[mock_claude_response, mock_alt_text_response]
+        prov_patch, _ = _provider_patch(responses=[mock_claude_response, mock_alt_text_response])
+        with (
+            prov_patch,
+            patch("app.ai.providers.image_provider.AsyncOpenAI") as mock_openai_cls,
+        ):
+            mock_openai = AsyncMock()
+            mock_openai_cls.return_value = mock_openai
+            mock_openai.images.generate = AsyncMock(return_value=image_api_response)
+
+            result = await service.generate_for_lesson(
+                lesson_id=uuid.uuid4(),
+                module_id=uuid.uuid4(),
+                unit_id="u01",
+                lesson_content="Lesson about tuberculosis surveillance in Senegal.",
+                session=mock_session,
             )
-
-            with patch("openai.AsyncOpenAI") as mock_openai_cls:
-                mock_openai = AsyncMock()
-                mock_openai_cls.return_value = mock_openai
-                mock_openai.images.generate = AsyncMock(return_value=image_api_response)
-
-                result = await service.generate_for_lesson(
-                    lesson_id=uuid.uuid4(),
-                    module_id=uuid.uuid4(),
-                    unit_id="u01",
-                    lesson_content="Lesson about tuberculosis surveillance in Senegal.",
-                    session=mock_session,
-                )
 
         assert result.image_data is not None, "image_data must not be NULL after generation"
         assert len(result.image_data) > 0

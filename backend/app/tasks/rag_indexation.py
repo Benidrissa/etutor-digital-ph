@@ -27,6 +27,32 @@ def _estimate_seconds(pdf_files: list[Path]) -> int:
     return max(30, int(extraction_s + embedding_s))
 
 
+def _db_only_resources(pdf_files: list[Path], db_resources: list) -> list:
+    """Return DB resources that have extracted text but no file on disk.
+
+    ``file_hash``-deduped uploads (``upload_course_resource``) create a thin
+    ``CourseResource`` that copies the donor's ``content_hash`` and writes **no**
+    file to disk. The disk-glob indexing path would skip them entirely, dropping
+    the source from the course's RAG even though its chunks already exist on a
+    donor and only need cloning. We index those "DB-only" resources via the
+    clone-or-embed DB path alongside any on-disk PDFs.
+
+    A resource counts as "on disk" when a PDF's stem equals its ``filename`` or
+    its ``parent_filename`` (split parts share the parent's single file). See #2525.
+    """
+    disk_stems = {p.stem for p in pdf_files}
+    out = []
+    for r in db_resources:
+        if not r.raw_text:
+            continue
+        if r.filename in disk_stems:
+            continue
+        if r.parent_filename and r.parent_filename in disk_stems:
+            continue
+        out.append(r)
+    return out
+
+
 def finalize_indexation_state(
     course_id: str | None,
     *,
@@ -152,31 +178,32 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
     course_dir = UPLOAD_DIR / course_id
     pdf_files = list(course_dir.glob("*.pdf")) if course_dir.exists() else []
 
-    db_resources: list = []
-    if not pdf_files:
-        from sqlalchemy import create_engine, select
-        from sqlalchemy.orm import Session
+    # Always load DB resources. file_hash-deduped uploads carry raw_text + a
+    # donor content_hash but write no file to disk, so the disk-glob path would
+    # skip them. We index those "DB-only" resources alongside the on-disk PDFs
+    # instead of only when no PDF exists on disk (the old mutual exclusion). #2525
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import Session
 
-        from app.domain.models.course_resource import CourseResource
-        from app.infrastructure.config.settings import settings
+    from app.domain.models.course_resource import CourseResource
+    from app.infrastructure.config.settings import settings
 
-        _eng = create_engine(settings.database_url_sync, pool_pre_ping=True)
-        try:
-            with Session(_eng) as _sess:
-                db_resources = (
-                    _sess.execute(
-                        select(CourseResource).where(
-                            CourseResource.course_id == uuid.UUID(course_id)
-                        )
-                    )
-                    .scalars()
-                    .all()
+    _eng = create_engine(settings.database_url_sync, pool_pre_ping=True)
+    try:
+        with Session(_eng) as _sess:
+            all_db_resources = list(
+                _sess.execute(
+                    select(CourseResource).where(CourseResource.course_id == uuid.UUID(course_id))
                 )
-                db_resources = [r for r in db_resources if r.raw_text]
-        finally:
-            _eng.dispose()
+                .scalars()
+                .all()
+            )
+    finally:
+        _eng.dispose()
 
-    if not pdf_files and not db_resources:
+    db_only_resources = _db_only_resources(pdf_files, all_db_resources)
+
+    if not pdf_files and not db_only_resources:
         self.update_state(
             state="FAILURE",
             meta={
@@ -192,7 +219,7 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
         }
 
     estimated_seconds = (
-        _estimate_seconds(pdf_files) if pdf_files else max(30, len(db_resources) * 60)
+        _estimate_seconds(pdf_files) if pdf_files else max(30, len(db_only_resources) * 60)
     )
     start_time = time.monotonic()
 
@@ -231,32 +258,42 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
         total_chunks = 0
         total_images = 0
 
-        if not pdf_files and db_resources:
+        # Phase 1: DB-only resources (file_hash-deduped; no file on disk).
+        # Cloning from a donor is ~instant, so index these first — a soft time
+        # limit hit on a heavy disk PDF afterward can't starve them. #2525
+        if db_only_resources:
             logger.info(
-                "No PDFs on disk — indexing text chunks from DB course_resources",
+                "Indexing DB-only course_resources (no file on disk)",
                 course_id=course_id,
-                resource_count=len(db_resources),
+                resource_count=len(db_only_resources),
             )
             from app.infrastructure.persistence.database import async_session_factory
 
             chunker = TextChunker()
-            files_count = len(db_resources)
-            for i, res in enumerate(db_resources):
+            files_count = len(db_only_resources)
+            for i, res in enumerate(db_only_resources):
                 resource_name = res.filename
-                extract_progress = 5 + int((i / files_count) * 80)
+                # Cap DB-only progress at 30%; the disk loop owns 5→100 below.
+                extract_progress = 5 + int((i / files_count) * 25)
                 self.update_state(
                     state="EMBEDDING",
                     meta={
                         "step": "embedding",
                         "step_label": f"Indexation depuis DB: {resource_name}",
                         "progress": extract_progress,
-                        "files_total": files_count,
+                        "files_total": files_count + len(pdf_files),
                         "files_processed": i,
                         "current_file": resource_name,
                         "chunks_processed": total_chunks,
                         "estimated_seconds_remaining": _remaining(extract_progress),
                     },
                 )
+                # Idempotent re-index: drop this resource's existing chunks first
+                # so a re-run replaces rather than appends (clone + embed paths
+                # below have no dedup of their own). Scoped by course_resource_id. #2534
+                async with async_session_factory() as _clear_session:
+                    await pipeline.clear_resource_chunks(rag_collection_id, res.id, _clear_session)
+
                 # Content-hash dedup: clone from donor course if same text already indexed.
                 if res.content_hash:
                     async with async_session_factory() as _dedup_session:
@@ -300,31 +337,9 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                     course_id=course_id,
                 )
 
-            # Extract images from any PDFs on disk even in DB-resources path
-            if course_dir.exists():
-                img_pdfs = list(course_dir.glob("*.pdf"))
-                for pdf_path in img_pdfs:
-                    try:
-                        ic = await pipeline.process_pdf_images(
-                            pdf_path=str(pdf_path),
-                            source=rag_collection_id,
-                            rag_collection_id=rag_collection_id,
-                        )
-                        total_images += ic
-                        logger.info(
-                            "Extracted images from PDF (DB resources path)",
-                            file=pdf_path.name,
-                            images=ic,
-                            course_id=course_id,
-                        )
-                    except Exception as img_exc:
-                        logger.warning(
-                            "Image extraction failed (DB path, non-blocking)",
-                            file=pdf_path.name,
-                            course_id=course_id,
-                            error=str(img_exc),
-                        )
-
+        # Pure-deduped course (every source was file_hash-deduped): no disk PDFs
+        # to extract text/images from, so we're done.
+        if not pdf_files:
             return total_chunks, total_images
 
         # Build pdf_path → course_resource_id lookup so chunks land with

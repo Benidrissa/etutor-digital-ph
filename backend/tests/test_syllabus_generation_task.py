@@ -34,6 +34,85 @@ def sample_module_dicts():
     ]
 
 
+class TestNormalizeModuleHours:
+    """Unit tests for _normalize_module_hours — the deterministic reconciliation of
+    per-module hours with the admin's target so the displayed course duration
+    (SUM of module hours) matches it. See #2504.
+    """
+
+    @staticmethod
+    def _hours(mods):
+        return [m["estimated_hours"] for m in mods]
+
+    def test_overshoot_rescaled_down_to_target(self):
+        """8 modules summing to 23h are rescaled so they total exactly the 10h target."""
+        from app.tasks.syllabus_generation import _normalize_module_hours
+
+        mods = [{"estimated_hours": 3} for _ in range(7)] + [{"estimated_hours": 2}]
+        assert sum(self._hours(mods)) == 23
+
+        _normalize_module_hours(mods, 10)
+
+        assert sum(self._hours(mods)) == 10
+        assert all(h >= 1 for h in self._hours(mods))
+
+    def test_relative_weights_preserved(self):
+        """A module the LLM judged longer stays longer after rescaling."""
+        from app.tasks.syllabus_generation import _normalize_module_hours
+
+        mods = [{"estimated_hours": 30}, {"estimated_hours": 10}, {"estimated_hours": 10}]
+        _normalize_module_hours(mods, 20)
+
+        h = self._hours(mods)
+        assert sum(h) == 20
+        assert h[0] > h[1] and h[0] > h[2]
+
+    def test_missing_hours_even_split(self):
+        """When the LLM omits hours everywhere, the target is divided evenly."""
+        from app.tasks.syllabus_generation import _normalize_module_hours
+
+        mods = [{}, {}, {}, {}]
+        _normalize_module_hours(mods, 20)
+
+        assert self._hours(mods) == [5, 5, 5, 5]
+
+    def test_already_on_target_is_idempotent(self):
+        """Modules already summing to the target come out unchanged."""
+        from app.tasks.syllabus_generation import _normalize_module_hours
+
+        mods = [{"estimated_hours": 4}, {"estimated_hours": 3}, {"estimated_hours": 3}]
+        _normalize_module_hours(mods, 10)
+
+        assert sum(self._hours(mods)) == 10
+
+    def test_single_module_gets_full_target(self):
+        from app.tasks.syllabus_generation import _normalize_module_hours
+
+        mods = [{"estimated_hours": 25}]
+        _normalize_module_hours(mods, 8)
+
+        assert self._hours(mods) == [8]
+
+    def test_target_smaller_than_module_count_floors_at_one(self):
+        """A 3h target across 5 modules can't go below 1h each → settles at 5h total."""
+        from app.tasks.syllabus_generation import _normalize_module_hours
+
+        mods = [{"estimated_hours": 4} for _ in range(5)]
+        _normalize_module_hours(mods, 3)
+
+        h = self._hours(mods)
+        assert all(v == 1 for v in h)
+        assert sum(h) == 5  # cannot go below 1 per module
+
+    def test_no_target_is_noop(self):
+        from app.tasks.syllabus_generation import _normalize_module_hours
+
+        mods = [{"estimated_hours": 7}, {"estimated_hours": 9}]
+        _normalize_module_hours(mods, 0)
+
+        assert self._hours(mods) == [7, 9]
+
+
 class TestSyllabusGenerationTaskUnit:
     """Unit tests for generate_course_syllabus.
 

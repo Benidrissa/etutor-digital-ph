@@ -20,6 +20,24 @@ from app.domain.services.tutor_tools import TOOL_DEFINITIONS, TutorToolExecutor
 # ---------------------------------------------------------------------------
 
 
+def _provider_patch(*responses):
+    """Patch image_service's resolve_provider with a fake provider (#2523).
+
+    Image metadata/alt-text route through the pluggable provider's ``complete()``
+    now, not a direct ``anthropic.AsyncAnthropic`` call. Adapts Anthropic-style
+    mock messages (each ``.content[0].text``) into ``LLMResult`` objects,
+    consumed in order.
+    """
+    from unittest.mock import patch
+
+    from app.ai.providers.base import LLMResult
+
+    complete_mock = AsyncMock(side_effect=[LLMResult(text=r.content[0].text) for r in responses])
+    provider = MagicMock()
+    provider.complete = complete_mock
+    return patch("app.ai.providers.resolve_provider", return_value=provider)
+
+
 def _make_source_image(
     image_type: str = "diagram",
     figure_number: str = "3.2",
@@ -506,25 +524,21 @@ class TestDallEFallbackOptimization:
             ]
         )
 
-        with __import__("unittest.mock", fromlist=["patch"]).patch(
-            "anthropic.AsyncAnthropic"
-        ) as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(return_value=mock_claude_response)
-
-            with __import__("unittest.mock", fromlist=["patch"]).patch(
+        with (
+            _provider_patch(mock_claude_response),
+            __import__("unittest.mock", fromlist=["patch"]).patch(
                 "openai.AsyncOpenAI"
-            ) as mock_openai_cls:
-                result = await service.generate_for_lesson(
-                    lesson_id=uuid.uuid4(),
-                    module_id=uuid.uuid4(),
-                    unit_id="u01",
-                    lesson_content="Lesson about disease surveillance in West Africa.",
-                    session=mock_session,
-                )
+            ) as mock_openai_cls,
+        ):
+            result = await service.generate_for_lesson(
+                lesson_id=uuid.uuid4(),
+                module_id=uuid.uuid4(),
+                unit_id="u01",
+                lesson_content="Lesson about disease surveillance in West Africa.",
+                session=mock_session,
+            )
 
-                mock_openai_cls.assert_not_called()
+            mock_openai_cls.assert_not_called()
 
         assert result.status == "ready"
         assert source_img.storage_url in (result.image_url or "")
@@ -551,14 +565,8 @@ class TestDallEFallbackOptimization:
             side_effect=[dedup_result, _lesson_context_result(None), reuse_result]
         )
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(
-                side_effect=[mock_claude_response, alt_text_msg]
-            )
-
-            with patch("openai.AsyncOpenAI") as mock_openai_cls:
+        with _provider_patch(mock_claude_response, alt_text_msg):
+            with patch("app.ai.providers.image_provider.AsyncOpenAI") as mock_openai_cls:
                 mock_openai = AsyncMock()
                 mock_openai_cls.return_value = mock_openai
                 mock_openai.images.generate = AsyncMock(return_value=image_api_response)
@@ -607,21 +615,19 @@ class TestDallEFallbackOptimization:
             ]
         )
 
-        with __import__("unittest.mock", fromlist=["patch"]).patch(
-            "anthropic.AsyncAnthropic"
-        ) as mock_anthropic_cls:
-            mock_client = AsyncMock()
-            mock_anthropic_cls.return_value = mock_client
-            mock_client.messages.create = AsyncMock(return_value=mock_claude_response)
-
-            with __import__("unittest.mock", fromlist=["patch"]).patch("openai.AsyncOpenAI"):
-                result = await service.generate_for_lesson(
-                    lesson_id=uuid.uuid4(),
-                    module_id=uuid.uuid4(),
-                    unit_id="u01",
-                    lesson_content="Statistics lesson with charts.",
-                    session=mock_session,
-                )
+        with (
+            _provider_patch(mock_claude_response),
+            __import__("unittest.mock", fromlist=["patch"]).patch(
+                "app.ai.providers.image_provider.AsyncOpenAI"
+            ),
+        ):
+            result = await service.generate_for_lesson(
+                lesson_id=uuid.uuid4(),
+                module_id=uuid.uuid4(),
+                unit_id="u01",
+                lesson_content="Statistics lesson with charts.",
+                session=mock_session,
+            )
 
         assert result.image_url == "https://cdn.example.com/figures/fig1.webp"
         assert result.format == "webp"

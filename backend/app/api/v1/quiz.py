@@ -42,13 +42,18 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/quiz", tags=["quiz"])
 
 
-async def _check_subscription_or_first_unit(user: AuthenticatedUser, unit_id: str) -> None:
+async def _check_subscription_or_first_unit(
+    user: AuthenticatedUser, unit_id: str, module_id: UUID | None = None
+) -> None:
     """Allow free units of a module; require subscription for others.
 
     The number of free units is controlled by the 'subscription-free-units-count' platform
     setting (default: 2). Admin users always bypass this check.
     Falls back to DB ModuleUnit.order_index check when unit_id format is unrecognised.
     Raises 403 with code 'subscription_required' if no subscription.
+
+    ``unit_number`` is unique only per module, so the DB fallback is scoped by
+    ``module_id`` to avoid MultipleResultsFound (#2537).
     """
     import uuid as _uuid
 
@@ -72,10 +77,14 @@ async def _check_subscription_or_first_unit(user: AuthenticatedUser, unit_id: st
             return
 
         if unit_id:
-            result = await session.execute(
-                select(ModuleUnit.order_index).where(ModuleUnit.unit_number == unit_id)
-            )
-            order = result.scalar_one_or_none()
+            order_query = select(ModuleUnit.order_index).where(ModuleUnit.unit_number == unit_id)
+            if module_id is not None:
+                order_query = order_query.where(ModuleUnit.module_id == module_id)
+            # unit_number is unique per module, not globally — take the first row
+            # so a duplicated unit_number across modules can't raise
+            # MultipleResultsFound (#2537).
+            result = await session.execute(order_query.limit(1))
+            order = result.scalars().first()
             if order is not None and order < free_count:
                 return
         break
@@ -176,9 +185,9 @@ async def generate_quiz(
     - Country-contextualized examples
     """
     try:
-        await _check_subscription_or_first_unit(current_user, request.unit_id)
-
         module_uuid = await _resolve_module_uuid(request.module_id, session)
+
+        await _check_subscription_or_first_unit(current_user, request.unit_id, module_uuid)
 
         logger.info(
             "Quiz generation requested",

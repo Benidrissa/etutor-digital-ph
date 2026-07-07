@@ -8,6 +8,20 @@ import structlog
 from app.ai.model_registry import get_model_caps
 from app.ai.providers import resolve_provider
 
+
+def _module_count_hint(estimated_hours: int) -> tuple[int, int]:
+    """Suggest a module-count range so per-module hours stay realistic (~2-5h each).
+
+    A short course should get fewer/shorter modules rather than being padded to a
+    fixed per-module size — the old "10-25h per module" floor made a 10h course
+    structurally impossible to honour. See #2504.
+    """
+    target = max(1, int(estimated_hours or 0))
+    lo = min(max(round(target / 5), 2), 10)
+    hi = min(max(round(target / 2.5), lo + 1), 15)
+    return lo, hi
+
+
 # ── Tool-use schema for structured syllabus output ──────────────────
 # Claude is forced to call this tool, ensuring every unit has an
 # explicit "type" enum value.  Adults get lesson/quiz/case-study;
@@ -267,6 +281,8 @@ class CourseAgentService:
                 audience_guidance=audience_guidance,
             )
 
+        hint_lo, hint_hi = _module_count_hint(estimated_hours)
+
         return (
             "You are an expert instructional designer specializing in "
             "bilingual (FR/EN) adaptive e-learning. You design curricula "
@@ -279,9 +295,9 @@ class CourseAgentService:
             f"- Domain(s): {domains_str}\n"
             f"- Level(s): {levels_str}\n"
             f"- Target audience: {audience_str}\n"
-            f"- Target total hours (advisory; the displayed course duration is the "
-            f"sum of per-module estimated_hours, so module estimates must add up to "
-            f"approximately this target ±20%): {estimated_hours}\n\n"
+            f"- Target total hours: {estimated_hours}h. CRITICAL: the displayed "
+            f"course duration is the SUM of every module's estimated_hours, so they "
+            f"MUST add up to ~{estimated_hours}h (not more).\n\n"
             f"{objectives_block}\n"
             f"{resource_block}\n\n"
             "## Design principles (mandatory)\n"
@@ -289,8 +305,10 @@ class CourseAgentService:
             "(remember/understand), build to applied skills "
             "(apply/analyze), end with expert synthesis "
             "(evaluate/create)\n"
-            "- Each module must be self-contained (10-25h) with clear "
-            "learning objectives\n"
+            f"- Size the course to the target: about {hint_lo}-{hint_hi} modules, "
+            f"each roughly 2-5h, so the module estimated_hours sum to "
+            f"~{estimated_hours}h. Do NOT pad modules to a fixed size — a short "
+            "course gets fewer/shorter modules\n"
             "- Units are micro-learning (10-15 min each), 3-6 lessons "
             "per module\n"
             "- Every module includes: lessons, a formative quiz per "
@@ -350,6 +368,7 @@ class CourseAgentService:
         audience_guidance: str,
     ) -> str:
         """Build kids-adapted syllabus prompt with child-centered pedagogy."""
+        hint_lo, hint_hi = _module_count_hint(estimated_hours)
         return (
             "You are a warm, encouraging instructional designer who creates "
             "bilingual (FR/EN) course syllabi for young learners aged "
@@ -363,17 +382,18 @@ class CourseAgentService:
             f"- Domain(s): {domains_str}\n"
             f"- Level(s): {levels_str}\n"
             f"- Target audience: {audience_str} (ages {age_range})\n"
-            f"- Target total hours (advisory; the displayed course duration is the "
-            f"sum of per-module estimated_hours, so module estimates must add up to "
-            f"approximately this target ±20%): {estimated_hours}\n\n"
+            f"- Target total hours: {estimated_hours}h. CRITICAL: the displayed "
+            f"course duration is the SUM of every module's estimated_hours, so they "
+            f"MUST add up to ~{estimated_hours}h (not more).\n\n"
             f"{resource_block}\n\n"
             "## Design principles (mandatory)\n"
             "- Progressive complexity: start with discovery (remember/understand), "
             "build to exploration (apply), and for older children (ages 13+) "
             "reach basic analysis (analyze/evaluate)\n"
             "- Bloom level cap: primary school → apply; secondary school → evaluate\n"
-            "- Each module must be self-contained (5-15h) with child-friendly "
-            "learning objectives\n"
+            f"- Size the course to the target: about {hint_lo}-{hint_hi} modules so "
+            f"the module estimated_hours sum to ~{estimated_hours}h. Do NOT pad "
+            "modules to a fixed size — a short course gets fewer/shorter modules\n"
             "- Units are short learning sessions (5-10 min for ages 5-8, "
             "10-15 min for ages 9-15), 3-6 units per module\n"
             "- Every module includes: lessons, a formative quiz per lesson "

@@ -486,7 +486,10 @@ export function AICourseWizard({
 
     const hydrate = async () => {
       try {
-        await getAdminCourse(resumeCourseId);
+        const course = await getAdminCourse(resumeCourseId);
+        // Restore the admin-set duration so a resumed draft generates against
+        // the intended target rather than the default (#2509).
+        if (course?.estimated_hours) setEstimatedHours(course.estimated_hours);
 
         if (resumeCreationStep === "generating") {
           // Task might still be running — go to generate step, polling will pick it up
@@ -674,13 +677,13 @@ export function AICourseWizard({
     setShouldForceGenerate(false);
 
     try {
-      const result = await triggerSyllabusGeneration(courseId, 20, useForce);
+      const result = await triggerSyllabusGeneration(courseId, estimatedHours, useForce);
       setGenerateTaskId(result.task_id);
     } catch {
       setGenerateError(t("generate.error"));
       setIsGenerating(false);
     }
-  }, [courseId, isGenerating, shouldForceGenerate, t]);
+  }, [courseId, isGenerating, shouldForceGenerate, estimatedHours, t]);
 
   const regenerateSyllabus = useCallback(async (mode: "reuse" | "fresh") => {
     if (!courseId || isGenerating || isRegenerating) return;
@@ -1051,8 +1054,13 @@ export function AICourseWizard({
       setPublishSuccess(true);
       queryClient.invalidateQueries({ queryKey: ["admin-courses"] });
       onCourseCreated();
-    } catch {
-      setPublishError(t("publish.error"));
+    } catch (err) {
+      // Surface the backend's real reason instead of always blaming indexation:
+      // the publish gate passes here, so a failure is usually something else, and
+      // the hardcoded "vérifiez l'indexation" message misleads. #2543
+      setPublishError(
+        err instanceof ApiError && err.message ? err.message : t("publish.error"),
+      );
     } finally {
       setIsPublishing(false);
     }

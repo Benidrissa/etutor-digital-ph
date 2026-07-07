@@ -392,8 +392,15 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "claude-sonnet-4-6",
         "string",
         "Model — quality auditor",
-        "Claude model for the course-quality auditor. Haiku is a cheaper "
+        "Model for the course-quality auditor. Resolved to a provider by prefix "
+        "(claude-* → Anthropic; moonshot-*/kimi-* → Moonshot). Haiku is a cheaper "
         "option once detection accuracy has been benchmarked.",
+        allowed_options=[
+            "claude-sonnet-4-6",
+            "claude-haiku-4-5",
+            "moonshot-v1-128k",
+            "kimi-k2.6",
+        ],
     ),
     SettingDef(
         "ai-model-image-metadata",
@@ -401,9 +408,31 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "claude-haiku-4-5",
         "string",
         "Model — image metadata",
-        "Claude model for image concept/tag extraction and alt-text "
-        "(low-stakes structured calls). Override to a larger model if "
-        "quality regresses.",
+        "Model for image concept/tag extraction, alt-text, and figure/diagram "
+        "label translation (low-stakes structured text calls). Resolved to a "
+        "provider by prefix (claude-* → Anthropic; moonshot-*/kimi-* → Moonshot). "
+        "Vision-based figure extraction stays on Anthropic regardless of this "
+        "setting. Override to a larger model if quality regresses.",
+        allowed_options=[
+            "claude-haiku-4-5",
+            "claude-sonnet-4-6",
+            "moonshot-v1-128k",
+            "kimi-k2.6",
+        ],
+    ),
+    SettingDef(
+        "ai-model-image",
+        "ai",
+        "gemini-2.5-flash-image",
+        "string",
+        "Model — image generation",
+        "Backend that generates the text-free lesson illustration. Resolved by "
+        "prefix (gemini-*/imagen-* → Google via its OpenAI-compatible endpoint; "
+        "gpt-image-1/dall-e-* → OpenAI). NOTE: Gemini runs on Google US servers "
+        "and stamps a SynthID watermark on every image; a missing GOOGLE_API_KEY "
+        "transparently falls back to gpt-image-1. Illustrations stay text-free — "
+        "the title and labels are rendered as a DOM overlay.",
+        allowed_options=["gemini-2.5-flash-image", "gpt-image-1"],
     ),
     SettingDef(
         "ai-rag-default-top-k",
@@ -1757,7 +1786,15 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "gpt-5.4-nano",
         "string",
         "Summarizer model",
-        "Model for PDF summarization. Supports claude-* and gpt-* models.",
+        "Model for PDF summarization. Resolved by prefix: gpt-* → OpenAI, "
+        "moonshot-*/kimi-* → Moonshot, claude-* → Anthropic.",
+        allowed_options=[
+            "gpt-5.4-nano",
+            "claude-haiku-4-5",
+            "claude-sonnet-4-6",
+            "moonshot-v1-128k",
+            "kimi-k2.6",
+        ],
     ),
     SettingDef(
         "syllabus-chunk-max-tokens",

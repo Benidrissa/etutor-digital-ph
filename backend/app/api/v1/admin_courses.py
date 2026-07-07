@@ -519,6 +519,13 @@ async def publish_course(
     await db.commit()
     await db.refresh(course)
     img_count = await _fetch_image_count(db, course.rag_collection_id)
+    # Build the response NOW, while `course` is freshly loaded from the refresh above.
+    # The best-effort side-effects below run `await db.commit()`, which expires this
+    # ORM instance; serializing it afterwards would lazy-load an expired attribute
+    # (e.g. the selectin `taxonomy_categories`) synchronously on the async session and
+    # raise MissingGreenlet — 500ing an already-committed publish and surfacing a
+    # bogus "indexation incomplete" error in the wizard. #2543
+    response = _course_to_response(course, image_count=img_count)
     logger.info("Course published", course_id=str(course_id), admin_id=current_user.id)
     try:
         pregenerate_on_publish_task.apply_async(
@@ -560,12 +567,16 @@ async def publish_course(
                 run_id=str(qa_run.id),
             )
     except Exception as _exc:
+        # Roll back so a partially-applied sweep can't leave the session in an
+        # aborted state for the dependency teardown. The publish itself already
+        # committed above, so this only discards the sweep's uncommitted work.
+        await db.rollback()
         logger.warning(
             "publish_course: quality sweep scheduling failed (non-blocking)",
             course_id=str(course_id),
             error=str(_exc),
         )
-    return _course_to_response(course, image_count=img_count)
+    return response
 
 
 @router.post("/{course_id}/archive", response_model=CourseResponse)
@@ -1750,8 +1761,8 @@ async def upload_course_resource(
         safe_name += ".pdf"
 
     # File-hash dedup: if an identical PDF was already extracted for any course,
-    # create a thin CourseResource reference without re-writing to disk or
-    # re-running the extraction task.
+    # create a thin CourseResource reference that inherits the donor's text and
+    # skips the (expensive) extraction task.
     donor_result = await db.execute(
         select(CourseResource)
         .where(
@@ -1763,6 +1774,16 @@ async def upload_course_resource(
     donor = donor_result.scalar_one_or_none()
 
     if donor is not None:
+        # Still write the PDF to disk. Image indexation globs course_dir for
+        # *.pdf and process_pdf_images requires the file, so without the bytes a
+        # deduped course gets text but ZERO images. Writing here keeps the
+        # skip-extraction-task optimization (text is inherited from the donor)
+        # while letting the image pipeline run — its image_hash donor-clone then
+        # reuses the donor's MinIO/Claude output at near-zero cost. #2548
+        course_dir = UPLOAD_DIR / str(course_id)
+        course_dir.mkdir(parents=True, exist_ok=True)
+        (course_dir / safe_name).write_bytes(data)
+
         resource = CourseResource(
             course_id=course_id,
             filename=Path(safe_name).stem,

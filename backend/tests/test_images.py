@@ -23,6 +23,9 @@ def _make_image(
     alt_text_fr=None,
     alt_text_en=None,
     image_data=None,
+    title_fr=None,
+    title_en=None,
+    overlay_labels=None,
 ):
     img = MagicMock()
     img.id = image_id
@@ -32,6 +35,9 @@ def _make_image(
     img.image_data = image_data
     img.alt_text_fr = alt_text_fr
     img.alt_text_en = alt_text_en
+    img.title_fr = title_fr
+    img.title_en = title_en
+    img.overlay_labels = overlay_labels
     img.format = "webp"
     img.width = 800
     return img
@@ -44,6 +50,12 @@ _READY_IMAGE = _make_image(
     image_url=f"/api/v1/images/{IMAGE_READY_ID}/data",
     alt_text_fr="Illustration de la leçon",
     alt_text_en="Lesson illustration",
+    title_fr="Cycle de l'eau",
+    title_en="Water cycle",
+    overlay_labels=[
+        {"fr": "Évaporation", "en": "Evaporation"},
+        {"fr": "Pluie", "en": "Rain"},
+    ],
 )
 _PENDING_IMAGE = _make_image(
     IMAGE_PENDING_ID,
@@ -291,6 +303,50 @@ class TestGetLessonImages:
             images = response.json()["images"]
             en_image = next(img for img in images if img["image_id"] == str(IMAGE_GENERATING_ID))
             assert en_image["alt_text"] == "Lesson illustration"
+        finally:
+            app.dependency_overrides.pop(get_db_session, None)
+
+    async def test_overlay_title_and_labels_localized_fr(
+        self, client: AsyncClient, allow_rate_limit
+    ) -> None:
+        db_mock = AsyncMock()
+        db_mock.execute.return_value = _make_db_scalars(_ALL_LESSON_IMAGES)
+        from app.api.deps import get_db_session
+        from app.main import app
+
+        async def override():
+            yield db_mock
+
+        app.dependency_overrides[get_db_session] = override
+        try:
+            response = await client.get(f"/api/v1/images/lesson/{LESSON_ID}?lang=fr")
+            assert response.status_code == 200
+            images = response.json()["images"]
+            ready = next(img for img in images if img["image_id"] == str(IMAGE_READY_ID))
+            assert ready["title"] == "Cycle de l'eau"
+            assert ready["labels"] == ["Évaporation", "Pluie"]
+        finally:
+            app.dependency_overrides.pop(get_db_session, None)
+
+    async def test_overlay_title_and_labels_localized_en(
+        self, client: AsyncClient, allow_rate_limit
+    ) -> None:
+        db_mock = AsyncMock()
+        db_mock.execute.return_value = _make_db_scalars(_ALL_LESSON_IMAGES)
+        from app.api.deps import get_db_session
+        from app.main import app
+
+        async def override():
+            yield db_mock
+
+        app.dependency_overrides[get_db_session] = override
+        try:
+            response = await client.get(f"/api/v1/images/lesson/{LESSON_ID}?lang=en")
+            assert response.status_code == 200
+            images = response.json()["images"]
+            ready = next(img for img in images if img["image_id"] == str(IMAGE_READY_ID))
+            assert ready["title"] == "Water cycle"
+            assert ready["labels"] == ["Evaporation", "Rain"]
         finally:
             app.dependency_overrides.pop(get_db_session, None)
 

@@ -1499,7 +1499,8 @@ def backfill_missing_image_data(self) -> dict:
                             "for West African public health"
                         )
                         image_bytes, _ = await service._call_dalle(prompt)
-                        webp_bytes, width = _resize_to_webp(image_bytes, max_width=512)
+                        # Keep native width — 512 was far too small and blurred detail.
+                        webp_bytes, width = _resize_to_webp(image_bytes)
 
                         img.image_data = webp_bytes
                         img.image_url = f"/api/v1/images/{img.id}/data"

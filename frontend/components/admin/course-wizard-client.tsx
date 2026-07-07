@@ -871,8 +871,11 @@ export function CourseWizardClient({
       setPublishSuccess(true);
       queryClient.invalidateQueries({ queryKey: ["admin-courses"] });
       onCourseCreated();
-    } catch {
-      setPublishError(t("publish.error"));
+    } catch (err) {
+      // Surface the backend's real reason instead of always blaming indexation. #2543
+      setPublishError(
+        err instanceof ApiError && err.message ? err.message : t("publish.error"),
+      );
     } finally {
       setIsPublishing(false);
     }
