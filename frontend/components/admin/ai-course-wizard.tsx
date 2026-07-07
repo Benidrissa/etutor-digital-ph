@@ -624,8 +624,16 @@ export function AICourseWizard({
       const result = await suggestCourseMetadata(courseId);
       setProposedTitle({ fr: result.title_fr, en: result.title_en });
       setProposedDescription({ fr: result.description_fr, en: result.description_en });
-    } catch {
-      setProposalError(tAi("aiProposal.error"));
+    } catch (err) {
+      // Provider-account failures (quota exhausted / bad API key) are an admin
+      // config problem, not a transient glitch — name the real cause (#2571).
+      if (err instanceof ApiError && err.code === "ai_provider_quota") {
+        setProposalError(tAi("aiProposal.providerQuotaError"));
+      } else if (err instanceof ApiError && err.code === "ai_provider_auth") {
+        setProposalError(tAi("aiProposal.providerAuthError"));
+      } else {
+        setProposalError(tAi("aiProposal.error"));
+      }
     } finally {
       setIsLoadingProposal(false);
     }

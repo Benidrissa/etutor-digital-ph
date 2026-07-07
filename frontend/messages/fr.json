@@ -1938,6 +1938,8 @@
         "description": "Vérifiez et modifiez le titre et la description générés par l'IA pour votre cours.",
         "loading": "L'IA analyse vos documents et objectifs...",
         "error": "Échec de la génération de la proposition. Veuillez réessayer.",
+        "providerQuotaError": "Le fournisseur IA configuré a épuisé son crédit (solde insuffisant). Rechargez le compte du fournisseur ou changez de modèle dans Paramètres → IA.",
+        "providerAuthError": "La clé API du fournisseur IA configuré est invalide ou refusée. Vérifiez les identifiants du fournisseur ou changez de modèle dans Paramètres → IA.",
         "retry": "Réessayer",
         "titleFr": "Titre (Français) *",
         "titleEn": "Titre (Anglais) *",
