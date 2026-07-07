@@ -450,7 +450,10 @@ class RAGPipeline:
                         caption_en=donor_img.caption_en,
                         alt_text_fr=donor_img.alt_text_fr,
                         alt_text_en=donor_img.alt_text_en,
-                        figure_kind=donor_img.figure_kind,
+                        # A text-dominant crop must stay body_text even when its
+                        # hash matches a legacy donor row that predates the
+                        # geometric guard — cloning would bypass it (#2502).
+                        figure_kind="body_text" if img.is_text_dominant else donor_img.figure_kind,
                         image_type=donor_img.image_type,
                         width=donor_img.width,
                         height=donor_img.height,

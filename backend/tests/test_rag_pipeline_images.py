@@ -609,6 +609,51 @@ class TestRAGPipelineDedupTranslation:
         assert cloned.caption_fr == "Déjà traduit"
         assert cloned.caption_en == "Already translated"
 
+    @pytest.mark.asyncio
+    async def test_dedup_text_dominant_clone_stays_body_text(self):
+        """#2502: a text-dominant crop hash-matching a legacy donor (untagged
+        figure_kind) must not inherit the donor's kind — the clone would bypass
+        the geometric body_text guard and reach lessons via the retriever."""
+        pdf_path = Path(self.temp_dir) / "Donaldson_test.pdf"
+        pdf_path.touch()
+
+        fake_image = _make_extracted_image(image_hash="hash123", is_text_dominant=True)
+        donor = self._donor(
+            figure_kind=None,
+            caption_fr="Déjà traduit",
+            caption_en="Already translated",
+        )
+
+        donor_result = MagicMock()
+        donor_result.scalar_one_or_none = MagicMock(return_value=donor)
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=donor_result)
+
+        with (
+            patch(
+                "app.ai.rag.pipeline.PDFImageExtractor.extract_images_from_pdf",
+                return_value=[fake_image],
+            ),
+            patch(
+                "app.ai.rag.pipeline.translate_figure_caption",
+                new_callable=AsyncMock,
+            ),
+            patch.object(
+                ImageLinker, "link_images_to_chunks", new_callable=AsyncMock, return_value=0
+            ),
+        ):
+            count = await self.pipeline.process_pdf_images(
+                pdf_path=str(pdf_path),
+                source="donaldson",
+                session=mock_session,
+            )
+
+        assert count == 1
+        cloned = mock_session.add.call_args[0][0]
+        assert cloned.figure_kind == "body_text"
+
 
 class TestRAGPipelineClearSourceImages:
     def setup_method(self):
