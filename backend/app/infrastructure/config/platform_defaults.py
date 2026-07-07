@@ -381,6 +381,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "disabled by default (temperature pinned to 0.6). Default stays Claude.",
         allowed_options=[
             "claude-sonnet-4-6",
+            "claude-opus-4-8",
             "claude-haiku-4-5",
             "moonshot-v1-128k",
             "kimi-k2.6",
@@ -485,6 +486,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "thinking disabled (temperature pinned to 0.6).",
         allowed_options=[
             "claude-sonnet-4-6",
+            "claude-opus-4-8",
             "claude-haiku-4-5",
             "moonshot-v1-128k",
             "kimi-k2.6",
@@ -503,6 +505,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         allowed_options=[
             "claude-haiku-4-5",
             "claude-sonnet-4-6",
+            "claude-opus-4-8",
             "moonshot-v1-128k",
             "kimi-k2.6",
         ],

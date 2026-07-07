@@ -27,6 +27,11 @@ _MODEL_CAPABILITIES: dict[str, dict] = {
         "max_output_tokens": 128_000,
         "chars_per_token": 3.5,
     },
+    "claude-opus-4-8": {
+        "context_window_tokens": 1_000_000,
+        "max_output_tokens": 128_000,
+        "chars_per_token": 3.5,
+    },
     "claude-haiku-4-5": {
         "context_window_tokens": 200_000,
         "max_output_tokens": 64_000,

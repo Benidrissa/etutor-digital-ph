@@ -118,6 +118,60 @@ async def test_anthropic_complete_parses_tool_use_and_usage():
     assert result.assistant_message == {"role": "assistant", "content": message.content}
 
 
+async def test_anthropic_omits_temperature_for_models_that_reject_it():
+    # claude-opus-4-8 (like opus-4-7 / sonnet-5 / fable-5) 400s on any sampling
+    # param; claude-sonnet-4-6 still accepts temperature (#2575).
+    message = SimpleNamespace(content=[], stop_reason="end_turn", usage=None)
+
+    provider = AnthropicLLMProvider(api_key="sk-test")
+    provider._client = _FakeAnthropic(message)
+    await provider.complete(
+        system="sys",
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=100,
+        temperature=0.3,
+        model="claude-opus-4-8",
+    )
+    assert "temperature" not in provider._client.last_kwargs
+
+    provider._client = _FakeAnthropic(message)
+    await provider.complete(
+        system="sys",
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=100,
+        temperature=0.3,
+        model="claude-sonnet-4-6",
+    )
+    assert provider._client.last_kwargs["temperature"] == 0.3
+
+
+async def test_anthropic_stream_omits_temperature_for_models_that_reject_it():
+    # The tutor path goes through stream(); the same omission must apply there.
+    class _EmptyStreamCtx(_FakeStreamCtx):
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            raise StopAsyncIteration
+
+    class _FakeAnthropicStream(_FakeAnthropic):
+        def _stream(self, **kwargs):
+            self.last_kwargs = kwargs
+            return _EmptyStreamCtx(self.message)
+
+    provider = AnthropicLLMProvider(api_key="sk-test")
+    provider._client = _FakeAnthropicStream(None)
+    async for _ in provider.stream(
+        system="sys",
+        user_message="hi",
+        max_tokens=100,
+        temperature=0.3,
+        model="claude-opus-4-8",
+    ):
+        pass
+    assert "temperature" not in provider._client.last_kwargs
+
+
 def test_anthropic_tool_result_messages_shape():
     provider = AnthropicLLMProvider(api_key="sk-test")
     msgs = provider.build_tool_result_messages([{"tool_call_id": "tu_1", "content": "out"}])
