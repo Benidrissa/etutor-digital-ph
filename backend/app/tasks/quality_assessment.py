@@ -69,6 +69,32 @@ def _make_session_factory(settings):
     return engine, factory
 
 
+async def _mark_run_failed(run_id: str, error: str) -> None:
+    """Best-effort: stamp a run ``failed`` after its task died.
+
+    Without this the row stays ``scoring`` forever and the
+    ``ux_one_active_run_per_course`` partial unique blocks every future
+    quality run for the course (#2553).
+    """
+    from datetime import datetime
+
+    from app.domain.models.course_quality import CourseQualityRun
+    from app.infrastructure.config.settings import settings
+
+    engine, session_factory = _make_session_factory(settings)
+    try:
+        async with session_factory() as session:
+            run = await session.get(CourseQualityRun, uuid.UUID(run_id))
+            if run is None or run.status in ("completed", "failed", "cancelled"):
+                return
+            run.status = "failed"
+            run.finished_at = datetime.utcnow()
+            run.notes = f"{run.notes or ''} [task failed: {error}]".strip()[:2000]
+            await session.commit()
+    finally:
+        await engine.dispose()
+
+
 # ---- 0. Structural consistency check (no Claude) ----------------------
 
 
@@ -568,4 +594,12 @@ def assess_course_task(
             task_id=self.request.id,
             exc_info=True,
         )
+        try:
+            asyncio.run(_mark_run_failed(run_id, str(exc)))
+        except Exception as mark_exc:
+            logger.warning(
+                "Could not mark quality run failed",
+                run_id=run_id,
+                error=str(mark_exc),
+            )
         return {"status": "failed", "error": str(exc), "run_id": run_id}
