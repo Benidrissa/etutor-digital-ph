@@ -88,6 +88,11 @@ class ExtractedImage:
     chapter: str | None
     section: str | None
     image_hash: str | None = None
+    # Geometric body-text signal (#2502): the crop is mostly prose with a
+    # negligible drawing area. Set when vision is disabled and the page/region
+    # heuristics flag a non-figure. The pipeline maps this to
+    # figure_kind="body_text" so the retriever excludes it.
+    is_text_dominant: bool = False
 
 
 # Multi-part numbering pattern: matches "1", "1.5", "2-8", "12.3.4", "1-2-3".
@@ -677,6 +682,12 @@ class PDFImageExtractor:
                     page, region, SURROUNDING_CHAR_LIMIT
                 )
                 image_type = self._classify_image_type(metadata.get("caption"), final_w, final_h)
+                # A vector cluster that is mostly prose with negligible drawing
+                # area is a text excerpt, not a figure (#2502). Flag it so the
+                # pipeline tags figure_kind="body_text" and the retriever excludes it.
+                text_dominant = self._is_region_text_dominant(
+                    page, region=region, drawings=drawings
+                )
 
                 results.append(
                     ExtractedImage(
@@ -693,6 +704,7 @@ class PDFImageExtractor:
                         surrounding_text=surrounding_text,
                         chapter=metadata.get("chapter"),
                         section=metadata.get("section"),
+                        is_text_dominant=text_dominant,
                     )
                 )
             return results
@@ -701,58 +713,211 @@ class PDFImageExtractor:
         if has_visual_content:
             caption_bbox = self._find_leading_caption_block(page, figure_patterns)
             if caption_bbox is not None:
-                extracted = self._rasterize_full_page_as_figure(
+                # Crop to the figure region (caption + adjacent visual content)
+                # instead of rasterizing the whole page (#2502). Rendering the
+                # full page is what turned text pages with a stray rule + a
+                # "Figure X.Y" caption into whole-page "figures". When no visual
+                # content sits near the caption there is nothing to crop, so we
+                # emit nothing rather than a page of prose.
+                extracted = self._rasterize_caption_anchored_figure(
                     page,
                     page_number,
                     figure_patterns,
                     caption_bbox=caption_bbox,
+                    drawings=drawings,
+                    already_extracted_bboxes=already_extracted_bboxes,
                 )
                 if extracted:
                     results.append(extracted)
 
         return results
 
-    def _text_coverage_fraction(self, page: pymupdf.Page) -> float:
-        """Fraction of the page area covered by text blocks (#2435).
+    def _build_caption_figure_region(
+        self,
+        page: pymupdf.Page,
+        caption_bbox: pymupdf.Rect,
+        drawings: list[dict],
+        already_extracted_bboxes: list[pymupdf.Rect],
+    ) -> pymupdf.Rect | None:
+        """Build the crop rect for a caption-anchored figure (#2502).
+
+        Unions the page's vector drawings and embedded-raster bboxes with the
+        caption block, so the figure and its caption stay together while the
+        rest of the page's prose is cropped out. Returns ``None`` when there is
+        no visual content to anchor to — a prose page that merely opens with a
+        "Figure X.Y" line, which must not become an image.
+        """
+        visual_rects: list[pymupdf.Rect] = []
+        for drawing in drawings:
+            rect = drawing.get("rect")
+            if rect is not None:
+                visual_rects.append(pymupdf.Rect(rect))
+        visual_rects.extend(already_extracted_bboxes)
+        if not visual_rects:
+            return None
+
+        region: pymupdf.Rect | None = None
+        for rect in visual_rects:
+            region = pymupdf.Rect(rect) if region is None else (region | rect)
+        region = region | caption_bbox
+        region &= page.rect
+        if (
+            region.is_empty
+            or region.width < VECTOR_MIN_REGION_PX
+            or region.height < VECTOR_MIN_REGION_PX
+        ):
+            return None
+        return region
+
+    def _rasterize_caption_anchored_figure(
+        self,
+        page: pymupdf.Page,
+        page_number: int,
+        figure_patterns: list[re.Pattern],
+        caption_bbox: pymupdf.Rect,
+        drawings: list[dict],
+        already_extracted_bboxes: list[pymupdf.Rect],
+    ) -> "ExtractedImage | None":
+        """Rasterize a cropped figure region anchored to a block-leading caption (#2502).
+
+        Replaces the legacy full-page rasterize for the few-drawings fallback.
+        Metadata is anchored to ``caption_bbox`` (the real caption, not a stray
+        mid-page "Figure X.Y"), and the crop is flagged ``is_text_dominant`` when
+        it is still mostly prose so the pipeline stores it as body_text.
+        """
+        region = self._build_caption_figure_region(
+            page, caption_bbox, drawings, already_extracted_bboxes
+        )
+        if region is None:
+            return None
+
+        try:
+            png_bytes, w, h = self._rasterize_region(page, region)
+        except Exception as exc:
+            logger.warning(
+                "Caption-anchored region rasterization failed",
+                page=page_number,
+                error=str(exc),
+            )
+            return None
+
+        if len(png_bytes) < MIN_SIZE_BYTES or w < MIN_WIDTH_PX or h < MIN_HEIGHT_PX:
+            return None
+
+        try:
+            webp_bytes, final_w, final_h = self._convert_to_webp(
+                png_bytes, "png", max_width=WEBP_MAX_WIDTH
+            )
+        except Exception:
+            webp_bytes = png_bytes
+            final_w = w
+            final_h = h
+
+        metadata = self._extract_figure_metadata(page, caption_bbox, figure_patterns)
+        surrounding_text = self._extract_surrounding_text(
+            page, caption_bbox, SURROUNDING_CHAR_LIMIT
+        )
+        image_type = self._classify_image_type(metadata.get("caption"), final_w, final_h)
+        text_dominant = self._is_region_text_dominant(page, region=region, drawings=drawings)
+
+        return ExtractedImage(
+            image_bytes=webp_bytes,
+            width=final_w,
+            height=final_h,
+            original_format="png",
+            file_size_bytes=len(webp_bytes),
+            page_number=page_number,
+            figure_number=metadata.get("figure_number"),
+            caption=metadata.get("caption"),
+            attribution=metadata.get("attribution"),
+            image_type=image_type,
+            surrounding_text=surrounding_text,
+            chapter=metadata.get("chapter"),
+            section=metadata.get("section"),
+            is_text_dominant=text_dominant,
+        )
+
+    def _text_coverage_fraction(
+        self, page: pymupdf.Page, region: pymupdf.Rect | None = None
+    ) -> float:
+        """Fraction of ``region`` (or the whole page) area covered by text blocks (#2435).
 
         Text blocks don't overlap, so the summed block area is a good proxy.
-        High values mean a prose page; genuine figures sit well below.
+        High values mean a prose region; genuine figures sit well below. When a
+        ``region`` is given, each block is intersected with it so the ratio
+        reflects only the crop that would be rasterized (#2502).
         """
         try:
             page_dict = page.get_text("dict")
         except Exception:
             return 0.0
-        page_area = abs(page.rect.get_area()) or 1.0
+        bounds = region if region is not None else page.rect
+        bounds_area = abs(bounds.get_area()) or 1.0
         text_area = 0.0
         for block in page_dict.get("blocks", []):
             if block.get("type") != 0:
                 continue
             bbox = block.get("bbox")
-            if bbox:
-                text_area += abs(pymupdf.Rect(bbox).get_area())
-        return min(text_area / page_area, 1.0)
+            if not bbox:
+                continue
+            r = pymupdf.Rect(bbox)
+            if region is not None:
+                r = r & region
+                if r.is_empty:
+                    continue
+            text_area += abs(r.get_area())
+        return min(text_area / bounds_area, 1.0)
 
-    def _drawings_coverage_fraction(self, page: pymupdf.Page) -> float:
-        """Fraction of the page covered by the bounding box of all vector drawings (#2435).
+    def _drawings_coverage_fraction(
+        self,
+        page: pymupdf.Page,
+        region: pymupdf.Rect | None = None,
+        drawings: list[dict] | None = None,
+    ) -> float:
+        """Fraction of ``region`` (or the page) covered by the union of vector drawings (#2435).
 
         A real chart/diagram clusters drawings into a substantial region; a prose
-        page's drawings are thin rules with negligible area.
+        page's drawings are thin rules with negligible area. When a ``region`` is
+        given, drawing rects are intersected with it so the ratio reflects the
+        crop (#2502).
         """
-        try:
-            drawings = page.get_drawings()
-        except Exception:
-            return 0.0
-        page_area = abs(page.rect.get_area()) or 1.0
+        if drawings is None:
+            try:
+                drawings = page.get_drawings()
+            except Exception:
+                return 0.0
+        bounds = region if region is not None else page.rect
+        bounds_area = abs(bounds.get_area()) or 1.0
         union: pymupdf.Rect | None = None
         for drawing in drawings:
             rect = drawing.get("rect")
             if rect is None:
                 continue
             r = pymupdf.Rect(rect)
+            if region is not None:
+                r = r & region
+                if r.is_empty:
+                    continue
             union = r if union is None else (union | r)
         if union is None:
             return 0.0
-        return min(abs(union.get_area()) / page_area, 1.0)
+        return min(abs(union.get_area()) / bounds_area, 1.0)
+
+    def _is_region_text_dominant(
+        self,
+        page: pymupdf.Page,
+        region: pymupdf.Rect | None = None,
+        drawings: list[dict] | None = None,
+    ) -> bool:
+        """True when a region is prose with negligible drawings — a non-figure (#2502).
+
+        Shared gate for the page-level full-page fallback and the per-region
+        crops. A genuine figure has low text coverage and/or a substantial
+        drawing area, so it clears this gate.
+        """
+        text_cov = self._text_coverage_fraction(page, region=region)
+        draw_cov = self._drawings_coverage_fraction(page, region=region, drawings=drawings)
+        return text_cov >= TEXT_DENSITY_REJECT_FRACTION and draw_cov < MIN_DRAWING_COVERAGE_FRACTION
 
     def _rasterize_full_page_as_figure(
         self,
@@ -774,20 +939,12 @@ class PDFImageExtractor:
         # leak in (#2435/#2272). Reject a page dominated by prose with negligible
         # visual area before rasterizing it as a figure. The high-drawing path
         # (caption_bbox is None) keeps its legacy behaviour.
-        if caption_bbox is not None:
-            text_cov = self._text_coverage_fraction(page)
-            draw_cov = self._drawings_coverage_fraction(page)
-            if (
-                text_cov >= TEXT_DENSITY_REJECT_FRACTION
-                and draw_cov < MIN_DRAWING_COVERAGE_FRACTION
-            ):
-                logger.info(
-                    "Skipping full-page raster — body-text page, not a figure",
-                    page=page_number,
-                    text_coverage=round(text_cov, 2),
-                    drawing_coverage=round(draw_cov, 2),
-                )
-                return None
+        if caption_bbox is not None and self._is_region_text_dominant(page):
+            logger.info(
+                "Skipping full-page raster — body-text page, not a figure",
+                page=page_number,
+            )
+            return None
 
         try:
             pixmap = page.get_pixmap(dpi=RASTERIZE_DPI)

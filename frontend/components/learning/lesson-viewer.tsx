@@ -22,6 +22,7 @@ import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { useRouter } from 'next/navigation';
 import { useLocale } from 'next-intl';
 import { track } from '@/lib/analytics';
+import { isProviderQuotaError } from '@/lib/generation-errors';
 import { loadLesson, OfflineContentNotAvailable } from '@/lib/offline/content-loader';
 import { addOfflineAction } from '@/lib/offline/db';
 import { OfflineBadge } from '@/components/shared/offline-badge';
@@ -201,6 +202,8 @@ export function LessonViewer({
               msg = t('generationStalled');
             } else if (isNotIndexed) {
               msg = t('contentBeingPrepared');
+            } else if (isProviderQuotaError(rawError)) {
+              msg = t('providerUnavailable');
             } else if (isNoContent) {
               msg = t('noContentFound');
             } else if (rawError && rawError.length <= 200) {

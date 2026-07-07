@@ -12,6 +12,8 @@ import pytest
 
 from app.ai.rag.image_extractor import (
     BOOKS,
+    MIN_HEIGHT_PX,
+    MIN_WIDTH_PX,
     ExtractedImage,
     PDFImageExtractor,
     _build_figure_patterns,
@@ -781,8 +783,13 @@ class TestExtractNonXrefFigures:
         results = self.extractor._extract_non_xref_figures(page, 1, patterns, [])
         assert results == []
 
-    def test_drawings_with_block_leading_caption_triggers_full_page(self):
-        """One drawing + a 'Figure X.Y …' block-leading caption rasterizes."""
+    def test_drawings_with_block_leading_caption_crops_to_figure_region(self):
+        """One drawing + a 'Figure X.Y …' block-leading caption crops to the figure (#2502).
+
+        Previously this rasterized the whole page, baking the body text into the
+        "figure". Now it crops to the drawing + caption region, so the clip
+        passed to get_pixmap is strictly smaller than the page.
+        """
         page = MagicMock()
         page.get_drawings.return_value = [{"rect": pymupdf.Rect(100, 100, 300, 300)}]
         caption_text = "Figure 1.3 Types of Competitive Advantage"
@@ -793,7 +800,7 @@ class TestExtractNonXrefFigures:
                 "blocks": [
                     {
                         "type": 0,
-                        "bbox": (50, 600, 562, 650),
+                        "bbox": (50, 320, 562, 360),
                         "lines": [{"spans": [{"text": caption_text}]}],
                     }
                 ]
@@ -801,9 +808,9 @@ class TestExtractNonXrefFigures:
         )
         page.rect = pymupdf.Rect(0, 0, 612, 792)
         mock_pixmap = MagicMock()
-        mock_pixmap.tobytes.return_value = _make_minimal_png(612, 792)
-        mock_pixmap.width = 612
-        mock_pixmap.height = 792
+        mock_pixmap.tobytes.return_value = _make_minimal_png(400, 300)
+        mock_pixmap.width = 400
+        mock_pixmap.height = 300
         page.get_pixmap.return_value = mock_pixmap
 
         patterns = self._make_figure_patterns()
@@ -812,6 +819,10 @@ class TestExtractNonXrefFigures:
         assert len(results) == 1
         assert results[0].figure_number is not None
         assert "1.3" in results[0].figure_number
+        # The page was cropped, not rendered whole: the clip is smaller than the page.
+        clip = page.get_pixmap.call_args.kwargs["clip"]
+        assert clip.width < page.rect.width
+        assert clip.height < page.rect.height
 
     def test_drawings_with_only_inline_reference_does_not_trigger(self):
         """Drawings present but no block-leading caption (only mid-block reference) → no rasterize."""
@@ -852,6 +863,156 @@ class TestExtractNonXrefFigures:
 
         results = self.extractor._extract_non_xref_figures(page, 1, patterns, [])
         assert results == []
+
+
+class TestTextDominanceGuard:
+    """Tests for the geometric body-text guard and caption-anchored cropping (#2502)."""
+
+    def setup_method(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.extractor = PDFImageExtractor(Path(self.temp_dir))
+
+    def teardown_method(self):
+        import shutil
+
+        shutil.rmtree(self.temp_dir)
+
+    def _page_with_blocks(self, blocks, drawings=None):
+        page = MagicMock()
+        page.rect = pymupdf.Rect(0, 0, 612, 792)
+        page.get_text.side_effect = lambda mode=None: "" if mode != "dict" else {"blocks": blocks}
+        page.get_drawings.return_value = drawings or []
+        return page
+
+    def test_is_region_text_dominant_true_for_prose(self):
+        # A block covering most of the page + a negligible drawing → prose.
+        blocks = [{"type": 0, "bbox": (0, 0, 612, 520), "lines": []}]
+        page = self._page_with_blocks(blocks)
+        drawings = [{"rect": pymupdf.Rect(0, 0, 10, 10)}]
+        assert self.extractor._is_region_text_dominant(page, drawings=drawings) is True
+
+    def test_is_region_text_dominant_false_for_figure(self):
+        # Small text + a large drawing → genuine figure.
+        blocks = [{"type": 0, "bbox": (0, 0, 100, 50), "lines": []}]
+        page = self._page_with_blocks(blocks)
+        drawings = [{"rect": pymupdf.Rect(50, 50, 520, 520)}]
+        assert self.extractor._is_region_text_dominant(page, drawings=drawings) is False
+
+    def test_text_coverage_fraction_respects_region(self):
+        # The block sits in the top half; measuring only the bottom half → ~0.
+        blocks = [{"type": 0, "bbox": (0, 0, 612, 396), "lines": []}]
+        page = self._page_with_blocks(blocks)
+        bottom = pymupdf.Rect(0, 400, 612, 792)
+        assert self.extractor._text_coverage_fraction(page, region=bottom) < 0.05
+
+    def test_build_caption_figure_region_none_without_visual(self):
+        page = MagicMock()
+        page.rect = pymupdf.Rect(0, 0, 612, 792)
+        caption = pymupdf.Rect(50, 600, 562, 650)
+        assert self.extractor._build_caption_figure_region(page, caption, [], []) is None
+
+    def test_build_caption_figure_region_crops_smaller_than_page(self):
+        page = MagicMock()
+        page.rect = pymupdf.Rect(0, 0, 612, 792)
+        caption = pymupdf.Rect(50, 500, 562, 540)
+        drawings = [{"rect": pymupdf.Rect(100, 150, 400, 480)}]
+        region = self.extractor._build_caption_figure_region(page, caption, drawings, [])
+        assert region is not None
+        assert region.width < page.rect.width
+        assert region.height < page.rect.height
+
+    def test_caption_crop_flags_text_dominant_when_rule_spans_prose(self):
+        """A thin full-width rule + prose between it and the caption → body_text crop."""
+        caption_text = "Figure 2.1 Trends in incidence over time"
+        blocks = [
+            {"type": 0, "bbox": (50, 310, 562, 480), "lines": [{"spans": [{"text": "x " * 200}]}]},
+            {
+                "type": 0,
+                "bbox": (50, 500, 562, 540),
+                "lines": [{"spans": [{"text": caption_text}]}],
+            },
+        ]
+        page = MagicMock()
+        page.rect = pymupdf.Rect(0, 0, 612, 792)
+        page.get_text.side_effect = lambda mode=None: (
+            caption_text if mode != "dict" else {"blocks": blocks}
+        )
+        # One thin full-width rule near the top of the region.
+        drawings = [{"rect": pymupdf.Rect(40, 305, 572, 308)}]
+        page.get_drawings.return_value = drawings
+        mock_pixmap = MagicMock()
+        mock_pixmap.tobytes.return_value = _make_minimal_png(520, 230)
+        mock_pixmap.width = 520
+        mock_pixmap.height = 230
+        page.get_pixmap.return_value = mock_pixmap
+
+        patterns = _build_figure_patterns(BOOKS["generic"])
+        results = self.extractor._extract_non_xref_figures(page, 1, patterns, [])
+        # It may be emitted, but never as a clean figure — it's flagged body_text.
+        assert all(r.is_text_dominant for r in results)
+
+
+class TestRealPDFExtraction:
+    """End-to-end extraction over real (in-memory) PDFs (#2502)."""
+
+    def setup_method(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.resources_path = Path(self.temp_dir)
+        self.extractor = PDFImageExtractor(self.resources_path)
+
+    def teardown_method(self):
+        import shutil
+
+        shutil.rmtree(self.temp_dir)
+
+    def _write_pdf(self, doc, name: str) -> Path:
+        path = self.resources_path / name
+        doc.save(str(path))
+        doc.close()
+        return path
+
+    def test_text_page_with_caption_and_rule_not_surfaced_as_figure(self):
+        """A prose page that opens a 'Figure X.Y' caption + a stray rule must not
+        yield a clean figure — the core #2502 defect."""
+        doc = pymupdf.open()
+        page = doc.new_page(width=612, height=792)
+        body = "Public health surveillance relies on timely data collection. " * 40
+        page.insert_textbox(pymupdf.Rect(50, 50, 562, 560), body, fontsize=11)
+        page.insert_textbox(
+            pymupdf.Rect(50, 600, 562, 640),
+            "Figure 1.3 Distribution of reported cases by district",
+            fontsize=11,
+        )
+        page.draw_line(pymupdf.Point(50, 580), pymupdf.Point(562, 580))
+        pdf_path = self._write_pdf(doc, "Guide_sante.pdf")
+
+        results = self.extractor.extract_images_from_pdf(pdf_path, "generic")
+        # Either nothing is extracted, or anything extracted is flagged body_text.
+        assert all(r.is_text_dominant for r in results)
+
+    def test_diagram_page_with_caption_is_extracted_as_clean_figure(self):
+        """A page with a real filled diagram + caption yields one non-text figure."""
+        doc = pymupdf.open()
+        page = doc.new_page(width=612, height=792)
+        shape = page.new_shape()
+        shape.draw_rect(pymupdf.Rect(120, 120, 500, 470))
+        shape.finish(fill=(0.2, 0.45, 0.8))
+        shape.commit()
+        page.insert_textbox(
+            pymupdf.Rect(120, 485, 500, 525),
+            "Figure 2.1 Reference model of the health system",
+            fontsize=11,
+        )
+        pdf_path = self._write_pdf(doc, "Rapport_OMS.pdf")
+
+        results = self.extractor.extract_images_from_pdf(pdf_path, "generic")
+        clean = [r for r in results if not r.is_text_dominant]
+        assert len(clean) >= 1
+        fig = clean[0]
+        assert fig.width >= MIN_WIDTH_PX and fig.height >= MIN_HEIGHT_PX
+        # Cropped to the (near-square) diagram region, not the whole portrait
+        # page: a full-page render keeps the page's ~1.29 height:width ratio.
+        assert fig.height < fig.width * 1.25
 
 
 class TestHighDrawingCountPage:

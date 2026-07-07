@@ -223,20 +223,41 @@ class RAGPipeline:
         new_resource_id: UUID,
         session: AsyncSession,
     ) -> list[DocumentChunk]:
-        """Return existing chunks from another course resource with the same content_hash.
+        """Return existing chunks from exactly ONE other course resource sharing content_hash.
+
+        A source PDF may have been indexed in several prior courses — each keeps its own
+        `document_chunks` rows. Matching donors across *all* of them and cloning the union
+        multiplies the new collection by the number of prior courses (e.g. a file indexed
+        in 2 courses yields 2× the chunks). So pick a single donor resource and clone only
+        its chunks. #2542
 
         Uses ix_course_resources_content_hash + ix_document_chunks_course_resource_id.
         """
         from app.domain.models.course_resource import CourseResource
 
+        # Choose one donor resource deterministically (lowest id) so a re-run clones from
+        # the same donor. Restricting to a single resource_id — not just content_hash — is
+        # what prevents the cross-course multiplication.
+        donor_resource_id = (
+            await session.execute(
+                select(DocumentChunk.course_resource_id)
+                .join(CourseResource, CourseResource.id == DocumentChunk.course_resource_id)
+                .where(
+                    CourseResource.content_hash == content_hash,
+                    DocumentChunk.course_resource_id != new_resource_id,
+                    DocumentChunk.course_resource_id.is_not(None),
+                )
+                .order_by(DocumentChunk.course_resource_id)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+        if donor_resource_id is None:
+            return []
+
         result = await session.execute(
             select(DocumentChunk)
-            .join(CourseResource, CourseResource.id == DocumentChunk.course_resource_id)
-            .where(
-                CourseResource.content_hash == content_hash,
-                DocumentChunk.course_resource_id != new_resource_id,
-                DocumentChunk.course_resource_id.is_not(None),
-            )
+            .where(DocumentChunk.course_resource_id == donor_resource_id)
             .order_by(DocumentChunk.chunk_index)
             .limit(5000)
         )
@@ -249,9 +270,21 @@ class RAGPipeline:
         new_resource_id: UUID,
         session: AsyncSession,
     ) -> int:
-        """Insert copies of donor_chunks under new_source/new_resource_id without re-embedding."""
+        """Insert copies of donor_chunks under new_source/new_resource_id without re-embedding.
+
+        Deduplicates on ``(content, page, chunk_index)`` while cloning: a donor collection
+        may itself hold duplicate rows (historical over-cloning compounded the count across
+        course generations), and we must not carry that into the new collection. The key
+        uniquely identifies a logical chunk within one document, so collapsing it is safe.
+        #2542
+        """
         cloned = 0
+        seen: set[tuple[str, int | None, int]] = set()
         for donor in donor_chunks:
+            key = (donor.content, donor.page, donor.chunk_index)
+            if key in seen:
+                continue
+            seen.add(key)
             db_chunk = DocumentChunk(
                 id=uuid.uuid4(),
                 content=donor.content,
@@ -417,7 +450,10 @@ class RAGPipeline:
                         caption_en=donor_img.caption_en,
                         alt_text_fr=donor_img.alt_text_fr,
                         alt_text_en=donor_img.alt_text_en,
-                        figure_kind=donor_img.figure_kind,
+                        # A text-dominant crop must stay body_text even when its
+                        # hash matches a legacy donor row that predates the
+                        # geometric guard — cloning would bypass it (#2502).
+                        figure_kind="body_text" if img.is_text_dominant else donor_img.figure_kind,
                         image_type=donor_img.image_type,
                         width=donor_img.width,
                         height=donor_img.height,
@@ -526,11 +562,13 @@ class RAGPipeline:
             )
 
             figure_kind: str | None = None
-            if vision_body_text:
-                # The caption reader already determined this crop is page text,
-                # not a figure (#2435). Tag it so the retriever excludes it and
-                # purge_body_text_figures (#2431) can remove it; skip the extra
-                # classification call.
+            if vision_body_text or img.is_text_dominant:
+                # This crop is page text, not a figure — either the vision
+                # caption reader said so (#2435) or the geometric extractor
+                # heuristic flagged it (#2502, the vision-free path that works
+                # when ENABLE_FIGURE_VISION is off). Tag it so the retriever
+                # excludes it and purge_body_text_figures (#2431) can remove it;
+                # skip the extra classification call.
                 figure_kind = "body_text"
             else:
                 try:

@@ -34,7 +34,7 @@ import json
 import re
 import unicodedata
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -81,6 +81,30 @@ MIN_IMPROVEMENT_PER_ATTEMPT = 3  # +3 points minimum, else stop loop
 COURSE_PASSING_RATIO = 0.92  # for early exit
 DEFAULT_BUDGET_FULL = 200
 DEFAULT_BUDGET_TARGETED = 50
+
+ACTIVE_RUN_STATUSES = ("queued", "scoring", "regenerating")
+
+# A run active longer than this is stranded — the worker crashed/restarted or
+# the task died without stamping the row (#2553). Slightly above
+# assess_course_task's hard time limit (2 * QUALITY_HARD_LIMIT + 60 = 4260s).
+STALE_ACTIVE_RUN_SECONDS = 4800
+
+
+def is_stale_active_run(run: CourseQualityRun, now: datetime | None = None) -> bool:
+    """True when a queued/scoring/regenerating run has outlived the task's
+    hard time limit — no worker can still be processing it."""
+    if run.status not in ACTIVE_RUN_STATUSES:
+        return False
+    anchor = run.started_at or run.created_at
+    if anchor is None:
+        return False
+    if now is None:
+        now = datetime.now(UTC)
+    if anchor.tzinfo is None:
+        anchor = anchor.replace(tzinfo=UTC)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=UTC)
+    return (now - anchor).total_seconds() > STALE_ACTIVE_RUN_SECONDS
 
 
 def normalize_term(text: str) -> str:
@@ -572,6 +596,8 @@ class CourseQualityService:
             )
             existing = existing_q.scalar_one_or_none()
             if existing is not None:
+                if is_stale_active_run(existing):
+                    return await self._requeue_stale_run(existing, session)
                 logger.info(
                     "Idempotent run reuse",
                     course_id=str(course_id),
@@ -590,6 +616,8 @@ class CourseQualityService:
             )
             active = active_q.scalar_one_or_none()
             if active is not None:
+                if is_stale_active_run(active):
+                    return await self._requeue_stale_run(active, session)
                 logger.info(
                     "Active run already in flight",
                     course_id=str(course_id),
@@ -598,6 +626,29 @@ class CourseQualityService:
                 return active
             raise
 
+        return run
+
+    async def _requeue_stale_run(
+        self, run: CourseQualityRun, session: AsyncSession
+    ) -> CourseQualityRun:
+        """Re-arm a stranded active run so the caller re-dispatches it.
+
+        Resetting to ``queued`` (rather than inserting a new row) keeps both
+        the idempotency key and ``ux_one_active_run_per_course`` satisfied;
+        every caller dispatches ``assess_course_task`` iff status is
+        ``queued`` (#2553).
+        """
+        logger.warning(
+            "Stale active quality run re-queued",
+            course_id=str(run.course_id),
+            run_id=str(run.id),
+            previous_status=run.status,
+            started_at=str(run.started_at),
+        )
+        run.status = "queued"
+        run.started_at = None
+        run.notes = f"{run.notes or ''} [stale run re-queued]".strip()
+        await session.flush()
         return run
 
     # ---- Structural consistency check (no Claude) -----------------------

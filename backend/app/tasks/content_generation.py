@@ -212,6 +212,7 @@ def generate_lesson_task(
     language: str,
     country: str,
     level: int,
+    force_regenerate: bool = False,
 ) -> dict:
     """Generate lesson content via RAG + Claude, store in generated_content cache.
 
@@ -221,6 +222,8 @@ def generate_lesson_task(
         language: Content language (fr/en)
         country: Country code for contextualization
         level: User competency level (1-4)
+        force_regenerate: Skip the cache read and overwrite the cached row
+            (#2561 — the Refresh button was a no-op without this)
 
     Returns:
         dict with status and content_id
@@ -262,6 +265,7 @@ def generate_lesson_task(
                     country=country,
                     level=level,
                     session=session,
+                    force_regenerate=force_regenerate,
                 )
                 return {"status": "complete", "content_id": str(lesson.id)}
         finally:
@@ -317,6 +321,7 @@ def generate_case_study_task(
     language: str,
     country: str,
     level: int,
+    force_regenerate: bool = False,
 ) -> dict:
     """Generate case study content via RAG + Claude, store in generated_content cache.
 
@@ -326,6 +331,8 @@ def generate_case_study_task(
         language: Content language (fr/en)
         country: Country code for contextualization
         level: User competency level (1-4)
+        force_regenerate: Skip the cache read and overwrite the cached row
+            (#2561 — the Refresh button was a no-op without this)
 
     Returns:
         dict with status and content_id
@@ -367,6 +374,7 @@ def generate_case_study_task(
                     country=country,
                     level=level,
                     session=session,
+                    force_regenerate=force_regenerate,
                 )
                 return {"status": "complete", "content_id": str(case_study.id)}
         finally:
