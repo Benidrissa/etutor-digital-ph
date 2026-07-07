@@ -143,6 +143,52 @@ def extract_lesson_text(content) -> str:
     return "\n\n".join(parts) if parts else str(d)[:2000]
 
 
+async def update_cached_content_in_place(
+    session: AsyncSession,
+    *,
+    module_unit_uuid: uuid.UUID | None,
+    content_type: str,
+    language: str,
+    level: int,
+    country_context: str | None,
+    content: dict,
+    sources_cited: list | None,
+) -> uuid.UUID | None:
+    """Overwrite the existing cached row for this unit key, if one exists.
+
+    Returns the updated row's id, or None when no row exists (caller INSERTs)
+    or the row is manually edited (locked). Regeneration must replace the
+    cached row (#2561): the INSERT-only path silently no-ops on the unique
+    index ``idx_unique_content_per_module_unit``, and DELETE+INSERT would
+    break ``generated_images``/audio FKs. Module-level because the lesson and
+    case-study services share no base class (#2007).
+    """
+    if module_unit_uuid is None:
+        return None
+    result = await session.execute(
+        select(GeneratedContent)
+        .where(
+            and_(
+                GeneratedContent.module_unit_id == module_unit_uuid,
+                GeneratedContent.content_type == content_type,
+                GeneratedContent.language == language,
+                GeneratedContent.level == level,
+                GeneratedContent.country_context == country_context,
+            )
+        )
+        .order_by(GeneratedContent.generated_at.desc())
+    )
+    row = result.scalars().first()
+    if row is None or row.is_manually_edited:
+        return None
+    row.content = content
+    row.sources_cited = sources_cited
+    row.generated_at = datetime.utcnow()
+    row.validated = False
+    row.content_revision = (row.content_revision or 1) + 1
+    return row.id
+
+
 class LessonGenerationService:
     """Service for orchestrating lesson content generation."""
 
@@ -997,6 +1043,29 @@ class LessonGenerationService:
             ref.model_dump() for ref in lesson_response.source_image_refs
         ]
 
+        updated_id = await update_cached_content_in_place(
+            session,
+            module_unit_uuid=module_unit_uuid,
+            content_type="lesson",
+            language=lesson_response.language,
+            level=lesson_response.level,
+            country_context=lesson_response.country_context,
+            content=content_with_unit,
+            sources_cited=lesson_response.content.sources_cited,
+        )
+        if updated_id is not None:
+            await session.commit()
+            # Downstream consumers (quality auto-assess, audio) must reference
+            # the surviving row, not the transient response id.
+            lesson_response.id = updated_id
+            logger.info(
+                "Updated cached lesson content in place",
+                content_id=str(updated_id),
+                module_id=str(lesson_response.module_id),
+                unit_id=lesson_response.unit_id,
+            )
+            return
+
         cached_content = GeneratedContent(
             id=lesson_response.id,
             module_id=lesson_response.module_id,
@@ -1780,6 +1849,27 @@ class CaseStudyGenerationService:
 
         content_with_unit = case_study_response.content.model_dump()
         content_with_unit["unit_id"] = case_study_response.unit_id
+
+        updated_id = await update_cached_content_in_place(
+            session,
+            module_unit_uuid=module_unit_uuid,
+            content_type="case",
+            language=case_study_response.language,
+            level=case_study_response.level,
+            country_context=case_study_response.country_context,
+            content=content_with_unit,
+            sources_cited=case_study_response.content.sources_cited,
+        )
+        if updated_id is not None:
+            await session.commit()
+            case_study_response.id = updated_id
+            logger.info(
+                "Updated cached case study content in place",
+                content_id=str(updated_id),
+                module_id=str(case_study_response.module_id),
+                unit_id=case_study_response.unit_id,
+            )
+            return
 
         cached_content = GeneratedContent(
             id=case_study_response.id,
