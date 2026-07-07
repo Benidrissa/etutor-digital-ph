@@ -18,6 +18,8 @@ from app.ai.prompts.case_study import (
     get_case_study_system_prompt,
 )
 from app.ai.prompts.lesson import (
+    FIGURE_TOKEN_RE,
+    assign_figure_tokens,
     format_rag_context_for_lesson,
     get_lesson_system_prompt,
 )
@@ -483,8 +485,8 @@ class LessonGenerationService:
                 accumulated_content += chunk
                 yield StreamingEvent(event="chunk", data=chunk)
 
-            # Post-process to extract {{source_image:UUID}} markers
-            source_image_refs = await self._extract_source_image_refs(
+            # Resolve figure tokens → canonical markers, drop unresolvable ones.
+            accumulated_content, source_image_refs = await self._resolve_figures(
                 accumulated_content, linked_images, session
             )
 
@@ -762,8 +764,8 @@ class LessonGenerationService:
             if hasattr(block, "text"):
                 content_text += block.text
 
-        # Post-process to extract {{source_image:UUID}} markers
-        source_image_refs = await self._extract_source_image_refs(
+        # Resolve figure tokens → canonical markers, drop unresolvable ones.
+        content_text, source_image_refs = await self._resolve_figures(
             content_text, linked_images, session
         )
 
@@ -1017,38 +1019,19 @@ class LessonGenerationService:
             sources_cited=sources_cited,
         )
 
+    _MARKER_RE = re.compile(r"\{\{source_image:([0-9a-f-]{36})\}\}", re.IGNORECASE)
+
     @staticmethod
-    async def _extract_source_image_refs(
-        content_text: str,
+    async def _resolve_marker_ids(
+        found_ids: list[str],
         linked_images: dict,
-        session: AsyncSession | None = None,
-    ) -> list[SourceImageRef]:
-        """Extract {{source_image:UUID}} markers from Claude output and resolve to SourceImageRef.
+        session: AsyncSession | None,
+    ) -> dict[str, dict]:
+        """Resolve source-image UUIDs to metadata dicts (candidates first, then DB).
 
-        First resolves UUIDs from the pre-loaded linked_images dict; for any UUID not found
-        there (e.g. Claude referenced an image that wasn't directly linked to a RAG chunk),
-        falls back to a DB query on the source_images table.
-
-        Args:
-            content_text: Raw text output from Claude (or assembled content dict text)
-            linked_images: Mapping of chunk_id -> list of image metadata dicts
-            session: Database session for fallback DB lookups
-
-        Returns:
-            Deduplicated list of SourceImageRef for UUIDs found in content_text
+        Returns only the ids that resolve — an id present in ``found_ids`` but absent
+        from the result could not be matched to any real ``source_images`` row.
         """
-        pattern = re.compile(r"\{\{source_image:([0-9a-f-]{36})\}\}", re.IGNORECASE)
-        found_ids = list(dict.fromkeys(pattern.findall(content_text)))
-
-        logger.debug(
-            "_extract_source_image_refs: scanned content",
-            content_length=len(content_text),
-            found_ids=found_ids,
-        )
-
-        if not found_ids:
-            return []
-
         all_images: dict[str, dict] = {}
         for img_list in linked_images.values():
             for img in img_list:
@@ -1056,61 +1039,112 @@ class LessonGenerationService:
                 if img_id and img_id not in all_images:
                     all_images[img_id] = img
 
-        missing_ids = [img_id for img_id in found_ids if img_id not in all_images]
+        missing_ids = [i for i in found_ids if i not in all_images]
         if missing_ids and session is not None:
-            logger.debug(
-                "_extract_source_image_refs: DB fallback for missing image IDs",
-                missing_ids=missing_ids,
-            )
             try:
-                missing_uuids = [uuid.UUID(img_id) for img_id in missing_ids]
-                db_result = await session.execute(
-                    select(SourceImage).where(SourceImage.id.in_(missing_uuids))
-                )
-                db_rows = db_result.scalars().all()
-                logger.debug(
-                    "_extract_source_image_refs: DB fallback returned rows",
-                    row_count=len(db_rows),
-                    returned_ids=[str(r.id) for r in db_rows],
+                missing_uuids = [uuid.UUID(i) for i in missing_ids]
+                db_rows = (
+                    (
+                        await session.execute(
+                            select(SourceImage).where(SourceImage.id.in_(missing_uuids))
+                        )
+                    )
+                    .scalars()
+                    .all()
                 )
                 for db_img in db_rows:
-                    img_id = str(db_img.id)
-                    all_images[img_id] = db_img.to_meta_dict()
+                    all_images[str(db_img.id)] = db_img.to_meta_dict()
             except Exception as exc:
                 logger.warning(
                     "DB fallback for source_image_refs failed",
                     missing_ids=missing_ids,
                     error=str(exc),
                 )
-        elif missing_ids and session is None:
+        return {i: all_images[i] for i in found_ids if i in all_images}
+
+    @classmethod
+    def _ref_from_meta(cls, img_id: str, img: dict) -> SourceImageRef:
+        return SourceImageRef(
+            id=img_id,
+            figure_number=img.get("figure_number"),
+            caption=img.get("caption"),
+            caption_fr=img.get("caption_fr") or img.get("caption"),
+            caption_en=img.get("caption_en") or img.get("caption"),
+            attribution=img.get("attribution"),
+            image_type=img.get("image_type") or "unknown",
+            alt_text_fr=img.get("alt_text_fr"),
+            alt_text_en=img.get("alt_text_en"),
+        )
+
+    @classmethod
+    async def _extract_source_image_refs(
+        cls,
+        content_text: str,
+        linked_images: dict,
+        session: AsyncSession | None = None,
+    ) -> list[SourceImageRef]:
+        """Return SourceImageRefs for the ``{{source_image:UUID}}`` markers in content.
+
+        Resolves each UUID against the pre-loaded ``linked_images`` candidates, then
+        falls back to a DB lookup. Unresolvable UUIDs are logged and skipped (they map
+        to no real image). Used by the cached-read recovery path; the generation path
+        uses :meth:`_resolve_figures`, which also rewrites tokens and strips bad markers.
+        """
+        found_ids = list(dict.fromkeys(cls._MARKER_RE.findall(content_text)))
+        if not found_ids:
+            return []
+        resolved = await cls._resolve_marker_ids(found_ids, linked_images, session)
+        for img_id in found_ids:
+            if img_id not in resolved:
+                logger.warning("source_image UUID in content not found in DB", image_id=img_id)
+        return [cls._ref_from_meta(i, resolved[i]) for i in found_ids if i in resolved]
+
+    @classmethod
+    async def _resolve_figures(
+        cls,
+        content_text: str,
+        linked_images: dict,
+        session: AsyncSession | None = None,
+    ) -> tuple[str, list[SourceImageRef]]:
+        """Normalize figure markers in freshly generated content.
+
+        1. Rewrite opaque ``⟦FIGn⟧`` tokens back to canonical ``{{source_image:<uuid>}}``
+           using the same token→image map the prompt offered (``assign_figure_tokens``).
+        2. Resolve every resulting UUID marker against the candidates + DB.
+        3. **Strip** any marker (or leftover token) that cannot be resolved, so a
+           fabricated/garbled identifier never reaches the learner as raw text, and the
+           lesson never silently keeps a broken figure reference.
+
+        Returns ``(cleaned_text, refs)``. ``cleaned_text`` must be what gets parsed and
+        cached so the persisted content and ``source_image_refs`` stay consistent.
+        """
+        img_by_token = assign_figure_tokens(linked_images)
+
+        def _sub_token(match: re.Match) -> str:
+            img = img_by_token.get(match.group(0))
+            if img and img.get("id"):
+                return f"{{{{source_image:{img['id']}}}}}"
+            return ""  # token the model invented / beyond the offered set → drop it
+
+        text = FIGURE_TOKEN_RE.sub(_sub_token, content_text)
+
+        found_ids = list(dict.fromkeys(cls._MARKER_RE.findall(text)))
+        resolved = await cls._resolve_marker_ids(found_ids, linked_images, session)
+
+        unresolved = [i for i in found_ids if i not in resolved]
+        if unresolved:
             logger.warning(
-                "_extract_source_image_refs: session is None, cannot resolve missing image IDs",
-                missing_ids=missing_ids,
+                "Stripping unresolvable source_image markers from lesson content",
+                unresolved_ids=unresolved,
             )
 
-        refs = []
-        for img_id in found_ids:
-            img = all_images.get(img_id)
-            if img:
-                refs.append(
-                    SourceImageRef(
-                        id=img_id,
-                        figure_number=img.get("figure_number"),
-                        caption=img.get("caption"),
-                        caption_fr=img.get("caption_fr") or img.get("caption"),
-                        caption_en=img.get("caption_en") or img.get("caption"),
-                        attribution=img.get("attribution"),
-                        image_type=img.get("image_type") or "unknown",
-                        alt_text_fr=img.get("alt_text_fr"),
-                        alt_text_en=img.get("alt_text_en"),
-                    )
-                )
-            else:
-                logger.warning(
-                    "source_image UUID in content not found in DB",
-                    image_id=img_id,
-                )
-        return refs
+            def _drop_bad(match: re.Match) -> str:
+                return match.group(0) if match.group(1) in resolved else ""
+
+            text = cls._MARKER_RE.sub(_drop_bad, text)
+
+        refs = [cls._ref_from_meta(i, resolved[i]) for i in found_ids if i in resolved]
+        return text, refs
 
     async def _cache_lesson_content(
         self, lesson_response: LessonResponse, session: AsyncSession
@@ -1131,6 +1165,38 @@ class LessonGenerationService:
         content_with_unit["source_image_refs"] = [
             ref.model_dump() for ref in lesson_response.source_image_refs
         ]
+
+        # Regeneration safety net (#2594): never let a freshly generated lesson that
+        # resolved ZERO figures overwrite a cached version that HAS figures. A transient
+        # model miss (fabricated marker, provider error) must not permanently strip a
+        # lesson's illustrations — especially since QA auto-regeneration (#2358) reruns
+        # generation after every pass. Keep the figure-bearing version instead.
+        if not lesson_response.source_image_refs:
+            existing = (
+                (
+                    await session.execute(
+                        select(GeneratedContent).where(
+                            GeneratedContent.module_unit_id == module_unit_uuid,
+                            GeneratedContent.content_type == "lesson",
+                            GeneratedContent.language == lesson_response.language,
+                            GeneratedContent.level == lesson_response.level,
+                            GeneratedContent.country_context == lesson_response.country_context,
+                        )
+                    )
+                )
+                .scalars()
+                .first()
+            )
+            if existing is not None and (existing.content or {}).get("source_image_refs"):
+                logger.warning(
+                    "Keeping figure-bearing cached lesson: regenerated content has no "
+                    "figures but the cached version does (#2594)",
+                    content_id=str(existing.id),
+                    module_id=str(lesson_response.module_id),
+                    unit_id=lesson_response.unit_id,
+                )
+                lesson_response.id = existing.id
+                return
 
         updated_id = await update_cached_content_in_place(
             session,

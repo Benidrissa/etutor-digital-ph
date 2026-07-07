@@ -160,7 +160,22 @@ class ImageGenerationService:
             # Keep the provider's native width (~1536) — downscaling blurs fine detail.
             webp_bytes, width = _resize_to_webp(image_bytes, max_width=1536)
 
-            alt_fr, alt_en = await self._generate_alt_text(concept)
+            # Alt-text is a nice-to-have accessibility label, not part of the image.
+            # It runs on the (separately-configured) metadata model, which can fail
+            # independently — e.g. an OpenAI-compatible backend rejecting a request.
+            # A metadata hiccup must never throw away an image we just generated, so
+            # fall back to a generic bilingual label instead of failing the record.
+            try:
+                alt_fr, alt_en = await self._generate_alt_text(concept)
+            except Exception as alt_exc:
+                alt_fr = f"Illustration éducative sur {concept}"
+                alt_en = f"Educational illustration about {concept}"
+                logger.warning(
+                    "Alt-text generation failed — using fallback label, keeping image",
+                    lesson_id=str(lesson_id),
+                    concept=concept,
+                    error=str(alt_exc),
+                )
 
             image_record.status = "ready"
             image_record.image_url = f"/api/v1/images/{image_record.id}/data"
@@ -423,7 +438,10 @@ class ImageGenerationService:
         provider = resolve_provider(model)
 
         result = await provider.complete(
-            system="",
+            system=(
+                "You write concise, descriptive accessibility alt-text for educational "
+                "infographics. Reply only in the requested format."
+            ),
             messages=[
                 {
                     "role": "user",

@@ -476,3 +476,60 @@ def test_pricing_per_model():
     assert calculate_cost_cents("kimi-k2.6", usage) == 700
     # Unknown model falls back to the default (Sonnet) table.
     assert calculate_cost_cents("mystery", usage) == 1800
+
+
+async def test_openai_compat_omits_empty_system_message():
+    # An empty system prompt must NOT be sent as a `{"role":"system","content":""}`
+    # message — Moonshot/Kimi and Gemini-compat reject it with 400 "the message at
+    # position 0 with role 'system' must not be empty" (#2594). The request should
+    # start directly with the user message instead.
+    response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="ok", tool_calls=None))],
+        usage=SimpleNamespace(prompt_tokens=5, completion_tokens=2, prompt_tokens_details=None),
+    )
+    provider = OpenAICompatLLMProvider(api_key="sk-test")
+    provider._client = _FakeOpenAI(response)
+
+    for empty in ("", "   "):
+        await provider.complete(
+            system=empty,
+            messages=[{"role": "user", "content": "hi"}],
+            max_tokens=50,
+            temperature=0.5,
+            model="kimi-k2.6",
+        )
+        sent = provider._client.chat.completions.kwargs
+        assert all(m["role"] != "system" for m in sent["messages"])
+        assert sent["messages"][0] == {"role": "user", "content": "hi"}
+
+
+class _FakeStream:
+    def __init__(self):
+        self.kwargs = None
+
+    async def create(self, **kwargs):
+        self.kwargs = kwargs
+
+        async def _gen():
+            if False:
+                yield None
+
+        return _gen()
+
+
+async def test_openai_compat_stream_omits_empty_system_message():
+    provider = OpenAICompatLLMProvider(api_key="sk-test")
+    fake = _FakeStream()
+    provider._client = SimpleNamespace(chat=SimpleNamespace(completions=fake))
+
+    async for _ in provider.stream(
+        system="",
+        user_message="hi",
+        max_tokens=50,
+        temperature=0.5,
+        model="kimi-k2.6",
+    ):
+        pass
+
+    assert all(m["role"] != "system" for m in fake.kwargs["messages"])
+    assert fake.kwargs["messages"][0] == {"role": "user", "content": "hi"}
