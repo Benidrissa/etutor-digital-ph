@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import type { Quiz, QuizAnswerSubmission, SummativeAssessmentResponse } from '@/lib/api';
+import type { SummativeQuiz, QuizAnswerSubmission, SummativeAssessmentResponse } from '@/lib/api';
 import { submitSummativeAssessmentAttempt } from '@/lib/api';
 import { loadQuizState, saveQuizState, clearQuizState } from '@/lib/quiz-state-persistence';
 import {
@@ -20,7 +20,8 @@ import {
 } from '@/lib/quiz-shuffle';
 
 interface SummativeAssessmentInterfaceProps {
-  assessment: Quiz;
+  // Answer-free payload — the server never sends the key pre-submission (#2550)
+  assessment: SummativeQuiz;
   onComplete: (result: SummativeAssessmentResponse) => void;
   onError: (error: string) => void;
   timeLimit?: number; // in minutes, default to 30

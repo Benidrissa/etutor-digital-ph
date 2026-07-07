@@ -8,18 +8,22 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { SummativeReviewSection } from './summative-review-section';
 import type { SummativeAssessmentResponse } from '@/lib/api';
 
 interface SummativeAssessmentResultsProps {
   result: SummativeAssessmentResponse;
+  /** Enables the corrected review (fetched server-side, only served after a pass). */
+  moduleId?: string;
   onRetry?: () => void;
   onContinue?: () => void;
 }
 
-export function SummativeAssessmentResults({ 
-  result, 
-  onRetry, 
-  onContinue 
+export function SummativeAssessmentResults({
+  result,
+  moduleId,
+  onRetry,
+  onContinue
 }: SummativeAssessmentResultsProps) {
   const t = useTranslations('SummativeAssessmentResults');
   
@@ -179,6 +183,12 @@ export function SummativeAssessmentResults({
         </Card>
       )}
       
+      {/* Corrected review — the answer key is only served by the backend after
+          a pass, so a failed attempt has nothing to copy for the retake (#2550) */}
+      {isPass && moduleId && (
+        <SummativeReviewSection moduleId={moduleId} autoLoad />
+      )}
+
       {/* Action Buttons & Next Steps */}
       <div className="space-y-4">
         {!isPass && (
