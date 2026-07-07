@@ -1187,7 +1187,8 @@ class LessonGenerationService:
                 .scalars()
                 .first()
             )
-            if existing is not None and (existing.content or {}).get("source_image_refs"):
+            existing_content = existing.content if existing is not None else None
+            if isinstance(existing_content, dict) and existing_content.get("source_image_refs"):
                 logger.warning(
                     "Keeping figure-bearing cached lesson: regenerated content has no "
                     "figures but the cached version does (#2594)",

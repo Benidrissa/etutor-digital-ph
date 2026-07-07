@@ -153,6 +153,31 @@ async def test_cache_lesson_content_updates_existing_row(lesson_service, monkeyp
 
 
 @pytest.mark.asyncio
+async def test_cache_lesson_content_keeps_figures_when_regeneration_drops_them(
+    lesson_service, monkeypatch
+):
+    """Safety net (#2594): a regeneration that resolved ZERO figures must NOT
+    overwrite a cached lesson that has figures — keep the figure-bearing row."""
+    row = _existing_row()
+    row.content = {"introduction": "old", "source_image_refs": [{"id": str(uuid.uuid4())}]}
+    session = _make_session(row)
+    lesson_response = _lesson_response()  # source_image_refs=[]
+
+    async def _resolve(_session, _module_id, _unit_id):
+        return uuid.uuid4()
+
+    monkeypatch.setattr("app.domain.services._unit_resolution.resolve_module_unit_id", _resolve)
+
+    await lesson_service._cache_lesson_content(lesson_response, session)
+
+    # No overwrite: the cached row is untouched and the response points at it.
+    session.add.assert_not_called()
+    session.commit.assert_not_awaited()
+    assert lesson_response.id == row.id
+    assert row.content["introduction"] == "old"
+
+
+@pytest.mark.asyncio
 async def test_cache_lesson_content_inserts_when_no_existing_row(lesson_service, monkeypatch):
     session = _make_session(None)
     lesson_response = _lesson_response()
