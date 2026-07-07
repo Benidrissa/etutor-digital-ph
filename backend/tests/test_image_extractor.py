@@ -20,11 +20,14 @@ from app.ai.rag.image_extractor import (
 )
 
 
-def _make_minimal_png(width: int = 200, height: int = 200) -> bytes:
+def _make_minimal_png(width: int = 200, height: int = 200, block: int = 2) -> bytes:
     """Create a minimal valid PNG for testing.
 
-    Uses seeded pseudo-random pixel data so the compressed size stays above
-    MIN_SIZE_BYTES (2 KB) while remaining deterministic across test runs.
+    Uses seeded random-coloured 2x2 blocks (not per-pixel noise): incompressible
+    enough to keep the encoded size above MIN_SIZE_BYTES while keeping
+    adjacent-pixel differences low, so it reads as a real image rather than the
+    uniform-noise garbage that the readability filter drops (#2540). Deterministic
+    across runs.
     """
     import random as _random
 
@@ -37,10 +40,15 @@ def _make_minimal_png(width: int = 200, height: int = 200) -> bytes:
     signature = b"\x89PNG\r\n\x1a\n"
     ihdr_data = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
     ihdr = chunk(b"IHDR", ihdr_data)
-    rows = []
-    for _ in range(height):
-        row_pixels = bytes([rng.randint(0, 255) for _ in range(width * 3)])
-        rows.append(b"\x00" + row_pixels)
+    n_blocks_x = (width + block - 1) // block
+    rows: list[bytes] = []
+    y = 0
+    while y < height:
+        colors = [bytes(rng.randint(0, 255) for _ in range(3)) for _ in range(n_blocks_x)]
+        line = b"".join(colors[x // block] for x in range(width))
+        for _ in range(min(block, height - y)):
+            rows.append(b"\x00" + line)
+        y += block
     raw_data = b"".join(rows)
     idat = chunk(b"IDAT", zlib.compress(raw_data))
     iend = chunk(b"IEND", b"")
