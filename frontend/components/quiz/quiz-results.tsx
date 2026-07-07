@@ -6,6 +6,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import { normalizeMarkdown } from '@/lib/markdown-utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -190,7 +191,7 @@ export function QuizResults({ quiz, result, onRetry, onContinue }: QuizResultsPr
                         
                         <div className="font-medium text-stone-900 leading-relaxed prose prose-sm max-w-none prose-p:my-0">
                           <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                            {question.question}
+                            {normalizeMarkdown(question.question)}
                           </ReactMarkdown>
                         </div>
                       </div>
@@ -224,7 +225,7 @@ export function QuizResults({ quiz, result, onRetry, onContinue }: QuizResultsPr
                       <div className="font-medium text-stone-700 mb-2">{t('explanation')}</div>
                       <div className="text-stone-600 leading-relaxed prose prose-sm max-w-none prose-p:my-0 overflow-x-auto">
                         <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                          {questionResult.explanation}
+                          {normalizeMarkdown(questionResult.explanation)}
                         </ReactMarkdown>
                       </div>
                       

@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/select";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { normalizeMarkdown } from "@/lib/markdown-utils";
 import { COUNTRIES } from "@/lib/countries";
 import {
   type SyllabusModule,
@@ -311,11 +312,11 @@ export function LessonPreviewStep({ courseId }: LessonPreviewStepProps) {
                         <div className="rounded border bg-muted/20 p-3 max-h-96 overflow-y-auto">
                           <div className="prose prose-sm dark:prose-invert max-w-none">
                             <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                              {preview.data.content.introduction}
+                              {normalizeMarkdown(preview.data.content.introduction)}
                             </ReactMarkdown>
                             {preview.data.content.concepts.map((c, i) => (
                               <ReactMarkdown key={i} remarkPlugins={[remarkGfm]}>
-                                {c}
+                                {normalizeMarkdown(c)}
                               </ReactMarkdown>
                             ))}
                             {preview.data.content.key_points.length > 0 && (
@@ -324,7 +325,7 @@ export function LessonPreviewStep({ courseId }: LessonPreviewStepProps) {
                                 <ul>
                                   {preview.data.content.key_points.map((kp, i) => (
                                     <li key={i}>
-                                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{kp}</ReactMarkdown>
+                                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{normalizeMarkdown(kp)}</ReactMarkdown>
                                     </li>
                                   ))}
                                 </ul>
