@@ -14,6 +14,7 @@ import { ApiError, generateQuiz, apiFetch } from '@/lib/api';
 import { useSettings } from '@/lib/settings-context';
 import { track } from '@/lib/analytics';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
+import { isProviderQuotaError } from '@/lib/generation-errors';
 import { loadQuiz, OfflineContentNotAvailable } from '@/lib/offline/content-loader';
 import { getOfflineContent } from '@/lib/offline/db';
 import { scoreQuizOffline } from '@/lib/offline/offline-quiz-scorer';
@@ -170,7 +171,14 @@ export function QuizContainer({
             setState('ready');
           } else if (statusRes.status === 'failed') {
             const rawError = statusRes.error?.trim();
-            const msg = rawError && rawError.length <= 200 ? rawError : t('generationFailed');
+            let msg: string;
+            if (isProviderQuotaError(rawError)) {
+              msg = t('providerUnavailable');
+            } else if (rawError && rawError.length <= 200) {
+              msg = rawError;
+            } else {
+              msg = t('generationFailed');
+            }
             setError(msg);
             setState('error');
             onError?.(msg);
