@@ -1938,6 +1938,8 @@
         "description": "Review and edit the AI-generated title and description for your course.",
         "loading": "AI is analyzing your materials and objectives...",
         "error": "Failed to generate proposal. Please try again.",
+        "providerQuotaError": "The configured AI provider has run out of credit (insufficient balance). Recharge the provider account or switch models in Settings → AI.",
+        "providerAuthError": "The configured AI provider's API key is invalid or was rejected. Check the provider credentials or switch models in Settings → AI.",
         "retry": "Retry",
         "titleFr": "Title (French) *",
         "titleEn": "Title (English) *",
