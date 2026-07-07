@@ -636,6 +636,11 @@ def generate_country_content_task(
                     from app.domain.services.lesson_service import LessonGenerationService
 
                     service = LessonGenerationService(ClaudeService(), retriever)
+                    # force_regenerate bypasses the cache-read country fallback.
+                    # We already confirmed above that the exact-country row is
+                    # absent, so without this the service would return another
+                    # country's fallback row and re-dispatch THIS task — an
+                    # infinite loop that never generates the target country (#2591).
                     result_obj = await service.get_or_generate_lesson(
                         module_id=uuid.UUID(module_id),
                         unit_id=unit_id,
@@ -643,6 +648,7 @@ def generate_country_content_task(
                         country=country,
                         level=level,
                         session=session,
+                        force_regenerate=True,
                     )
                     from app.domain.services.lesson_service import (
                         extract_lesson_text,
@@ -675,6 +681,8 @@ def generate_country_content_task(
                     settings_svc = PlatformSettingsService()
                     num_questions = int(await settings_svc.get("quiz-unit-questions-count") or 10)
                     service = QuizService(ClaudeService(), retriever)
+                    # force_regenerate: generate the exact target country instead
+                    # of returning a fallback row and self-dispatching (#2591).
                     result_obj = await service.get_or_generate_quiz(
                         module_id=uuid.UUID(module_id),
                         unit_id=unit_id,
@@ -683,6 +691,7 @@ def generate_country_content_task(
                         level=level,
                         num_questions=num_questions,
                         session=session,
+                        force_regenerate=True,
                     )
                     logger.info(
                         "Country-targeted quiz ready",
@@ -697,6 +706,8 @@ def generate_country_content_task(
                     from app.domain.services.lesson_service import CaseStudyGenerationService
 
                     service = CaseStudyGenerationService(ClaudeService(), retriever)
+                    # force_regenerate: generate the exact target country instead
+                    # of returning a fallback row and self-dispatching (#2591).
                     result_obj = await service.get_or_generate_case_study(
                         module_id=uuid.UUID(module_id),
                         unit_id=unit_id,
@@ -704,6 +715,7 @@ def generate_country_content_task(
                         country=country,
                         level=level,
                         session=session,
+                        force_regenerate=True,
                     )
                     logger.info(
                         "Country-targeted case study ready",
