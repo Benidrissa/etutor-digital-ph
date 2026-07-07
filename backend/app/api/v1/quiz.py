@@ -37,9 +37,11 @@ from app.domain.models.module import Module
 from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import QuizAttempt, SummativeAssessmentAttempt
 from app.domain.services.analytics_service import AnalyticsService
+from app.domain.services.country_utils import canonicalize_country
 from app.domain.services.platform_settings_service import SettingsCache
 from app.domain.services.progress_service import ProgressService
 from app.domain.services.quiz_service import QuizService
+from app.infrastructure.cache.backfill_dedup import should_dispatch_country_backfill
 from app.infrastructure.config.settings import get_settings
 from app.tasks.content_generation import generate_quiz_task
 
@@ -190,6 +192,7 @@ async def generate_quiz(
     - Country-contextualized examples
     """
     try:
+        request.country = canonicalize_country(request.country)
         module_uuid = await _resolve_module_uuid(request.module_id, session)
 
         await _check_subscription_or_first_unit(current_user, request.unit_id, module_uuid)
@@ -281,7 +284,9 @@ async def generate_quiz(
                     quiz_id=str(quiz_response.id),
                     country_fallback=is_country_fallback,
                 )
-                if is_country_fallback:
+                if is_country_fallback and await should_dispatch_country_backfill(
+                    quiz_unit_uuid, "quiz", request.language, request.level, request.country
+                ):
                     from app.tasks.content_generation import generate_country_content_task
 
                     generate_country_content_task.delay(

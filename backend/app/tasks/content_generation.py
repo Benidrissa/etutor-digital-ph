@@ -524,6 +524,8 @@ def generate_quiz_task(
 @celery_app.task(
     bind=True,
     base=CallbackTask,
+    autoretry_for=(Exception,),
+    retry_kwargs={"max_retries": 3, "countdown": 120},
     soft_time_limit=360,
     time_limit=400,
     rate_limit="5/m",
@@ -562,7 +564,13 @@ def generate_country_content_task(
     from app.ai.rag.embeddings import EmbeddingService
     from app.ai.rag.retriever import SemanticRetriever
     from app.domain.models.content import GeneratedContent
+    from app.domain.services.country_utils import canonicalize_country
     from app.infrastructure.config.settings import settings
+
+    # Defensive: dispatch sites already canonicalize, but never let a legacy
+    # slug (e.g. "burkina-faso") reach the write path and create a duplicate
+    # cache row that the ISO-keyed lookup can never match.
+    country = canonicalize_country(country)
 
     logger.info(
         "Starting country-targeted background generation",
@@ -727,9 +735,14 @@ def generate_country_content_task(
             language=language,
             country=country,
             exception=str(exc),
+            retries=self.request.retries,
             task_id=self.request.id,
         )
-        return {"status": "failed", "error": str(exc)}
+        # Re-raise so `autoretry_for` re-queues transient failures (e.g. an
+        # upstream 429/quota blip). Swallowing into a "failed" dict here would
+        # defeat the retry config and leave the requested country's row missing
+        # forever, permanently stranding the learner on the fallback country.
+        raise
 
 
 @celery_app.task(

@@ -58,11 +58,13 @@ from app.domain.services.citation_formatter import (
     rewrite_response_citations,
     rewrite_uuid_citations_for_module,
 )
+from app.domain.services.country_utils import canonicalize_country
 from app.domain.services.exceptions import CourseNotIndexedError
 from app.domain.services.flashcard_service import FlashcardGenerationService
 from app.domain.services.lesson_service import CaseStudyGenerationService, LessonGenerationService
 from app.domain.services.progress_service import ProgressService
 from app.domain.services.quiz_service import QuizService
+from app.infrastructure.cache.backfill_dedup import should_dispatch_country_backfill
 from app.infrastructure.config.settings import get_settings
 from app.tasks.content_generation import (
     generate_case_study_task,
@@ -225,7 +227,7 @@ def _dispatch_content_prefetch(
                 "module_id": module_id,
                 "current_unit_id": unit_id,
                 "language": getattr(current_user, "preferred_language", "fr") or "fr",
-                "country": getattr(current_user, "country", "CI") or "CI",
+                "country": canonicalize_country(getattr(current_user, "country", None)),
                 "level": getattr(current_user, "current_level", 1) or 1,
             },
             priority=3,
@@ -469,6 +471,7 @@ async def get_or_generate_lesson_by_module_and_unit(
     - **country**: Country context for examples (ISO 2-letter code)
     - **force_regenerate**: Force new generation even if cached
     """
+    country = canonicalize_country(country)
     try:
         logger.info(
             "Lesson request by module/unit",
@@ -575,7 +578,9 @@ async def get_or_generate_lesson_by_module_and_unit(
                         case_study_id=str(case_study_response.id),
                         country_fallback=is_country_fallback,
                     )
-                    if is_country_fallback:
+                    if is_country_fallback and await should_dispatch_country_backfill(
+                        module_unit_uuid, "case", language, level, country
+                    ):
                         from app.tasks.content_generation import generate_country_content_task
 
                         generate_country_content_task.delay(
@@ -669,7 +674,9 @@ async def get_or_generate_lesson_by_module_and_unit(
                     country_fallback=is_country_fallback,
                 )
                 # If serving fallback content, dispatch background generation for the requested country
-                if is_country_fallback:
+                if is_country_fallback and await should_dispatch_country_backfill(
+                    module_unit_uuid, "lesson", language, level, country
+                ):
                     from app.tasks.content_generation import generate_country_content_task
 
                     generate_country_content_task.delay(
@@ -802,6 +809,7 @@ async def stream_lesson_by_module_and_unit(
     - `complete`: Final lesson object when generation finishes
     - `error`: Error information if generation fails
     """
+    country = canonicalize_country(country)
 
     async def generate_events() -> AsyncGenerator[str, None]:
         """Generate SSE events for streaming response."""
@@ -1273,6 +1281,7 @@ async def get_or_generate_case_study(
     - **country**: Country context for examples (ISO 2-letter code)
     - **force_regenerate**: Force new generation even if cached
     """
+    country = canonicalize_country(country)
     try:
         logger.info(
             "Case study request",
@@ -1374,7 +1383,9 @@ async def get_or_generate_case_study(
                     case_study_id=str(case_study_response.id),
                     country_fallback=is_country_fallback,
                 )
-                if is_country_fallback:
+                if is_country_fallback and await should_dispatch_country_backfill(
+                    case_module_unit_uuid, "case", language, level, country
+                ):
                     from app.tasks.content_generation import generate_country_content_task
 
                     generate_country_content_task.delay(
@@ -1476,6 +1487,7 @@ async def stream_case_study_by_module_and_unit(
     - `complete`: Final case study object when generation finishes
     - `error`: Error information if generation fails
     """
+    country = canonicalize_country(country)
 
     async def generate_events() -> AsyncGenerator[str, None]:
         try:
