@@ -60,6 +60,7 @@ class QualityRunKind(enum.StrEnum):
     full = "full"
     targeted = "targeted"
     glossary_only = "glossary_only"
+    structural = "structural"
 
 
 class UnitQualityStatus(enum.StrEnum):
