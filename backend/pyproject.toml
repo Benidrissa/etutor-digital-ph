@@ -36,6 +36,7 @@ dependencies = [
     "sentry-sdk[fastapi]>=2.19.0",
     "google-cloud-texttospeech>=2.29.0",
     "reportlab>=4.0",
+    "json-repair>=0.61.2",
 ]
 
 [dependency-groups]
