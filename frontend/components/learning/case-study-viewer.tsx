@@ -13,6 +13,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import { normalizeMarkdown } from '@/lib/markdown-utils';
 import { LessonSkeleton } from './lesson-skeleton';
 import { SourceCitations } from './source-citations';
 import { apiFetch, getModuleDetailWithProgress, ApiError } from '@/lib/api';
@@ -584,7 +585,7 @@ export function CaseStudyViewer({
         </CardHeader>
         <CardContent>
           <div className={mdClass}>
-            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{content.aof_context}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{normalizeMarkdown(content.aof_context)}</ReactMarkdown>
           </div>
         </CardContent>
       </Card>
@@ -596,7 +597,7 @@ export function CaseStudyViewer({
         </CardHeader>
         <CardContent>
           <div className={`${mdClass} bg-amber-50 rounded-lg p-4`}>
-            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{content.real_data}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{normalizeMarkdown(content.real_data)}</ReactMarkdown>
           </div>
         </CardContent>
       </Card>
@@ -636,7 +637,7 @@ export function CaseStudyViewer({
                       </div>
                     )}
                     <div className={mdClass}>
-                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{stretch ? stripStretchLabel(question) : question}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{normalizeMarkdown(stretch ? stripStretchLabel(question) : question)}</ReactMarkdown>
                     </div>
                   </div>
                 </li>
@@ -666,7 +667,7 @@ export function CaseStudyViewer({
         {correctionVisible && (
           <CardContent>
             <div className={`${mdClass} bg-green-50 rounded-lg p-4`}>
-              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{content.annotated_correction}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>{normalizeMarkdown(content.annotated_correction)}</ReactMarkdown>
             </div>
           </CardContent>
         )}
