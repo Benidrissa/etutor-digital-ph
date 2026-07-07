@@ -9,7 +9,7 @@ from pathlib import Path
 
 from celery.result import AsyncResult
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
@@ -39,6 +39,14 @@ from app.tasks.syllabus_generation import generate_course_syllabus
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/admin/courses", tags=["Admin - Courses"])
+
+
+def _blank_to_none(value: str | None) -> str | None:
+    """Normalize whitespace-only strings to None (used for optional free-text fields)."""
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
 
 
 class CreateCourseRequest(BaseModel):
@@ -78,6 +86,9 @@ class UpdateCourseRequest(BaseModel):
     visibility: str | None = None
     price_credits: int | None = None
     objectives_json: dict | None = None
+    syllabus_instructions: str | None = Field(default=None, max_length=4000)
+
+    _normalize_instructions = field_validator("syllabus_instructions", mode="after")(_blank_to_none)
 
 
 class CourseResponse(BaseModel):
@@ -105,6 +116,7 @@ class CourseResponse(BaseModel):
     preassessment_mandatory: bool
     visibility: str
     price_credits: int
+    syllabus_instructions: str | None
     created_at: str
     published_at: str | None
 
@@ -147,6 +159,7 @@ def _course_to_response(
         preassessment_mandatory=course.preassessment_mandatory,
         visibility=course.visibility,
         price_credits=course.price_credits,
+        syllabus_instructions=course.syllabus_instructions,
         created_at=course.created_at.isoformat(),
         published_at=course.published_at.isoformat() if course.published_at else None,
     )
@@ -1010,6 +1023,9 @@ async def edit_content(
 
 class GenerateStructureRequest(BaseModel):
     estimated_hours: int = 20
+    syllabus_instructions: str | None = Field(default=None, max_length=4000)
+
+    _normalize_instructions = field_validator("syllabus_instructions", mode="after")(_blank_to_none)
 
 
 @router.post("/{course_id}/generate-structure")
@@ -1043,6 +1059,11 @@ async def generate_course_structure(
     cache = SettingsCache.instance()
     hard = int(cache.get("ai-syllabus-hard-time-limit-seconds") or 3600)
     soft = int(cache.get("ai-syllabus-soft-time-limit-seconds") or 2700)
+
+    # The value sent with each generate call is authoritative (empty clears it).
+    # Commit before dispatch: the worker re-reads the course row.
+    course.syllabus_instructions = request.syllabus_instructions
+    await db.commit()
 
     task = generate_course_syllabus.apply_async(
         args=[str(course_id), request.estimated_hours or course.estimated_hours],

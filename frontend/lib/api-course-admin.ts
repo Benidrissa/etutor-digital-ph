@@ -131,6 +131,7 @@ export async function getAdminCourse(courseId: string) {
     audience_type: string[];
     estimated_hours: number;
     creation_mode: string;
+    syllabus_instructions: string | null;
   }>(`/api/v1/admin/courses/${courseId}`);
 }
 
@@ -178,12 +179,16 @@ export async function getCourseResources(
 export async function triggerSyllabusGeneration(
   courseId: string,
   estimatedHours: number,
-  force?: boolean
+  force?: boolean,
+  syllabusInstructions?: string | null
 ): Promise<{ task_id: string; status: string }> {
   const url = `/api/v1/admin/courses/${courseId}/generate-structure${force ? "?force=true" : ""}`;
   return apiFetch(url, {
     method: "POST",
-    body: JSON.stringify({ estimated_hours: estimatedHours }),
+    body: JSON.stringify({
+      estimated_hours: estimatedHours,
+      syllabus_instructions: syllabusInstructions?.trim() || null,
+    }),
   });
 }
 

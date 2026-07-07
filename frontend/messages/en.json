@@ -1759,6 +1759,9 @@
       "generate": {
         "title": "Generate syllabus",
         "description": "The AI agent will analyze your resources and generate the course structure.",
+        "instructions": "Additional instructions (optional)",
+        "instructionsPlaceholder": "E.g.: focus on practical field examples from Côte d'Ivoire; structure around the RDQA methodology; the audience is district health managers…",
+        "instructionsHint": "These instructions guide the AI during syllabus generation. Write in whichever language you prefer.",
         "button": "Generate syllabus",
         "generating": "Generating...",
         "generated": "Syllabus generated",
