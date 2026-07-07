@@ -1,6 +1,7 @@
 """Pluggable LLM provider layer for content generation (#2443)."""
 
 from app.ai.providers.base import LLMProvider, LLMResult, ToolCall
+from app.ai.providers.errors import ProviderErrorKind, classify_provider_error
 from app.ai.providers.image_provider import (
     DEFAULT_IMAGE_MODEL,
     ImageProvider,
@@ -14,6 +15,8 @@ __all__ = [
     "LLMProvider",
     "LLMResult",
     "ToolCall",
+    "ProviderErrorKind",
+    "classify_provider_error",
     "resolve_provider",
     "ImageProvider",
     "resolve_image_provider",
