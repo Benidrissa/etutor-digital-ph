@@ -17,6 +17,7 @@ import { LessonSkeleton } from './lesson-skeleton';
 import { SourceCitations } from './source-citations';
 import { apiFetch, getModuleDetailWithProgress, ApiError } from '@/lib/api';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
+import { isProviderQuotaError } from '@/lib/generation-errors';
 import { loadCaseStudy, OfflineContentNotAvailable } from '@/lib/offline/content-loader';
 import { SubscriptionRequired } from '@/components/shared/subscription-required';
 import { addOfflineAction } from '@/lib/offline/db';
@@ -222,6 +223,8 @@ export function CaseStudyViewer({
               msg = t('generationStalled');
             } else if (rawError === 'course_not_indexed') {
               msg = t('contentBeingPrepared');
+            } else if (isProviderQuotaError(rawError)) {
+              msg = t('providerUnavailable');
             } else if (isNoContent) {
               msg = t('noContentFound');
             } else if (rawError && rawError.length <= 200) {

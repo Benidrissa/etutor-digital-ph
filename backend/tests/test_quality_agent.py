@@ -580,3 +580,185 @@ def test_unit_quality_assessment_run_id_is_nullable():
     from app.domain.models.course_quality import UnitQualityAssessment
 
     assert UnitQualityAssessment.__table__.c.run_id.nullable is True
+
+
+# ---- Stranded active runs (#2553) --------------------------------------
+
+
+def _make_run(status: str, started_seconds_ago: int | None, created_seconds_ago: int = 0):
+    import uuid
+    from datetime import UTC, datetime, timedelta
+
+    from app.domain.models.course_quality import CourseQualityRun
+
+    now = datetime.now(UTC)
+    run = CourseQualityRun(
+        course_id=uuid.uuid4(),
+        run_kind="full",
+        status=status,
+        budget_credits=0,
+    )
+    run.started_at = (
+        now - timedelta(seconds=started_seconds_ago) if started_seconds_ago is not None else None
+    )
+    run.created_at = now - timedelta(seconds=created_seconds_ago)
+    return run
+
+
+def test_stale_run_detection_scoring_past_hard_limit():
+    from app.domain.services.quality_agent_service import (
+        STALE_ACTIVE_RUN_SECONDS,
+        is_stale_active_run,
+    )
+
+    assert is_stale_active_run(_make_run("scoring", STALE_ACTIVE_RUN_SECONDS + 60))
+    assert not is_stale_active_run(_make_run("scoring", STALE_ACTIVE_RUN_SECONDS - 60))
+
+
+def test_stale_run_detection_ignores_terminal_statuses():
+    from app.domain.services.quality_agent_service import (
+        STALE_ACTIVE_RUN_SECONDS,
+        is_stale_active_run,
+    )
+
+    old = STALE_ACTIVE_RUN_SECONDS + 3600
+    for status in ("completed", "failed", "cancelled"):
+        assert not is_stale_active_run(_make_run(status, old))
+
+
+def test_stale_run_detection_queued_never_started_uses_created_at():
+    """A run whose dispatch was lost never gets started_at — fall back to
+    created_at so it can still be re-armed."""
+    from app.domain.services.quality_agent_service import (
+        STALE_ACTIVE_RUN_SECONDS,
+        is_stale_active_run,
+    )
+
+    stale = _make_run("queued", None, created_seconds_ago=STALE_ACTIVE_RUN_SECONDS + 60)
+    fresh = _make_run("queued", None, created_seconds_ago=60)
+    assert is_stale_active_run(stale)
+    assert not is_stale_active_run(fresh)
+
+
+def test_stale_run_detection_handles_naive_timestamps():
+    from datetime import datetime, timedelta
+
+    from app.domain.services.quality_agent_service import (
+        STALE_ACTIVE_RUN_SECONDS,
+        is_stale_active_run,
+    )
+
+    run = _make_run("scoring", STALE_ACTIVE_RUN_SECONDS + 60)
+    run.started_at = datetime.utcnow() - timedelta(seconds=STALE_ACTIVE_RUN_SECONDS + 60)
+    assert is_stale_active_run(run)
+
+
+@pytest.mark.asyncio
+async def test_assess_course_requeues_stale_run_on_idempotency_conflict():
+    """A same-day zombie run (stuck in 'scoring' past the hard limit) must be
+    re-armed to 'queued' so callers re-dispatch, instead of being reused
+    forever (#2553)."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from sqlalchemy.exc import IntegrityError
+
+    from app.domain.services.quality_agent_service import (
+        STALE_ACTIVE_RUN_SECONDS,
+        CourseQualityService,
+    )
+
+    zombie = _make_run("scoring", STALE_ACTIVE_RUN_SECONDS + 600)
+    zombie.notes = None
+
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = zombie
+
+    session = MagicMock()
+    session.add = MagicMock()
+    session.flush = AsyncMock(side_effect=[IntegrityError("x", "y", Exception("dup")), None])
+    session.rollback = AsyncMock()
+    session.execute = AsyncMock(return_value=result)
+
+    service = CourseQualityService(MagicMock(), MagicMock())
+    run = await service.assess_course(
+        course_id=zombie.course_id,
+        triggered_by_user_id=None,
+        session=session,
+    )
+
+    assert run is zombie
+    assert run.status == "queued"
+    assert run.started_at is None
+    assert "[stale run re-queued]" in (run.notes or "")
+
+
+def test_assess_course_task_marks_run_failed_on_crash(monkeypatch):
+    """When the sweep dies (worker error, soft time limit), the run row must
+    be stamped 'failed' — otherwise it strands in 'scoring' (#2553)."""
+    import uuid
+
+    from app.tasks import quality_assessment as qa
+
+    marked: dict = {}
+
+    async def _fake_mark(run_id: str, error: str) -> None:
+        marked["run_id"] = run_id
+        marked["error"] = error
+
+    def _boom(settings):
+        raise RuntimeError("db exploded")
+
+    monkeypatch.setattr(qa, "_mark_run_failed", _fake_mark)
+    monkeypatch.setattr(qa, "_make_session_factory", _boom)
+
+    result = qa.assess_course_task.apply(kwargs={"run_id": str(uuid.uuid4())}).get()
+
+    assert result["status"] == "failed"
+    assert "db exploded" in result["error"]
+    assert marked["run_id"] == result["run_id"]
+
+
+# ---- Structural runs must serialize in admin endpoints (#2552) --------
+
+
+def test_course_quality_run_summary_accepts_structural_run_kind():
+    """assess_course_structure() writes run_kind='structural'; every admin
+    quality endpoint serializes runs through CourseQualityRunSummary, so a
+    missing Literal member 500s the whole review queue (#2552).
+    """
+    import uuid as _uuid
+    from datetime import UTC, datetime
+
+    from app.api.v1.schemas.quality import CourseQualityRunSummary
+
+    summary = CourseQualityRunSummary.model_validate(
+        {
+            "id": _uuid.uuid4(),
+            "course_id": _uuid.uuid4(),
+            "run_kind": "structural",
+            "status": "completed",
+            "started_at": datetime.now(UTC),
+            "finished_at": datetime.now(UTC),
+            "overall_score": None,
+            "units_total": 0,
+            "units_passing": 0,
+            "units_regenerated": 0,
+            "budget_credits": 0,
+            "spent_credits": 0,
+            "triggered_by_user_id": None,
+            "notes": None,
+            "created_at": datetime.now(UTC),
+        }
+    )
+    assert summary.run_kind == "structural"
+
+
+def test_quality_run_kind_enum_matches_api_literal():
+    """The domain enum and the API Literal must stay in sync — a kind the
+    service can write but the schema rejects breaks serialization."""
+    import typing
+
+    from app.api.v1.schemas.quality import RunKind
+    from app.domain.models.course_quality import QualityRunKind
+
+    assert {m.value for m in QualityRunKind} == set(typing.get_args(RunKind))
