@@ -405,6 +405,59 @@ class TestImageGenerationService:
         assert result.alt_text_fr is not None and len(result.alt_text_fr) > 0
         assert result.alt_text_en is not None and len(result.alt_text_en) > 0
 
+    async def test_alt_text_failure_keeps_image_ready(
+        self, service, mock_session, mock_claude_response
+    ):
+        """A metadata/alt-text provider error must NOT discard a generated image (#2594).
+
+        Alt-text runs on the separately-configured metadata model (e.g. Kimi), which can
+        400 independently. The image is already generated at that point, so we fall back
+        to a generic label and keep status=ready instead of marking the whole image failed.
+        """
+        import base64
+
+        from app.ai.providers.base import LLMResult
+
+        dedup_result = _no_existing_image_result()
+        reuse_result = MagicMock()
+        reuse_result.scalars.return_value.all.return_value = []
+        mock_session.execute = AsyncMock(
+            side_effect=[dedup_result, _empty_lesson_context_result(), reuse_result]
+        )
+
+        fake_b64 = base64.b64encode(b"DATA").decode()
+        image_api_response = MagicMock()
+        image_api_response.data = [MagicMock(b64_json=fake_b64)]
+
+        # 1st complete() = concept extraction (ok); 2nd = alt-text (raises).
+        prov_patch, _ = _provider_patch(
+            side_effect=[
+                LLMResult(text=mock_claude_response.content[0].text),
+                RuntimeError("400 - message at position 0 with role 'system' must not be empty"),
+            ]
+        )
+        with (
+            prov_patch,
+            patch("app.ai.providers.image_provider.AsyncOpenAI") as mock_openai_cls,
+        ):
+            mock_openai = AsyncMock()
+            mock_openai_cls.return_value = mock_openai
+            mock_openai.images.generate = AsyncMock(return_value=image_api_response)
+
+            result = await service.generate_for_lesson(
+                lesson_id=uuid.uuid4(),
+                module_id=uuid.uuid4(),
+                unit_id="u01",
+                lesson_content="Lesson content.",
+                session=mock_session,
+            )
+
+        assert result.status == "ready"
+        assert result.image_data is not None and len(result.image_data) > 0
+        # Fallback label applied rather than failing the record.
+        assert result.alt_text_en and result.alt_text_en.startswith("Educational illustration")
+        assert result.alt_text_fr and result.alt_text_fr.startswith("Illustration éducative")
+
     async def test_reuse_increments_reuse_count(self, service, mock_session, mock_claude_response):
         """Reusing an existing image must increment its reuse_count."""
         existing = _make_db_image(

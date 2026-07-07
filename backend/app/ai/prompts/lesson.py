@@ -1,5 +1,6 @@
 """System prompts for lesson generation."""
 
+import re
 from collections import defaultdict
 from typing import TYPE_CHECKING, Literal
 from uuid import UUID
@@ -12,6 +13,42 @@ if TYPE_CHECKING:
 from app.domain.services.platform_settings_service import SettingsCache
 
 logger = structlog.get_logger(__name__)
+
+# Figures are offered to the model as short opaque tokens (⟦FIG1⟧ … ⟦FIG5⟧) rather
+# than raw 36-char UUIDs. LLMs reliably copy a 4-char token but frequently *fabricate*
+# a long UUID they were asked to echo verbatim (observed on staging: markers whose
+# UUID exists nowhere in the DB), which silently drops the figure. The backend maps
+# each token back to its real SourceImage id after generation. Keep this in sync with
+# ``assign_figure_tokens`` and the extractor in ``lesson_service``.
+MAX_FIGURE_TOKENS = 5
+FIGURE_TOKEN_RE = re.compile(r"⟦FIG(\d+)⟧")
+
+
+def assign_figure_tokens(linked_images: dict | None) -> dict[str, dict]:
+    """Map short opaque tokens (⟦FIG1⟧…) to the candidate figures, deterministically.
+
+    Flattens ``linked_images`` (chunk_id → list of image meta dicts) in iteration
+    order, dedupes by image id, and caps at ``MAX_FIGURE_TOKENS``. Returns
+    ``{token: image_meta}``. Because it is a pure function of ``linked_images``, the
+    prompt formatter and the extractor derive the *same* mapping independently.
+    """
+    img_by_token: dict[str, dict] = {}
+    if not linked_images:
+        return img_by_token
+    seen: set[str] = set()
+    n = 0
+    for img_list in linked_images.values():
+        for img in img_list:
+            img_id = str(img.get("id") or "")
+            if not img_id or img_id in seen:
+                continue
+            n += 1
+            if n > MAX_FIGURE_TOKENS:
+                return img_by_token
+            seen.add(img_id)
+            img_by_token[f"⟦FIG{n}⟧"] = img
+    return img_by_token
+
 
 # Keys whose admin-editable value MUST reference {unit_title} so the
 # generated content stays bound to the unit. Warn at runtime if missing.
@@ -262,8 +299,11 @@ REFERENCE DOCUMENTS:
 
     formatted_chunks = []
     sources = set()
-    total_image_annotations = 0
-    max_image_annotations = 5
+    # Offer figures as short opaque tokens (⟦FIG1⟧…) mapped back to real UUIDs by
+    # the extractor. Each candidate image gets one stable token regardless of which
+    # chunk surfaces it, so the model only ever copies a 4-char token.
+    img_by_token = assign_figure_tokens(linked_images)
+    token_by_id = {str(img.get("id") or ""): token for token, img in img_by_token.items()}
 
     for i, chunk in enumerate(chunks, 1):
         if hasattr(chunk, "chunk"):
@@ -287,15 +327,14 @@ REFERENCE DOCUMENTS:
 
         chunk_text = f"[Extrait {i} - {source_ref}]\n{content}\n"
 
-        if (
-            linked_images
-            and chunk_id is not None
-            and total_image_annotations < max_image_annotations
-        ):
+        if linked_images and chunk_id is not None and token_by_id:
             images = linked_images.get(chunk_id, [])
             for img in images:
-                if total_image_annotations >= max_image_annotations:
-                    break
+                img_id = str(img.get("id") or "")
+                token = token_by_id.get(img_id)
+                if not token:
+                    # Beyond MAX_FIGURE_TOKENS, or no id — not offered to the model.
+                    continue
                 fig_num = img.get("figure_number") or ""
                 # Use the lesson-language caption so Claude reasons over (and
                 # may echo) the translated figure text, not the raw English the
@@ -312,7 +351,6 @@ REFERENCE DOCUMENTS:
                         img.get("caption_en") or img.get("caption") or img.get("caption_fr") or ""
                     )
                 img_type = img.get("image_type") or "unknown"
-                img_id = img.get("id", "")
                 label_parts = []
                 if fig_num:
                     label_parts.append(f"Figure {fig_num}")
@@ -321,8 +359,8 @@ REFERENCE DOCUMENTS:
                 if img_type != "unknown":
                     label_parts.append(f"({img_type})")
                 label = " — ".join(label_parts) if label_parts else caption or img_type
-                chunk_text += f"[{figure_label}: {label} — {{{{source_image:{img_id}}}}}]\n"
-                total_image_annotations += 1
+                # The model cites the figure by copying the token verbatim.
+                chunk_text += f"[{figure_label}: {label} — cite as {token}]\n"
 
         formatted_chunks.append(chunk_text)
         sources.add(source_ref)

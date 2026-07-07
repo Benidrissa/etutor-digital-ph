@@ -967,13 +967,13 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "REFERENCE FIGURES:\n"
             "If the context contains [FIGURE AVAILABLE: ...] annotations,"
             " you may reference those figures\n"
-            "in your content using the syntax {{{{source_image:UUID}}}}"
-            " (replace UUID with the identifier shown).\n"
+            "in your content by copying the exact token shown in that annotation"
+            " (e.g. ⟦FIG1⟧) — copy it verbatim; never invent an identifier.\n"
             "- Only reference a figure if it directly illustrates a concept"
             " in the lesson\n"
             "- Maximum 3 figure references per lesson\n"
             "- Insert the reference inline in the text,"
-            ' e.g. "... as illustrated {{{{source_image:abc123}}}}"\n\n'
+            ' e.g. "... as illustrated ⟦FIG1⟧"\n\n'
             "CRITICAL: You MUST respond with valid JSON ONLY. No preamble,"
             " no explanation, no markdown code fences. Your entire response"
             " must be a single JSON object starting with {{ and ending "
@@ -993,7 +993,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             '  "__complete": true\n'
             "}}\n"
             "IMPORTANT: All text fields support markdown formatting and"
-            " inline {{{{source_image:UUID}}}} references.\n"
+            " inline figure tokens such as ⟦FIG1⟧.\n"
             '"__complete": true MUST be the last field in your JSON response.'
         ),
         "string",
@@ -1119,8 +1119,8 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "- Include at least one verifiable numeric data point\n\n"
             "REFERENCE FIGURES:\n"
             "If the context contains [FIGURE AVAILABLE: ...] annotations, you may reference"
-            " those figures in your content using the syntax {{{{source_image:UUID}}}}"
-            " (replace UUID with the identifier shown).\n"
+            " those figures by copying the exact token shown in that annotation"
+            " (e.g. ⟦FIG1⟧) — copy it verbatim; never invent an identifier.\n"
             "- Only reference a figure if it directly illustrates a concept\n"
             "- Maximum 3 figure references per case study\n"
             "- Insert the reference inline in the text\n\n"
@@ -1325,8 +1325,8 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "REFERENCE FIGURES:\n"
             "If the context contains [FIGURE AVAILABLE: ...] annotations,"
             " you may reference those figures\n"
-            "in your content using the syntax {{{{source_image:UUID}}}}"
-            " (replace UUID with the identifier shown).\n"
+            "in your content by copying the exact token shown in that annotation"
+            " (e.g. ⟦FIG1⟧) — copy it verbatim; never invent an identifier.\n"
             "- Only reference a figure if it directly illustrates a concept in the lesson\n"
             "- Maximum 3 figure references per lesson\n"
             "- Insert the reference inline in the text\n\n"
@@ -1349,7 +1349,7 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             '  "__complete": true\n'
             "}}\n"
             "IMPORTANT: All text fields support markdown formatting and"
-            " inline {{{{source_image:UUID}}}} references.\n"
+            " inline figure tokens such as ⟦FIG1⟧.\n"
             "IMPORTANT: Do NOT embed source citations like [Author Ch.X, p.Y]"
             " inside introduction, concepts, aof_example, synthesis, or key_points."
             " Only list them in sources_cited.\n"
