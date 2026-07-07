@@ -44,9 +44,11 @@ from app.api.v1.schemas.content import (
     StreamingEvent,
 )
 from app.api.v1.schemas.quiz import (
+    PublicQuizResponse,
     QuizContent,
     QuizGenerationRequest,
     QuizResponse,
+    to_public_quiz_response,
 )
 from app.domain.models.content import GeneratedContent
 from app.domain.models.module import Module
@@ -1057,7 +1059,7 @@ async def generate_flashcards(
 
 @router.post(
     "/generate-quiz",
-    response_model=QuizResponse,
+    response_model=QuizResponse | PublicQuizResponse,
     status_code=status.HTTP_200_OK,
     responses={
         400: {"model": ErrorResponse, "description": "Invalid request"},
@@ -1070,7 +1072,7 @@ async def generate_quiz(
     quiz_service: QuizService = Depends(get_quiz_service),
     session: AsyncSession = Depends(get_db),
     current_user=Depends(require_active_subscription),
-) -> QuizResponse:
+) -> QuizResponse | PublicQuizResponse:
     """
     Generate formative quiz with 10 multiple-choice questions.
 
@@ -1125,6 +1127,9 @@ async def generate_quiz(
         )
 
         _dispatch_content_prefetch(current_user, str(request.module_id), request.unit_id)
+        if quiz_response.unit_id == "summative":
+            # Summative payloads must never carry the answer key (#2550)
+            return to_public_quiz_response(quiz_response)
         return quiz_response
 
     except ValueError as e:
@@ -1153,7 +1158,7 @@ async def generate_quiz(
 
 @router.get(
     "/quizzes/{quiz_id}",
-    response_model=QuizResponse,
+    response_model=QuizResponse | PublicQuizResponse,
     responses={
         404: {"model": ErrorResponse, "description": "Quiz not found"},
     },
@@ -1162,7 +1167,7 @@ async def get_quiz(
     quiz_id: UUID,
     session: AsyncSession = Depends(get_db),
     current_user=Depends(require_active_subscription),
-) -> QuizResponse:
+) -> QuizResponse | PublicQuizResponse:
     """
     Retrieve a previously generated quiz by ID.
 
@@ -1198,7 +1203,7 @@ async def get_quiz(
         unit_id = quiz_content.content.get("unit_id", "")
         content_dict = {k: v for k, v in quiz_content.content.items() if k != "unit_id"}
 
-        return QuizResponse(
+        quiz_response = QuizResponse(
             id=quiz_content.id,
             module_id=quiz_content.module_id,
             unit_id=unit_id,
@@ -1209,6 +1214,10 @@ async def get_quiz(
             generated_at=quiz_content.generated_at.isoformat(),
             cached=True,
         )
+        if unit_id == "summative":
+            # Summative payloads must never carry the answer key (#2550)
+            return to_public_quiz_response(quiz_response)
+        return quiz_response
 
     except HTTPException:
         raise

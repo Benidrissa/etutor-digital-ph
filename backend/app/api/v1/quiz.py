@@ -18,6 +18,7 @@ from app.api.deps_local_auth import AuthenticatedUser, get_current_user, require
 from app.api.v1._task_status import mark_dispatched as mark_task_dispatched
 from app.api.v1.schemas.quiz import (
     ErrorResponse,
+    PublicQuizResponse,
     QuizAttemptRequest,
     QuizAttemptResponse,
     QuizAttemptResult,
@@ -26,6 +27,10 @@ from app.api.v1.schemas.quiz import (
     SummativeAssessmentAttemptCheck,
     SummativeAssessmentRequest,
     SummativeAssessmentResponse,
+    SummativeQuestionResult,
+    SummativeReviewQuestion,
+    SummativeReviewResponse,
+    to_public_quiz_response,
 )
 from app.domain.models.content import GeneratedContent
 from app.domain.models.module import Module
@@ -256,7 +261,7 @@ async def generate_quiz(
                 from app.api.v1.schemas.quiz import QuizContent as _QuizContent
 
                 content_dict = {k: v for k, v in cached.content.items() if k != "unit_id"}
-                quiz_response = QuizResponse(
+                quiz_response: PublicQuizResponse = QuizResponse(
                     id=cached.id,
                     module_id=cached.module_id,
                     unit_id=cached.content.get("unit_id", request.unit_id),
@@ -268,6 +273,9 @@ async def generate_quiz(
                     cached=True,
                     country_fallback=is_country_fallback,
                 )
+                if quiz_response.unit_id == "summative":
+                    # Summative payloads must never carry the answer key (#2550)
+                    quiz_response = to_public_quiz_response(quiz_response)
                 logger.info(
                     "Quiz cache hit",
                     quiz_id=str(quiz_response.id),
@@ -345,7 +353,7 @@ async def generate_quiz(
 
 @router.get(
     "/{quiz_id}",
-    response_model=QuizResponse,
+    response_model=QuizResponse | PublicQuizResponse,
     responses={
         404: {"model": ErrorResponse, "description": "Quiz not found"},
     },
@@ -353,7 +361,7 @@ async def generate_quiz(
 async def get_quiz(
     quiz_id: UUID,
     session: AsyncSession = Depends(get_db),
-) -> QuizResponse:
+) -> QuizResponse | PublicQuizResponse:
     """
     Retrieve a previously generated quiz by ID.
 
@@ -378,7 +386,7 @@ async def get_quiz(
 
         from app.api.v1.schemas.quiz import QuizContent
 
-        return QuizResponse(
+        quiz_response = QuizResponse(
             id=quiz_content.id,
             module_id=quiz_content.module_id,
             unit_id=quiz_content.content.get("unit_id", ""),
@@ -389,6 +397,10 @@ async def get_quiz(
             generated_at=quiz_content.generated_at.isoformat(),
             cached=True,
         )
+        if quiz_response.unit_id == "summative":
+            # Summative payloads must never carry the answer key (#2550)
+            return to_public_quiz_response(quiz_response)
+        return quiz_response
 
     except HTTPException:
         raise
@@ -454,6 +466,19 @@ async def submit_quiz_attempt(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail={"error": "quiz_not_found", "message": f"Quiz {request.quiz_id} not found"},
+            )
+
+        # Summative assessments must go through /quiz/summative/attempt — this
+        # endpoint returns the full answer key in its results and enforces no
+        # cooldown, so accepting a summative id here would let a learner harvest
+        # the answers with one throwaway submission (#2550).
+        if quiz_content.content.get("unit_id") == "summative":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "not_practice_quiz",
+                    "message": "Summative assessments must be submitted via /quiz/summative/attempt",
+                },
             )
 
         await _check_subscription_or_first_unit(
@@ -622,7 +647,7 @@ async def submit_quiz_attempt(
 
 @router.post(
     "/summative/generate",
-    response_model=QuizResponse,
+    response_model=PublicQuizResponse,
     status_code=status.HTTP_200_OK,
     responses={
         400: {"model": ErrorResponse, "description": "Invalid request"},
@@ -634,7 +659,8 @@ async def generate_summative_assessment(
     request: SummativeAssessmentRequest,
     quiz_service: QuizService = Depends(get_quiz_service),
     session: AsyncSession = Depends(get_db),
-) -> QuizResponse:
+    current_user: AuthenticatedUser = Depends(require_active_subscription),
+) -> PublicQuizResponse:
     """
     Generate or retrieve cached summative assessment content.
 
@@ -644,6 +670,9 @@ async def generate_summative_assessment(
     - No immediate feedback during assessment
     - Results shown only at the end
     - Can gate progression to next module
+
+    The payload never includes correct answers or explanations — grading is
+    server-side only (#2550).
     """
     try:
         module_uuid = await _resolve_module_uuid(request.module_id, session)
@@ -678,7 +707,9 @@ async def generate_summative_assessment(
             cached=quiz_response.cached,
         )
 
-        return quiz_response
+        # Strip correct_answer/explanation — learners must never receive the
+        # answer key before submission (#2550)
+        return to_public_quiz_response(quiz_response)
 
     except ValueError as e:
         logger.warning("Invalid summative assessment request", error=str(e))
@@ -803,6 +834,106 @@ async def can_attempt_summative_assessment(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": "check_failed", "message": "Failed to check attempt eligibility"},
+        )
+
+
+@router.get(
+    "/summative/{module_id}/review",
+    response_model=SummativeReviewResponse,
+    responses={
+        403: {"model": ErrorResponse, "description": "No passing attempt yet"},
+        404: {"model": ErrorResponse, "description": "Assessment content not found"},
+    },
+)
+async def get_summative_assessment_review(
+    module_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_active_subscription),
+) -> SummativeReviewResponse:
+    """
+    Full corrected review of the module's summative assessment.
+
+    Only available once the user has PASSED the assessment — before that the
+    answer key stays server-side so a failed attempt can't be used to harvest
+    answers for the retake (#2550).
+    """
+    try:
+        user_id = uuid.UUID(str(current_user.id))
+
+        attempt_query = (
+            select(SummativeAssessmentAttempt)
+            .where(
+                SummativeAssessmentAttempt.user_id == user_id,
+                SummativeAssessmentAttempt.module_id == module_id,
+                SummativeAssessmentAttempt.passed.is_(True),
+            )
+            .order_by(SummativeAssessmentAttempt.attempted_at.desc())
+        )
+        attempt = (await session.execute(attempt_query)).scalars().first()
+
+        if not attempt:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": "review_locked",
+                    "message": "The corrected review is available after passing the assessment",
+                },
+            )
+
+        # Pin the review to the exact content the learner answered, even if the
+        # assessment was regenerated since
+        content_query = select(GeneratedContent).where(GeneratedContent.id == attempt.assessment_id)
+        assessment_content = (await session.execute(content_query)).scalar_one_or_none()
+
+        if not assessment_content:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "assessment_not_found",
+                    "message": "Assessment content no longer exists",
+                },
+            )
+
+        question_lookup = {q["id"]: q for q in assessment_content.content.get("questions", [])}
+        stored_results = (attempt.answers or {}).get("results", [])
+
+        review_questions = []
+        for res in stored_results:
+            question = question_lookup.get(res.get("question_id"))
+            if not question:
+                continue
+            review_questions.append(
+                SummativeReviewQuestion(
+                    question_id=res["question_id"],
+                    question=question.get("question", ""),
+                    options=question.get("options", []),
+                    user_answer=res.get("user_answer", -1),
+                    correct_answer=res.get("correct_answer", question.get("correct_answer", -1)),
+                    is_correct=res.get("is_correct", False),
+                    explanation=question.get("explanation", ""),
+                    sources_cited=question.get("sources_cited", []),
+                    difficulty=question.get("difficulty", "medium"),
+                )
+            )
+
+        return SummativeReviewResponse(
+            module_id=module_id,
+            assessment_id=attempt.assessment_id,
+            attempt_id=attempt.id,
+            score=attempt.score,
+            correct_answers=attempt.correct_answers,
+            total_questions=attempt.total_questions,
+            attempted_at=attempt.attempted_at.isoformat(),
+            questions=review_questions,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to build summative review", module_id=str(module_id), error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "review_failed", "message": "Failed to load assessment review"},
         )
 
 
@@ -1056,6 +1187,20 @@ async def submit_summative_assessment_attempt(
             except Exception as touch_err:
                 logger.warning("touch_course_interaction failed (non-fatal)", error=str(touch_err))
 
+        # Answer key stays server-side pass or fail — a failed attempt's response
+        # must not let the learner copy answers for the retake; the corrected
+        # review is served by GET /quiz/summative/{module_id}/review after a
+        # pass (#2550).
+        lean_results = [
+            SummativeQuestionResult(
+                question_id=res.question_id,
+                user_answer=res.user_answer,
+                is_correct=res.is_correct,
+                time_taken_seconds=res.time_taken_seconds,
+            )
+            for res in results
+        ]
+
         response = SummativeAssessmentResponse(
             attempt_id=attempt.id,
             assessment_id=request.quiz_id,
@@ -1064,7 +1209,7 @@ async def submit_summative_assessment_attempt(
             correct_answers=correct_count,
             total_time_seconds=request.total_time_seconds,
             passed=passed,
-            results=results,
+            results=lean_results,
             domain_breakdown=domain_stats,
             module_unlocked=module_unlocked,
             can_retry=not passed and can_retry_at is None,

@@ -745,7 +745,19 @@
     "continueToNextModule": "Continue to Next Module",
     "backToDashboard": "Back to Dashboard",
     "attemptedAt": "Completed",
-    "attemptId": "Attempt ID"
+    "attemptId": "Attempt ID",
+    "correctedReview": "Corrected review",
+    "correctedReviewDescription": "Review each question with the correct answer and its explanation.",
+    "viewReview": "View corrected review",
+    "reviewLoading": "Loading review…",
+    "reviewLoadFailed": "Could not load the review. Please try again later.",
+    "yourAnswer": "Your answer",
+    "correctAnswer": "Correct answer",
+    "explanation": "Explanation",
+    "source": "Source: {source}",
+    "correct": "Correct",
+    "incorrect": "Incorrect",
+    "noAnswer": "Not answered"
   },
   "LessonViewer": {
     "error": "An error occurred",

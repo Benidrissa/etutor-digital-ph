@@ -9,10 +9,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { SummativeAssessmentInterface } from './summative-assessment-interface';
 import { SummativeAssessmentResults } from './summative-assessment-results';
-import type { 
-  Quiz, 
-  SummativeAssessmentResponse, 
-  SummativeAssessmentAttemptCheck 
+import { SummativeReviewSection } from './summative-review-section';
+import type {
+  SummativeQuiz,
+  SummativeAssessmentResponse,
+  SummativeAssessmentAttemptCheck
 } from '@/lib/api';
 import {
   generateSummativeAssessment,
@@ -52,7 +53,7 @@ export function SummativeAssessmentContainer({
   const resolvedLevel = level || currentUser?.current_level || 1;
   
   const [state, setState] = useState<AssessmentState>('checking');
-  const [assessment, setAssessment] = useState<Quiz | null>(null);
+  const [assessment, setAssessment] = useState<SummativeQuiz | null>(null);
   const [result, setResult] = useState<SummativeAssessmentResponse | null>(null);
   const [attemptCheck, setAttemptCheck] = useState<SummativeAssessmentAttemptCheck | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -196,6 +197,11 @@ export function SummativeAssessmentContainer({
             </div>
           </CardContent>
         </Card>
+
+        {/* Corrected review — server only serves it after a pass (#2550) */}
+        {attemptCheck.reason === 'already_passed' && (
+          <SummativeReviewSection moduleId={moduleId} />
+        )}
       </div>
     );
   }
@@ -240,6 +246,7 @@ export function SummativeAssessmentContainer({
     return (
       <SummativeAssessmentResults
         result={result}
+        moduleId={moduleId}
         onRetry={result.can_retry ? handleRetryAssessment : undefined}
         onContinue={onComplete}
       />
