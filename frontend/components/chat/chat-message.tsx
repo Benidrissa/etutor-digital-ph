@@ -11,6 +11,7 @@ import { ListenButton } from '@/components/chat/listen-button';
 import { SourceImage } from '@/components/learning/source-image';
 import type { SourceImageMeta } from '@/lib/api';
 import { splitWithSourceImageMarkers } from '@/lib/source-image-utils';
+import { normalizeMarkdown } from '@/lib/markdown-utils';
 
 export interface ChatSource {
   title: string;
@@ -66,7 +67,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
       return (
         <div className={mdClass}>
           <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-            {message.content}
+            {normalizeMarkdown(message.content)}
           </ReactMarkdown>
           {message.isStreaming && (
             <span className="inline-block w-2 h-4 ml-1 bg-current animate-pulse" />
@@ -84,7 +85,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
           ) : (
             <div key={i} className={mdClass}>
               <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                {part.text}
+                {normalizeMarkdown(part.text)}
               </ReactMarkdown>
             </div>
           )
