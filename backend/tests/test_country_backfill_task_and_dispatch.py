@@ -86,9 +86,7 @@ async def test_slug_country_is_canonicalized_before_dispatch():
             "app.domain.services._unit_resolution.resolve_module_unit_id",
             AsyncMock(return_value=uuid.uuid4()),
         ),
-        patch.object(
-            quiz_module, "should_dispatch_country_backfill", AsyncMock(return_value=True)
-        ),
+        patch.object(quiz_module, "should_dispatch_country_backfill", AsyncMock(return_value=True)),
         patch("app.tasks.content_generation.generate_country_content_task", fake_task),
     ):
         response = await quiz_module.generate_quiz(
