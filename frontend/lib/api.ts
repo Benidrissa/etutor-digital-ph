@@ -732,22 +732,37 @@ export async function checkUnitQuizPassed(
 }
 
 // Summative Assessment API Functions
+/**
+ * 202 envelope returned by summative generation when the assessment is not yet
+ * cached. Summative generation covers every module unit (~60-90s), so it runs in
+ * a background Celery task; the caller polls `/content/status/{task_id}` and
+ * re-requests once complete. See #2608.
+ */
+export interface SummativeGeneratingResponse {
+  status: "generating";
+  task_id: string;
+  message: string;
+}
+
 export async function generateSummativeAssessment(params: {
   module_id: string;
   language: string;
   country: string;
   level: number;
-}): Promise<SummativeQuiz> {
-  return apiFetch<SummativeQuiz>("/api/v1/quiz/summative/generate", {
-    method: "POST",
-    body: JSON.stringify({
-      module_id: params.module_id,
-      language: params.language,
-      country: params.country,
-      level: params.level,
-      num_questions: 20, // Always 20 for summative
-    }),
-  });
+}): Promise<SummativeQuiz | SummativeGeneratingResponse> {
+  return apiFetch<SummativeQuiz | SummativeGeneratingResponse>(
+    "/api/v1/quiz/summative/generate",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        module_id: params.module_id,
+        language: params.language,
+        country: params.country,
+        level: params.level,
+        num_questions: 20, // Always 20 for summative
+      }),
+    },
+  );
 }
 
 export async function canAttemptSummativeAssessment(

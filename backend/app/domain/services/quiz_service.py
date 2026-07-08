@@ -30,6 +30,100 @@ class QuizService:
         self.claude_service = claude_service
         self.semantic_retriever = semantic_retriever
 
+    async def _find_cached_content_row(
+        self,
+        session: AsyncSession,
+        module_id: UUID,
+        unit_id: str,
+        module_unit_uuid: UUID | None,
+        language: str,
+        country: str,
+        level: int,
+    ) -> tuple[GeneratedContent | None, bool]:
+        """Read-only cache lookup: exact 6-field match, then country fallback.
+
+        Returns ``(row, is_fallback)``; never generates. Shared by
+        ``get_or_generate_quiz`` and ``get_cached_quiz`` so the cache key stays
+        in sync between the generating and polling paths (#2608).
+        """
+
+        def _apply_unit_filter(q):
+            if module_unit_uuid is not None:
+                return q.where(GeneratedContent.module_unit_id == module_unit_uuid)
+            return q.where(
+                GeneratedContent.module_id == module_id,
+                GeneratedContent.module_unit_id.is_(None),
+                GeneratedContent.content["unit_id"].astext == unit_id,
+            )
+
+        # Match all fields of the unique index; .first() with ORDER BY guards
+        # against any legacy duplicate rows.
+        query = _apply_unit_filter(
+            select(GeneratedContent).where(
+                GeneratedContent.content_type == "quiz",
+                GeneratedContent.language == language,
+                GeneratedContent.level == level,
+                GeneratedContent.country_context == country,
+            )
+        ).order_by(GeneratedContent.generated_at.desc())
+        result = await session.execute(query)
+        row = result.scalars().first()
+        if row is not None:
+            return row, False
+
+        fallback_query = _apply_unit_filter(
+            select(GeneratedContent).where(
+                GeneratedContent.content_type == "quiz",
+                GeneratedContent.language == language,
+                GeneratedContent.level == level,
+            )
+        ).order_by(GeneratedContent.generated_at.desc())
+        fallback_result = await session.execute(fallback_query)
+        row = fallback_result.scalars().first()
+        return row, row is not None
+
+    @staticmethod
+    def _quiz_response_from_row(
+        row: GeneratedContent, unit_id: str, country: str, is_fallback: bool
+    ) -> QuizResponse:
+        """Build a cached QuizResponse from a GeneratedContent row."""
+        return QuizResponse(
+            id=row.id,
+            module_id=row.module_id,
+            unit_id=row.content.get("unit_id", unit_id),
+            language=row.language,
+            level=row.level,
+            country_context=row.country_context or country,
+            content=QuizContent(**row.content),
+            generated_at=row.generated_at.isoformat(),
+            cached=True,
+            country_fallback=is_fallback,
+        )
+
+    async def get_cached_quiz(
+        self,
+        module_id: UUID,
+        unit_id: str,
+        language: str,
+        country: str,
+        level: int,
+        session: AsyncSession,
+    ) -> QuizResponse | None:
+        """Return cached quiz content without ever generating; ``None`` if not cached.
+
+        Backs the async summative flow: the frontend polls this until the
+        background ``generate_quiz_task`` has written the content (#2608).
+        """
+        from app.domain.services._unit_resolution import resolve_module_unit_id
+
+        module_unit_uuid = await resolve_module_unit_id(session, module_id, unit_id)
+        row, is_fallback = await self._find_cached_content_row(
+            session, module_id, unit_id, module_unit_uuid, language, country, level
+        )
+        if row is None:
+            return None
+        return self._quiz_response_from_row(row, unit_id, country, is_fallback)
+
     async def get_or_generate_quiz(
         self,
         module_id: UUID,
@@ -70,43 +164,12 @@ class QuizService:
             # (module_unit_id IS NULL + JSON unit_id="summative" sentinel).
             module_unit_uuid = await resolve_module_unit_id(session, module_id, unit_id)
 
-            def _apply_unit_filter(q):
-                if module_unit_uuid is not None:
-                    return q.where(GeneratedContent.module_unit_id == module_unit_uuid)
-                return q.where(
-                    GeneratedContent.module_id == module_id,
-                    GeneratedContent.module_unit_id.is_(None),
-                    GeneratedContent.content["unit_id"].astext == unit_id,
-                )
-
             cached_quiz = None
             is_fallback = False
             if not force_regenerate:
-                # Cache lookup: match all 6 fields that form the unique index
-                # Use .first() with ORDER BY as safety net for any legacy duplicates
-                query = _apply_unit_filter(
-                    select(GeneratedContent).where(
-                        GeneratedContent.content_type == "quiz",
-                        GeneratedContent.language == language,
-                        GeneratedContent.level == level,
-                        GeneratedContent.country_context == country,
-                    )
-                ).order_by(GeneratedContent.generated_at.desc())
-
-                result = await session.execute(query)
-                cached_quiz = result.scalars().first()
-
-                if not cached_quiz:
-                    fallback_query = _apply_unit_filter(
-                        select(GeneratedContent).where(
-                            GeneratedContent.content_type == "quiz",
-                            GeneratedContent.language == language,
-                            GeneratedContent.level == level,
-                        )
-                    ).order_by(GeneratedContent.generated_at.desc())
-                    fallback_result = await session.execute(fallback_query)
-                    cached_quiz = fallback_result.scalars().first()
-                    is_fallback = cached_quiz is not None
+                cached_quiz, is_fallback = await self._find_cached_content_row(
+                    session, module_id, unit_id, module_unit_uuid, language, country, level
+                )
 
             if cached_quiz:
                 logger.info(
@@ -130,18 +193,7 @@ class QuizService:
                         user_id=str(user_id) if user_id else "",
                     )
 
-                return QuizResponse(
-                    id=cached_quiz.id,
-                    module_id=cached_quiz.module_id,
-                    unit_id=cached_quiz.content.get("unit_id", unit_id),
-                    language=cached_quiz.language,
-                    level=cached_quiz.level,
-                    country_context=cached_quiz.country_context or country,
-                    content=QuizContent(**cached_quiz.content),
-                    generated_at=cached_quiz.generated_at.isoformat(),
-                    cached=True,
-                    country_fallback=is_fallback,
-                )
+                return self._quiz_response_from_row(cached_quiz, unit_id, country, is_fallback)
 
             # Generate new quiz using RAG + Claude
             logger.info(
@@ -189,27 +241,10 @@ class QuizService:
                     unit_id=unit_id,
                     language=language,
                 )
-                conflict_result = await session.execute(
-                    _apply_unit_filter(
-                        select(GeneratedContent).where(
-                            GeneratedContent.content_type == "quiz",
-                            GeneratedContent.language == language,
-                            GeneratedContent.level == level,
-                        )
-                    ).order_by(GeneratedContent.generated_at.desc())
+                existing, existing_fallback = await self._find_cached_content_row(
+                    session, module_id, unit_id, module_unit_uuid, language, country, level
                 )
-                existing = conflict_result.scalars().first()
-                return QuizResponse(
-                    id=existing.id,
-                    module_id=existing.module_id,
-                    unit_id=existing.content.get("unit_id", unit_id),
-                    language=existing.language,
-                    level=existing.level,
-                    country_context=existing.country_context or country,
-                    content=QuizContent(**existing.content),
-                    generated_at=existing.generated_at.isoformat(),
-                    cached=True,
-                )
+                return self._quiz_response_from_row(existing, unit_id, country, existing_fallback)
 
             logger.info(
                 "Quiz generated and cached",
