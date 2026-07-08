@@ -14,6 +14,7 @@ import uuid
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import get_db
@@ -74,6 +75,46 @@ async def _patched_httpx(fetch_spy: MagicMock, body: bytes = b"fake-bytes"):
         "app.api.v1.source_images.httpx.AsyncClient",
         return_value=mock_ctx,
     ):
+        yield
+
+
+@asynccontextmanager
+async def _patched_httpx_upstream_status(status_code: int):
+    """Patch the storage client so the fetched object returns ``status_code``.
+
+    Uses a real ``httpx.Response`` so ``raise_for_status()`` raises a genuine
+    ``httpx.HTTPStatusError`` carrying that status — exactly what MinIO would
+    surface for a missing (404) or broken (5xx) object.
+    """
+
+    async def _get(url):
+        request = httpx.Request("GET", url)
+        return httpx.Response(status_code=status_code, request=request)
+
+    mock_client = MagicMock()
+    mock_client.get = AsyncMock(side_effect=_get)
+    mock_ctx = MagicMock()
+    mock_ctx.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("app.api.v1.source_images.httpx.AsyncClient", return_value=mock_ctx):
+        yield
+
+
+@asynccontextmanager
+async def _patched_httpx_transport_error(exc: Exception):
+    """Patch the storage client so the fetch itself raises a transport error."""
+
+    async def _get(url):
+        raise exc
+
+    mock_client = MagicMock()
+    mock_client.get = AsyncMock(side_effect=_get)
+    mock_ctx = MagicMock()
+    mock_ctx.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("app.api.v1.source_images.httpx.AsyncClient", return_value=mock_ctx):
         yield
 
 
@@ -146,6 +187,31 @@ class TestDataEndpointLangFallback:
             resp = await _get_data(f"/api/v1/source-images/{some_id}/data")
         assert resp.status_code == 404
         fetch.assert_not_called()
+
+
+class TestDataEndpointStorageFailures:
+    """A missing storage object is a 404, not a 502 (#2599)."""
+
+    async def test_missing_object_in_storage_returns_404(self):
+        row = _FakeImageRow(storage_url="https://minio/gone.webp", storage_url_fr=None)
+        async with _override_db(row), _patched_httpx_upstream_status(404):
+            resp = await _get_data(f"/api/v1/source-images/{row.id}/data")
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Image binary not found in storage"
+
+    async def test_upstream_server_error_stays_502(self):
+        row = _FakeImageRow(storage_url="https://minio/broken.webp", storage_url_fr=None)
+        async with _override_db(row), _patched_httpx_upstream_status(500):
+            resp = await _get_data(f"/api/v1/source-images/{row.id}/data")
+        assert resp.status_code == 502
+        assert resp.json()["detail"] == "Image not available from storage"
+
+    async def test_transport_error_stays_502(self):
+        row = _FakeImageRow(storage_url="https://minio/timeout.webp", storage_url_fr=None)
+        async with _override_db(row), _patched_httpx_transport_error(httpx.ConnectTimeout("boom")):
+            resp = await _get_data(f"/api/v1/source-images/{row.id}/data")
+        assert resp.status_code == 502
+        assert resp.json()["detail"] == "Image not available from storage"
 
 
 # Defensive: make sure the real SourceImage model has the locale columns we rely
