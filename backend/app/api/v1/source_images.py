@@ -115,7 +115,27 @@ async def get_image_data(
         async with httpx.AsyncClient(timeout=30.0) as client:
             upstream = await client.get(fetch_url)
         upstream.raise_for_status()
-    except httpx.HTTPError as exc:
+    except httpx.HTTPStatusError as exc:
+        # A 404 from storage means the object simply isn't there (e.g. a
+        # dead reference whose binary was never persisted — see #2598). That
+        # is a not-found condition, not an upstream gateway failure, so don't
+        # dress it up as a 502 (which pollutes monitoring and triggers proxy
+        # retries). Any other status from MinIO (5xx, auth, …) stays a 502.
+        if exc.response.status_code == status.HTTP_404_NOT_FOUND:
+            logger.warning(
+                "Source image object missing in storage", image_id=str(image_id)
+            )
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Image binary not found in storage",
+            ) from exc
+        logger.error("Failed to fetch image from storage", image_id=str(image_id), error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="Image not available from storage"
+        ) from exc
+    except httpx.RequestError as exc:
+        # Connect/read timeouts and other transport errors are genuine
+        # upstream failures — keep the 502.
         logger.error("Failed to fetch image from storage", image_id=str(image_id), error=str(exc))
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY, detail="Image not available from storage"
