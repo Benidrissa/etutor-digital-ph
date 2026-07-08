@@ -75,6 +75,29 @@ class S3StorageService:
         )
         return url
 
+    async def object_exists(self, key: str) -> bool:
+        """Return whether an object exists in the bucket (cheap HEAD).
+
+        Used to detect dead storage references before reusing them — a
+        ``source_images`` row can point at a key whose binary was never
+        persisted (#2605). Any error (missing key, transport) resolves to
+        ``False`` so the caller re-uploads rather than trusting a dead path.
+        """
+        if not key:
+            return False
+        session = self._get_session()
+        try:
+            async with session.create_client(
+                "s3",
+                endpoint_url=self._endpoint,
+                aws_access_key_id=self._access_key,
+                aws_secret_access_key=self._secret_key,
+            ) as client:
+                await client.head_object(Bucket=self._bucket, Key=key)
+            return True
+        except Exception:
+            return False
+
     async def download_bytes(self, key: str) -> bytes:
         """Download an object from MinIO as raw bytes.
 
