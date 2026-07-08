@@ -288,13 +288,15 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                         "estimated_seconds_remaining": _remaining(extract_progress),
                     },
                 )
-                # Idempotent re-index: drop this resource's existing chunks first
-                # so a re-run replaces rather than appends (clone + embed paths
+                # Idempotent re-index: drop this resource's existing chunks + images
+                # first so a re-run replaces rather than appends (clone + embed paths
                 # below have no dedup of their own). Scoped by course_resource_id. #2534
                 async with async_session_factory() as _clear_session:
                     await pipeline.clear_resource_chunks(rag_collection_id, res.id, _clear_session)
+                    await pipeline.clear_resource_images(rag_collection_id, res.id, _clear_session)
 
                 # Content-hash dedup: clone from donor course if same text already indexed.
+                cloned_text = False
                 if res.content_hash:
                     async with async_session_factory() as _dedup_session:
                         donors = await pipeline._find_donor_chunks(
@@ -305,37 +307,61 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                                 donors, rag_collection_id, res.id, _dedup_session
                             )
                             total_chunks += cloned
+                            cloned_text = True
                             logger.info(
                                 "Cloned chunks from donor — skipped embedding API (DB path)",
                                 filename=resource_name,
                                 cloned=cloned,
                                 course_id=course_id,
                             )
-                            continue
 
-                text = res.raw_text
-                language = detect_language(text)
-                chunks = list(
-                    chunker.chunk_document(
-                        text=text,
-                        source=rag_collection_id,
-                        language=language,
-                        course_resource_id=res.id,
+                if not cloned_text:
+                    text = res.raw_text
+                    language = detect_language(text)
+                    chunks = list(
+                        chunker.chunk_document(
+                            text=text,
+                            source=rag_collection_id,
+                            language=language,
+                            course_resource_id=res.id,
+                        )
                     )
-                )
-                if not chunks:
-                    continue
-                chunk_texts = [c.content for c in chunks]
-                embeddings = await embedding_service.generate_embeddings_batch(chunk_texts)
-                async with async_session_factory() as _db_session:
-                    stored = await pipeline._store_chunks(chunks, embeddings, _db_session)
-                total_chunks += stored
-                logger.info(
-                    "Indexed DB resource text",
-                    filename=resource_name,
-                    chunks=stored,
-                    course_id=course_id,
-                )
+                    if chunks:
+                        chunk_texts = [c.content for c in chunks]
+                        embeddings = await embedding_service.generate_embeddings_batch(chunk_texts)
+                        async with async_session_factory() as _db_session:
+                            stored = await pipeline._store_chunks(chunks, embeddings, _db_session)
+                        total_chunks += stored
+                        logger.info(
+                            "Indexed DB resource text",
+                            filename=resource_name,
+                            chunks=stored,
+                            course_id=course_id,
+                        )
+
+                # Image cache (#2580): a file_hash-deduped resource has no PDF on
+                # disk, so images can only come from a donor course that indexed the
+                # same source. Without this, deduped courses rendered figureless.
+                # Runs after text so the linker (inside clone_images_from_donor) can
+                # join freshly-cloned chunks. Keyed on file_hash (exact), then
+                # content_hash. Idempotent via clear_resource_images above.
+                async with async_session_factory() as _img_session:
+                    img_cloned = await pipeline.clone_images_from_donor(
+                        new_source=rag_collection_id,
+                        new_rag_collection_id=rag_collection_id,
+                        new_resource_id=res.id,
+                        file_hash=res.file_hash,
+                        content_hash=res.content_hash,
+                        session=_img_session,
+                    )
+                if img_cloned:
+                    total_images += img_cloned
+                    logger.info(
+                        "Cloned images from donor — skipped extraction (DB path)",
+                        filename=resource_name,
+                        images=img_cloned,
+                        course_id=course_id,
+                    )
 
         # Pure-deduped course (every source was file_hash-deduped): no disk PDFs
         # to extract text/images from, so we're done.
@@ -345,9 +371,10 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
         # Build pdf_path → course_resource_id lookup so chunks land with
         # their originating PDF identity (#2186). Resolves by `filename` or
         # `parent_filename` (DB stores stems without extension).
-        # Also capture content_hash for cross-course chunk dedup.
+        # Also capture content_hash + file_hash for cross-course chunk/image dedup.
         resource_id_by_stem: dict[str, uuid.UUID] = {}
         resource_hash_by_stem: dict[str, str] = {}
+        resource_filehash_by_stem: dict[str, str] = {}
         if pdf_files:
             from sqlalchemy import create_engine, select
             from sqlalchemy.orm import Session
@@ -365,18 +392,19 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                                 CourseResource.filename,
                                 CourseResource.parent_filename,
                                 CourseResource.content_hash,
+                                CourseResource.file_hash,
                             ).where(CourseResource.course_id == uuid.UUID(course_id))
                         )
                     ).all()
-                    for rid, fname, parent, chash in res_rows:
-                        if fname:
-                            resource_id_by_stem.setdefault(fname, rid)
+                    for rid, fname, parent, chash, fhash in res_rows:
+                        for stem in (fname, parent):
+                            if not stem:
+                                continue
+                            resource_id_by_stem.setdefault(stem, rid)
                             if chash:
-                                resource_hash_by_stem.setdefault(fname, chash)
-                        if parent:
-                            resource_id_by_stem.setdefault(parent, rid)
-                            if chash:
-                                resource_hash_by_stem.setdefault(parent, chash)
+                                resource_hash_by_stem.setdefault(stem, chash)
+                            if fhash:
+                                resource_filehash_by_stem.setdefault(stem, fhash)
             finally:
                 _eng.dispose()
 
@@ -431,6 +459,9 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
             content_hash = resource_hash_by_stem.get(pdf_path.stem) or resource_hash_by_stem.get(
                 pdf_path.name
             )
+            file_hash = resource_filehash_by_stem.get(
+                pdf_path.stem
+            ) or resource_filehash_by_stem.get(pdf_path.name)
             chunks = await pipeline.process_pdf_document(
                 pdf_path=str(pdf_path),
                 source=rag_collection_id,
@@ -517,6 +548,9 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                     source=rag_collection_id,
                     rag_collection_id=rag_collection_id,
                     progress_callback=_image_progress_cb,
+                    course_resource_id=resource_id,
+                    file_hash=file_hash,
+                    content_hash=content_hash,
                 )
                 total_images += image_count
             except Exception as img_exc:
