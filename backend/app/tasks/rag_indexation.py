@@ -1,6 +1,5 @@
 """Celery task for RAG indexation — processes course PDFs into vector embeddings."""
 
-import os
 import time
 import uuid
 from pathlib import Path
@@ -244,7 +243,10 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
     )
 
     async def _run_pipeline():
-        openai_key = os.getenv("OPENAI_API_KEY", "")
+        from app.infrastructure.config.settings import settings
+
+        # Resolves a tenant-set override (encrypted) or the env fallback.
+        openai_key = settings.openai_api_key
         if not openai_key:
             raise ValueError("OPENAI_API_KEY not set — cannot generate embeddings")
 

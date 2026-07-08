@@ -11,11 +11,16 @@ from app.api.deps import get_db as get_db_session
 from app.api.deps_local_auth import AuthenticatedUser, require_role
 from app.domain.models.audit_log import AdminAction, AuditLog
 from app.domain.models.user import UserRole
+from app.domain.services.api_key_service import PROVIDERS, ApiKeyService
 from app.domain.services.platform_settings_service import PlatformSettingsService
 from app.infrastructure.config.platform_defaults import CATEGORIES
 from app.infrastructure.config.settings import settings as app_settings
+from app.infrastructure.crypto import EncryptionNotConfigured
 
 from .schemas.settings import (
+    ApiKeysResponse,
+    ApiKeyStatus,
+    ApiKeyUpdateRequest,
     BrandingConfig,
     PublicSettingsResponse,
     ResetCategoryResponse,
@@ -140,3 +145,57 @@ async def reset_category(
         )
         await db.commit()
     return ResetCategoryResponse(category=category, reset_count=count)
+
+
+@router.get("/admin/settings/api-keys", response_model=ApiKeysResponse)
+async def get_api_keys(
+    admin: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+):
+    """Per-provider key status. Never returns the key value itself."""
+    return ApiKeysResponse(
+        encryption_configured=bool(app_settings.encryption_key),
+        providers=[ApiKeyStatus(**s) for s in ApiKeyService.status()],
+    )
+
+
+@router.post("/admin/settings/api-keys", response_model=ApiKeysResponse)
+async def update_api_key(
+    body: ApiKeyUpdateRequest,
+    admin: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Set (non-empty value) or clear (empty value) a tenant provider key.
+
+    The plaintext key is never logged — the audit entry records the provider
+    and the action only.
+    """
+    provider = body.provider
+    if provider not in PROVIDERS:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Unknown provider '{provider}'")
+    value = body.value.strip()
+    try:
+        if value:
+            ApiKeyService.set(provider, value)
+            action_taken = "set"
+        else:
+            ApiKeyService.clear(provider)
+            action_taken = "clear"
+    except EncryptionNotConfigured:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "ENCRYPTION_KEY is not configured on this instance; cannot store API keys.",
+        )
+    db.add(
+        AuditLog(
+            id=uuid.uuid4(),
+            admin_id=uuid.UUID(admin.id),
+            admin_email=admin.email or admin.phone_number or "unknown",
+            action=AdminAction.update_api_key,
+            details=json.dumps({"provider": provider, "action": action_taken}),
+        )
+    )
+    await db.commit()
+    return ApiKeysResponse(
+        encryption_configured=bool(app_settings.encryption_key),
+        providers=[ApiKeyStatus(**s) for s in ApiKeyService.status()],
+    )

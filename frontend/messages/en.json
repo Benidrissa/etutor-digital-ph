@@ -1031,6 +1031,23 @@
     "syllabus": {
       "title": "Syllabus"
     },
+    "apiKeys": {
+      "title": "API Keys",
+      "description": "Set your own provider API keys. They are encrypted on this instance, are never shared with your reseller, and take precedence over any keys provided at setup.",
+      "updateKeys": "Update Keys",
+      "set": "Set",
+      "notSet": "Not set",
+      "provisioned": "Provisioned",
+      "undecryptable": "Re-enter key",
+      "configured": "(configured)",
+      "blankHint": "Leave a field blank to keep its current key. Enter a new value to replace it.",
+      "encryptionMissing": "Encryption is not configured on this instance, so keys cannot be stored. Contact your administrator.",
+      "loadError": "Failed to load API key status.",
+      "saveError": "Failed to save API keys.",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel"
+    },
     "settings": {
       "title": "Platform Settings",
       "subtitle": "Configure platform-wide parameters",
