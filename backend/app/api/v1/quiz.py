@@ -710,6 +710,29 @@ async def generate_summative_assessment(
                 assessment_id=str(cached.id),
                 country_fallback=cached.country_fallback,
             )
+            # Country fallback: serve the other country's assessment now while the
+            # country-specific version generates in the background (parity with the
+            # old sync path and the unit-quiz endpoint). Summative is module-scoped
+            # (no module_unit_id), so key the dedup guard by module to avoid
+            # collisions across modules with the same language/level/country.
+            if cached.country_fallback and await should_dispatch_country_backfill(
+                f"summative:{module_uuid}",
+                "quiz",
+                request.language,
+                request.level,
+                request.country,
+            ):
+                from app.tasks.content_generation import generate_country_content_task
+
+                generate_country_content_task.delay(
+                    module_id=str(module_uuid),
+                    unit_id="summative",
+                    content_type="quiz",
+                    language=request.language,
+                    level=request.level,
+                    country=request.country,
+                    user_id=str(current_user.id) if current_user else "",
+                )
             # Strip correct_answer/explanation — learners must never receive the
             # answer key before submission (#2550).
             public = to_public_quiz_response(cached)
