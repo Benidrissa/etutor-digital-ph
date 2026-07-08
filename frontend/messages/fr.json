@@ -1031,6 +1031,23 @@
     "syllabus": {
       "title": "Syllabus"
     },
+    "apiKeys": {
+      "title": "Clés API",
+      "description": "Définissez vos propres clés API de fournisseurs. Elles sont chiffrées sur cette instance, ne sont jamais partagées avec votre revendeur et priment sur toute clé fournie à l'installation.",
+      "updateKeys": "Modifier les clés",
+      "set": "Définie",
+      "notSet": "Non définie",
+      "provisioned": "Fournie",
+      "undecryptable": "Ressaisir la clé",
+      "configured": "(configurée)",
+      "blankHint": "Laissez un champ vide pour conserver sa clé actuelle. Saisissez une nouvelle valeur pour la remplacer.",
+      "encryptionMissing": "Le chiffrement n'est pas configuré sur cette instance ; les clés ne peuvent pas être enregistrées. Contactez votre administrateur.",
+      "loadError": "Échec du chargement de l'état des clés API.",
+      "saveError": "Échec de l'enregistrement des clés API.",
+      "save": "Enregistrer",
+      "saving": "Enregistrement…",
+      "cancel": "Annuler"
+    },
     "settings": {
       "title": "Paramètres de la plateforme",
       "subtitle": "Configurer les paramètres globaux",

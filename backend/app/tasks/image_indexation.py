@@ -1,7 +1,6 @@
 """Celery task for re-indexing course PDF images independently from text indexation."""
 
 import asyncio
-import os
 import uuid
 from pathlib import Path
 
@@ -123,8 +122,10 @@ def reindex_course_images(
     async def _run_image_pipeline():
         from app.ai.rag.embeddings import EmbeddingService
         from app.ai.rag.pipeline import RAGPipeline
+        from app.infrastructure.config.settings import settings
 
-        openai_key = os.getenv("OPENAI_API_KEY", "")
+        # Resolves a tenant-set override (encrypted) or the env fallback.
+        openai_key = settings.openai_api_key
         embedding_service = EmbeddingService(api_key=openai_key) if openai_key else None
 
         if embedding_service:

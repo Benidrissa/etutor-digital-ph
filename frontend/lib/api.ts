@@ -981,6 +981,39 @@ export async function resetSettingCategory(
   });
 }
 
+// ── Provider API keys (tenant-set, encrypted) ─────────────────
+
+export interface ApiKeyStatus {
+  provider: string;
+  // A tenant-set key that decrypts cleanly.
+  is_set: boolean;
+  // Stored but undecryptable (ENCRYPTION_KEY rotated) — re-enter needed.
+  decrypt_error: boolean;
+  // No tenant key set, but a reseller-provisioned env key is present.
+  env_fallback: boolean;
+}
+
+export interface ApiKeysResponse {
+  // Whether ENCRYPTION_KEY is configured; when false, updates are refused.
+  encryption_configured: boolean;
+  providers: ApiKeyStatus[];
+}
+
+export async function getApiKeys(): Promise<ApiKeysResponse> {
+  return apiFetch<ApiKeysResponse>("/api/v1/admin/settings/api-keys");
+}
+
+/** Set (non-empty value) or clear (empty value) one provider key. */
+export async function updateApiKey(
+  provider: string,
+  value: string,
+): Promise<ApiKeysResponse> {
+  return apiFetch<ApiKeysResponse>("/api/v1/admin/settings/api-keys", {
+    method: "POST",
+    body: JSON.stringify({ provider, value }),
+  });
+}
+
 // ── Curricula API ─────────────────────────────────────────────
 
 export interface CurriculumPublicResponse {
