@@ -83,6 +83,32 @@ async def test_cache_hit_returns_200_without_answer_key():
     task.delay.assert_not_called()
 
 
+async def test_cache_hit_country_fallback_dispatches_backfill():
+    """Serving another country's cached assessment backfills the learner's own."""
+    fallback = _cached_quiz()
+    fallback.country_fallback = True
+    quiz_service = MagicMock()
+    quiz_service.get_cached_quiz = AsyncMock(return_value=fallback)
+
+    with (
+        patch(
+            "app.api.v1.quiz.should_dispatch_country_backfill",
+            new=AsyncMock(return_value=True),
+        ),
+        patch("app.tasks.content_generation.generate_country_content_task") as backfill,
+    ):
+        resp = await generate_summative_assessment(
+            _request(), quiz_service, MagicMock(), MagicMock()
+        )
+
+    assert resp.status_code == status.HTTP_200_OK
+    backfill.delay.assert_called_once()
+    kwargs = backfill.delay.call_args.kwargs
+    assert kwargs["unit_id"] == "summative"
+    assert kwargs["content_type"] == "quiz"
+    assert kwargs["country"] == "CI"
+
+
 async def test_cache_miss_dispatches_task_and_returns_202():
     """An uncached assessment is generated in the background; the client polls."""
     quiz_service = MagicMock()
