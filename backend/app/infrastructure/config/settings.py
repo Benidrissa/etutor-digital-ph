@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -48,15 +49,21 @@ class Settings(BaseSettings):
     # the OTP locally and short-circuits the HTTP call — for dev/staging.
     whatsapp_stub_mode: bool = False
 
+    # Provider API keys. These fields hold the reseller-provisioned env value;
+    # they are the *fallback*. A tenant admin can override any of them at
+    # runtime via /admin/settings (encrypted, see api_key_service). Read the
+    # effective key through the same-named property below, never the _env field.
+    encryption_key: str = Field(default="", validation_alias="ENCRYPTION_KEY")
+
     # Anthropic Claude API
-    anthropic_api_key: str = ""
+    anthropic_api_key_env: str = Field(default="", validation_alias="ANTHROPIC_API_KEY")
 
     # Pluggable content-generation providers (#2443). The active model is the
     # admin-selected `ai-model-content` setting; the registry resolves it to a
     # provider by prefix. Keys are server-side only (never exposed to clients).
     # Kimi K2.6 is served over Moonshot's OpenAI-compatible endpoint — keep prod
     # use gated on a data-residency compliance review (China-based servers).
-    moonshot_api_key: str = ""
+    moonshot_api_key_env: str = Field(default="", validation_alias="MOONSHOT_API_KEY")
     moonshot_base_url: str = "https://api.moonshot.ai/v1"
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
@@ -89,10 +96,45 @@ class Settings(BaseSettings):
     gemini_openai_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
     # Google AI (Gemini TTS + figure vision)
-    google_api_key: str = ""
+    google_api_key_env: str = Field(default="", validation_alias="GOOGLE_API_KEY")
 
     # OpenAI Embeddings
-    openai_api_key: str = ""
+    openai_api_key_env: str = Field(default="", validation_alias="OPENAI_API_KEY")
+
+    # Resend (transactional email). Not yet wired to a consumer (SMTP relay is
+    # the active path); stored so tenant admins can set it ahead of integration.
+    resend_api_key_env: str = Field(default="", validation_alias="RESEND_API_KEY")
+
+    # Effective provider keys — tenant override (encrypted, decrypted on read)
+    # takes precedence over the reseller-provisioned *_env fallback above. All
+    # existing consumers read these properties as `settings.<provider>_api_key`.
+    @property
+    def anthropic_api_key(self) -> str:
+        return self._effective_api_key("anthropic")
+
+    @property
+    def openai_api_key(self) -> str:
+        return self._effective_api_key("openai")
+
+    @property
+    def google_api_key(self) -> str:
+        return self._effective_api_key("google")
+
+    @property
+    def moonshot_api_key(self) -> str:
+        return self._effective_api_key("moonshot")
+
+    @property
+    def resend_api_key(self) -> str:
+        return self._effective_api_key("resend")
+
+    @staticmethod
+    def _effective_api_key(provider: str) -> str:
+        # Lazy import avoids a circular import at module load
+        # (api_key_service imports this settings singleton).
+        from app.domain.services.api_key_service import ApiKeyService
+
+        return ApiKeyService.effective(provider)
 
     # Embeddings
     embedding_model: str = "text-embedding-3-small"
