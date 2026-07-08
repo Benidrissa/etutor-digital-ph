@@ -438,6 +438,22 @@ class RAGPipeline:
         if not donor_images:
             return None
 
+        # Don't clone from a donor whose binaries are missing (a dead reference,
+        # #2605) — unlike the per-image path this shortcut skips extraction, so
+        # there are no fresh bytes to heal with. Probe the donor set's liveness
+        # (a dead donor resource is dead wholesale, sharing one collection
+        # prefix); if it's gone, fall back to full extraction, which re-uploads.
+        probe = donor_images[0]
+        if not await S3StorageService().object_exists(probe.storage_key):
+            logger.warning(
+                "Donor images point at missing storage — falling back to extraction",
+                new_source=new_source,
+                donor_storage_key=probe.storage_key,
+                file_hash=file_hash,
+                content_hash=content_hash,
+            )
+            return None
+
         cloned = await self._clone_source_images(
             donor_images, new_source, new_rag_collection_id, new_resource_id, session
         )
@@ -637,17 +653,66 @@ class RAGPipeline:
                 )
                 donor_img = donor_result.scalar_one_or_none()
                 if donor_img is not None:
+                    # A donor row can point at a binary that was never persisted
+                    # (a dead reference — #2605). Cloning its storage_key would
+                    # inherit the dead path and silently drop the bytes we just
+                    # extracted. Verify the donor object exists first; if it is
+                    # missing, upload our freshly-extracted bytes to our own key
+                    # and heal the reference — while still reusing the donor's
+                    # expensive computed fields (embedding, captions) so no
+                    # OpenAI/vision call is made.
+                    if await storage.object_exists(donor_img.storage_key):
+                        healed_key = donor_img.storage_key
+                        healed_url = donor_img.storage_url
+                        healed_key_fr = donor_img.storage_key_fr
+                        healed_url_fr = donor_img.storage_url_fr
+                    else:
+                        try:
+                            healed_url = await storage.upload_bytes(
+                                key=key,
+                                data=img.image_bytes,
+                                content_type="image/webp",
+                            )
+                        except Exception as exc:
+                            logger.warning(
+                                "Failed to re-upload bytes while healing dead donor, skipping",
+                                key=key,
+                                source=source,
+                                error=str(exc),
+                            )
+                            continue
+                        healed_key = key
+                        # The donor's FR variant is almost certainly dead too;
+                        # keep it only if its object actually exists, else drop
+                        # to default (the data endpoint falls back to it).
+                        if donor_img.storage_key_fr and await storage.object_exists(
+                            donor_img.storage_key_fr
+                        ):
+                            healed_key_fr = donor_img.storage_key_fr
+                            healed_url_fr = donor_img.storage_url_fr
+                        else:
+                            healed_key_fr = None
+                            healed_url_fr = None
+                        logger.info(
+                            "Healed dead donor image by re-uploading extracted bytes",
+                            source=source,
+                            image_hash=img.image_hash,
+                            figure=img.figure_number,
+                            key=key,
+                        )
                     cloned_img = SourceImage(
                         id=uuid4(),
                         source=source,
                         rag_collection_id=rag_collection_id,
                         course_resource_id=course_resource_id,
                         image_hash=img.image_hash,
-                        # Reuse all expensive computed fields from donor:
-                        storage_key=donor_img.storage_key,
-                        storage_url=donor_img.storage_url,
-                        storage_key_fr=donor_img.storage_key_fr,
-                        storage_url_fr=donor_img.storage_url_fr,
+                        # Reuse all expensive computed fields from donor (storage
+                        # key/url is the donor's when alive, or our fresh upload
+                        # when the donor was dead — see #2605 heal above):
+                        storage_key=healed_key,
+                        storage_url=healed_url,
+                        storage_key_fr=healed_key_fr,
+                        storage_url_fr=healed_url_fr,
                         embedding=donor_img.embedding,
                         caption_fr=donor_img.caption_fr,
                         caption_en=donor_img.caption_en,
