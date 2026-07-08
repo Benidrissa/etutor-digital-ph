@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import uuid
 from pathlib import Path
 
 import structlog
@@ -155,6 +156,33 @@ def reindex_course_images(
                 rag_collection_id=rag_collection_id,
             )
 
+        # pdf stem → course_resource_id so re-extracted images populate the FK
+        # and can serve as donors for future courses (#2580). No hashes are passed
+        # into process_pdf_images: this is an explicit re-extract, so it must NOT
+        # short-circuit to a cached donor.
+        resource_id_by_stem: dict[str, uuid.UUID] = {}
+        from sqlalchemy import create_engine, select
+        from sqlalchemy.orm import Session
+
+        from app.domain.models.course_resource import CourseResource
+        from app.infrastructure.config.settings import settings
+
+        _eng = create_engine(settings.database_url_sync, pool_pre_ping=True)
+        try:
+            with Session(_eng) as _sess:
+                for rid, fname, parent in _sess.execute(
+                    select(
+                        CourseResource.id,
+                        CourseResource.filename,
+                        CourseResource.parent_filename,
+                    ).where(CourseResource.course_id == uuid.UUID(course_id))
+                ).all():
+                    for stem in (fname, parent):
+                        if stem:
+                            resource_id_by_stem.setdefault(stem, rid)
+        finally:
+            _eng.dispose()
+
         for i, pdf_path in enumerate(pdf_files):
             extract_progress = 5 + int(((i + 0.5) / len(pdf_files)) * 90)
             self.update_state(
@@ -171,10 +199,14 @@ def reindex_course_images(
             )
 
             try:
+                resource_id = resource_id_by_stem.get(pdf_path.stem) or resource_id_by_stem.get(
+                    pdf_path.name
+                )
                 image_count = await pipeline.process_pdf_images(
                     pdf_path=str(pdf_path),
                     source=rag_collection_id,
                     rag_collection_id=rag_collection_id,
+                    course_resource_id=resource_id,
                 )
                 total_images += image_count
                 logger.info(
