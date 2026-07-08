@@ -122,9 +122,7 @@ async def get_image_data(
         # dress it up as a 502 (which pollutes monitoring and triggers proxy
         # retries). Any other status from MinIO (5xx, auth, …) stays a 502.
         if exc.response.status_code == status.HTTP_404_NOT_FOUND:
-            logger.warning(
-                "Source image object missing in storage", image_id=str(image_id)
-            )
+            logger.warning("Source image object missing in storage", image_id=str(image_id))
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Image binary not found in storage",

@@ -208,9 +208,7 @@ class TestDataEndpointStorageFailures:
 
     async def test_transport_error_stays_502(self):
         row = _FakeImageRow(storage_url="https://minio/timeout.webp", storage_url_fr=None)
-        async with _override_db(row), _patched_httpx_transport_error(
-            httpx.ConnectTimeout("boom")
-        ):
+        async with _override_db(row), _patched_httpx_transport_error(httpx.ConnectTimeout("boom")):
             resp = await _get_data(f"/api/v1/source-images/{row.id}/data")
         assert resp.status_code == 502
         assert resp.json()["detail"] == "Image not available from storage"
