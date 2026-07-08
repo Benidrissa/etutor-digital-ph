@@ -203,13 +203,45 @@ class TestCloneImagesFromDonor:
 
         linker = MagicMock()
         linker.link_images_to_chunks = AsyncMock(return_value=5)
-        with patch("app.ai.rag.pipeline.ImageLinker", return_value=linker):
+        with (
+            patch("app.ai.rag.pipeline.ImageLinker", return_value=linker),
+            # Donor binaries present → clone shortcut proceeds (#2605).
+            patch(
+                "app.ai.rag.pipeline.S3StorageService.object_exists",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+        ):
             result = await self.pipeline.clone_images_from_donor(
                 "src", "rag", uuid.uuid4(), "fh", "ch", session
             )
 
         assert result == 2
         linker.link_images_to_chunks.assert_awaited_once_with("src", session)
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_donor_storage_missing(self):
+        """Dead donor (binaries gone) → skip clone, fall back to extraction (#2605)."""
+        donors = [_donor_image(), _donor_image()]
+        self.pipeline._find_donor_images = AsyncMock(return_value=donors)
+        self.pipeline._clone_source_images = AsyncMock(return_value=2)
+        session = MagicMock()
+
+        with (
+            patch("app.ai.rag.pipeline.ImageLinker") as Linker,
+            patch(
+                "app.ai.rag.pipeline.S3StorageService.object_exists",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+        ):
+            result = await self.pipeline.clone_images_from_donor(
+                "src", "rag", uuid.uuid4(), "fh", "ch", session
+            )
+
+        assert result is None  # caller runs full extraction instead
+        self.pipeline._clone_source_images.assert_not_called()
+        Linker.assert_not_called()
 
 
 class TestProcessImagesShortCircuit:

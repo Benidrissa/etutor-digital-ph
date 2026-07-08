@@ -497,6 +497,17 @@ class TestRAGPipelineDedupTranslation:
 
         shutil.rmtree(self.temp_dir)
 
+    @pytest.fixture(autouse=True)
+    def _donor_binary_present(self):
+        # These tests exercise the *clone* path, so the donor's binary must be
+        # present — otherwise the #2605 heal path kicks in and re-uploads.
+        with patch(
+            "app.ai.rag.pipeline.S3StorageService.object_exists",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            yield
+
     def _donor(self, **overrides):
         from app.domain.models.source_image import SourceImage
 
@@ -968,3 +979,139 @@ class TestClearResourceChunks:
 
         deleted = await self.pipeline._clear_resource_chunks("c", uuid.uuid4(), session)
         assert deleted == 0
+
+
+def _donor_source_image(**overrides):
+    """A donor SourceImage stand-in for the per-image donor-clone path (#2605)."""
+    donor = MagicMock()
+    defaults = {
+        "image_hash": "hash-xyz",
+        "storage_key": "source-images/deadcoll/book/9_Fig.webp",
+        "storage_url": "http://minio/bucket/source-images/deadcoll/book/9_Fig.webp",
+        "storage_key_fr": "source-images/deadcoll/book/9_Fig.fr.svg",
+        "storage_url_fr": "http://minio/bucket/source-images/deadcoll/book/9_Fig.fr.svg",
+        "embedding": [0.5] * 1536,
+        "caption": "Figure 1",
+        "caption_fr": "Figure 1 fr",
+        "caption_en": "Figure 1 en",
+        "alt_text_fr": "alt fr",
+        "alt_text_en": "alt en",
+        "figure_kind": "photo",
+        "image_type": "diagram",
+        "width": 640,
+        "height": 480,
+        "file_size_bytes": 999,
+        "original_format": "png",
+        "format": "webp",
+    }
+    defaults.update(overrides)
+    for k, v in defaults.items():
+        setattr(donor, k, v)
+    return donor
+
+
+class TestPerImageDonorCloneHealsDeadReference:
+    """The per-image donor clone must verify the donor object exists (#2605)."""
+
+    def setup_method(self):
+        self.embedding_service = AsyncMock()
+        self.embedding_service.generate_embedding = AsyncMock(return_value=[0.1] * 1536)
+        self.pipeline = RAGPipeline(self.embedding_service)
+        self.temp_dir = tempfile.mkdtemp()
+
+    def teardown_method(self):
+        import shutil
+
+        shutil.rmtree(self.temp_dir)
+
+    def _session_returning(self, donor):
+        session = AsyncMock()
+        session.add = MagicMock()
+        session.commit = AsyncMock()
+        exec_result = MagicMock()
+        exec_result.scalar_one_or_none = MagicMock(return_value=donor)
+        session.execute = AsyncMock(return_value=exec_result)
+        return session
+
+    @pytest.mark.asyncio
+    async def test_live_donor_is_cloned_without_reupload(self):
+        pdf_path = Path(self.temp_dir) / "Donaldson_test.pdf"
+        pdf_path.touch()
+        img = _make_extracted_image(image_hash="hash-xyz")
+        donor = _donor_source_image()
+        session = self._session_returning(donor)
+
+        with (
+            patch(
+                "app.ai.rag.pipeline.PDFImageExtractor.extract_images_from_pdf",
+                return_value=[img],
+            ),
+            patch(
+                "app.ai.rag.pipeline.S3StorageService.object_exists",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.ai.rag.pipeline.S3StorageService.upload_bytes",
+                new_callable=AsyncMock,
+            ) as m_upload,
+            patch.object(
+                ImageLinker, "link_images_to_chunks", new_callable=AsyncMock, return_value=0
+            ),
+        ):
+            count = await self.pipeline.process_pdf_images(
+                pdf_path=str(pdf_path), source="donaldson", session=session
+            )
+
+        assert count == 1
+        m_upload.assert_not_called()  # live donor → reuse its storage, no upload
+        stored = session.add.call_args[0][0]
+        assert stored.storage_key == donor.storage_key
+        assert stored.storage_url == donor.storage_url
+        self.embedding_service.generate_embedding.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_dead_donor_is_healed_by_reuploading_bytes(self):
+        pdf_path = Path(self.temp_dir) / "Donaldson_test.pdf"
+        pdf_path.touch()
+        img = _make_extracted_image(image_hash="hash-xyz")
+        donor = _donor_source_image()
+        session = self._session_returning(donor)
+        fresh_url = "http://minio/bucket/source-images/donaldson/Donaldson test/1_Figure_1.webp"
+        fresh_key = "source-images/donaldson/Donaldson test/1_Figure_1.webp"
+
+        with (
+            patch(
+                "app.ai.rag.pipeline.PDFImageExtractor.extract_images_from_pdf",
+                return_value=[img],
+            ),
+            # donor storage_key AND storage_key_fr both missing
+            patch(
+                "app.ai.rag.pipeline.S3StorageService.object_exists",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "app.ai.rag.pipeline.S3StorageService.upload_bytes",
+                new_callable=AsyncMock,
+                return_value=fresh_url,
+            ) as m_upload,
+            patch.object(
+                ImageLinker, "link_images_to_chunks", new_callable=AsyncMock, return_value=0
+            ),
+        ):
+            count = await self.pipeline.process_pdf_images(
+                pdf_path=str(pdf_path), source="donaldson", session=session
+            )
+
+        assert count == 1
+        m_upload.assert_awaited_once()
+        up = m_upload.await_args.kwargs
+        assert up["key"] == fresh_key  # our own key, not the donor's dead one
+        assert up["data"] == img.image_bytes
+        stored = session.add.call_args[0][0]
+        assert stored.storage_key == fresh_key
+        assert stored.storage_url == fresh_url
+        assert stored.storage_key_fr is None  # donor FR variant also dead → dropped
+        assert stored.embedding == donor.embedding  # reused → no OpenAI call
+        self.embedding_service.generate_embedding.assert_not_called()
