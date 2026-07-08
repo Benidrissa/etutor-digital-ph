@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { Timer, AlertTriangle, Loader2, PlayCircle } from 'lucide-react';
 
@@ -12,12 +12,14 @@ import { SummativeAssessmentResults } from './summative-assessment-results';
 import { SummativeReviewSection } from './summative-review-section';
 import type {
   SummativeQuiz,
+  SummativeGeneratingResponse,
   SummativeAssessmentResponse,
   SummativeAssessmentAttemptCheck
 } from '@/lib/api';
 import {
   generateSummativeAssessment,
-  canAttemptSummativeAssessment
+  canAttemptSummativeAssessment,
+  apiFetch
 } from '@/lib/api';
 import { useSettings } from '@/lib/settings-context';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
@@ -57,7 +59,14 @@ export function SummativeAssessmentContainer({
   const [result, setResult] = useState<SummativeAssessmentResponse | null>(null);
   const [attemptCheck, setAttemptCheck] = useState<SummativeAssessmentAttemptCheck | null>(null);
   const [error, setError] = useState<string | null>(null);
-  
+
+  // Poll timer for background summative generation (#2608). Held in a ref so we
+  // can cancel it on unmount and avoid setState-after-unmount.
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+  }, []);
+
   // Check if user can attempt assessment
   useEffect(() => {
     const checkEligibility = async () => {
@@ -80,22 +89,78 @@ export function SummativeAssessmentContainer({
     checkEligibility();
   }, [moduleId, t]);
   
+  const isGenerating = (
+    data: SummativeQuiz | SummativeGeneratingResponse,
+  ): data is SummativeGeneratingResponse =>
+    !!data && 'status' in data && data.status === 'generating';
+
+  const failGeneration = () => {
+    setError(t('failedToGenerateAssessment'));
+    setState('ready');
+  };
+
+  // Summative generation runs as a background task (#2608): the initial POST
+  // returns 202 with a task_id, we poll /content/status until it completes, then
+  // re-request to fetch the now-cached assessment. Mirrors quiz-container.tsx.
+  const POLL_INTERVAL_MS = 3000;
+  const POLL_TIMEOUT_MS = 3 * 60 * 1000;
+
+  const pollGeneration = (taskId: string, deadline: number) => {
+    pollTimerRef.current = setTimeout(async () => {
+      if (Date.now() > deadline) {
+        failGeneration();
+        return;
+      }
+      try {
+        const statusRes = await apiFetch<{ status: string; error?: string }>(
+          `/api/v1/content/status/${taskId}`,
+        );
+        if (statusRes.status === 'complete') {
+          const data = await generateSummativeAssessment({
+            module_id: moduleId,
+            language,
+            country: resolvedCountry,
+            level: resolvedLevel,
+          });
+          // The completion re-request can still briefly return a 202 envelope
+          // before the row is visible — keep polling rather than crashing.
+          if (isGenerating(data)) {
+            pollGeneration(taskId, deadline);
+            return;
+          }
+          setAssessment(data);
+          setState('taking');
+        } else if (statusRes.status === 'failed') {
+          failGeneration();
+        } else {
+          pollGeneration(taskId, deadline);
+        }
+      } catch (err) {
+        console.error('Failed to poll assessment generation:', err);
+        failGeneration();
+      }
+    }, POLL_INTERVAL_MS);
+  };
+
   const handleStartAssessment = async () => {
     try {
       setState('loading');
-      const assessmentData = await generateSummativeAssessment({
+      const data = await generateSummativeAssessment({
         module_id: moduleId,
         language,
         country: resolvedCountry,
         level: resolvedLevel,
       });
-      
-      setAssessment(assessmentData);
-      setState('taking');
+
+      if (isGenerating(data)) {
+        pollGeneration(data.task_id, Date.now() + POLL_TIMEOUT_MS);
+      } else {
+        setAssessment(data);
+        setState('taking');
+      }
     } catch (error) {
       console.error('Failed to generate assessment:', error);
-      setError(t('failedToGenerateAssessment'));
-      setState('ready');
+      failGeneration();
     }
   };
   

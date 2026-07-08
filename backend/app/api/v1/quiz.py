@@ -652,9 +652,10 @@ async def submit_quiz_attempt(
 
 @router.post(
     "/summative/generate",
-    response_model=PublicQuizResponse,
     status_code=status.HTTP_200_OK,
     responses={
+        200: {"model": PublicQuizResponse, "description": "Cached assessment returned"},
+        202: {"description": "Generation dispatched, poll /api/v1/content/status/{task_id}"},
         400: {"model": ErrorResponse, "description": "Invalid request"},
         404: {"model": ErrorResponse, "description": "Module not found"},
         500: {"model": ErrorResponse, "description": "Generation failed"},
@@ -665,56 +666,107 @@ async def generate_summative_assessment(
     quiz_service: QuizService = Depends(get_quiz_service),
     session: AsyncSession = Depends(get_db),
     current_user: AuthenticatedUser = Depends(require_active_subscription),
-) -> PublicQuizResponse:
+) -> JSONResponse:
     """
-    Generate or retrieve cached summative assessment content.
+    Generate or retrieve a summative assessment (end-of-module test).
 
-    Summative assessments are end-of-module tests with specific requirements:
-    - Exactly 20 questions covering all units in the module
-    - 80% passing score required
-    - No immediate feedback during assessment
-    - Results shown only at the end
-    - Can gate progression to next module
-
+    Summative assessments have specific requirements: 20 questions covering all
+    module units, 80% passing score, no immediate feedback, and progression gating.
     The payload never includes correct answers or explanations — grading is
     server-side only (#2550).
+
+    **Cache HIT (200):** returns the cached assessment immediately.
+
+    **Cache MISS (202):** summative generation spans every module unit and takes
+    ~60-90s — longer than the frontend proxy timeout, which previously severed the
+    request and surfaced a false "generation failed" while the backend quietly
+    completed and cached the quiz (#2608). Generation is now dispatched to a
+    background Celery task and the response is:
+    ```json
+    {"status": "generating", "task_id": "<uuid>", "message": "Content is being generated"}
+    ```
+    Poll `GET /api/v1/content/status/{task_id}`; when status is "complete", re-POST
+    to this endpoint to get the cached assessment.
     """
     try:
         module_uuid = await _resolve_module_uuid(request.module_id, session)
+        num_questions = SettingsCache.instance().get("quiz-summative-questions-count", 20)
 
+        # Fast path: serve immediately if already cached (incl. country fallback).
+        cached = await quiz_service.get_cached_quiz(
+            module_id=module_uuid,
+            unit_id="summative",
+            language=request.language,
+            country=request.country,
+            level=request.level,
+            session=session,
+        )
+        if cached is not None:
+            _summative_passing = SettingsCache.instance().get("quiz-passing-score", 80.0)
+            if cached.content.passing_score != _summative_passing:
+                cached.content.passing_score = _summative_passing
+            logger.info(
+                "Summative assessment served from cache",
+                assessment_id=str(cached.id),
+                country_fallback=cached.country_fallback,
+            )
+            # Country fallback: serve the other country's assessment now while the
+            # country-specific version generates in the background (parity with the
+            # old sync path and the unit-quiz endpoint). Summative is module-scoped
+            # (no module_unit_id), so key the dedup guard by module to avoid
+            # collisions across modules with the same language/level/country.
+            if cached.country_fallback and await should_dispatch_country_backfill(
+                f"summative:{module_uuid}",
+                "quiz",
+                request.language,
+                request.level,
+                request.country,
+            ):
+                from app.tasks.content_generation import generate_country_content_task
+
+                generate_country_content_task.delay(
+                    module_id=str(module_uuid),
+                    unit_id="summative",
+                    content_type="quiz",
+                    language=request.language,
+                    level=request.level,
+                    country=request.country,
+                    user_id=str(current_user.id) if current_user else "",
+                )
+            # Strip correct_answer/explanation — learners must never receive the
+            # answer key before submission (#2550).
+            public = to_public_quiz_response(cached)
+            return JSONResponse(
+                content=public.model_dump(mode="json"),
+                status_code=status.HTTP_200_OK,
+            )
+
+        # Cache miss: dispatch background generation and let the client poll.
+        task = generate_quiz_task.delay(
+            str(module_uuid),
+            "summative",
+            request.language,
+            request.country,
+            request.level,
+            num_questions,
+        )
+        await mark_task_dispatched(task.id)
         logger.info(
-            "Summative assessment generation requested",
+            "Summative assessment generation dispatched",
             module_id=str(module_uuid),
             language=request.language,
             country=request.country,
             level=request.level,
+            task_id=task.id,
         )
-
-        # Generate summative assessment with specific parameters
-        quiz_response = await quiz_service.get_or_generate_quiz(
-            module_id=module_uuid,
-            unit_id="summative",  # Special unit ID for summative assessments
-            language=request.language,
-            country=request.country,
-            level=request.level,
-            num_questions=SettingsCache.instance().get("quiz-summative-questions-count", 20),
-            session=session,
+        return JSONResponse(
+            content={
+                "status": "generating",
+                "task_id": task.id,
+                "message": "Content is being generated",
+            },
+            status_code=status.HTTP_202_ACCEPTED,
         )
-
-        # Ensure it's marked as summative in the content
-        _summative_passing = SettingsCache.instance().get("quiz-passing-score", 80.0)
-        if quiz_response.content.passing_score != _summative_passing:
-            quiz_response.content.passing_score = _summative_passing
-
-        logger.info(
-            "Summative assessment generation completed",
-            assessment_id=str(quiz_response.id),
-            cached=quiz_response.cached,
-        )
-
-        # Strip correct_answer/explanation — learners must never receive the
-        # answer key before submission (#2550)
-        return to_public_quiz_response(quiz_response)
 
     except ValueError as e:
         logger.warning("Invalid summative assessment request", error=str(e))
