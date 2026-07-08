@@ -75,6 +75,14 @@ class SourceImage(Base):
     figure_kind: Mapped[str | None] = mapped_column(Text, nullable=True)
     semantic_tags: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     image_hash: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    # FK back to the originating course_resource (#2580) so the RAG pipeline can
+    # find a donor course by content identity (file_hash / content_hash) and clone
+    # images without re-running PDF extraction. Mirrors document_chunks.course_resource_id.
+    course_resource_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("course_resources.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     linked_chunks: Mapped[list[SourceImageChunk]] = relationship(

@@ -303,6 +303,156 @@ class RAGPipeline:
         await session.commit()
         return cloned
 
+    async def _find_donor_images(
+        self,
+        file_hash: str | None,
+        content_hash: str | None,
+        new_resource_id: UUID,
+        session: AsyncSession,
+    ) -> list[SourceImage]:
+        """Return source images from exactly ONE other course resource that shares
+        this PDF's identity, so they can be cloned instead of re-extracted (#2580).
+
+        Prefers an exact ``file_hash`` match (identical bytes ⇒ identical images) and
+        falls back to ``content_hash`` (same extracted text). Restricts to a single
+        donor resource — mirroring _find_donor_chunks (#2542) — so a PDF indexed in
+        several prior courses doesn't multiply the cloned image count.
+
+        Uses ix_source_images_course_resource_id + the course_resources hash indexes.
+        """
+        from app.domain.models.course_resource import CourseResource
+
+        async def _pick_donor(column: Any, value: str | None) -> UUID | None:
+            if not value:
+                return None
+            # Only resources that actually produced images are candidates (the join
+            # drops donors with zero source_images), and we pick one deterministically
+            # (lowest id) so a re-run clones from the same donor.
+            return (
+                await session.execute(
+                    select(SourceImage.course_resource_id)
+                    .join(
+                        CourseResource,
+                        CourseResource.id == SourceImage.course_resource_id,
+                    )
+                    .where(
+                        column == value,
+                        SourceImage.course_resource_id != new_resource_id,
+                        SourceImage.course_resource_id.is_not(None),
+                    )
+                    .order_by(SourceImage.course_resource_id)
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+
+        donor_resource_id = await _pick_donor(CourseResource.file_hash, file_hash)
+        if donor_resource_id is None:
+            donor_resource_id = await _pick_donor(CourseResource.content_hash, content_hash)
+        if donor_resource_id is None:
+            return []
+
+        result = await session.execute(
+            select(SourceImage)
+            .where(SourceImage.course_resource_id == donor_resource_id)
+            .order_by(SourceImage.page_number, SourceImage.figure_number)
+        )
+        return list(result.scalars().all())
+
+    async def _clone_source_images(
+        self,
+        donor_images: list[SourceImage],
+        new_source: str,
+        new_rag_collection_id: str | None,
+        new_resource_id: UUID,
+        session: AsyncSession,
+    ) -> int:
+        """Insert copies of donor_images under the new source/resource without
+        re-extracting the PDF or re-running MinIO/OpenAI/Claude (#2580).
+
+        Reuses exactly the fields the per-image image_hash donor path reuses. Since
+        the donor images come from the same PDF (matched by file/content hash), their
+        positional metadata is identical to what re-extraction would produce, so it is
+        copied verbatim.
+        """
+        cloned = 0
+        for donor in donor_images:
+            session.add(
+                SourceImage(
+                    id=uuid4(),
+                    source=new_source,
+                    rag_collection_id=new_rag_collection_id,
+                    course_resource_id=new_resource_id,
+                    image_hash=donor.image_hash,
+                    # Expensive computed fields reused from donor:
+                    storage_key=donor.storage_key,
+                    storage_url=donor.storage_url,
+                    storage_key_fr=donor.storage_key_fr,
+                    storage_url_fr=donor.storage_url_fr,
+                    embedding=donor.embedding,
+                    caption_fr=donor.caption_fr,
+                    caption_en=donor.caption_en,
+                    alt_text_fr=donor.alt_text_fr,
+                    alt_text_en=donor.alt_text_en,
+                    figure_kind=donor.figure_kind,
+                    image_type=donor.image_type,
+                    width=donor.width,
+                    height=donor.height,
+                    file_size_bytes=donor.file_size_bytes,
+                    original_format=donor.original_format,
+                    format=donor.format,
+                    semantic_tags=donor.semantic_tags,
+                    # Positional metadata (same PDF ⇒ same positions):
+                    page_number=donor.page_number,
+                    chapter=donor.chapter,
+                    section=donor.section,
+                    surrounding_text=donor.surrounding_text,
+                    figure_number=donor.figure_number,
+                    caption=donor.caption,
+                    attribution=donor.attribution,
+                )
+            )
+            cloned += 1
+        await session.commit()
+        return cloned
+
+    async def clone_images_from_donor(
+        self,
+        new_source: str,
+        new_rag_collection_id: str | None,
+        new_resource_id: UUID,
+        file_hash: str | None,
+        content_hash: str | None,
+        session: AsyncSession,
+    ) -> int | None:
+        """Clone source images from a donor course sharing this PDF's identity,
+        skipping PDF extraction entirely (#2580).
+
+        Returns the number of images cloned, or ``None`` when no donor exists — the
+        caller should then run the full extraction pipeline. The image linker is
+        idempotent (it dedupes against existing pairs, #2106) so it is safe to call
+        this once per resource even when several share the same source.
+        """
+        donor_images = await self._find_donor_images(
+            file_hash, content_hash, new_resource_id, session
+        )
+        if not donor_images:
+            return None
+
+        cloned = await self._clone_source_images(
+            donor_images, new_source, new_rag_collection_id, new_resource_id, session
+        )
+        links = await ImageLinker().link_images_to_chunks(new_source, session)
+        await session.commit()
+        logger.info(
+            "Cloned source images from donor — skipped PDF image extraction",
+            source=new_source,
+            cloned=cloned,
+            links=links,
+            file_hash=file_hash,
+            content_hash=content_hash,
+        )
+        return cloned
+
     async def process_pdf_images(
         self,
         pdf_path: str | Path,
@@ -310,6 +460,9 @@ class RAGPipeline:
         rag_collection_id: str | None = None,
         session: AsyncSession | None = None,
         progress_callback: "Callable[[int, int, str | None], None] | None" = None,
+        course_resource_id: UUID | None = None,
+        file_hash: str | None = None,
+        content_hash: str | None = None,
     ) -> int:
         """Extract images from a PDF, upload to MinIO, store metadata, and link to chunks.
 
@@ -323,6 +476,11 @@ class RAGPipeline:
                 task wrapper to update task.meta so the UI can show live progress
                 instead of freezing at the start of the image-extraction phase
                 (#2029).
+            course_resource_id: FK back to ``course_resources.id``. When set (with a
+                file_hash / content_hash) the pipeline clones a donor course's images
+                and skips PDF extraction entirely (#2580).
+            file_hash: SHA-256 of the raw PDF bytes — the exact image-cache key.
+            content_hash: SHA-256 of the extracted text — fallback image-cache key.
 
         Returns:
             Number of images processed and stored.
@@ -335,11 +493,25 @@ class RAGPipeline:
         if not session_provided:
             async with async_session_factory() as session:
                 return await self._process_images(
-                    pdf_path, source, rag_collection_id, session, progress_callback
+                    pdf_path,
+                    source,
+                    rag_collection_id,
+                    session,
+                    progress_callback,
+                    course_resource_id,
+                    file_hash,
+                    content_hash,
                 )
         else:
             return await self._process_images(
-                pdf_path, source, rag_collection_id, session, progress_callback
+                pdf_path,
+                source,
+                rag_collection_id,
+                session,
+                progress_callback,
+                course_resource_id,
+                file_hash,
+                content_hash,
             )
 
     async def _translate_figure_locales(
@@ -402,8 +574,38 @@ class RAGPipeline:
         rag_collection_id: str | None,
         session: AsyncSession,
         progress_callback: "Callable[[int, int, str | None], None] | None" = None,
+        course_resource_id: UUID | None = None,
+        file_hash: str | None = None,
+        content_hash: str | None = None,
     ) -> int:
         """Internal: extract, upload, store, and link images."""
+        # Idempotent re-index (#2580): drop this resource's existing images first so a
+        # re-run replaces rather than appends (neither the clone nor the extract path
+        # below dedupes). DB rows only — cloned rows point at the donor's MinIO object,
+        # which must survive. Scoped by course_resource_id so siblings are untouched.
+        if course_resource_id is not None:
+            await self.clear_resource_images(source, course_resource_id, session)
+
+        # Pre-extraction cache (#2580): if another course already indexed this same
+        # PDF (by file_hash, else content_hash), clone its images and skip PyMuPDF
+        # extraction + WebP re-encode entirely — mirroring the text donor-clone.
+        if course_resource_id is not None and (file_hash or content_hash):
+            cached = await self.clone_images_from_donor(
+                new_source=source,
+                new_rag_collection_id=rag_collection_id,
+                new_resource_id=course_resource_id,
+                file_hash=file_hash,
+                content_hash=content_hash,
+                session=session,
+            )
+            if cached is not None:
+                if progress_callback is not None:
+                    try:
+                        progress_callback(cached, cached, None)
+                    except Exception as cb_exc:
+                        logger.debug("image progress_callback raised, ignoring", error=str(cb_exc))
+                return cached
+
         extractor = PDFImageExtractor(pdf_path.parent)
         images = extractor.extract_images_from_pdf(pdf_path, source)
 
@@ -439,6 +641,7 @@ class RAGPipeline:
                         id=uuid4(),
                         source=source,
                         rag_collection_id=rag_collection_id,
+                        course_resource_id=course_resource_id,
                         image_hash=img.image_hash,
                         # Reuse all expensive computed fields from donor:
                         storage_key=donor_img.storage_key,
@@ -644,6 +847,7 @@ class RAGPipeline:
                 id=uuid4(),
                 source=source,
                 rag_collection_id=rag_collection_id,
+                course_resource_id=course_resource_id,
                 image_hash=img.image_hash,
                 figure_number=img.figure_number,
                 caption=img.caption,
@@ -740,6 +944,46 @@ class RAGPipeline:
 
         logger.info("Cleared source images", source=source, count=deleted_count)
         return deleted_count
+
+    async def clear_resource_images(
+        self,
+        source: str,
+        course_resource_id: UUID,
+        session: AsyncSession | None = None,
+    ) -> int:
+        """Delete one resource's source_images rows, scoped by (source, course_resource_id).
+
+        Makes DB-path image cloning idempotent (#2580): callers clear a resource's
+        existing images before cloning fresh ones, so a re-run replaces rather than
+        appends. Deletes only DB rows — never the MinIO objects — because cloned rows
+        reference the *donor's* storage object, which must survive. Scoped strictly by
+        ``course_resource_id`` so sibling resources in the same collection are untouched.
+        """
+        session_provided = session is not None
+        if not session_provided:
+            async with async_session_factory() as session:
+                return await self._clear_resource_images(source, course_resource_id, session)
+        return await self._clear_resource_images(source, course_resource_id, session)
+
+    async def _clear_resource_images(
+        self, source: str, course_resource_id: UUID, session: AsyncSession
+    ) -> int:
+        result = await session.execute(
+            delete(SourceImage).where(
+                SourceImage.source == source,
+                SourceImage.course_resource_id == course_resource_id,
+            )
+        )
+        await session.commit()
+        deleted = result.rowcount or 0
+        if deleted:
+            logger.info(
+                "Cleared resource images before re-index (DB rows only)",
+                source=source,
+                course_resource_id=str(course_resource_id),
+                count=deleted,
+            )
+        return deleted
 
     async def process_resources_directory(
         self, resources_dir: str | Path, source_mappings: dict[str, str] | None = None
