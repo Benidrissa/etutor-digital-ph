@@ -1033,6 +1033,7 @@
     },
     "apiKeys": {
       "title": "API Keys",
+      "pageSubtitle": "Manage this instance's provider API keys.",
       "description": "Set your own provider API keys. They are encrypted on this instance, are never shared with your reseller, and take precedence over any keys provided at setup.",
       "updateKeys": "Update Keys",
       "set": "Set",
