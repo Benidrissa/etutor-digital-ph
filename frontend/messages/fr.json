@@ -1033,6 +1033,7 @@
     },
     "apiKeys": {
       "title": "Clés API",
+      "pageSubtitle": "Gérez les clés API des fournisseurs de cette instance.",
       "description": "Définissez vos propres clés API de fournisseurs. Elles sont chiffrées sur cette instance, ne sont jamais partagées avec votre revendeur et priment sur toute clé fournie à l'installation.",
       "updateKeys": "Modifier les clés",
       "set": "Définie",
