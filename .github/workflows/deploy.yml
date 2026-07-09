@@ -270,6 +270,7 @@ jobs:
           [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ] && missing="$missing ANTHROPIC_API_KEY"
           [ -z "${{ secrets.OPENAI_API_KEY }}" ] && missing="$missing OPENAI_API_KEY"
           [ -z "${{ secrets.GOOGLE_API_KEY }}" ] && missing="$missing GOOGLE_API_KEY"
+          [ -z "${{ secrets.ENCRYPTION_KEY }}" ] && missing="$missing ENCRYPTION_KEY"
           if [ -n "$missing" ]; then
             echo "::error::Missing required secrets:$missing"
             exit 1
@@ -287,6 +288,9 @@ jobs:
           MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          # Symmetric key for tenant-supplied provider API keys (#2612). MUST
+          # stay stable — rotating it makes stored tenant keys undecryptable.
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
           NEXT_PUBLIC_POSTHOG_KEY: ${{ secrets.NEXT_PUBLIC_POSTHOG_KEY }}
@@ -305,7 +309,7 @@ jobs:
           username: deploy
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           command_timeout: 30m
-          envs: GHCR_USER,GHCR_TOKEN,POSTGRES_PASSWORD,ANTHROPIC_API_KEY,MOONSHOT_API_KEY,OPENAI_API_KEY,GOOGLE_API_KEY,SENTRY_DSN,NEXT_PUBLIC_SENTRY_DSN,NEXT_PUBLIC_POSTHOG_KEY,NEXT_PUBLIC_POSTHOG_HOST,SMS_RELAY_API_KEY,SMS_RELAY_TRUSTED_SENDERS,MINIO_ACCESS_KEY,MINIO_SECRET_KEY,HEYGEN_API_KEY,DEPLOY_SHA
+          envs: GHCR_USER,GHCR_TOKEN,POSTGRES_PASSWORD,ANTHROPIC_API_KEY,MOONSHOT_API_KEY,OPENAI_API_KEY,GOOGLE_API_KEY,SENTRY_DSN,NEXT_PUBLIC_SENTRY_DSN,NEXT_PUBLIC_POSTHOG_KEY,NEXT_PUBLIC_POSTHOG_HOST,SMS_RELAY_API_KEY,SMS_RELAY_TRUSTED_SENDERS,MINIO_ACCESS_KEY,MINIO_SECRET_KEY,HEYGEN_API_KEY,ENCRYPTION_KEY,DEPLOY_SHA
           script: |
             set -e
             cd ~/etutor
@@ -326,6 +330,7 @@ jobs:
               "MOONSHOT_API_KEY=${MOONSHOT_API_KEY}" \
               "OPENAI_API_KEY=${OPENAI_API_KEY}" \
               "GOOGLE_API_KEY=${GOOGLE_API_KEY}" \
+              "ENCRYPTION_KEY=${ENCRYPTION_KEY}" \
               "SENTRY_DSN=${SENTRY_DSN}" \
               "NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN}" \
               "NEXT_PUBLIC_POSTHOG_KEY=${NEXT_PUBLIC_POSTHOG_KEY}" \
@@ -472,6 +477,7 @@ jobs:
           [ -z "${{ secrets.PROD_ANTHROPIC_API_KEY || secrets.ANTHROPIC_API_KEY }}" ] && missing="$missing ANTHROPIC_API_KEY (set PROD_ANTHROPIC_API_KEY or fallback ANTHROPIC_API_KEY)"
           [ -z "${{ secrets.PROD_OPENAI_API_KEY || secrets.OPENAI_API_KEY }}" ] && missing="$missing OPENAI_API_KEY (set PROD_OPENAI_API_KEY or fallback OPENAI_API_KEY)"
           [ -z "${{ secrets.PROD_GOOGLE_API_KEY || secrets.GOOGLE_API_KEY }}" ] && missing="$missing GOOGLE_API_KEY (set PROD_GOOGLE_API_KEY or fallback GOOGLE_API_KEY)"
+          [ -z "${{ secrets.PROD_ENCRYPTION_KEY || secrets.ENCRYPTION_KEY }}" ] && missing="$missing ENCRYPTION_KEY (set PROD_ENCRYPTION_KEY or fallback ENCRYPTION_KEY)"
           if [ -n "$missing" ]; then
             echo "::error::Missing required production secrets:$missing"
             exit 1
@@ -499,6 +505,9 @@ jobs:
           MOONSHOT_API_KEY: ${{ secrets.PROD_MOONSHOT_API_KEY || secrets.MOONSHOT_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.PROD_OPENAI_API_KEY || secrets.OPENAI_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.PROD_GOOGLE_API_KEY || secrets.GOOGLE_API_KEY }}
+          # Symmetric key for tenant-supplied provider API keys (#2612). MUST
+          # stay stable — rotating it makes stored tenant keys undecryptable.
+          ENCRYPTION_KEY: ${{ secrets.PROD_ENCRYPTION_KEY || secrets.ENCRYPTION_KEY }}
           SENTRY_DSN: ${{ secrets.PROD_SENTRY_DSN || secrets.SENTRY_DSN }}
           NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.PROD_NEXT_PUBLIC_SENTRY_DSN || secrets.NEXT_PUBLIC_SENTRY_DSN }}
           NEXT_PUBLIC_POSTHOG_KEY: ${{ secrets.PROD_NEXT_PUBLIC_POSTHOG_KEY || secrets.NEXT_PUBLIC_POSTHOG_KEY }}
@@ -518,7 +527,7 @@ jobs:
           # (staging DEPLOY_SSH_KEY won't have access to 94.250.201.110).
           key: ${{ secrets.PROD_DEPLOY_SSH_KEY }}
           command_timeout: 30m
-          envs: GHCR_USER,GHCR_TOKEN,POSTGRES_PASSWORD,ANTHROPIC_API_KEY,MOONSHOT_API_KEY,OPENAI_API_KEY,GOOGLE_API_KEY,SENTRY_DSN,NEXT_PUBLIC_SENTRY_DSN,NEXT_PUBLIC_POSTHOG_KEY,NEXT_PUBLIC_POSTHOG_HOST,SMS_RELAY_API_KEY,SMS_RELAY_TRUSTED_SENDERS,MINIO_ACCESS_KEY,MINIO_SECRET_KEY,HEYGEN_API_KEY,DEPLOY_SHA
+          envs: GHCR_USER,GHCR_TOKEN,POSTGRES_PASSWORD,ANTHROPIC_API_KEY,MOONSHOT_API_KEY,OPENAI_API_KEY,GOOGLE_API_KEY,SENTRY_DSN,NEXT_PUBLIC_SENTRY_DSN,NEXT_PUBLIC_POSTHOG_KEY,NEXT_PUBLIC_POSTHOG_HOST,SMS_RELAY_API_KEY,SMS_RELAY_TRUSTED_SENDERS,MINIO_ACCESS_KEY,MINIO_SECRET_KEY,HEYGEN_API_KEY,ENCRYPTION_KEY,DEPLOY_SHA
           script: |
             set -e
             cd ~/etutor
@@ -532,6 +541,7 @@ jobs:
               "MOONSHOT_API_KEY=${MOONSHOT_API_KEY}" \
               "OPENAI_API_KEY=${OPENAI_API_KEY}" \
               "GOOGLE_API_KEY=${GOOGLE_API_KEY}" \
+              "ENCRYPTION_KEY=${ENCRYPTION_KEY}" \
               "SENTRY_DSN=${SENTRY_DSN}" \
               "NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN}" \
               "NEXT_PUBLIC_POSTHOG_KEY=${NEXT_PUBLIC_POSTHOG_KEY}" \
