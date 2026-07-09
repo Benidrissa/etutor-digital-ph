@@ -26,7 +26,10 @@ const DAY_IN_SECONDS = 24 * 60 * 60;
 // v8 drops api-responses-v7 entries that may hold answer-bearing summative
 // quiz GET bodies cached before the server started stripping the answer
 // key (#2550).
-const CACHE_VERSION = "v8-summative-safe";
+// v9 drops the pre-#2622 shell so existing PWA clients pick up the moved
+// API Keys route (/admin/api-keys) + admin nav change instead of the stale
+// cached settings-embedded card (#2625).
+const CACHE_VERSION = "v9-api-keys-tab";
 
 const OFFLINE_FALLBACK_URL = "/offline.html";
 
