@@ -89,6 +89,9 @@ services:
       HEYGEN_API_KEY: ${HEYGEN_API_KEY}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      # Symmetric key for tenant-supplied provider API keys (#2612). MUST stay
+      # stable — rotating it makes stored tenant keys undecryptable.
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       SENTRY_DSN: ${SENTRY_DSN}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://minio:9000}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
@@ -201,6 +204,9 @@ services:
       HEYGEN_API_KEY: ${HEYGEN_API_KEY}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      # Symmetric key for tenant-supplied provider API keys (#2612). MUST stay
+      # stable — rotating it makes stored tenant keys undecryptable.
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       SENTRY_DSN: ${SENTRY_DSN}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://minio:9000}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
