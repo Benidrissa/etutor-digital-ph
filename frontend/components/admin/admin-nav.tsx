@@ -46,7 +46,14 @@ export function AdminNav() {
       0,
     ) ?? 0;
 
-  const allItems = [
+  const allItems: {
+    href: string;
+    label: string;
+    adminOnly: boolean;
+    badge: number;
+    // When set, the item shows only for these roles (overrides adminOnly).
+    roles?: string[];
+  }[] = [
     { href: `/${locale}/admin/users`, label: t("users.title"), adminOnly: false, badge: 0 },
     { href: `/${locale}/admin/courses`, label: t("courses.title"), adminOnly: false, badge: 0 },
     { href: `/${locale}/admin/quality`, label: t("quality.title"), adminOnly: false, badge: attentionCount },
@@ -55,13 +62,17 @@ export function AdminNav() {
     { href: `/${locale}/admin/groups`, label: t("groups.title"), adminOnly: false, badge: 0 },
     { href: `/${locale}/admin/taxonomy`, label: t("taxonomy.title"), adminOnly: false, badge: 0 },
     { href: `/${locale}/admin/syllabus`, label: t("syllabus.title"), adminOnly: false, badge: 0 },
+    // API keys: tenant owner (admin) + delegated staff (sub_admin), not expert.
+    { href: `/${locale}/admin/api-keys`, label: t("apiKeys.title"), adminOnly: false, badge: 0, roles: ["admin", "sub_admin"] },
     { href: `/${locale}/admin/settings`, label: t("settings.title"), adminOnly: true, badge: 0 },
     { href: `/${locale}/admin/analytics`, label: t("analytics.title"), adminOnly: false, badge: 0 },
     { href: `/${locale}/admin/audit-logs`, label: t("auditLog.title"), adminOnly: false, badge: 0 },
     { href: `/${locale}/admin/payments`, label: t("payments.title"), adminOnly: false, badge: 0 },
   ];
 
-  const items = allItems.filter((item) => !item.adminOnly || role === "admin");
+  const items = allItems.filter((item) =>
+    item.roles ? role !== null && item.roles.includes(role) : !item.adminOnly || role === "admin"
+  );
 
   return (
     <nav className="flex gap-1 border-b px-4 md:px-6 overflow-x-auto" aria-label="Admin navigation">

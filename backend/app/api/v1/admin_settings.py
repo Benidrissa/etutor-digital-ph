@@ -149,9 +149,13 @@ async def reset_category(
 
 @router.get("/admin/settings/api-keys", response_model=ApiKeysResponse)
 async def get_api_keys(
-    admin: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    staff: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
 ):
-    """Per-provider key status. Never returns the key value itself."""
+    """Per-provider key status. Never returns the key value itself.
+
+    Available to admin (tenant owner) and sub_admin (delegated staff); the rest
+    of platform settings remains admin-only.
+    """
     return ApiKeysResponse(
         encryption_configured=bool(app_settings.encryption_key),
         providers=[ApiKeyStatus(**s) for s in ApiKeyService.status()],
@@ -161,13 +165,14 @@ async def get_api_keys(
 @router.post("/admin/settings/api-keys", response_model=ApiKeysResponse)
 async def update_api_key(
     body: ApiKeyUpdateRequest,
-    admin: AuthenticatedUser = Depends(require_role(UserRole.admin)),
+    staff: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db: AsyncSession = Depends(get_db_session),
 ):
     """Set (non-empty value) or clear (empty value) a tenant provider key.
 
-    The plaintext key is never logged — the audit entry records the provider
-    and the action only.
+    Available to admin (tenant owner) and sub_admin (delegated staff). The
+    plaintext key is never logged — the audit entry records the provider,
+    the action, and which staff member made the change.
     """
     provider = body.provider
     if provider not in PROVIDERS:
@@ -188,8 +193,8 @@ async def update_api_key(
     db.add(
         AuditLog(
             id=uuid.uuid4(),
-            admin_id=uuid.UUID(admin.id),
-            admin_email=admin.email or admin.phone_number or "unknown",
+            admin_id=uuid.UUID(staff.id),
+            admin_email=staff.email or staff.phone_number or "unknown",
             action=AdminAction.update_api_key,
             details=json.dumps({"provider": provider, "action": action_taken}),
         )
