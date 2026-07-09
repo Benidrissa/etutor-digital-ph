@@ -11,7 +11,6 @@ import {
   type PlatformSetting,
 } from "@/lib/api";
 import { PromptEditor } from "./prompt-editor";
-import { ApiKeysCard } from "./api-keys-card";
 
 // Category labels for tabs + section headings. Localized via the
 // `AdminSettingsCategories` namespace; new categories emitted by the
@@ -90,9 +89,6 @@ export function SettingsClient() {
           {toast}
         </div>
       )}
-      <div className="mb-6">
-        <ApiKeysCard />
-      </div>
       <div className="mb-6 flex flex-wrap gap-2">
         {categories.map((cat) => (
           <button key={cat.category} onClick={() => setActiveTab(cat.category)}
