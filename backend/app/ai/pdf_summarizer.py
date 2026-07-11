@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import asyncio
 import math
-import os
 from dataclasses import dataclass
 
 import structlog
@@ -286,10 +285,15 @@ def _get_summarizer_client(model: str):
     instead of falling into the Anthropic branch and 404ing. The gpt-* and
     claude-* paths keep their proven direct clients.
     """
+    # Keys resolve through ApiKeyService (tenant override, then env) like every
+    # other consumer — raw os.getenv bypassed tenant keys and always billed the
+    # platform account (#2629).
+    from app.infrastructure.config.settings import get_settings
+
     if model.startswith("gpt-"):
         from openai import AsyncOpenAI
 
-        return AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+        return AsyncOpenAI(api_key=get_settings().openai_api_key)
     if model.startswith(("moonshot-", "kimi-")):
         from app.ai.providers import resolve_provider
 
@@ -297,7 +301,7 @@ def _get_summarizer_client(model: str):
     import anthropic
 
     return anthropic.AsyncAnthropic(
-        api_key=os.getenv("ANTHROPIC_API_KEY", ""),
+        api_key=get_settings().anthropic_api_key,
         timeout=600.0,
     )
 
@@ -309,34 +313,88 @@ async def _call_model(
     user_content: str,
     max_tokens: int,
 ) -> str:
-    """Call the appropriate model API and return the text response."""
+    """Call the appropriate model API and return the text response.
+
+    The gpt-* and claude-* branches use raw clients that bypass the registry's
+    recording wrapper, so they record ledger usage explicitly; the
+    moonshot/kimi branch is an LLMProvider and records automatically (#2629).
+    """
+    from app.domain.services.ai_usage_service import record_ai_usage
+
     if model.startswith("gpt-"):
-        response = await client.chat.completions.create(
+        try:
+            response = await client.chat.completions.create(
+                model=model,
+                max_completion_tokens=max_tokens,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_content},
+                ],
+            )
+        except Exception as exc:
+            await record_ai_usage(
+                provider="openai",
+                model=model,
+                operation="chat",
+                feature="syllabus_summary",
+                success=False,
+                error_type=type(exc).__name__,
+            )
+            raise
+        usage = getattr(response, "usage", None)
+        await record_ai_usage(
+            provider="openai",
             model=model,
-            max_completion_tokens=max_tokens,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_content},
-            ],
+            operation="chat",
+            usage={
+                "input_tokens": getattr(usage, "prompt_tokens", None),
+                "output_tokens": getattr(usage, "completion_tokens", None),
+            },
+            feature="syllabus_summary",
         )
         return response.choices[0].message.content.strip()
     if model.startswith(("moonshot-", "kimi-")):
         # client is an LLMProvider here (see _get_summarizer_client).
-        result = await client.complete(
+        from app.ai.usage_context import ai_usage_context
+
+        with ai_usage_context("syllabus_summary", only_if_unset=True):
+            result = await client.complete(
+                system=system,
+                messages=[{"role": "user", "content": user_content}],
+                max_tokens=max_tokens,
+                temperature=1.0,
+                model=model,
+            )
+        return result.text.strip()
+    try:
+        async with client.messages.stream(
+            model=model,
+            max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": user_content}],
-            max_tokens=max_tokens,
-            temperature=1.0,
+        ) as stream:
+            message = await stream.get_final_message()
+    except Exception as exc:
+        await record_ai_usage(
+            provider="anthropic",
             model=model,
+            operation="chat",
+            feature="syllabus_summary",
+            success=False,
+            error_type=type(exc).__name__,
         )
-        return result.text.strip()
-    async with client.messages.stream(
+        raise
+    usage = getattr(message, "usage", None)
+    await record_ai_usage(
+        provider="anthropic",
         model=model,
-        max_tokens=max_tokens,
-        system=system,
-        messages=[{"role": "user", "content": user_content}],
-    ) as stream:
-        message = await stream.get_final_message()
+        operation="chat",
+        usage={
+            "input_tokens": getattr(usage, "input_tokens", None),
+            "output_tokens": getattr(usage, "output_tokens", None),
+        },
+        feature="syllabus_summary",
+    )
     return message.content[0].text.strip()
 
 
@@ -592,14 +650,17 @@ async def summarize_pdf_for_syllabus(
     (single-call mode). Falls back to the legacy multi-chunk path when explicit
     chunk_size_chars is provided (backward compatibility).
     """
+    from app.infrastructure.config.settings import get_settings
+
+    _settings = get_settings()
     if model.startswith("gpt-"):
-        api_key = os.getenv("OPENAI_API_KEY", "")
+        api_key = _settings.openai_api_key
         key_var = "OPENAI_API_KEY"
     elif model.startswith(("moonshot-", "kimi-")):
-        api_key = os.getenv("MOONSHOT_API_KEY", "")
+        api_key = _settings.moonshot_api_key
         key_var = "MOONSHOT_API_KEY"
     else:
-        api_key = os.getenv("ANTHROPIC_API_KEY", "")
+        api_key = _settings.anthropic_api_key
         key_var = "ANTHROPIC_API_KEY"
 
     if not api_key:

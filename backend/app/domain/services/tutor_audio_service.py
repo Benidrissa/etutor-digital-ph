@@ -168,12 +168,34 @@ class TutorAudioService:
             level=2,
         )
 
-        response = await client.audio.speech.create(
+        from app.domain.models.ai_usage_event import FEATURE_TUTOR_TTS
+        from app.domain.services.ai_usage_service import record_ai_usage
+
+        try:
+            response = await client.audio.speech.create(
+                model=settings.openai_tts_model,
+                voice=voice,
+                input=text[:4000],
+                instructions=instructions,
+                response_format="opus",
+            )
+        except Exception as exc:
+            await record_ai_usage(
+                provider="openai",
+                model=settings.openai_tts_model,
+                operation="tts",
+                characters=len(text[:4000]),
+                feature=FEATURE_TUTOR_TTS,
+                success=False,
+                error_type=type(exc).__name__,
+            )
+            raise
+        await record_ai_usage(
+            provider="openai",
             model=settings.openai_tts_model,
-            voice=voice,
-            input=text[:4000],
-            instructions=instructions,
-            response_format="opus",
+            operation="tts",
+            characters=len(text[:4000]),
+            feature=FEATURE_TUTOR_TTS,
         )
         audio_bytes = response.content
         if not audio_bytes:

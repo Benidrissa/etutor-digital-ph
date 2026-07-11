@@ -5,12 +5,23 @@ import uuid
 import structlog
 from celery import Task
 
+from app.ai.usage_context import set_ai_context
 from app.tasks.celery_app import celery_app
 
 logger = structlog.get_logger(__name__)
 
 POLL_SOFT_LIMIT = 300
 POLL_HARD_LIMIT = 320
+
+
+def _safe_uuid(value: str | uuid.UUID | None) -> uuid.UUID | None:
+    """Parse task-arg ids (strings over the wire) for ledger attribution."""
+    if value is None:
+        return None
+    try:
+        return uuid.UUID(str(value))
+    except (ValueError, TypeError):
+        return None
 
 
 class CallbackTask(Task):
@@ -249,6 +260,7 @@ def generate_lesson_task(
     )
 
     async def _run() -> dict:
+        set_ai_context("lesson_generation", module_id=_safe_uuid(module_id))  # ledger (#2629)
         engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         try:
@@ -358,6 +370,7 @@ def generate_case_study_task(
     )
 
     async def _run() -> dict:
+        set_ai_context("case_study", module_id=_safe_uuid(module_id))  # ledger (#2629)
         engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         try:
@@ -465,6 +478,7 @@ def generate_quiz_task(
     )
 
     async def _run() -> dict:
+        set_ai_context("quiz_generation", module_id=_safe_uuid(module_id))  # ledger (#2629)
         engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         try:
@@ -585,6 +599,7 @@ def generate_country_content_task(
     )
 
     async def _run() -> dict:
+        set_ai_context(user_id=_safe_uuid(user_id), module_id=_safe_uuid(module_id))  # #2629
         engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         try:
@@ -802,6 +817,7 @@ def generate_flashcard_task(
     )
 
     async def _run() -> dict:
+        set_ai_context("flashcard_generation", module_id=_safe_uuid(module_id))  # ledger (#2629)
         engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         try:
@@ -896,6 +912,7 @@ def generate_lesson_image(
     )
 
     async def _run() -> dict:
+        set_ai_context("image_generation", module_id=_safe_uuid(module_id))  # ledger (#2629)
         engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         try:
@@ -998,6 +1015,7 @@ def generate_lesson_audio(
     )
 
     async def _run() -> dict:
+        set_ai_context("lesson_audio", module_id=_safe_uuid(module_id))  # ledger (#2629)
         engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         try:
@@ -1096,6 +1114,7 @@ def generate_lesson_video(
     )
 
     async def _run() -> dict:
+        set_ai_context("lesson_generation", module_id=_safe_uuid(module_id))  # ledger (#2629)
         engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         try:
@@ -1265,6 +1284,10 @@ def prefetch_next_lessons_task(
         return result.scalar_one_or_none() is not None
 
     async def _run() -> dict:
+        # ledger (#2629)
+        set_ai_context(
+            "lesson_generation", user_id=_safe_uuid(user_id), module_id=_safe_uuid(module_id)
+        )
         engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         prefetched: list[str] = []
@@ -1498,6 +1521,7 @@ def backfill_missing_image_data(self) -> dict:
     logger.info("Starting backfill of missing image binary data", task_id=self.request.id)
 
     async def _run() -> dict:
+        set_ai_context("image_generation")  # ledger (#2629)
         engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         processed = 0
@@ -1655,6 +1679,7 @@ def pregenerate_on_publish_task(self, course_id: str) -> dict:
         return result.scalar_one_or_none() is not None
 
     async def _run() -> dict:
+        set_ai_context("lesson_generation", course_id=_safe_uuid(course_id))  # ledger (#2629)
         engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         generated: list[str] = []

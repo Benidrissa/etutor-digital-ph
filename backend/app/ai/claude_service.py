@@ -10,10 +10,26 @@ import structlog
 
 from app.ai.providers import resolve_provider
 from app.ai.providers.base import LLMProvider
+from app.ai.usage_context import ai_usage_context
 from app.domain.services.platform_settings_service import SettingsCache
 from app.infrastructure.config.settings import get_settings
 
 logger = structlog.get_logger()
+
+# content_type → ledger feature (#2629). Unlisted types pass through verbatim —
+# the feature column is a free-form string.
+_CONTENT_TYPE_FEATURES = {
+    "lesson": "lesson_generation",
+    "quiz": "quiz_generation",
+    "flashcard": "flashcard_generation",
+    "flashcards": "flashcard_generation",
+    "case_study": "case_study",
+    "case": "case_study",
+}
+
+
+def _feature_for_content_type(content_type: str) -> str:
+    return _CONTENT_TYPE_FEATURES.get(content_type, content_type)
 
 
 @dataclass
@@ -176,14 +192,17 @@ class ClaudeService:
                 )
 
             try:
-                result = await self._provider().complete(
-                    system=system_prompt,
-                    messages=[{"role": "user", "content": effective_user_message}],
-                    max_tokens=self._max_tokens,
-                    temperature=self._temperature,
-                    model=self._model,
-                    json_object=True,
-                )
+                # Ledger fallback: attribute to the content_type when no caller
+                # set a more specific feature (#2629).
+                with ai_usage_context(_feature_for_content_type(content_type), only_if_unset=True):
+                    result = await self._provider().complete(
+                        system=system_prompt,
+                        messages=[{"role": "user", "content": effective_user_message}],
+                        max_tokens=self._max_tokens,
+                        temperature=self._temperature,
+                        model=self._model,
+                        json_object=True,
+                    )
             except Exception as e:
                 logger.error(
                     "Failed to generate structured content",
@@ -323,14 +342,15 @@ class ClaudeService:
                 # Provider resolved from eff_model (the auditor may run a
                 # different model than the content path). Non-Anthropic providers
                 # strip cache_control from the system blocks automatically.
-                result = await resolve_provider(eff_model).complete(
-                    system=system_blocks,
-                    messages=[{"role": "user", "content": effective_user_message}],
-                    max_tokens=eff_max_tokens,
-                    temperature=eff_temperature,
-                    model=eff_model,
-                    json_object=True,
-                )
+                with ai_usage_context(_feature_for_content_type(content_type), only_if_unset=True):
+                    result = await resolve_provider(eff_model).complete(
+                        system=system_blocks,
+                        messages=[{"role": "user", "content": effective_user_message}],
+                        max_tokens=eff_max_tokens,
+                        temperature=eff_temperature,
+                        model=eff_model,
+                        json_object=True,
+                    )
             except Exception as e:
                 logger.error(
                     "Cached structured call failed",
