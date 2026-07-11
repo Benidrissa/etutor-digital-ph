@@ -3,11 +3,15 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import ARRAY, Float, ForeignKey, Integer, String, Text
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from .base import Base
+
+# OpenAI text-embedding-3-small dimensionality; matches vector(1536) in the DB.
+EMBEDDING_DIM = 1536
 
 
 class DocumentChunk(Base):
@@ -25,7 +29,12 @@ class DocumentChunk(Base):
 
     # Content and embedding
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[list[float] | None] = mapped_column(ARRAY(Float), nullable=True)
+    # Native pgvector column (migration 105). Stored/queried as vector(1536) so
+    # the HNSW cosine index serves `ORDER BY embedding <=> :q`. Writes accept a
+    # plain list[float]; reads return a numpy array (pgvector result processor).
+    embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(EMBEDDING_DIM), nullable=True
+    )
 
     # Source metadata
     source: Mapped[str] = mapped_column(String, nullable=False)  # "donaldson", "triola", etc.

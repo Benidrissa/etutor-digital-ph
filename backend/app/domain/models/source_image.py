@@ -6,11 +6,15 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
-from sqlalchemy import ARRAY, Float, ForeignKey, Index, Integer, String, Text, func
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.models.base import Base
+
+# OpenAI text-embedding-3-small dimensionality; matches vector(1536) in the DB.
+EMBEDDING_DIM = 1536
 
 if TYPE_CHECKING:
     from app.domain.models.document_chunk import DocumentChunk
@@ -69,7 +73,10 @@ class SourceImage(Base):
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)
     file_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     original_format: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    embedding: Mapped[list[float] | None] = mapped_column(ARRAY(Float), nullable=True)
+    # Native pgvector column (migration 105); see DocumentChunk.embedding.
+    embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(EMBEDDING_DIM), nullable=True
+    )
     alt_text_fr: Mapped[str | None] = mapped_column(Text, nullable=True)
     alt_text_en: Mapped[str | None] = mapped_column(Text, nullable=True)
     figure_kind: Mapped[str | None] = mapped_column(Text, nullable=True)

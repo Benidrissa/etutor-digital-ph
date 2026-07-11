@@ -48,6 +48,81 @@ class SearchResult:
         return {"chunk": self.chunk.to_dict(), "similarity_score": self.similarity_score}
 
 
+# Retrieval diversity + budget (#2635). The generator used to send a blind
+# top_k=8 chunks; with 512-token windows and 50-token overlap, adjacent chunks
+# are frequently near-duplicates, so the slate carried only ~3-4 distinct
+# passages — wasted prompt input and thin grounding. We now over-fetch a
+# candidate pool via the HNSW index, MMR-select a distinct slate, then pack it
+# to a token budget.
+_MMR_LAMBDA = 0.7
+_DEFAULT_CONTEXT_TOKEN_BUDGET = 3500
+# HNSW recall knob: higher ef_search trades latency for recall, which matters
+# because the source/level filters are applied alongside the index scan.
+_HNSW_EF_SEARCH = 100
+
+
+def _candidate_k(top_k: int) -> int:
+    """Over-fetch size feeding MMR: enough surplus to prune near-duplicates."""
+    return max(top_k * 2, top_k + 8)
+
+
+def _mmr_select(
+    candidates: list[tuple[SearchResult, list[float]]],
+    top_k: int,
+    lambda_: float = _MMR_LAMBDA,
+) -> list[SearchResult]:
+    """Maximal Marginal Relevance over query-ranked candidates.
+
+    ``candidates`` is ordered by descending query similarity, each paired with
+    its embedding. Greedily picks the item maximizing
+    ``λ·sim_query − (1−λ)·max sim_to_already_selected`` so overlapping chunks
+    don't all reach the prompt. Candidates missing an embedding contribute a
+    redundancy term of 0 (treated as maximally novel) so the path degrades to
+    plain ranking rather than failing.
+    """
+    from app.domain.services.citation_formatter import _cosine_distance
+
+    if not candidates:
+        return []
+    pool = list(candidates)
+    selected: list[tuple[SearchResult, list[float]]] = [pool.pop(0)]
+    while pool and len(selected) < top_k:
+        best_idx = 0
+        best_score = float("-inf")
+        for i, (res, emb) in enumerate(pool):
+            sims = [
+                1.0 - _cosine_distance(emb, sel_emb)
+                for _, sel_emb in selected
+                if emb and sel_emb
+            ]
+            max_sim = max(sims) if sims else 0.0
+            score = lambda_ * res.similarity_score - (1.0 - lambda_) * max_sim
+            if score > best_score:
+                best_score = score
+                best_idx = i
+        selected.append(pool.pop(best_idx))
+    return [res for res, _ in selected]
+
+
+def _pack_to_token_budget(results: list[SearchResult], token_budget: int) -> list[SearchResult]:
+    """Trim an ordered slate so cumulative chunk ``token_count`` ≤ budget.
+
+    Always keeps at least the top chunk. Uses the stored token_count so a few
+    large chunks can't bloat the prompt.
+    """
+    if token_budget <= 0:
+        return results
+    packed: list[SearchResult] = []
+    total = 0
+    for r in results:
+        tokens = int(getattr(r.chunk, "token_count", 0) or 0)
+        if packed and total + tokens > token_budget:
+            break
+        packed.append(r)
+        total += tokens
+    return packed
+
+
 class SemanticRetriever:
     """Service for performing semantic search on document chunks."""
 
@@ -107,11 +182,18 @@ class SemanticRetriever:
         filters: dict[str, Any] | None,
         session: AsyncSession,
     ) -> list[SearchResult]:
-        """Perform the actual search using pgvector."""
-        # Build the base query with cosine similarity
-        # Convert embedding to PostgreSQL vector literal to avoid asyncpg binding issues
+        """Perform the actual search using pgvector.
+
+        Index-backed (#2635): the ``embedding`` column is native ``vector(1536)``
+        with an HNSW ``vector_cosine_ops`` index, so ordering by ``<=>`` distance
+        and limiting uses the index instead of a per-row cast + sequential scan.
+        We over-fetch a candidate pool, filter by ``min_similarity``, then
+        MMR-select down to ``top_k`` and pack to a token budget.
+        """
+        # Vector literal (not a bind param) so asyncpg needs no vector codec and
+        # the value stays a query constant the HNSW index can plan against.
         embedding_literal = "[" + ",".join(str(x) for x in query_embedding) + "]"
-        vec_expr = f"embedding::vector <=> '{embedding_literal}'::vector"
+        vec_expr = f"embedding <=> '{embedding_literal}'::vector"
 
         where_clauses = ["embedding IS NOT NULL"]
         params: dict[str, Any] = {}
@@ -155,25 +237,28 @@ class SemanticRetriever:
 
         where_sql = " AND ".join(where_clauses)
 
+        # Over-fetch a candidate pool via the HNSW index, then MMR + budget it
+        # down to top_k below. ``embedding::real[]`` returns a plain list[float]
+        # to asyncpg (no vector codec needed) for the MMR redundancy math.
+        candidate_k = _candidate_k(top_k)
         query_str = f"""
-        SELECT * FROM (
             SELECT
                 id, content, source, chapter, page, level, language,
                 token_count, chunk_index, created_at,
-                1 - ({vec_expr}) as similarity
+                embedding::real[] AS embedding_arr,
+                1 - ({vec_expr}) AS similarity
             FROM document_chunks
             WHERE {where_sql}
-        ) sub
-        WHERE similarity >= :min_similarity
-        ORDER BY similarity DESC
-        LIMIT :limit
+            ORDER BY {vec_expr}
+            LIMIT :limit
         """
 
-        params["min_similarity"] = min_similarity
-        params["limit"] = top_k
+        params["limit"] = candidate_k
 
-        # Execute query
+        # SET LOCAL hnsw.ef_search raises recall for the filtered index scan; it
+        # lasts only this transaction.
         try:
+            await session.execute(text(f"SET LOCAL hnsw.ef_search = {_HNSW_EF_SEARCH}"))
             query_obj = text(query_str).bindparams(**params)
             result = await session.execute(query_obj)
             rows = result.fetchall()
@@ -181,10 +266,12 @@ class SemanticRetriever:
             logger.error("Semantic search query failed", error=str(e))
             raise
 
-        # Convert results to SearchResult objects
-        search_results = []
+        # Build (result, embedding) candidates, dropping any below threshold.
+        candidates: list[tuple[SearchResult, list[float]]] = []
         for row in rows:
-            # Create DocumentChunk object from row data
+            similarity = float(row.similarity)
+            if similarity < min_similarity:
+                continue
             chunk = DocumentChunk(
                 id=row.id,
                 content=row.content,
@@ -196,15 +283,27 @@ class SemanticRetriever:
                 token_count=row.token_count,
                 chunk_index=row.chunk_index,
                 created_at=row.created_at,
-                embedding=None,  # Don't load embeddings for results
+                embedding=None,  # not surfaced to callers; kept separately for MMR
             )
+            emb = list(row.embedding_arr) if row.embedding_arr is not None else []
+            candidates.append((SearchResult(chunk=chunk, similarity_score=similarity), emb))
 
-            search_results.append(SearchResult(chunk=chunk, similarity_score=float(row.similarity)))
+        # MMR-select a distinct slate, then pack to the token budget.
+        selected = _mmr_select(candidates, top_k)
+        token_budget = SettingsCache.instance().get(
+            "ai-rag-context-token-budget", _DEFAULT_CONTEXT_TOKEN_BUDGET
+        )
+        search_results = _pack_to_token_budget(selected, int(token_budget or 0))
 
         logger.info(
             "Semantic search completed",
             query_length=len(query_embedding),
+            candidates=len(candidates),
             results=len(search_results),
+            token_budget=int(token_budget or 0),
+            slate_tokens=sum(
+                int(getattr(r.chunk, "token_count", 0) or 0) for r in search_results
+            ),
             top_similarity=search_results[0].similarity_score if search_results else 0,
         )
 
@@ -463,9 +562,14 @@ class SemanticRetriever:
         min_similarity: float,
         session: AsyncSession,
     ) -> list[dict]:
-        """Execute cosine similarity search on source_images table."""
+        """Execute cosine similarity search on source_images table.
+
+        Index-backed (#2635): native ``vector(1536)`` column + HNSW index, so
+        ``ORDER BY embedding <=> :q LIMIT k`` uses the index. ``min_similarity``
+        is applied as a post-filter over the k nearest rows.
+        """
         embedding_literal = "[" + ",".join(str(x) for x in query_embedding) + "]"
-        vec_expr = f"embedding::vector <=> '{embedding_literal}'::vector"
+        vec_expr = f"embedding <=> '{embedding_literal}'::vector"
 
         where_clauses = ["embedding IS NOT NULL"]
         params: dict[str, Any] = {}
@@ -481,25 +585,22 @@ class SemanticRetriever:
         where_sql = " AND ".join(where_clauses)
 
         query_str = f"""
-        SELECT * FROM (
             SELECT
                 id, source, rag_collection_id, figure_number, caption, attribution,
                 image_type, page_number, chapter, section, surrounding_text,
                 storage_key, storage_url, format, width, height, file_size_bytes,
                 original_format, alt_text_fr, alt_text_en, semantic_tags, created_at,
-                1 - ({vec_expr}) as similarity
+                1 - ({vec_expr}) AS similarity
             FROM source_images
             WHERE {where_sql}
-        ) sub
-        WHERE similarity >= :min_similarity
-        ORDER BY similarity DESC
-        LIMIT :limit
+            ORDER BY {vec_expr}
+            LIMIT :limit
         """
 
-        params["min_similarity"] = min_similarity
         params["limit"] = top_k
 
         try:
+            await session.execute(text(f"SET LOCAL hnsw.ef_search = {_HNSW_EF_SEARCH}"))
             query_obj = text(query_str).bindparams(**params)
             result = await session.execute(query_obj)
             rows = result.fetchall()
@@ -509,6 +610,8 @@ class SemanticRetriever:
 
         image_dicts = []
         for row in rows:
+            if float(row.similarity) < min_similarity:
+                continue
             img = SourceImage(
                 id=row.id,
                 source=row.source,

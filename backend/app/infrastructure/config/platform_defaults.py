@@ -454,6 +454,17 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 3, "max": 30},
     ),
     SettingDef(
+        "ai-rag-context-token-budget",
+        "ai",
+        3500,
+        "integer",
+        "RAG context token budget",
+        "Max cumulative chunk tokens packed into a generation prompt after "
+        "MMR de-duplication. Trims the retrieved slate so near-duplicate or "
+        "oversized chunks don't bloat input cost. Applies on top of top-k.",
+        {"min": 500, "max": 20000},
+    ),
+    SettingDef(
         "ai-syllabus-soft-time-limit-seconds",
         "ai",
         2700,
