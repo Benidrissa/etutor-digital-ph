@@ -327,12 +327,34 @@ class LessonAudioService:
             level=level,
         )
 
-        response = await client.audio.speech.create(
+        from app.domain.models.ai_usage_event import FEATURE_LESSON_AUDIO
+        from app.domain.services.ai_usage_service import record_ai_usage
+
+        try:
+            response = await client.audio.speech.create(
+                model="gpt-4o-mini-tts",
+                voice=voice,
+                input=script,
+                instructions=instructions,
+                response_format="opus",
+            )
+        except Exception as exc:
+            await record_ai_usage(
+                provider="openai",
+                model="gpt-4o-mini-tts",
+                operation="tts",
+                characters=len(script),
+                feature=FEATURE_LESSON_AUDIO,
+                success=False,
+                error_type=type(exc).__name__,
+            )
+            raise
+        await record_ai_usage(
+            provider="openai",
             model="gpt-4o-mini-tts",
-            voice=voice,
-            input=script,
-            instructions=instructions,
-            response_format="opus",
+            operation="tts",
+            characters=len(script),
+            feature=FEATURE_LESSON_AUDIO,
         )
 
         audio_bytes = response.content

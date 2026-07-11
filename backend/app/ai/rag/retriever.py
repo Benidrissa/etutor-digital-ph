@@ -79,8 +79,12 @@ class SemanticRetriever:
         if not query.strip():
             return []
 
-        # Generate embedding for query
-        query_embedding = await self.embedding_service.generate_embedding(query)
+        from app.ai.usage_context import ai_usage_context
+
+        # Generate embedding for query. Ledger fallback feature: callers that
+        # set a more specific feature (tutor_chat, lesson_generation, ...) win.
+        with ai_usage_context("rag_query", only_if_unset=True):
+            query_embedding = await self.embedding_service.generate_embedding(query)
 
         session_provided = session is not None
         if not session_provided:
@@ -433,7 +437,10 @@ class SemanticRetriever:
         if not query.strip():
             return []
 
-        query_embedding = await self.embedding_service.generate_embedding(query)
+        from app.ai.usage_context import ai_usage_context
+
+        with ai_usage_context("rag_query", only_if_unset=True):
+            query_embedding = await self.embedding_service.generate_embedding(query)
 
         session_provided = session is not None
         if not session_provided:

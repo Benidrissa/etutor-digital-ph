@@ -31,13 +31,28 @@ class EmbeddingService:
         Returns:
             List of float values representing the embedding vector
         """
+        from app.domain.services.ai_usage_service import record_ai_usage
+
         try:
             response = await self.client.embeddings.create(
                 input=text, model=self.model, dimensions=self.dimensions
             )
+            await record_ai_usage(
+                provider="openai",
+                model=self.model,
+                operation="embedding",
+                usage={"input_tokens": getattr(response.usage, "total_tokens", None)},
+            )
             return response.data[0].embedding
         except Exception as e:
             logger.error("Failed to generate embedding", text_length=len(text), error=str(e))
+            await record_ai_usage(
+                provider="openai",
+                model=self.model,
+                operation="embedding",
+                success=False,
+                error_type=type(e).__name__,
+            )
             raise
 
     async def generate_embeddings_batch(
@@ -63,7 +78,12 @@ class EmbeddingService:
         # Create semaphore to limit concurrency
         semaphore = asyncio.Semaphore(max_concurrent)
 
+        # Total billed tokens across sub-batches — recorded as ONE ledger row per
+        # public call so a 5,000-chunk indexing run doesn't write 50 rows (#2629).
+        billed_tokens = 0
+
         async def process_batch(batch: list[str]) -> list[list[float]]:
+            nonlocal billed_tokens
             async with semaphore:
                 try:
                     safe_batch = []
@@ -80,6 +100,7 @@ class EmbeddingService:
                     response = await self.client.embeddings.create(
                         input=safe_batch, model=self.model, dimensions=self.dimensions
                     )
+                    billed_tokens += getattr(response.usage, "total_tokens", 0) or 0
                     return [data.embedding for data in response.data]
                 except Exception as e:
                     logger.error(
@@ -95,12 +116,34 @@ class EmbeddingService:
             batch_size=batch_size,
         )
 
-        batch_results = await asyncio.gather(*[process_batch(batch) for batch in batches])
+        from app.domain.services.ai_usage_service import record_ai_usage
+
+        try:
+            batch_results = await asyncio.gather(*[process_batch(batch) for batch in batches])
+        except Exception as e:
+            await record_ai_usage(
+                provider="openai",
+                model=self.model,
+                operation="embedding",
+                usage={"input_tokens": billed_tokens or None},
+                request_count=len(batches),
+                success=False,
+                error_type=type(e).__name__,
+            )
+            raise
 
         # Flatten results while preserving order
         embeddings = []
         for batch_embeddings in batch_results:
             embeddings.extend(batch_embeddings)
+
+        await record_ai_usage(
+            provider="openai",
+            model=self.model,
+            operation="embedding",
+            usage={"input_tokens": billed_tokens},
+            request_count=len(batches),
+        )
 
         logger.info("Embeddings generated successfully", total_embeddings=len(embeddings))
 

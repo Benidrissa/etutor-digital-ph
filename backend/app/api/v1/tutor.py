@@ -180,6 +180,13 @@ async def transcribe_audio(
     buffer = io.BytesIO(data)
     buffer.name = filename
 
+    from app.domain.models.ai_usage_event import FEATURE_TRANSCRIPTION
+    from app.domain.services.ai_usage_service import record_ai_usage
+
+    # Whisper bills per minute; duration is estimated from upload size
+    # (~32 kbps opus/webm → ~4 KB/s).
+    est_seconds = max(1, len(data) // 4000)
+
     try:
         result = await client.audio.transcriptions.create(
             model=_WHISPER_MODEL,
@@ -195,12 +202,30 @@ async def transcribe_audio(
             size_bytes=len(data),
             mime_type=mime_type,
         )
+        await record_ai_usage(
+            provider="openai",
+            model=_WHISPER_MODEL,
+            operation="stt",
+            audio_seconds=est_seconds,
+            feature=FEATURE_TRANSCRIPTION,
+            success=False,
+            error_type=type(exc).__name__,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Transcription failed. Please try again.",
         ) from exc
 
     transcript = (result if isinstance(result, str) else getattr(result, "text", "")).strip()
+
+    await record_ai_usage(
+        provider="openai",
+        model=_WHISPER_MODEL,
+        operation="stt",
+        audio_seconds=est_seconds,
+        characters=len(transcript),
+        feature=FEATURE_TRANSCRIPTION,
+    )
 
     logger.info(
         "Audio transcribed",

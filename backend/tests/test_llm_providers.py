@@ -19,6 +19,7 @@ from app.ai.providers.openai_compat_provider import (
     _to_openai_tools,
 )
 from app.ai.providers.pricing import calculate_cost_cents
+from app.ai.providers.recording import RecordingLLMProvider
 
 _TOOL = {
     "name": "save",
@@ -436,20 +437,24 @@ def _fake_settings(monkeypatch):
 
 
 def test_resolve_provider_by_prefix(_fake_settings):
-    assert isinstance(resolve_provider("claude-sonnet-4-6"), AnthropicLLMProvider)
-    assert isinstance(resolve_provider("moonshot-v1-128k"), OpenAICompatLLMProvider)
-    assert isinstance(resolve_provider("gpt-4o-mini"), OpenAICompatLLMProvider)
-    assert isinstance(resolve_provider("moonshotai/kimi-k2.6"), OpenAICompatLLMProvider)
+    # Every resolved provider is wrapped in the usage-recording decorator (#2629);
+    # dispatch is asserted on the wrapped inner provider.
+    resolved = resolve_provider("claude-sonnet-4-6")
+    assert isinstance(resolved, RecordingLLMProvider)
+    assert isinstance(resolved._inner, AnthropicLLMProvider)
+    assert isinstance(resolve_provider("moonshot-v1-128k")._inner, OpenAICompatLLMProvider)
+    assert isinstance(resolve_provider("gpt-4o-mini")._inner, OpenAICompatLLMProvider)
+    assert isinstance(resolve_provider("moonshotai/kimi-k2.6")._inner, OpenAICompatLLMProvider)
 
 
 def test_resolve_provider_moonshot_disables_forced_tool_choice(_fake_settings):
     # Moonshot can't force a single tool — the provider must emulate it.
     moonshot = resolve_provider("moonshot-v1-128k")
-    assert moonshot._supports_forced_tool_choice is False
+    assert moonshot._inner._supports_forced_tool_choice is False
     # kimi-k2.6 routes to Moonshot and likewise emulates forced tool_choice.
-    assert resolve_provider("kimi-k2.6")._supports_forced_tool_choice is False
+    assert resolve_provider("kimi-k2.6")._inner._supports_forced_tool_choice is False
     # Other OpenAI-compatible backends keep native forced tool_choice.
-    assert resolve_provider("gpt-4o-mini")._supports_forced_tool_choice is True
+    assert resolve_provider("gpt-4o-mini")._inner._supports_forced_tool_choice is True
 
 
 def test_resolve_provider_missing_key_raises(_fake_settings, monkeypatch):
