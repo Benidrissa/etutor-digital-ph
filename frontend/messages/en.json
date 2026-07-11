@@ -1189,7 +1189,86 @@
       "moduleName": "Module",
       "eventCount": "Events",
       "noData": "No analytics data for this period.",
-      "loading": "Loading analytics..."
+      "loading": "Loading analytics...",
+      "tabUsage": "Usage",
+      "tabAiCosts": "AI Costs",
+      "totalCost": "Total cost",
+      "totalTokens": "Tokens (in + out)",
+      "totalCalls": "AI calls",
+      "topModel": "Top model",
+      "errorsCount": "{count} failed",
+      "estimatedBadge": "Includes estimated costs",
+      "estimatedNote": "≈ Some costs (streaming, images, audio, realtime) are estimates; the OpenAI/Anthropic dashboards remain the billing source of truth.",
+      "costByDay": "Cost per day by provider",
+      "costByModel": "Cost by model",
+      "costByFeature": "Cost by feature",
+      "topUsersByCost": "Top users by cost",
+      "userEmail": "User",
+      "callCount": "Calls",
+      "costHeader": "Cost",
+      "byKeySource": "Billing key",
+      "keySourceHeader": "Source",
+      "keySourceTenant": "Tenant key",
+      "keySourcePlatform": "Platform key",
+      "recommendationsTitle": "How to save money",
+      "recoEmpty": "Nothing to flag — current usage triggers no recommendations.",
+      "feature": {
+        "rag_indexing": "Document indexing",
+        "rag_query": "Semantic search",
+        "lesson_generation": "Lesson generation",
+        "quiz_generation": "Quiz generation",
+        "flashcard_generation": "Flashcard generation",
+        "case_study": "Case studies",
+        "syllabus_summary": "Document summarization (syllabus)",
+        "syllabus_generation": "Syllabus generation",
+        "course_structure": "Course structure",
+        "preassessment": "Pre-assessment",
+        "tutor_chat": "AI tutor (chat)",
+        "tutor_tts": "AI tutor (audio)",
+        "lesson_audio": "Lesson audio",
+        "qbank_audio": "Question bank audio",
+        "transcription": "Voice transcription",
+        "voice_session": "Voice sessions",
+        "quality_agent": "Quality agent",
+        "image_generation": "Image generation",
+        "image_metadata": "Image metadata",
+        "translation": "Translation",
+        "unknown": "Other"
+      },
+      "reco": {
+        "add_pricing_for_models": {
+          "title": "Missing prices for some models",
+          "body": "{share} of the cost is estimated because exact rates are missing for: {models}. Add their rates in pricing.py for reliable figures."
+        },
+        "expensive_model_share": {
+          "title": "High share of expensive models",
+          "body": "{model} accounts for {share} of generation cost. For simple content (flashcards, quizzes), a cheaper model (Haiku, Kimi) is often equivalent — configurable in Platform Settings."
+        },
+        "provider_alternative": {
+          "title": "High OpenAI share on chat",
+          "body": "GPT models account for {share} of chat cost. Cheaper alternatives (Kimi, Haiku) are available in the model settings."
+        },
+        "reindexing_waste": {
+          "title": "Repeated re-indexing",
+          "body": "{courses} courses were re-indexed more than once this period ({cost_cents} ¢). Each re-index re-embeds every document — avoid unnecessary re-indexing."
+        },
+        "failed_spend": {
+          "title": "Spend on failed calls",
+          "body": "{errors} AI calls failed ({cost_cents} ¢ still billed). Check the affected providers' quotas and keys."
+        },
+        "image_fallback_active": {
+          "title": "Gemini → gpt-image-1 image fallback active",
+          "body": "{failures} Gemini attempts failed and fell back to gpt-image-1 (paid, OpenAI). Fix the Google key/quota to return to the intended provider."
+        },
+        "low_cache_reuse": {
+          "title": "Low prompt-cache reuse",
+          "body": "Only {reuse} of input tokens come from the Anthropic cache while cache writes are being billed. Batch generations for the same course to amortize the cache."
+        },
+        "platform_key_only": {
+          "title": "Everything bills the platform key",
+          "body": "No calls use a tenant key. Configure per-tenant API keys (API Keys tab) to separate billing."
+        }
+      }
     },
     "auditLog": {
       "title": "Audit Log",
