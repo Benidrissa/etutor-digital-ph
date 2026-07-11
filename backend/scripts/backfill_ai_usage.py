@@ -78,14 +78,17 @@ async def backfill(dry_run: bool) -> None:
         events: list[AiUsageEvent] = []
 
         # 1. RAG indexing embeddings: one estimated row per course per day.
+        # document_chunks has no course_id — resolve it via course_resources
+        # (nullable FK, SET NULL on resource deletion → course_id NULL is fine).
         rows = await session.execute(
             text(
                 """
-                SELECT dc.course_id, date_trunc('day', dc.created_at) AS day,
+                SELECT cr.course_id, date_trunc('day', dc.created_at) AS day,
                        sum(dc.token_count) AS tokens, count(*) AS chunks,
                        max(dc.created_at) AS created_at
                 FROM document_chunks dc
-                GROUP BY dc.course_id, day
+                LEFT JOIN course_resources cr ON cr.id = dc.course_resource_id
+                GROUP BY cr.course_id, day
                 """
             )
         )
