@@ -496,7 +496,15 @@ def generate_course_syllabus(
     )
 
     async def _call_claude():
+        import uuid as _uuid
+
+        from app.ai.usage_context import set_ai_context
         from app.domain.services.course_agent_service import CourseAgentService
+
+        try:
+            set_ai_context("syllabus_generation", course_id=_uuid.UUID(course_id))
+        except (ValueError, TypeError):
+            set_ai_context("syllabus_generation")
 
         agent = CourseAgentService()
         return await agent.generate_course_structure(

@@ -140,6 +140,9 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
 
+    # AI usage ledger (#2629) — incident kill-switch for ai_usage_events writes.
+    ai_usage_tracking_enabled: bool = True
+
     # Monitoring
     sentry_dsn: str = ""
     sentry_traces_sample_rate: float = 0.2

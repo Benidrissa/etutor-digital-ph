@@ -9,6 +9,7 @@ from fastapi.security import HTTPBearer
 from sqlalchemy import select
 from structlog import get_logger
 
+from ..ai.usage_context import set_ai_context_user
 from ..domain.models.user import UserRole
 from ..domain.services.jwt_auth_service import JWTAuthService
 
@@ -52,6 +53,7 @@ async def verify_access_token(
         access_token = token.credentials
         payload = jwt_service.verify_access_token(access_token)
         user = AuthenticatedUser(payload)
+        set_ai_context_user(user.id)  # attribute downstream AI usage to this user (#2629)
         logger.info("User authenticated via JWT", user_id=user.id, email=user.email)
         return user
     except jwt.ExpiredSignatureError:
@@ -118,6 +120,7 @@ async def get_optional_user(
         token = auth_header[7:]
         payload = jwt_service.verify_access_token(token)
         user = AuthenticatedUser(payload)
+        set_ai_context_user(user.id)  # attribute downstream AI usage to this user (#2629)
         logger.info("Optional user authenticated", user_id=user.id)
         return user
     except Exception as e:

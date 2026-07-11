@@ -62,10 +62,16 @@ def generate_course_preassessment(self, course_id: str, language: str = "fr") ->
         from app.ai.claude_service import ClaudeService
         from app.ai.rag.embeddings import EmbeddingService
         from app.ai.rag.retriever import SemanticRetriever
+        from app.ai.usage_context import set_ai_context
         from app.domain.services.preassessment_generation_service import (
             PreAssessmentGenerationService,
         )
         from app.infrastructure.config.settings import settings
+
+        try:
+            set_ai_context("preassessment", course_id=uuid.UUID(course_id))
+        except (ValueError, TypeError):
+            set_ai_context("preassessment")
 
         engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
         async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

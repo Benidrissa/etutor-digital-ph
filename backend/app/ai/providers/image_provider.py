@@ -109,6 +109,11 @@ def _openai_provider(settings: Settings, model: str) -> OpenAIImageProvider:
     return OpenAIImageProvider(api_key=settings.openai_api_key, model=model)
 
 
+def _image_billing_provider(model: str) -> str:
+    m = model.lower()
+    return "google" if m.startswith(("gemini", "imagen")) else "openai"
+
+
 async def generate_image(prompt: str, *, model: str, size: str = "1536x1024") -> tuple[bytes, str]:
     """Generate an image for ``model``, falling back to gpt-image-1 on any error.
 
@@ -116,11 +121,31 @@ async def generate_image(prompt: str, *, model: str, size: str = "1536x1024") ->
     key (e.g. a free-tier Gemini key with image quota 0) raises at call time
     (429 RESOURCE_EXHAUSTED). Catch any provider error and retry once on gpt-image-1
     so image generation never hard-fails. Returns ``(image_bytes, model_used)``.
+
+    Each attempt — including the failed primary before a fallback — writes one
+    ``ai_usage_events`` row (#2629), which is what surfaces "Gemini is broken and
+    we are silently paying gpt-image-1" on the admin cost dashboard.
     """
+    from app.domain.services.ai_usage_service import record_ai_usage
+
     provider = resolve_image_provider(model)
     try:
-        return await provider.generate(prompt, size=size), provider.model
+        image = await provider.generate(prompt, size=size)
+        await record_ai_usage(
+            provider=_image_billing_provider(provider.model),
+            model=provider.model,
+            operation="image",
+            images_count=1,
+        )
+        return image, provider.model
     except Exception as exc:
+        await record_ai_usage(
+            provider=_image_billing_provider(provider.model),
+            model=provider.model,
+            operation="image",
+            success=False,
+            error_type=type(exc).__name__,
+        )
         if isinstance(provider, OpenAIImageProvider):
             raise  # already on the fallback backend — nothing left to try
         logger.warning(
@@ -129,4 +154,21 @@ async def generate_image(prompt: str, *, model: str, size: str = "1536x1024") ->
             error=str(exc),
         )
         fallback = _openai_provider(get_settings(), _FALLBACK_IMAGE_MODEL)
-        return await fallback.generate(prompt, size=size), fallback.model
+        try:
+            image = await fallback.generate(prompt, size=size)
+        except Exception as fallback_exc:
+            await record_ai_usage(
+                provider="openai",
+                model=fallback.model,
+                operation="image",
+                success=False,
+                error_type=type(fallback_exc).__name__,
+            )
+            raise
+        await record_ai_usage(
+            provider="openai",
+            model=fallback.model,
+            operation="image",
+            images_count=1,
+        )
+        return image, fallback.model

@@ -269,12 +269,34 @@ class QBankAudioService:
         if language == "fr":
             from openai import AsyncOpenAI
 
+            from app.domain.models.ai_usage_event import FEATURE_QBANK_AUDIO
+            from app.domain.services.ai_usage_service import record_ai_usage
+
             client = AsyncOpenAI(api_key=settings.openai_api_key)
-            response = await client.audio.speech.create(
+            try:
+                response = await client.audio.speech.create(
+                    model="gpt-4o-mini-tts",
+                    voice="nova",
+                    input=script,
+                    response_format="opus",
+                )
+            except Exception as exc:
+                await record_ai_usage(
+                    provider="openai",
+                    model="gpt-4o-mini-tts",
+                    operation="tts",
+                    characters=len(script),
+                    feature=FEATURE_QBANK_AUDIO,
+                    success=False,
+                    error_type=type(exc).__name__,
+                )
+                raise
+            await record_ai_usage(
+                provider="openai",
                 model="gpt-4o-mini-tts",
-                voice="nova",
-                input=script,
-                response_format="opus",
+                operation="tts",
+                characters=len(script),
+                feature=FEATURE_QBANK_AUDIO,
             )
             audio = response.content
             if not audio:

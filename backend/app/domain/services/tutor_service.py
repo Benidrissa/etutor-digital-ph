@@ -26,6 +26,7 @@ from app.ai.prompts.tutor import (
 from app.ai.providers import resolve_provider
 from app.ai.rag.embeddings import EmbeddingService
 from app.ai.rag.retriever import SemanticRetriever
+from app.ai.usage_context import set_ai_context
 from app.domain.models.content import GeneratedContent
 from app.domain.models.conversation import TutorConversation, TutorMessage
 from app.domain.models.module import Module
@@ -1427,6 +1428,14 @@ class TutorService:
             source_image_refs: list[dict[str, Any]] = []
             api_messages: list[dict[str, Any]] = list(conversation_history)
             tutor_model = _sc().get("tutor-model", "claude-sonnet-4-6")
+
+            # Ledger attribution for every provider/tool call in this turn (#2629).
+            set_ai_context(
+                "tutor_chat",
+                user_id=user_id,
+                course_id=getattr(conversation, "course_id", None),
+                module_id=getattr(module_obj, "id", None) if module_obj else None,
+            )
 
             # Resolve the provider for the configured tutor model (#2483). The id
             # may now point at a non-Anthropic backend (Moonshot/Kimi, OpenAI,

@@ -117,6 +117,9 @@ def assess_course_structure_task(self, course_id: str) -> dict:
     """
 
     async def _run() -> dict:
+        from app.ai.usage_context import set_ai_context
+
+        set_ai_context("quality_agent")  # ledger attribution (#2629)
         from app.ai.claude_service import ClaudeService
         from app.domain.services.quality_agent_service import CourseQualityService
         from app.infrastructure.config.settings import settings
@@ -186,6 +189,9 @@ def assess_unit_task(
     """
 
     async def _run() -> dict:
+        from app.ai.usage_context import set_ai_context
+
+        set_ai_context("quality_agent")  # ledger attribution (#2629)
         from app.ai.claude_service import ClaudeService
         from app.ai.rag.embeddings import EmbeddingService
         from app.ai.rag.retriever import SemanticRetriever
@@ -262,6 +268,9 @@ def assess_and_regenerate_unit_task(
     """Run the bounded assess→regenerate loop for one unit."""
 
     async def _run() -> dict:
+        from app.ai.usage_context import set_ai_context
+
+        set_ai_context("quality_agent")  # ledger attribution (#2629)
         from app.ai.claude_service import ClaudeService
         from app.ai.rag.embeddings import EmbeddingService
         from app.ai.rag.retriever import SemanticRetriever
@@ -324,6 +333,9 @@ def extract_course_glossary_task(self, course_id: str, language: str = "fr") -> 
     """Build (or refresh) the canonical glossary for a course."""
 
     async def _run() -> dict:
+        from app.ai.usage_context import set_ai_context
+
+        set_ai_context("quality_agent")  # ledger attribution (#2629)
         from app.ai.claude_service import ClaudeService
         from app.domain.services.quality_agent_service import CourseQualityService
         from app.infrastructure.config.settings import settings
@@ -391,6 +403,9 @@ def assess_course_task(
     """
 
     async def _run() -> dict:
+        from app.ai.usage_context import set_ai_context
+
+        set_ai_context("quality_agent")  # ledger attribution (#2629)
         from datetime import datetime
 
         from sqlalchemy import func as sa_func
