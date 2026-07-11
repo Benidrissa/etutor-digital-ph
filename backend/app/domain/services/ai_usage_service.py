@@ -14,14 +14,17 @@ rules are unit-testable without a database.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
+import weakref
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
 from sqlalchemy import case, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.ai.providers.pricing import estimate_cost_cents
 from app.ai.usage_context import current_ai_context
@@ -29,6 +32,26 @@ from app.domain.models.ai_usage_event import FEATURE_UNKNOWN, AiUsageEvent
 from app.domain.models.user import User
 
 logger = structlog.get_logger(__name__)
+
+# One NullPool engine per event loop. The recorder runs inside web requests AND
+# Celery task bodies (each `asyncio.run` = a fresh loop in a long-lived worker
+# process); the app's global engine pools connections bound to whichever loop
+# created them, which is exactly the cross-loop asyncpg failure #2103 works
+# around with dispose() dances. NullPool holds nothing between calls, and the
+# weak keying lets dead loops drop their engine.
+_loop_factories: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+
+
+def _session_factory_for_loop():
+    loop = asyncio.get_running_loop()
+    factory = _loop_factories.get(loop)
+    if factory is None:
+        from app.infrastructure.config.settings import get_settings
+
+        engine = create_async_engine(get_settings().database_url, poolclass=NullPool)
+        factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        _loop_factories[loop] = factory
+    return factory
 
 # Providers that support tenant key overrides (ApiKeyService.PROVIDERS subset).
 _KEYED_PROVIDERS = {"anthropic", "openai", "google", "moonshot"}
@@ -107,9 +130,7 @@ async def record_ai_usage(
             success=success,
             error_type=error_type[:100] if error_type else None,
         )
-        from app.infrastructure.persistence.database import async_session_factory
-
-        async with async_session_factory() as session:
+        async with _session_factory_for_loop()() as session:
             session.add(event)
             await session.commit()
     except Exception as exc:  # pragma: no cover - by-contract swallow

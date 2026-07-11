@@ -23,18 +23,18 @@ from app.domain.services.ai_usage_service import (
     record_ai_usage,
 )
 
-_SESSION_FACTORY = "app.infrastructure.persistence.database.async_session_factory"
+_SESSION_FACTORY = "app.domain.services.ai_usage_service._session_factory_for_loop"
 
 
 def _mock_session_factory():
-    """An async context manager yielding a mock session."""
+    """A ()-returning factory whose product is an async CM yielding a mock session."""
     session = MagicMock()
     session.add = MagicMock()
     session.commit = AsyncMock()
     factory = MagicMock()
     factory.return_value.__aenter__ = AsyncMock(return_value=session)
     factory.return_value.__aexit__ = AsyncMock(return_value=False)
-    return factory, session
+    return MagicMock(return_value=factory), session
 
 
 # ---------------------------------------------------------------- context
