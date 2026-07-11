@@ -143,7 +143,11 @@ class AnalyticsService:
         )
         quiz_completed: int = quiz_completed_result.scalar_one() or 0
 
-        quiz_completion_rate = round(quiz_completed / quiz_started, 4) if quiz_started > 0 else 0.0
+        # quiz_started is client-emitted best-effort while quiz_completed is
+        # server-authoritative, so the raw ratio can exceed 1.0 (#2630) — clamp.
+        quiz_completion_rate = (
+            min(1.0, round(quiz_completed / quiz_started, 4)) if quiz_started > 0 else 0.0
+        )
 
         return {
             "period": f"{period_days}d",

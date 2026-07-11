@@ -110,6 +110,17 @@ class ApiKeyService:
         return values.get(provider) or _env_fallback(provider)
 
     @staticmethod
+    def source(provider: str) -> str:
+        """``"tenant"`` when a valid tenant override serves this provider, else ``"platform"``.
+
+        Used by the AI usage ledger (#2629) to attribute spend to the paying key.
+        """
+        if provider not in _ENV_FIELD:
+            return "platform"
+        values, _ = _DecryptCache.snapshot()
+        return "tenant" if values.get(provider) else "platform"
+
+    @staticmethod
     def status() -> list[dict]:
         """Per-provider display status. Never includes the key value."""
         store = _read_store()

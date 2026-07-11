@@ -120,9 +120,17 @@ def reindex_course_images(
     )
 
     async def _run_image_pipeline():
+        import uuid as _uuid
+
         from app.ai.rag.embeddings import EmbeddingService
         from app.ai.rag.pipeline import RAGPipeline
+        from app.ai.usage_context import set_ai_context
         from app.infrastructure.config.settings import settings
+
+        try:
+            set_ai_context("rag_indexing", course_id=_uuid.UUID(course_id))
+        except (ValueError, TypeError):
+            set_ai_context("rag_indexing")
 
         # Resolves a tenant-set override (encrypted) or the env fallback.
         openai_key = settings.openai_api_key

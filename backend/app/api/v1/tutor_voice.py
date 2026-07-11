@@ -327,6 +327,17 @@ async def create_voice_session(
             error=str(exc),
             user_id=str(current_user.id),
         )
+        from app.domain.models.ai_usage_event import FEATURE_VOICE_SESSION
+        from app.domain.services.ai_usage_service import record_ai_usage
+
+        await record_ai_usage(
+            provider="openai",
+            model=settings.openai_realtime_model,
+            operation="realtime",
+            feature=FEATURE_VOICE_SESSION,
+            success=False,
+            error_type=type(exc).__name__,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Could not start voice session. Please try again.",
@@ -405,6 +416,19 @@ async def close_voice_session(
     session_row.duration_seconds = max(0, min(body.duration_seconds, max_seconds))
     session_row.ended_at = session_row.started_at + timedelta(seconds=session_row.duration_seconds)
     await db.commit()
+
+    # Audio streams client↔OpenAI over WebRTC, so tokens are unobservable
+    # server-side; the ledger row carries an estimated per-minute cost (#2629).
+    from app.domain.models.ai_usage_event import FEATURE_VOICE_SESSION
+    from app.domain.services.ai_usage_service import record_ai_usage
+
+    await record_ai_usage(
+        provider="openai",
+        model=get_settings().openai_realtime_model,
+        operation="realtime",
+        audio_seconds=session_row.duration_seconds,
+        feature=FEATURE_VOICE_SESSION,
+    )
 
     used = await _minutes_used_today(current_user.id, db)
     cap = get_settings().tutor_voice_daily_minutes_cap

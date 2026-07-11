@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_db
 from app.api.deps_local_auth import AuthenticatedUser, get_optional_user, require_role
 from app.domain.models.user import UserRole
+from app.domain.services.ai_usage_service import AiUsageAnalyticsService
 from app.domain.services.analytics_service import AnalyticsService
 
 logger = structlog.get_logger()
@@ -138,4 +139,37 @@ async def get_summary(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": "summary_failed", "message": "Failed to compute summary"},
+        )
+
+
+@router.get(
+    "/ai-usage",
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {"description": "Invalid period"},
+        403: {"description": "Insufficient permissions"},
+        500: {"description": "Internal error"},
+    },
+)
+async def get_ai_usage(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[
+        AuthenticatedUser, Depends(require_role(UserRole.admin, UserRole.sub_admin))
+    ],
+    period: Annotated[int, Query(description="Period in days: 7, 30, or 90")] = 7,
+) -> dict[str, Any]:
+    """Admin-only: AI token/cost usage aggregates + money-saving recommendations (#2629)."""
+    if period not in _VALID_PERIODS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "invalid_period", "message": "period must be 7, 30, or 90"},
+        )
+    try:
+        service = AiUsageAnalyticsService(db)
+        return await service.get_ai_usage(period_days=period)
+    except Exception as e:
+        logger.error("Failed to compute AI usage summary", error=str(e), exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "ai_usage_failed", "message": "Failed to compute AI usage"},
         )

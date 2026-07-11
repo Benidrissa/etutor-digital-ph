@@ -300,12 +300,24 @@ def _make_stream_client(
     return mock_client
 
 
+
+def _patch_keys(anthropic: str = "", openai: str = "", moonshot: str = ""):
+    """Patch effective provider keys — the summarizer reads them via settings
+    (ApiKeyService-backed) since #2629, not raw os.environ."""
+    from types import SimpleNamespace
+
+    fake = SimpleNamespace(
+        anthropic_api_key=anthropic, openai_api_key=openai, moonshot_api_key=moonshot
+    )
+    return patch("app.infrastructure.config.settings.get_settings", return_value=fake)
+
+
 class TestSummarizePdfForSyllabus:
     def test_no_api_key_returns_toc_fallback(self):
         from app.ai.pdf_summarizer import summarize_pdf_for_syllabus
 
         toc = [(1, "Chapter 1: Intro", 1), (2, "Section 1.1", 5)]
-        with patch.dict(os.environ, {"OPENAI_API_KEY": "", "ANTHROPIC_API_KEY": ""}):
+        with _patch_keys():
             result = asyncio.run(
                 summarize_pdf_for_syllabus("TestBook", "some text", toc=toc, model="gpt-5.4-nano")
             )
@@ -314,7 +326,7 @@ class TestSummarizePdfForSyllabus:
     def test_no_api_key_no_toc_returns_placeholder(self):
         from app.ai.pdf_summarizer import summarize_pdf_for_syllabus
 
-        with patch.dict(os.environ, {"OPENAI_API_KEY": "", "ANTHROPIC_API_KEY": ""}):
+        with _patch_keys():
             result = asyncio.run(
                 summarize_pdf_for_syllabus("TestBook", "some text", toc=None, model="gpt-5.4-nano")
             )
@@ -345,7 +357,7 @@ class TestSummarizePdfForSyllabus:
         )
 
         with (
-            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
+            _patch_keys(anthropic="test-key"),
             patch("app.ai.pdf_summarizer._get_summarizer_client", return_value=mock_client),
         ):
             result = asyncio.run(
@@ -369,7 +381,7 @@ class TestSummarizePdfForSyllabus:
         )
 
         with (
-            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
+            _patch_keys(anthropic="test-key"),
             patch("app.ai.pdf_summarizer._get_summarizer_client", return_value=mock_client),
         ):
             result = asyncio.run(
@@ -393,7 +405,7 @@ class TestSummarizePdfForSyllabus:
         mock_client = _make_stream_client(text="ok", captured_user=captured_user)
 
         with (
-            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
+            _patch_keys(anthropic="test-key"),
             patch("app.ai.pdf_summarizer._get_summarizer_client", return_value=mock_client),
         ):
             asyncio.run(
@@ -521,7 +533,7 @@ class TestSummarizePdfsSync:
             ("BookA", "text a", []),
             ("BookB", "text b", []),
         ]
-        with patch.dict(os.environ, {"OPENAI_API_KEY": "", "ANTHROPIC_API_KEY": ""}):
+        with _patch_keys():
             result = summarize_pdfs_sync(pdf_texts)
 
         assert len(result) == 2
