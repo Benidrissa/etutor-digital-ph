@@ -53,6 +53,7 @@ def _session_factory_for_loop():
         _loop_factories[loop] = factory
     return factory
 
+
 # Providers that support tenant key overrides (ApiKeyService.PROVIDERS subset).
 _KEYED_PROVIDERS = {"anthropic", "openai", "google", "moonshot"}
 
@@ -134,9 +135,7 @@ async def record_ai_usage(
             session.add(event)
             await session.commit()
     except Exception as exc:  # pragma: no cover - by-contract swallow
-        logger.warning(
-            "ai_usage.record_failed", provider=provider, model=model, error=str(exc)
-        )
+        logger.warning("ai_usage.record_failed", provider=provider, model=model, error=str(exc))
 
 
 @dataclass
@@ -196,9 +195,10 @@ def build_recommendations(agg: AiUsageAggregates) -> list[dict[str, Any]]:
                     "data": {"share": round(share, 2), "model": top},
                 }
             )
-        gpt_share = sum(
-            c for m, c in agg.chat_cost_by_model.items() if m.startswith("gpt")
-        ) / agg.chat_cost_cents
+        gpt_share = (
+            sum(c for m, c in agg.chat_cost_by_model.items() if m.startswith("gpt"))
+            / agg.chat_cost_cents
+        )
         if gpt_share > 0.40:
             recos.append(
                 {
@@ -274,9 +274,9 @@ class AiUsageAnalyticsService:
                 select(
                     func.coalesce(func.sum(E.cost_cents), 0).label("cost"),
                     func.count(E.id).label("calls"),
-                    func.coalesce(
-                        func.sum(case((E.success.is_(False), 1), else_=0)), 0
-                    ).label("errors"),
+                    func.coalesce(func.sum(case((E.success.is_(False), 1), else_=0)), 0).label(
+                        "errors"
+                    ),
                     func.coalesce(
                         func.sum(case((E.success.is_(False), E.cost_cents), else_=0)), 0
                     ).label("failed_cost"),

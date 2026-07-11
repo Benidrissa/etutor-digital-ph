@@ -161,9 +161,7 @@ async def backfill(dry_run: bool) -> None:
         try:
             rows = (
                 await session.execute(
-                    text(
-                        "SELECT user_id, duration_seconds, started_at FROM tutor_voice_sessions"
-                    )
+                    text("SELECT user_id, duration_seconds, started_at FROM tutor_voice_sessions")
                 )
             ).all()
         except Exception:

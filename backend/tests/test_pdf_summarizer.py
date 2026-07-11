@@ -300,7 +300,6 @@ def _make_stream_client(
     return mock_client
 
 
-
 def _patch_keys(anthropic: str = "", openai: str = "", moonshot: str = ""):
     """Patch effective provider keys — the summarizer reads them via settings
     (ApiKeyService-backed) since #2629, not raw os.environ."""

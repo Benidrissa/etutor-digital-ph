@@ -99,8 +99,9 @@ async def test_record_ai_usage_never_raises():
 @pytest.mark.asyncio
 async def test_record_ai_usage_respects_kill_switch():
     factory, session = _mock_session_factory()
-    with patch(_SESSION_FACTORY, factory), patch(
-        "app.domain.services.ai_usage_service._tracking_enabled", return_value=False
+    with (
+        patch(_SESSION_FACTORY, factory),
+        patch("app.domain.services.ai_usage_service._tracking_enabled", return_value=False),
     ):
         await record_ai_usage(provider="openai", model="whisper-1", operation="stt")
     session.add.assert_not_called()
@@ -138,9 +139,7 @@ async def test_wrapper_records_success_and_delegates():
     wrapped = RecordingLLMProvider(inner, "anthropic")
     assert wrapped.is_anthropic is True
     assert wrapped.supports_cache_control is True
-    with patch(
-        "app.domain.services.ai_usage_service.record_ai_usage", new=AsyncMock()
-    ) as rec:
+    with patch("app.domain.services.ai_usage_service.record_ai_usage", new=AsyncMock()) as rec:
         result = await wrapped.complete(
             system="s", messages=[], max_tokens=10, temperature=0.0, model="claude-sonnet-4-6"
         )
@@ -154,9 +153,10 @@ async def test_wrapper_records_success_and_delegates():
 async def test_wrapper_records_failure_and_reraises():
     inner = _FakeProvider(error=ValueError("boom"))
     wrapped = RecordingLLMProvider(inner, "openai")
-    with patch(
-        "app.domain.services.ai_usage_service.record_ai_usage", new=AsyncMock()
-    ) as rec, pytest.raises(ValueError, match="boom"):
+    with (
+        patch("app.domain.services.ai_usage_service.record_ai_usage", new=AsyncMock()) as rec,
+        pytest.raises(ValueError, match="boom"),
+    ):
         await wrapped.complete(
             system="s", messages=[], max_tokens=10, temperature=0.0, model="gpt-5.4-nano"
         )
@@ -167,9 +167,7 @@ async def test_wrapper_records_failure_and_reraises():
 @pytest.mark.asyncio
 async def test_wrapper_stream_records_estimated_chars():
     wrapped = RecordingLLMProvider(_FakeProvider(), "anthropic")
-    with patch(
-        "app.domain.services.ai_usage_service.record_ai_usage", new=AsyncMock()
-    ) as rec:
+    with patch("app.domain.services.ai_usage_service.record_ai_usage", new=AsyncMock()) as rec:
         chunks = [
             c
             async for c in wrapped.stream(
