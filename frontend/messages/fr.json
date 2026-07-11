@@ -1189,7 +1189,86 @@
       "moduleName": "Module",
       "eventCount": "Événements",
       "noData": "Aucune donnée analytique pour cette période.",
-      "loading": "Chargement des analytiques..."
+      "loading": "Chargement des analytiques...",
+      "tabUsage": "Utilisation",
+      "tabAiCosts": "Coûts IA",
+      "totalCost": "Coût total",
+      "totalTokens": "Tokens (entrée + sortie)",
+      "totalCalls": "Appels IA",
+      "topModel": "Modèle principal",
+      "errorsCount": "{count} en échec",
+      "estimatedBadge": "Inclut des coûts estimés",
+      "estimatedNote": "≈ Certains coûts (streaming, images, audio, temps réel) sont des estimations ; le tableau de bord OpenAI/Anthropic reste la référence de facturation.",
+      "costByDay": "Coût par jour et par fournisseur",
+      "costByModel": "Coût par modèle",
+      "costByFeature": "Coût par fonctionnalité",
+      "topUsersByCost": "Utilisateurs les plus coûteux",
+      "userEmail": "Utilisateur",
+      "callCount": "Appels",
+      "costHeader": "Coût",
+      "byKeySource": "Clé de facturation",
+      "keySourceHeader": "Source",
+      "keySourceTenant": "Clé locataire",
+      "keySourcePlatform": "Clé plateforme",
+      "recommendationsTitle": "Comment économiser",
+      "recoEmpty": "Rien à signaler — l'utilisation actuelle ne déclenche aucune recommandation.",
+      "feature": {
+        "rag_indexing": "Indexation des documents",
+        "rag_query": "Recherche sémantique",
+        "lesson_generation": "Génération de leçons",
+        "quiz_generation": "Génération de quiz",
+        "flashcard_generation": "Génération de flashcards",
+        "case_study": "Études de cas",
+        "syllabus_summary": "Résumé de documents (syllabus)",
+        "syllabus_generation": "Génération de syllabus",
+        "course_structure": "Structure de cours",
+        "preassessment": "Pré-évaluation",
+        "tutor_chat": "Tuteur IA (chat)",
+        "tutor_tts": "Tuteur IA (audio)",
+        "lesson_audio": "Audio des leçons",
+        "qbank_audio": "Audio banque de questions",
+        "transcription": "Transcription vocale",
+        "voice_session": "Sessions vocales",
+        "quality_agent": "Agent qualité",
+        "image_generation": "Génération d'images",
+        "image_metadata": "Métadonnées d'images",
+        "translation": "Traduction",
+        "unknown": "Autre"
+      },
+      "reco": {
+        "add_pricing_for_models": {
+          "title": "Tarifs manquants pour certains modèles",
+          "body": "{share} du coût est estimé faute de tarifs exacts pour : {models}. Ajoutez leurs tarifs dans pricing.py pour des chiffres fiables."
+        },
+        "expensive_model_share": {
+          "title": "Forte part de modèles coûteux",
+          "body": "{model} représente {share} du coût de génération. Pour les contenus simples (flashcards, quiz), un modèle plus économique (Haiku, Kimi) donne souvent un résultat équivalent — modifiable dans Paramètres de la plateforme."
+        },
+        "provider_alternative": {
+          "title": "Part OpenAI élevée sur le chat",
+          "body": "Les modèles GPT représentent {share} du coût de chat. Des alternatives moins chères (Kimi, Haiku) sont disponibles dans les réglages de modèles."
+        },
+        "reindexing_waste": {
+          "title": "Ré-indexations répétées",
+          "body": "{courses} cours ont été ré-indexés plusieurs fois sur la période ({cost_cents} ¢). Chaque ré-indexation ré-embarque tous les documents — évitez les ré-indexations inutiles."
+        },
+        "failed_spend": {
+          "title": "Dépenses sur des appels en échec",
+          "body": "{errors} appels IA ont échoué ({cost_cents} ¢ facturés malgré tout). Vérifiez les quotas et clés des fournisseurs concernés."
+        },
+        "image_fallback_active": {
+          "title": "Repli d'images Gemini → gpt-image-1 actif",
+          "body": "{failures} tentatives Gemini ont échoué et sont retombées sur gpt-image-1 (payant, OpenAI). Vérifiez la clé/le quota Google pour revenir au fournisseur prévu."
+        },
+        "low_cache_reuse": {
+          "title": "Cache de prompts peu réutilisé",
+          "body": "Seuls {reuse} des tokens d'entrée proviennent du cache Anthropic alors que des écritures de cache sont facturées. Regroupez les générations d'un même cours pour amortir le cache."
+        },
+        "platform_key_only": {
+          "title": "Tout est facturé sur la clé plateforme",
+          "body": "Aucun appel n'utilise de clé locataire. Configurez des clés API par locataire (onglet Clés API) pour séparer la facturation."
+        }
+      }
     },
     "auditLog": {
       "title": "Journal d'audit",
