@@ -272,12 +272,9 @@ export function QuizContainer({
   const handleQuizComplete = (quizResult: QuizAttemptResponse) => {
     setResult(quizResult);
     setState('completed');
-    track('quiz_completed', {
-      module_id: moduleId,
-      score: quizResult.score,
-      passed: quizResult.passed,
-      duration_seconds: quizResult.total_time_seconds,
-    });
+    // quiz_completed is emitted server-side on attempt submission
+    // (api/v1/quiz.py); a second client emission double-counted the numerator
+    // of the completion rate, pushing it past 100% (#2630).
   };
   
   const handleQuizError = (errorMessage: string) => {
