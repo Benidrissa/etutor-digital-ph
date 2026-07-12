@@ -240,7 +240,12 @@ class SemanticRetriever:
         # Over-fetch a candidate pool via the HNSW index, then MMR + budget it
         # down to top_k below. ``embedding::real[]`` returns a plain list[float]
         # to asyncpg (no vector codec needed) for the MMR redundancy math.
-        candidate_k = _candidate_k(top_k)
+        # Kill-switch (#2635): when rerank is disabled, fetch exactly top_k and
+        # skip MMR/budget — the legacy nearest-top_k behavior, no schema rollback.
+        rerank_enabled = bool(
+            SettingsCache.instance().get("ai-rag-rerank-enabled", True)
+        )
+        candidate_k = _candidate_k(top_k) if rerank_enabled else top_k
         query_str = f"""
             SELECT
                 id, content, source, chapter, page, level, language,
@@ -288,19 +293,29 @@ class SemanticRetriever:
             emb = list(row.embedding_arr) if row.embedding_arr is not None else []
             candidates.append((SearchResult(chunk=chunk, similarity_score=similarity), emb))
 
-        # MMR-select a distinct slate, then pack to the token budget.
-        selected = _mmr_select(candidates, top_k)
-        token_budget = SettingsCache.instance().get(
-            "ai-rag-context-token-budget", _DEFAULT_CONTEXT_TOKEN_BUDGET
-        )
-        search_results = _pack_to_token_budget(selected, int(token_budget or 0))
+        if rerank_enabled:
+            # MMR-select a distinct slate, then pack to the token budget.
+            selected = _mmr_select(candidates, top_k)
+            token_budget = int(
+                SettingsCache.instance().get(
+                    "ai-rag-context-token-budget", _DEFAULT_CONTEXT_TOKEN_BUDGET
+                )
+                or 0
+            )
+            search_results = _pack_to_token_budget(selected, token_budget)
+        else:
+            # Kill-switch: legacy nearest-top_k, no de-dup/budget. `candidates`
+            # is already threshold-filtered and ordered nearest-first by the SQL.
+            token_budget = 0
+            search_results = [res for res, _ in candidates[:top_k]]
 
         logger.info(
             "Semantic search completed",
             query_length=len(query_embedding),
+            rerank=rerank_enabled,
             candidates=len(candidates),
             results=len(search_results),
-            token_budget=int(token_budget or 0),
+            token_budget=token_budget,
             slate_tokens=sum(
                 int(getattr(r.chunk, "token_count", 0) or 0) for r in search_results
             ),

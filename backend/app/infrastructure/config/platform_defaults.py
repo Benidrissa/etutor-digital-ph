@@ -465,6 +465,17 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 500, "max": 20000},
     ),
     SettingDef(
+        "ai-rag-rerank-enabled",
+        "ai",
+        True,
+        "boolean",
+        "RAG rerank (MMR + token budget)",
+        "Kill-switch (#2635). When ON, retrieval over-fetches then MMR-"
+        "de-duplicates and packs the slate to the token budget. Turn OFF to "
+        "fall back to the legacy behavior — the nearest top-k chunks by "
+        "similarity, no de-dup or budgeting — without a schema rollback.",
+    ),
+    SettingDef(
         "ai-syllabus-soft-time-limit-seconds",
         "ai",
         2700,
