@@ -124,7 +124,10 @@ async def start_quality_run(
     active for this course (avoids double sweeps).
     """
     from app.ai.claude_service import ClaudeService
-    from app.domain.services.quality_agent_service import CourseQualityService
+    from app.domain.services.quality_agent_service import (
+        CourseQualityService,
+        QualityAgentDisabledError,
+    )
     from app.tasks.quality_assessment import assess_course_task
 
     await _assert_course_access(session, course_id, current_user)
@@ -145,6 +148,13 @@ async def start_quality_run(
             idempotency_key=idempotency_key,
         )
         await session.commit()
+    except QualityAgentDisabledError:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Quality agent is disabled (ai-model-quality='disabled'). "
+            "Pick a model in Platform Settings to re-enable it.",
+        )
     except Exception as e:
         await session.rollback()
         logger.error(
@@ -340,9 +350,17 @@ async def regenerate_unit_with_constraints(
     empty we let the task pull the latest auditor-emitted constraints
     from ``generated_content.quality_flags``.
     """
+    from app.domain.services.quality_agent_service import quality_agent_disabled
     from app.tasks.quality_assessment import assess_and_regenerate_unit_task
 
     await _assert_course_access(session, course_id, current_user)
+
+    if quality_agent_disabled():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Quality agent is disabled (ai-model-quality='disabled'). "
+            "Pick a model in Platform Settings to re-enable it.",
+        )
 
     gc = await session.get(GeneratedContent, content_id)
     if gc is None:

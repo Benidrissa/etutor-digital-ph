@@ -395,12 +395,16 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "Model — quality auditor",
         "Model for the course-quality auditor. Resolved to a provider by prefix "
         "(claude-* → Anthropic; moonshot-*/kimi-* → Moonshot). Haiku is a cheaper "
-        "option once detection accuracy has been benchmarked.",
+        "option once detection accuracy has been benchmarked. 'disabled' turns "
+        "the auditor off entirely — no audits, no auto-regeneration (#2639); the "
+        "auditor is a major token consumer and its regenerate loop also spends "
+        "content-model tokens.",
         allowed_options=[
             "claude-sonnet-4-6",
             "claude-haiku-4-5",
             "moonshot-v1-128k",
             "kimi-k2.6",
+            "disabled",
         ],
     ),
     SettingDef(

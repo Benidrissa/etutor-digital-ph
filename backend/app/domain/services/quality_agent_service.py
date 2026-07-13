@@ -82,6 +82,19 @@ COURSE_PASSING_RATIO = 0.92  # for early exit
 DEFAULT_BUDGET_FULL = 200
 DEFAULT_BUDGET_TARGETED = 50
 
+
+class QualityAgentDisabledError(RuntimeError):
+    """Raised when a quality run is requested while ``ai-model-quality`` is
+    set to ``disabled`` (#2639). Publish-path callers already try/except-log;
+    the admin API maps it to HTTP 409."""
+
+
+def quality_agent_disabled() -> bool:
+    """True when the admin turned the quality auditor off (#2639)."""
+    from app.domain.services.platform_settings_service import SettingsCache
+
+    return SettingsCache.instance().get("ai-model-quality", "claude-sonnet-4-6") == "disabled"
+
 ACTIVE_RUN_STATUSES = ("queued", "scoring", "regenerating")
 
 # A run active longer than this is stranded — the worker crashed/restarted or
@@ -562,6 +575,10 @@ class CourseQualityService:
            a fresh idempotency key, a second run cannot be queued
            while another is queued/scoring/regenerating.
         """
+        if quality_agent_disabled():
+            raise QualityAgentDisabledError(
+                "Quality agent is disabled (ai-model-quality='disabled')"
+            )
         if budget_credits is None:
             budget_credits = DEFAULT_BUDGET_FULL if run_kind == "full" else DEFAULT_BUDGET_TARGETED
 
@@ -1198,6 +1215,8 @@ __all__ = [
     "MIN_IMPROVEMENT_PER_ATTEMPT",
     "DEFAULT_BUDGET_FULL",
     "DEFAULT_BUDGET_TARGETED",
+    "QualityAgentDisabledError",
     "calculate_cost_cents",
     "normalize_term",
+    "quality_agent_disabled",
 ]
