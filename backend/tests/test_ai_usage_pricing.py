@@ -84,3 +84,20 @@ def test_legacy_int_cost_path_unchanged():
         "claude-sonnet-4-6", {"input_tokens": 1_000_000, "output_tokens": 0}
     )
     assert cents == 300
+
+
+def test_kimi_k26_real_rates():
+    # kimi-k2.6 was placeholder-priced at moonshot-v1 rates ($2/$5), overstating
+    # spend ~3-4x (#2639). Real K2-family rates: $0.60/M in, $2.50/M out, $0.15/M cache.
+    cents, estimated = estimate_cost_cents(
+        model="kimi-k2.6",
+        operation="chat",
+        usage={
+            "input_tokens": 1_000_000,
+            "output_tokens": 100_000,
+            "cache_read_input_tokens": 1_000_000,
+        },
+    )
+    # 1M*60 + 0.1M*250 + 1M*15 = 60 + 25 + 15 = 100 cents
+    assert abs(cents - 100.0) < 1e-6
+    assert estimated is False
