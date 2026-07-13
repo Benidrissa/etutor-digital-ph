@@ -250,6 +250,34 @@ async def test_openai_compat_complete_parses_tool_calls_and_flattens_system():
     assert result.assistant_message["tool_calls"][0]["function"]["name"] == "save"
 
 
+async def test_openai_compat_usage_is_cache_exclusive():
+    # OpenAI-compat prompt_tokens INCLUDES cached tokens; the normalized dict
+    # follows Anthropic semantics (input excludes cache reads) so the pricing
+    # formulas don't bill the cached span twice (#2639).
+    response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="ok", tool_calls=None))],
+        usage=SimpleNamespace(
+            prompt_tokens=100_000,
+            completion_tokens=500,
+            prompt_tokens_details=SimpleNamespace(cached_tokens=90_000),
+        ),
+    )
+    provider = OpenAICompatLLMProvider(api_key="sk-test")
+    provider._client = _FakeOpenAI(response)
+
+    result = await provider.complete(
+        system="sys",
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=100,
+        temperature=0.5,
+        model="kimi-k2.6",
+    )
+
+    assert result.usage["input_tokens"] == 10_000  # 100k prompt - 90k cached
+    assert result.usage["cache_read_input_tokens"] == 90_000
+    assert result.usage["output_tokens"] == 500
+
+
 async def test_openai_compat_emulates_forced_tool_via_json_mode():
     # Moonshot rejects forced tool_choice → emulate via JSON mode and surface a
     # synthetic ToolCall so call sites keep reading result.tool_calls[0].
@@ -477,8 +505,8 @@ def test_pricing_per_model():
     assert calculate_cost_cents("claude-sonnet-4-6", usage) == 1800
     # moonshot-v1-128k: $2.00 in + $5.00 out = 700 cents.
     assert calculate_cost_cents("moonshot-v1-128k", usage) == 700
-    # kimi-k2.6 has its own row (placeholder rates), not the default fallback.
-    assert calculate_cost_cents("kimi-k2.6", usage) == 700
+    # kimi-k2.6 uses real K2-family rates: $0.60 in + $2.50 out = 310 cents (#2639).
+    assert calculate_cost_cents("kimi-k2.6", usage) == 310
     # Unknown model falls back to the default (Sonnet) table.
     assert calculate_cost_cents("mystery", usage) == 1800
 

@@ -22,10 +22,11 @@ _PRICING: dict[str, dict[str, int]] = {
     # billed lower (cache_read ~$0.20/M, re-verify). Standard chat model: honors
     # arbitrary temperature + json_object (unlike the kimi-k2.6 reasoning model).
     "moonshot-v1-128k": {"input": 200, "output": 500, "cache_write": 0, "cache_read": 20},
-    # Moonshot kimi-k2.6 reasoning model (256K context). Placeholder rates mirror
-    # moonshot-v1-128k until confirmed.
-    # TODO(pricing): replace with confirmed kimi-k2.6 rates from the Kimi console.
-    "kimi-k2.6": {"input": 200, "output": 500, "cache_write": 0, "cache_read": 20},
+    # Moonshot kimi-k2.6 reasoning model (256K context). Kimi K2-family public
+    # rates: $0.60/M input (cache miss), $2.50/M output, $0.15/M cache hit.
+    # The old placeholder mirrored moonshot-v1-128k and overstated Kimi spend
+    # ~3-4× (#2639). Re-verify against the Kimi console when rates change.
+    "kimi-k2.6": {"input": 60, "output": 250, "cache_write": 0, "cache_read": 15},
     # OpenAI chat + syllabus-summarizer models (#2629). Re-verify against
     # https://openai.com/api/pricing when models rotate.
     "gpt-5.4": {"input": 125, "output": 1000, "cache_write": 0, "cache_read": 12},

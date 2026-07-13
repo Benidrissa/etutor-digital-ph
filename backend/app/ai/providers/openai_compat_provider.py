@@ -169,8 +169,16 @@ class OpenAICompatLLMProvider:
         details = getattr(usage, "prompt_tokens_details", None)
         if details is not None:
             cached = getattr(details, "cached_tokens", 0) or 0
+        # OpenAI-compat providers report prompt_tokens INCLUSIVE of cached
+        # tokens, while the normalized dict follows Anthropic semantics where
+        # input_tokens EXCLUDES cache reads — the pricing formulas
+        # (calculate_cost_cents / estimate_cost_cents) add cache_read on top of
+        # input, so leaving prompt_tokens raw double-billed the cached span
+        # (#2639).
+        prompt_tokens = getattr(usage, "prompt_tokens", None)
+        input_tokens = prompt_tokens - cached if prompt_tokens is not None else None
         usage_dict = {
-            "input_tokens": getattr(usage, "prompt_tokens", None),
+            "input_tokens": input_tokens,
             "output_tokens": getattr(usage, "completion_tokens", None),
             "cache_creation_input_tokens": 0,
             "cache_read_input_tokens": cached,
