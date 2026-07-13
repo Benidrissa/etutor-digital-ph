@@ -95,6 +95,7 @@ def quality_agent_disabled() -> bool:
 
     return SettingsCache.instance().get("ai-model-quality", "claude-sonnet-4-6") == "disabled"
 
+
 ACTIVE_RUN_STATUSES = ("queued", "scoring", "regenerating")
 
 # A run active longer than this is stranded — the worker crashed/restarted or
