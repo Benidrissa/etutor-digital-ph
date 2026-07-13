@@ -69,6 +69,43 @@ def _make_session_factory(settings):
     return engine, factory
 
 
+def _quality_disabled() -> bool:
+    """True when the admin set ``ai-model-quality`` to ``disabled`` (#2639).
+
+    Checked at every quality task entry point so already-queued messages
+    no-op cheaply too. SettingsCache is an mtime-watched dict lookup —
+    workers pick up an admin change within ~2s, no restart.
+    """
+    from app.domain.services.platform_settings_service import SettingsCache
+
+    return SettingsCache.instance().get("ai-model-quality", "claude-sonnet-4-6") == "disabled"
+
+
+async def _mark_run_cancelled(run_id: str, reason: str) -> None:
+    """Stamp a pre-created run ``cancelled`` when the agent is disabled.
+
+    A silent return would leave the row ``queued`` and the stale-run
+    requeue logic would re-arm it forever (#2639).
+    """
+    from datetime import datetime
+
+    from app.domain.models.course_quality import CourseQualityRun
+    from app.infrastructure.config.settings import settings
+
+    engine, session_factory = _make_session_factory(settings)
+    try:
+        async with session_factory() as session:
+            run = await session.get(CourseQualityRun, uuid.UUID(run_id))
+            if run is None or run.status in ("completed", "failed", "cancelled"):
+                return
+            run.status = "cancelled"
+            run.finished_at = datetime.utcnow()
+            run.notes = f"{run.notes or ''} [{reason}]".strip()[:2000]
+            await session.commit()
+    finally:
+        await engine.dispose()
+
+
 async def _mark_run_failed(run_id: str, error: str) -> None:
     """Best-effort: stamp a run ``failed`` after its task died.
 
@@ -115,6 +152,9 @@ def assess_course_structure_task(self, course_id: str) -> dict:
     unrealistic unit durations, and missing bilingual metadata.  Writes
     findings into a ``CourseQualityRun`` row with ``run_kind='structural'``.
     """
+    if _quality_disabled():
+        logger.info("quality agent disabled — skipping", task="structure", course_id=course_id)
+        return {"status": "skipped", "reason": "quality_agent_disabled", "course_id": course_id}
 
     async def _run() -> dict:
         from app.ai.usage_context import set_ai_context
@@ -187,6 +227,9 @@ def assess_unit_task(
     the first positional arg by Celery — we ignore it because the
     caller already has the content_id.
     """
+    if _quality_disabled():
+        logger.info("quality agent disabled — skipping", task="unit", content_id=content_id)
+        return {"status": "skipped", "reason": "quality_agent_disabled", "content_id": content_id}
 
     async def _run() -> dict:
         from app.ai.usage_context import set_ai_context
@@ -266,6 +309,9 @@ def assess_and_regenerate_unit_task(
     override_constraints: list[str] | None = None,
 ) -> dict:
     """Run the bounded assess→regenerate loop for one unit."""
+    if _quality_disabled():
+        logger.info("quality agent disabled — skipping", task="regen_loop", content_id=content_id)
+        return {"status": "skipped", "reason": "quality_agent_disabled", "content_id": content_id}
 
     async def _run() -> dict:
         from app.ai.usage_context import set_ai_context
@@ -331,6 +377,9 @@ def assess_and_regenerate_unit_task(
 )
 def extract_course_glossary_task(self, course_id: str, language: str = "fr") -> dict:
     """Build (or refresh) the canonical glossary for a course."""
+    if _quality_disabled():
+        logger.info("quality agent disabled — skipping", task="glossary", course_id=course_id)
+        return {"status": "skipped", "reason": "quality_agent_disabled", "course_id": course_id}
 
     async def _run() -> dict:
         from app.ai.usage_context import set_ai_context
@@ -401,6 +450,10 @@ def assess_course_task(
        regeneration_attempts < MAX), call the assess+loop helper.
     5. Finalize the run with aggregate stats.
     """
+    if _quality_disabled():
+        logger.info("quality agent disabled — cancelling run", task="course", run_id=run_id)
+        asyncio.run(_mark_run_cancelled(run_id, "quality agent disabled"))
+        return {"status": "skipped", "reason": "quality_agent_disabled", "run_id": run_id}
 
     async def _run() -> dict:
         from app.ai.usage_context import set_ai_context
