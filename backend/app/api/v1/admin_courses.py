@@ -608,6 +608,30 @@ class SuggestMetadataResponse(BaseModel):
     description_en: str
 
 
+_METADATA_CONTEXT_BUDGET_CHARS = 40_000
+
+
+def _build_metadata_source_context(
+    resources: list[tuple[str, str | None, str | None]],
+    budget: int = _METADATA_CONTEXT_BUDGET_CHARS,
+) -> str:
+    """Fair per-source context for suggest-metadata: equal budget slice per resource.
+
+    ``resources`` rows are ``(filename, raw_text, summary_text)``. A naive
+    ``"---".join(raw_texts)[:budget]`` never escapes the first resource (books
+    run 450k+ chars), so the proposal reflected a single arbitrary source
+    (#2648). Instead, each source gets its own ``### filename`` section within
+    an equal share of the budget, preferring ``summary_text`` (condensed content
+    map from syllabus generation, when it exists) over a ``raw_text`` head slice.
+    """
+    usable = [(name, summary or raw) for name, raw, summary in resources if (summary or raw)]
+    if not usable:
+        return ""
+    per_source = budget // len(usable)
+    sections = [f"### {name}\n{text[:per_source].strip()}" for name, text in usable]
+    return "\n\n---\n\n".join(sections)
+
+
 @router.post("/{course_id}/suggest-metadata", response_model=SuggestMetadataResponse)
 async def suggest_course_metadata(
     course_id: uuid.UUID,
@@ -627,10 +651,12 @@ async def suggest_course_metadata(
 
     # Gather context from uploaded resources
     res_result = await db.execute(
-        select(CourseResource.raw_text).where(CourseResource.course_id == course_id).limit(5)
+        select(CourseResource.filename, CourseResource.raw_text, CourseResource.summary_text)
+        .where(CourseResource.course_id == course_id)
+        .order_by(CourseResource.extracted_at)
+        .limit(5)
     )
-    resource_texts = [r for (r,) in res_result if r]
-    context_text = "\n\n---\n\n".join(resource_texts)[:80_000]
+    context_text = _build_metadata_source_context(list(res_result))
 
     # Determine target languages
     langs = [lang.strip() for lang in (course.languages or "fr,en").split(",") if lang.strip()]
@@ -704,12 +730,12 @@ title and a concise description for this course.
 
 {objectives_text if objectives_text else ""}
 
-## Reference materials (excerpt)
-The following is an excerpt from the uploaded source documents. \
-The course will be built from this content — the title and description should \
-accurately reflect what learners will study.
+## Reference materials (excerpts)
+Each "###" section below is an excerpt from a DIFFERENT uploaded source document. \
+The course will be built from ALL of these sources together — the title and \
+description must reflect the combined scope of every source, not just the first one.
 
-{context_text[:40_000] if context_text else "(No materials uploaded yet — base the title on the objectives and criteria above.)"}
+{context_text if context_text else "(No materials uploaded yet — base the title on the objectives and criteria above.)"}
 
 ## Instructions
 - The title should be specific to the actual content, not generic. \
