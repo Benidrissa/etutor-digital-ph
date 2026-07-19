@@ -20,6 +20,13 @@ logger = structlog.get_logger(__name__)
 
 UPLOAD_DIR = Path("uploads/course_resources")
 
+
+def _sanitize_pdf_text(text: str) -> str:
+    """Strip NUL (0x00) characters some PDFs' embedded fonts emit in extracted
+    text — PostgreSQL rejects them in text and jsonb columns."""
+    return text.replace("\x00", "")
+
+
 _engine = create_engine(settings.database_url_sync, pool_pre_ping=True, pool_size=2, max_overflow=0)
 
 
@@ -120,10 +127,12 @@ def extract_course_resource(self, resource_id: str) -> dict:
         import fitz
 
         doc = fitz.open(stream=data, filetype="pdf")
-        toc = doc.get_toc()
+        toc = [
+            [level, _sanitize_pdf_text(title), page_no] for level, title, page_no in doc.get_toc()
+        ]
         pages_text = []
         for page in doc:
-            page_text = page.get_text().strip()
+            page_text = _sanitize_pdf_text(page.get_text()).strip()
             if page_text:
                 pages_text.append(page_text)
         doc.close()
