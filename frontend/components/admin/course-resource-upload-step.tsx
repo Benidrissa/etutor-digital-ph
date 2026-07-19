@@ -144,10 +144,19 @@ export function useCourseResourceUpload(
         );
         return false;
       }
+      // Adopt the server's sanitized name + real extraction status. The
+      // resources endpoint keys statuses by sanitized name, so keeping the raw
+      // browser filename left deduped uploads (already "done") stuck on a
+      // perpetual "Extraction..." spinner — the poll could never match (#2645).
       setFiles((prev) =>
         prev.map((f) =>
           f.name === file.name
-            ? { ...f, status: "uploaded" as const, extraction_status: "pending" as const }
+            ? {
+                ...f,
+                status: "uploaded" as const,
+                name: result.name ?? f.name,
+                extraction_status: result.extraction_status ?? ("pending" as const),
+              }
             : f,
         ),
       );
