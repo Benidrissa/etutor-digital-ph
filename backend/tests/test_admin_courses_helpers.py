@@ -17,6 +17,7 @@ from fastapi import HTTPException
 from app.api.v1 import admin_courses
 from app.api.v1.admin_courses import (
     SuggestMetadataResponse,
+    _build_metadata_source_context,
     _diagnose_indexation_pointer,
     _require_extracted_sources,
     _require_indexed_sources,
@@ -485,7 +486,9 @@ async def test_suggest_metadata_routes_through_resolve_provider(monkeypatch):
 
     monkeypatch.setattr("app.ai.providers.resolve_provider", _fake_resolve)
 
-    db = _QueuedDB([_Result(scalar=_fake_course()), _Result(rows=[("Some extracted text",)])])
+    db = _QueuedDB(
+        [_Result(scalar=_fake_course()), _Result(rows=[("doc.pdf", "Some extracted text", None)])]
+    )
 
     resp = await suggest_course_metadata(course_id=uuid.uuid4(), db=db)
 
@@ -507,8 +510,64 @@ async def test_suggest_metadata_missing_provider_key_returns_503(monkeypatch):
 
     monkeypatch.setattr("app.ai.providers.resolve_provider", _raise)
 
-    db = _QueuedDB([_Result(scalar=_fake_course()), _Result(rows=[("text",)])])
+    db = _QueuedDB([_Result(scalar=_fake_course()), _Result(rows=[("doc.pdf", "text", None)])])
 
     with pytest.raises(HTTPException) as exc:
         await suggest_course_metadata(course_id=uuid.uuid4(), db=db)
     assert exc.value.status_code == 503
+
+
+# ── _build_metadata_source_context (#2648) ──────────────────────────
+
+
+def test_metadata_context_splits_budget_across_all_sources():
+    resources = [
+        ("cialdini.pdf", "A" * 650_000, None),
+        ("mentaliste.pdf", "B" * 450_000, None),
+        ("mindware.pdf", "C" * 670_000, None),
+    ]
+    ctx = _build_metadata_source_context(resources, budget=30_000)
+    for name in ("cialdini.pdf", "mentaliste.pdf", "mindware.pdf"):
+        assert f"### {name}" in ctx
+    sections = ctx.split("\n\n---\n\n")
+    assert len(sections) == 3
+    # Each source got an equal slice; no single book crowds out the others.
+    for section, letter in zip(sections, "ABC", strict=True):
+        assert section.count(letter) == 10_000
+    assert len(ctx) <= 30_000 + len("\n\n---\n\n") * 2 + sum(
+        len(f"### {n}\n") for n, _, _ in resources
+    )
+
+
+def test_metadata_context_prefers_summary_over_raw_text():
+    resources = [
+        ("a.pdf", "RAW-A " * 100, "SUMMARY-A"),
+        ("b.pdf", "RAW-B " * 100, None),
+    ]
+    ctx = _build_metadata_source_context(resources, budget=10_000)
+    assert "SUMMARY-A" in ctx
+    assert "RAW-A" not in ctx
+    assert "RAW-B" in ctx
+
+
+def test_metadata_context_skips_empty_resources():
+    resources = [
+        ("empty.pdf", None, None),
+        ("blank.pdf", "", ""),
+        ("real.pdf", "content here", None),
+    ]
+    ctx = _build_metadata_source_context(resources, budget=1_000)
+    assert "### real.pdf" in ctx
+    assert "empty.pdf" not in ctx and "blank.pdf" not in ctx
+    # Sole usable source gets the whole budget, not budget // 3.
+    assert "content here" in ctx
+
+
+def test_metadata_context_empty_when_no_usable_sources():
+    assert _build_metadata_source_context([]) == ""
+    assert _build_metadata_source_context([("a.pdf", None, None)]) == ""
+
+
+def test_metadata_context_single_source_gets_full_budget():
+    ctx = _build_metadata_source_context([("book.pdf", "X" * 100_000, None)], budget=40_000)
+    assert ctx.count("X") == 40_000
