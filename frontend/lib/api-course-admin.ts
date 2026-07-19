@@ -139,7 +139,17 @@ export async function getAdminCourse(courseId: string) {
 export async function uploadCourseResource(
   courseId: string,
   file: File
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{
+  ok: boolean;
+  error?: string;
+  // Sanitized filename as stored by the backend (special chars → "_").
+  // Callers must adopt it: the resources list endpoint keys statuses by this
+  // name, so keeping the raw browser filename breaks reconciliation (#2645).
+  name?: string;
+  // "done" straight away when the upload was file_hash-deduped from an
+  // already-extracted resource; "pending" when extraction was enqueued.
+  extraction_status?: ExtractionStatus;
+}> {
   const headers = await getAuthHeaders();
   const formData = new FormData();
   formData.append("file", file);
@@ -153,7 +163,15 @@ export async function uploadCourseResource(
     const body = await res.json().catch(() => ({}));
     return { ok: false, error: body?.detail || "Upload failed" };
   }
-  return { ok: true };
+  const body = await res.json().catch(() => ({}));
+  return {
+    ok: true,
+    name: typeof body?.name === "string" ? body.name : undefined,
+    extraction_status:
+      typeof body?.extraction_status === "string"
+        ? (body.extraction_status as ExtractionStatus)
+        : undefined,
+  };
 }
 
 export async function deleteCourseResource(
