@@ -15,7 +15,7 @@ from typing import Any
 import anthropic
 import structlog
 
-from app.ai.providers.base import LLMResult, ToolCall
+from app.ai.providers.base import LLMResult, ToolCall, attach_partial_usage
 
 logger = structlog.get_logger(__name__)
 
@@ -32,6 +32,29 @@ _NO_SAMPLING_PREFIXES = (
 
 def _accepts_temperature(model: str) -> bool:
     return not model.startswith(_NO_SAMPLING_PREFIXES)
+
+
+def _accumulate_usage(event: Any, into: dict[str, Any]) -> None:
+    """Fold one stream event's usage counts into ``into`` (#2652).
+
+    ``message_start`` carries the billed input/cache token counts; each
+    ``message_delta`` carries the cumulative output count. Tracking them as
+    they arrive means an aborted stream still knows what Anthropic billed
+    up to the abort.
+    """
+    etype = getattr(event, "type", None)
+    if etype == "message_start":
+        u = getattr(getattr(event, "message", None), "usage", None)
+        if u is not None:
+            into["input_tokens"] = getattr(u, "input_tokens", None)
+            into["cache_creation_input_tokens"] = getattr(u, "cache_creation_input_tokens", None)
+            into["cache_read_input_tokens"] = getattr(u, "cache_read_input_tokens", None)
+            if getattr(u, "output_tokens", None):
+                into["output_tokens"] = u.output_tokens
+    elif etype == "message_delta":
+        u = getattr(event, "usage", None)
+        if u is not None and getattr(u, "output_tokens", None) is not None:
+            into["output_tokens"] = u.output_tokens
 
 
 class AnthropicLLMProvider:
@@ -68,8 +91,18 @@ class AnthropicLLMProvider:
         if tool_choice:
             kwargs["tool_choice"] = tool_choice
 
-        async with self._client.messages.stream(**kwargs) as stream:
-            message = await stream.get_final_message()
+        # Iterate events so billed-so-far usage survives an abort: a call
+        # killed mid-stream (timeout, soft time limit, cancellation) is still
+        # billed for its input tokens and everything streamed before the abort.
+        partial_usage: dict[str, Any] = {}
+        try:
+            async with self._client.messages.stream(**kwargs) as stream:
+                async for event in stream:
+                    _accumulate_usage(event, partial_usage)
+                message = await stream.get_final_message()
+        except BaseException as exc:
+            attach_partial_usage(exc, partial_usage)
+            raise
 
         text = "".join(b.text for b in message.content if getattr(b, "type", None) == "text")
         tool_calls = [
@@ -100,6 +133,7 @@ class AnthropicLLMProvider:
         max_tokens: int,
         temperature: float,
         model: str,
+        usage_out: dict[str, Any] | None = None,
     ) -> AsyncGenerator[str, None]:
         kwargs: dict[str, Any] = {
             "model": model,
@@ -109,8 +143,13 @@ class AnthropicLLMProvider:
         }
         if _accepts_temperature(model):
             kwargs["temperature"] = temperature
+        # usage_out is filled in place as events arrive, so the caller sees the
+        # billed counts even when the stream is aborted (client disconnect,
+        # timeout) before completion.
+        track = usage_out if usage_out is not None else {}
         async with self._client.messages.stream(**kwargs) as stream_manager:
             async for event in stream_manager:
+                _accumulate_usage(event, track)
                 if event.type == "content_block_delta" and event.delta.type == "text_delta":
                     yield event.delta.text
 

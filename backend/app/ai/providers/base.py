@@ -48,6 +48,27 @@ class LLMResult:
     assistant_message: dict[str, Any] | None = None
 
 
+_PARTIAL_USAGE_ATTR = "ai_partial_usage"
+
+
+def attach_partial_usage(exc: BaseException, usage: dict[str, Any]) -> None:
+    """Stash billed-so-far token counts on an exception (#2652).
+
+    Providers that stream know the input (and cache) tokens from the first
+    ``message_start`` event and the running output count from ``message_delta``
+    events — all of which the vendor bills even when the call is aborted by a
+    timeout, task cancellation, or network reset. Attaching them lets the
+    usage recorder cost failed calls instead of writing $0 rows.
+    """
+    if usage:
+        setattr(exc, _PARTIAL_USAGE_ATTR, usage)
+
+
+def partial_usage_from(exc: BaseException) -> dict[str, Any] | None:
+    usage = getattr(exc, _PARTIAL_USAGE_ATTR, None)
+    return usage if isinstance(usage, dict) and usage else None
+
+
 @runtime_checkable
 class LLMProvider(Protocol):
     """One LLM backend. Implementations: Anthropic, OpenAI-compatible."""
@@ -76,6 +97,7 @@ class LLMProvider(Protocol):
         max_tokens: int,
         temperature: float,
         model: str,
+        usage_out: dict[str, Any] | None = None,
     ) -> AsyncGenerator[str, None]: ...
 
     def build_tool_result_messages(self, results: list[dict[str, Any]]) -> list[dict[str, Any]]:

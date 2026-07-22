@@ -8,14 +8,15 @@ failures are swallowed inside :func:`record_ai_usage`.
 
 from __future__ import annotations
 
+import contextlib
 import time
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from app.ai.providers.base import LLMProvider, LLMResult
+from app.ai.providers.base import LLMProvider, LLMResult, partial_usage_from
 
-# ~4 chars/token — rough output-token estimate for streamed responses, whose
-# providers never surface usage counts.
+# ~4 chars/token — rough output-token estimate for streamed responses on
+# providers that never surface usage counts.
 _CHARS_PER_TOKEN = 4
 
 
@@ -60,15 +61,23 @@ class RecordingLLMProvider:
                 tool_choice=tool_choice,
                 json_object=json_object,
             )
-        except Exception as exc:
-            await record_ai_usage(
-                provider=self._provider_name,
-                model=model,
-                operation="chat",
-                duration_ms=int((time.monotonic() - started) * 1000),
-                success=False,
-                error_type=type(exc).__name__,
-            )
+        except BaseException as exc:
+            # BaseException so aborts (CancelledError, Celery kills) get a row
+            # too — the vendor bills input + streamed partial output on aborted
+            # calls, which the provider attaches to the exception (#2652).
+            usage = partial_usage_from(exc)
+            # suppress(BaseException): never mask the original error.
+            with contextlib.suppress(BaseException):
+                await record_ai_usage(
+                    provider=self._provider_name,
+                    model=model,
+                    operation="chat",
+                    usage=usage,
+                    duration_ms=int((time.monotonic() - started) * 1000),
+                    success=False,
+                    error_type=type(exc).__name__,
+                    cost_estimated=True if usage else None,
+                )
             raise
         await record_ai_usage(
             provider=self._provider_name,
@@ -87,11 +96,16 @@ class RecordingLLMProvider:
         max_tokens: int,
         temperature: float,
         model: str,
+        usage_out: dict[str, Any] | None = None,
     ) -> AsyncGenerator[str, None]:
         from app.domain.services.ai_usage_service import record_ai_usage
 
         started = time.monotonic()
         chars = 0
+        # Filled in place by providers that surface usage on the stream
+        # (Anthropic: message_start/message_delta events), so real billed
+        # counts survive even an abort mid-iteration (#2652).
+        live_usage: dict[str, Any] = usage_out if usage_out is not None else {}
         try:
             async for chunk in self._inner.stream(
                 system=system,
@@ -99,29 +113,41 @@ class RecordingLLMProvider:
                 max_tokens=max_tokens,
                 temperature=temperature,
                 model=model,
+                usage_out=live_usage,
             ):
                 chars += len(chunk)
                 yield chunk
-        except Exception as exc:
-            await record_ai_usage(
-                provider=self._provider_name,
-                model=model,
-                operation="chat",
-                characters=chars,
-                duration_ms=int((time.monotonic() - started) * 1000),
-                success=False,
-                error_type=type(exc).__name__,
-            )
+        except BaseException as exc:
+            # BaseException so client disconnects (GeneratorExit) and task
+            # cancellations get a row — the vendor bills what was streamed.
+            # suppress(BaseException): never mask the original error.
+            with contextlib.suppress(BaseException):
+                await record_ai_usage(
+                    provider=self._provider_name,
+                    model=model,
+                    operation="chat",
+                    usage=live_usage or None,
+                    characters=chars,
+                    duration_ms=int((time.monotonic() - started) * 1000),
+                    success=False,
+                    error_type=type(exc).__name__,
+                    cost_estimated=True if live_usage else None,
+                )
             raise
-        # Streaming never surfaces token usage — estimate output tokens from chars.
+        if live_usage.get("output_tokens") is not None:
+            usage, estimated = live_usage, False
+        else:
+            # Provider surfaced no usage — estimate output tokens from chars.
+            usage = {**live_usage, "output_tokens": chars // _CHARS_PER_TOKEN}
+            estimated = True
         await record_ai_usage(
             provider=self._provider_name,
             model=model,
             operation="chat",
-            usage={"output_tokens": chars // _CHARS_PER_TOKEN},
+            usage=usage,
             characters=chars,
             duration_ms=int((time.monotonic() - started) * 1000),
-            cost_estimated=True,
+            cost_estimated=estimated,
         )
 
     def build_tool_result_messages(self, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
