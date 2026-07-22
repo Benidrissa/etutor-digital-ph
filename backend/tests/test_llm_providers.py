@@ -12,7 +12,7 @@ import pytest
 
 from app.ai.providers import resolve_provider
 from app.ai.providers.anthropic_provider import AnthropicLLMProvider
-from app.ai.providers.base import flatten_system
+from app.ai.providers.base import flatten_system, partial_usage_from
 from app.ai.providers.openai_compat_provider import (
     OpenAICompatLLMProvider,
     _to_openai_tool_choice,
@@ -58,8 +58,10 @@ def test_to_openai_tools_and_choice():
 
 
 class _FakeStreamCtx:
-    def __init__(self, message):
+    def __init__(self, message, events=(), error=None):
         self._m = message
+        self._events = list(events)
+        self._error = error
 
     async def __aenter__(self):
         return self
@@ -67,18 +69,29 @@ class _FakeStreamCtx:
     async def __aexit__(self, *a):
         return False
 
+    def __aiter__(self):
+        return self._iter()
+
+    async def _iter(self):
+        for event in self._events:
+            yield event
+        if self._error is not None:
+            raise self._error
+
     async def get_final_message(self):
         return self._m
 
 
 class _FakeAnthropic:
-    def __init__(self, message):
+    def __init__(self, message, events=(), error=None):
         self.message = message
+        self.events = events
+        self.error = error
         self.messages = SimpleNamespace(stream=self._stream)
 
     def _stream(self, **kwargs):
         self.last_kwargs = kwargs
-        return _FakeStreamCtx(self.message)
+        return _FakeStreamCtx(self.message, events=self.events, error=self.error)
 
 
 async def test_anthropic_complete_parses_tool_use_and_usage():
@@ -117,6 +130,81 @@ async def test_anthropic_complete_parses_tool_use_and_usage():
     # cache_control blocks pass through untouched on Anthropic.
     assert provider._client.last_kwargs["system"][0]["cache_control"] == {"type": "ephemeral"}
     assert result.assistant_message == {"role": "assistant", "content": message.content}
+
+
+async def test_anthropic_complete_attaches_partial_usage_on_abort():
+    """An aborted stream re-raises with billed-so-far usage attached (#2652)."""
+    events = [
+        SimpleNamespace(
+            type="message_start",
+            message=SimpleNamespace(
+                usage=SimpleNamespace(
+                    input_tokens=1000,
+                    output_tokens=1,
+                    cache_creation_input_tokens=0,
+                    cache_read_input_tokens=50,
+                )
+            ),
+        ),
+        SimpleNamespace(type="message_delta", usage=SimpleNamespace(output_tokens=420)),
+    ]
+    provider = AnthropicLLMProvider(api_key="sk-test")
+    provider._client = _FakeAnthropic(None, events=events, error=TimeoutError("stream died"))
+
+    with pytest.raises(TimeoutError) as excinfo:
+        await provider.complete(
+            system="s",
+            messages=[{"role": "user", "content": "hi"}],
+            max_tokens=100,
+            temperature=0.3,
+            model="claude-opus-4-8",
+        )
+
+    assert partial_usage_from(excinfo.value) == {
+        "input_tokens": 1000,
+        "output_tokens": 420,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 50,
+    }
+
+
+async def test_anthropic_stream_fills_usage_out():
+    """Tutor-path streaming surfaces real usage counts via usage_out (#2652)."""
+    events = [
+        SimpleNamespace(
+            type="message_start",
+            message=SimpleNamespace(
+                usage=SimpleNamespace(
+                    input_tokens=7000,
+                    output_tokens=0,
+                    cache_creation_input_tokens=0,
+                    cache_read_input_tokens=0,
+                )
+            ),
+        ),
+        SimpleNamespace(
+            type="content_block_delta", delta=SimpleNamespace(type="text_delta", text="hi")
+        ),
+        SimpleNamespace(type="message_delta", usage=SimpleNamespace(output_tokens=12)),
+    ]
+    provider = AnthropicLLMProvider(api_key="sk-test")
+    provider._client = _FakeAnthropic(None, events=events)
+
+    usage_out: dict = {}
+    chunks = [
+        c
+        async for c in provider.stream(
+            system="s",
+            user_message="hi",
+            max_tokens=100,
+            temperature=0.3,
+            model="claude-sonnet-4-6",
+            usage_out=usage_out,
+        )
+    ]
+    assert chunks == ["hi"]
+    assert usage_out["input_tokens"] == 7000
+    assert usage_out["output_tokens"] == 12
 
 
 async def test_anthropic_omits_temperature_for_models_that_reject_it():

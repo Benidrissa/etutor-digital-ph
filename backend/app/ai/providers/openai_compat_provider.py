@@ -251,6 +251,7 @@ class OpenAICompatLLMProvider:
         max_tokens: int,
         temperature: float,
         model: str,
+        usage_out: dict[str, Any] | None = None,
     ) -> AsyncGenerator[str, None]:
         eff_temperature, extra_body = _kimi_reasoning_overrides(model)
         create_kwargs: dict[str, Any] = {
@@ -267,6 +268,21 @@ class OpenAICompatLLMProvider:
             create_kwargs["extra_body"] = extra_body
         stream = await self._client.chat.completions.create(**create_kwargs)
         async for chunk in stream:
+            # Some OpenAI-compatible backends attach usage to a chunk (OpenAI
+            # only with stream_options, which Moonshot/OpenRouter may reject —
+            # so it isn't requested; capture opportunistically). Same
+            # cached-token normalization as complete() (#2639).
+            u = getattr(chunk, "usage", None)
+            if usage_out is not None and u is not None:
+                details = getattr(u, "prompt_tokens_details", None)
+                cached = (getattr(details, "cached_tokens", 0) or 0) if details else 0
+                prompt_tokens = getattr(u, "prompt_tokens", None)
+                usage_out.update(
+                    input_tokens=prompt_tokens - cached if prompt_tokens is not None else None,
+                    output_tokens=getattr(u, "completion_tokens", None),
+                    cache_creation_input_tokens=0,
+                    cache_read_input_tokens=cached,
+                )
             if not chunk.choices:
                 continue
             delta = chunk.choices[0].delta

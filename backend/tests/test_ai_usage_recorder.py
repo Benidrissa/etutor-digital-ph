@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.ai.providers.base import LLMResult
+from app.ai.providers.base import LLMResult, attach_partial_usage, partial_usage_from
 from app.ai.providers.recording import RecordingLLMProvider
 from app.ai.usage_context import (
     ai_usage_context,
@@ -177,6 +177,109 @@ async def test_wrapper_stream_records_estimated_chars():
     assert "".join(chunks) == "hello world"
     assert rec.call_args.kwargs["characters"] == len("hello world")
     assert rec.call_args.kwargs["cost_estimated"] is True
+
+
+def test_partial_usage_attach_roundtrip():
+    exc = TimeoutError("dead")
+    assert partial_usage_from(exc) is None
+    attach_partial_usage(exc, {})  # empty usage is not attached
+    assert partial_usage_from(exc) is None
+    attach_partial_usage(exc, {"input_tokens": 42, "output_tokens": 7})
+    assert partial_usage_from(exc) == {"input_tokens": 42, "output_tokens": 7}
+
+
+@pytest.mark.asyncio
+async def test_wrapper_records_partial_usage_on_failed_complete():
+    """A call aborted mid-stream records the tokens the vendor billed (#2652)."""
+    error = TimeoutError("stream died")
+    attach_partial_usage(error, {"input_tokens": 5000, "output_tokens": 1200})
+    inner = _FakeProvider(error=error)
+    wrapped = RecordingLLMProvider(inner, "anthropic")
+    with (
+        patch("app.domain.services.ai_usage_service.record_ai_usage", new=AsyncMock()) as rec,
+        pytest.raises(TimeoutError),
+    ):
+        await wrapped.complete(
+            system="s", messages=[], max_tokens=10, temperature=0.0, model="claude-opus-4-8"
+        )
+    assert rec.call_args.kwargs["success"] is False
+    assert rec.call_args.kwargs["usage"] == {"input_tokens": 5000, "output_tokens": 1200}
+    assert rec.call_args.kwargs["cost_estimated"] is True
+
+
+class _UsageStreamProvider(_FakeProvider):
+    """Streams two chunks and fills usage_out like the Anthropic provider does."""
+
+    def __init__(self, *, fail_after_first: bool = False):
+        super().__init__()
+        self._fail_after_first = fail_after_first
+
+    async def stream(self, *, usage_out=None, **kwargs):
+        if usage_out is not None:
+            usage_out.update(input_tokens=9000, cache_read_input_tokens=100)
+        yield "hello "
+        if self._fail_after_first:
+            if usage_out is not None:
+                usage_out["output_tokens"] = 3
+            raise TimeoutError("aborted mid-stream")
+        yield "world"
+        if usage_out is not None:
+            usage_out["output_tokens"] = 6
+
+
+@pytest.mark.asyncio
+async def test_wrapper_stream_records_real_usage():
+    """Providers that surface stream usage get exact rows, not char estimates."""
+    wrapped = RecordingLLMProvider(_UsageStreamProvider(), "anthropic")
+    with patch("app.domain.services.ai_usage_service.record_ai_usage", new=AsyncMock()) as rec:
+        chunks = [
+            c
+            async for c in wrapped.stream(
+                system="s", user_message="m", max_tokens=10, temperature=0.0, model="claude-x"
+            )
+        ]
+    assert "".join(chunks) == "hello world"
+    usage = rec.call_args.kwargs["usage"]
+    assert usage["input_tokens"] == 9000
+    assert usage["output_tokens"] == 6
+    assert usage["cache_read_input_tokens"] == 100
+    assert rec.call_args.kwargs["cost_estimated"] is False
+
+
+@pytest.mark.asyncio
+async def test_wrapper_stream_records_usage_on_abort():
+    """An aborted stream still writes a failure row with billed-so-far usage."""
+    wrapped = RecordingLLMProvider(_UsageStreamProvider(fail_after_first=True), "anthropic")
+    with (
+        patch("app.domain.services.ai_usage_service.record_ai_usage", new=AsyncMock()) as rec,
+        pytest.raises(TimeoutError),
+    ):
+        async for _ in wrapped.stream(
+            system="s", user_message="m", max_tokens=10, temperature=0.0, model="claude-x"
+        ):
+            pass
+    kwargs = rec.call_args.kwargs
+    assert kwargs["success"] is False
+    assert kwargs["error_type"] == "TimeoutError"
+    assert kwargs["usage"]["input_tokens"] == 9000
+    assert kwargs["usage"]["output_tokens"] == 3
+    assert kwargs["characters"] == len("hello ")
+
+
+@pytest.mark.asyncio
+async def test_wrapper_stream_records_on_client_disconnect():
+    """GeneratorExit (SSE client gone) records a failure row, then propagates."""
+    wrapped = RecordingLLMProvider(_UsageStreamProvider(), "anthropic")
+    with patch("app.domain.services.ai_usage_service.record_ai_usage", new=AsyncMock()) as rec:
+        gen = wrapped.stream(
+            system="s", user_message="m", max_tokens=10, temperature=0.0, model="claude-x"
+        )
+        assert await gen.__anext__() == "hello "
+        await gen.aclose()
+    kwargs = rec.call_args.kwargs
+    assert kwargs["success"] is False
+    assert kwargs["error_type"] == "GeneratorExit"
+    assert kwargs["usage"]["input_tokens"] == 9000
 
 
 # ---------------------------------------------------------------- advice rules
