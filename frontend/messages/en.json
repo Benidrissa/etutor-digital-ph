@@ -1157,6 +1157,7 @@
       "loading": "Loading user details...",
       "error": "Failed to load user details.",
       "noProgress": "No module progress yet.",
+      "noCourse": "No course",
       "noQuizHistory": "No quiz attempts yet.",
       "score": "{score}%",
       "passed": "Passed",

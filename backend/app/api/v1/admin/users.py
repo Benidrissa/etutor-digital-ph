@@ -16,6 +16,7 @@ from app.api.deps_local_auth import AuthenticatedUser, require_role
 from app.api.v1.schemas.admin import AuditLogResponse
 from app.api.v1.schemas.users import UserProfileResponse
 from app.domain.models.audit_log import AdminAction, AuditLog
+from app.domain.models.course import Course
 from app.domain.models.module import Module
 from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import QuizAttempt
@@ -632,10 +633,11 @@ async def get_user_progress(
     """Get module progress for a user. Admin only."""
     try:
         stmt = (
-            select(UserModuleProgress, Module)
+            select(UserModuleProgress, Module, Course)
             .join(Module, UserModuleProgress.module_id == Module.id)
+            .outerjoin(Course, Module.course_id == Course.id)
             .where(UserModuleProgress.user_id == user_id)
-            .order_by(Module.module_number)
+            .order_by(Module.course_id, Module.module_number)
         )
         result = await db.execute(stmt)
         rows = result.all()
@@ -646,13 +648,16 @@ async def get_user_progress(
                 "module_number": m.module_number,
                 "title_fr": m.title_fr,
                 "title_en": m.title_en,
+                "course_id": str(m.course_id) if m.course_id else None,
+                "course_title_fr": c.title_fr if c else None,
+                "course_title_en": c.title_en if c else None,
                 "status": p.status,
                 "completion_pct": p.completion_pct,
                 "quiz_score_avg": p.quiz_score_avg,
                 "time_spent_minutes": p.time_spent_minutes,
                 "last_accessed": p.last_accessed.isoformat() if p.last_accessed else None,
             }
-            for p, m in rows
+            for p, m, c in rows
         ]
     except Exception as e:
         logger.error("Failed to get user progress", user_id=str(user_id), error=str(e))
