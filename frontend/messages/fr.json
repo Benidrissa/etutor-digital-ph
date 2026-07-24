@@ -1157,6 +1157,7 @@
       "loading": "Chargement des détails...",
       "error": "Impossible de charger les détails.",
       "noProgress": "Aucune progression de module.",
+      "noCourse": "Sans formation",
       "noQuizHistory": "Aucune tentative de quiz.",
       "score": "{score}%",
       "passed": "Réussi",

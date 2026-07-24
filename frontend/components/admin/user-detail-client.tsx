@@ -34,11 +34,48 @@ interface ModuleProgressItem {
   module_number: number;
   title_fr: string;
   title_en: string;
+  course_id: string | null;
+  course_title_fr: string | null;
+  course_title_en: string | null;
   status: string;
   completion_pct: number;
   quiz_score_avg: number | null;
   time_spent_minutes: number;
   last_accessed: string | null;
+}
+
+interface CourseProgressGroup {
+  courseId: string | null;
+  courseTitle: string | null;
+  modules: ModuleProgressItem[];
+}
+
+function groupProgressByCourse(
+  items: ModuleProgressItem[],
+  locale: string,
+): CourseProgressGroup[] {
+  const groups = new Map<string, CourseProgressGroup>();
+  for (const item of items) {
+    const key = item.course_id ?? "__none__";
+    let group = groups.get(key);
+    if (!group) {
+      group = {
+        courseId: item.course_id,
+        courseTitle:
+          locale === "fr"
+            ? item.course_title_fr ?? item.course_title_en
+            : item.course_title_en ?? item.course_title_fr,
+        modules: [],
+      };
+      groups.set(key, group);
+    }
+    group.modules.push(item);
+  }
+  return [...groups.values()].sort((a, b) => {
+    if (a.courseId === null) return 1;
+    if (b.courseId === null) return -1;
+    return (a.courseTitle ?? "").localeCompare(b.courseTitle ?? "", locale);
+  });
 }
 
 interface QuizAttemptItem {
@@ -200,19 +237,26 @@ export function UserDetailClient({ userId }: { userId: string }) {
           <p className="text-sm text-muted-foreground">{t("noProgress")}</p>
         )}
         {progress && progress.length > 0 && (
-          <div className="flex flex-col gap-3">
-            {progress.map((item) => (
-              <div key={item.module_id} className="flex flex-col gap-1.5">
-                <div className="flex items-center justify-between gap-2 text-sm">
-                  <span className="font-medium truncate">
-                    M{String(item.module_number).padStart(2, "0")} —{" "}
-                    {locale === "fr" ? item.title_fr : item.title_en}
-                  </span>
-                  <span className="text-muted-foreground shrink-0">
-                    {t("completionPct", { pct: Math.round(item.completion_pct) })}
-                  </span>
-                </div>
-                <Progress value={item.completion_pct} className="h-2" />
+          <div className="flex flex-col gap-6">
+            {groupProgressByCourse(progress, locale).map((group) => (
+              <div key={group.courseId ?? "no-course"} className="flex flex-col gap-3">
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                  {group.courseTitle ?? t("noCourse")}
+                </h3>
+                {group.modules.map((item) => (
+                  <div key={item.module_id} className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      <span className="font-medium truncate">
+                        M{String(item.module_number).padStart(2, "0")} —{" "}
+                        {locale === "fr" ? item.title_fr : item.title_en}
+                      </span>
+                      <span className="text-muted-foreground shrink-0">
+                        {t("completionPct", { pct: Math.round(item.completion_pct) })}
+                      </span>
+                    </div>
+                    <Progress value={item.completion_pct} className="h-2" />
+                  </div>
+                ))}
               </div>
             ))}
           </div>
