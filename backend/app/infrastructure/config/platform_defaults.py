@@ -458,6 +458,28 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         {"min": 3, "max": 30},
     ),
     SettingDef(
+        "ai-rag-context-token-budget",
+        "ai",
+        3500,
+        "integer",
+        "RAG context token budget",
+        "Max cumulative chunk tokens packed into a generation prompt after "
+        "MMR de-duplication. Trims the retrieved slate so near-duplicate or "
+        "oversized chunks don't bloat input cost. Applies on top of top-k.",
+        {"min": 500, "max": 20000},
+    ),
+    SettingDef(
+        "ai-rag-rerank-enabled",
+        "ai",
+        True,
+        "boolean",
+        "RAG rerank (MMR + token budget)",
+        "Kill-switch (#2635). When ON, retrieval over-fetches then MMR-"
+        "de-duplicates and packs the slate to the token budget. Turn OFF to "
+        "fall back to the legacy behavior — the nearest top-k chunks by "
+        "similarity, no de-dup or budgeting — without a schema rollback.",
+    ),
+    SettingDef(
         "ai-syllabus-soft-time-limit-seconds",
         "ai",
         2700,

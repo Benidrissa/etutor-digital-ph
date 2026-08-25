@@ -48,6 +48,13 @@ logger = structlog.get_logger()
 # threshold before giving up.
 RAG_FALLBACK_MIN_SIMILARITY = 0.15
 
+# Cap the relaxed-threshold fallback pass to a few chunks (#2635). At 0.15 the
+# pass can surface barely-relevant chunks; letting it fill the full top_k floods
+# the prompt with weak context, which then trips the auditor's UNGROUNDED_CLAIM
+# and cascades into expensive regenerations. A thin slate is enough to recover a
+# narrowly-missed unit without polluting grounding.
+RAG_FALLBACK_TOP_K = 4
+
 
 async def retrieve_with_fallback(
     retriever: SemanticRetriever,
@@ -68,8 +75,9 @@ async def retrieve_with_fallback(
 
     1. Primary pass: source-scoped search at the default 0.3 threshold.
     2. Fallback pass: same source-scoped query at a relaxed threshold
-       (RAG_FALLBACK_MIN_SIMILARITY) — recovers thin / partially-indexed
-       courses whose unit query narrowly missed the 0.3 cutoff (#2487).
+       (RAG_FALLBACK_MIN_SIMILARITY), capped at RAG_FALLBACK_TOP_K chunks so
+       weak-similarity context can't flood the prompt — recovers thin /
+       partially-indexed courses whose unit query narrowly missed 0.3 (#2487).
     3. If still empty, distinguish "course not indexed at all" (zero chunks
        under its source) from "no relevant content for this unit":
        raise CourseNotIndexedError vs the existing ValueError.
@@ -87,7 +95,7 @@ async def retrieve_with_fallback(
 
     chunks = await retriever.search(
         query=query,
-        top_k=top_k,
+        top_k=min(top_k, RAG_FALLBACK_TOP_K),
         min_similarity=RAG_FALLBACK_MIN_SIMILARITY,
         filters=retriever._build_module_filters(level, books_sources),
         session=session,
