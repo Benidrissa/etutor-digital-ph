@@ -1857,6 +1857,9 @@
       "generate": {
         "title": "Générer le syllabus",
         "description": "L'agent IA va analyser vos ressources et générer la structure du cours.",
+        "instructions": "Instructions complémentaires (optionnel)",
+        "instructionsPlaceholder": "Ex. : privilégier des exemples de terrain de Côte d'Ivoire ; structurer autour de la méthodologie RDQA ; le public cible est constitué de gestionnaires de santé de district…",
+        "instructionsHint": "Ces consignes guident l'IA lors de la génération du programme. Rédigez dans la langue de votre choix.",
         "button": "Générer le syllabus",
         "generating": "Génération en cours...",
         "generated": "Syllabus généré",

@@ -166,6 +166,7 @@ def generate_course_syllabus(
                     "level_slugs": [tc.slug for tc in cats if tc.type == "level"],
                     "audience_slugs": [tc.slug for tc in cats if tc.type == "audience"],
                     "objectives_json": course.objectives_json,
+                    "syllabus_instructions": course.syllabus_instructions,
                 }
         finally:
             await engine.dispose()
@@ -189,6 +190,7 @@ def generate_course_syllabus(
     level_slugs = course_data["level_slugs"]
     audience_slugs = course_data["audience_slugs"]
     objectives_json = course_data.get("objectives_json")
+    syllabus_instructions = course_data.get("syllabus_instructions")
 
     # ── Phase 1.5: Load resources from DB (pre-extracted at upload time) ──────
     from pathlib import Path
@@ -518,6 +520,7 @@ def generate_course_syllabus(
             estimated_hours=estimated_hours or course_hours,
             resource_text=resource_text,
             objectives_json=objectives_json,
+            syllabus_instructions=syllabus_instructions,
         )
 
     module_dicts = asyncio.run(_call_claude())

@@ -404,6 +404,7 @@ export function AICourseWizard({
   const [isSavingProposal, setIsSavingProposal] = useState(false);
 
   // Generation state
+  const [syllabusInstructions, setSyllabusInstructions] = useState("");
   const [generatedModules, setGeneratedModules] = useState<GeneratedModule[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
@@ -490,6 +491,7 @@ export function AICourseWizard({
         // Restore the admin-set duration so a resumed draft generates against
         // the intended target rather than the default (#2509).
         if (course?.estimated_hours) setEstimatedHours(course.estimated_hours);
+        if (course?.syllabus_instructions) setSyllabusInstructions(course.syllabus_instructions);
 
         if (resumeCreationStep === "generating") {
           // Task might still be running — go to generate step, polling will pick it up
@@ -685,13 +687,18 @@ export function AICourseWizard({
     setShouldForceGenerate(false);
 
     try {
-      const result = await triggerSyllabusGeneration(courseId, estimatedHours, useForce);
+      const result = await triggerSyllabusGeneration(
+        courseId,
+        estimatedHours,
+        useForce,
+        syllabusInstructions.trim() || null
+      );
       setGenerateTaskId(result.task_id);
     } catch {
       setGenerateError(t("generate.error"));
       setIsGenerating(false);
     }
-  }, [courseId, isGenerating, shouldForceGenerate, estimatedHours, t]);
+  }, [courseId, isGenerating, shouldForceGenerate, estimatedHours, syllabusInstructions, t]);
 
   const regenerateSyllabus = useCallback(async (mode: "reuse" | "fresh") => {
     if (!courseId || isGenerating || isRegenerating) return;
@@ -710,6 +717,10 @@ export function AICourseWizard({
     setGeneratedModules([]);
 
     try {
+      // Persist the latest textarea content first — the task reads it from the course row.
+      await updateAdminCourse(courseId, {
+        syllabus_instructions: syllabusInstructions.trim() || null,
+      });
       const result = await regenerateSyllabusApi(courseId, mode);
       setGenerateTaskId(result.task_id);
       setIsGenerating(true);
@@ -718,7 +729,7 @@ export function AICourseWizard({
     } finally {
       setIsRegenerating(false);
     }
-  }, [courseId, isGenerating, isRegenerating, t]);
+  }, [courseId, isGenerating, isRegenerating, syllabusInstructions, t]);
 
   useEffect(() => {
     if (!courseId || !isGenerating || !generateTaskId) return;
@@ -1421,6 +1432,23 @@ export function AICourseWizard({
                 </div>
 
                 <AttachedResources files={files} t={t} />
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="syllabus_instructions">{t("generate.instructions")}</Label>
+                  <Textarea
+                    id="syllabus_instructions"
+                    value={syllabusInstructions}
+                    onChange={(e) => setSyllabusInstructions(e.target.value)}
+                    placeholder={t("generate.instructionsPlaceholder")}
+                    maxLength={4000}
+                    rows={4}
+                    disabled={isGenerating || isRegenerating}
+                  />
+                  <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                    <span>{t("generate.instructionsHint")}</span>
+                    <span className="shrink-0 tabular-nums">{syllabusInstructions.length}/4000</span>
+                  </div>
+                </div>
 
                 {generatedModules.length === 0 && !isGenerating && (
                   <Button onClick={() => generateSyllabus()} className="w-full min-h-11" disabled={isGenerating}>

@@ -220,6 +220,7 @@ class CourseAgentService:
         description_en: str | None = None,
         audience_type: list[str] | None = None,
         objectives_json: dict | None = None,
+        syllabus_instructions: str | None = None,
     ) -> str:
         """Build the syllabus generation prompt, using admin override if available."""
         from app.ai.prompts.audience import (
@@ -234,6 +235,21 @@ class CourseAgentService:
             get_audience_guidance(audience_ctx, "en") if audience_ctx.is_kids else ""
         )
 
+        instructions_block = ""
+        if syllabus_instructions and syllabus_instructions.strip():
+            instructions_block = (
+                "\n## PRIORITY GUIDANCE FROM THE COURSE CREATOR\n"
+                "The course creator provided the following free-text instructions "
+                "(they may be in French, English, or mixed). Apply them throughout "
+                "the syllabus — topic emphasis, structure, examples, tone, and "
+                "audience framing. When they conflict with generic design choices, "
+                "the creator's guidance wins. They do NOT override the mandatory "
+                "design principles, the output format, or the conciseness rules.\n\n"
+                "<creator_instructions>\n"
+                f"{syllabus_instructions.strip()}\n"
+                "</creator_instructions>\n"
+            )
+
         admin = self._get_admin_prompt(
             audience_type=audience_type,
             course_title=f"{title_fr} / {title_en}",
@@ -243,8 +259,13 @@ class CourseAgentService:
             resource_text=resource_block,
             age_range=age_range,
             audience_guidance=audience_guidance,
+            syllabus_instructions=instructions_block,
         )
         if admin:
+            # A customized override template written before this feature won't
+            # reference {syllabus_instructions}; append so guidance still lands.
+            if instructions_block and instructions_block not in admin:
+                return admin + "\n" + instructions_block
             return admin
 
         description_block = ""
@@ -279,6 +300,7 @@ class CourseAgentService:
                 resource_block=resource_block,
                 age_range=age_range,
                 audience_guidance=audience_guidance,
+                instructions_block=instructions_block,
             )
 
         hint_lo, hint_hi = _module_count_hint(estimated_hours)
@@ -299,6 +321,7 @@ class CourseAgentService:
             f"course duration is the SUM of every module's estimated_hours, so they "
             f"MUST add up to ~{estimated_hours}h (not more).\n\n"
             f"{objectives_block}\n"
+            f"{instructions_block}\n"
             f"{resource_block}\n\n"
             "## Design principles (mandatory)\n"
             "- Progressive complexity: start with foundational concepts "
@@ -366,6 +389,7 @@ class CourseAgentService:
         resource_block: str,
         age_range: str,
         audience_guidance: str,
+        instructions_block: str = "",
     ) -> str:
         """Build kids-adapted syllabus prompt with child-centered pedagogy."""
         hint_lo, hint_hi = _module_count_hint(estimated_hours)
@@ -385,6 +409,7 @@ class CourseAgentService:
             f"- Target total hours: {estimated_hours}h. CRITICAL: the displayed "
             f"course duration is the SUM of every module's estimated_hours, so they "
             f"MUST add up to ~{estimated_hours}h (not more).\n\n"
+            f"{instructions_block}\n"
             f"{resource_block}\n\n"
             "## Design principles (mandatory)\n"
             "- Progressive complexity: start with discovery (remember/understand), "
@@ -456,6 +481,7 @@ class CourseAgentService:
         estimated_hours: int = 20,
         resource_text: str | None = None,
         objectives_json: dict | None = None,
+        syllabus_instructions: str | None = None,
     ) -> list[dict[str, Any]]:
         """
         Generate a course module outline using Claude API.
@@ -495,6 +521,7 @@ class CourseAgentService:
                 description_en=course_description_en,
                 audience_type=audience_type,
                 objectives_json=objectives_json,
+                syllabus_instructions=syllabus_instructions,
             )
 
             from app.domain.services.platform_settings_service import SettingsCache
@@ -522,6 +549,8 @@ class CourseAgentService:
                     description_fr=course_description_fr,
                     description_en=course_description_en,
                     audience_type=audience_type,
+                    objectives_json=objectives_json,
+                    syllabus_instructions=syllabus_instructions,
                 )
 
             # Force structured output via the save_syllabus tool, through the
