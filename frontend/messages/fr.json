@@ -1846,6 +1846,7 @@
         "extracting": "Extraction…",
         "usedChunks": "{count, plural, one {# fragment indexé} other {# fragments indexés}}",
         "notIndexed": "Extrait, non indexé",
+        "indexed": "Indexé",
         "extracted": "Extrait"
       },
       "sourcesUsage": {
@@ -1853,6 +1854,10 @@
         "loading": "Chargement des sources…",
         "error": "Échec du chargement des sources — réessayer",
         "droppedWarning": "{count, plural, one {# source n'a pas été indexée et ne sera pas utilisée par le cours.} other {# sources n'ont pas été indexées et ne seront pas utilisées par le cours.}}"
+      },
+      "publishGuard": {
+        "unindexedWarning": "{count, plural, one {Le texte de cette source n'est pas indexé : {files}. Les leçons sur ses sujets s'appuieront sur les autres sources.} other {Le texte de ces sources n'est pas indexé : {files}. Les leçons sur leurs sujets s'appuieront sur les autres sources.}} Relancez l'indexation, ou publiez quand même.",
+        "publishAnyway": "Publier quand même"
       },
       "generate": {
         "title": "Générer le syllabus",
