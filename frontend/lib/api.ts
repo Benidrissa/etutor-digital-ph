@@ -18,6 +18,8 @@ export class ApiError extends Error {
     message: string,
     public status: number,
     public code?: string,
+    // The structured `detail` body, when the backend sent one.
+    public detail?: unknown,
   ) {
     super(message);
     this.name = "ApiError";
@@ -358,15 +360,17 @@ export async function apiFetch<T>(
   if (!res.ok) {
     let message = `API error: ${res.status}`;
     let code: string | undefined;
+    let detail: unknown;
     try {
       const body = await res.json();
       if (body?.detail?.message) message = body.detail.message;
       else if (typeof body?.detail === "string") message = body.detail;
       if (body?.detail?.code) code = body.detail.code;
+      detail = body?.detail;
     } catch {
       // ignore parse errors — keep the status-code message
     }
-    throw new ApiError(message, res.status, code);
+    throw new ApiError(message, res.status, code, detail);
   }
   if (res.status === 204) return undefined as T;
   return res.json();

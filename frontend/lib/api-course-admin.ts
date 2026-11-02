@@ -2,7 +2,7 @@
  * Shared API wrappers for admin course operations.
  * Used by both the Legacy wizard (CourseWizardClient) and the AI-Assisted wizard (AICourseWizard).
  */
-import { apiFetch, API_BASE } from "@/lib/api";
+import { apiFetch, ApiError, API_BASE } from "@/lib/api";
 import { authClient } from "@/lib/auth";
 
 // ── Shared types ──────────────────────────────────────────────────────
@@ -38,6 +38,10 @@ export interface CourseResourceStatus {
   extraction_status: ExtractionStatus;
   char_count: number | null;
   chunks_indexed: number;
+  // Whether the extracted text reached the RAG. Unlike chunks_indexed, counts
+  // split parts whose shared file's chunks were credited to a sibling part.
+  // null = nothing to index, or can't tell (legacy chunks without a source). #2663
+  indexed?: boolean | null;
   on_disk: boolean;
 }
 
@@ -85,6 +89,8 @@ export interface IndexStatus {
   // visible — silent linker failures used to ship lessons with empty
   // source_image_refs (#2035).
   links_indexed?: number;
+  // Source files whose text has no chunks; publish refuses on these (#2663).
+  unindexed_sources?: string[];
   task?: TaskProgress;
 }
 
@@ -248,6 +254,7 @@ export async function getIndexStatusApi(courseId: string, taskId?: string) {
     chunks_indexed: number;
     images_indexed?: number;
     links_indexed?: number;
+    unindexed_sources?: string[];
     creation_step?: string;
     task?: TaskProgress & { id?: string; state: string };
   }>(`/api/v1/admin/courses/${courseId}/index-status${params}`);
@@ -380,10 +387,19 @@ export async function editContent(
 
 // ── Publishing ────────────────────────────────────────────────────────
 
-export async function publishAdminCourse(courseId: string): Promise<void> {
-  await apiFetch(`/api/v1/admin/courses/${courseId}/publish`, {
+// `force` publishes despite sources with no indexed text, once the admin has
+// seen them (#2663).
+export async function publishAdminCourse(courseId: string, force = false): Promise<void> {
+  await apiFetch(`/api/v1/admin/courses/${courseId}/publish${force ? "?force=true" : ""}`, {
     method: "POST",
   });
+}
+
+// The source files a 409 UNINDEXED_SOURCES publish refusal names, else null.
+export function unindexedSourcesFromError(err: unknown): string[] | null {
+  if (!(err instanceof ApiError) || err.code !== "UNINDEXED_SOURCES") return null;
+  const sources = (err.detail as { sources?: unknown } | undefined)?.sources;
+  return Array.isArray(sources) ? sources.map(String) : [];
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────

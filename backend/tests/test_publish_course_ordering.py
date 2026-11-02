@@ -21,7 +21,8 @@ from app.api.v1 import admin_courses
 
 
 def _mock_db(order):
-    """A db whose 3 execute() calls return: course, chunk-count(5), module-count(2)."""
+    """A db whose 4 execute() calls return: course, chunk-count(5), resources(none),
+    module-count(2)."""
     course = MagicMock()
     course.id = uuid.uuid4()
     course.rag_collection_id = str(uuid.uuid4())
@@ -31,11 +32,13 @@ def _mock_db(order):
     r_course.scalar_one_or_none = MagicMock(return_value=course)
     r_chunks = MagicMock()
     r_chunks.scalar_one = MagicMock(return_value=5)  # > 0 → passes publish gate
+    r_resources = MagicMock()
+    r_resources.all = MagicMock(return_value=[])  # no sources → nothing unindexed (#2663)
     r_modules = MagicMock()
     r_modules.scalar_one = MagicMock(return_value=2)
 
     db = MagicMock()
-    db.execute = AsyncMock(side_effect=[r_course, r_chunks, r_modules])
+    db.execute = AsyncMock(side_effect=[r_course, r_chunks, r_resources, r_modules])
     db.commit = AsyncMock(side_effect=lambda: order.append("commit"))
     db.refresh = AsyncMock()
     db.rollback = AsyncMock(side_effect=lambda: order.append("rollback"))

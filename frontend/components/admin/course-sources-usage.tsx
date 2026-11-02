@@ -77,8 +77,10 @@ export function CourseSourcesUsage({
   }
   if (!sources || sources.length === 0) return null;
 
+  // `indexed`, not chunks_indexed === 0: split parts share one file's chunks
+  // credited to a single part, so their own count is 0 when indexed (#2663).
   const dropped = sources.filter(
-    (s) => s.extraction_status === "failed" || s.chunks_indexed === 0
+    (s) => s.extraction_status === "failed" || s.indexed === false
   );
 
   return (
@@ -102,6 +104,7 @@ export function CourseSourcesUsage({
             <SourceStatusBadge
               status={s.extraction_status}
               chunks={s.chunks_indexed}
+              indexed={s.indexed}
             />
           </li>
         ))}
