@@ -479,6 +479,7 @@ class RAGPipeline:
         course_resource_id: UUID | None = None,
         file_hash: str | None = None,
         content_hash: str | None = None,
+        should_stop: "Callable[[], bool] | None" = None,
     ) -> int:
         """Extract images from a PDF, upload to MinIO, store metadata, and link to chunks.
 
@@ -497,6 +498,12 @@ class RAGPipeline:
                 and skips PDF extraction entirely (#2580).
             file_hash: SHA-256 of the raw PDF bytes — the exact image-cache key.
             content_hash: SHA-256 of the extracted text — fallback image-cache key.
+            should_stop: Optional zero-arg predicate checked before each image. When
+                it returns True the remaining images are skipped, the ones already
+                stored are still linked, and the call returns normally. Lets the
+                celery task stop inside its time budget instead of relying on the
+                soft-time-limit signal, which ``except Exception`` blocks can swallow
+                (#2659).
 
         Returns:
             Number of images processed and stored.
@@ -517,6 +524,7 @@ class RAGPipeline:
                     course_resource_id,
                     file_hash,
                     content_hash,
+                    should_stop,
                 )
         else:
             return await self._process_images(
@@ -528,6 +536,7 @@ class RAGPipeline:
                 course_resource_id,
                 file_hash,
                 content_hash,
+                should_stop,
             )
 
     async def _translate_figure_locales(
@@ -593,6 +602,7 @@ class RAGPipeline:
         course_resource_id: UUID | None = None,
         file_hash: str | None = None,
         content_hash: str | None = None,
+        should_stop: "Callable[[], bool] | None" = None,
     ) -> int:
         """Internal: extract, upload, store, and link images."""
         # Idempotent re-index (#2580): drop this resource's existing images first so a
@@ -634,6 +644,18 @@ class RAGPipeline:
         stored_count = 0
 
         for idx, img in enumerate(images):
+            # Out of time budget: stop between images (never mid-image) and fall
+            # through to the linker so what was stored is still usable (#2659).
+            if should_stop is not None and should_stop():
+                logger.warning(
+                    "Stopping image processing early — time budget exhausted",
+                    source=source,
+                    pdf_path=str(pdf_path),
+                    stored=stored_count,
+                    remaining=len(images) - idx,
+                )
+                break
+
             figure_label = img.figure_number or str(idx)
             safe_label = figure_label.replace(" ", "_").replace(".", "_")
             readable_name = pdf_path.stem.replace("_", " ")

@@ -69,6 +69,11 @@ export interface TaskProgress {
   current_file?: string;
   chunks_processed: number;
   estimated_seconds_remaining?: number;
+  // Set when indexation stopped at its time budget (#2659): the run still
+  // succeeded, but these source files need a re-index.
+  partial?: boolean;
+  text_incomplete?: string[];
+  images_incomplete?: string[];
 }
 
 export interface IndexStatus {
