@@ -1515,6 +1515,11 @@ async def get_rag_index_status(
                 "current_file": meta.get("current_file"),
                 "chunks_processed": meta.get("chunks_processed", 0),
                 "estimated_seconds_remaining": meta.get("estimated_seconds_remaining"),
+                # Set when the task stopped at its time budget (#2659): the run
+                # still succeeds, but these sources need a re-index.
+                "partial": bool(meta.get("partial")),
+                "text_incomplete": meta.get("text_incomplete") or [],
+                "images_incomplete": meta.get("images_incomplete") or [],
             }
 
     return response

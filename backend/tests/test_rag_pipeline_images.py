@@ -246,6 +246,48 @@ class TestRAGPipelineProcessPDFImages:
         mock_linker.link_images_to_chunks.assert_called_once_with("donaldson", mock_session)
 
     @pytest.mark.asyncio
+    async def test_should_stop_skips_remaining_images_but_still_links(self):
+        """#2659: the task's time budget stops the loop between images; what
+        was already stored must still be linked."""
+        pdf_path = Path(self.temp_dir) / "test.pdf"
+        pdf_path.touch()
+
+        images = [
+            _make_extracted_image(page_number=n, figure_number=f"Figure {n}") for n in (1, 2, 3)
+        ]
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=MagicMock())
+
+        mock_linker = AsyncMock()
+        mock_linker.link_images_to_chunks = AsyncMock(return_value=2)
+        checks = iter([False, False, True])  # budget runs out before the 3rd image
+
+        with (
+            patch(
+                "app.ai.rag.pipeline.PDFImageExtractor.extract_images_from_pdf",
+                return_value=images,
+            ),
+            patch(
+                "app.ai.rag.pipeline.S3StorageService.upload_bytes",
+                new_callable=AsyncMock,
+                return_value="http://minio/key.webp",
+            ),
+            patch("app.ai.rag.pipeline.ImageLinker", return_value=mock_linker),
+        ):
+            count = await self.pipeline.process_pdf_images(
+                pdf_path=str(pdf_path),
+                source="donaldson",
+                session=mock_session,
+                should_stop=lambda: next(checks),
+            )
+
+        assert count == 2
+        assert mock_session.add.call_count == 2
+        mock_linker.link_images_to_chunks.assert_called_once_with("donaldson", mock_session)
+
+    @pytest.mark.asyncio
     async def test_multiple_images_all_stored(self):
         pdf_path = Path(self.temp_dir) / "test.pdf"
         pdf_path.touch()

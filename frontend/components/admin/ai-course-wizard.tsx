@@ -67,6 +67,7 @@ import {
 } from "@/components/admin/course-resource-upload-step";
 import { SourceStatusBadge } from "@/components/admin/source-status-badge";
 import { CourseSourcesUsage } from "@/components/admin/course-sources-usage";
+import { IndexationPartialNotice } from "@/components/admin/indexation-partial-notice";
 
 const EXTRACTING_STATUSES = new Set(["pending", "extracting"]);
 
@@ -978,6 +979,11 @@ export function AICourseWizard({
 
   const reindexImages = useCallback(async () => {
     if (!courseId) return;
+    setIndexError(null);
+    // Fresh watchdog baseline, as in startIndexation — a stale timestamp from
+    // the earlier run would trip the 5-min stall check on the first poll.
+    lastIndexProgressValueRef.current = 0;
+    lastIndexProgressTimeRef.current = Date.now();
     try {
       const result = await reindexImagesApi(courseId);
       setTaskId(result.task_id);
@@ -1700,6 +1706,23 @@ export function AICourseWizard({
                       </div>
                     )}
                   </div>
+
+                  {/* Re-runs go back to the indexation step, where the recap
+                      shows live progress; success auto-advances here again. */}
+                  {!isIndexing && (
+                    <IndexationPartialNotice
+                      task={indexStatus?.task}
+                      onRetryIndexation={() => {
+                        setStep("indexation");
+                        void startIndexation();
+                      }}
+                      onReindexImages={() => {
+                        setStep("indexation");
+                        void reindexImages();
+                      }}
+                      t={t}
+                    />
+                  )}
 
                   {relinkError && (
                     <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">

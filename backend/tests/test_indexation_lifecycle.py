@@ -305,3 +305,256 @@ class TestDbOnlyResources:
         b = self._res("b")
         out = _db_only_resources([], [a, b])
         assert out == [a, b]
+
+
+class TestIndexationDeadline:
+    """The task stops on its own deadline, a margin before the soft limit, so
+    Celery's SIGUSR1 is only a backstop (#2659)."""
+
+    @staticmethod
+    def _task(soft: int | None, timelimit=None):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(soft_time_limit=soft, request=SimpleNamespace(timelimit=timelimit))
+
+    def test_deadline_sits_margin_before_task_soft_limit(self) -> None:
+        from app.tasks.rag_indexation import _DEADLINE_MARGIN_SECONDS, indexation_deadline
+
+        assert indexation_deadline(self._task(3300), 100.0) == 100.0 + 3300 - (
+            _DEADLINE_MARGIN_SECONDS
+        )
+
+    def test_per_call_soft_limit_override_wins(self) -> None:
+        from app.tasks.rag_indexation import _DEADLINE_MARGIN_SECONDS, indexation_deadline
+
+        task = self._task(3300, timelimit=(1200, 900))
+        assert indexation_deadline(task, 0.0) == 900 - _DEADLINE_MARGIN_SECONDS
+
+    def test_small_soft_limit_keeps_half_the_budget(self) -> None:
+        from app.tasks.rag_indexation import indexation_deadline
+
+        assert indexation_deadline(self._task(200), 0.0) == 100
+
+    def test_no_soft_limit_means_no_deadline(self) -> None:
+        from app.tasks.rag_indexation import indexation_deadline
+
+        assert indexation_deadline(self._task(None), 0.0) is None
+
+
+class TestKillFinalizer:
+    """A hard time limit / lost worker never runs Task.on_failure (the child is
+    gone), so ``task_failure`` — sent from the worker main process — must
+    finalize the course instead of leaving it wedged at 'indexing' (#2659)."""
+
+    @staticmethod
+    def _send(sender, exception, args=("course-abc", "coll")) -> None:
+        from celery.signals import task_failure
+
+        task_failure.send(sender=sender, task_id="t-1", exception=exception, args=args, kwargs={})
+
+    def test_hard_time_limit_finalizes_index_task(self) -> None:
+        from celery.exceptions import TimeLimitExceeded
+
+        from app.tasks.rag_indexation import index_course_resources
+
+        with patch("app.tasks.rag_indexation.finalize_indexation_state") as mock_finalize:
+            self._send(index_course_resources, TimeLimitExceeded(3600))
+
+        mock_finalize.assert_called_once_with("course-abc", transition=("indexing", "generated"))
+
+    def test_lost_worker_finalizes_index_task(self) -> None:
+        from celery.exceptions import WorkerLostError
+
+        from app.tasks.rag_indexation import index_course_resources
+
+        with patch("app.tasks.rag_indexation.finalize_indexation_state") as mock_finalize:
+            self._send(index_course_resources, WorkerLostError("SIGKILL"))
+
+        mock_finalize.assert_called_once_with("course-abc", transition=("indexing", "generated"))
+
+    def test_hard_time_limit_clears_image_reindex_pointer_only(self) -> None:
+        from celery.exceptions import TimeLimitExceeded
+
+        from app.tasks.image_indexation import reindex_course_images
+
+        with patch("app.tasks.rag_indexation.finalize_indexation_state") as mock_finalize:
+            self._send(reindex_course_images, TimeLimitExceeded(3600))
+
+        mock_finalize.assert_called_once_with("course-abc", transition=None)
+
+    def test_ordinary_failure_left_to_on_failure(self) -> None:
+        from app.tasks.rag_indexation import index_course_resources
+
+        with patch("app.tasks.rag_indexation.finalize_indexation_state") as mock_finalize:
+            self._send(index_course_resources, RuntimeError("boom"))
+
+        mock_finalize.assert_not_called()
+
+    def test_other_tasks_ignored(self) -> None:
+        from celery.exceptions import TimeLimitExceeded
+
+        class _OtherTask:  # hashable, unlike SimpleNamespace (signal sender cache)
+            name = "app.tasks.other.task"
+
+        with patch("app.tasks.rag_indexation.finalize_indexation_state") as mock_finalize:
+            self._send(_OtherTask(), TimeLimitExceeded(60))
+
+        mock_finalize.assert_not_called()
+
+
+class _SwitchableDeadline:
+    """Stands in for the task's monotonic deadline. ``monotonic() >= deadline``
+    falls back to ``deadline.__le__``, so tests can expire the budget at a chosen
+    point without patching the clock asyncio itself runs on."""
+
+    def __init__(self) -> None:
+        self.expired = False
+
+    def __le__(self, _now) -> bool:
+        return self.expired
+
+
+class TestIndexTaskTimeBudget:
+    """Drives the real ``_run_pipeline`` (pipeline mocked) through
+    ``index_course_resources.run`` to pin the #2659 behaviour: text for every
+    PDF before any images, a graceful stop at the deadline, an honest partial
+    report, and a soft-limit signal that can't be swallowed per PDF."""
+
+    COURSE_ID = "11111111-1111-1111-1111-111111111111"
+
+    def _run(self, *, process_pdf_images, deadline=None):
+        from pathlib import Path
+        from unittest.mock import AsyncMock, PropertyMock
+
+        import app.tasks.rag_indexation as mod
+        from app.infrastructure.config.settings import settings
+
+        calls: list[tuple[str, str]] = []
+
+        async def _doc(*, pdf_path, **_):
+            calls.append(("text", Path(pdf_path).name))
+            return 4
+
+        async def _images(*, pdf_path, should_stop, **_):
+            calls.append(("images", Path(pdf_path).name))
+            return await process_pdf_images(Path(pdf_path).name, should_stop)
+
+        pipeline = MagicMock()
+        pipeline.process_pdf_document = AsyncMock(side_effect=_doc)
+        pipeline.process_pdf_images = AsyncMock(side_effect=_images)
+
+        course_path = MagicMock()
+        course_path.exists.return_value = True
+        course_path.glob.return_value = [Path("/tmp/a.pdf"), Path("/tmp/b.pdf")]
+
+        empty_session = MagicMock()
+        empty_session.execute.return_value.scalars.return_value.all.return_value = []
+        empty_session.execute.return_value.all.return_value = []
+        empty_session.__enter__ = lambda self: self
+        empty_session.__exit__ = lambda *a: None
+
+        task = mod.index_course_resources
+        with (
+            patch.object(mod, "UPLOAD_DIR") as mock_upload_dir,
+            patch.object(mod, "indexation_deadline", return_value=deadline),
+            patch("sqlalchemy.create_engine"),
+            patch("sqlalchemy.orm.Session", return_value=empty_session),
+            patch.object(
+                type(settings), "openai_api_key", new_callable=PropertyMock, return_value="sk"
+            ),
+            patch("app.ai.rag.embeddings.EmbeddingService"),
+            patch("app.ai.rag.pipeline.RAGPipeline", return_value=pipeline),
+            patch(
+                "app.infrastructure.persistence.database.engine",
+                MagicMock(dispose=AsyncMock()),
+            ),
+            patch.object(task, "update_state"),
+        ):
+            mock_upload_dir.__truediv__.return_value = course_path
+            result = task.run(self.COURSE_ID, "collection-x")
+        return result, calls
+
+    def test_text_for_every_pdf_runs_before_any_images(self) -> None:
+        async def _images(name, should_stop):
+            return 2
+
+        result, calls = self._run(process_pdf_images=_images)
+
+        assert calls == [
+            ("text", "a.pdf"),
+            ("text", "b.pdf"),
+            ("images", "a.pdf"),
+            ("images", "b.pdf"),
+        ]
+        assert result["status"] == "complete"
+        assert result["partial"] is False
+        assert result["chunks_stored"] == 8
+        assert result["images_stored"] == 4
+
+    def test_deadline_between_pdfs_skips_remaining_images_as_partial(self) -> None:
+        deadline = _SwitchableDeadline()
+
+        async def _images(name, should_stop):
+            assert should_stop() is False
+            deadline.expired = True  # a.pdf finished its images right at the budget
+            return 3
+
+        result, calls = self._run(process_pdf_images=_images, deadline=deadline)
+
+        assert ("images", "b.pdf") not in calls
+        assert result["status"] == "partial_timeout"
+        assert result["text_incomplete"] == []
+        assert result["images_incomplete"] == ["b.pdf"]
+        assert result["images_stored"] == 3
+
+    def test_deadline_inside_a_pdf_marks_it_incomplete(self) -> None:
+        deadline = _SwitchableDeadline()
+
+        async def _images(name, should_stop):
+            deadline.expired = True
+            assert should_stop() is True  # pipeline stops between images
+            return 1
+
+        result, _ = self._run(process_pdf_images=_images, deadline=deadline)
+
+        assert result["status"] == "partial_timeout"
+        assert result["images_incomplete"] == ["a.pdf", "b.pdf"]
+
+    def test_soft_limit_in_image_phase_reaches_backstop_not_per_pdf_guard(self) -> None:
+        """Before #2659 the per-PDF ``except Exception`` swallowed this and the
+        task ran on into a hard SIGKILL."""
+        from celery.exceptions import SoftTimeLimitExceeded
+
+        async def _images(name, should_stop):
+            raise SoftTimeLimitExceeded()
+
+        result, calls = self._run(process_pdf_images=_images)
+
+        assert ("images", "b.pdf") not in calls
+        assert result["status"] == "partial_timeout"
+        assert result["text_incomplete"] == []
+        assert result["images_incomplete"] == ["a.pdf", "b.pdf"]
+
+    def test_real_sigusr1_in_sync_image_code_reaches_backstop(self) -> None:
+        """The real mechanism: billiard's handler raises from SIGUSR1 while the
+        coroutine runs sync code (PyMuPDF extraction in production)."""
+        import os
+        import signal
+
+        from billiard.pool import soft_timeout_sighandler
+
+        async def _images(name, should_stop):
+            os.kill(os.getpid(), signal.SIGUSR1)
+            for _ in range(10_000_000):  # sync work; the signal lands here
+                pass
+            raise AssertionError("soft-limit signal was not delivered")
+
+        previous = signal.signal(signal.SIGUSR1, soft_timeout_sighandler)
+        try:
+            result, calls = self._run(process_pdf_images=_images)
+        finally:
+            signal.signal(signal.SIGUSR1, previous)
+
+        assert ("images", "b.pdf") not in calls
+        assert result["status"] == "partial_timeout"
+        assert result["images_incomplete"] == ["a.pdf", "b.pdf"]
