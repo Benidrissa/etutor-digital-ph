@@ -55,6 +55,7 @@ import {
   relinkImagesApi,
   updateAdminCourse,
   publishAdminCourse,
+  unindexedSourcesFromError,
   suggestCourseMetadata,
   formatBytes,
 } from "@/lib/api-course-admin";
@@ -68,6 +69,7 @@ import {
 import { SourceStatusBadge } from "@/components/admin/source-status-badge";
 import { CourseSourcesUsage } from "@/components/admin/course-sources-usage";
 import { IndexationPartialNotice } from "@/components/admin/indexation-partial-notice";
+import { UnindexedSourcesWarning } from "@/components/admin/unindexed-sources-warning";
 
 const EXTRACTING_STATUSES = new Set(["pending", "extracting"]);
 
@@ -446,6 +448,10 @@ export function AICourseWizard({
   const [publishError, setPublishError] = useState<string | null>(null);
   const [publishSummaryTitle, setPublishSummaryTitle] = useState<{ title_fr: string; title_en: string } | null>(null);
   const [publishSummaryIndexStatus, setPublishSummaryIndexStatus] = useState<IndexStatus | null>(null);
+  // Set when publish is refused for sources added since the summary loaded (#2663).
+  const [refusedSources, setRefusedSources] = useState<string[] | null>(null);
+  const unindexedSources = refusedSources ?? publishSummaryIndexStatus?.unindexed_sources ?? [];
+  const forcePublish = unindexedSources.length > 0;
   const [publishSummaryResources, setPublishSummaryResources] = useState<Array<{ name: string }>>([]);
   const [publishSummaryModuleCount, setPublishSummaryModuleCount] = useState<number>(0);
   const [isFetchingPublishSummary, setIsFetchingPublishSummary] = useState(false);
@@ -1043,6 +1049,7 @@ export function AICourseWizard({
   useEffect(() => {
     if (step !== "publish" || !courseId || isIndexing) return;
     setIsFetchingPublishSummary(true);
+    setRefusedSources(null);
     Promise.all([
       getAdminCourse(courseId),
       getIndexStatusApi(courseId),
@@ -1064,21 +1071,27 @@ export function AICourseWizard({
     setIsPublishing(true);
     setPublishError(null);
     try {
-      await publishAdminCourse(courseId);
+      // The admin has seen the unindexed-sources warning by now (#2663).
+      await publishAdminCourse(courseId, forcePublish);
       setPublishSuccess(true);
       queryClient.invalidateQueries({ queryKey: ["admin-courses"] });
       onCourseCreated();
     } catch (err) {
-      // Surface the backend's real reason instead of always blaming indexation:
-      // the publish gate passes here, so a failure is usually something else, and
-      // the hardcoded "vérifiez l'indexation" message misleads. #2543
-      setPublishError(
-        err instanceof ApiError && err.message ? err.message : t("publish.error"),
-      );
+      const refused = unindexedSourcesFromError(err);
+      if (refused) {
+        setRefusedSources(refused);
+      } else {
+        // Surface the backend's real reason instead of always blaming indexation:
+        // the publish gate passes here, so a failure is usually something else, and
+        // the hardcoded "vérifiez l'indexation" message misleads. #2543
+        setPublishError(
+          err instanceof ApiError && err.message ? err.message : t("publish.error"),
+        );
+      }
     } finally {
       setIsPublishing(false);
     }
-  }, [courseId, queryClient, onCourseCreated, t]);
+  }, [courseId, forcePublish, queryClient, onCourseCreated, t]);
 
   // ── Navigation ────────────────────────────────────────────────────
 
@@ -1853,6 +1866,9 @@ export function AICourseWizard({
                   </div>
                 ) : (
                   <>
+                    {unindexedSources.length > 0 && (
+                      <UnindexedSourcesWarning files={unindexedSources} />
+                    )}
                     {publishError && (
                       <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
                         <AlertCircle className="h-4 w-4 shrink-0" />
@@ -1900,7 +1916,11 @@ export function AICourseWizard({
                       ) : (
                         <Rocket className="mr-2 h-4 w-4" />
                       )}
-                      {isPublishing ? t("publish.publishing") : t("publish.button")}
+                      {isPublishing
+                        ? t("publish.publishing")
+                        : forcePublish
+                          ? t("publishGuard.publishAnyway")
+                          : t("publish.button")}
                     </Button>
                   </>
                 )}

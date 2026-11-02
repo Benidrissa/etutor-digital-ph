@@ -37,12 +37,14 @@ import {
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
 import { apiFetch, ApiError, API_BASE, getCourseTaxonomy, type TaxonomyResponse } from '@/lib/api';
+import { publishAdminCourse, unindexedSourcesFromError } from '@/lib/api-course-admin';
 import { authClient, AuthError } from '@/lib/auth';
 import { CourseForm } from '@/components/admin/course-form';
 import { CourseWizardClient } from '@/components/admin/course-wizard-client';
 import { AICourseWizard } from '@/components/admin/ai-course-wizard';
 import { CreationModePicker } from '@/components/admin/creation-mode-picker';
 import { CoursePreassessmentSettings } from '@/components/admin/course-preassessment-settings';
+import { UnindexedSourcesWarning } from '@/components/admin/unindexed-sources-warning';
 
 export interface AdminCourse {
   id: string;
@@ -118,6 +120,8 @@ export function CoursesClient() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [imagesIndexed, setImagesIndexed] = useState<number | null>(null);
+  // Sources the publish gate will refuse on; shown in the dialog first (#2663).
+  const [unindexedSources, setUnindexedSources] = useState<string[]>([]);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [generateTaskId, setGenerateTaskId] = useState<string | null>(null);
   const generatePollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -125,14 +129,25 @@ export function CoursesClient() {
   const { data: courses, isLoading, error, refetch } = useAdminCourses();
 
   const publishMutation = useMutation({
-    mutationFn: (courseId: string) =>
-      apiFetch(`/api/v1/admin/courses/${courseId}/publish`, { method: 'POST' }),
+    mutationFn: ({ courseId, force }: { courseId: string; force: boolean }) =>
+      publishAdminCourse(courseId, force),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'courses'] });
       setPendingAction(null);
       setActionError(null);
     },
-    onError: () => setActionError(t('actionError')),
+    onError: (err: unknown) => {
+      // Refused for sources the dialog didn't know about yet (#2663).
+      const refused = unindexedSourcesFromError(err);
+      setActionError(
+        refused
+          ? t('wizard.publishGuard.unindexedWarning', {
+              count: refused.length,
+              files: refused.join(', '),
+            })
+          : t('actionError'),
+      );
+    },
   });
 
   const archiveMutation = useMutation({
@@ -165,7 +180,10 @@ export function CoursesClient() {
   const handleConfirmAction = () => {
     if (!pendingAction) return;
     if (pendingAction.type === 'publish') {
-      publishMutation.mutate(pendingAction.course.id);
+      publishMutation.mutate({
+        courseId: pendingAction.course.id,
+        force: unindexedSources.length > 0,
+      });
     } else if (pendingAction.type === 'archive') {
       archiveMutation.mutate(pendingAction.course.id);
     } else if (pendingAction.type === 'delete') {
@@ -176,13 +194,15 @@ export function CoursesClient() {
   const handlePublishIntent = useCallback(
     async (course: AdminCourse) => {
       setImagesIndexed(null);
+      setUnindexedSources([]);
       setPendingAction({ type: 'publish', course });
       if (course.rag_collection_id) {
         try {
-          const data = await apiFetch<{ images_indexed?: number }>(
+          const data = await apiFetch<{ images_indexed?: number; unindexed_sources?: string[] }>(
             `/api/v1/admin/courses/${course.id}/index-status`
           );
           setImagesIndexed(data.images_indexed ?? 0);
+          setUnindexedSources(data.unindexed_sources ?? []);
         } catch {
           setImagesIndexed(0);
         }
@@ -471,6 +491,9 @@ export function CoursesClient() {
               <span>{t('imagesNotIndexedWarning')}</span>
             </div>
           )}
+          {pendingAction?.type === 'publish' && unindexedSources.length > 0 && (
+            <UnindexedSourcesWarning files={unindexedSources} />
+          )}
           <div className="flex justify-end gap-3 mt-4">
             <AlertDialogCancel onClick={() => setPendingAction(null)}>
               {t('cancel')}
@@ -479,7 +502,9 @@ export function CoursesClient() {
               onClick={handleConfirmAction}
               disabled={publishMutation.isPending || archiveMutation.isPending || deleteMutation.isPending}
             >
-              {t('confirm')}
+              {pendingAction?.type === 'publish' && unindexedSources.length > 0
+                ? t('wizard.publishGuard.publishAnyway')
+                : t('confirm')}
             </AlertDialogAction>
           </div>
         </AlertDialogContent>

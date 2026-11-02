@@ -378,6 +378,8 @@ async def test_list_course_resources_reports_per_source_chunk_counts(tmp_path, m
     used = SimpleNamespace(
         id=_uuid.uuid4(),
         filename="indexed_source",
+        parent_filename=None,
+        raw_text="text",
         char_count=4200,
         extraction_status="done",
         extracted_at=datetime(2026, 6, 6, tzinfo=UTC),
@@ -385,6 +387,8 @@ async def test_list_course_resources_reports_per_source_chunk_counts(tmp_path, m
     dropped = SimpleNamespace(
         id=_uuid.uuid4(),
         filename="Donor_Alignment",  # uploaded as .PDF / file_not_found → not on disk
+        parent_filename=None,
+        raw_text=None,
         char_count=None,
         extraction_status="failed",
         extracted_at=datetime(2026, 6, 6, tzinfo=UTC),
@@ -414,6 +418,75 @@ async def test_list_course_resources_reports_per_source_chunk_counts(tmp_path, m
     assert by_id[str(dropped.id)]["on_disk"] is False
     # The dropped source is visible even though it has no file on disk.
     assert len(resp["files"]) == 2
+    # Failed extraction has nothing to index, so it's not reported as unindexed.
+    assert by_id[str(used.id)]["indexed"] is True
+    assert by_id[str(dropped.id)]["indexed"] is None
+
+
+# ---- #2663: which extracted sources never reached the RAG ----
+
+
+def _src(filename, parent=None, status="done", has_text=True):
+    return (uuid.uuid4(), filename, parent, status, has_text)
+
+
+def test_source_coverage_credits_split_parts_sharing_one_file():
+    """The indexer credits a split PDF's chunks to one part; the others are indexed too."""
+    part1, part2 = _src("book_part1", "book"), _src("book_part2", "book")
+    coverage = admin_courses._source_index_coverage([part1, part2], {part1[0]: 40}, False)
+    assert coverage == {part1[0]: True, part2[0]: True}
+
+
+def test_source_coverage_flags_extracted_source_without_chunks():
+    indexed, missing = _src("a"), _src("b")
+    coverage = admin_courses._source_index_coverage([indexed, missing], {indexed[0]: 5}, False)
+    assert coverage[indexed[0]] is True
+    assert coverage[missing[0]] is False
+
+
+def test_source_coverage_unknown_when_unattributed_chunks_exist():
+    """Legacy chunks without course_resource_id might belong to any source."""
+    missing = _src("b")
+    coverage = admin_courses._source_index_coverage([missing], {}, True)
+    assert coverage[missing[0]] is None
+
+
+def test_source_coverage_ignores_unextracted_or_empty_sources():
+    failed, pending, empty = (
+        _src("f", status="failed"),
+        _src("p", status="pending"),
+        _src("e", has_text=False),
+    )
+    coverage = admin_courses._source_index_coverage([failed, pending, empty], {}, False)
+    assert set(coverage.values()) == {None}
+
+
+class _RowsResult:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def all(self):
+        return self._rows
+
+
+async def test_unindexed_source_names_reports_a_split_file_once():
+    part1, part2, other = _src("book_part1", "book"), _src("book_part2", "book"), _src("notes")
+    db = SimpleNamespace(
+        execute=AsyncMock(
+            side_effect=[_RowsResult([part1, part2, other]), _RowsResult([(other[0], 3)])]
+        )
+    )
+    course = SimpleNamespace(id=uuid.uuid4(), rag_collection_id="col-1")
+
+    assert await admin_courses._unindexed_source_names(course, db) == ["book.pdf"]
+
+
+async def test_unindexed_source_names_skips_chunk_query_without_sources():
+    db = SimpleNamespace(execute=AsyncMock(return_value=_RowsResult([])))
+    course = SimpleNamespace(id=uuid.uuid4(), rag_collection_id="col-1")
+
+    assert await admin_courses._unindexed_source_names(course, db) == []
+    assert db.execute.await_count == 1
 
 
 # ---------------------------------------------------------------------------

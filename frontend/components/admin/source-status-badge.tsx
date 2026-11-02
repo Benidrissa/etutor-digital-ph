@@ -13,13 +13,18 @@ import type { ExtractionStatus } from "@/lib/api-course-admin";
  * (e.g. file_not_found #2424, or not indexed yet) — that must read as NOT used.
  *
  * `chunks` undefined = count not known yet (pre-indexation); 0 = known-and-empty.
+ * `indexed` (from /resources) overrides a 0 count: true = a split part whose
+ * shared file's chunks were credited to a sibling part, null = can't tell
+ * (legacy chunks without a source). #2663
  */
 export function SourceStatusBadge({
   status,
   chunks,
+  indexed,
 }: {
   status?: ExtractionStatus;
   chunks?: number;
+  indexed?: boolean | null;
 }) {
   const t = useTranslations("AdminCourses.wizard.sourceStatus");
 
@@ -51,7 +56,16 @@ export function SourceStatusBadge({
     );
   }
 
-  if (chunks === 0) {
+  if (indexed === true) {
+    return (
+      <span className="flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-400">
+        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-600" />
+        {t("indexed")}
+      </span>
+    );
+  }
+
+  if (chunks === 0 && indexed !== null) {
     // Extracted but no chunks in RAG — this source is NOT used. Warn clearly.
     return (
       <span className="flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400">
