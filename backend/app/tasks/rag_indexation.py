@@ -6,7 +6,8 @@ from pathlib import Path
 
 import structlog
 from celery import Task
-from celery.exceptions import SoftTimeLimitExceeded
+from celery.exceptions import SoftTimeLimitExceeded, TimeLimitExceeded, WorkerLostError
+from celery.signals import task_failure
 
 from app.tasks.celery_app import celery_app
 
@@ -16,6 +17,54 @@ UPLOAD_DIR = Path("uploads/course_resources")
 
 _BYTES_PER_SECOND_ESTIMATE = 50_000
 _CHUNK_EMBED_SECONDS_ESTIMATE = 0.05
+
+# Stop starting new work this long before the soft time limit, so the in-flight
+# image (several AI calls) and the linker can finish before Celery's signal fires.
+_DEADLINE_MARGIN_SECONDS = 300
+
+
+def indexation_deadline(task: Task, started_at: float) -> float | None:
+    """Monotonic time after which an indexation task must stop starting new work.
+
+    Celery's soft limit raises ``SoftTimeLimitExceeded`` (an ``Exception``) from a
+    signal handler wherever the main thread happens to be. When that is sync code
+    inside an ``except Exception`` block — PyMuPDF extraction, the per-image
+    ``update_state`` — it is swallowed, the task runs on, and the hard limit
+    SIGKILLs it with the course wedged at 'indexing'. Stopping on our own
+    deadline first makes the signal a backstop only. See #2659.
+    """
+    timelimit = getattr(task.request, "timelimit", None) or (None, None)
+    soft = timelimit[1] or task.soft_time_limit
+    if not soft:
+        return None
+    return started_at + max(soft - _DEADLINE_MARGIN_SECONDS, soft / 2)
+
+
+def connect_kill_finalizer(task: Task, *, transition: tuple[str, str] | None = None) -> None:
+    """Finalize indexation state when the worker kills *task* outright.
+
+    A hard time limit (SIGKILL) or a lost worker (OOM) never runs the task's own
+    ``on_failure`` — the child process is gone — so the course keeps a dangling
+    ``indexation_task_id`` and the wizard wedges. Celery still sends
+    ``task_failure`` from the worker's main process in both cases, so finalize
+    from there. Ordinary failures already went through ``on_failure``. See #2659.
+    """
+
+    def _receiver(sender=None, exception=None, args=None, kwargs=None, **_):
+        if getattr(sender, "name", None) != task.name:
+            return
+        if not isinstance(exception, (TimeLimitExceeded, WorkerLostError)):
+            return
+        course_id = args[0] if args else (kwargs or {}).get("course_id")
+        logger.warning(
+            "Indexation task killed by worker — finalizing state",
+            task=task.name,
+            course_id=course_id,
+            exception=repr(exception),
+        )
+        finalize_indexation_state(course_id, transition=transition)
+
+    task_failure.connect(_receiver, weak=False)
 
 
 def _estimate_seconds(pdf_files: list[Path]) -> int:
@@ -137,10 +186,12 @@ class RAGTask(Task):
 # subclass of Exception, so `autoretry_for=(Exception,)` would otherwise treat a
 # time-limit hit as a transient error and re-run the entire (tens-of-minutes)
 # pipeline — redoing all the per-image Claude work and re-surfacing a hard error
-# in the wizard even though the work had actually completed. We catch it inside
-# the task instead and finalize the partial result as a success. The limits
-# below are sized for image-heavy courses (per-image embedding + classify +
-# FR/EN translate + flowchart SVG re-derivation can run ~20 min on 300+ images).
+# in the wizard even though the work had actually completed. The task stops on
+# its own deadline before the soft limit (see indexation_deadline) and catches
+# the signal only as a backstop, finalizing the partial result as a success.
+# The limits below are sized for image-heavy courses (per-image embedding +
+# classify + FR/EN translate + flowchart SVG re-derivation can run ~20 min on
+# 300+ images).
 @celery_app.task(
     bind=True,
     base=RAGTask,
@@ -166,6 +217,8 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
     to call the async RAG pipeline from the sync Celery context.
     """
     import asyncio
+
+    deadline = indexation_deadline(self, time.monotonic())
 
     logger.info(
         "Starting RAG indexation",
@@ -228,6 +281,26 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
             total_estimated = elapsed / (progress_pct / 100)
             return max(0, int(total_estimated - elapsed))
         return estimated_seconds
+
+    # Sources still owed text / images, trimmed as each one completes, so both the
+    # normal return and the soft-limit backstop report exactly what a partial run
+    # left out instead of a bare "success" (#2659).
+    pending_text = [r.filename for r in db_only_resources] + [p.name for p in pdf_files]
+    pending_images = [p.name for p in pdf_files]
+    budget_spent = False
+
+    def _out_of_time() -> bool:
+        nonlocal budget_spent
+        if deadline is not None and time.monotonic() >= deadline:
+            budget_spent = True
+        return budget_spent
+
+    def _partial_report() -> dict:
+        return {
+            "partial": bool(pending_text or pending_images),
+            "text_incomplete": list(pending_text),
+            "images_incomplete": list(pending_images),
+        }
 
     self.update_state(
         state="EXTRACTING",
@@ -372,6 +445,7 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                         images=img_cloned,
                         course_id=course_id,
                     )
+                pending_text.remove(resource_name)
 
         # Pure-deduped course (every source was file_hash-deduped): no disk PDFs
         # to extract text/images from, so we're done.
@@ -418,15 +492,33 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
             finally:
                 _eng.dispose()
 
+        def _resource_keys(pdf_path: Path) -> tuple[uuid.UUID | None, str | None, str | None]:
+            def _get(lookup: dict):
+                return lookup.get(pdf_path.stem) or lookup.get(pdf_path.name)
+
+            return (
+                _get(resource_id_by_stem),
+                _get(resource_hash_by_stem),
+                _get(resource_filehash_by_stem),
+            )
+
+        files_total = len(pdf_files)
+
+        # Phase 2: text for every disk PDF before any image work. Images are the
+        # slow part (~20 min on 300+ figures); the old per-PDF text → images order
+        # let one image-heavy PDF burn the time budget and leave every later PDF
+        # with no text chunks at all while the run still reported success. Now a
+        # budget hit can only cost images, which reindex-images recovers. #2659
+        text_slot = 35 / files_total
         for i, pdf_path in enumerate(pdf_files):
-            extract_progress = 5 + int((i / len(pdf_files)) * 30)
+            extract_progress = 5 + int(i * text_slot)
             self.update_state(
                 state="EXTRACTING",
                 meta={
                     "step": "extracting",
-                    "step_label": f"Extraction PDF {i + 1}/{len(pdf_files)}: {pdf_path.name}",
+                    "step_label": f"Extraction PDF {i + 1}/{files_total}: {pdf_path.name}",
                     "progress": extract_progress,
-                    "files_total": len(pdf_files),
+                    "files_total": files_total,
                     "files_processed": i,
                     "current_file": pdf_path.name,
                     "chunks_processed": total_chunks,
@@ -434,28 +526,29 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                 },
             )
 
+            chunk_progress = 5 + int((i + 0.3) * text_slot)
             self.update_state(
                 state="CHUNKING",
                 meta={
                     "step": "chunking",
                     "step_label": f"Découpage en segments: {pdf_path.name}",
-                    "progress": extract_progress + 5,
-                    "files_total": len(pdf_files),
+                    "progress": chunk_progress,
+                    "files_total": files_total,
                     "files_processed": i,
                     "current_file": pdf_path.name,
                     "chunks_processed": total_chunks,
-                    "estimated_seconds_remaining": _remaining(extract_progress + 5),
+                    "estimated_seconds_remaining": _remaining(chunk_progress),
                 },
             )
 
-            embed_progress = 35 + int(((i + 0.5) / len(pdf_files)) * 50)
+            embed_progress = 5 + int((i + 0.5) * text_slot)
             self.update_state(
                 state="EMBEDDING",
                 meta={
                     "step": "embedding",
                     "step_label": f"Génération des embeddings: {pdf_path.name}",
                     "progress": embed_progress,
-                    "files_total": len(pdf_files),
+                    "files_total": files_total,
                     "files_processed": i,
                     "current_file": pdf_path.name,
                     "chunks_processed": total_chunks,
@@ -463,15 +556,7 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                 },
             )
 
-            resource_id = resource_id_by_stem.get(pdf_path.stem) or resource_id_by_stem.get(
-                pdf_path.name
-            )
-            content_hash = resource_hash_by_stem.get(pdf_path.stem) or resource_hash_by_stem.get(
-                pdf_path.name
-            )
-            file_hash = resource_filehash_by_stem.get(
-                pdf_path.stem
-            ) or resource_filehash_by_stem.get(pdf_path.name)
+            resource_id, content_hash, _ = _resource_keys(pdf_path)
             chunks = await pipeline.process_pdf_document(
                 pdf_path=str(pdf_path),
                 source=rag_collection_id,
@@ -479,15 +564,16 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                 content_hash=content_hash,
             )
             total_chunks += chunks
+            pending_text.remove(pdf_path.name)
 
-            store_progress = 35 + int(((i + 1) / len(pdf_files)) * 45)
+            store_progress = 5 + int((i + 1) * text_slot)
             self.update_state(
                 state="STORING",
                 meta={
                     "step": "storing",
                     "step_label": f"Stockage de {total_chunks} fragments",
                     "progress": store_progress,
-                    "files_total": len(pdf_files),
+                    "files_total": files_total,
                     "files_processed": i + 1,
                     "current_file": pdf_path.name,
                     "chunks_processed": total_chunks,
@@ -495,17 +581,38 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                 },
             )
 
-            img_progress = store_progress + int((1 / len(pdf_files)) * 8)
+            logger.info(
+                "PDF text indexed",
+                file=pdf_path.name,
+                chunks=chunks,
+                course_id=course_id,
+            )
+
+        # Phase 3: images, inside the remaining time budget. Checked between PDFs
+        # here and between images inside the pipeline (should_stop).
+        image_slot = 55 / files_total
+        for i, pdf_path in enumerate(pdf_files):
+            if _out_of_time():
+                logger.warning(
+                    "Indexation time budget exhausted — skipping remaining PDF images",
+                    course_id=course_id,
+                    skipped=pending_images,
+                )
+                break
+
+            img_progress = 40 + int(i * image_slot)
+            link_progress = 40 + int((i + 1) * image_slot)
             self.update_state(
                 state="EXTRACTING_IMAGES",
                 meta={
                     "step": "extracting_images",
                     "step_label": f"Extraction des illustrations: {pdf_path.name}",
                     "progress": img_progress,
-                    "files_total": len(pdf_files),
-                    "files_processed": i + 1,
+                    "files_total": files_total,
+                    "files_processed": i,
                     "current_file": pdf_path.name,
                     "chunks_processed": total_chunks,
+                    "images_processed": total_images,
                     "estimated_seconds_remaining": _remaining(img_progress),
                 },
             )
@@ -515,20 +622,18 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
             # instead of freezing at img_progress for the whole pass (#2029).
             # Loop locals are bound via default args so the closure captures
             # this iteration's values, not the moving loop bindings.
-            _link_progress_for_pdf = img_progress + int((1 / len(pdf_files)) * 7)
-
             def _image_progress_cb(
                 done: int,
                 total: int,
                 figure_label: str | None,
                 *,
                 _img_progress: int = img_progress,
-                _link_progress: int = _link_progress_for_pdf,
+                _link_progress: int = link_progress,
                 _running_total: int = total_images,
                 _pdf_name: str = pdf_path.name,
-                _files_processed: int = i + 1,
+                _files_processed: int = i,
                 _total_chunks: int = total_chunks,
-                _files_total: int = len(pdf_files),
+                _files_total: int = files_total,
             ) -> None:
                 if total <= 0:
                     return
@@ -551,6 +656,7 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                     },
                 )
 
+            resource_id, content_hash, file_hash = _resource_keys(pdf_path)
             image_count = 0
             try:
                 image_count = await pipeline.process_pdf_images(
@@ -561,8 +667,12 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                     course_resource_id=resource_id,
                     file_hash=file_hash,
                     content_hash=content_hash,
+                    should_stop=_out_of_time,
                 )
                 total_images += image_count
+            except SoftTimeLimitExceeded:
+                # The backstop must reach the outer handler, not this guard.
+                raise
             except Exception as img_exc:
                 logger.warning(
                     "Image extraction failed for PDF (non-blocking)",
@@ -570,15 +680,16 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                     course_id=course_id,
                     error=str(img_exc),
                 )
+            if not budget_spent:
+                pending_images.remove(pdf_path.name)
 
-            link_progress = img_progress + int((1 / len(pdf_files)) * 7)
             self.update_state(
                 state="LINKING_IMAGES",
                 meta={
                     "step": "linking_images",
                     "step_label": f"Liaison images-texte: {image_count} liens créés",
                     "progress": link_progress,
-                    "files_total": len(pdf_files),
+                    "files_total": files_total,
                     "files_processed": i + 1,
                     "current_file": pdf_path.name,
                     "chunks_processed": total_chunks,
@@ -588,9 +699,8 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
             )
 
             logger.info(
-                "PDF indexed",
+                "PDF images indexed",
                 file=pdf_path.name,
-                chunks=chunks,
                 images=image_count,
                 course_id=course_id,
             )
@@ -610,65 +720,70 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
         finally:
             await engine.dispose()
 
-    try:
-        total_chunks, total_images = asyncio.run(_run_pipeline_with_fresh_engine())
-
+    def _finish(totals: dict) -> dict:
+        # Shared by the normal return and the soft-limit backstop. A partial run
+        # is still a SUCCESS (drives RAGTask.on_success → 'indexed'), but says so:
+        # /index-status surfaces the report and the wizard offers a re-index.
+        report = _partial_report()
+        files_done = sum(
+            p.name not in pending_text and p.name not in pending_images for p in pdf_files
+        )
         self.update_state(
             state="COMPLETE",
             meta={
                 "step": "complete",
-                "step_label": "Indexation terminée",
+                "step_label": (
+                    "Indexation partielle (limite de temps atteinte)"
+                    if report["partial"]
+                    else "Indexation terminée"
+                ),
                 "progress": 100,
-                "chunks_stored": total_chunks,
-                "images_stored": total_images,
-                "files_processed": len(pdf_files),
+                **totals,
+                "files_processed": files_done,
                 "files_total": len(pdf_files),
                 "estimated_seconds_remaining": 0,
+                **report,
             },
         )
+        return {
+            "status": "partial_timeout" if report["partial"] else "complete",
+            **totals,
+            "files_processed": files_done,
+            "rag_collection_id": rag_collection_id,
+            **report,
+        }
+
+    try:
+        total_chunks, total_images = asyncio.run(_run_pipeline_with_fresh_engine())
+
+        if budget_spent:
+            logger.warning(
+                "RAG indexation stopped at its time budget — finalizing partial result",
+                task_id=self.request.id,
+                course_id=course_id,
+                images_incomplete=pending_images,
+            )
 
         # State transition (creation_step → 'indexed', indexation_task_id → NULL)
         # is owned by RAGTask.on_success so success/failure/revoke all converge
         # through one code path. See #2085.
-
-        return {
-            "status": "complete",
-            "chunks_stored": total_chunks,
-            "images_stored": total_images,
-            "files_processed": len(pdf_files),
-            "rag_collection_id": rag_collection_id,
-        }
+        return _finish({"chunks_stored": total_chunks, "images_stored": total_images})
 
     except SoftTimeLimitExceeded:
-        # Ran past the soft time limit (image-heavy course). Everything
-        # processed so far is already committed — text chunks per PDF and
-        # source images per image — so finalize as a SUCCESS rather than let
-        # autoretry re-run the whole pipeline and re-surface an error in the
-        # wizard. The Liens step shows the real link count; the admin can
-        # "Relancer le linker" or re-index if anything is missing. Returning
-        # normally drives RAGTask.on_success → creation_step 'indexed'.
+        # Backstop: the signal beat the task's own deadline (one blocking step
+        # overran the margin). Everything processed so far is already committed
+        # — text chunks per PDF and source images per image — so finalize as a
+        # SUCCESS rather than let autoretry re-run the whole pipeline and
+        # re-surface an error in the wizard.
         logger.warning(
             "RAG indexation hit soft time limit — finalizing partial result",
             task_id=self.request.id,
             course_id=course_id,
             rag_collection_id=rag_collection_id,
+            text_incomplete=pending_text,
+            images_incomplete=pending_images,
         )
-        self.update_state(
-            state="COMPLETE",
-            meta={
-                "step": "complete",
-                "step_label": "Indexation terminée (limite de temps atteinte)",
-                "progress": 100,
-                "files_total": len(pdf_files),
-                "files_processed": len(pdf_files),
-                "estimated_seconds_remaining": 0,
-            },
-        )
-        return {
-            "status": "partial_timeout",
-            "files_processed": len(pdf_files),
-            "rag_collection_id": rag_collection_id,
-        }
+        return _finish({})
 
     except Exception as exc:
         logger.error(
@@ -677,3 +792,6 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
             error=str(exc),
         )
         raise
+
+
+connect_kill_finalizer(index_course_resources, transition=("indexing", "generated"))

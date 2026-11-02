@@ -42,6 +42,7 @@ import {
 } from "@/components/admin/course-resource-upload-step";
 import { SourceStatusBadge } from "@/components/admin/source-status-badge";
 import { CourseSourcesUsage } from "@/components/admin/course-sources-usage";
+import { IndexationPartialNotice } from "@/components/admin/indexation-partial-notice";
 
 type WizardStep = "upload" | "info" | "generate" | "index" | "publish";
 
@@ -98,6 +99,9 @@ interface TaskProgress {
   current_file?: string;
   chunks_processed: number;
   estimated_seconds_remaining?: number;
+  partial?: boolean;
+  text_incomplete?: string[];
+  images_incomplete?: string[];
 }
 
 interface IndexStatus {
@@ -657,6 +661,11 @@ export function CourseWizardClient({
     if (!courseId) return;
     setIsReindexingImages(true);
     setReindexImagesError(null);
+    setIndexError(null);
+    // Fresh watchdog baseline, as in startIndexation — a stale timestamp from
+    // the earlier run would trip the 5-min stall check on the first poll.
+    lastIndexProgressValueRef.current = 0;
+    lastIndexProgressTimeRef.current = Date.now();
 
     try {
       const result = await apiFetch<{ task_id: string; status: string }>(
@@ -1491,7 +1500,22 @@ export function CourseWizardClient({
                       </div>
                     </div>
 
-                    {(!indexStatus.images_indexed || indexStatus.images_indexed === 0) && (
+                    {reindexImagesError && indexStatus.task?.partial && (
+                      <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                        <AlertCircle className="h-4 w-4 shrink-0" />
+                        {reindexImagesError}
+                      </div>
+                    )}
+                    <IndexationPartialNotice
+                      task={indexStatus.task}
+                      disabled={isReindexingImages}
+                      onRetryIndexation={startIndexation}
+                      onReindexImages={reindexImages}
+                      t={t}
+                    />
+
+                    {(!indexStatus.images_indexed || indexStatus.images_indexed === 0) &&
+                      !indexStatus.task?.partial && (
                       <div className="space-y-2">
                         <p className="text-xs text-muted-foreground">
                           {t("index.noImagesIndexed")}

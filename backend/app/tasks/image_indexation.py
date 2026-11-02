@@ -1,15 +1,18 @@
 """Celery task for re-indexing course PDF images independently from text indexation."""
 
 import asyncio
+import time
 import uuid
 from pathlib import Path
 
 import structlog
 from celery import Task
+from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.tasks.celery_app import celery_app
+from app.tasks.rag_indexation import connect_kill_finalizer, indexation_deadline
 
 logger = structlog.get_logger(__name__)
 
@@ -49,11 +52,14 @@ class ImageIndexTask(Task):
         finalize_indexation_state(course_id)
 
 
+# Same budget as index_course_resources: this is the recovery path for a run
+# that ran out of time on images, so it needs at least the image time that run
+# had (#2659).
 @celery_app.task(
     bind=True,
     base=ImageIndexTask,
-    time_limit=1800,
-    soft_time_limit=1500,
+    time_limit=3600,
+    soft_time_limit=3300,
     ignore_result=True,
     acks_late=False,  # Acknowledge immediately to prevent duplicate dispatch
 )
@@ -67,6 +73,8 @@ def reindex_course_images(
     No OpenAI dependency — only needs MinIO credentials.
     """
     import asyncio
+
+    deadline = indexation_deadline(self, time.monotonic())
 
     logger.info(
         "Starting image re-indexation",
@@ -118,6 +126,48 @@ def reindex_course_images(
             "images_processed": 0,
         },
     )
+
+    # Same time-budget guard as index_course_resources (#2659): stop between
+    # images before the soft limit, and report which PDFs were cut short.
+    pending_images = [p.name for p in pdf_files]
+    budget_spent = False
+
+    def _out_of_time() -> bool:
+        nonlocal budget_spent
+        if deadline is not None and time.monotonic() >= deadline:
+            budget_spent = True
+        return budget_spent
+
+    def _finish(totals: dict) -> dict:
+        report = {
+            "partial": bool(pending_images),
+            "text_incomplete": [],
+            "images_incomplete": list(pending_images),
+        }
+        files_done = len(pdf_files) - len(pending_images)
+        self.update_state(
+            state="COMPLETE",
+            meta={
+                "step": "complete",
+                "step_label": (
+                    "Re-indexation partielle des images (limite de temps atteinte)"
+                    if report["partial"]
+                    else "Re-indexation des images terminée"
+                ),
+                "progress": 100,
+                **totals,
+                "files_processed": files_done,
+                "files_total": len(pdf_files),
+                **report,
+            },
+        )
+        return {
+            "status": "partial_timeout" if report["partial"] else "complete",
+            **totals,
+            "files_processed": files_done,
+            "rag_collection_id": rag_collection_id,
+            **report,
+        }
 
     async def _run_image_pipeline():
         import uuid as _uuid
@@ -193,6 +243,14 @@ def reindex_course_images(
             _eng.dispose()
 
         for i, pdf_path in enumerate(pdf_files):
+            if _out_of_time():
+                logger.warning(
+                    "Image re-indexation time budget exhausted — skipping remaining PDFs",
+                    course_id=course_id,
+                    skipped=pending_images,
+                )
+                break
+
             extract_progress = 5 + int(((i + 0.5) / len(pdf_files)) * 90)
             self.update_state(
                 state="EXTRACTING_IMAGES",
@@ -216,6 +274,7 @@ def reindex_course_images(
                     source=rag_collection_id,
                     rag_collection_id=rag_collection_id,
                     course_resource_id=resource_id,
+                    should_stop=_out_of_time,
                 )
                 total_images += image_count
                 logger.info(
@@ -224,6 +283,9 @@ def reindex_course_images(
                     images=image_count,
                     course_id=course_id,
                 )
+            except SoftTimeLimitExceeded:
+                # The backstop must reach the outer handler, not this guard.
+                raise
             except Exception as img_exc:
                 logger.warning(
                     "Image extraction failed for PDF",
@@ -231,6 +293,8 @@ def reindex_course_images(
                     course_id=course_id,
                     error=str(img_exc),
                 )
+            if not budget_spent:
+                pending_images.remove(pdf_path.name)
 
             done_progress = 5 + int(((i + 1) / len(pdf_files)) * 90)
             self.update_state(
@@ -251,30 +315,25 @@ def reindex_course_images(
     try:
         total_images = asyncio.run(_run_image_pipeline())
 
-        self.update_state(
-            state="COMPLETE",
-            meta={
-                "step": "complete",
-                "step_label": "Re-indexation des images terminée",
-                "progress": 100,
-                "images_stored": total_images,
-                "files_processed": len(pdf_files),
-                "files_total": len(pdf_files),
-            },
-        )
-
         logger.info(
             "Image re-indexation complete",
             course_id=course_id,
             total_images=total_images,
+            images_incomplete=pending_images,
         )
 
-        return {
-            "status": "complete",
-            "images_stored": total_images,
-            "files_processed": len(pdf_files),
-            "rag_collection_id": rag_collection_id,
-        }
+        return _finish({"images_stored": total_images})
+
+    except SoftTimeLimitExceeded:
+        # Backstop when a single blocking step overran the deadline margin:
+        # images are committed one by one, so keep them and report the gap.
+        logger.warning(
+            "Image re-indexation hit soft time limit — finalizing partial result",
+            task_id=self.request.id,
+            course_id=course_id,
+            images_incomplete=pending_images,
+        )
+        return _finish({})
 
     except Exception as exc:
         logger.error(
@@ -283,6 +342,9 @@ def reindex_course_images(
             error=str(exc),
         )
         raise
+
+
+connect_kill_finalizer(reindex_course_images)
 
 
 # ---------------------------------------------------------------------------
