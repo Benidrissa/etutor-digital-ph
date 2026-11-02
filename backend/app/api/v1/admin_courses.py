@@ -327,6 +327,98 @@ async def _require_extracted_sources(course: Course, db) -> None:
         )
 
 
+async def _chunk_attribution(
+    db, rag_collection_id: str | None
+) -> tuple[dict[uuid.UUID, int], bool]:
+    """Per-resource chunk counts for a collection, and whether any chunk has no resource.
+
+    Chunks carry ``course_resource_id`` since #2186. Rows ingested before that, or
+    whose resource was deleted (the FK is ON DELETE SET NULL), have NULL and can't
+    be attributed to a source.
+    """
+    if not rag_collection_id:
+        return {}, False
+    result = await db.execute(
+        select(DocumentChunk.course_resource_id, func.count())
+        .where(DocumentChunk.source == rag_collection_id)
+        .group_by(DocumentChunk.course_resource_id)
+    )
+    by_resource: dict[uuid.UUID, int] = {}
+    has_unlinked = False
+    for resource_id, count in result.all():
+        if resource_id is None:
+            has_unlinked = count > 0
+        else:
+            by_resource[resource_id] = count
+    return by_resource, has_unlinked
+
+
+def _source_index_coverage(
+    resources: list[tuple[uuid.UUID, str, str | None, str | None, bool]],
+    chunks_by_resource: dict[uuid.UUID, int],
+    has_unlinked_chunks: bool,
+) -> dict[uuid.UUID, bool | None]:
+    """Whether each resource's extracted text made it into the course's RAG (#2663).
+
+    ``resources`` rows are ``(id, filename, parent_filename, extraction_status,
+    has_text)``. Returns ``True`` (indexed), ``False`` (extracted text but no
+    chunks), or ``None`` (nothing to index, or can't tell).
+
+    Split parts share one PDF on disk and the indexer credits all of its chunks to
+    a single part (#2525), so a resource counts as indexed when any resource from
+    the same file has chunks. Chunks with no ``course_resource_id`` can't be
+    attributed, so when any exist a chunk-less source is ``None``, not a false
+    "not indexed".
+    """
+    indexed_files = {
+        parent or filename
+        for rid, filename, parent, _status, _has_text in resources
+        if chunks_by_resource.get(rid, 0) > 0
+    }
+    coverage: dict[uuid.UUID, bool | None] = {}
+    for rid, filename, parent, extraction_status, has_text in resources:
+        if (parent or filename) in indexed_files:
+            coverage[rid] = True
+        elif extraction_status == EXTRACTION_STATUS_DONE and has_text and not has_unlinked_chunks:
+            coverage[rid] = False
+        else:
+            coverage[rid] = None
+    return coverage
+
+
+async def _unindexed_source_names(course: Course, db) -> list[str]:
+    """Source files whose extracted text has no chunks in the course's RAG (#2663).
+
+    Split parts are reported once, under their parent file's name.
+    """
+    if not course.rag_collection_id:
+        return []
+    result = await db.execute(
+        select(
+            CourseResource.id,
+            CourseResource.filename,
+            CourseResource.parent_filename,
+            CourseResource.extraction_status,
+            # char_count first: COALESCE stops there, so raw_text is only
+            # detoasted for legacy rows without a count.
+            func.coalesce(CourseResource.char_count, func.length(CourseResource.raw_text), 0) > 0,
+        )
+        .where(CourseResource.course_id == course.id)
+        .order_by(CourseResource.extracted_at)
+    )
+    resources = [tuple(row) for row in result.all()]
+    if not resources:
+        return []
+    chunks_by_resource, has_unlinked = await _chunk_attribution(db, course.rag_collection_id)
+    coverage = _source_index_coverage(resources, chunks_by_resource, has_unlinked)
+    names: list[str] = []
+    for rid, filename, parent, _status, _has_text in resources:
+        name = f"{parent or filename}.pdf"
+        if coverage[rid] is False and name not in names:
+            names.append(name)
+    return names
+
+
 def _slugify(text: str) -> str:
     slug = text.lower().strip()
     slug = re.sub(r"[^\w\s-]", "", slug)
@@ -483,10 +575,15 @@ async def update_course(
 @router.post("/{course_id}/publish", response_model=CourseResponse)
 async def publish_course(
     course_id: uuid.UUID,
+    force: bool = False,
     current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> CourseResponse:
-    """Publish a draft course. Admin only."""
+    """Publish a draft course. Admin only.
+
+    Refuses with 409 ``UNINDEXED_SOURCES`` while some extracted sources have no
+    indexed text, unless ``force`` is set (the admin confirmed). #2663
+    """
     result = await db.execute(
         select(Course).options(selectinload(Course.modules)).where(Course.id == course_id)
     )
@@ -505,6 +602,29 @@ async def publish_course(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot publish: RAG indexation not complete. "
             "Upload resources and run indexation first.",
+        )
+
+    # Lessons on an unindexed source's topics would be grounded in the other
+    # sources, so publishing needs the admin's explicit go-ahead. #2663
+    unindexed = await _unindexed_source_names(course, db)
+    if unindexed and not force:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "UNINDEXED_SOURCES",
+                "message": (
+                    f"These sources have no indexed text: {', '.join(unindexed)}. "
+                    "Re-run indexation, or publish anyway."
+                ),
+                "sources": unindexed,
+            },
+        )
+    if unindexed:
+        logger.warning(
+            "Publishing course with unindexed sources (admin override)",
+            course_id=str(course_id),
+            sources=unindexed,
+            admin_id=current_user.id,
         )
 
     course.status = "published"
@@ -1468,6 +1588,8 @@ async def get_rag_index_status(
         "images_indexed": images_indexed,
         "links_indexed": links_indexed,
         "indexed": chunks_indexed > 0,
+        # What the publish gate will refuse on (#2663), so screens can warn first.
+        "unindexed_sources": await _unindexed_source_names(course, db),
     }
 
     effective_task_id = task_id or course.indexation_task_id
@@ -1719,17 +1841,17 @@ async def list_course_resources(
     db_resources = list(db_resources_result.scalars().all())
 
     # Per-resource indexed-chunk counts in one grouped query (mirrors the
-    # aggregate count in /index-status). Chunks carry course_resource_id since
-    # #2186; legacy chunks with NULL are simply uncounted.
-    chunks_by_resource: dict[uuid.UUID, int] = {}
-    if course.rag_collection_id:
-        counts_result = await db.execute(
-            select(DocumentChunk.course_resource_id, func.count())
-            .where(DocumentChunk.source == course.rag_collection_id)
-            .where(DocumentChunk.course_resource_id.isnot(None))
-            .group_by(DocumentChunk.course_resource_id)
-        )
-        chunks_by_resource = {rid: n for rid, n in counts_result.all()}
+    # aggregate count in /index-status). Legacy chunks with NULL
+    # course_resource_id are uncounted, but they make `indexed` unknown.
+    chunks_by_resource, has_unlinked = await _chunk_attribution(db, course.rag_collection_id)
+    coverage = _source_index_coverage(
+        [
+            (r.id, r.filename, r.parent_filename, r.extraction_status, bool(r.raw_text))
+            for r in db_resources
+        ],
+        chunks_by_resource,
+        has_unlinked,
+    )
 
     course_dir = UPLOAD_DIR / str(course_id)
 
@@ -1759,6 +1881,8 @@ async def list_course_resources(
                 "extraction_status": r.extraction_status,
                 "char_count": r.char_count,
                 "chunks_indexed": chunks_by_resource.get(r.id, 0),
+                # Accounts for split parts sharing one file's chunks (#2663).
+                "indexed": coverage[r.id],
                 "on_disk": disk is not None,
             }
         )
