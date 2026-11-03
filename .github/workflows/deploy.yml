@@ -314,6 +314,15 @@ jobs:
             set -e
             cd ~/etutor
 
+            # Fail fast on a full disk (#2667). In Oct 2026 a full disk let the
+            # deploy reach the post-deploy health check, fail there and roll
+            # back, which hid the real cause.
+            FREE_GB=$(df -BG --output=avail / | tail -1 | tr -dc '0-9')
+            if [ "$FREE_GB" -lt 10 ]; then
+              echo "::error::Disk low on $(hostname): ${FREE_GB} GB free (< 10 GB). Free space before deploying."
+              exit 1
+            fi
+
             # Authenticate to GHCR with the runner's fresh GITHUB_TOKEN (#1651).
             # Replaces the server-side cached credential that kept going stale —
             # the old workflow silently assumed a one-time docker login set
@@ -531,6 +540,13 @@ jobs:
           script: |
             set -e
             cd ~/etutor
+
+            # Fail fast on a full disk, same check as staging (#2667).
+            FREE_GB=$(df -BG --output=avail / | tail -1 | tr -dc '0-9')
+            if [ "$FREE_GB" -lt 10 ]; then
+              echo "::error::Disk low on $(hostname): ${FREE_GB} GB free (< 10 GB). Free space before deploying."
+              exit 1
+            fi
 
             # Fresh GHCR login every deploy, same pattern as staging (#1651).
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
