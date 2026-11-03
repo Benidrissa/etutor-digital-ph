@@ -1,7 +1,16 @@
+# Cap each container's json-file log at 3 x 50 MB. Uncapped logs filled the
+# shared staging disk in Oct 2026 and took every container down (#2667).
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
     container_name: etutor-postgres
+    logging: *logging
     environment:
       POSTGRES_DB: santepublique_aof
       POSTGRES_USER: postgres
@@ -19,6 +28,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: etutor-redis
+    logging: *logging
     volumes:
       - redisdata:/data
     networks:
@@ -32,6 +42,7 @@ services:
   mms-tts:
     image: ghcr.io/benidrissa/etutor-digital-ph/mms-tts:latest
     container_name: etutor-mms-tts
+    logging: *logging
     volumes:
       - mms_models:/models
     networks:
@@ -58,6 +69,7 @@ services:
     # limit has headroom for batch translation.
     image: ghcr.io/benidrissa/etutor-digital-ph/nllb:latest
     container_name: etutor-nllb
+    logging: *logging
     networks:
       - etutor-data
     healthcheck:
@@ -75,6 +87,7 @@ services:
   backend:
     image: ghcr.io/benidrissa/etutor-digital-ph/backend:latest
     container_name: etutor-backend
+    logging: *logging
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/santepublique_aof
       REDIS_URL: redis://redis:6379/0
@@ -150,6 +163,7 @@ services:
   frontend:
     image: ghcr.io/benidrissa/etutor-digital-ph/frontend:latest
     container_name: etutor-frontend
+    logging: *logging
     environment:
       BACKEND_URL: http://etutor-backend:8000
       HOSTNAME: "0.0.0.0"
@@ -180,6 +194,7 @@ services:
   celery-worker:
     image: ghcr.io/benidrissa/etutor-digital-ph/backend:latest
     container_name: etutor-celery-worker
+    logging: *logging
     # --concurrency=4 lets per-question qbank tasks (#1708) fan out:
     # translate(Qk) for language X can run on one worker while
     # generate_audio(Qj) for language Y runs on another, bounded by
@@ -249,6 +264,7 @@ services:
   minio:
     image: minio/minio:latest
     container_name: etutor-minio
+    logging: *logging
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
