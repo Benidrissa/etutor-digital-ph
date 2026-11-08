@@ -2666,6 +2666,13 @@
     "popped": "popped",
     "caught": "caught",
     "notThisOne": "not this one",
-    "secondsLeft": "{seconds}s"
+    "secondsLeft": "{seconds}s",
+    "pointsUnit": "points",
+    "finished": "Story complete!",
+    "score": "{points} {unit}",
+    "scoreOf": "{points} of {max} {unit}",
+    "aiLabel": "AI",
+    "part": "Part {part}",
+    "bilingualToggle": "Show both languages"
   }
 }
