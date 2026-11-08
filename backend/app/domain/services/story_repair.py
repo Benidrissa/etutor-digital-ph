@@ -227,6 +227,12 @@ class _Translations:
         """Forget what was recorded for an item that was then left out."""
         del self.issues[mark:]
 
+    def restore(self, issues: Iterable[ValidationIssue]) -> None:
+        """Record issues that were held back (see :class:`_Held`)."""
+        for issue in issues:
+            if not any(i.path == issue.path for i in self.issues):
+                self.issues.append(issue)
+
 
 _SINK: ContextVar[_Translations | None] = ContextVar("story_translation_sink", default=None)
 
@@ -262,6 +268,43 @@ def _unless_kept() -> Iterator[list[bool]]:
     yield kept
     if sink is not None and not kept:
         sink.rollback(mark)
+
+
+class _Held:
+    """Copy-fallbacks of items whose place in the story is only known later.
+
+    An objective may be merged away by :func:`_rebalance`; the field example's
+    lines and the second chapter title are only shown when the layout has a
+    place for them. ``with held.item(key): ...`` keeps what the block records
+    under ``key`` instead of in the story's sink, and :meth:`report` passes on
+    those of the keys the finished story uses — as
+    :meth:`_Misconceptions.report_missing` does for misconceptions — so the
+    model is never asked to translate, and no warning names, an item the story
+    does not contain.
+    """
+
+    def __init__(self) -> None:
+        self._issues: dict[Any, list[ValidationIssue]] = {}
+
+    @contextmanager
+    def item(self, key: Any) -> Iterator[None]:
+        sink = _SINK.get()
+        if sink is None:
+            yield
+            return
+        mark = sink.mark()
+        try:
+            yield
+        finally:
+            self._issues.setdefault(key, []).extend(sink.issues[mark:])
+            sink.rollback(mark)
+
+    def report(self, keys: Iterable[Any]) -> None:
+        sink = _SINK.get()
+        if sink is None:
+            return
+        for key in keys:
+            sink.restore(self._issues.get(key, []))
 
 
 def _text_parts(value: Any) -> tuple[dict[str, str], bool]:
@@ -978,19 +1021,31 @@ def _extra_question_body(
 # --------------------------------------------------------------------------
 
 
-def _objectives(raw: Any, ctx: LessonStoryContext) -> tuple[list[dict], dict[str, str]]:
+def _objectives(
+    raw: Any, ctx: LessonStoryContext, held: _Held
+) -> tuple[list[dict], dict[str, str], list[tuple[dict[str, Any], int]]]:
+    """The spine's objectives (at most :data:`MAX_OBJECTIVES`), renumbered o1..oN.
+
+    Also returns each objective with its index in the spine: its copy-fallbacks
+    are held under that index, to be reported only if the objective survives
+    :func:`_rebalance`.
+    """
     objectives: list[dict[str, Any]] = []
     mapping: dict[str, str] = {}
+    origins: list[tuple[dict[str, Any], int]] = []
     for index, item in enumerate(_items(raw)):
         if not isinstance(item, dict) or len(objectives) >= MAX_OBJECTIVES:
             continue
-        text = text_object(
-            {"en": item.get("en"), "fr": item.get("fr")}, path=f"objectives[{index}]"
-        )
+        with held.item(("objective", index)):
+            text = text_object(
+                {"en": item.get("en"), "fr": item.get("fr")}, path=f"objectives[{index}]"
+            )
         if text is None:
             continue
         new_id = f"o{len(objectives) + 1}"
-        objectives.append({"id": new_id, "en": text["en"], "fr": text["fr"]})
+        objective = {"id": new_id, "en": text["en"], "fr": text["fr"]}
+        objectives.append(objective)
+        origins.append((objective, index))
         raw_id = _as_str(item.get("id"))
         if raw_id:
             mapping.setdefault(raw_id, new_id)
@@ -1004,7 +1059,7 @@ def _objectives(raw: Any, ctx: LessonStoryContext) -> tuple[list[dict], dict[str
             }
         )
         mapping["o1"] = "o1"
-    return objectives, mapping
+    return objectives, mapping, origins
 
 
 def _exercise(
@@ -1489,30 +1544,41 @@ def _example_block(spine: dict[str, Any], ctx: LessonStoryContext) -> dict[str, 
     return {"title": title, "rows": rows, "place": place}
 
 
-def _story_lines(spine: dict[str, Any]) -> dict[str, Any]:
+def _story_lines(spine: dict[str, Any], held: _Held) -> dict[str, Any]:
+    """The model's story lines; copy-fallbacks held under ``("story", key)``.
+
+    The layout reports the keys it shows: the example's lines only appear
+    when the story has a field example.
+    """
     raw = spine.get("story") if isinstance(spine.get("story"), dict) else {}
-    lines: dict[str, Any] = {
-        key: text_object(raw.get(key), path=f"story.{key}")
-        for key in ("opening", "mentor_intro", "example_intro", "wrap_up")
-    }
+    lines: dict[str, Any] = {}
+    for key in ("opening", "mentor_intro", "example_intro", "wrap_up"):
+        with held.item(("story", key)):
+            lines[key] = text_object(raw.get(key), path=f"story.{key}")
     dialogue = []
-    for index, item in enumerate(_items(raw.get("example_dialogue"))):
-        if len(dialogue) >= 3:
-            break
-        if isinstance(item, dict):
-            text = text_object(
-                {"en": item.get("en"), "fr": item.get("fr")},
-                path=f"story.example_dialogue[{index}]",
-            )
-            speaker = _as_str(item.get("who")).lower()
-            who = PEER_ID if speaker in (PEER_ID, "colleague", "friend") else MENTOR_ID
-            if text:
-                dialogue.append((who, text))
+    with held.item(("story", "example_dialogue")):
+        for index, item in enumerate(_items(raw.get("example_dialogue"))):
+            if len(dialogue) >= 3:
+                break
+            if isinstance(item, dict):
+                text = text_object(
+                    {"en": item.get("en"), "fr": item.get("fr")},
+                    path=f"story.example_dialogue[{index}]",
+                )
+                speaker = _as_str(item.get("who")).lower()
+                who = PEER_ID if speaker in (PEER_ID, "colleague", "friend") else MENTOR_ID
+                if text:
+                    dialogue.append((who, text))
     lines["example_dialogue"] = dialogue
     return lines
 
 
-def _chapter_titles(spine: dict[str, Any], ctx: LessonStoryContext) -> list[dict[str, str]]:
+def _chapter_titles(spine: dict[str, Any], held: _Held) -> list[dict[str, str]]:
+    """The three chapter titles; copy-fallbacks held under ``("chapter", index)``.
+
+    The layout reports the chapters it opens: the second one only exists when
+    the story has enough concepts, or a field example, to fill it.
+    """
     defaults = [
         {"en": "Your mission", "fr": "Ta mission"},
         {"en": "In the field", "fr": "Sur le terrain"},
@@ -1522,7 +1588,8 @@ def _chapter_titles(spine: dict[str, Any], ctx: LessonStoryContext) -> list[dict
     titles = []
     for index, default in enumerate(defaults):
         value = raw[index] if isinstance(raw, list) and index < len(raw) else None
-        titles.append(text_object(value, path=f"chapter_titles[{index}]") or default)
+        with held.item(("chapter", index)):
+            titles.append(text_object(value, path=f"chapter_titles[{index}]") or default)
     return titles
 
 
@@ -1542,10 +1609,11 @@ def _layout(
     exercises: list[dict[str, Any]],
     minigame: dict[str, Any] | None,
     key_points: dict[str, list[str]] | None,
+    held: _Held,
 ) -> list[dict[str, Any]]:
     layout = _Layout(ctx)
-    lines = _story_lines(spine)
-    titles = _chapter_titles(spine, ctx)
+    lines = _story_lines(spine, held)
+    titles = _chapter_titles(spine, held)
     study_place = "classroom" if ctx.is_kids else "desk"
 
     def ask_steps(group: list[_BuiltQuestion]) -> list[dict[str, Any]]:
@@ -1696,6 +1764,14 @@ def _layout(
     closing["steps"] = [s for s in closing_steps if s]
 
     layout.enforce_spacing()
+    held.report(("story", key) for key in ("opening", "mentor_intro", "wrap_up"))
+    if example:
+        held.report([("story", "example_intro"), ("story", "example_dialogue")])
+    held.report(
+        ("chapter", index)
+        for index, title in enumerate(titles)
+        if any(chapter["title"] is title for chapter in layout.chapters)
+    )
     return layout.chapters
 
 
@@ -1832,7 +1908,13 @@ def picked_mcqs(ctx: LessonStoryContext, spine: Any) -> list[QuizMcq]:
 
 
 def _issue_applies(issue: ValidationIssue, question_ids: set[str], exercise_ids: set[str]) -> bool:
-    """Whether a copy-fallback is about something the finished story contains."""
+    """Whether a copy-fallback is about something the finished story contains.
+
+    Questions and exercises are filtered here, by the ids the story kept. The
+    other items whose survival depends on assembly (objectives, the example's
+    lines, the second chapter's title) are never recorded unless kept: see
+    :class:`_Held`.
+    """
     if match := re.match(r"^(?:derived|questions)\[([^\]]+)\]", issue.path):
         return match.group(1) in question_ids
     if match := re.match(r"^exercises\[(\d+)\]", issue.path):
@@ -1882,7 +1964,8 @@ def _assemble(
     drop_minigame: bool,
 ) -> StoryBuild:
     registry = _Misconceptions(spine.get("misconceptions"))
-    objectives, objective_map = _objectives(spine.get("objectives"), ctx)
+    held = _Held()
+    objectives, objective_map, origins = _objectives(spine.get("objectives"), ctx, held)
     key_points = _key_points(spine, ctx)
 
     specs: dict[str, dict[str, Any]] = {}
@@ -1926,6 +2009,11 @@ def _assemble(
         if exercise is not None:
             exercises.append(exercise)
     objectives, exercises = _rebalance(objectives, built, exercises, key_points)
+    held.report(
+        ("objective", index)
+        for objective, index in origins
+        if any(objective is kept for kept in objectives)
+    )
 
     minigame = None if drop_minigame else _minigame(spine.get("minigame"), registry, key_points)
     if minigame is None and key_points:
@@ -1933,7 +2021,7 @@ def _assemble(
     if minigame is not None:
         minigame["objective"] = objectives[0]["id"]
 
-    chapters = _layout(ctx, spine, objectives, built, exercises, minigame, key_points)
+    chapters = _layout(ctx, spine, objectives, built, exercises, minigame, key_points, held)
     questions = [q.doc for q in built]
 
     used_misconceptions: set[str] = set()

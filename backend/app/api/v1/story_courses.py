@@ -31,6 +31,7 @@ from app.api.deps_local_auth import (
     require_subscription_or_first_unit,
 )
 from app.api.v1._task_status import mark_dispatched as mark_task_dispatched
+from app.api.v1._task_status import vouch_while_owned
 from app.api.v1.schemas.story_course import (
     Languages,
     StoryCourse,
@@ -225,6 +226,13 @@ async def _dispatch_story_generation(
     task releases the key when it ends (compare-and-delete on its own id).
     Fails open: without Redis, every view dispatches and the task itself
     returns the story another one already stored.
+
+    Joined clients poll ``GET /content/status/{task_id}``, which reports a task
+    still PENDING after its stall threshold as failed. A story task can
+    legitimately wait that long (it is rate limited), and the dedup here keeps
+    joining it, so the task is vouched for (``vouch_while_owned``) before its
+    key is claimed: the status endpoint answers ``pending`` for as long as the
+    key names the task, exactly as long as this dedup treats it as alive.
     """
     from app.infrastructure.cache.redis import redis_client
 
@@ -235,6 +243,9 @@ async def _dispatch_story_generation(
         running = await _in_flight_story_task(key)
         if running:
             return running
+        # Before the claim, so a request that joins right after it never sees
+        # an unvouched task. Harmless if the claim is lost: no key names this id.
+        await vouch_while_owned(task_id, key, _STORY_DISPATCH_TTL_S)
         claimed = bool(await redis_client.set(key, task_id, nx=True, ex=_STORY_DISPATCH_TTL_S))
         if not claimed:
             winner = await redis_client.get(key)

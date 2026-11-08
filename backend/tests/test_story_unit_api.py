@@ -349,8 +349,9 @@ def celery():
     with (
         patch.object(api, "generate_story_task", task),
         patch.object(api, "mark_task_dispatched", AsyncMock()) as marked,
+        patch.object(api, "vouch_while_owned", AsyncMock()) as vouched,
     ):
-        yield SimpleNamespace(task=task, marked=marked)
+        yield SimpleNamespace(task=task, marked=marked, vouched=vouched)
 
 
 def _dispatch():
@@ -451,6 +452,109 @@ class TestDispatch:
         task_id = await _dispatch()
         celery.task.apply_async.assert_called_once()
         assert celery.task.apply_async.call_args.kwargs["task_id"] == task_id
+
+    async def test_the_task_is_vouched_for_before_its_key_is_claimed(self, redis, celery):
+        """A joined task stays "pending" on /content/status while its key names it."""
+        order: list[str] = []
+        celery.vouched.side_effect = lambda *a: order.append("vouch")
+        redis.set.side_effect = lambda *a, **k: order.append("claim") or True
+        task_id = await _dispatch()
+        celery.vouched.assert_awaited_once_with(task_id, KEY, api._STORY_DISPATCH_TTL_S)
+        assert order == ["vouch", "claim"]
+
+    async def test_joining_a_running_task_vouches_for_nothing_new(self, redis, celery):
+        redis.get.return_value = "running-task"
+        with _state("PENDING"):
+            assert await _dispatch() == "running-task"
+        celery.vouched.assert_not_awaited()
+
+
+class _FakeRedis:
+    """Just enough of redis.asyncio for the task-status helpers."""
+
+    def __init__(self) -> None:
+        self.data: dict[str, str] = {}
+
+    async def setex(self, key: str, ttl: int, value: str) -> None:
+        self.data[key] = value
+
+    async def get(self, key: str) -> str | None:
+        return self.data.get(key)
+
+
+class TestStatusOfAQueuedStory:
+    """Joined clients poll /content/status: it must agree with the dedup."""
+
+    @pytest.fixture
+    def store(self):
+        from app.api.v1 import _task_status
+
+        fake = _FakeRedis()
+        with patch.object(_task_status, "redis_client", fake):
+            yield fake
+
+    @staticmethod
+    async def _status(task_id: str, *, marker_age_s: float | None) -> dict:
+        import json
+        from datetime import UTC, datetime, timedelta
+
+        from app.api.v1 import content as content_module
+
+        marker = (
+            None if marker_age_s is None else datetime.now(tz=UTC) - timedelta(seconds=marker_age_s)
+        )
+        with (
+            patch.object(
+                content_module, "AsyncResult", return_value=SimpleNamespace(state="PENDING")
+            ),
+            patch.object(content_module, "task_dispatched_at", AsyncMock(return_value=marker)),
+        ):
+            response = await content_module.get_generation_status(task_id)
+        return json.loads(response.body)
+
+    async def test_a_story_queued_past_the_stall_threshold_is_pending(self, store):
+        from app.api.v1._task_status import TASK_STALL_THRESHOLD_S, vouch_while_owned
+
+        await vouch_while_owned("task-1", KEY, api._STORY_DISPATCH_TTL_S)
+        store.data[KEY] = "task-1"
+        body = await self._status("task-1", marker_age_s=TASK_STALL_THRESHOLD_S + 60)
+        assert body == {"status": "pending"}
+
+    async def test_a_just_claimed_story_without_a_marker_is_pending(self, store):
+        from app.api.v1._task_status import vouch_while_owned
+
+        await vouch_while_owned("task-1", KEY, api._STORY_DISPATCH_TTL_S)
+        store.data[KEY] = "task-1"
+        assert await self._status("task-1", marker_age_s=None) == {"status": "pending"}
+
+    async def test_once_the_key_names_another_task_the_stall_rule_applies(self, store):
+        from app.api.v1._task_status import TASK_STALL_THRESHOLD_S, vouch_while_owned
+
+        await vouch_while_owned("task-1", KEY, api._STORY_DISPATCH_TTL_S)
+        store.data[KEY] = "task-2"  # released and claimed again
+        body = await self._status("task-1", marker_age_s=TASK_STALL_THRESHOLD_S + 60)
+        assert body == {"status": "failed", "error": "task_stalled"}
+        del store.data[KEY]  # released, nobody claimed it
+        assert await self._status("task-1", marker_age_s=None) == {
+            "status": "failed",
+            "error": "task_lost",
+        }
+
+    async def test_an_unvouched_task_still_stalls(self, store):
+        from app.api.v1._task_status import TASK_STALL_THRESHOLD_S
+
+        body = await self._status("lesson-task", marker_age_s=TASK_STALL_THRESHOLD_S + 60)
+        assert body == {"status": "failed", "error": "task_stalled"}
+
+    async def test_vouching_never_raises_without_redis(self):
+        from app.api.v1 import _task_status
+
+        broken = MagicMock()
+        broken.setex = AsyncMock(side_effect=ConnectionError("redis down"))
+        broken.get = AsyncMock(side_effect=ConnectionError("redis down"))
+        with patch.object(_task_status, "redis_client", broken):
+            await _task_status.vouch_while_owned("task-1", KEY, 60)
+            assert await _task_status.is_vouched("task-1") is False
 
 
 def test_story_task_limits_fit_a_lesson_plus_three_story_calls():

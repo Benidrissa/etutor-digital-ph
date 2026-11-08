@@ -430,6 +430,19 @@ def _unbuildable_issue() -> ValidationIssue:
     )
 
 
+def attempt_rank(report: ValidationReport) -> tuple[int, int, int]:
+    """How far an attempt is from publishable, judged as it will be settled.
+
+    Lower is better: errors other than copied translations first, then the
+    copied translations, then warnings. After the repair budget a copied
+    translation is settled into a warning (:func:`repair.settle_translations`),
+    so an attempt whose only errors are copies publishes and must beat one
+    with any other error, however many copies it carries.
+    """
+    copies = sum(1 for issue in report.errors if issue.code == repair.MISSING_TRANSLATION)
+    return len(report.errors) - copies, copies, len(report.warnings)
+
+
 @dataclass
 class StoryGeneration:
     doc: dict[str, Any]
@@ -496,10 +509,16 @@ class StoryFromLessonService:
     # -- the model ---------------------------------------------------------
 
     async def _call_model(self, system_prompt: str, user_message: str) -> dict[str, Any] | None:
-        """One spine call; ``None`` when the answer could not be read as JSON."""
+        """One spine call — exactly one paid provider call; ``None`` when unreadable.
+
+        ``max_retries=0`` turns off the service's own strict-JSON retry: an
+        unreadable answer is an attempt of the repair loop, which re-asks with
+        its own notice. Left on, every attempt could pay twice, and the task's
+        time limit (sized for 1 + :data:`MAX_REPAIR_CALLS` calls) would not hold.
+        """
         try:
             spine = await self.claude_service.generate_structured_content(
-                system_prompt, user_message, "story"
+                system_prompt, user_message, "story", max_retries=0
             )
         except ValueError as exc:
             # generate_structured_content raises ValueError for a truncated,
@@ -519,8 +538,9 @@ class StoryFromLessonService:
         """Spine call → deterministic build → validate → bounded repair → salvage.
 
         Database-free, so the whole pipeline can be tested with a fake model.
-        Returns the best document seen (fewest errors), with the validator's
-        ``checks`` written into it. Never raises for a bad spine: a spine the
+        Returns the best document seen (:func:`attempt_rank`: fewest errors
+        that would still block it once copied translations are settled), with
+        the validator's ``checks`` written into it. Never raises for a bad spine: a spine the
         builder chokes on counts as an unreadable attempt, and when no attempt
         could be built at all the result is an unpublishable placeholder whose
         report carries ``malformed_course_file``.
@@ -561,7 +581,7 @@ class StoryFromLessonService:
                     errors=len(report.errors),
                     warnings=len(report.warnings),
                 )
-                if best is None or len(report.errors) < len(best[2].errors):
+                if best is None or attempt_rank(report) < attempt_rank(best[2]):
                     best = (spine or {}, build, report)
                 if report.ok:
                     break

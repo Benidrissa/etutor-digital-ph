@@ -17,8 +17,11 @@ POLL_HARD_LIMIT = 320
 #: A story's worst case: the unit's lesson generated first (bounded by the
 #: lesson task's own POLL_SOFT_LIMIT, 300 s), then up to 3 story spine calls —
 #: the first one plus MAX_REPAIR_CALLS repairs — of up to ~150 s each, plus
-#: database work. 300 + 3 x 150 = 750 s, rounded up with slack; the hard limit
-#: follows the soft one by 60 s, as for the other long content tasks.
+#: database work. Each spine call is ONE provider call: the story service turns
+#: off the client's own strict-JSON retry (``max_retries=0``), because an
+#: unreadable answer is already an attempt of the repair loop. 300 + 3 x 150 =
+#: 750 s, rounded up with slack; the hard limit follows the soft one by 60 s,
+#: as for the other long content tasks.
 STORY_SOFT_LIMIT = 900
 STORY_HARD_LIMIT = 960
 

@@ -1252,3 +1252,115 @@ async def test_a_translation_still_missing_after_the_budget_is_a_stored_warning(
     ]
     assert record.content["checks"]["warnings"] == 1
     assert record.content["objectives"][0]["fr"] == record.content["objectives"][0]["en"]
+
+
+# --------------------------------------------------------------------------
+# Choosing among attempts, and one paid call per attempt
+# --------------------------------------------------------------------------
+
+
+def _picks_without_home_texts(raw: dict[str, Any]) -> dict[str, Any]:
+    """Picks all four relevant MCQs, but two of them lack their home prompt/explanation."""
+    spine = picking_spine(raw, "en")
+    for entry in spine["derived"][:2]:
+        entry.pop("prompt_home")
+        entry.pop("explanation_home")
+    return spine
+
+
+def _picks_nothing(raw: dict[str, Any]) -> dict[str, Any]:
+    """Picks no MCQ and writes one extra question: too few questions to publish."""
+    spine = picking_spine(raw, "en")
+    spine["derived"] = []
+    return spine
+
+
+async def test_an_attempt_that_only_copies_translations_beats_one_that_cannot_publish(raw):
+    """Copies settle into warnings; too_few_questions never does. Rank accordingly."""
+    model = FakeClaude(_picks_without_home_texts(raw), _picks_nothing(raw))
+    generation = await StoryFromLessonService(model).generate_document(
+        covering_ctx(raw, "en"), system_prompt="system"
+    )
+
+    assert generation.model_calls == 3
+    assert generation.report.ok, [e.model_dump() for e in generation.report.errors]
+    derived = [q["id"] for q in generation.doc["questions"] if q.get("derived_from")]
+    assert derived == ["q2", "q3", "q4", "q5"]
+    assert sorted(w.path for w in generation.report.warnings) == [
+        "derived[q2].explanation_home",
+        "derived[q2].prompt_home",
+        "derived[q3].explanation_home",
+        "derived[q3].prompt_home",
+    ]
+    assert {w.code for w in generation.report.warnings} == {"missing_translation"}
+
+
+def test_attempts_are_ranked_by_what_still_blocks_them_once_settled():
+    from app.api.v1.schemas.story_course import Checks, ValidationIssue
+    from app.api.v1.schemas.story_course import ValidationReport as Report
+    from app.domain.services.story_from_lesson_service import attempt_rank
+
+    def report(*codes: str, warnings: int = 0) -> Report:
+        def issue(code: str, severity: str = "error") -> ValidationIssue:
+            return ValidationIssue(severity=severity, code=code, path="p", message="m")
+
+        return Report(
+            ok=not codes,
+            errors=[issue(code) for code in codes],
+            warnings=[issue("thin", "warning") for _ in range(warnings)],
+            checks=Checks(errors=len(codes), warnings=warnings),
+        )
+
+    copies_only = report(*["missing_translation"] * 4)
+    one_hard_error = report("too_few_questions")
+    assert attempt_rank(copies_only) < attempt_rank(one_hard_error)
+    assert attempt_rank(report("missing_translation")) < attempt_rank(copies_only)
+    assert (
+        attempt_rank(report())
+        < attempt_rank(report(warnings=1))
+        < attempt_rank(report("missing_translation"))
+    )
+
+
+class _UnreadableProvider:
+    """A provider that always answers prose: never valid JSON."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def complete(self, **kwargs: Any) -> Any:
+        self.calls += 1
+        return SimpleNamespace(
+            text="Sorry, here is the story in prose.", stop_reason="end_turn", usage={}
+        )
+
+
+async def test_each_attempt_is_exactly_one_paid_provider_call(raw):
+    """The service's strict-JSON retry is off: the repair loop already re-asks."""
+    from app.ai.claude_service import ClaudeService
+
+    provider = _UnreadableProvider()
+    claude = ClaudeService.__new__(ClaudeService)  # no settings or API key needed
+    claude._max_tokens, claude._temperature, claude._model = 1000, 0.5, "stub"
+    with patch.object(ClaudeService, "_provider", return_value=provider):
+        generation = await StoryFromLessonService(claude).generate_document(
+            make_ctx(raw, "en"), system_prompt="system"
+        )
+    budget = 1 + StoryFromLessonService(claude).max_repair_calls
+    assert generation.model_calls == budget
+    assert provider.calls == budget  # not 2 x budget
+    assert not generation.report.ok
+
+
+async def test_the_spine_call_turns_off_the_inner_json_retry(raw):
+    seen: list[int] = []
+
+    class Recording(FakeClaude):
+        async def generate_structured_content(self, system, user, content_type, max_retries=1):
+            seen.append(max_retries)
+            return await super().generate_structured_content(system, user, content_type)
+
+    await StoryFromLessonService(Recording(raw["en"]["spine"])).generate_document(
+        make_ctx(raw, "en"), system_prompt="system"
+    )
+    assert seen == [0]

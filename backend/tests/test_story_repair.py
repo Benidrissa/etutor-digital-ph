@@ -790,6 +790,59 @@ class TestMissingTranslations:
         spine["misconceptions"].append({"id": "m_unused", "en": "Never used."})
         assert repair.build_story_document(make_ctx(raw), spine).issues == []
 
+    def test_an_objective_merged_away_reports_nothing(self, raw):
+        """No question covers a third objective: it is merged away, and so is its copy."""
+        spine = spine_for(raw)
+        spine["objectives"].append({"id": "o9", "en": "Know a third thing about nets"})
+        build = repair.build_story_document(make_ctx(raw), spine)
+        assert [o["id"] for o in build.doc["objectives"]] == ["o1", "o2"]
+        assert "Know a third thing about nets" not in json.dumps(build.doc)
+        assert build.issues == []
+
+    def test_a_kept_objective_still_reports_its_copy(self, raw):
+        spine = spine_for(raw)
+        spine["objectives"][1].pop("fr")
+        spine["objectives"].append({"id": "o9", "en": "Know a third thing about nets"})
+        build = repair.build_story_document(make_ctx(raw), spine)
+        assert [o["id"] for o in build.doc["objectives"]] == ["o1", "o2"]
+        assert _issue_paths(build) == {"objectives[1].fr"}
+
+    @staticmethod
+    def _without_an_example(raw):
+        spine = spine_for(raw)
+        spine.pop("example")
+        ctx = make_ctx(raw)
+        ctx.lesson.pop("aof_example", None)
+        return ctx, spine
+
+    def test_example_lines_of_a_story_without_an_example_report_nothing(self, raw):
+        ctx, spine = self._without_an_example(raw)
+        spine["story"]["example_intro"].pop("fr")
+        spine["story"]["example_dialogue"][0].pop("fr")
+        build = repair.build_story_document(ctx, spine)
+        shown = json.dumps(build.doc, ensure_ascii=False)
+        assert spine["story"]["example_intro"]["en"][:40] not in shown
+        assert build.issues == []
+        # The lines the story does show are still reported.
+        spine["story"]["opening"].pop("fr")
+        assert _issue_paths(repair.build_story_document(ctx, spine)) == {"story.opening.fr"}
+
+    def test_example_lines_shown_in_the_field_scene_are_reported(self, raw):
+        spine = spine_for(raw)
+        spine["story"]["example_intro"].pop("fr")
+        build = repair.build_story_document(make_ctx(raw), spine)
+        assert _issue_paths(build) == {"story.example_intro.fr"}
+
+    def test_a_chapter_the_layout_never_opens_reports_nothing(self, raw):
+        ctx, spine = self._without_an_example(raw)
+        spine["concepts"] = spine["concepts"][:1]  # one concept: chapter 2 is never opened
+        spine["chapter_titles"][1] = {"en": "Out in the field"}
+        build = repair.build_story_document(ctx, spine)
+        assert "Out in the field" not in json.dumps(build.doc)
+        assert build.issues == []
+        spine["chapter_titles"][2] = {"en": "Over to you"}
+        assert _issue_paths(repair.build_story_document(ctx, spine)) == {"chapter_titles[2].fr"}
+
     def test_settling_turns_copies_into_warnings_and_keeps_other_errors(self):
         from app.api.v1.schemas.story_course import Checks, ValidationIssue
 
