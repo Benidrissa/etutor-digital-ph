@@ -45,15 +45,13 @@ type ActionOutcome = 'synced' | 'failed' | 'quiz_changed';
  * The queue stores answers as a question_id -> option map (per-question timing
  * is not tracked offline); the endpoint takes a list. content_revision pins
  * the answers to the questions they were given to. Entries queued before it
- * existed have none: they say when they were answered instead (the offline
- * score time, else the time they were queued, `queuedAt`), and the server
- * refuses them with 409 quiz_changed if the quiz changed after that, rather
- * than grade them against questions the learner never saw.
+ * existed have none, and nothing else they hold says which questions they
+ * answered: the server grades them only if the quiz has never changed, and
+ * otherwise refuses them with 409 quiz_changed (the entry is then dropped and
+ * the quiz copy refreshed) rather than grade them against questions the
+ * learner never saw.
  */
-export function buildQueuedQuizAttemptBody(
-  payload: QueuedQuizAnswerPayload,
-  queuedAt?: number,
-): QuizAttemptRequest {
+export function buildQueuedQuizAttemptBody(payload: QueuedQuizAnswerPayload): QuizAttemptRequest {
   const raw = payload.answers as unknown;
   const answers: QuizAnswerSubmission[] = Array.isArray(raw)
     ? (raw as QuizAnswerSubmission[])
@@ -69,23 +67,8 @@ export function buildQueuedQuizAttemptBody(
   };
   if (typeof payload.content_revision === 'number') {
     body.content_revision = payload.content_revision;
-  } else {
-    const answeredAt = answeredAtIso(payload.offline_scored_at, queuedAt);
-    if (answeredAt !== undefined) {
-      body.answered_at = answeredAt;
-    }
   }
   return body;
-}
-
-function answeredAtIso(offlineScoredAt: unknown, queuedAt?: number): string | undefined {
-  if (typeof offlineScoredAt === 'string' && !Number.isNaN(Date.parse(offlineScoredAt))) {
-    return new Date(offlineScoredAt).toISOString();
-  }
-  if (typeof queuedAt === 'number' && Number.isFinite(queuedAt) && queuedAt > 0) {
-    return new Date(queuedAt).toISOString();
-  }
-  return undefined;
 }
 
 export type SyncStatusListener = (status: SyncStatus) => void;
@@ -388,9 +371,7 @@ class SyncManager {
       case 'quiz_answer':
         await apiFetch('/api/v1/quiz/attempt', {
           method: 'POST',
-          body: JSON.stringify(
-            buildQueuedQuizAttemptBody(action.payload as QueuedQuizAnswerPayload, action.createdAt),
-          ),
+          body: JSON.stringify(buildQueuedQuizAttemptBody(action.payload as QueuedQuizAnswerPayload)),
         });
         break;
 

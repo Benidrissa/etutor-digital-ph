@@ -606,14 +606,13 @@ export interface QuizAttemptRequest {
   quiz_id: string;
   answers: QuizAnswerSubmission[];
   total_time_seconds: number;
-  /** `content_revision` of the quiz payload these answers were given to. */
-  content_revision?: number;
   /**
-   * ISO time the answers were given, for answers submitted later without a
-   * `content_revision` (queued offline before it existed): the server answers
-   * 409 `quiz_changed` if the quiz changed after that.
+   * `content_revision` of the quiz payload these answers were given to.
+   * Omitted (answers queued offline before payloads carried it): the server
+   * grades them only if the quiz has never changed, otherwise it answers 409
+   * `quiz_changed`.
    */
-  answered_at?: string;
+  content_revision?: number;
 }
 
 /**

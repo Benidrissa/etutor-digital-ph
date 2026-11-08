@@ -125,30 +125,21 @@ describe("offline quiz answers are pinned to the revision served", () => {
     expect(body).not.toHaveProperty("content_revision");
   });
 
-  it("dates unrevisioned entries, so answers to a since-changed quiz are refused, not mis-graded", () => {
-    const scored = buildQueuedQuizAttemptBody({
+  it("sends an entry queued before revisions existed with neither a revision nor an answer time", () => {
+    // The server grades it only if the quiz never changed, else 409 quiz_changed:
+    // when it was answered says nothing about when its questions were obtained.
+    const body = buildQueuedQuizAttemptBody({
       quiz_id: "quiz-1",
       answers: { q1: 1 },
       total_time_seconds: 5,
       offline_scored_at: "2026-03-04T05:06:07.000Z",
-    }, Date.UTC(2026, 0, 1));
-    expect(scored.answered_at).toBe("2026-03-04T05:06:07.000Z");
-
-    const queued = buildQueuedQuizAttemptBody(
-      { quiz_id: "quiz-1", answers: { q1: 1 }, total_time_seconds: 5 },
-      Date.UTC(2026, 0, 2, 3, 4, 5),
-    );
-    expect(queued.answered_at).toBe("2026-01-02T03:04:05.000Z");
-  });
-
-  it("sends no answer time with a revision, or when none is known", () => {
-    const revisioned = buildQueuedQuizAttemptBody(
-      { quiz_id: "quiz-1", answers: { q1: 1 }, total_time_seconds: 5, content_revision: 2, offline_scored_at: "2026-03-04T05:06:07.000Z" },
-      Date.UTC(2026, 0, 1),
-    );
-    expect(revisioned).not.toHaveProperty("answered_at");
-    const unknown = buildQueuedQuizAttemptBody({ quiz_id: "quiz-1", answers: { q1: 1 }, total_time_seconds: 5, offline_scored_at: "not a date" });
-    expect(unknown).not.toHaveProperty("answered_at");
+    });
+    expect(body).toEqual({
+      quiz_id: "quiz-1",
+      answers: [{ question_id: "q1", selected_option: 1, time_taken_seconds: 0 }],
+      total_time_seconds: 5,
+    });
+    expect(body).not.toHaveProperty("answered_at");
   });
 });
 
@@ -201,20 +192,36 @@ describe("SyncManager quiz_answer sync", () => {
     expect(db.markOfflineActionSynced).toHaveBeenCalledWith(7);
   });
 
-  it("dates a legacy entry by when it was queued", async () => {
-    const legacy: Partial<typeof action.payload> = { ...action.payload };
+  it("drops a legacy entry refused with 409, refreshes its quiz copy and says so", async () => {
+    const legacy: Partial<typeof action.payload> & { offline_scored_at?: string } = {
+      ...action.payload,
+      offline_scored_at: "2026-03-04T05:06:07.000Z",
+    };
     delete legacy.content_revision;
     vi.mocked(db.getPendingOfflineActions).mockResolvedValue([
       { ...action, payload: legacy, createdAt: Date.UTC(2026, 1, 3, 4, 5, 6) },
     ]);
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, {}));
+    const current = quiz({ content_revision: 2 });
+    const fetchMock = vi.fn(async (url: string) =>
+      String(url).endsWith("/api/v1/quiz/attempt")
+        ? jsonResponse(409, { detail: { error: "quiz_changed", message: "changed" } })
+        : jsonResponse(200, current),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
-    await SyncManager.getInstance().syncNow();
+    const result = await SyncManager.getInstance().syncNow();
 
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    const attemptCalls = fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/quiz/attempt"));
+    expect(attemptCalls).toHaveLength(1);
+    const body = JSON.parse((attemptCalls[0] as unknown as [string, RequestInit])[1].body as string);
     expect(body).not.toHaveProperty("content_revision");
-    expect(body.answered_at).toBe("2026-02-03T04:05:06.000Z");
+    expect(body).not.toHaveProperty("answered_at");
+    expect(result).toEqual({ synced: 0, failed: 0 });
+    expect(db.markOfflineActionSynced).toHaveBeenCalledWith(7);
+    expect(db.upsertOfflineContent).toHaveBeenCalledWith(
+      expect.objectContaining({ moduleId: "module-1", unitId: "1.2", contentType: "quiz", content: current }),
+    );
+    expect(statuses.at(-1)).toEqual({ state: "complete", synced: 0, quizChanged: 1 });
   });
 
   it("drops answers to a changed quiz, refreshes the offline copy and says so", async () => {
