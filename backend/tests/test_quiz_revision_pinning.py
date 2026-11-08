@@ -133,6 +133,7 @@ class FakeSession:
         self.module_unit_id = module_unit_id
         self.db_state = dict(db_state or {})
         self.revision_lookups: list[tuple] = []
+        self.change_lookups = 0
         self.locks: list = []
         self.added: list = []
         self.commit = AsyncMock()
@@ -162,7 +163,17 @@ class FakeSession:
         description = stmt.column_descriptions[0]
         entity, name = description["entity"], description["name"]
         result = MagicMock()
-        if entity is GeneratedContentRevision:
+        if entity is GeneratedContentRevision and name == "created_at":
+            # When the row's content was last replaced: its newest pre-image.
+            params = stmt.compile().params
+            times = [
+                p.created_at
+                for (content_id, _), p in self.pre_images.items()
+                if content_id == params["generated_content_id_1"]
+            ]
+            self.change_lookups += 1
+            result.scalars.return_value.first.return_value = max(times, default=None)
+        elif entity is GeneratedContentRevision:
             params = stmt.compile().params
             key = (params["generated_content_id_1"], params["revision_1"])
             self.revision_lookups.append(key)
@@ -197,9 +208,13 @@ class FakeSession:
 # ── Unit quiz submission ─────────────────────────────────────────────────────
 
 
-async def _submit_unit(session, row, answers, revision):
+async def _submit_unit(session, row, answers, revision, *, answered_at=None):
     request = QuizAttemptRequest(
-        quiz_id=row.id, answers=answers, total_time_seconds=30, content_revision=revision
+        quiz_id=row.id,
+        answers=answers,
+        total_time_seconds=30,
+        content_revision=revision,
+        answered_at=answered_at,
     )
     with (
         patch.object(quiz_api, "_check_subscription_or_first_unit", AsyncMock()),
@@ -272,6 +287,82 @@ class TestUnitQuizSubmission:
             QuizAttemptRequest(
                 quiz_id=uuid.uuid4(), answers=[], total_time_seconds=0, content_revision=0
             )
+
+
+class TestLegacyQueuedAnswersWithoutARevision:
+    """Answers queued offline by the old client carry no content_revision (and
+    failed with 422 on every sync until the sync posted a list). They now
+    reach the server, possibly long after the quiz was regenerated: grading
+    them against the current questions would score questions never seen."""
+
+    @staticmethod
+    def _regenerated_days_ago(days: int):
+        row = _row(revision=2, key=REV2_KEY)
+        changed = datetime.now(UTC) - timedelta(days=days)
+        row.generated_at = changed.replace(tzinfo=None)
+        pre_image = _pre_image(row, 1, REV1_KEY, created_at=changed)
+        return row, FakeSession(row=row, pre_images={(row.id, 1): pre_image})
+
+    async def test_answers_given_before_the_quiz_changed_are_409(self):
+        row, session = self._regenerated_days_ago(2)
+        answered_at = datetime.now(UTC) - timedelta(days=5)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await _submit_unit(session, row, _sheet(REV1_KEY), None, answered_at=answered_at)
+
+        assert exc_info.value.status_code == 409
+        assert exc_info.value.detail["error"] == "quiz_changed"
+        assert session.attempts(QuizAttempt) == []
+
+    async def test_answers_given_after_the_last_change_are_graded(self):
+        row, session = self._regenerated_days_ago(5)
+        answered_at = (datetime.now(UTC) - timedelta(days=2)).isoformat()
+
+        response = await _submit_unit(session, row, _sheet(REV2_KEY), None, answered_at=answered_at)
+
+        assert response.score == 100.0
+        (attempt,) = session.attempts(QuizAttempt)
+        assert attempt.answers["content_revision"] == 2
+
+    async def test_a_change_recorded_only_by_the_row_counts(self):
+        """generated_at is stamped at the overwrite, after the pre-image's
+        transaction started: answers given in between are still stale."""
+        row, session = self._regenerated_days_ago(5)
+        row.generated_at = (datetime.now(UTC) - timedelta(hours=1)).replace(tzinfo=None)
+        answered_at = datetime.now(UTC) - timedelta(days=1)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await _submit_unit(session, row, _sheet(REV1_KEY), None, answered_at=answered_at)
+
+        assert exc_info.value.status_code == 409
+
+    async def test_a_quiz_never_regenerated_is_graded_without_a_lookup(self):
+        row = _row(revision=1, key=REV1_KEY)
+        session = FakeSession(row=row)
+        answered_at = datetime(2020, 1, 1, tzinfo=UTC)
+
+        response = await _submit_unit(session, row, _sheet(REV1_KEY), None, answered_at=answered_at)
+
+        assert response.score == 100.0
+        assert session.change_lookups == 0
+
+    async def test_with_a_revision_the_answer_time_is_not_needed(self):
+        row, session = self._regenerated_days_ago(2)
+        answered_at = datetime.now(UTC) - timedelta(days=5)
+
+        response = await _submit_unit(session, row, _sheet(REV1_KEY), 1, answered_at=answered_at)
+
+        assert response.score == 100.0
+        assert session.change_lookups == 0
+
+    def test_request_accepts_a_javascript_timestamp(self):
+        request = QuizAttemptRequest(
+            quiz_id=uuid.uuid4(),
+            answers=[],
+            total_time_seconds=0,
+            answered_at="2026-01-02T03:04:05.678Z",
+        )
+        assert request.answered_at == datetime(2026, 1, 2, 3, 4, 5, 678000, tzinfo=UTC)
 
 
 # ── Summative submission and review ──────────────────────────────────────────

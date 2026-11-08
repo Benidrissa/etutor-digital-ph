@@ -137,6 +137,26 @@ def as_utc(value: Any) -> datetime | None:
     return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
+async def last_changed_at(session: AsyncSession, row: Any) -> datetime | None:
+    """When ``row``'s content was last replaced; ``None`` while it is at revision 1.
+
+    The later of the newest pre-image's ``created_at`` (every overwrite writes
+    one: regeneration, backfill, admin edit) and the row's ``generated_at``
+    (stamped by an in-place regeneration).
+    """
+    if current_revision(row) <= 1:
+        return None
+    result = await session.execute(
+        select(GeneratedContentRevision.created_at)
+        .where(GeneratedContentRevision.generated_content_id == row.id)
+        .order_by(GeneratedContentRevision.created_at.desc())
+        .limit(1)
+    )
+    times = [as_utc(result.scalars().first()), as_utc(getattr(row, "generated_at", None))]
+    known = [time for time in times if time is not None]
+    return max(known) if known else None
+
+
 def superseded_at(row: Any, pre_image: Any) -> datetime | None:
     """When the revision saved in ``pre_image`` stopped being served.
 

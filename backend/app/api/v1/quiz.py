@@ -39,8 +39,10 @@ from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import QuizAttempt, SummativeAssessmentAttempt
 from app.domain.services.analytics_service import AnalyticsService
 from app.domain.services.content_revisions import (
+    as_utc,
     current_revision,
     find_pre_image,
+    last_changed_at,
     superseded_at,
 )
 from app.domain.services.country_utils import canonicalize_country
@@ -202,6 +204,7 @@ async def _content_to_grade(
     served_revision: int | None,
     *,
     superseded_within: timedelta | None = None,
+    answered_at: datetime | None = None,
 ) -> tuple[dict, int]:
     """The quiz content a submission is graded against, and its revision.
 
@@ -216,11 +219,21 @@ async def _content_to_grade(
     being served at most this long ago (summatives: a learner can only have
     been served it that recently). Without it, any recoverable revision is.
 
+    ``answered_at``: when answers without a revision were given (queued
+    offline by a client that did not record one). If the quiz has changed
+    since, they belong to questions it no longer has, so they are not graded
+    against the current ones.
+
     Raises 409 ``quiz_changed`` when the served revision cannot be recovered
-    (no pre-image) or was superseded too long ago: the client reloads the quiz
-    rather than being graded against questions it never showed.
+    (no pre-image), was superseded too long ago, or (no revision) the quiz
+    changed after the answers were given: the client reloads the quiz rather
+    than being graded against questions it never showed.
     """
     current = current_revision(row)
+    if served_revision is None and answered_at is not None:
+        changed = await last_changed_at(session, row)
+        if changed is not None and changed > as_utc(answered_at):
+            raise _quiz_changed(row, served_revision, "changed_after_answers")
     if served_revision is None or served_revision == current:
         return row.content, current
     pre_image = await find_pre_image(session, row.id, served_revision)
@@ -572,7 +585,7 @@ async def submit_quiz_attempt(
 
         # Grade against the revision the learner was served, not the current one.
         quiz_data, graded_revision = await _content_to_grade(
-            session, quiz_content, request.content_revision
+            session, quiz_content, request.content_revision, answered_at=request.answered_at
         )
         questions = quiz_data["questions"]
 

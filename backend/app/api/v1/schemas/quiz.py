@@ -12,6 +12,7 @@ Three nested shapes of a quiz question, from least to most revealing:
   Adds ``option_misconceptions``, which is server-side metadata only.
 """
 
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -244,6 +245,15 @@ class QuizAttemptRequest(BaseModel):
             "content_revision of the quiz payload these answers were given to. Graded "
             "against that revision; 409 quiz_changed when it can no longer be recovered. "
             "Omitted: graded against the current revision (older clients)."
+        ),
+    )
+    answered_at: datetime | None = Field(
+        default=None,
+        description=(
+            "When the answers were given, for answers submitted later (queued offline) "
+            "without a content_revision. 409 quiz_changed when the quiz has changed "
+            "since: they were given to questions it no longer has. Ignored when "
+            "content_revision is sent."
         ),
     )
 

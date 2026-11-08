@@ -124,6 +124,32 @@ describe("offline quiz answers are pinned to the revision served", () => {
     const body = buildQueuedQuizAttemptBody({ quiz_id: "quiz-1", answers: { q1: 1 }, total_time_seconds: 5 });
     expect(body).not.toHaveProperty("content_revision");
   });
+
+  it("dates unrevisioned entries, so answers to a since-changed quiz are refused, not mis-graded", () => {
+    const scored = buildQueuedQuizAttemptBody({
+      quiz_id: "quiz-1",
+      answers: { q1: 1 },
+      total_time_seconds: 5,
+      offline_scored_at: "2026-03-04T05:06:07.000Z",
+    }, Date.UTC(2026, 0, 1));
+    expect(scored.answered_at).toBe("2026-03-04T05:06:07.000Z");
+
+    const queued = buildQueuedQuizAttemptBody(
+      { quiz_id: "quiz-1", answers: { q1: 1 }, total_time_seconds: 5 },
+      Date.UTC(2026, 0, 2, 3, 4, 5),
+    );
+    expect(queued.answered_at).toBe("2026-01-02T03:04:05.000Z");
+  });
+
+  it("sends no answer time with a revision, or when none is known", () => {
+    const revisioned = buildQueuedQuizAttemptBody(
+      { quiz_id: "quiz-1", answers: { q1: 1 }, total_time_seconds: 5, content_revision: 2, offline_scored_at: "2026-03-04T05:06:07.000Z" },
+      Date.UTC(2026, 0, 1),
+    );
+    expect(revisioned).not.toHaveProperty("answered_at");
+    const unknown = buildQueuedQuizAttemptBody({ quiz_id: "quiz-1", answers: { q1: 1 }, total_time_seconds: 5, offline_scored_at: "not a date" });
+    expect(unknown).not.toHaveProperty("answered_at");
+  });
 });
 
 describe("SyncManager quiz_answer sync", () => {
@@ -173,6 +199,22 @@ describe("SyncManager quiz_answer sync", () => {
       answers: [{ question_id: "q1", selected_option: 1, time_taken_seconds: 0 }],
     });
     expect(db.markOfflineActionSynced).toHaveBeenCalledWith(7);
+  });
+
+  it("dates a legacy entry by when it was queued", async () => {
+    const legacy: Partial<typeof action.payload> = { ...action.payload };
+    delete legacy.content_revision;
+    vi.mocked(db.getPendingOfflineActions).mockResolvedValue([
+      { ...action, payload: legacy, createdAt: Date.UTC(2026, 1, 3, 4, 5, 6) },
+    ]);
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, {}));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await SyncManager.getInstance().syncNow();
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body).not.toHaveProperty("content_revision");
+    expect(body.answered_at).toBe("2026-02-03T04:05:06.000Z");
   });
 
   it("drops answers to a changed quiz, refreshes the offline copy and says so", async () => {

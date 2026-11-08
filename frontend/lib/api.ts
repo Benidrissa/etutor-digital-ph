@@ -608,6 +608,12 @@ export interface QuizAttemptRequest {
   total_time_seconds: number;
   /** `content_revision` of the quiz payload these answers were given to. */
   content_revision?: number;
+  /**
+   * ISO time the answers were given, for answers submitted later without a
+   * `content_revision` (queued offline before it existed): the server answers
+   * 409 `quiz_changed` if the quiz changed after that.
+   */
+  answered_at?: string;
 }
 
 /**
