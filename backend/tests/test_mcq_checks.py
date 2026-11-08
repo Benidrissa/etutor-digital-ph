@@ -765,6 +765,104 @@ class TestLeakSeverityIsTiered:
     @pytest.mark.parametrize(
         ("stem", "options", "correct"),
         [
+            # The "1" of "1 fois" is not set beside the answer: it names nothing.
+            (
+                "La dose est de 10 mg/kg, 1 fois par jour. Quelle est la dose ?",
+                ["10 mg/kg", "5 mg/kg", "20 mg/kg", "1 mg/kg"],
+                0,
+            ),
+            (
+                "The dose is 10 mg/kg, given 1 time a day. What is the dose?",
+                ["10 mg/kg", "5 mg/kg", "20 mg/kg", "1 mg/kg"],
+                0,
+            ),
+            (
+                "A child of 12 kg gets 10 mg/kg, which is 120 mg. What dose does the child get?",
+                ["120 mg", "12 mg", "1 200 mg", "22 mg"],
+                0,
+            ),
+            (
+                "Over 3 days the clinic saw 150 patients. How many patients did it see?",
+                ["150 patients", "3 patients", "50 patients", "450 patients"],
+                0,
+            ),
+            (
+                "Le district compte 4 centres et 2 500 enfants vaccinés. "
+                "Combien d'enfants vaccinés ?",
+                ["2 500 enfants", "4 enfants", "625 enfants", "10 000 enfants"],
+                0,
+            ),
+            (
+                "In 2 weeks coverage reached 80 %. What coverage was reached?",
+                ["80 %", "2 %", "40 %", "160 %"],
+                0,
+            ),
+            # The shared "1/2" ends both options, so "2" would have to come
+            # before the answer; the "2" of "7/2" comes after it.
+            (
+                "The answer is 3 1/2. Which mixed number equals 7/2?",
+                ["3 1/2", "31/2", "2 1/2", "3 1/3"],
+                0,
+            ),
+        ],
+        ids=[
+            "fr-1-fois",
+            "en-1-time",
+            "12-kg",
+            "3-days",
+            "4-centres",
+            "2-weeks",
+            "mixed-number",
+        ],
+    )
+    def test_a_stray_short_number_does_not_name_a_distractor(self, stem, options, correct):
+        """A distractor's distinctive part that is a short number counts only
+        right beside the answer ("9 or 13 cm"), not wherever that number turns
+        up in the stem: these leaks stay errors."""
+        issues = mcq.check_answer_leak(leak_view(stem, options, correct))
+        assert [i.path for i in issues if i.code == mcq.ANSWER_LEAK] == ["questions[q1].question"]
+        assert mcq.ANSWER_LEAK_AMBIGUOUS not in codes(issues)
+
+    @pytest.mark.parametrize(
+        ("stem", "options", "correct"),
+        [
+            ("Is it given 1 or 2 times a day?", ["1 time", "2 times", "3 times", "Never"], 1),
+            ("Is the dose 5, 10 or 20 mg/kg?", ["5 mg/kg", "10 mg/kg", "20 mg/kg", "1 mg/kg"], 2),
+            ("Dose 1 ou 2 : laquelle se donne à 9 mois ?", ["Dose 1", "Dose 2", "Aucune"], 0),
+        ],
+        ids=["before-the-answer", "listed-before", "after-the-answer"],
+    )
+    def test_a_short_number_beside_the_answer_names_its_distractor(self, stem, options, correct):
+        issues = mcq.check_answer_leak(leak_view(stem, options, correct))
+        assert not errors(issues), [i.model_dump() for i in issues]
+        assert warnings_at(issues, mcq.ANSWER_LEAK_AMBIGUOUS) == ["questions[q1].question"]
+
+    @pytest.mark.parametrize(
+        ("stem", "options", "correct"),
+        [
+            ("Is the case fatality rate closer to 1% or 10%?", ["1%", "10%", "50%"], 1),
+            ("Is the risk 2% or 20%?", ["2%", "20%", "60%"], 1),
+            ("Is the rate 0.5% or 5%?", ["0.5%", "5%", "50%"], 0),
+            ("La létalité est-elle plutôt de 1 % ou de 10 % ?", ["1 %", "10 %", "50 %"], 1),
+            ("Was coverage closer to 5 % or 75 %?", ["5 %", "75 %", "100 %"], 1),
+        ],
+    )
+    def test_a_one_digit_percentage_distractor_is_named(self, stem, options, correct):
+        """ "1%" is under the length floor but is one specific value: set beside
+        the answer, it makes the stem a comparison, not a leak."""
+        issues = mcq.check_answer_leak(leak_view(stem, options, correct))
+        assert not errors(issues), [i.model_dump() for i in issues]
+        assert warnings_at(issues, mcq.ANSWER_LEAK_AMBIGUOUS) == ["questions[q1].question"]
+
+    def test_a_percentage_leak_without_its_distractor_is_still_an_error(self):
+        issues = mcq.check_answer_leak(
+            leak_view("Coverage is 10%. What is coverage?", ["1%", "10%", "50%"], 1)
+        )
+        assert [i.path for i in issues if i.code == mcq.ANSWER_LEAK] == ["questions[q1].question"]
+
+    @pytest.mark.parametrize(
+        ("stem", "options", "correct"),
+        [
             ("Which is larger: 3/4 or 2/3?", ["3/4", "2/3", "They are equal", "It depends"], 0),
             (
                 "Which test confirms malaria fastest at the bedside, the RDT or microscopy?",

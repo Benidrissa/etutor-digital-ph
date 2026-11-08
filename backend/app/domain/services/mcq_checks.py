@@ -492,13 +492,17 @@ def _same_word(left: str, right: str) -> bool:
     )
 
 
-def _distinctive_part(distractor: Sequence[str], answer: Sequence[str]) -> list[str]:
+def _distinctive_part(
+    distractor: Sequence[str], answer: Sequence[str]
+) -> tuple[list[str], int, int]:
     """The distractor's tokens with the words it shares with the answer at
     either end removed: "before" from "Before meals" against "After meals",
     "intramusculaire" from "Par voie intramusculaire" against "Par voie
     orale", "5" from "5 mg/kg" against "10 mg/kg". An either/or stem writes
     the shared words once ("before or after meals"), so this part is all of
     the distractor it names. Empty when nothing sets the two apart at an end.
+
+    Returns the part and how many words were shared at the head and the tail.
     """
     limit = min(len(distractor), len(answer))
     head = 0
@@ -507,47 +511,97 @@ def _distinctive_part(distractor: Sequence[str], answer: Sequence[str]) -> list[
     tail = 0
     while tail < limit - head and _same_word(distractor[-1 - tail], answer[-1 - tail]):
         tail += 1
-    return list(distractor[head : len(distractor) - tail])
+    return list(distractor[head : len(distractor) - tail]), head, tail
 
 
-def _distractor_needles(view: McqView, needle: Sequence[str], min_length: int) -> list[list[str]]:
+@dataclass(frozen=True)
+class _DistractorNeedle:
+    """Tokens that name a distractor, and where they must stand to count.
+
+    ``before`` / ``after``: ``None`` means anywhere in the text. Otherwise the
+    needle counts only next to an occurrence of the answer, at most
+    :data:`_ADJACENT_GAP` tokens away, before it (``before``) or after it
+    (``after``).
+    """
+
+    tokens: tuple[str, ...]
+    before: bool = False
+    after: bool = False
+
+    @property
+    def anywhere(self) -> bool:
+        return not (self.before or self.after)
+
+
+#: Tokens allowed between a short numeric distractor part and the answer it is
+#: set beside: the "or" of "9 or 13 cm", the "," of "5, 10 or 20 mg/kg".
+_ADJACENT_GAP = 1
+
+
+def _is_unit_value(tokens: Sequence[str]) -> bool:
+    """A number with its unit symbol ("1%", "5 %", "4 °"): one specific value."""
+    return len(tokens) >= 2 and tokens[0][:1].isdigit() and tokens[-1] in _UNIT_SUFFIXES
+
+
+def _distractor_needles(
+    view: McqView, needle: Sequence[str], min_length: int
+) -> list[_DistractorNeedle]:
     """What counts as naming a distractor in a text, for :func:`check_answer_leak`.
 
-    Each distractor at least ``min_length`` characters long, whole; and, when
-    it shares words with the answer at either end, its distinctive part (see
-    :func:`_distinctive_part`) if that is at least ``min_length`` characters
-    or a number ("5 or 10 mg/kg"). A distractor reading the same as the answer
-    is no evidence of a comparison; :func:`check_duplicate_options` reports it.
+    * Each distractor, whole, if it is at least ``min_length`` characters long
+      or a number with its unit symbol ("1%", "5 %"), anywhere in the text.
+    * When it shares words with the answer at either end, its distinctive part
+      (see :func:`_distinctive_part`): anywhere if that part is at least
+      ``min_length`` characters ("before or after meals"); if it is a shorter
+      number, only right beside the answer, on the side the shared words were
+      written once — before it when they end both options ("9 or 13 cm"),
+      after it when they start them ("dose 1 ou 2"). A stray "1" elsewhere
+      ("10 mg/kg, 1 fois par jour") names nothing.
+
+    A distractor reading the same as the answer is no evidence of a comparison;
+    :func:`check_duplicate_options` reports it.
     """
-    needles: list[list[str]] = []
+    needles: list[_DistractorNeedle] = []
     for index, option in enumerate(view.options):
         tokens = _leak_needle(option)
         if index == view.correct_index or not tokens or tokens == list(needle):
             continue
-        if len("".join(tokens)) >= min_length:
-            needles.append(tokens)
-        part = _distinctive_part(tokens, needle)
+        if len("".join(tokens)) >= min_length or _is_unit_value(tokens):
+            needles.append(_DistractorNeedle(tuple(tokens)))
+        part, head, tail = _distinctive_part(tokens, needle)
+        if not part or part == tokens:
+            continue
         joined = "".join(part)
-        if part and part != tokens and (len(joined) >= min_length or joined.isdigit()):
-            needles.append(part)
+        if len(joined) >= min_length:
+            needles.append(_DistractorNeedle(tuple(part)))
+        elif joined.isdigit():
+            needles.append(_DistractorNeedle(tuple(part), before=tail > 0, after=head > 0))
     return needles
 
 
 def _names_a_distractor(
-    distractors: Sequence[Sequence[str]],
+    distractors: Sequence[_DistractorNeedle],
     answers: Sequence[tuple[int, int]],
     folded: str,
     matches: Sequence[re.Match],
 ) -> bool:
-    """Whether a distractor stands somewhere in the text other than inside the answer.
+    """Whether a distractor stands in the text other than inside the answer.
 
     A distractor span contained in an answer span is part of the answer
-    ("malaria" in "cerebral malaria"), not a second option named.
+    ("malaria" in "cerebral malaria"), not a second option named. A needle
+    tied to the answer (:class:`_DistractorNeedle`) counts only beside it.
     """
     for distractor in distractors:
-        for start, end in _spans(distractor, folded, matches):
-            if not any(a_start <= start and end <= a_end for a_start, a_end in answers):
+        for start, end in _spans(distractor.tokens, folded, matches):
+            if any(a_start <= start and end <= a_end for a_start, a_end in answers):
+                continue
+            if distractor.anywhere:
                 return True
+            for a_start, a_end in answers:
+                if distractor.before and 0 <= a_start - end <= _ADJACENT_GAP:
+                    return True
+                if distractor.after and 0 <= start - a_end <= _ADJACENT_GAP:
+                    return True
     return False
 
 
@@ -579,12 +633,14 @@ def check_answer_leak(view: McqView, *, min_length: int = MIN_LEAK_LENGTH) -> li
     it from "the answer is 125".
 
     A distractor counts as named only when it is at least ``min_length``
-    characters long (so "a" or "un" never does; "one" does), does not read the
-    same as the answer, and stands as a whole value outside every occurrence
-    of the answer. In a factorised either/or ("before or after meals", "5 or
-    10 mg/kg", "avant ou après les repas") the distractor never stands whole:
-    the words that set it apart from the answer ("before", "5", "avant") name
-    it, under the same floor, which a number of any length passes.
+    characters long (so "a" or "un" never does; "one" does) or a number with
+    its unit symbol ("1%", "5 %"), does not read the same as the answer, and
+    stands as a whole value outside every occurrence of the answer. In a
+    factorised either/or ("before or after meals", "5 or 10 mg/kg", "avant ou
+    après les repas") the distractor never stands whole: the words that set it
+    apart from the answer ("before", "avant") name it under the same floor; a
+    shorter number ("5") names it only right beside the answer (see
+    :func:`_distractor_needles`).
     """
     answer = view.correct_option
     needle = _leak_needle(answer)
