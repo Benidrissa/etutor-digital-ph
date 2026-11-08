@@ -2,42 +2,60 @@
 
 import { useCallback, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
-import { BookOpen, Headphones, Video as VideoIcon } from 'lucide-react';
+import { BookOpen, Headphones, ScrollText, Video as VideoIcon } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LessonAudio } from './lesson-audio';
+import { LessonStory } from './lesson-story';
 import { LessonVideo } from './lesson-video';
 
-export type LessonMediaTab = 'read' | 'listen' | 'watch';
+export type LessonMediaTab = 'read' | 'listen' | 'watch' | 'story';
 
 interface LessonMediaTabsProps {
   lessonId: string;
+  /** The module and unit the lesson belongs to — the story is looked up by them. */
+  moduleId: string;
+  unitId: string;
   language: 'fr' | 'en';
   /** The lesson body — illustration, intro, concepts, AOF example, synthèse, key points. */
   readPane: ReactNode;
-  /** Fires whenever the active tab changes — lets the parent hide chrome (e.g. the refresh button) on the listen/watch panes. */
+  /** Fires whenever the active tab changes — lets the parent hide chrome (e.g. the refresh button) on the listen/watch/story panes. */
   onActiveTabChange?: (tab: LessonMediaTab) => void;
+  /**
+   * Fires once when the learner finishes the lesson's story. Story mode is a
+   * tab on the lesson unit, not a unit of its own, so finishing it completes
+   * this lesson — the parent records that through its usual completion path.
+   */
+  onStoryComplete?: () => void;
 }
 
 /**
- * Three-tab media region — Lire / Écouter / Regarder — that unifies the
- * three modalities of consuming a lesson. All panes are kept mounted via
- * Base UI's ``keepMounted`` so audio polling, audio playback continuity,
- * and video status badging survive tab switches.
+ * Four-tab media region — Lire / Écouter / Vidéo / Histoire — that unifies
+ * the ways of consuming a lesson. All panes are kept mounted via Base UI's
+ * ``keepMounted`` so audio polling, audio playback continuity, video status
+ * badging and the learner's place in the story survive tab switches. The
+ * story pane is told whether it is the open tab, and fetches nothing until it
+ * first is.
  */
 export function LessonMediaTabs({
   lessonId,
+  moduleId,
+  unitId,
   language,
   readPane,
   onActiveTabChange,
+  onStoryComplete,
 }: LessonMediaTabsProps) {
   const t = useTranslations('LessonMediaTabs');
+  const [activeTab, setActiveTab] = useState<LessonMediaTab>('read');
   const [audioDuration, setAudioDuration] = useState<number | null>(null);
   const [isVideoGenerating, setIsVideoGenerating] = useState(false);
+  const [isStoryGenerating, setIsStoryGenerating] = useState(false);
 
   const handleValueChange = useCallback(
     (value: unknown) => {
       const tab = value as LessonMediaTab;
+      setActiveTab(tab);
       onActiveTabChange?.(tab);
     },
     [onActiveTabChange],
@@ -48,6 +66,12 @@ export function LessonMediaTabs({
     const s = Math.floor(seconds % 60);
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
+
+  const generatingBadge = (
+    <span className="ml-1 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-normal text-amber-700">
+      {t('generatingBadge')}
+    </span>
+  );
 
   return (
     <Tabs
@@ -83,11 +107,15 @@ export function LessonMediaTabs({
         >
           <VideoIcon className="w-4 h-4" aria-hidden="true" />
           <span>{t('watchTab')}</span>
-          {isVideoGenerating && (
-            <span className="ml-1 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-normal text-amber-700">
-              {t('generatingBadge')}
-            </span>
-          )}
+          {isVideoGenerating && generatingBadge}
+        </TabsTrigger>
+        <TabsTrigger
+          value="story"
+          className="min-h-11 flex-none gap-2 px-4 data-active:bg-background"
+        >
+          <ScrollText className="w-4 h-4" aria-hidden="true" />
+          <span>{t('storyTab')}</span>
+          {isStoryGenerating && generatingBadge}
         </TabsTrigger>
       </TabsList>
 
@@ -120,6 +148,22 @@ export function LessonMediaTabs({
               lessonId={lessonId}
               language={language}
               onActivelyGeneratingChange={setIsVideoGenerating}
+            />
+          </TabsContent>
+          <TabsContent
+            value="story"
+            keepMounted
+            className="data-active:min-h-[40vh] p-4 md:p-8"
+          >
+            {/* Keyed by lesson so a different lesson or language starts fresh. */}
+            <LessonStory
+              key={`${moduleId}:${unitId}:${language}`}
+              moduleId={moduleId}
+              unitId={unitId}
+              language={language}
+              active={activeTab === 'story'}
+              onActivelyGeneratingChange={setIsStoryGenerating}
+              onComplete={onStoryComplete}
             />
           </TabsContent>
         </CardContent>

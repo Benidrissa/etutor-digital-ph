@@ -394,6 +394,15 @@ export function LessonViewer({
     }
   };
 
+  // Finishing the lesson's story completes this lesson unit: story mode is a
+  // tab on the lesson, not a unit of its own. It goes through the same handler
+  // as the button below — online POST or the offline queue — so the button,
+  // the module progress and the sync queue all agree.
+  const handleStoryComplete = () => {
+    if (isCompleted) return;
+    void handleMarkComplete();
+  };
+
   const mdClass = "prose prose-gray max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-900 prose-table:text-sm";
 
   const mdComponents = {
@@ -633,8 +642,11 @@ export function LessonViewer({
 
       <LessonMediaTabs
         lessonId={lessonData.id}
+        moduleId={moduleId}
+        unitId={unitId}
         language={lessonData.language}
         onActiveTabChange={setActiveMediaTab}
+        onStoryComplete={handleStoryComplete}
         readPane={
           <div className="p-6 md:p-8">
             {/* Lesson Illustration */}

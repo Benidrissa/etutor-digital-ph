@@ -828,7 +828,22 @@
     "readTab": "Lire",
     "listenTab": "Écouter",
     "watchTab": "Vidéo",
+    "storyTab": "Histoire",
     "generatingBadge": "génération…"
+  },
+  "LessonStory": {
+    "regionLabel": "Histoire de la leçon",
+    "loading": "Chargement de l'histoire…",
+    "generating": "Écriture de l'histoire de cette leçon…",
+    "generatingDescription": "L'histoire est écrite à partir de cette leçon lors de sa première ouverture : cela peut prendre une minute.",
+    "slowWarning": "Toujours en cours — les leçons plus longues demandent un peu plus de temps.",
+    "unavailable": "L'histoire de cette leçon n'est pas encore disponible.",
+    "unavailableHint": "La leçon reste disponible en lecture, en audio et en vidéo.",
+    "disabled": "Le mode histoire n'est pas encore activé sur cette plateforme.",
+    "offline": "Cette histoire n'a pas été téléchargée pour une utilisation hors ligne. Une connexion est nécessaire pour l'ouvrir.",
+    "failed": "L'histoire n'a pas pu être préparée. Veuillez réessayer.",
+    "timeout": "Cela prend plus de temps que prévu. Veuillez réessayer dans un instant.",
+    "retry": "Réessayer"
   },
   "CaseStudyViewer": {
     "error": "Une erreur est survenue",
