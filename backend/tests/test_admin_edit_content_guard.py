@@ -18,6 +18,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.v1.admin_courses import EditContentRequest, edit_content
+from app.domain.models.course_quality import GeneratedContentRevision
 
 ADMIN = SimpleNamespace(id=str(uuid.uuid4()), role="admin")
 
@@ -67,27 +68,52 @@ LESSON = {
 }
 
 
-def _row(content_type: str, content: dict) -> SimpleNamespace:
+def _row(content_type: str, content: dict, *, revision: int = 1) -> SimpleNamespace:
     return SimpleNamespace(
         id=uuid.uuid4(),
         content_type=content_type,
         content=copy.deepcopy(content),
+        sources_cited=[],
+        quality_score=None,
+        quality_flags=[],
         is_manually_edited=False,
         validated=False,
+        content_revision=revision,
     )
 
 
-def _db(row) -> MagicMock:
-    result = MagicMock()
-    result.scalar_one_or_none.return_value = row
+def _db(row, *, pre_images: dict | None = None) -> MagicMock:
+    """Routes ``execute`` by the entity selected: the row, or a pre-image.
+
+    ``pre_images`` maps a revision to an existing pre-image; pre-images added
+    through ``db.add`` become visible to later lookups, as after an autoflush.
+    """
+    pre_images = dict(pre_images or {})
     db = MagicMock()
-    db.execute = AsyncMock(return_value=result)
+    db.statements = []
+
+    async def execute(stmt):
+        db.statements.append(stmt)
+        result = MagicMock()
+        if stmt.column_descriptions[0]["entity"] is GeneratedContentRevision:
+            revision = stmt.compile().params["revision_1"]
+            result.scalars.return_value.first.return_value = pre_images.get(revision)
+        else:
+            result.scalar_one_or_none.return_value = row
+        return result
+
+    def add(obj):
+        if isinstance(obj, GeneratedContentRevision):
+            pre_images[obj.revision] = obj
+
+    db.execute = AsyncMock(side_effect=execute)
+    db.add = MagicMock(side_effect=add)
     db.commit = AsyncMock()
     return db
 
 
-async def _edit(row, posted: dict):
-    db = _db(row)
+async def _edit(row, posted: dict, db=None):
+    db = db if db is not None else _db(row)
     response = await edit_content(
         course_id=uuid.uuid4(),
         content_id=row.id,
@@ -206,12 +232,94 @@ class TestQuizEdits:
         assert row.content["questions"][0]["option_misconceptions"] is None
 
 
+def _added_pre_images(db) -> list:
+    return [
+        c.args[0] for c in db.add.call_args_list if isinstance(c.args[0], GeneratedContentRevision)
+    ]
+
+
+class TestQuizEditIsANewRevision:
+    """Learners may hold the quiz at its current revision when an admin edits
+    it: the edit used to rewrite the answer key under that same revision, so
+    their answers were graded against the edited questions with no 409."""
+
+    async def test_old_content_is_kept_and_the_revision_bumped(self):
+        row = _row("quiz", _quiz(), revision=2)
+        served = copy.deepcopy(row.content)
+        # The correct option moves from index 1 to index 0.
+        posted = _quiz(
+            _question(
+                "q1",
+                options=["Malaria", "Cholera", "Measles", "Tuberculosis"],
+                correct_answer=0,
+                option_misconceptions=[None, "Thinks cholera is mosquito-borne", "m", "t"],
+            ),
+            _question("q2"),
+        )
+        db = _db(row)
+
+        await _edit(row, posted, db)
+
+        (pre_image,) = _added_pre_images(db)
+        assert pre_image.revision == 2
+        assert pre_image.content == served
+        assert pre_image.trigger == "admin_edit"
+        assert pre_image.triggered_by_user_id == uuid.UUID(ADMIN.id)
+        assert row.content_revision == 3
+        assert row.content["questions"][0]["correct_answer"] == 0
+
+        # A learner who was served revision 2 is graded against what they saw.
+        from app.api.v1 import quiz as quiz_api
+
+        graded, revision = await quiz_api._content_to_grade(db, row, 2)
+        assert revision == 2
+        assert graded["questions"][0]["options"][1] == "Malaria"
+        assert graded["questions"][0]["correct_answer"] == 1
+
+    async def test_saving_unchanged_content_is_not_a_new_revision(self):
+        row = _row("quiz", _quiz(), revision=2)
+        posted = _quiz(_question("q1", question="Which disease do Anopheles mosquitoes spread?"))
+        db = _db(row)
+        await _edit(row, posted, db)
+        assert row.content_revision == 3
+
+        await _edit(row, posted, db)
+
+        assert row.content_revision == 3
+        assert len(_added_pre_images(db)) == 1
+
+    async def test_the_row_is_re_read_under_a_lock(self):
+        row = _row("quiz", _quiz())
+        db = _db(row)
+        await _edit(row, _quiz(_question("q1", question="Which illness do they spread?")), db)
+        stmt = db.statements[0]
+        assert stmt._for_update_arg is not None and stmt._for_update_arg.key_share is True
+        assert stmt.get_execution_options()["populate_existing"] is True
+
+    async def test_a_conflicting_pre_image_is_409_and_nothing_is_saved(self):
+        row = _row("quiz", _quiz(), revision=2)
+        before = copy.deepcopy(row.content)
+        other = SimpleNamespace(revision=2, content=_quiz(_question("q1", correct_answer=2)))
+        db = _db(row, pre_images={2: other})
+
+        with pytest.raises(HTTPException) as exc_info:
+            await _edit(row, _quiz(_question("q1", question="Which illness?")), db)
+
+        assert exc_info.value.status_code == 409
+        assert exc_info.value.detail["error"] == "revision_conflict"
+        assert row.content == before and row.content_revision == 2
+        db.commit.assert_not_awaited()
+
+
 class TestOtherContentTypes:
     async def test_valid_lesson_is_saved_as_posted(self):
         row = _row("lesson", {**LESSON, "unit_id": "1.2"})
         posted = {**LESSON, "synthesis": "Better synthesis."}
-        await _edit(row, posted)
+        _, db = await _edit(row, posted)
         assert row.content == {**posted, "unit_id": "1.2"}
+        # Not graded against a revision: no pre-image, no bump.
+        assert _added_pre_images(db) == []
+        assert row.content_revision == 1
 
     async def test_lesson_missing_a_field_is_422(self):
         posted = {k: v for k, v in LESSON.items() if k != "key_points"}

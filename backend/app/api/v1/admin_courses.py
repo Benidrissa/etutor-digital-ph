@@ -1270,6 +1270,14 @@ def _validated_edit(content_type: str, posted: dict, existing: dict | None) -> d
     return stored
 
 
+def _user_uuid(user: AuthenticatedUser) -> uuid.UUID | None:
+    """The user's id as a UUID, or ``None`` when it is not one."""
+    try:
+        return uuid.UUID(str(user.id))
+    except (TypeError, ValueError):
+        return None
+
+
 @router.put("/{course_id}/content/{content_id}")
 async def edit_content(
     course_id: uuid.UUID,
@@ -1284,10 +1292,23 @@ async def edit_content(
     for quizzes, the hard multiple-choice checks) before it is saved: a locked
     row is excluded from the quality agent, so a malformed edit would otherwise
     break every later read with no automatic repair. 422 on failure.
+
+    A quiz edit is a new revision of the quiz, like a regeneration: learners
+    may hold the current one (mid-attempt, or answers queued offline), so its
+    content is saved as a pre-image and ``content_revision`` is bumped. Their
+    answers are then graded against the questions they saw, not the edited
+    ones. 409 ``revision_conflict`` if that pre-image cannot be written safely.
     """
     from app.domain.models.content import GeneratedContent
+    from app.domain.services import content_revisions
 
-    result = await db.execute(select(GeneratedContent).where(GeneratedContent.id == content_id))
+    # Locked and re-read: a regeneration committing meanwhile must not be
+    # overwritten under its own revision number.
+    result = await db.execute(
+        content_revisions.locked_for_overwrite(
+            select(GeneratedContent).where(GeneratedContent.id == content_id)
+        )
+    )
     content = result.scalar_one_or_none()
     if not content:
         raise HTTPException(
@@ -1296,7 +1317,22 @@ async def edit_content(
         )
 
     existing = content.content if isinstance(content.content, dict) else None
-    content.content = _validated_edit(content.content_type, request.content, existing)
+    stored = _validated_edit(content.content_type, request.content, existing)
+    if content.content_type == "quiz" and stored != existing:
+        try:
+            await content_revisions.ensure_pre_image(
+                db,
+                content,
+                trigger=content_revisions.ADMIN_EDIT_TRIGGER,
+                triggered_by_user_id=_user_uuid(current_user),
+            )
+        except content_revisions.RevisionConflict as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"error": "revision_conflict", "message": str(exc)},
+            ) from exc
+        content.content_revision = content_revisions.current_revision(content) + 1
+    content.content = stored
     content.is_manually_edited = True
     content.validated = True
     await db.commit()

@@ -38,6 +38,8 @@ from app.domain.models.course_quality import GeneratedContentRevision
 
 #: ``trigger`` recorded on pre-images written by a plain ``force_regenerate``.
 REGENERATE_TRIGGER = "regenerate"
+#: ``trigger`` recorded on pre-images written by an admin's edit of a quiz.
+ADMIN_EDIT_TRIGGER = "admin_edit"
 
 
 class RevisionConflict(RuntimeError):
