@@ -238,6 +238,26 @@ def _added_pre_images(db) -> list:
     ]
 
 
+class TestFrenchNumberTypography:
+    async def test_editing_a_french_quiz_with_grouped_digits_is_accepted(self):
+        """ "12 500" used to "leak" the answer 500, so fixing a typo in another
+        question of a French quiz was refused while the English twin passed."""
+        q1 = _question(
+            "q1",
+            question="Un district compte 12\u202f500 enfants ; 4\u202f% sont malnutris. Combien ?",
+            options=["50", "500", "5\u202f000", "125"],
+            correct_answer=1,
+            option_misconceptions=["Décale la virgule", None, "Prend 40 %", "Divise par 100"],
+        )
+        row = _row("quiz", _quiz(q1, _question("q2")))
+        q2 = _question("q2", question="Quelle maladie le moustique Anopheles transmet-il ?")
+
+        await _edit(row, _quiz(q1, q2))
+
+        assert row.is_manually_edited is True
+        assert row.content["questions"][1]["question"].startswith("Quelle maladie")
+
+
 class TestQuizEditIsANewRevision:
     """Learners may hold the quiz at its current revision when an admin edits
     it: the edit used to rewrite the answer key under that same revision, so

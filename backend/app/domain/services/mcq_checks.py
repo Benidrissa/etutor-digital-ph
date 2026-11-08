@@ -24,7 +24,10 @@ What these checks can and cannot decide:
   question is only an id like ``"c"``). Only sentence punctuation and quotes
   are trimmed from the option; value-bearing symbols (``%``, ``°``, currency,
   a leading minus) are part of the answer, so ``"50%"`` is not found in
-  "a survey of 50 people" and ``"−12"`` is not found in "12 months". Answers
+  "a survey of 50 people" and ``"−12"`` is not found in "12 months". Nor is a
+  bare number found inside a larger value: a signed number, a decimal, a
+  range, a digit group (``"500"`` in "12,500" or, French style, "12 500"), or
+  a quantity whose unit follows, glued or spaced ("50%", "50 %"). Answers
   shorter than :data:`MIN_LEAK_LENGTH` characters once trimmed are not
   leak-checked — a bare ``"12"`` shows up in stems for innocent reasons — and
   that skip is reported as :data:`LEAK_UNCHECKED_SHORT_ANSWER` so a clean
@@ -135,8 +138,12 @@ _EDGE_PUNCT = frozenset(_TRAILING_PUNCT + "\"'«»“”„‘’‚‹›")
 _SIGNS = frozenset("+-")
 #: Between two digits these make one decimal number ("3.125" is not "125").
 _DECIMAL_SEPARATORS = frozenset(".,")
-#: Glued after a number they make it a different quantity ("50%" is not "50").
+#: After a number they make it a different quantity ("50%" is not "50"), glued
+#: to it or, in French typography, after a space ("50 %", "38,5 °C").
 _UNIT_SUFFIXES = frozenset("%‰°")
+#: The spaces French (and SI) typography puts between digit groups ("12 500")
+#: and before a unit ("100 %"): plain, no-break, narrow no-break and thin.
+_NUMBER_SPACES = frozenset(" \u00a0\u202f\u2009")
 
 
 def _normalise(text: Any) -> str:
@@ -178,13 +185,31 @@ def _leak_needle(text: Any) -> list[str]:
     return tokens[start:end]
 
 
+def _digits_before(text: str, index: int) -> int:
+    """How many digits run back from ``text[index - 1]``."""
+    count = 0
+    while index - count > 0 and text[index - count - 1].isdigit():
+        count += 1
+    return count
+
+
+def _digits_from(text: str, index: int) -> int:
+    """How many digits run forward from ``text[index]``."""
+    count = 0
+    while index + count < len(text) and text[index + count].isdigit():
+        count += 1
+    return count
+
+
 def _at_value_boundary(folded: str, start: int, end: int, needle: Sequence[str]) -> bool:
     """Whether ``folded[start:end]`` stands on its own as the needle's value.
 
     Token matching already keeps ``"12"`` out of ``"120"``; this keeps a number
-    out of a longer number or quantity glued to it: ``"12"`` is not found in
-    ``"-12"``, ``"3.12"``, ``"12.5"`` or ``"12%"``, and a needle that starts
-    with a sign (``"-12"``) is not found in the range ``"5-12"``.
+    out of a longer number or quantity around it: ``"12"`` is not found in
+    ``"-12"``, ``"3.12"``, ``"12.5"``, ``"12%"`` or ``"12 %"``, ``"500"`` is not
+    found in ``"12 500"`` (a space between digit groups, French style) any
+    more than in ``"12,500"``, and a needle that starts with a sign
+    (``"-12"``) is not found in the range ``"5-12"``.
     """
     first, last = needle[0], needle[-1]
     before = folded[start - 1] if start > 0 else ""
@@ -196,10 +221,29 @@ def _at_value_boundary(folded: str, start: int, end: int, needle: Sequence[str])
             return False
         if before in _DECIMAL_SEPARATORS and start >= 2 and folded[start - 2].isdigit():
             return False
+        # "12 500": a three-digit group after a group of one to three digits and
+        # one space is the tail of a larger number.
+        if (
+            before in _NUMBER_SPACES
+            and _digits_from(first, 0) == 3
+            and 1 <= _digits_before(folded, start - 1) <= 3
+        ):
+            return False
     if last[-1].isdigit():
-        if after in _UNIT_SUFFIXES:
+        unit_at = end
+        while unit_at < len(folded) and folded[unit_at] in _NUMBER_SPACES:
+            unit_at += 1
+        if unit_at < len(folded) and folded[unit_at] in _UNIT_SUFFIXES:
             return False
         if after in _DECIMAL_SEPARATORS and end + 1 < len(folded) and folded[end + 1].isdigit():
+            return False
+        # "12 500": a group of one to three digits followed by one space and a
+        # group of exactly three digits is the head of a larger number.
+        if (
+            after in _NUMBER_SPACES
+            and 1 <= _digits_before(last, len(last)) <= 3
+            and _digits_from(folded, end + 1) == 3
+        ):
             return False
     return True
 

@@ -282,6 +282,125 @@ class TestLeakKeepsValueSymbols:
         assert mcq.ANSWER_LEAK in errors(issues)
 
 
+#: The spaces French typography puts between digit groups and before a unit:
+#: plain, no-break (U+00A0), narrow no-break (U+202F) and thin (U+2009).
+FRENCH_SPACES = [" ", "\u00a0", "\u202f", "\u2009"]
+SPACE_IDS = ["space", "nbsp", "narrow-nbsp", "thin"]
+
+
+class TestFrenchNumberTypography:
+    """French groups digits with a space ("12 500") and spaces units ("100 %").
+
+    The leak check found "500" in "12 500" and "100" in "100 %", while the
+    English twins ("12,500", "100%") passed: a hard error on valid French
+    quizzes, an admin edit of them refused, a French story unpublishable.
+    """
+
+    @pytest.mark.parametrize("space", FRENCH_SPACES, ids=SPACE_IDS)
+    def test_a_digit_group_is_not_the_answer(self, space):
+        stem = (
+            f"Un district compte 12{space}500 enfants. La prévalence de la malnutrition "
+            f"est de 4{space}%. Combien d'enfants sont malnutris ?"
+        )
+        issues = mcq.check_quiz_question(
+            q(question=stem, options=["50", "500", f"5{space}000", "125"], correct_answer=1)
+        )
+        assert mcq.ANSWER_LEAK not in codes(issues)
+        assert mcq.LEAK_UNCHECKED_SHORT_ANSWER not in codes(issues)
+
+    def test_the_english_twin_agrees(self):
+        stem = "A district has 12,500 children. Prevalence is 4%. How many are malnourished?"
+        issues = mcq.check_quiz_question(
+            q(question=stem, options=["50", "500", "5,000", "125"], correct_answer=1)
+        )
+        assert mcq.ANSWER_LEAK not in codes(issues)
+
+    @pytest.mark.parametrize("space", FRENCH_SPACES, ids=SPACE_IDS)
+    def test_the_leading_group_is_not_the_answer_either(self, space):
+        issues = mcq.check_quiz_question(
+            q(
+                question=f"La ville compte 125{space}000 habitants. Combien de districts ?",
+                options=["125", "12", "250", "1000"],
+                correct_answer=0,
+            )
+        )
+        assert mcq.ANSWER_LEAK not in codes(issues)
+
+    @pytest.mark.parametrize("space", FRENCH_SPACES, ids=SPACE_IDS)
+    @pytest.mark.parametrize(
+        ("stem", "answer"),
+        [
+            (
+                "Pour atteindre 100{s}% de couverture, sur 400 enfants dont 300 vaccinés, "
+                "combien reste-t-il à vacciner ?",
+                "100",
+            ),
+            ("La fièvre est à 38,5{s}°C. Quelle était la température la veille ?", "38,5"),
+            ("Le taux est de 250{s}‰. Combien de cas pour 1000 ?", "250"),
+        ],
+        ids=["percent", "celsius", "per-mille"],
+    )
+    def test_a_number_with_a_spaced_unit_is_not_the_bare_answer(self, space, stem, answer):
+        issues = mcq.check_quiz_question(
+            q(
+                question=stem.format(s=space),
+                options=[answer, "Autre réponse", "Troisième", "Quatrième"],
+                correct_answer=0,
+            )
+        )
+        assert mcq.ANSWER_LEAK not in codes(issues)
+
+    @pytest.mark.parametrize(
+        "stem",
+        [
+            # The answer itself, after a comma: not a digit group.
+            "Sur 12 500 enfants, 500 sont malnutris. Combien sont malnutris ?",
+            # A year is not a group of three digits.
+            "En 2024 500 enfants ont été vaccinés. Combien d'enfants vaccinés ?",
+            "Il y a 500 enfants dans ce district. Combien d'enfants y a-t-il ?",
+        ],
+    )
+    def test_a_standalone_number_still_leaks(self, stem):
+        issues = mcq.check_quiz_question(
+            q(question=stem, options=["50", "500", "5 000", "125"], correct_answer=1)
+        )
+        assert mcq.ANSWER_LEAK in errors(issues)
+
+    def test_a_spaced_percentage_answer_still_leaks(self):
+        issues = mcq.check_quiz_question(
+            q(
+                question="100 % des enfants sont vaccinés. Quelle est la couverture ?",
+                options=["100 %", "50 %", "75 %", "25 %"],
+                correct_answer=0,
+            )
+        )
+        assert mcq.ANSWER_LEAK in errors(issues)
+
+    def test_story_choice_prompt_with_grouped_digits(self):
+        question = Question.model_validate(
+            {
+                "id": "q1",
+                "type": "choice",
+                "prompt": {
+                    "en": "A district has 12,500 children; 4% are malnourished. How many?",
+                    "fr": "Un district compte 12\u202f500 enfants ; 4\u202f% sont malnutris. "
+                    "Combien ?",
+                },
+                "answer": "b",
+                "choices": [
+                    {"id": "a", "en": "50", "fr": "50", "misconception": "m_shift"},
+                    {"id": "b", "en": "500", "fr": "500"},
+                    {"id": "c", "en": "5,000", "fr": "5\u202f000", "misconception": "m_tenth"},
+                    {"id": "d", "en": "125", "fr": "125", "misconception": "m_divide"},
+                ],
+            }
+        )
+        issues = [
+            i for view in mcq.from_story_choice_question(question) for i in mcq.check_mcq(view)
+        ]
+        assert mcq.ANSWER_LEAK not in codes(issues)
+
+
 class TestComparisonStemsAreNotLeaks:
     """A text that names the answer *and* a distractor does not single it out."""
 
