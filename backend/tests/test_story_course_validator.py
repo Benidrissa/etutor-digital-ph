@@ -400,6 +400,29 @@ class TestChoiceQuestionsSharedMcqChecks:
             "questions[q1].prompt.fr",
         ]
 
+    def test_a_true_false_prompt_is_publishable(self, course):
+        """ "Is it true that…?" names the verdict it asks for: a warning."""
+        q1 = find(course["questions"], "id", "q1")
+        words = {
+            "a": ("False", "Faux"),
+            "b": ("Partly true", "En partie vrai"),
+            "c": ("True", "Vrai"),
+            "d": ("Unknown", "On ne sait pas"),
+        }
+        for choice in q1["choices"]:
+            choice["en"], choice["fr"] = words[choice["id"]]
+        q1["prompt"] = {
+            "en": "Is it true that 13 is a prime number?",
+            "fr": "Est-il vrai que 13 est un nombre premier ?",
+        }
+        report = validate(course)
+        assert report.errors == [], [e.model_dump() for e in report.errors]
+        assert report.ok is True
+        assert sorted(w.path for w in report.warnings if w.code == "answer_leak_ambiguous") == [
+            "questions[q1].prompt.en",
+            "questions[q1].prompt.fr",
+        ]
+
     def test_a_hint_naming_only_the_answer_still_leaks_beside_a_comparison_prompt(self, course):
         q1 = _wordy_choice_question(course)
         q1["prompt"]["en"] = "Which is prime: nine or thirteen?"

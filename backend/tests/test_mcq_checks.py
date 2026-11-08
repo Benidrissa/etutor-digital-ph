@@ -905,6 +905,79 @@ class TestLeakSeverityIsTiered:
         ]
 
 
+class TestVerdictAnswers:
+    """A stem that asks for a verdict names it: "Is it true that…?" holds
+    "true" whether the answer is True or False. That was a hard
+    ``answer_leak`` on a valid question; it is a warning in the stem. A hint
+    that states the verdict still gives it away.
+    """
+
+    @pytest.mark.parametrize(
+        ("stem", "options"),
+        [
+            ("Is it true that malaria is transmitted by mosquitoes?", ["True", "False"]),
+            ("Est-il vrai que le choléra se transmet par l'eau ?", ["Vrai", "Faux"]),
+            (
+                "Is the following statement correct: ORS treats dehydration?",
+                ["Correct", "Incorrect"],
+            ),
+            (
+                "Is it true that malaria is transmitted by mosquitoes?",
+                ["True", "False", "Partly true", "Unknown"],
+            ),
+            (
+                "Est-ce exact : le SRO traite la déshydratation ?",
+                ["Exact", "Inexact", "On ne sait pas"],
+            ),
+            (
+                "Should a child with fever be tested for malaria, yes?",
+                ["Yes.", "No", "Only adults"],
+            ),
+        ],
+    )
+    def test_a_verdict_named_in_the_stem_is_a_warning(self, stem, options):
+        issues = mcq.check_answer_leak(leak_view(stem, options, 0))
+        assert not errors(issues)
+        assert warnings_at(issues, mcq.ANSWER_LEAK_AMBIGUOUS) == ["questions[q1].question"]
+
+    def test_a_hint_stating_the_verdict_is_still_a_leak(self):
+        view = leak_view(
+            "Is it true that malaria is transmitted by mosquitoes?",
+            ["True", "False", "Partly true", "Unknown"],
+            0,
+            hints=["Yes: this statement is true."],
+        )
+        issues = mcq.check_answer_leak(view)
+        assert [i.path for i in issues if i.code == mcq.ANSWER_LEAK] == ["questions[q1].hints[0]"]
+        assert warnings_at(issues, mcq.ANSWER_LEAK_AMBIGUOUS) == ["questions[q1].question"]
+
+    def test_a_verdict_inside_a_longer_answer_is_not_excused(self):
+        """Only a bare verdict word is: "True positive" is a value to find."""
+        issues = mcq.check_answer_leak(
+            leak_view(
+                "A true positive is a sick person who tests positive. Which result is it?",
+                ["True positive", "False positive", "True negative", "False negative"],
+                0,
+            )
+        )
+        assert [i.path for i in issues if i.code == mcq.ANSWER_LEAK] == ["questions[q1].question"]
+
+    @pytest.mark.parametrize(
+        ("stem", "options"),
+        [
+            ("Combien font 250 − 125 ?", ["125", "375", "100", "150"]),
+            ("What is 300 − 150?", ["150", "450", "100", "200"]),
+        ],
+    )
+    def test_an_answer_equal_to_an_operand_is_a_known_error(self, stem, options):
+        """Known false positive, kept on purpose: an arithmetic answer equal to
+        one of its operands is in the stem, and nothing cheap tells "250 − 125"
+        from "the answer is 125". The admin edit guard refuses such a quiz and
+        a story with it is unpublishable until the stem is reworded."""
+        issues = mcq.check_answer_leak(leak_view(stem, options, 0))
+        assert [i.path for i in issues if i.code == mcq.ANSWER_LEAK] == ["questions[q1].question"]
+
+
 class TestDuplicateOptions:
     def test_duplicate_of_the_correct_option_means_two_correct_answers(self):
         issues = mcq.check_quiz_question(

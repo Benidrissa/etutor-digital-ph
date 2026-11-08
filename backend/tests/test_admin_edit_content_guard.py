@@ -331,6 +331,29 @@ class TestEitherOrStems:
         db.commit.assert_awaited_once()
         assert row.content["questions"][1]["explanation"] == "Typo fixed in the explanation of q2."
 
+    async def test_editing_a_quiz_with_a_true_false_question_is_accepted(self):
+        """ "Is it true that…?" names the verdict it asks for: a warning in
+        the audit, not a 422 on an unrelated edit."""
+        q1 = _question(
+            "q1",
+            question="Is it true that malaria is transmitted by mosquitoes?",
+            options=["True", "False", "Partly true", "Unknown"],
+            correct_answer=0,
+            option_misconceptions=[
+                None,
+                "Thinks malaria spreads through water",
+                "Thinks only some mosquitoes matter",
+                "Doubts the evidence",
+            ],
+        )
+        row = _row("quiz", _quiz(q1, _question("q2")))
+        q2 = _question("q2", explanation="Typo fixed in the explanation of q2.")
+
+        response, db = await _edit(row, _quiz(copy.deepcopy(q1), q2))
+
+        assert response["is_manually_edited"] is True
+        db.commit.assert_awaited_once()
+
 
 class TestQuizEditIsANewRevision:
     """Learners may hold the quiz at its current revision when an admin edits

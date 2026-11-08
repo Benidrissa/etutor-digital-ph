@@ -44,7 +44,10 @@ What these checks can and cannot decide:
   written, and every miss was a hard error on a valid quiz. A factorised
   either/or ("before or after meals", "5 or 10 mg/kg") writes the words the
   options share once, so a distractor is also named by the words that set it
-  apart from the answer ("before", "5").
+  apart from the answer ("before", "5"). A stem asking for a verdict ("Is it
+  true that…?") names it whatever the answer is, so a True/Vrai/Correct answer
+  found only in the stem gets the warning too. An arithmetic answer equal to
+  an operand ("250 − 125", answer 125) is a known false-positive error.
 * **Duplicate options** are the deterministic form of "more than one correct
   answer": the schema stores one correct index, so two correct options can only
   happen as two options with the same text (case kept: ``"CO"`` and ``"Co"``
@@ -71,6 +74,30 @@ from app.api.v1.schemas.story_course import ValidationIssue
 #: quotes removed) are not leak-checked. Mirrors
 #: ``story_course_validator._MIN_LEAK_LENGTH``.
 MIN_LEAK_LENGTH = 3
+
+#: Bare verdict words (case-folded). A stem asking for a verdict names one
+#: ("Is it true that…?", "Est-il vrai que… ?", "Is this correct?") whatever
+#: the answer is, so a verdict answer named only in the stem is a warning.
+_VERDICT_WORDS = frozenset(
+    {
+        "true",
+        "false",
+        "yes",
+        "no",
+        "correct",
+        "incorrect",
+        "vrai",
+        "vraie",
+        "faux",
+        "fausse",
+        "oui",
+        "non",
+        "exact",
+        "exacte",
+        "inexact",
+        "inexacte",
+    }
+)
 
 # -- finding codes -----------------------------------------------------------
 
@@ -550,7 +577,15 @@ def check_answer_leak(view: McqView, *, min_length: int = MIN_LEAK_LENGTH) -> li
     * no distractor named in it: an error, :data:`ANSWER_LEAK`;
     * a distractor named in it too: a warning, :data:`ANSWER_LEAK_AMBIGUOUS` —
       "Which is larger: 3/4 or 2/3?" compares, "Malaria, unlike cholera, …"
-      may give the answer away; a person tells them apart, not this check.
+      may give the answer away; a person tells them apart, not this check;
+    * the stem naming a correct option that is a bare verdict word (True,
+      Faux, Correct, …; :data:`_VERDICT_WORDS`): the same warning, since
+      "Is it true that…?" names the verdict it asks for. A hint stating the
+      verdict is still an error.
+
+    Known false positive: an arithmetic answer equal to one of its operands
+    ("Combien font 250 − 125 ?", answer 125) is an error; nothing cheap tells
+    it from "the answer is 125".
 
     A distractor counts as named only when it is at least ``min_length``
     characters long (so "a" or "un" never does; "one" does), does not read the
@@ -574,6 +609,7 @@ def check_answer_leak(view: McqView, *, min_length: int = MIN_LEAK_LENGTH) -> li
         ]
 
     distractors = _distractor_needles(view, needle, min_length)
+    verdict = len(needle) == 1 and needle[0] in _VERDICT_WORDS
     issues: list[ValidationIssue] = []
     for path, text in ((view.stem_path, view.stem), *view.other_texts):
         folded = _fold(text)
@@ -590,6 +626,17 @@ def check_answer_leak(view: McqView, *, min_length: int = MIN_LEAK_LENGTH) -> li
                     f"the correct option {answer!r} appears beside a distractor in the text "
                     "a learner reads before answering: check that it compares the options "
                     "rather than gives the answer away",
+                )
+            )
+            continue
+        if verdict and path == view.stem_path:
+            issues.append(
+                _issue(
+                    "warning",
+                    ANSWER_LEAK_AMBIGUOUS,
+                    path,
+                    f"the correct option {answer!r} is a verdict the stem names: check that "
+                    'the stem asks for it ("Is it true that…?") rather than gives it',
                 )
             )
             continue
