@@ -19,10 +19,11 @@ Pipeline (one Celery task, :func:`app.tasks.content_generation.generate_story_ta
 4. :func:`validate_story_course` (Appendix C), plus the generator's own checks
    (question floor, stem leaks, copy-fallbacks);
 5. a bounded repair loop — at most :data:`MAX_REPAIR_CALLS` extra model calls,
-   each told the remaining error codes and paths — then the attempts, best
-   first, are settled and if need be salvaged (model-authored items that still
-   fail are dropped) until one is valid. A story without model content (every
-   answer unreadable or unusable) is never published;
+   each told the remaining error codes and paths — then every attempt is
+   settled and if need be salvaged (model-authored items that still fail are
+   dropped), and the best valid result (:func:`outcome_rank`) is kept. A story
+   without model content (every answer unreadable or unusable) is never
+   published;
 6. persist: published and valid, or a draft with its report (the API then
    answers 409 ``story_unavailable``). The validator's ``checks`` block is
    written into the stored document either way (C6). A spine the builder
@@ -459,6 +460,9 @@ def _no_model_content_issue() -> ValidationIssue:
 def attempt_rank(report: ValidationReport, *, authored: bool = True) -> tuple[int, int, int, int]:
     """How far an attempt is from publishable, judged as it will be settled.
 
+    It picks the draft when no attempt can be published; which valid result
+    is published is :func:`outcome_rank`'s call.
+
     Lower is better. A build that carries no model content (``authored`` is
     false: an unreadable answer's, or one the builder could use nothing of)
     is never published, so it comes after every build that does, whatever
@@ -496,7 +500,26 @@ class StoryGeneration:
     report: ValidationReport
     model_calls: int
     salvaged: bool = False
+    #: What the salvage pass dropped: ``questions``, ``exercises`` and
+    #: ``minigames`` ids (a dropped mini-game is replaced by the built-in one).
     dropped: dict[str, list[str]] = field(default_factory=dict)
+
+
+def outcome_rank(generation: StoryGeneration) -> tuple[int, int, int]:
+    """How good a valid result is — settled, and salvaged if need be. Lower is better.
+
+    Copied translations first: each is a line the learner reads in the wrong
+    language. Then the items the salvage pass dropped: model-authored
+    questions, exercises or the mini-game the story lost. Then the
+    validator's other warnings. So a clean salvage of a real attempt beats an
+    answer that is valid only once its copies are settled (a fragment, or a
+    spine written in the target language alone), and an attempt the model
+    repaired beats salvaging the one before it.
+    """
+    warnings = generation.report.warnings
+    copies = sum(1 for issue in warnings if issue.code == repair.MISSING_TRANSLATION)
+    dropped = sum(len(ids) for ids in generation.dropped.values())
+    return copies, dropped, len(warnings) - copies
 
 
 def build_context(
@@ -616,9 +639,13 @@ class StoryFromLessonService:
                 spine = await self._call_model(system_prompt, message)
                 attempted = self._build_and_validate(ctx, spine or {})
                 if attempted is None:
-                    # The spine was JSON but not a shape the builder can use.
-                    feedback_spine = spine
-                    issues = [_unbuildable_issue()]
+                    if spine is None:
+                        # Not JSON (the builder failing on no answer is its
+                        # own bug): ask again for readable JSON.
+                        issues = []
+                    else:
+                        # The spine was JSON but not a shape the builder can use.
+                        feedback_spine, issues = spine, [_unbuildable_issue()]
                     continue
                 build, report = attempted
                 authored = False
@@ -705,33 +732,61 @@ class StoryFromLessonService:
         attempts: list[_Attempt],
         empty_doc: dict[str, Any] | None,
     ) -> StoryGeneration:
-        """What is stored: the best attempt that can be published, else a draft.
+        """What is stored: the best result that can be published, else a draft.
 
-        Attempts carrying model content are taken best first
-        (:attr:`_Attempt.order`): each is settled (copied translations become
-        warnings) and, if anything else still fails, salvaged. The first that
-        comes out valid is stored. Otherwise the best attempt is stored as a
-        draft, as settled. A build without model content — the lesson and quiz
-        alone, untranslated — is never published: it is the draft only when no
+        Every attempt carrying model content is settled (copied translations
+        become warnings) and, if anything else still fails, salvaged. Of those
+        that come out valid, the best by :func:`outcome_rank` is stored — the
+        earlier attempt on a tie — so an answer that is valid only on copies
+        never beats a clean salvage of a real attempt. If none comes out
+        valid, the best attempt (:attr:`_Attempt.order`) is stored as a draft,
+        as settled. A build without model content — the lesson and quiz alone,
+        untranslated — is never published: it is the draft only when no
         attempt carries any, and its report then says so.
         """
         if not attempts:
             return self._unbuildable(ctx)
-        ranked = sorted(attempts, key=lambda attempt: attempt.order)
-        for attempt in ranked:
-            if not attempt.authored:
-                break
-            report = repair.settle_translations(attempt.report)
-            if report.ok:
-                return StoryGeneration(doc=attempt.build.doc, report=report, model_calls=0)
-            salvaged = self._salvage(ctx, attempt.spine, attempt.build, report)
-            if salvaged is not None and salvaged.doc != empty_doc:
-                return salvaged
-        best = ranked[0]
+        valid: list[tuple[tuple[int, int, int], int, StoryGeneration]] = []
+        for attempt in attempts:
+            if attempt.authored:
+                result = self._as_published(ctx, attempt, empty_doc)
+                if result is not None:
+                    valid.append((outcome_rank(result), attempt.number, result))
+        if valid:
+            rank, number, chosen = min(valid, key=lambda item: item[:2])
+            logger.info(
+                "Story attempt chosen",
+                slug=ctx.slug,
+                attempt=number + 1,
+                copies=rank[0],
+                dropped=rank[1],
+                salvaged=chosen.salvaged,
+            )
+            return chosen
+        best = min(attempts, key=lambda attempt: attempt.order)
         report = repair.settle_translations(best.report)
         if not best.authored:
             report = repair.with_issues(report, [_no_model_content_issue()])
         return StoryGeneration(doc=best.build.doc, report=report, model_calls=0)
+
+    def _as_published(
+        self,
+        ctx: repair.LessonStoryContext,
+        attempt: _Attempt,
+        empty_doc: dict[str, Any] | None,
+    ) -> StoryGeneration | None:
+        """``attempt`` as it would be published — settled, else salvaged — or ``None``.
+
+        A salvage that leaves nothing of the answer (the empty build) is not a
+        result.
+        """
+        report = repair.settle_translations(attempt.report)
+        if report.ok:
+            return StoryGeneration(doc=attempt.build.doc, report=report, model_calls=0)
+        salvaged = self._salvage(ctx, attempt.spine, attempt.build, report)
+        if salvaged is None or salvaged.doc == empty_doc:
+            return None
+        return salvaged
 
     def _unbuildable(self, ctx: repair.LessonStoryContext) -> StoryGeneration:
         """The draft stored when no attempt could be built; it is never served.
@@ -797,7 +852,11 @@ class StoryFromLessonService:
             report=rebuilt_report,
             model_calls=0,
             salvaged=True,
-            dropped={"questions": sorted(questions), "exercises": sorted(exercises)},
+            dropped={
+                "questions": sorted(questions),
+                "exercises": sorted(exercises),
+                "minigames": [repair.MINIGAME_ID] if minigame else [],
+            },
         )
 
     # -- the database --------------------------------------------------------

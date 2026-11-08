@@ -1493,6 +1493,142 @@ async def test_when_the_best_attempt_cannot_be_salvaged_the_next_one_is(raw):
     assert [q["id"] for q in generation.doc["questions"]] == ["q2", "q3", "q4", "q5", "x1"]
 
 
+def test_valid_results_are_ranked_copies_then_drops_then_warnings():
+    from app.api.v1.schemas.story_course import Checks
+    from app.api.v1.schemas.story_course import ValidationReport as Report
+    from app.domain.services.story_from_lesson_service import StoryGeneration, outcome_rank
+
+    def result(*codes: str, dropped: dict[str, list[str]] | None = None) -> StoryGeneration:
+        warnings = [
+            ValidationIssue(severity="warning", code=code, path="p", message="m") for code in codes
+        ]
+        report = Report(ok=True, warnings=warnings, checks=Checks(warnings=len(warnings)))
+        return StoryGeneration(
+            doc={}, report=report, model_calls=0, salvaged=bool(dropped), dropped=dropped or {}
+        )
+
+    one_drop = {"questions": ["x9"], "exercises": [], "minigames": []}
+    two_drops = {"questions": ["x9"], "exercises": ["E2"], "minigames": []}
+    assert (
+        outcome_rank(result())
+        < outcome_rank(result("thin_question_coverage"))
+        < outcome_rank(result(dropped=one_drop))
+        < outcome_rank(result(dropped=two_drops))
+        < outcome_rank(result("missing_translation"))
+    )
+    # A dropped mini-game is a dropped item like any other.
+    game = {"questions": [], "exercises": [], "minigames": [repair.MINIGAME_ID]}
+    assert outcome_rank(result(dropped=game)) == outcome_rank(result(dropped=one_drop))
+
+
+def _spine_with_x9(raw: dict[str, Any], language: str) -> dict[str, Any]:
+    """The fixture spine plus x9: a real error salvage can drop (no misconception on 'b')."""
+    spine = copy.deepcopy(raw[language]["spine"])
+    spine["questions"].append(_choice_without_misconception(9))
+    return spine
+
+
+def _without_home_side(node: Any, home: str) -> Any:
+    """``node`` with the home-language side of every text object removed, in place."""
+    if isinstance(node, dict):
+        if all(isinstance(node.get(lang), str) for lang in ("en", "fr")):
+            node.pop(home)
+        for value in node.values():
+            _without_home_side(value, home)
+    elif isinstance(node, list):
+        for value in node:
+            _without_home_side(value, home)
+    return node
+
+
+def _thin_answer(raw: dict[str, Any], language: str, kind: str) -> dict[str, Any]:
+    """An answer of the model's own that is valid only once its copies are settled.
+
+    Common answers to a repair message: a fragment of the spine, or the spine
+    written in the target language alone. (The fr fixture has no extra
+    question, so "questions only" takes the en one, x1.)
+    """
+    spine = copy.deepcopy(raw[language]["spine"])
+    home = "fr" if language == "en" else "en"
+    return {
+        "opening only": {"story": {"opening": spine["story"]["opening"]}},
+        "questions only": {"questions": copy.deepcopy(raw["en"]["spine"]["questions"])},
+        "derived only": {"derived": spine["derived"]},
+        "target language only": _without_home_side(spine, home),
+    }[kind]
+
+
+@pytest.mark.parametrize("language", ["en", "fr"])
+@pytest.mark.parametrize(
+    "thin", ["opening only", "questions only", "derived only", "target language only"]
+)
+@pytest.mark.parametrize("thin_first", [False, True], ids=["thin-second", "thin-first"])
+async def test_a_clean_salvage_beats_an_answer_valid_only_on_copies(
+    raw, language, thin, thin_first
+):
+    """A real attempt with one salvageable error, and a thin answer of the model's own.
+
+    The thin answer settles into a valid story, but only on its copied
+    translations (a dozen to 65 lines in the wrong language); dropping the
+    real attempt's one failing question (x9) gives the model's story with none.
+    """
+    ctx = _with_course_misconceptions(make_ctx(raw, language))
+    real = _spine_with_x9(raw, language)
+    thin_answer = _thin_answer(raw, language, thin)
+    answers = (thin_answer, real) if thin_first else (real, thin_answer, real)
+    model = FakeClaude(*answers)
+    generation = await StoryFromLessonService(model).generate_document(ctx, system_prompt="system")
+
+    assert generation.model_calls == 3
+    assert generation.report.ok, [e.model_dump() for e in generation.report.errors]
+    assert generation.salvaged and generation.dropped["questions"] == ["x9"]
+    assert generation.report.warnings == [], [w.model_dump() for w in generation.report.warnings]
+    assert revalidate(generation.doc).ok
+    doc = generation.doc
+    assert "x9" not in {q["id"] for q in doc["questions"]}
+    # The model's own story, fully translated.
+    opening = real["story"]["opening"]
+    assert any(s["type"] == "narrate" and s["en"] == opening["en"] for s in steps(doc))
+    concepts = [s for s in steps(doc) if s["type"] == "concept"]
+    assert concepts and all(s["en"] != s["fr"] for s in concepts)
+
+
+@pytest.mark.parametrize("language", ["en", "fr"])
+async def test_an_attempt_the_model_repaired_beats_salvaging_the_one_before(raw, language):
+    """Salvaging attempt 1 would drop x9; attempt 2 fixed it: attempt 2 is stored whole."""
+    ctx = _with_course_misconceptions(make_ctx(raw, language))
+    repaired = _spine_with_x9(raw, language)
+    repaired["questions"][-1]["choices"][1]["misconception"] = "m_wrong_drug"
+    repaired["misconceptions"] = [
+        *repaired.get("misconceptions", []),
+        {
+            "id": "m_wrong_drug",
+            "en": "Thinks any painkiller cures malaria.",
+            "fr": "Croit que tout antidouleur guérit le paludisme.",
+        },
+    ]
+    model = FakeClaude(_spine_with_x9(raw, language), repaired)
+    generation = await StoryFromLessonService(model).generate_document(ctx, system_prompt="system")
+
+    assert generation.model_calls == 2
+    assert generation.report.ok, [e.model_dump() for e in generation.report.errors]
+    assert not generation.salvaged and generation.dropped == {}
+    assert generation.report.warnings == [], [w.model_dump() for w in generation.report.warnings]
+    assert "x9" in {q["id"] for q in generation.doc["questions"]}
+
+
+async def test_an_unreadable_answer_is_never_reported_as_a_malformed_spine(raw):
+    """Even when building the story of no answer fails (a builder bug): ask for JSON again."""
+    model = FakeClaude(_UNREADABLE, raw["en"]["spine"])
+    with patch.object(repair, "build_story_document", side_effect=_raising_builder(1)):
+        generation = await StoryFromLessonService(model).generate_document(
+            make_ctx(raw, "en"), system_prompt="system"
+        )
+    assert "could not be read as JSON" in model.messages[1]
+    assert "[malformed_spine]" not in model.messages[1]
+    assert generation.report.ok and generation.model_calls == 2
+
+
 class _UnreadableProvider:
     """A provider that always answers prose: never valid JSON."""
 
