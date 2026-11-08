@@ -282,6 +282,87 @@ class TestLeakKeepsValueSymbols:
         assert mcq.ANSWER_LEAK in errors(issues)
 
 
+#: A hyphen and an en dash both write a range ("2015-2030", "2015–2030").
+DASHES = ["-", "\u2013"]
+DASH_IDS = ["hyphen", "en-dash"]
+
+
+class TestRangeEnds:
+    """The end of a range is a value of its own, whichever dash the author typed.
+
+    The sign rule ("12" is not in "-12") read the hyphen of "2015-2030" as a
+    minus, so a hyphenated range end was never found, while the en-dash
+    spelling of the same range was flagged.
+    """
+
+    @pytest.mark.parametrize("dash", DASHES, ids=DASH_IDS)
+    @pytest.mark.parametrize(
+        ("stem", "answer"),
+        [
+            (
+                "The Sustainable Development Goals cover the period 2015{d}2030. "
+                "By which year should the SDG targets be met?",
+                "2030",
+            ),
+            (
+                "MUAC screening targets children aged 6{d}59 months. Up to what age?",
+                "59 months",
+            ),
+        ],
+        ids=["year-range", "muac"],
+    )
+    def test_the_end_of_a_range_is_found(self, dash, stem, answer):
+        issues = mcq.check_quiz_question(
+            q(
+                question=stem.format(d=dash),
+                options=[answer, "Other one", "Third one", "Fourth one"],
+                correct_answer=0,
+            )
+        )
+        assert mcq.ANSWER_LEAK in errors(issues)
+
+    @pytest.mark.parametrize("dash", DASHES, ids=DASH_IDS)
+    def test_a_signed_answer_is_still_not_a_range_end(self, dash):
+        issues = mcq.check_quiz_question(
+            q(
+                question=f"Children aged 5{dash}12 attend this clinic. What was the coldest day?",
+                options=["-12", "12", "5", "-5"],
+                correct_answer=0,
+            )
+        )
+        assert mcq.ANSWER_LEAK not in codes(issues)
+
+    def test_an_unsigned_answer_is_still_not_a_negative_number(self):
+        issues = mcq.check_quiz_question(
+            q(
+                question="It fell to \u221212°C overnight. What was the afternoon high?",
+                options=["12°C", "0°C", "4°C", "-4°C"],
+                correct_answer=0,
+            )
+        )
+        assert mcq.ANSWER_LEAK not in codes(issues)
+
+    @pytest.mark.parametrize(
+        ("stem", "options"),
+        [
+            ("Targets run 2015{d}2030. By which year?", ["2030", "2015", "2020", "2025"]),
+            ("Aged 6{d}59 months. Up to what age?", ["59 months", "6 months", "5 years", "1 year"]),
+            ("Aged 5{d}12. What was the low?", ["-12", "12", "5", "-5"]),
+            ("Is it 2015{d}2030 or 2016{d}2030?", ["2015{d}2030", "2016{d}2030", "2030", "x"]),
+        ],
+    )
+    def test_both_dashes_give_the_same_findings(self, stem, options):
+        def findings(dash):
+            question = q(
+                question=stem.format(d=dash),
+                options=[o.format(d=dash) for o in options],
+                correct_answer=0,
+            )
+            return [(i.severity, i.code, i.path) for i in mcq.check_quiz_question(question)]
+
+        assert findings("-") == findings("\u2013")
+
+
 #: The spaces French typography puts between digit groups and before a unit:
 #: plain, no-break (U+00A0), narrow no-break (U+202F) and thin (U+2009).
 FRENCH_SPACES = [" ", "\u00a0", "\u202f", "\u2009"]

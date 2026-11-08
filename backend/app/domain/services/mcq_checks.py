@@ -26,12 +26,15 @@ What these checks can and cannot decide:
   a leading minus) are part of the answer, so ``"50%"`` is not found in
   "a survey of 50 people" and ``"−12"`` is not found in "12 months". Nor is a
   bare number found inside a larger value: a signed number, a decimal, a
-  range, a digit group (``"500"`` in "12,500" or, French style, "12 500"), or
-  a quantity whose unit follows, glued or spaced ("50%", "50 %"). Answers
-  shorter than :data:`MIN_LEAK_LENGTH` characters once trimmed are not
-  leak-checked — a bare ``"12"`` shows up in stems for innocent reasons — and
-  that skip is reported as :data:`LEAK_UNCHECKED_SHORT_ANSWER` so a clean
-  report is never mistaken for proof that a numeric quiz is leak-free.
+  digit group (``"500"`` in "12,500" or, French style, "12 500"), or a
+  quantity whose unit follows, glued or spaced ("50%", "50 %"). The end of a
+  range is a value of its own, whichever dash joins it: ``"2030"`` is found
+  in "2015-2030" and "2015–2030", a signed ``"-12"`` in neither "5-12" nor
+  "5–12". Answers shorter than :data:`MIN_LEAK_LENGTH` characters once
+  trimmed are not leak-checked — a bare ``"12"`` shows up in stems for
+  innocent reasons — and that skip is reported as
+  :data:`LEAK_UNCHECKED_SHORT_ANSWER` so a clean report is never mistaken for
+  proof that a numeric quiz is leak-free.
   Severity is tiered on one fact, with no grammar parsed: a text that names
   the correct option and no distractor gives the answer away
   (:data:`ANSWER_LEAK`, an error); a text that also names a distractor may be
@@ -154,12 +157,17 @@ _UNIT_SUFFIXES = frozenset("%‰°")
 _NUMBER_SPACES = frozenset(" \u00a0\u202f\u2009")
 
 
+#: Characters written for one another, folded to one spelling: the minus sign
+#: and the en dash of a range ("2015–2030") to the hyphen-minus.
+_FOLD = str.maketrans({MINUS: "-", "–": "-"})
+
+
 def _normalise(text: Any) -> str:
-    """Unicode-compose and fold the minus sign; case is kept.
+    """Unicode-compose and fold look-alike characters (:data:`_FOLD`); case is kept.
 
     NFC rather than NFKC on purpose: NFKC would turn ``2³`` into ``23``.
     """
-    return unicodedata.normalize("NFC", str(text)).replace(MINUS, "-")
+    return unicodedata.normalize("NFC", str(text)).translate(_FOLD)
 
 
 def _fold(text: Any) -> str:
@@ -217,7 +225,9 @@ def _at_value_boundary(folded: str, start: int, end: int, needle: Sequence[str])
     ``"-12"``, ``"3.12"``, ``"12.5"``, ``"12%"`` or ``"12 %"``, ``"500"`` is not
     found in ``"12 500"`` (a space between digit groups, French style) any
     more than in ``"12,500"``, and a needle that starts with a sign
-    (``"-12"``) is not found in the range ``"5-12"``.
+    (``"-12"``) is not found in the range ``"5-12"``. A dash after a digit
+    joins a range rather than signs a number, so ``"2030"`` is found at the
+    end of ``"2015-2030"`` (and of ``"2015–2030"``, folded to the same).
     """
     first, last = needle[0], needle[-1]
     before = folded[start - 1] if start > 0 else ""
@@ -225,7 +235,7 @@ def _at_value_boundary(folded: str, start: int, end: int, needle: Sequence[str])
     if first in _SIGNS and before.isalnum():
         return False
     if first[0].isdigit():
-        if before in _SIGNS:
+        if before in _SIGNS and not (start >= 2 and folded[start - 2].isdigit()):
             return False
         if before in _DECIMAL_SEPARATORS and start >= 2 and folded[start - 2].isdigit():
             return False
