@@ -26,6 +26,7 @@ celery_app = Celery(
         "app.tasks.preassessment_generation",
         "app.tasks.qbank_processing",
         "app.tasks.quality_assessment",
+        "app.tasks.quiz_backfill",
         "app.tasks.rag_indexation",
         "app.tasks.resource_extraction",
         "app.tasks.syllabus_generation",
