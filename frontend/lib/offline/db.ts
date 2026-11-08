@@ -6,7 +6,11 @@ export type ModuleDownloadStatus =
   | "downloaded"
   | "error";
 
-export type ContentType = "lesson" | "quiz" | "case_study" | "flashcard";
+// "story" is a lesson's story mode (one story-course/1 document per unit and
+// locale). Adding a value needs no IndexedDB upgrade: contentType is a plain
+// string inside the [moduleId, unitId, contentType, locale] key and the
+// by_content_type index, so DB_VERSION stays 4.
+export type ContentType = "lesson" | "quiz" | "case_study" | "flashcard" | "story";
 
 export type ActionType =
   | "lesson_complete"

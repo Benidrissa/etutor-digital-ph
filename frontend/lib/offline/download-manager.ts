@@ -8,13 +8,16 @@ import {
 } from "./db";
 import { apiFetch } from "@/lib/api";
 import type { ModuleUnitsResponse } from "@/lib/api";
+import { unitStoryPath } from "@/lib/story-course/api";
 
 const MAX_OFFLINE_MODULES = 3;
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 3 * 60 * 1000;
 
-// Average bytes per content type (for size estimation)
-const SIZE_ESTIMATE_PER_UNIT = 50_000; // ~50KB per unit (lesson + quiz + case study)
+// Average bytes per content type (for size estimation).
+// ~80KB per unit: lesson + quiz + case study (~50KB) plus a lesson story, which
+// is one whole story-course/1 document (~20-30KB of JSON).
+const SIZE_ESTIMATE_PER_UNIT = 80_000;
 const SIZE_ESTIMATE_FLASHCARDS = 30_000; // ~30KB for module flashcards
 
 export type DownloadPhase = "fetching_structure" | "downloading_content" | "complete" | "error" | "cancelled";
@@ -143,9 +146,10 @@ async function fetchContentItem<T>(
 /**
  * Download a module for offline use.
  *
- * Fetches all units' lessons, quizzes, and case studies using existing API
- * endpoints and stores them in IndexedDB. Each unit becomes usable as soon
- * as its content is downloaded (partial downloads are functional).
+ * Fetches all units' lessons, quizzes, case studies and lesson stories using
+ * existing API endpoints and stores them in IndexedDB. Each unit becomes
+ * usable as soon as its content is downloaded (partial downloads are
+ * functional).
  */
 export async function downloadModule(
   moduleId: string,
@@ -258,6 +262,27 @@ export async function downloadModule(
         locale, signal
       );
 
+      // Download the lesson's story. Story mode is a tab on lesson units only,
+      // so quiz and case-study units are not asked for a story they never
+      // show. A 409 "story unavailable" is non-fatal, like a missing case.
+      if (hasStoryMode(unit.unit_type)) {
+        if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+
+        emit({
+          phase: "downloading_content",
+          totalUnits,
+          downloadedUnits,
+          currentUnit: unitId,
+          currentContentType: "story",
+        });
+
+        await downloadUnitContent(
+          moduleId, unitId, "story",
+          unitStoryPath(moduleId, unitId, locale),
+          locale, signal
+        );
+      }
+
       downloadedUnits++;
 
       // Update progress in IndexedDB
@@ -364,6 +389,17 @@ export async function removeOfflineModule(moduleId: string): Promise<void> {
 }
 
 // --- Internal helpers ---
+
+/**
+ * Unit types the unit page renders with a viewer other than the lesson viewer
+ * (app/[locale]/(app)/modules/[moduleId]/units/[unit]/page.tsx). Every other
+ * unit — `lesson` or untyped — is a lesson and carries a Story tab.
+ */
+const NON_LESSON_UNIT_TYPES: ReadonlySet<string> = new Set(["quiz", "case-study", "scenario"]);
+
+function hasStoryMode(unitType: string | undefined): boolean {
+  return !unitType || !NON_LESSON_UNIT_TYPES.has(unitType);
+}
 
 async function downloadUnitContent(
   moduleId: string,
