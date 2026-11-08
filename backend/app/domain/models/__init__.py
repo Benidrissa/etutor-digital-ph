@@ -51,6 +51,7 @@ from app.domain.models.sms_relay import (
     SmsProcessingStatus,
 )
 from app.domain.models.source_image import ImageType, SourceImage, SourceImageChunk
+from app.domain.models.story_course import StoryCourseRecord, StoryCourseStatus
 from app.domain.models.subscription import (
     PaymentStatus,
     PaymentType,
@@ -134,6 +135,8 @@ __all__ = [
     "PaymentType",
     "SourceImage",
     "SourceImageChunk",
+    "StoryCourseRecord",
+    "StoryCourseStatus",
     "Subscription",
     "SubscriptionPayment",
     "SmsProcessingStatus",
