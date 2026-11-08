@@ -51,6 +51,91 @@ export async function getStoryCourse(slug: string): Promise<StoryCourse> {
   return apiFetch<StoryCourse>(`/api/v1/story-courses/${encodeURIComponent(slug)}`);
 }
 
+/**
+ * The 202 envelope a lesson story answers with while it is being written.
+ *
+ * Same shape as lessons and quizzes, so the client polls the shared
+ * `GET /api/v1/content/status/{task_id}` exactly as it does for them.
+ */
+export interface StoryGenerating {
+  status: "generating";
+  task_id: string;
+  message?: string;
+}
+
+/**
+ * The path of one lesson's story (contract C3). A GET is learner-readable and
+ * generates the story on first access: 200 with the document, 202 with
+ * {@link StoryGenerating}, or 409 `story_unavailable` when the generator could
+ * not produce a week that passes the validator.
+ *
+ * `generate: false` (contract X1) only reads the cache: a story nobody has
+ * opened yet answers 404 `story_not_cached` and nothing is dispatched. The
+ * module downloader uses it so a download never pays for stories on demand.
+ *
+ * Kept here so the lesson panel (through the offline loader) and the module
+ * downloader request the very same URL.
+ */
+export function unitStoryPath(
+  moduleId: string,
+  unitId: string,
+  language: "fr" | "en",
+  options: { generate?: boolean } = {},
+): string {
+  const generate = options.generate === false ? "&generate=false" : "";
+  return (
+    `/api/v1/story-courses/unit/${encodeURIComponent(moduleId)}` +
+    `/${encodeURIComponent(unitId)}?language=${language}${generate}`
+  );
+}
+
+/**
+ * The machine-readable code in a story endpoint's error body
+ * (`{"detail": {"error": "..."}}`), whatever the HTTP status. Clients map on
+ * this, not on the status (contract X2): story mode switched off is a 404
+ * `story_mode_disabled`, not a 403.
+ */
+export function storyErrorCode(err: unknown): string | undefined {
+  if (!err || typeof err !== "object") return undefined;
+  const detail = (err as { detail?: unknown }).detail;
+  if (!detail || typeof detail !== "object") return undefined;
+  const code = (detail as { error?: unknown }).error;
+  return typeof code === "string" ? code : undefined;
+}
+
+/** True for the 202 "still writing it" envelope. */
+export function isStoryGenerating(value: unknown): value is StoryGenerating {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    (value as { status?: unknown }).status === "generating"
+  );
+}
+
+/**
+ * True when `value` looks like a story document rather than an envelope or an
+ * error body — the guard that keeps a stray 202 from reaching the player (the
+ * lesson viewer white-screened on exactly that once).
+ */
+export function isStoryDocument(value: unknown): value is StoryCourse {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    Array.isArray((value as { chapters?: unknown }).chapters) &&
+    !!(value as { languages?: unknown }).languages
+  );
+}
+
+/** The 409 the unit endpoint sends when no valid story could be generated. */
+export function isStoryUnavailableError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  if ((err as { status?: unknown }).status !== 409) return false;
+  // A 409 carrying some other error code goes down the generic failure path,
+  // so a future, different conflict is not mistaken for "no story".
+  const code = storyErrorCode(err);
+  return code === undefined || code === "story_unavailable";
+}
+
 /** Run the Appendix C checks on an authored file without saving it. */
 export async function validateStoryCourse(
   content: unknown,

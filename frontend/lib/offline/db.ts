@@ -6,7 +6,11 @@ export type ModuleDownloadStatus =
   | "downloaded"
   | "error";
 
-export type ContentType = "lesson" | "quiz" | "case_study" | "flashcard";
+// "story" is a lesson's story mode (one story-course/1 document per unit and
+// locale). Adding a value needs no IndexedDB upgrade: contentType is a plain
+// string inside the [moduleId, unitId, contentType, locale] key and the
+// by_content_type index, so DB_VERSION stays 4.
+export type ContentType = "lesson" | "quiz" | "case_study" | "flashcard" | "story";
 
 export type ActionType =
   | "lesson_complete"
@@ -204,6 +208,23 @@ export async function deleteOfflineModule(moduleId: string): Promise<void> {
 }
 
 // --- Offline Actions ---
+
+/**
+ * Window event that asks the running SyncManager to replay the queue soon
+ * (SyncManager.scheduleSync), without waiting for an `online` event.
+ */
+export const REPLAY_REQUESTED_EVENT = "sira:offline-replay-requested";
+
+/**
+ * Ask for a replay of the queue soon. For an action queued while the device
+ * still looks online (a request that died on 2G): no `online` event follows
+ * it. An event, not an import, so callers on a page do not bundle a second
+ * copy of the sync manager the app layout already runs.
+ */
+export function requestOfflineReplay(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(REPLAY_REQUESTED_EVENT));
+}
 
 export async function addOfflineAction(
   action: Omit<OfflineAction, "id" | "createdAt" | "synced">

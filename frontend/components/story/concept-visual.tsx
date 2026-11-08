@@ -6,16 +6,22 @@
  * point of the catalog. Widgets are plain SVG with a `viewBox`, so they scale
  * from a 320px phone up without shipping any image bytes.
  *
- * A visual this component does not implement yet renders as a labelled
- * placeholder naming the widget and its numbers, rather than a blank box or a
- * crash: an unimplemented widget is a gap to fill, and it should say so.
+ * The one exception is `image` (contract X4): a figure taken from the course's
+ * own source documents, shown through the lesson's existing SourceImage so a
+ * story figure looks, loads and zooms exactly like the same figure in the
+ * lesson.
+ *
+ * A visual this component does not implement yet renders as a short, neutral
+ * placeholder. Its name and numbers are internal, so they go to the console
+ * for whoever is filling the gap, never on the learner's screen.
  */
 
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useMemo } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 
+import { SourceImage } from "@/components/learning/source-image";
 import {
   divisionLadder,
   factorTree,
@@ -33,6 +39,11 @@ interface ConceptVisualProps {
   caption?: string;
   /** Accessible description; falls back to a generated one. */
   label?: string;
+  /**
+   * The learner's language. Only `image` needs it: a source figure carries
+   * its own alt text per language and is served per language.
+   */
+  language?: "fr" | "en";
 }
 
 const num = (value: unknown, fallback = 0): number => {
@@ -40,8 +51,27 @@ const num = (value: unknown, fallback = 0): number => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-export function ConceptVisual({ visual, params, caption, label }: ConceptVisualProps) {
-  const body = useMemo(() => {
+export function ConceptVisual({
+  visual,
+  params,
+  caption,
+  label,
+  language = "en",
+}: ConceptVisualProps) {
+  if (visual === "image") {
+    return <SourceFigure params={params} caption={caption} language={language} />;
+  }
+  return <DrawnVisual visual={visual} params={params} caption={caption} label={label} />;
+}
+
+function DrawnVisual({
+  visual,
+  params,
+  caption,
+  label,
+}: Omit<ConceptVisualProps, "language">) {
+  const t = useTranslations("Story");
+  const body = useMemo<ReactNode | null>(() => {
     switch (visual) {
       case "hundred_square":
         return <HundredSquare highlight={String(params?.highlight ?? "primes")} />;
@@ -61,9 +91,28 @@ export function ConceptVisual({ visual, params, caption, label }: ConceptVisualP
       case "venn_primes":
         return <VennPrimes a={num(params?.a, 12)} b={num(params?.b, 18)} />;
       default:
-        return <UnsupportedVisual visual={visual} params={params} />;
+        return null;
     }
   }, [visual, params]);
+
+  useEffect(() => {
+    if (body !== null) return;
+    // For whoever adds the widget; the learner only sees the placeholder.
+    console.warn(`Story player: visual "${visual}" is not drawn yet`, params ?? {});
+  }, [body, visual, params]);
+
+  if (body === null) {
+    return (
+      <figure className="my-4">
+        <p className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-center text-sm text-gray-500">
+          {t("visualUnavailable")}
+        </p>
+        {caption ? (
+          <figcaption className="mt-2 text-center text-sm text-gray-600">{caption}</figcaption>
+        ) : null}
+      </figure>
+    );
+  }
 
   return (
     <figure className="my-4">
@@ -78,6 +127,46 @@ export function ConceptVisual({ visual, params, caption, label }: ConceptVisualP
         <figcaption className="mt-2 text-center text-sm text-gray-600">{caption}</figcaption>
       ) : null}
     </figure>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* image (contract X4)                                                        */
+/* -------------------------------------------------------------------------- */
+
+const nonEmpty = (value: unknown): string | undefined => {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+};
+
+/**
+ * `{source_image_id, figure_number, alt: {en, fr}}` drawn by the lesson's
+ * SourceImage. Without an image id there is nothing to show, so nothing is.
+ */
+function SourceFigure({
+  params,
+  caption,
+  language,
+}: {
+  params?: Record<string, unknown>;
+  caption?: string;
+  language: "fr" | "en";
+}) {
+  const id = nonEmpty(params?.source_image_id);
+  if (!id) return null;
+  const alt =
+    params?.alt && typeof params.alt === "object"
+      ? (params.alt as Record<string, unknown>)
+      : {};
+  return (
+    <SourceImage
+      id={id}
+      figure_number={nonEmpty(params?.figure_number)}
+      alt_text_en={nonEmpty(alt.en)}
+      alt_text_fr={nonEmpty(alt.fr)}
+      caption={caption}
+      language={language}
+    />
   );
 }
 
@@ -290,33 +379,6 @@ function VennPrimes({ a, b }: { a: number; b: number }) {
           <dd className="inline">{product(onlyA) * product(shared) * product(onlyB)}</dd>
         </div>
       </dl>
-    </div>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* fallback                                                                   */
-/* -------------------------------------------------------------------------- */
-
-function UnsupportedVisual({
-  visual,
-  params,
-}: {
-  visual: string;
-  params?: Record<string, unknown>;
-}) {
-  const t = useTranslations("Story");
-  const entries = Object.entries(params ?? {});
-  return (
-    <div className="rounded-md border border-dashed border-amber-400 bg-amber-50 p-4 text-center">
-      <p className="text-sm font-semibold text-amber-800">
-        {t("visualNotDrawn", { visual })}
-      </p>
-      {entries.length > 0 ? (
-        <p className="mt-1 font-mono text-xs text-amber-700">
-          {entries.map(([key, value]) => `${key}=${JSON.stringify(value)}`).join("  ")}
-        </p>
-      ) : null}
     </div>
   );
 }

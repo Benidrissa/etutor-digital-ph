@@ -325,6 +325,26 @@ export function scoreAttempt(
   };
 }
 
+/**
+ * Deterministic shuffle, so options do not jump about between renders and a
+ * learner who reopens a week sees them in the same order. Used for choice
+ * options and for mini-game items, where a generator may well have written the
+ * correct ones first.
+ */
+export function seededShuffle<T>(items: readonly T[], seed: string): T[] {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 31 + seed.charCodeAt(i)) % 2147483647;
+  }
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    hash = (hash * 1103515245 + 12345) % 2147483647;
+    const j = hash % (i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 /** Pick the right language out of a text object, falling back to the other. */
 export function text(
   obj: TextObject | undefined | null,

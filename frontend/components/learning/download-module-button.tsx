@@ -108,6 +108,7 @@ export function DownloadModuleButton({
             {progress.currentContentType === 'lesson' && t('downloadingLesson')}
             {progress.currentContentType === 'quiz' && t('downloadingQuiz')}
             {progress.currentContentType === 'case_study' && t('downloadingCaseStudy')}
+            {progress.currentContentType === 'story' && t('downloadingStory')}
             {' '}{progress.currentUnit}
           </p>
         )}

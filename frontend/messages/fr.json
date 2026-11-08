@@ -830,7 +830,22 @@
     "readTab": "Lire",
     "listenTab": "Écouter",
     "watchTab": "Vidéo",
+    "storyTab": "Histoire",
     "generatingBadge": "génération…"
+  },
+  "LessonStory": {
+    "regionLabel": "Histoire de la leçon",
+    "loading": "Chargement de l'histoire…",
+    "generating": "Écriture de l'histoire de cette leçon…",
+    "generatingDescription": "L'histoire est écrite à partir de cette leçon lors de sa première ouverture : cela peut prendre une minute.",
+    "slowWarning": "Toujours en cours — les leçons plus longues demandent un peu plus de temps.",
+    "unavailable": "L'histoire de cette leçon n'est pas encore disponible.",
+    "unavailableHint": "La leçon reste disponible en lecture, en audio et en vidéo.",
+    "disabled": "Le mode histoire n'est pas encore activé sur cette plateforme.",
+    "offline": "Cette histoire n'a pas été téléchargée pour une utilisation hors ligne. Une connexion est nécessaire pour l'ouvrir.",
+    "failed": "L'histoire n'a pas pu être préparée. Veuillez réessayer.",
+    "timeout": "Cela prend plus de temps que prévu. Veuillez réessayer dans un instant.",
+    "retry": "Réessayer"
   },
   "CaseStudyViewer": {
     "error": "Une erreur est survenue",
@@ -1236,6 +1251,7 @@
         "image_generation": "Génération d'images",
         "image_metadata": "Métadonnées d'images",
         "translation": "Traduction",
+        "story_generation": "Génération du mode histoire",
         "unknown": "Autre"
       },
       "reco": {
@@ -2350,6 +2366,7 @@
     "downloadingLesson": "Téléchargement de la leçon",
     "downloadingQuiz": "Téléchargement du quiz",
     "downloadingCaseStudy": "Téléchargement de l'étude de cas",
+    "downloadingStory": "Téléchargement de l'histoire",
     "cancel": "Annuler le téléchargement",
     "cancelAction": "Annuler",
     "downloadFailed": "Échec du téléchargement",
@@ -2657,6 +2674,10 @@
     "doneOnPaper": "Fait sur papier",
     "showWorking": "Afficher le raisonnement",
     "hideWorking": "Masquer le raisonnement",
+    "selfMarkPrompt": "Compare ton travail avec la correction. As-tu réussi ?",
+    "selfMarkGotIt": "J'ai réussi",
+    "selfMarkNotYet": "Pas encore",
+    "selfMarked": "Tu t'es donné {points} sur {marks}.",
     "start": "Commencer",
     "round": "Manche {current} / {total}",
     "gameOver": "Partie terminée — +{points}",
@@ -2665,7 +2686,17 @@
     "useDecimalPoint": "Utilise un point décimal (3.25), pas une virgule.",
     "useIndexForm": "Bons facteurs premiers — écris-les maintenant avec des puissances.",
     "missingRef": "{kind} {ref} introuvable.",
-    "visualNotDrawn": "Visuel pas encore dessiné : {visual}",
-    "popped": "touché"
+    "visualUnavailable": "Cette illustration n'est pas encore disponible.",
+    "popped": "touché",
+    "caught": "trouvé",
+    "notThisOne": "pas celui-ci",
+    "secondsLeft": "{seconds} s",
+    "pointsUnit": "points",
+    "finished": "Histoire terminée !",
+    "score": "{points} {unit}",
+    "scoreOf": "{points} sur {max} {unit}",
+    "aiLabel": "IA",
+    "part": "Partie {part}",
+    "bilingualToggle": "Afficher les deux langues"
   }
 }

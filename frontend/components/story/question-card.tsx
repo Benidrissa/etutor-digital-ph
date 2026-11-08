@@ -15,7 +15,7 @@
 import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
-import { scoreAttempt, text } from "@/lib/story-course/answer";
+import { scoreAttempt, seededShuffle, text } from "@/lib/story-course/answer";
 import type { Question, Rewards, TextObject } from "@/lib/story-course/types";
 
 interface QuestionCardProps {
@@ -29,21 +29,6 @@ interface QuestionCardProps {
 }
 
 const SUPERSCRIPT_KEYS = ["²", "³", "⁴"];
-
-/** Deterministic shuffle so options do not jump about between renders. */
-function seededShuffle<T>(items: T[], seed: string): T[] {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i += 1) {
-    hash = (hash * 31 + seed.charCodeAt(i)) % 2147483647;
-  }
-  const out = [...items];
-  for (let i = out.length - 1; i > 0; i -= 1) {
-    hash = (hash * 1103515245 + 12345) % 2147483647;
-    const j = hash % (i + 1);
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
-}
 
 function Bilingual({
   value,

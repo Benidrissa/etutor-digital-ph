@@ -26,7 +26,7 @@ import { track } from '@/lib/analytics';
 import { isProviderQuotaError } from '@/lib/generation-errors';
 import { loadLesson, OfflineContentNotAvailable } from '@/lib/offline/content-loader';
 import { isHealedLessonResponse, type SelfHealCandidate } from '@/lib/learning/country-selfheal';
-import { addOfflineAction } from '@/lib/offline/db';
+import { completeLessonUnit } from '@/lib/learning/complete-lesson';
 import { OfflineBadge } from '@/components/shared/offline-badge';
 import { SubscriptionRequired } from '@/components/shared/subscription-required';
 import { useNetworkStatus } from '@/lib/hooks/use-network-status';
@@ -366,32 +366,41 @@ export function LessonViewer({
     setForceRegenerate(true);
   };
 
+  // One completion at a time: the story's end and a tap on the button can
+  // land together, and the unit must be recorded (or queued) once. The ref
+  // guards against both in the same tick; the state shows the button busy
+  // while the POST is in flight (up to its deadline on a stalled 2G link).
+  const completingRef = useRef(false);
+  const [isCompleting, setIsCompleting] = useState(false);
+
   const handleMarkComplete = async () => {
+    if (completingRef.current) return;
+    completingRef.current = true;
+    setIsCompleting(true);
     setCompleteError(null);
-    if (!isOnline) {
-      // Offline: queue for replay when reconnected. Optimistically show completed (#2151).
-      await addOfflineAction({
-        actionType: 'case_study_complete',
-        payload: { module_id: moduleId, unit_id: unitId },
-      });
-      setIsCompleted(true);
-      onComplete?.();
-      return;
-    }
     try {
-      await apiFetch(`/api/v1/progress/complete-lesson`, {
-        method: 'POST',
-        body: JSON.stringify({
-          module_id: moduleId,
-          unit_id: unitId,
-        }),
-      });
+      // Online POST; offline — or online but the request died or timed out on
+      // a flaky connection, or the server failed — queued for background sync
+      // and shown as completed optimistically (#2151). A 4xx is not queued.
+      await completeLessonUnit(moduleId, unitId, { online: isOnline });
       setIsCompleted(true);
       onComplete?.();
     } catch (err) {
       console.error('Error marking lesson complete:', err);
       setCompleteError(t('completeError'));
+    } finally {
+      completingRef.current = false;
+      setIsCompleting(false);
     }
+  };
+
+  // Finishing the lesson's story completes this lesson unit: story mode is a
+  // tab on the lesson, not a unit of its own. It goes through the same handler
+  // as the button below — online POST or the offline queue — so the button,
+  // the module progress and the sync queue all agree.
+  const handleStoryComplete = () => {
+    if (isCompleted) return;
+    void handleMarkComplete();
   };
 
   const mdClass = "prose prose-gray max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-900 prose-table:text-sm";
@@ -633,8 +642,11 @@ export function LessonViewer({
 
       <LessonMediaTabs
         lessonId={lessonData.id}
+        moduleId={moduleId}
+        unitId={unitId}
         language={lessonData.language}
         onActiveTabChange={setActiveMediaTab}
+        onStoryComplete={handleStoryComplete}
         readPane={
           <div className="p-6 md:p-8">
             {/* Lesson Illustration */}
@@ -699,7 +711,8 @@ export function LessonViewer({
       <div className="mt-8 text-center">
         <Button
           onClick={handleMarkComplete}
-          disabled={isCompleted || isLoading || isGenerating}
+          disabled={isCompleted || isCompleting || isLoading || isGenerating}
+          aria-busy={isCompleting}
           className="min-h-11 px-8"
           size="lg"
         >
@@ -709,7 +722,10 @@ export function LessonViewer({
               {t('completed')}
             </>
           ) : (
-            t('markComplete')
+            <>
+              {isCompleting && <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden />}
+              {t('markComplete')}
+            </>
           )}
         </Button>
         {completeError && (
