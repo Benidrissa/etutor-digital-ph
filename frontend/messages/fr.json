@@ -2678,7 +2678,7 @@
     "useDecimalPoint": "Utilise un point décimal (3.25), pas une virgule.",
     "useIndexForm": "Bons facteurs premiers — écris-les maintenant avec des puissances.",
     "missingRef": "{kind} {ref} introuvable.",
-    "visualNotDrawn": "Visuel pas encore dessiné : {visual}",
+    "visualUnavailable": "Cette illustration n'est pas encore disponible.",
     "popped": "touché",
     "caught": "trouvé",
     "notThisOne": "pas celui-ci",

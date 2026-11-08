@@ -2678,7 +2678,7 @@
     "useDecimalPoint": "Use a decimal point (3.25), not a comma.",
     "useIndexForm": "Right primes — now write them with powers.",
     "missingRef": "Missing {kind} {ref}.",
-    "visualNotDrawn": "Visual not drawn yet: {visual}",
+    "visualUnavailable": "This picture is not available yet.",
     "popped": "popped",
     "caught": "caught",
     "notThisOne": "not this one",

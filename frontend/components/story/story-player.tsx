@@ -62,6 +62,12 @@ const MOOD_EMOJI: Record<string, string> = {
   walk: "🚶",
 };
 
+/** A source figure is served in the lesson's languages only. */
+function figureLanguage(target: string, home: string): "fr" | "en" {
+  if (target === "fr" || target === "en") return target;
+  return home === "fr" ? "fr" : "en";
+}
+
 /** A step's own text in one language: a line (narrate/say) or rows (concept). */
 function stepText(step: Step, lang: string): string | string[] | undefined {
   const value = (step as unknown as Record<string, unknown>)[lang];
@@ -414,6 +420,7 @@ function StepView({
           visual={step.visual ?? "unknown"}
           params={step.params}
           caption={step.caption ? text(step.caption, target, home) : undefined}
+          language={figureLanguage(target, home)}
         />
       );
 
