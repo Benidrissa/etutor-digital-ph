@@ -165,6 +165,35 @@ async def update_cached_content_in_place(
     break ``generated_images``/audio FKs. Module-level because the lesson and
     case-study services share no base class (#2007).
     """
+    row = await find_in_place_target(
+        session,
+        module_unit_uuid=module_unit_uuid,
+        content_type=content_type,
+        language=language,
+        level=level,
+        country_context=country_context,
+    )
+    if row is None or row.is_manually_edited:
+        return None
+    apply_in_place_update(row, content=content, sources_cited=sources_cited)
+    return row.id
+
+
+async def find_in_place_target(
+    session: AsyncSession,
+    *,
+    module_unit_uuid: uuid.UUID | None,
+    content_type: str,
+    language: str,
+    level: int,
+    country_context: str | None,
+) -> GeneratedContent | None:
+    """The cached row ``update_cached_content_in_place`` would overwrite.
+
+    Split out so a caller can act on the row before it is overwritten (the
+    quiz service saves a revision pre-image of it first). Does not check
+    ``is_manually_edited``; the caller must.
+    """
     if module_unit_uuid is None:
         return None
     result = await session.execute(
@@ -180,15 +209,18 @@ async def update_cached_content_in_place(
         )
         .order_by(GeneratedContent.generated_at.desc())
     )
-    row = result.scalars().first()
-    if row is None or row.is_manually_edited:
-        return None
+    return result.scalars().first()
+
+
+def apply_in_place_update(
+    row: GeneratedContent, *, content: dict, sources_cited: list | None
+) -> None:
+    """Overwrite a cached row's content and bump its ``content_revision``."""
     row.content = content
     row.sources_cited = sources_cited
     row.generated_at = datetime.utcnow()
     row.validated = False
     row.content_revision = (row.content_revision or 1) + 1
-    return row.id
 
 
 class LessonGenerationService:

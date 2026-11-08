@@ -79,6 +79,7 @@ def _row(unit_id: str = "1.2", content: dict | None = None) -> SimpleNamespace:
         module_id=uuid.uuid4(),
         module_unit_id=uuid.uuid4(),
         content=content or _stored_content(unit_id),
+        sources_cited=["WHO fact sheet"],
         language="en",
         level=1,
         country_context="SN",
@@ -353,12 +354,25 @@ def _generated_content() -> QuizContent:
     return QuizContent(**data)
 
 
+def _added(session, model) -> list:
+    return [c.args[0] for c in session.add.call_args_list if isinstance(c.args[0], model)]
+
+
 class TestForceRegenerateOverwritesInPlace:
     async def _run(self, service, *, unit_uuid, existing, unit_id="1.2"):
+        from app.domain.models.course_quality import GeneratedContentRevision
+
         session = MagicMock()
-        result = MagicMock()
-        result.scalars.return_value.first.return_value = existing
-        session.execute = AsyncMock(return_value=result)
+
+        async def execute(stmt):
+            # The cached-row lookup finds ``existing``; the revision pre-image
+            # lookup finds nothing, so the overwrite writes one.
+            result = MagicMock()
+            is_revision = stmt.column_descriptions[0]["entity"] is GeneratedContentRevision
+            result.scalars.return_value.first.return_value = None if is_revision else existing
+            return result
+
+        session.execute = AsyncMock(side_effect=execute)
         session.get = AsyncMock(return_value=existing)
         session.commit = AsyncMock()
 
@@ -391,12 +405,19 @@ class TestForceRegenerateOverwritesInPlace:
         return resp, session, generate
 
     async def test_unit_quiz_row_is_replaced_not_inserted(self, service):
+        from app.domain.models.content import GeneratedContent
+        from app.domain.models.course_quality import GeneratedContentRevision
+
         existing = _row(content=_stored_content(questions=[_question(**{FIELD: None})]))
         old_content = copy.deepcopy(existing.content)
         resp, session, _ = await self._run(service, unit_uuid=uuid.uuid4(), existing=existing)
 
-        session.add.assert_not_called()
+        assert _added(session, GeneratedContent) == []
+        # The old content is kept as the pre-image of revision 1.
+        (pre_image,) = _added(session, GeneratedContentRevision)
+        assert (pre_image.revision, pre_image.content) == (1, old_content)
         assert resp.id == existing.id
+        assert resp.content_revision == 2
         assert existing.content != old_content
         assert existing.content["questions"][0][FIELD] == MISCONCEPTIONS
         assert existing.content["unit_id"] == "1.2"
@@ -407,14 +428,18 @@ class TestForceRegenerateOverwritesInPlace:
     async def test_summative_row_is_replaced_not_inserted(self, service):
         existing = _row(unit_id="summative")
         existing.module_unit_id = None
+        from app.domain.models.content import GeneratedContent
+        from app.domain.models.course_quality import GeneratedContentRevision
+
         resp, session, generate = await self._run(
             service, unit_uuid=None, existing=existing, unit_id="summative"
         )
-        session.add.assert_not_called()
+        assert _added(session, GeneratedContent) == []
+        assert len(_added(session, GeneratedContentRevision)) == 1
         assert resp.id == existing.id
         assert existing.content_revision == 2
         assert existing.content["unit_id"] == "summative"
-        # num_questions defaults to the summative length when not given.
+        # num_questions defaults to the summative setting when not given.
         assert generate.await_args.kwargs["num_questions"] == 20
 
     async def test_manually_edited_row_is_never_overwritten(self, service):

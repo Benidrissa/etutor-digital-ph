@@ -111,6 +111,15 @@ class PublicQuizResponse(BaseModel):
         default=False,
         description="True when content is from a different country's cache; country-targeted version generating in background",
     )
+    content_revision: int = Field(
+        default=1,
+        ge=1,
+        description=(
+            "Revision of the quiz content served. Regeneration replaces the questions "
+            "in place under the same id, so send this back with the attempt: answers "
+            "are graded against the revision the learner actually saw."
+        ),
+    )
 
 
 def to_public_quiz_response(resp: "QuizResponse") -> PublicQuizResponse:
@@ -228,6 +237,15 @@ class QuizAttemptRequest(BaseModel):
     quiz_id: UUID = Field(description="Quiz content ID")
     answers: list[QuizAnswerSubmission] = Field(description="User's answers to all questions")
     total_time_seconds: int = Field(description="Total time taken for entire quiz", ge=0)
+    content_revision: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "content_revision of the quiz payload these answers were given to. Graded "
+            "against that revision; 409 quiz_changed when it can no longer be recovered. "
+            "Omitted: graded against the current revision (older clients)."
+        ),
+    )
 
 
 class QuizAttemptResult(BaseModel):

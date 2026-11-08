@@ -1,7 +1,6 @@
 """Quiz generation service using Claude API and RAG."""
 
 import uuid
-from datetime import UTC, datetime
 from uuid import UUID
 
 import structlog
@@ -20,15 +19,28 @@ from app.domain.models.content import GeneratedContent
 from app.domain.models.course import Course
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
-from app.domain.services import mcq_checks
+from app.domain.services import content_revisions, mcq_checks
 from app.domain.services.platform_settings_service import SettingsCache
 
 logger = structlog.get_logger()
 
-#: A summative assessment is a fixed-length final exam (SummativeAssessmentRequest).
-SUMMATIVE_QUESTION_COUNT = 20
-#: Unit quiz length when the caller does not say (QuizGenerationRequest default).
-DEFAULT_UNIT_QUESTION_COUNT = 10
+
+def default_question_count(unit_id: str) -> int:
+    """Quiz length when the caller does not say.
+
+    The platform settings the generate endpoints use:
+    ``quiz-summative-questions-count`` for a summative,
+    ``quiz-unit-questions-count`` for a unit quiz.
+    """
+    key, fallback = (
+        ("quiz-summative-questions-count", 20)
+        if unit_id == "summative"
+        else ("quiz-unit-questions-count", 10)
+    )
+    try:
+        return int(SettingsCache.instance().get(key, fallback))
+    except (TypeError, ValueError):
+        return fallback
 
 
 class QuizService:
@@ -105,49 +117,53 @@ class QuizService:
     ) -> GeneratedContent | None:
         """Replace the cached quiz row for this exact key; ``None`` if there is none.
 
-        Unit-scoped rows reuse ``update_cached_content_in_place`` (the lesson
-        fix for #2561). Summative quizzes are module-scoped
+        Unit-scoped rows are matched like ``update_cached_content_in_place``
+        (the lesson fix for #2561). Summative quizzes are module-scoped
         (``module_unit_id IS NULL`` + the ``content.unit_id`` sentinel), which
         that helper does not cover, so they are matched here on the same key as
         ``idx_unique_module_scoped_content``. Manually edited rows are never
         overwritten (returns ``None``), matching the lesson helper.
-        """
-        if module_unit_uuid is not None:
-            from app.domain.services.lesson_service import update_cached_content_in_place
 
-            row_id = await update_cached_content_in_place(
+        The row keeps its id and question ids, so before it is overwritten its
+        current content is saved as the pre-image of its current revision
+        (unless the caller — quality agent, backfill — already saved one).
+        A learner who was served that revision is then still graded against
+        the questions they saw (``content_revisions.content_at_revision``).
+        """
+        from app.domain.services.lesson_service import (
+            apply_in_place_update,
+            find_in_place_target,
+        )
+
+        if module_unit_uuid is not None:
+            row = await find_in_place_target(
                 session,
                 module_unit_uuid=module_unit_uuid,
                 content_type="quiz",
                 language=language,
                 level=level,
                 country_context=country,
-                content=content,
-                sources_cited=sources,
             )
-            return await session.get(GeneratedContent, row_id) if row_id else None
-
-        result = await session.execute(
-            select(GeneratedContent)
-            .where(
-                GeneratedContent.content_type == "quiz",
-                GeneratedContent.module_id == module_id,
-                GeneratedContent.module_unit_id.is_(None),
-                GeneratedContent.content["unit_id"].astext == unit_id,
-                GeneratedContent.language == language,
-                GeneratedContent.level == level,
-                GeneratedContent.country_context == country,
+        else:
+            result = await session.execute(
+                select(GeneratedContent)
+                .where(
+                    GeneratedContent.content_type == "quiz",
+                    GeneratedContent.module_id == module_id,
+                    GeneratedContent.module_unit_id.is_(None),
+                    GeneratedContent.content["unit_id"].astext == unit_id,
+                    GeneratedContent.language == language,
+                    GeneratedContent.level == level,
+                    GeneratedContent.country_context == country,
+                )
+                .order_by(GeneratedContent.generated_at.desc())
             )
-            .order_by(GeneratedContent.generated_at.desc())
-        )
-        row = result.scalars().first()
+            row = result.scalars().first()
         if row is None or row.is_manually_edited:
             return None
-        row.content = content
-        row.sources_cited = sources
-        row.generated_at = datetime.now(UTC).replace(tzinfo=None)
-        row.validated = False
-        row.content_revision = (row.content_revision or 1) + 1
+
+        await content_revisions.ensure_pre_image(session, row)
+        apply_in_place_update(row, content=content, sources_cited=sources)
         return row
 
     @staticmethod
@@ -166,6 +182,7 @@ class QuizService:
             generated_at=row.generated_at.isoformat(),
             cached=True,
             country_fallback=is_fallback,
+            content_revision=content_revisions.current_revision(row),
         )
 
     async def get_cached_quiz(
@@ -216,13 +233,15 @@ class QuizService:
             country: User's country for contextualization
             level: Learning level (1-4)
             num_questions: Number of questions to generate (5-15). ``None``
-                means the default for the quiz kind: 20 for a summative, 10
-                for a unit quiz. The quality agent's regeneration path relies
-                on this default (it never passed a count).
+                means the platform setting for the quiz kind
+                (:func:`default_question_count`). Regenerating callers (quality
+                agent, backfill) pass the cached row's own count instead, so a
+                regeneration keeps the quiz's length.
             session: Database session
             force_regenerate: Skip the cache and overwrite the cached row for
                 this key in place (it used to INSERT, collide with the unique
-                index and silently keep the stale row).
+                index and silently keep the stale row). The old content is kept
+                as a revision pre-image, so answers to it stay gradeable.
             user_id: Optional user UUID for background task logging
 
         Returns:
@@ -233,9 +252,7 @@ class QuizService:
             Exception: If quiz generation fails
         """
         if num_questions is None:
-            num_questions = (
-                SUMMATIVE_QUESTION_COUNT if unit_id == "summative" else DEFAULT_UNIT_QUESTION_COUNT
-            )
+            num_questions = default_question_count(unit_id)
         try:
             from app.domain.services._unit_resolution import resolve_module_unit_id
 
@@ -330,6 +347,7 @@ class QuizService:
                         content=quiz_content,
                         generated_at=overwritten.generated_at.isoformat(),
                         cached=False,
+                        content_revision=content_revisions.current_revision(overwritten),
                     )
 
             # Store in cache. module_unit_uuid was resolved at the top of this
@@ -380,6 +398,7 @@ class QuizService:
                 content=quiz_content,
                 generated_at=generated_content.generated_at.isoformat(),
                 cached=False,
+                content_revision=content_revisions.current_revision(generated_content),
             )
 
         except Exception as e:
