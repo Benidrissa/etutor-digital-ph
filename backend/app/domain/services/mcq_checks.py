@@ -193,17 +193,17 @@ _NUMBER_SPACES = frozenset(" \u00a0\u202f\u2009")
 
 #: Characters written for one another, folded to one spelling: the minus sign,
 #: the en dash of a range ("2015–2030"), the hyphen, the non-breaking hyphen
-#: word processors put in "COVID‑19" and the figure dash to the hyphen-minus;
-#: curly quotes, the modifier-letter apostrophe and the acute accent typed for
-#: an apostrophe ("l’OMS", "lʼOMS", "l´OMS") to the straight one, since
-#: generated French mixes them within one quiz.
+#: (U+2011) word processors put in "COVID‑19" and the figure dash to the
+#: hyphen-minus; curly quotes, the modifier-letter apostrophe and the acute
+#: accent typed for an apostrophe ("l’OMS", "lʼOMS", "l´OMS") to the straight
+#: one, since generated French mixes them within one quiz.
 _FOLD = str.maketrans(
     {
         MINUS: "-",
         "–": "-",
-        "‐": "-",
-        "‑": "-",
-        "‒": "-",
+        "\u2010": "-",
+        "\u2011": "-",
+        "\u2012": "-",
         "’": "'",
         "‘": "'",
         "ʼ": "'",
@@ -557,10 +557,10 @@ def check_answer_leak(view: McqView, *, min_length: int = MIN_LEAK_LENGTH) -> li
     Matching is on whole words and symbols (case, accents composition, spacing,
     digit groups, dashes and apostrophes normalised), so ``"water"`` does not
     match ``"seawater"`` but ``"2³ × 3²"`` matches ``"2³×3²"``, ``"12 500"``
-    matches ``"12500"`` and ``"COVID‑19"`` matches ``"COVID-19"``. Only
-    sentence punctuation and quotes are trimmed from the option, and
-    ``min_length`` applies to what is left, so ``"50%"`` is checked as
-    ``50%`` (never as ``50``) and ``"12."`` is a short answer.
+    matches ``"12500"`` and ``"COVID‑19"`` (a non-breaking hyphen, U+2011)
+    matches ``"COVID-19"``. Only sentence punctuation and quotes are trimmed
+    from the option, and ``min_length`` applies to what is left, so ``"50%"``
+    is checked as ``50%`` (never as ``50``) and ``"12."`` is a short answer.
 
     Each text (the stem, every hint) is judged on its own, and the severity of
     a text that names the correct option is tiered:

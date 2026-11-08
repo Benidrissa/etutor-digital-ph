@@ -547,7 +547,7 @@ class TestFrenchNumberTypography:
 
 #: Hyphens other than the hyphen-minus: the hyphen (U+2010), the non-breaking
 #: hyphen (U+2011) word processors put in "COVID‑19", and the figure dash.
-HYPHENS = ["‐", "‑", "‒"]
+HYPHENS = ["\u2010", "\u2011", "\u2012"]
 HYPHEN_IDS = ["hyphen", "non-breaking", "figure-dash"]
 
 
