@@ -19,8 +19,10 @@ Pipeline (one Celery task, :func:`app.tasks.content_generation.generate_story_ta
 4. :func:`validate_story_course` (Appendix C), plus the generator's own checks
    (question floor, stem leaks, copy-fallbacks);
 5. a bounded repair loop — at most :data:`MAX_REPAIR_CALLS` extra model calls,
-   each told the remaining error codes and paths — then a salvage pass that
-   drops model-authored items that still fail;
+   each told the remaining error codes and paths — then the attempts, best
+   first, are settled and if need be salvaged (model-authored items that still
+   fail are dropped) until one is valid. A story without model content (every
+   answer unreadable or unusable) is never published;
 6. persist: published and valid, or a draft with its report (the API then
    answers 409 ``story_unavailable``). The validator's ``checks`` block is
    written into the stored document either way (C6). A spine the builder
@@ -430,17 +432,62 @@ def _unbuildable_issue() -> ValidationIssue:
     )
 
 
-def attempt_rank(report: ValidationReport) -> tuple[int, int, int]:
+def _empty_spine_issue() -> ValidationIssue:
+    return ValidationIssue(
+        severity="error",
+        code="empty_spine",
+        path="",
+        message=(
+            "nothing in your previous JSON could be used: return one JSON object with"
+            " exactly the fields asked for at its top level"
+        ),
+    )
+
+
+def _no_model_content_issue() -> ValidationIssue:
+    return ValidationIssue(
+        severity="error",
+        code="no_model_content",
+        path="",
+        message=(
+            "no answer of the model could be used, so this is only the lesson and quiz,"
+            " untranslated; it is never published"
+        ),
+    )
+
+
+def attempt_rank(report: ValidationReport, *, authored: bool = True) -> tuple[int, int, int, int]:
     """How far an attempt is from publishable, judged as it will be settled.
 
-    Lower is better: errors other than copied translations first, then the
-    copied translations, then warnings. After the repair budget a copied
-    translation is settled into a warning (:func:`repair.settle_translations`),
-    so an attempt whose only errors are copies publishes and must beat one
-    with any other error, however many copies it carries.
+    Lower is better. A build that carries no model content (``authored`` is
+    false: an unreadable answer's, or one the builder could use nothing of)
+    is never published, so it comes after every build that does, whatever
+    its counts. Then errors other than copied translations, then the copied
+    translations, then warnings. After the repair budget a copied translation
+    is settled into a warning (:func:`repair.settle_translations`), so an
+    attempt whose only errors are copies publishes and must beat one with any
+    other error, however many copies it carries.
     """
     copies = sum(1 for issue in report.errors if issue.code == repair.MISSING_TRANSLATION)
-    return len(report.errors) - copies, copies, len(report.warnings)
+    return (0 if authored else 1), len(report.errors) - copies, copies, len(report.warnings)
+
+
+@dataclass
+class _Attempt:
+    """One model answer, built and validated (before copies are settled)."""
+
+    number: int
+    #: The answer as read; ``{}`` for an unreadable one.
+    spine: dict[str, Any]
+    build: repair.StoryBuild
+    report: ValidationReport
+    #: Whether the story holds anything of the answer's own (see :func:`attempt_rank`).
+    authored: bool
+
+    @property
+    def order(self) -> tuple[tuple[int, int, int, int], int]:
+        """Best first; on a tie, the earlier attempt."""
+        return attempt_rank(self.report, authored=self.authored), self.number
 
 
 @dataclass
@@ -538,12 +585,12 @@ class StoryFromLessonService:
         """Spine call → deterministic build → validate → bounded repair → salvage.
 
         Database-free, so the whole pipeline can be tested with a fake model.
-        Returns the best document seen (:func:`attempt_rank`: fewest errors
-        that would still block it once copied translations are settled), with
-        the validator's ``checks`` written into it. Never raises for a bad spine: a spine the
-        builder chokes on counts as an unreadable attempt, and when no attempt
-        could be built at all the result is an unpublishable placeholder whose
-        report carries ``malformed_course_file``.
+        The loop stops at the first attempt that is valid as it stands and
+        carries model content; :meth:`_choose` then picks what is stored, with
+        the validator's ``checks`` written into it. Never raises for a bad
+        spine: a spine the builder chokes on counts as an unreadable attempt,
+        and when no attempt could be built at all the result is an
+        unpublishable placeholder whose report carries ``malformed_course_file``.
         """
         from app.ai.prompts.story_from_lesson import (
             build_repair_message,
@@ -552,17 +599,18 @@ class StoryFromLessonService:
 
         user_message = build_story_user_message(ctx)
         budget = 1 + self.max_repair_calls
-        best: tuple[dict[str, Any], repair.StoryBuild, ValidationReport] | None = None
+        attempts: list[_Attempt] = []
+        empty_doc: dict[str, Any] | None = None
         feedback_spine: dict[str, Any] | None = None
         issues: list[ValidationIssue] = []
         calls = 0
 
         with ai_usage_context(FEATURE_STORY_GENERATION, only_if_unset=True):
-            for attempt in range(budget):
+            for number in range(budget):
                 message = (
                     user_message
-                    if attempt == 0
-                    else build_repair_message(user_message, issues, feedback_spine, attempt, budget)
+                    if number == 0
+                    else build_repair_message(user_message, issues, feedback_spine, number, budget)
                 )
                 calls += 1
                 spine = await self._call_model(system_prompt, message)
@@ -573,33 +621,33 @@ class StoryFromLessonService:
                     issues = [_unbuildable_issue()]
                     continue
                 build, report = attempted
+                authored = False
+                if spine is not None:
+                    # An answer the builder used nothing of builds the same
+                    # story as no answer at all: the lesson and quiz alone.
+                    if empty_doc is None:
+                        empty_doc = self._empty_doc(ctx)
+                    authored = build.doc != empty_doc
+                attempts.append(_Attempt(number, spine or {}, build, report, authored))
                 logger.info(
                     "Story attempt validated",
                     slug=ctx.slug,
-                    attempt=attempt + 1,
+                    attempt=number + 1,
                     readable=spine is not None,
+                    authored=authored,
                     errors=len(report.errors),
                     warnings=len(report.warnings),
                 )
-                if best is None or attempt_rank(report) < attempt_rank(best[2]):
-                    best = (spine or {}, build, report)
-                if report.ok:
+                if report.ok and authored:
                     break
-                if spine is not None:
-                    feedback_spine, issues = spine, list(report.errors)
-                else:
+                if spine is None:
                     issues = []
+                elif not authored:
+                    feedback_spine, issues = spine, [_empty_spine_issue()]
+                else:
+                    feedback_spine, issues = spine, list(report.errors)
 
-        if best is None:
-            generation = self._unbuildable(ctx)
-        else:
-            spine, build, report = best
-            report = repair.settle_translations(report)
-            generation = StoryGeneration(doc=build.doc, report=report, model_calls=calls)
-            if not report.ok:
-                salvaged = self._salvage(ctx, spine, build, report)
-                if salvaged is not None:
-                    generation = salvaged
+        generation = self._choose(ctx, attempts, empty_doc)
         generation.model_calls = calls
         if not _parses(generation.doc):
             # Only a builder bug gets here; store the bare header as a draft
@@ -645,6 +693,45 @@ class StoryFromLessonService:
             )
             return None
         return build, report
+
+    def _empty_doc(self, ctx: repair.LessonStoryContext) -> dict[str, Any] | None:
+        """The story built from no answer at all; ``None`` if even that fails."""
+        attempted = self._build_and_validate(ctx, {})
+        return attempted[0].doc if attempted is not None else None
+
+    def _choose(
+        self,
+        ctx: repair.LessonStoryContext,
+        attempts: list[_Attempt],
+        empty_doc: dict[str, Any] | None,
+    ) -> StoryGeneration:
+        """What is stored: the best attempt that can be published, else a draft.
+
+        Attempts carrying model content are taken best first
+        (:attr:`_Attempt.order`): each is settled (copied translations become
+        warnings) and, if anything else still fails, salvaged. The first that
+        comes out valid is stored. Otherwise the best attempt is stored as a
+        draft, as settled. A build without model content — the lesson and quiz
+        alone, untranslated — is never published: it is the draft only when no
+        attempt carries any, and its report then says so.
+        """
+        if not attempts:
+            return self._unbuildable(ctx)
+        ranked = sorted(attempts, key=lambda attempt: attempt.order)
+        for attempt in ranked:
+            if not attempt.authored:
+                break
+            report = repair.settle_translations(attempt.report)
+            if report.ok:
+                return StoryGeneration(doc=attempt.build.doc, report=report, model_calls=0)
+            salvaged = self._salvage(ctx, attempt.spine, attempt.build, report)
+            if salvaged is not None and salvaged.doc != empty_doc:
+                return salvaged
+        best = ranked[0]
+        report = repair.settle_translations(best.report)
+        if not best.authored:
+            report = repair.with_issues(report, [_no_model_content_issue()])
+        return StoryGeneration(doc=best.build.doc, report=report, model_calls=0)
 
     def _unbuildable(self, ctx: repair.LessonStoryContext) -> StoryGeneration:
         """The draft stored when no attempt could be built; it is never served.

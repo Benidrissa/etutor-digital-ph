@@ -26,8 +26,9 @@ from app.ai.prompts.story_from_lesson import (
     get_story_system_prompt,
     plan_for,
 )
-from app.api.v1.schemas.story_course import StoryCourse
+from app.api.v1.schemas.story_course import StoryCourse, ValidationIssue
 from app.domain.models.story_course import StoryCourseRecord
+from app.domain.services import story_from_lesson_service as service_module
 from app.domain.services import story_repair as repair
 from app.domain.services.story_course_validator import validate_story_course
 from app.domain.services.story_from_lesson_service import (
@@ -1320,6 +1321,176 @@ def test_attempts_are_ranked_by_what_still_blocks_them_once_settled():
         < attempt_rank(report(warnings=1))
         < attempt_rank(report("missing_translation"))
     )
+    # A build without model content is never published: any build with some
+    # comes first, however many errors it has.
+    clean_but_empty = attempt_rank(report(), authored=False)
+    assert attempt_rank(report("too_few_questions", "answer_leak", warnings=3)) < clean_but_empty
+    assert clean_but_empty < attempt_rank(report("missing_translation"), authored=False)
+
+
+#: What an unreadable answer gives :meth:`StoryFromLessonService._call_model`.
+_UNREADABLE = {"raw_response": True, "content": "Here is your story, in prose."}
+
+
+def _with_course_misconceptions(ctx: repair.LessonStoryContext) -> repair.LessonStoryContext:
+    """Track A: every wrong option of every MCQ says why a learner would pick it.
+
+    With these, the story built from no answer at all has no error but its
+    copied translations — exactly what must never be published.
+    """
+    for mcq in ctx.mcqs:
+        mcq.option_misconceptions = [
+            None if index == mcq.correct_index else f"Believes {mcq.options[index]!r} is right."
+            for index in range(len(mcq.options))
+        ]
+    return ctx
+
+
+def _spine_with_x1(raw: dict[str, Any], language: str) -> dict[str, Any]:
+    """The fixture spine with the model-authored question x1 (the fr one has none)."""
+    spine = copy.deepcopy(raw[language]["spine"])
+    if not any(q["id"] == "x1" for q in spine["questions"]):
+        spine["questions"].append(copy.deepcopy(raw["en"]["spine"]["questions"][0]))
+    return spine
+
+
+def _failing_question(question_id: str):
+    """``validate_document`` plus one hard error on ``question_id`` whenever it is asked."""
+    real = validate_document
+
+    def validate(doc: dict[str, Any]):
+        report = real(doc)
+        if any(q["id"] == question_id for q in doc["questions"]):
+            issue = ValidationIssue(
+                severity="error",
+                code="persistent",
+                path=f"questions[{question_id}].prompt",
+                message="never fixed by the model",
+            )
+            report = repair.with_issues(report, [issue])
+        return report
+
+    return validate
+
+
+@pytest.mark.parametrize("language", ["en", "fr"])
+async def test_an_unreadable_answer_never_beats_a_readable_attempt(raw, language):
+    """Readable, unreadable, readable: the real attempt is salvaged, never the empty build.
+
+    The empty build ranks (0 hard errors, 27 copies) against the real
+    attempt's (1, 0): it would settle into a valid story with none of the
+    model's content — generic lines, the concepts untranslated.
+    """
+    ctx = _with_course_misconceptions(make_ctx(raw, language))
+    spine = _spine_with_x1(raw, language)
+    model = FakeClaude(spine, _UNREADABLE, spine)
+    with patch.object(service_module, "validate_document", side_effect=_failing_question("x1")):
+        generation = await StoryFromLessonService(model).generate_document(
+            ctx, system_prompt="system"
+        )
+
+    assert generation.model_calls == 3
+    assert generation.report.ok, [e.model_dump() for e in generation.report.errors]
+    assert generation.salvaged and generation.dropped["questions"] == ["x1"]
+    assert generation.report.warnings == [], [w.model_dump() for w in generation.report.warnings]
+    assert revalidate(generation.doc).ok
+    doc = generation.doc
+    assert [q["id"] for q in doc["questions"]] == ["q1", "q2", "q3", "q4"]
+    # The model's own story, fully translated.
+    opening = spine["story"]["opening"]
+    assert any(s["type"] == "narrate" and s["en"] == opening["en"] for s in steps(doc))
+    concepts = [s for s in steps(doc) if s["type"] == "concept"]
+    assert concepts and all(s["en"] != s["fr"] for s in concepts)
+
+
+@pytest.mark.parametrize("language", ["en", "fr"])
+@pytest.mark.parametrize("answer", ["unreadable", "empty object", "wrapped spine"])
+async def test_a_story_without_model_content_is_never_published(raw, language, answer):
+    """No attempt the builder could use anything of: a draft that says why, not a story."""
+    ctx = _with_course_misconceptions(make_ctx(raw, language))
+    response = {
+        "unreadable": _UNREADABLE,
+        "empty object": {},
+        "wrapped spine": {"story_spine": raw[language]["spine"]},
+    }[answer]
+    model = FakeClaude(response)
+    generation = await StoryFromLessonService(model).generate_document(ctx, system_prompt="system")
+
+    assert generation.model_calls == 3
+    assert not generation.report.ok
+    assert [e.code for e in generation.report.errors] == ["no_model_content"]
+    assert generation.doc["checks"]["errors"] == 1
+    # Its copies are kept on record, as the warnings they would settle into.
+    assert generation.report.warnings
+    assert {w.code for w in generation.report.warnings} == {"missing_translation"}
+    if answer == "unreadable":
+        assert "could not be read as JSON" in model.messages[1]
+    else:
+        # Readable but unusable: told so, not handed the empty build's copies.
+        assert "- [empty_spine]" in model.messages[1]
+        assert "- [missing_translation]" not in model.messages[1]
+
+
+async def test_a_story_without_model_content_is_stored_as_a_draft(raw):
+    """The API then answers 409 until the lesson or quiz changes."""
+    module, unit = _module_and_unit()
+    lesson = _content_row(raw["en"]["lesson"], 2, 1)
+    quiz_content = copy.deepcopy(raw["en"]["quiz"])
+    for question in quiz_content["questions"]:
+        question["option_misconceptions"] = [
+            None if index == question["correct_answer"] else f"Believes {option!r} is right."
+            for index, option in enumerate(question["options"])
+        ]
+    quiz = _content_row(quiz_content, 1, 2)
+    session = FakeSession(
+        FakeResult(module),
+        FakeResult(unit),
+        FakeResult(None),
+        FakeResult(rows=[lesson]),
+        FakeResult(rows=[quiz]),
+        FakeResult(None),
+    )
+    model = FakeClaude(_UNREADABLE)
+    record = await StoryFromLessonService(model).get_or_generate_unit_story(
+        MODULE_ID, "1.2", "en", session
+    )
+    assert len(model.messages) == 3 and session.commits == 1
+    assert record.status == "draft" and record.is_valid is False
+    assert [e["code"] for e in record.validation_report["errors"]] == ["no_model_content"]
+    assert record.source_quiz_digest == content_digest(quiz.content)
+
+
+def _choice_without_misconception(number: int) -> dict[str, Any]:
+    return {
+        "id": f"x{number}",
+        "type": "choice",
+        "objective": "o2",
+        "prompt": {
+            "en": f"Which drug treats it (case {number})?",
+            "fr": f"Quel médicament ({number}) ?",
+        },
+        "choices": [
+            {"id": "a", "en": "ACT", "fr": "CTA"},
+            {"id": "b", "en": "Aspirin", "fr": "Aspirine"},
+        ],
+        "answer": "a",
+    }
+
+
+async def test_when_the_best_attempt_cannot_be_salvaged_the_next_one_is(raw):
+    """Best first, then the next: a draft only when no attempt can be published."""
+    too_few = _picks_nothing(raw)  # too_few_questions: one error, nothing to drop
+    two_bad = picking_spine(raw, "en")  # two errors, both on questions that can go
+    two_bad["questions"] += [_choice_without_misconception(2), _choice_without_misconception(3)]
+    model = FakeClaude(too_few, two_bad)
+    generation = await StoryFromLessonService(model).generate_document(
+        covering_ctx(raw, "en"), system_prompt="system"
+    )
+
+    assert generation.model_calls == 3
+    assert generation.report.ok, [e.model_dump() for e in generation.report.errors]
+    assert generation.salvaged and generation.dropped["questions"] == ["x2", "x3"]
+    assert [q["id"] for q in generation.doc["questions"]] == ["q2", "q3", "q4", "q5", "x1"]
 
 
 class _UnreadableProvider:
