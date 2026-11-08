@@ -11,8 +11,9 @@ It deliberately has no generator of its own: each row goes through
 the cached row in place with the current prompts. Around that call it:
 
 * skips manually edited rows (an admin's edit is never overwritten) and, unless
-  ``force``, rows whose every question already carries misconceptions — so a
-  re-run after a partial failure only redoes what is still missing;
+  ``force``, rows whose every wrong option already names a misconception — so
+  a re-run after a partial failure only redoes what is still missing (blank
+  misconceptions count as missing, see :func:`has_misconceptions`);
 * skips legacy rows (``module_unit_id IS NULL``, keyed by the ``unit_id``
   string) whose unit now resolves to a module_unit that already has its own
   FK-keyed quiz row for the same language, level and country
@@ -88,15 +89,32 @@ def _safe_uuid(value: str | uuid.UUID | None) -> uuid.UUID | None:
 
 
 def has_misconceptions(content: Any) -> bool:
-    """True when every question of a stored quiz carries ``option_misconceptions``."""
+    """True when every wrong option of every question names its misconception.
+
+    Judged by the audit's own rule (``mcq_checks``), not by the field's mere
+    presence: a list of blanks (``[None] * 4``, what an empty or blank model
+    answer normalises to) or a partly blank one is reported by the audit as
+    ``distractor_without_misconception``, so it counts as missing here and a
+    re-run without ``force`` redoes the quiz. A malformed question counts as
+    missing too.
+    """
+    from app.domain.services import mcq_checks
+
     if not isinstance(content, dict):
         return False
     questions = content.get("questions")
     if not isinstance(questions, list) or not questions:
         return False
-    return all(
-        isinstance(q, dict) and isinstance(q.get("option_misconceptions"), list) for q in questions
-    )
+    for question in questions:
+        if not isinstance(question, dict):
+            return False
+        try:
+            view = mcq_checks.from_quiz_question(question)
+        except mcq_checks.McqShapeError:
+            return False
+        if mcq_checks.check_distractor_misconceptions(view):
+            return False
+    return True
 
 
 async def regenerate_quiz_row(

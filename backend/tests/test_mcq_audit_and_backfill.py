@@ -895,3 +895,47 @@ class TestHasMisconceptions:
         assert not quiz_backfill.has_misconceptions({"questions": [_question(), _legacy("q2")]})
         assert not quiz_backfill.has_misconceptions({"questions": []})
         assert not quiz_backfill.has_misconceptions("nope")
+
+    @pytest.mark.parametrize(
+        "misconceptions",
+        [
+            [None, None, None, None],
+            [],
+            ["", "  ", None, ""],
+            ["Thinks cholera is mosquito-borne", None, None, "TB myth"],
+        ],
+        ids=["all-none", "empty-list", "blank-strings", "partly-blank"],
+    )
+    def test_blank_misconceptions_count_as_missing(self, misconceptions):
+        """What the audit reports as distractor_without_misconception, a
+        re-run must redo: it is not "carrying misconceptions"."""
+        content = {
+            "questions": [_question(), _question("q2", option_misconceptions=misconceptions)]
+        }
+        assert not quiz_backfill.has_misconceptions(content)
+        assert not build_mcq_audit(
+            COURSE_ID, [(_gc("fr", content["questions"], unit_uuid=uuid.uuid4()), "1.2")]
+        ).ok
+
+    @pytest.mark.parametrize(
+        "question",
+        [
+            {"id": "q1", "question": "?", "options": "Cholera", "correct_answer": 0},
+            {"id": "q1", "question": "?", "options": ["a", "b"], "correct_answer": 5},
+            "not a question",
+        ],
+    )
+    def test_a_malformed_question_counts_as_missing(self, question):
+        assert not quiz_backfill.has_misconceptions({"questions": [_question(), question]})
+
+    async def test_a_quiz_with_blank_misconceptions_is_regenerated_without_force(self):
+        blank = _question(option_misconceptions=[None, None, None, None])
+        gc = _gc("fr", [blank, _question("q2")], unit_uuid=uuid.uuid4())
+        service = _quiz_service(gc)
+
+        outcome = await quiz_backfill.regenerate_quiz_row(
+            _row_session(gc, SimpleNamespace(unit_number="1.2")), service, gc.id
+        )
+
+        assert outcome == "regenerated"
+        service.get_or_generate_quiz.assert_awaited_once()
