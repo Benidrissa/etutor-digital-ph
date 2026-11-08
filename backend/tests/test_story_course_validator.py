@@ -306,6 +306,26 @@ class TestChoiceQuestionsSharedMcqChecks:
         q1["prompt"]["en"] = "Nine is not prime. Which one of these is a prime number?"
         assert "answer_leak" not in codes(course)
 
+    def test_an_either_or_prompt_and_hint_are_not_leaks(self, course):
+        """Naming the answer next to a distractor compares them; it does not
+        single the answer out."""
+        q1 = _wordy_choice_question(course)
+        q1["prompt"] = {
+            "en": "Which is prime: nine or thirteen?",
+            "fr": "Lequel est premier : neuf ou treize ?",
+        }
+        q1["hints"] = [
+            {"en": "Divide nine and thirteen by 3.", "fr": "Divise neuf et treize par 3."}
+        ]
+        assert "answer_leak" not in codes(course)
+
+    def test_a_hint_naming_only_the_answer_still_leaks_beside_a_comparison_prompt(self, course):
+        q1 = _wordy_choice_question(course)
+        q1["prompt"]["en"] = "Which is prime: nine or thirteen?"
+        q1["hints"] = [{"en": "It is thirteen.", "fr": "Regarde bien."}]
+        leaks = [e for e in validate(course).errors if e.code == "answer_leak"]
+        assert [e.path for e in leaks] == ["questions[q1].hints[0].en"]
+
     def test_duplicate_choice_text(self, course):
         q1 = _wordy_choice_question(course)
         find(q1["choices"], "id", "d")["en"] = "thirteen."
