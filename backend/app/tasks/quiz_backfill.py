@@ -21,8 +21,11 @@ the cached row in place with the current prompts. Around that call it:
 * writes a ``generated_content_revisions`` pre-image (trigger ``mcq_backfill``)
   first, so a regeneration that reads worse can be rolled back and answers to
   the old revision stay gradeable;
-* marks the row ``quality_status="pending"`` afterwards, because the quality
-  agent's score described the old text;
+* marks the row ``quality_status="pending"``, because the quality agent's
+  score described the old text. The flag is set before the generator runs, so
+  the generator's own commit persists it together with the overwrite and the
+  pre-image: no failure after that commit can leave the new text with the old
+  status (a re-run would skip the row, which now carries misconceptions);
 * attributes the AI spend to ``quiz_generation`` with the course and the
   admin who asked, through the usage-ledger context.
 
@@ -163,13 +166,20 @@ async def regenerate_quiz_row(
     # Pre-image first, so the overwrite can be rolled back and answers to this
     # revision stay gradeable. One per (row, revision): skipped if one exists.
     revision = current_revision(gc)
+    previous_status = gc.quality_status
     if overwrites_this_row:
         await ensure_pre_image(
             session, gc, trigger=REVISION_TRIGGER, triggered_by_user_id=triggered_by_user_id
         )
+        # The quality agent's score describes the text about to be replaced.
+        # Flagged now so the generator's commit carries it with the overwrite;
+        # flushed because the generator re-reads the row (populate_existing),
+        # which would drop an unflushed change.
+        gc.quality_status = "pending"
+        await session.flush()
 
     # The existing regeneration path; it commits the overwrite (and the
-    # pending pre-image with it).
+    # pending pre-image and quality flag with it).
     await quiz_service.get_or_generate_quiz(
         module_id=gc.module_id,
         unit_id=unit_id,
@@ -186,9 +196,11 @@ async def regenerate_quiz_row(
         # The generator wrote somewhere else (e.g. a legacy row keyed by the
         # unit_id string while the unit now resolves to a module_unit FK).
         logger.warning("mcq_backfill.not_overwritten", content_id=str(content_id))
+        if overwrites_this_row:
+            # Its text did not change, so neither does its quality status.
+            gc.quality_status = previous_status
+            await session.commit()
         return "not_overwritten"
-    gc.quality_status = "pending"
-    await session.commit()
     return "regenerated"
 
 

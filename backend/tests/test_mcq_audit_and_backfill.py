@@ -464,16 +464,27 @@ def _row_session(gc, unit=None, *, revision_exists=False):
     session.execute = AsyncMock(return_value=revision_lookup)
     session.add = MagicMock()
     session.refresh = AsyncMock()
+    session.flush = AsyncMock()
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
     return session
 
 
-def _quiz_service(gc, *, overwrite=True):
+def _quiz_service(gc, *, overwrite=True, committed=None):
+    """The generator: overwrites the row in place and commits, as the real one.
+
+    ``committed`` collects ``(quality_status, flushes_so_far)`` as of that
+    commit: what the database holds once the overwrite is persisted.
+    """
+
     async def regenerate(**kwargs):
         if overwrite:
             gc.content = {"title": "New", "questions": [_question()], "unit_id": "1.2"}
             gc.content_revision += 1
+        session = kwargs["session"]
+        if committed is not None:
+            committed.append((gc.quality_status, session.flush.await_count))
+        await session.commit()
 
     service = MagicMock()
     service.get_or_generate_quiz = AsyncMock(side_effect=regenerate)
@@ -579,12 +590,72 @@ class TestRegenerateQuizRow:
 
     async def test_a_write_that_missed_the_row_is_not_counted_as_done(self):
         gc = _gc("fr", [_legacy()], unit_uuid=uuid.uuid4())
+        session = _row_session(gc, SimpleNamespace(unit_number="1.2"))
         outcome = await quiz_backfill.regenerate_quiz_row(
-            _row_session(gc, SimpleNamespace(unit_number="1.2")),
-            _quiz_service(gc, overwrite=False),
-            gc.id,
+            session, _quiz_service(gc, overwrite=False), gc.id
         )
         assert outcome == "not_overwritten"
+        # Flagged for the overwrite that did not happen, then put back.
+        assert gc.quality_status == "passing"
+        assert session.commit.await_count == 2
+
+
+class TestOverwriteAndPendingFlagAreOneCommit:
+    """The quality agent's score describes the old text, so a regenerated row
+    must be ``pending``. That flag used to be a second commit after the
+    generator's: a failure in between (a DB blip, the soft time limit) left
+    the new text with the old ``passing`` status, and a re-run skipped the
+    row because it now carries misconceptions, so it was never flagged."""
+
+    async def test_the_generator_commit_carries_the_pending_flag(self):
+        gc = _gc("fr", [_legacy("q1")], unit_uuid=uuid.uuid4())
+        session = _row_session(gc, SimpleNamespace(unit_number="1.2"))
+        committed: list = []
+
+        outcome = await quiz_backfill.regenerate_quiz_row(
+            session, _quiz_service(gc, committed=committed), gc.id
+        )
+
+        assert outcome == "regenerated"
+        # Flagged and flushed before the generator re-reads the row
+        # (populate_existing would drop an unflushed change).
+        assert committed == [("pending", 1)]
+        assert gc.quality_status == "pending"
+
+    async def test_a_failure_after_the_overwrite_leaves_the_row_flagged(self):
+        gc = _gc("fr", [_legacy("q1")], unit_uuid=uuid.uuid4())
+        session = _row_session(gc, SimpleNamespace(unit_number="1.2"))
+        committed: list = []
+
+        async def refresh(obj, **kwargs):
+            if not kwargs.get("with_for_update"):
+                raise ConnectionError("connection lost after the generator's commit")
+
+        session.refresh = AsyncMock(side_effect=refresh)
+
+        with pytest.raises(ConnectionError):
+            await quiz_backfill.regenerate_quiz_row(
+                session, _quiz_service(gc, committed=committed), gc.id
+            )
+
+        # What the database holds: the overwrite (revision 2) and the flag.
+        assert gc.content_revision == 2
+        assert committed == [("pending", 1)]
+        # A re-run skips the row (it carries misconceptions now), and that is
+        # fine: it is already pending.
+        assert quiz_backfill.has_misconceptions(gc.content)
+
+    async def test_a_legacy_row_the_generator_does_not_write_is_never_flagged(self):
+        gc = _gc("fr", [_legacy("q1")], unit_uuid=None)
+        session = _legacy_session(gc, module_unit_id=uuid.uuid4(), fk_row=None)
+        committed: list = []
+
+        outcome = await quiz_backfill.regenerate_quiz_row(
+            session, _quiz_service(gc, overwrite=False, committed=committed), gc.id
+        )
+
+        assert outcome == "not_overwritten"
+        assert committed == [("passing", 0)]
         assert gc.quality_status == "passing"
 
 

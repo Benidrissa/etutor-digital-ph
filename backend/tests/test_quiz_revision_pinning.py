@@ -324,6 +324,7 @@ class TestUnrevisionedSubmissions:
         from app.tasks import quiz_backfill
 
         row = _row(revision=1, key=REV1_KEY)
+        row.quality_status = "passing"
         offline_copy = copy.deepcopy(row.content)  # no content_revision in it
         session = FakeSession(row=row)
 
@@ -336,7 +337,7 @@ class TestUnrevisionedSubmissions:
         service = MagicMock()
         service.get_or_generate_quiz = AsyncMock(side_effect=regenerate)
         assert await quiz_backfill.regenerate_quiz_row(session, service, row.id) == "regenerated"
-        assert row.content_revision == 2
+        assert (row.content_revision, row.quality_status) == (2, "pending")
         assert (row.id, 1) in session.pre_images  # the backfill's own pre-image
 
         # Answered offline from the old copy, synced two hours later. An older
