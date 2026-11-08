@@ -629,6 +629,11 @@ class McqAuditRow(BaseModel):
     is_manually_edited: bool = False
     questions_checked: int = 0
     has_option_misconceptions: bool = False
+    #: A legacy row (``module_unit_id IS NULL``) whose unit has its own
+    #: FK-keyed quiz row for the same language, level and country. It is never
+    #: served and the backfill skips it, so it does not count against
+    #: ``fully_checked``.
+    superseded_by_fk_row: bool = False
     errors: list[ValidationIssue] = Field(default_factory=list)
     warnings: list[ValidationIssue] = Field(default_factory=list)
 
@@ -646,6 +651,9 @@ class McqAuditSummary(BaseModel):
     #: Questions whose correct option is too short to leak-check.
     short_answer_leak_unchecked: int = 0
     parity_warning_count: int = 0
+    #: Legacy rows superseded by an FK-keyed row (see ``McqAuditRow``). They
+    #: are still counted above but ignored by ``fully_checked``.
+    rows_superseded_by_fk_row: int = 0
 
 
 class McqAuditResponse(BaseModel):
@@ -653,7 +661,9 @@ class McqAuditResponse(BaseModel):
 
     ``ok`` means zero errors. It is NOT a clean bill of health on its own:
     ``fully_checked`` is false whenever some questions could not be checked
-    for misconceptions or for leaks (see the summary counts).
+    for misconceptions or for leaks (see the summary counts). Rows superseded
+    by an FK-keyed row are left out of ``fully_checked``: no learner sees them
+    and the backfill cannot (and should not) change them.
     """
 
     course_id: uuid.UUID
@@ -678,13 +688,31 @@ def build_mcq_audit(
     ``entries`` are ``(generated_content_row, unit_label)`` pairs, newest row
     first within each unit/language — the newest is the one compared for
     cross-language parity, matching the cache's ``ORDER BY generated_at DESC``.
+    ``unit_label`` is the unit number (from the module_unit for FK-keyed rows,
+    the ``unit_id`` string for legacy rows), which is how a legacy row is
+    matched to the FK-keyed row that supersedes it.
     """
     summary = McqAuditSummary()
     rows: list[McqAuditRow] = []
     groups: dict[tuple, dict[str, Any]] = {}
     group_labels: dict[tuple, str] = {}
+    unchecked_live = 0
+
+    # The keys FK-keyed rows occupy. A legacy row with the same module, unit
+    # number, language, level and country resolves to that FK row: the cache
+    # serves the FK row and regeneration overwrites it, never the legacy one.
+    fk_keys = {
+        (gc.module_id, unit_label, gc.language, gc.level, gc.country_context)
+        for gc, unit_label in entries
+        if gc.module_unit_id is not None
+    }
 
     for gc, unit_label in entries:
+        superseded = (
+            gc.module_unit_id is None
+            and unit_label != "summative"
+            and (gc.module_id, unit_label, gc.language, gc.level, gc.country_context) in fk_keys
+        )
         content = gc.content
         if isinstance(content, dict):
             issues = mcq_checks.check_quiz_content(content)
@@ -702,6 +730,7 @@ def build_mcq_audit(
             question_count = 0
 
         lacking = sum(1 for i in issues if i.code == mcq_checks.MISCONCEPTIONS_UNCHECKED)
+        short = sum(1 for i in issues if i.code == mcq_checks.LEAK_UNCHECKED_SHORT_ANSWER)
         errors = [i for i in issues if i.severity == "error"]
         warnings = [i for i in issues if i.severity != "error"]
         rows.append(
@@ -716,6 +745,7 @@ def build_mcq_audit(
                 is_manually_edited=bool(gc.is_manually_edited),
                 questions_checked=question_count,
                 has_option_misconceptions=question_count > 0 and lacking == 0,
+                superseded_by_fk_row=superseded,
                 errors=errors,
                 warnings=warnings,
             )
@@ -727,9 +757,11 @@ def build_mcq_audit(
         summary.warning_count += len(warnings)
         summary.rows_lacking_option_misconceptions += 1 if lacking else 0
         summary.questions_lacking_option_misconceptions += lacking
-        summary.short_answer_leak_unchecked += sum(
-            1 for i in issues if i.code == mcq_checks.LEAK_UNCHECKED_SHORT_ANSWER
-        )
+        summary.short_answer_leak_unchecked += short
+        summary.rows_superseded_by_fk_row += 1 if superseded else 0
+        if superseded:
+            continue  # never served: not compared across languages either
+        unchecked_live += lacking + short
 
         key = (gc.module_unit_id or (gc.module_id, unit_label), gc.level, gc.country_context)
         group_labels[key] = f"units[{unit_label}][level={gc.level},country={gc.country_context}]"
@@ -747,10 +779,7 @@ def build_mcq_audit(
         course_id=course_id,
         language=language,
         ok=summary.error_count == 0,
-        fully_checked=(
-            summary.questions_lacking_option_misconceptions == 0
-            and summary.short_answer_leak_unchecked == 0
-        ),
+        fully_checked=unchecked_live == 0,
         summary=summary,
         rows=rows,
         parity=parity,

@@ -13,8 +13,14 @@ the cached row in place with the current prompts. Around that call it:
 * skips manually edited rows (an admin's edit is never overwritten) and, unless
   ``force``, rows whose every question already carries misconceptions — so a
   re-run after a partial failure only redoes what is still missing;
+* skips legacy rows (``module_unit_id IS NULL``, keyed by the ``unit_id``
+  string) whose unit now resolves to a module_unit that already has its own
+  FK-keyed quiz row for the same language, level and country
+  (``superseded_by_fk_row``): the generator would regenerate and overwrite
+  that FK row, never the legacy one, so every run would spend AI on it again;
 * writes a ``generated_content_revisions`` pre-image (trigger ``mcq_backfill``)
-  first, so a regeneration that reads worse can be rolled back;
+  first, so a regeneration that reads worse can be rolled back and answers to
+  the old revision stay gradeable;
 * marks the row ``quality_status="pending"`` afterwards, because the quality
   agent's score described the old text;
 * attributes the AI spend to ``quiz_generation`` with the course and the
@@ -23,7 +29,10 @@ the cached row in place with the current prompts. Around that call it:
 Rows are processed one at a time, each in its own session and transaction, so
 one failure (or a second, concurrent run) never leaves another row half
 written. A Redis lock keyed by course keeps a second click from dispatching a
-second run while one is in flight; the task releases it when done.
+second run while one is in flight; the task releases it when done. When
+Celery's soft time limit interrupts a run, it stops at the current row and
+returns the counts so far (``status="time_limit_exceeded"``); a re-run picks
+up what is still missing.
 """
 
 from __future__ import annotations
@@ -35,6 +44,7 @@ from collections import Counter
 from typing import Any
 
 import structlog
+from celery.exceptions import SoftTimeLimitExceeded
 
 from app.ai.usage_context import set_ai_context
 from app.tasks.celery_app import celery_app
@@ -54,6 +64,7 @@ OUTCOMES = (
     "skipped_manually_edited",
     "skipped_has_misconceptions",
     "skipped_no_country",
+    "superseded_by_fk_row",
     "not_overwritten",
     "missing",
     "failed",
@@ -94,11 +105,11 @@ async def regenerate_quiz_row(
     triggered_by_user_id: uuid.UUID | None = None,
 ) -> str:
     """Regenerate one stored quiz row in place; return its outcome (see ``OUTCOMES``)."""
-    from sqlalchemy import select
-
     from app.domain.models.content import GeneratedContent
-    from app.domain.models.course_quality import GeneratedContentRevision
     from app.domain.models.module_unit import ModuleUnit
+    from app.domain.services._unit_resolution import SUMMATIVE_SENTINEL, resolve_module_unit_id
+    from app.domain.services.content_revisions import current_revision, ensure_pre_image
+    from app.domain.services.lesson_service import find_in_place_target
 
     gc = await session.get(GeneratedContent, content_id)
     if gc is None or gc.content_type != "quiz":
@@ -121,27 +132,35 @@ async def regenerate_quiz_row(
     questions = content.get("questions")
     num_questions = len(questions) if isinstance(questions, list) and questions else None
 
-    # Pre-image first, so the overwrite can be rolled back. One per
-    # (row, revision): skip if the quality loop already wrote this one.
-    revision = gc.content_revision or 1
-    already = await session.execute(
-        select(GeneratedContentRevision.id).where(
-            GeneratedContentRevision.generated_content_id == gc.id,
-            GeneratedContentRevision.revision == revision,
-        )
-    )
-    if already.scalars().first() is None:
-        session.add(
-            GeneratedContentRevision(
-                generated_content_id=gc.id,
-                revision=revision,
-                content=gc.content,
-                sources_cited=gc.sources_cited,
-                quality_score_before=gc.quality_score,
-                quality_flags_before=gc.quality_flags,
-                trigger=REVISION_TRIGGER,
-                triggered_by_user_id=triggered_by_user_id,
+    # A legacy row keyed by the unit_id string: once the unit resolves to a
+    # module_unit, the generator reads and writes the FK-keyed row for it and
+    # never this one. If that FK row exists, this row is dead weight —
+    # regenerating would overwrite the FK row (which may already be fine) and
+    # leave this one exactly as it is, on every run.
+    overwrites_this_row = True
+    if gc.module_unit_id is None and unit_id != SUMMATIVE_SENTINEL:
+        module_unit_uuid = await resolve_module_unit_id(session, gc.module_id, unit_id)
+        if module_unit_uuid is not None:
+            fk_row = await find_in_place_target(
+                session,
+                module_unit_uuid=module_unit_uuid,
+                content_type="quiz",
+                language=gc.language,
+                level=gc.level,
+                country_context=gc.country_context,
             )
+            if fk_row is not None:
+                return "superseded_by_fk_row"
+            # No FK row yet: the generator creates one; this row is untouched,
+            # so it gets no pre-image (it would sit at an unchanged revision).
+            overwrites_this_row = False
+
+    # Pre-image first, so the overwrite can be rolled back and answers to this
+    # revision stay gradeable. One per (row, revision): skipped if one exists.
+    revision = current_revision(gc)
+    if overwrites_this_row:
+        await ensure_pre_image(
+            session, gc, trigger=REVISION_TRIGGER, triggered_by_user_id=triggered_by_user_id
         )
 
     # The existing regeneration path; it commits the overwrite (and the
@@ -158,7 +177,7 @@ async def regenerate_quiz_row(
     )
 
     await session.refresh(gc)
-    if (gc.content_revision or 1) == revision:
+    if current_revision(gc) == revision:
         # The generator wrote somewhere else (e.g. a legacy row keyed by the
         # unit_id string while the unit now resolves to a module_unit FK).
         logger.warning("mcq_backfill.not_overwritten", content_id=str(content_id))
@@ -194,31 +213,48 @@ async def run_backfill(
 
     counts: Counter[str] = Counter({outcome: 0 for outcome in OUTCOMES})
     failures: list[dict] = []
-    for index, content_id in enumerate(content_ids, start=1):
-        async with session_factory() as session:
-            try:
-                outcome = await regenerate_quiz_row(
-                    session,
-                    quiz_service,
-                    content_id,
-                    force=force,
-                    triggered_by_user_id=triggered_by_user_id,
-                )
-            except Exception as exc:  # one bad row must not stop the course
-                await session.rollback()
-                outcome = "failed"
-                failures.append({"content_id": str(content_id), "error": str(exc)[:300]})
-                logger.warning(
-                    "mcq_backfill.row_failed", content_id=str(content_id), error=str(exc)
-                )
-        counts[outcome] += 1
-        if on_progress is not None:
-            on_progress({"done": index, "total": len(content_ids), **counts})
+    done = 0
+    run_status = "complete"
+    try:
+        for content_id in content_ids:
+            async with session_factory() as session:
+                try:
+                    outcome = await regenerate_quiz_row(
+                        session,
+                        quiz_service,
+                        content_id,
+                        force=force,
+                        triggered_by_user_id=triggered_by_user_id,
+                    )
+                except SoftTimeLimitExceeded:
+                    # Celery's soft time limit, not this row's fault: stop here.
+                    # Leaving the session block rolls the row's work back.
+                    raise
+                except Exception as exc:  # one bad row must not stop the course
+                    await session.rollback()
+                    outcome = "failed"
+                    failures.append({"content_id": str(content_id), "error": str(exc)[:300]})
+                    logger.warning(
+                        "mcq_backfill.row_failed", content_id=str(content_id), error=str(exc)
+                    )
+            counts[outcome] += 1
+            done += 1
+            if on_progress is not None:
+                on_progress({"done": done, "total": len(content_ids), **counts})
+    except SoftTimeLimitExceeded:
+        run_status = "time_limit_exceeded"
+        logger.warning(
+            "mcq_backfill.soft_time_limit",
+            course_id=str(course_id),
+            done=done,
+            total=len(content_ids),
+        )
 
     return {
-        "status": "complete",
+        "status": run_status,
         "course_id": str(course_id),
         "total": len(content_ids),
+        "done": done,
         **counts,
         "failures": failures[:20],
     }
@@ -273,8 +309,11 @@ def backfill_course_quiz_misconceptions(
     from app.infrastructure.config.settings import settings
 
     task_id = self.request.id
+    last_progress: dict = {}
 
     def progress(meta: dict) -> None:
+        last_progress.clear()
+        last_progress.update(meta)
         with contextlib.suppress(Exception):  # progress is best-effort
             self.update_state(state="PROGRESS", meta=meta)
 
@@ -305,6 +344,17 @@ def backfill_course_quiz_misconceptions(
     logger.info("mcq_backfill.start", course_id=course_id, force=force, task_id=task_id)
     try:
         result = asyncio.run(_run())
+    except SoftTimeLimitExceeded:
+        # The limit fired outside run_backfill's row loop (which returns its own
+        # partial counts): report the last progress seen. The lock is still
+        # released below.
+        logger.warning("mcq_backfill.soft_time_limit", course_id=course_id, task_id=task_id)
+        return {
+            "status": "time_limit_exceeded",
+            "course_id": course_id,
+            **dict.fromkeys(OUTCOMES, 0),
+            **last_progress,
+        }
     except Exception as exc:
         logger.error("mcq_backfill.failed", course_id=course_id, error=str(exc), task_id=task_id)
         return {"status": "failed", "course_id": course_id, "error": str(exc)}

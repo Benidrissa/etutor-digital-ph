@@ -155,6 +155,50 @@ class TestBuildMcqAudit:
         fr.country_context = "CI"
         assert build_mcq_audit(COURSE_ID, [(en, "1.2"), (fr, "1.2")]).parity == []
 
+    def test_superseded_legacy_rows_do_not_block_fully_checked(self):
+        """A legacy row whose unit has its own FK-keyed row is never served and
+        the backfill skips it: it must not keep fully_checked false forever."""
+        module_id = uuid.uuid4()
+        fk_row = _gc("en", [_question("q1")], unit_uuid=uuid.uuid4(), module_id=module_id)
+        legacy = _gc("en", [_legacy("q1"), _legacy("q2")], module_id=module_id)
+        legacy_fr = _gc("fr", [_legacy("q1")], module_id=module_id)  # no FR FK row
+
+        report = build_mcq_audit(COURSE_ID, [(fk_row, "1.2"), (legacy, "1.2")])
+        assert [row.superseded_by_fk_row for row in report.rows] == [False, True]
+        assert report.summary.rows_superseded_by_fk_row == 1
+        assert report.fully_checked is True
+        # Still reported, just not held against the course.
+        assert report.summary.questions_lacking_option_misconceptions == 2
+        assert report.rows[1].warnings
+
+        report = build_mcq_audit(COURSE_ID, [(fk_row, "1.2"), (legacy, "1.2"), (legacy_fr, "1.2")])
+        assert [row.superseded_by_fk_row for row in report.rows] == [False, True, False]
+        assert report.fully_checked is False
+
+    @pytest.mark.parametrize(
+        "mutate",
+        [
+            lambda gc: setattr(gc, "country_context", "CI"),
+            lambda gc: setattr(gc, "level", 2),
+            lambda gc: setattr(gc, "module_id", uuid.uuid4()),
+        ],
+    )
+    def test_only_the_exact_fk_key_supersedes(self, mutate):
+        module_id = uuid.uuid4()
+        fk_row = _gc("en", [_question("q1")], unit_uuid=uuid.uuid4(), module_id=module_id)
+        legacy = _gc("en", [_legacy("q1")], module_id=module_id)
+        mutate(legacy)
+        report = build_mcq_audit(COURSE_ID, [(fk_row, "1.2"), (legacy, "1.2")])
+        assert report.rows[1].superseded_by_fk_row is False
+        assert report.fully_checked is False
+
+    def test_summative_rows_are_never_superseded(self):
+        module_id = uuid.uuid4()
+        summative = _gc("en", [_legacy("q1")], module_id=module_id)
+        summative.content["unit_id"] = "summative"
+        report = build_mcq_audit(COURSE_ID, [(summative, "summative")])
+        assert report.rows[0].superseded_by_fk_row is False
+
 
 # ── Audit: the endpoint is report-only ───────────────────────────────────────
 
@@ -497,6 +541,78 @@ class TestRegenerateQuizRow:
         assert gc.quality_status == "passing"
 
 
+def _legacy_session(gc, *, module_unit_id, fk_row):
+    """Routes the unit resolution and the FK-row lookup by the entity selected."""
+    from app.domain.models.course_quality import GeneratedContentRevision
+    from app.domain.models.module_unit import ModuleUnit
+
+    session = _row_session(gc)
+
+    async def execute(stmt):
+        entity = stmt.column_descriptions[0]["entity"]
+        result = MagicMock()
+        if entity is ModuleUnit:
+            result.scalar_one_or_none.return_value = module_unit_id
+        elif entity is GeneratedContentRevision:
+            result.scalars.return_value.first.return_value = None
+        else:  # the FK-keyed quiz row for the same key
+            result.scalars.return_value.first.return_value = fk_row
+        return result
+
+    session.execute = AsyncMock(side_effect=execute)
+    return session
+
+
+class TestLegacyRowsSupersededByFkRows:
+    """``module_unit_id IS NULL`` rows keyed by the unit_id string.
+
+    Once the unit resolves to a module_unit, the generator reads and writes
+    the FK-keyed row and never touches the legacy one. Regenerating it spent
+    AI on every run, overwrote the FK row, and left a pre-image at the legacy
+    row's unchanged revision that later collided on ``uq_genc_revision``.
+    """
+
+    async def test_skipped_when_the_fk_row_exists(self):
+        gc = _gc("fr", [_legacy("q1")], unit_uuid=None)
+        session = _legacy_session(gc, module_unit_id=uuid.uuid4(), fk_row=_gc("fr", []))
+        service = _quiz_service(gc)
+
+        outcome = await quiz_backfill.regenerate_quiz_row(session, service, gc.id, force=True)
+
+        assert outcome == "superseded_by_fk_row"
+        service.get_or_generate_quiz.assert_not_called()
+        session.add.assert_not_called()
+        session.commit.assert_not_awaited()
+
+    async def test_without_an_fk_row_it_is_generated_but_gets_no_pre_image(self):
+        """The generator INSERTs the FK row; the legacy row is untouched, so a
+        pre-image of it would sit at its unchanged revision."""
+        gc = _gc("fr", [_legacy("q1")], unit_uuid=None)
+        session = _legacy_session(gc, module_unit_id=uuid.uuid4(), fk_row=None)
+        service = _quiz_service(gc, overwrite=False)
+
+        outcome = await quiz_backfill.regenerate_quiz_row(session, service, gc.id)
+
+        assert outcome == "not_overwritten"
+        service.get_or_generate_quiz.assert_awaited_once()
+        session.add.assert_not_called()
+
+    async def test_a_unit_that_no_longer_resolves_is_overwritten_in_place(self):
+        """The generator falls back to the module-scoped key: this very row."""
+        gc = _gc("fr", [_legacy("q1")], unit_uuid=None)
+        session = _legacy_session(gc, module_unit_id=None, fk_row=None)
+
+        outcome = await quiz_backfill.regenerate_quiz_row(session, _quiz_service(gc), gc.id)
+
+        assert outcome == "regenerated"
+        (pre_image,) = [c.args[0] for c in session.add.call_args_list]
+        assert (pre_image.generated_content_id, pre_image.revision) == (gc.id, 1)
+        assert pre_image.trigger == "mcq_backfill"
+
+    async def test_superseded_is_a_reported_outcome(self):
+        assert "superseded_by_fk_row" in quiz_backfill.OUTCOMES
+
+
 class TestRunBackfill:
     async def test_one_failure_does_not_stop_the_course(self):
         ids = [uuid.uuid4(), uuid.uuid4(), uuid.uuid4()]
@@ -539,6 +655,42 @@ class TestRunBackfill:
         assert len(sessions) == 4  # one listing session + one per row
         sessions[2].rollback.assert_awaited_once()
         assert progress[-1]["done"] == 3
+
+    async def test_soft_time_limit_stops_the_run_with_partial_counts(self):
+        """Celery's SoftTimeLimitExceeded is an Exception: the per-row handler
+        used to count it as one failed row and carry on until the hard kill."""
+        from celery.exceptions import SoftTimeLimitExceeded
+
+        ids = [uuid.uuid4(), uuid.uuid4(), uuid.uuid4()]
+        listing = MagicMock()
+        listing.scalars.return_value.all.return_value = ids
+
+        @asynccontextmanager
+        async def session_factory():
+            session = MagicMock()
+            session.execute = AsyncMock(return_value=listing)
+            session.rollback = AsyncMock()
+            yield session
+
+        calls = []
+
+        async def fake_row(session, service, content_id, **kwargs):
+            calls.append(content_id)
+            if len(calls) == 2:
+                raise SoftTimeLimitExceeded()
+            return "regenerated"
+
+        with patch.object(quiz_backfill, "regenerate_quiz_row", fake_row):
+            result = await quiz_backfill.run_backfill(
+                COURSE_ID, session_factory=session_factory, quiz_service=MagicMock()
+            )
+
+        assert result["status"] == "time_limit_exceeded"
+        assert calls == ids[:2]  # stopped: the third row was never started
+        assert (result["done"], result["total"]) == (1, 3)
+        assert result["regenerated"] == 1
+        assert result["failed"] == 0
+        assert result["failures"] == []
 
 
 class TestCeleryTask:
@@ -588,6 +740,34 @@ class TestCeleryTask:
         ):
             result = quiz_backfill.backfill_course_quiz_misconceptions.run(course_id=str(COURSE_ID))
         assert result["status"] == "failed"
+        release.assert_called_once()
+
+    def test_soft_time_limit_returns_the_last_progress_and_releases_the_lock(self):
+        """If the limit fires outside run_backfill's row loop, the task still
+        reports how far it got and frees the course for the next run."""
+        from celery.exceptions import SoftTimeLimitExceeded
+
+        async def run(course_id, *, on_progress, **kwargs):
+            on_progress({"done": 2, "total": 5, "regenerated": 2})
+            raise SoftTimeLimitExceeded()
+
+        engine = MagicMock()
+        engine.dispose = AsyncMock()
+        with (
+            patch.object(quiz_backfill, "set_ai_context"),
+            patch.object(quiz_backfill, "run_backfill", run),
+            patch.object(quiz_backfill, "_release_lock") as release,
+            patch("sqlalchemy.ext.asyncio.create_async_engine", return_value=engine),
+            patch("app.ai.rag.embeddings.EmbeddingService"),
+            patch("app.ai.claude_service.ClaudeService"),
+        ):
+            task = quiz_backfill.backfill_course_quiz_misconceptions
+            with patch.object(task, "update_state"):
+                result = task.run(course_id=str(COURSE_ID))
+
+        assert result["status"] == "time_limit_exceeded"
+        assert (result["done"], result["total"], result["regenerated"]) == (2, 5, 2)
+        assert result["failed"] == 0
         release.assert_called_once()
 
 
