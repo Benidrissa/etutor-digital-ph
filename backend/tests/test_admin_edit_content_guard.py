@@ -258,6 +258,33 @@ class TestFrenchNumberTypography:
         assert row.content["questions"][1]["question"].startswith("Quelle maladie")
 
 
+class TestEitherOrStems:
+    async def test_editing_a_quiz_with_an_either_or_question_is_accepted(self):
+        """ "aux nourrissons ou aux adultes" names the answer beside a
+        distractor: a warning in the audit, never a 422 on an unrelated edit."""
+        q1 = _question(
+            "q1",
+            question="Ce vaccin est-il destiné aux nourrissons ou aux adultes ?",
+            options=["nourrissons", "adultes", "personnes âgées", "femmes enceintes"],
+            correct_answer=0,
+            option_misconceptions=[
+                None,
+                "Pense que tout vaccin vise les adultes",
+                "Confond avec le vaccin antigrippal",
+                "Confond avec le vaccin antitétanique",
+            ],
+        )
+        row = _row("quiz", _quiz(q1, _question("q2")))
+        q2 = _question("q2", explanation="Les moustiques Anopheles transmettent Plasmodium.")
+
+        response, db = await _edit(row, _quiz(copy.deepcopy(q1), q2))
+
+        assert response["is_manually_edited"] is True
+        db.commit.assert_awaited_once()
+        assert row.is_manually_edited is True
+        assert row.content["questions"][1]["explanation"].startswith("Les moustiques")
+
+
 class TestQuizEditIsANewRevision:
     """Learners may hold the quiz at its current revision when an admin edits
     it: the edit used to rewrite the answer key under that same revision, so

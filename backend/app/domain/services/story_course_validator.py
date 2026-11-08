@@ -6,7 +6,8 @@ check groups below map one-to-one onto Appendix C:
 1. structure, unique ids, every reference resolves, catalog membership
 2. answers — every ``verify`` recomputed, traps distinct, choices and marks sane
 3. languages and lengths
-4. no answer leaks into prompts or hints
+4. no answer leaks into prompts or hints (a prompt or hint naming the correct
+   choice beside a distractor is a warning: it may be comparing them)
 5. spread and coverage, and every marked-test mistake practised by a trap
 6. mini-games — the rule recomputed for every target
 7. photo checks — each exercise's own worked solution passes its checker
@@ -436,9 +437,11 @@ class StoryCourseValidator:
 
         # The shared MCQ rules, judged on the options' text. _assert_no_leak
         # cannot catch a choice leak: for a choice question its needle is the
-        # choice id ("c"), not what the learner reads. Only errors are adopted:
-        # the short-answer "not leak-checked" note is informational, and the
-        # misconception rule is already enforced above per choice.
+        # choice id ("c"), not what the learner reads. Errors are adopted, and
+        # so is the warning for a prompt or hint that names the correct choice
+        # beside a distractor (a comparison or a leak: a person decides). The
+        # short-answer "not leak-checked" note is informational and stays out,
+        # and the misconception rule is already enforced above per choice.
         for view in mcq_checks.from_story_choice_question(question):
             for issue in (
                 *mcq_checks.check_answer_leak(view),
@@ -446,6 +449,8 @@ class StoryCourseValidator:
             ):
                 if issue.severity == "error":
                     self._error(issue.code, issue.path, issue.message)
+                elif issue.code == mcq_checks.ANSWER_LEAK_AMBIGUOUS:
+                    self._warn(issue.code, issue.path, issue.message)
 
     # -- C.3 languages and lengths -----------------------------------------
 

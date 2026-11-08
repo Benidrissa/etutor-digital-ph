@@ -288,26 +288,30 @@ class TestChoiceQuestionsSharedMcqChecks:
 
     def test_correct_choice_text_in_prompt_is_a_leak(self, course):
         q1 = _wordy_choice_question(course)
-        q1["prompt"]["en"] = "Thirteen is prime. Which one of these is a prime number?"
+        q1["prompt"]["en"] = "Thirteen is prime. Which of these is a prime number?"
         report = validate(course)
         leaks = [e for e in report.errors if e.code == "answer_leak"]
         assert [e.path for e in leaks] == ["questions[q1].prompt.en"]
+        assert report.ok is False
 
-    def test_a_distractor_named_in_passing_does_not_excuse_a_leak(self, course):
-        """ "one"/"un" is a distractor here, but as a pronoun or an article it
-        does not put the options side by side: the answer is still given."""
+    def test_a_distractor_named_in_passing_is_a_warning(self, course):
+        """ "one" (three letters) counts as a named distractor, so the English
+        prompt is for a person to judge; "un" is under the leak floor, so the
+        French prompt names the answer alone and is an error."""
         q1 = _wordy_choice_question(course)
         q1["prompt"] = {
             "en": "Thirteen is prime. Which one of these is a prime number?",
             "fr": "Treize est un nombre premier. Lequel de ces nombres est un nombre premier ?",
         }
-        leaks = [e for e in validate(course).errors if e.code == "answer_leak"]
-        assert sorted(e.path for e in leaks) == [
-            "questions[q1].prompt.en",
-            "questions[q1].prompt.fr",
+        report = validate(course)
+        assert [e.path for e in report.errors if e.code == "answer_leak"] == [
+            "questions[q1].prompt.fr"
+        ]
+        assert [w.path for w in report.warnings if w.code == "answer_leak_ambiguous"] == [
+            "questions[q1].prompt.en"
         ]
 
-    def test_a_hint_naming_a_distractor_then_the_answer_leaks(self, course):
+    def test_a_hint_naming_a_distractor_then_the_answer_is_a_warning(self, course):
         q1 = _wordy_choice_question(course)
         q1["hints"] = [
             {
@@ -315,8 +319,9 @@ class TestChoiceQuestionsSharedMcqChecks:
                 "fr": "Neuf = 3 × 3, donc le nombre premier est treize.",
             }
         ]
-        leaks = [e for e in validate(course).errors if e.code == "answer_leak"]
-        assert sorted(e.path for e in leaks) == [
+        report = validate(course)
+        assert "answer_leak" not in {e.code for e in report.errors}
+        assert sorted(w.path for w in report.warnings if w.code == "answer_leak_ambiguous") == [
             "questions[q1].hints[0].en",
             "questions[q1].hints[0].fr",
         ]
@@ -332,9 +337,9 @@ class TestChoiceQuestionsSharedMcqChecks:
         q1["prompt"]["en"] = "Nine is not prime. Which one of these is a prime number?"
         assert "answer_leak" not in codes(course)
 
-    def test_an_either_or_prompt_and_hint_are_not_leaks(self, course):
-        """Naming the answer next to a distractor compares them; it does not
-        single the answer out."""
+    def test_an_either_or_prompt_and_hint_are_warnings_not_errors(self, course):
+        """Naming the answer next to a distractor may compare them: the story
+        stays publishable and the prompt is flagged for a person to read."""
         q1 = _wordy_choice_question(course)
         q1["prompt"] = {
             "en": "Which is prime: nine or thirteen?",
@@ -343,7 +348,39 @@ class TestChoiceQuestionsSharedMcqChecks:
         q1["hints"] = [
             {"en": "Divide nine and thirteen by 3.", "fr": "Divise neuf et treize par 3."}
         ]
-        assert "answer_leak" not in codes(course)
+        report = validate(course)
+        assert report.errors == [], [e.model_dump() for e in report.errors]
+        assert report.ok is True
+        assert sorted(w.path for w in report.warnings if w.code == "answer_leak_ambiguous") == [
+            "questions[q1].hints[0].en",
+            "questions[q1].hints[0].fr",
+            "questions[q1].prompt.en",
+            "questions[q1].prompt.fr",
+        ]
+
+    def test_an_either_or_prompt_with_repeated_prepositions_is_publishable(self, course):
+        """ "in children or in adults", "chez les enfants ou chez les adultes":
+        once hard errors that made the story unpublishable."""
+        q1 = find(course["questions"], "id", "q1")
+        words = {
+            "a": ("adults", "adultes"),
+            "b": ("the elderly", "personnes âgées"),
+            "c": ("children", "enfants"),
+            "d": ("newborns", "nouveau-nés"),
+        }
+        for choice in q1["choices"]:
+            choice["en"], choice["fr"] = words[choice["id"]]
+        q1["prompt"] = {
+            "en": "Is this disease more severe in children or in adults?",
+            "fr": "Cette maladie est-elle plus grave chez les enfants ou chez les adultes ?",
+        }
+        report = validate(course)
+        assert report.errors == [], [e.model_dump() for e in report.errors]
+        assert report.ok is True
+        assert sorted(w.path for w in report.warnings if w.code == "answer_leak_ambiguous") == [
+            "questions[q1].prompt.en",
+            "questions[q1].prompt.fr",
+        ]
 
     def test_a_hint_naming_only_the_answer_still_leaks_beside_a_comparison_prompt(self, course):
         q1 = _wordy_choice_question(course)

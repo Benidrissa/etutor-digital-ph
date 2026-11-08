@@ -128,6 +128,28 @@ class TestBuildMcqAudit:
         assert en_row.has_option_misconceptions is False
         assert report.rows[2].errors[0].code == "malformed_question"
 
+    def test_an_either_or_stem_is_counted_as_ambiguous_not_as_an_error(self):
+        """ "aux nourrissons ou aux adultes" names the answer beside a
+        distractor: reported for a person to read, not held against the course."""
+        either_or = _question(
+            "q1",
+            question="Ce vaccin est-il destiné aux nourrissons ou aux adultes ?",
+            options=["nourrissons", "adultes", "personnes âgées", "femmes enceintes"],
+            correct_answer=0,
+            option_misconceptions=[None, "Vise les adultes", "Antigrippal", "Antitétanique"],
+        )
+        report = build_mcq_audit(
+            COURSE_ID, [(_gc("fr", [either_or, _question("q2")], unit_uuid=uuid.uuid4()), "1.2")]
+        )
+        assert report.ok is True
+        assert report.fully_checked is True
+        assert report.rows[0].errors == []
+        assert [(w.code, w.path) for w in report.rows[0].warnings] == [
+            ("answer_leak_ambiguous", "questions[q1].question")
+        ]
+        assert report.summary.answer_leak_ambiguous == 1
+        assert report.summary.warning_count == 1
+
     def test_parity_is_warning_only_and_per_unit(self):
         unit = uuid.uuid4()
         en = _gc("en", [_question("q1"), _question("q2")], unit_uuid=unit)

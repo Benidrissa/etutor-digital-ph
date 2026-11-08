@@ -401,8 +401,77 @@ class TestFrenchNumberTypography:
         assert mcq.ANSWER_LEAK not in codes(issues)
 
 
-class TestComparisonStemsAreNotLeaks:
-    """A text that names the answer *and* a distractor does not single it out."""
+def warnings_at(issues, code) -> list[str]:
+    return [i.path for i in issues if i.code == code and i.severity == "warning"]
+
+
+def leak_view(stem: str, options, correct: int, hints=()) -> mcq.McqView:
+    return mcq.McqView(
+        stem=stem,
+        options=tuple(options),
+        correct_index=correct,
+        path="questions[q1]",
+        stem_path="questions[q1].question",
+        option_path="questions[q1].options",
+        other_texts=tuple((f"questions[q1].hints[{i}]", hint) for i, hint in enumerate(hints)),
+    )
+
+
+#: Legitimate either/or stems, each naming the correct option beside a
+#: distractor. Every one of them was a hard ``answer_leak`` at some point, and
+#: a hard error refuses an admin's edit of the quiz and blocks a story.
+EITHER_OR_STEMS = [
+    ("Which is larger: three quarters or two thirds?", ["three quarters", "two thirds"], 0),
+    ("Is this disease more severe in children or in adults?", ["children", "adults"], 0),
+    ("Is rabies transmitted to humans or to cattle mostly?", ["humans", "cattle"], 0),
+    ("Is artemether used for malaria or for cholera?", ["malaria", "cholera"], 0),
+    ("Is this a case of malaria or of dengue?", ["malaria", "dengue"], 0),
+    ("Does the infection come from water or from mosquitoes?", ["mosquitoes", "water"], 0),
+    ("Compare malaria to cholera: which is vector-borne?", ["malaria", "cholera"], 0),
+    ("Is it malaria? Or cholera?", ["malaria", "cholera"], 0),
+    ("Which is vector-borne: malaria; cholera; typhoid?", ["malaria", "cholera", "typhoid"], 0),
+    (
+        "Which is vector-borne? (a) malaria (b) cholera (c) typhoid",
+        ["malaria", "cholera", "typhoid"],
+        0,
+    ),
+    ("Ce symptôme est-il lié à la dengue ou au paludisme ?", ["paludisme", "dengue"], 0),
+    ("Ce vaccin est-il destiné aux enfants ou aux adultes ?", ["enfants", "adultes"], 0),
+    (
+        "Utilise-t-on l'artéméther pour le paludisme ou pour le choléra ?",
+        ["paludisme", "choléra"],
+        0,
+    ),
+    (
+        "La maladie est-elle plus grave chez l'enfant ou chez l'adulte ?",
+        ["enfant", "adulte"],
+        0,
+    ),
+    (
+        "Le pic survient-il en saison sèche ou en saison des pluies ?",
+        ["saison sèche", "saison des pluies"],
+        0,
+    ),
+    ("Faut-il traiter des enfants ou des adultes en priorité ?", ["enfants", "adultes"], 0),
+]
+
+
+class TestLeakSeverityIsTiered:
+    """Where the correct option is found, the severity depends on one fact.
+
+    No distractor named in that text: the answer is given away, an ERROR
+    ``answer_leak``. A distractor named there too: the text may be comparing
+    the options, so it is a WARNING ``answer_leak_ambiguous`` for a person to
+    look at. No grammar is parsed — a list of joining words never covers the
+    ways authors write an either/or question, and every miss was a hard error
+    on a valid quiz.
+    """
+
+    @pytest.mark.parametrize(("stem", "options", "correct"), EITHER_OR_STEMS)
+    def test_either_or_stem_is_a_warning_not_an_error(self, stem, options, correct):
+        issues = mcq.check_answer_leak(leak_view(stem, options, correct))
+        assert not errors(issues)
+        assert warnings_at(issues, mcq.ANSWER_LEAK_AMBIGUOUS) == ["questions[q1].question"]
 
     @pytest.mark.parametrize(
         ("stem", "options", "correct"),
@@ -435,53 +504,12 @@ class TestComparisonStemsAreNotLeaks:
                 ["un", "neuf", "treize", "vingt et un"],
                 2,
             ),
-        ],
-    )
-    def test_either_or_stem(self, stem, options, correct):
-        issues = mcq.check_quiz_question(q(question=stem, options=options, correct_answer=correct))
-        assert mcq.ANSWER_LEAK not in codes(issues)
-
-    def test_each_text_is_judged_on_its_own(self):
-        """The stem compares; a hint that names only the answer still leaks."""
-        view = mcq.McqView(
-            stem="Which is larger: 3/4 or 2/3?",
-            options=("3/4", "2/3", "They are equal", "It depends"),
-            correct_index=0,
-            path="questions[q1]",
-            stem_path="questions[q1].question",
-            option_path="questions[q1].options",
-            other_texts=(("questions[q1].hints[0]", "Hint: it is 3/4."),),
-        )
-        leaks = [i for i in mcq.check_answer_leak(view) if i.code == mcq.ANSWER_LEAK]
-        assert [i.path for i in leaks] == ["questions[q1].hints[0]"]
-
-    @pytest.mark.parametrize(
-        ("stem", "options", "correct"),
-        [
-            # A distractor that is also a common word ("one", "un").
-            (
-                "Thirteen is prime. Which one of these is a prime number?",
-                ["one", "nine", "thirteen", "twenty-one"],
-                2,
-            ),
-            (
-                "Treize est un nombre premier. Lequel de ces nombres est un nombre premier ?",
-                ["un", "neuf", "treize", "vingt et un"],
-                2,
-            ),
-            # A distractor mentioned in passing.
+            # A distractor mentioned in passing: a person decides.
             (
                 "Malaria, unlike cholera, is spread by mosquitoes. Which disease is it?",
                 ["Cholera", "Malaria", "Measles", "Tuberculosis"],
                 1,
             ),
-            # A comma alone is apposition, not a list of alternatives.
-            (
-                "Thirteen, one of the primes, is odd. Which number is prime?",
-                ["one", "nine", "thirteen", "twenty-one"],
-                2,
-            ),
-            # Compared once, then named on its own.
             (
                 "Nine and thirteen are odd; thirteen is prime. Which number is prime?",
                 ["one", "nine", "thirteen", "twenty-one"],
@@ -489,12 +517,52 @@ class TestComparisonStemsAreNotLeaks:
             ),
         ],
     )
-    def test_naming_a_distractor_elsewhere_does_not_excuse_a_leak(self, stem, options, correct):
+    def test_a_named_distractor_makes_it_a_warning(self, stem, options, correct):
         issues = mcq.check_quiz_question(q(question=stem, options=options, correct_answer=correct))
+        assert mcq.ANSWER_LEAK not in codes(issues)
+        assert warnings_at(issues, mcq.ANSWER_LEAK_AMBIGUOUS) == ["questions[q1].question"]
+
+    def test_the_ambiguous_leak_is_not_a_hard_code(self):
+        assert mcq.ANSWER_LEAK_AMBIGUOUS not in mcq.HARD_CODES
+        assert mcq.ANSWER_LEAK in mcq.HARD_CODES
+
+    def test_the_answer_named_with_no_distractor_is_an_error(self):
+        view = leak_view(
+            "Which disease is vector-borne?",
+            ["malaria", "cholera"],
+            0,
+            hints=["The answer is malaria."],
+        )
+        issues = mcq.check_answer_leak(view)
+        leaks = [i for i in issues if i.code == mcq.ANSWER_LEAK]
+        assert [(i.path, i.severity) for i in leaks] == [("questions[q1].hints[0]", "error")]
+        assert mcq.ANSWER_LEAK_AMBIGUOUS not in codes(issues)
+
+    def test_a_plain_leak_in_the_stem_is_an_error(self):
+        issues = mcq.check_answer_leak(
+            leak_view(
+                "Malaria is vector-borne. Which disease is vector-borne?", ["malaria", "cholera"], 0
+            )
+        )
+        assert [i.path for i in issues if i.code == mcq.ANSWER_LEAK] == ["questions[q1].question"]
         assert mcq.ANSWER_LEAK in errors(issues)
 
     @pytest.mark.parametrize(
-        ("hint", "options"),
+        "hint",
+        [
+            "The answer is malaria, and cholera is not.",
+            "It is malaria and not cholera.",
+            "Pick malaria or you lose; cholera is wrong.",
+        ],
+    )
+    def test_a_hint_naming_a_distractor_beside_the_answer_is_a_warning(self, hint):
+        view = leak_view("Which disease is vector-borne?", ["malaria", "cholera"], 0, hints=[hint])
+        issues = mcq.check_answer_leak(view)
+        assert not errors(issues)
+        assert warnings_at(issues, mcq.ANSWER_LEAK_AMBIGUOUS) == ["questions[q1].hints[0]"]
+
+    @pytest.mark.parametrize(
+        "hint, options",
         [
             (
                 "Nine is 3 × 3, so the prime one is thirteen.",
@@ -506,28 +574,55 @@ class TestComparisonStemsAreNotLeaks:
             ),
         ],
     )
-    def test_a_hint_that_names_a_distractor_then_gives_the_answer_leaks(self, hint, options):
-        view = mcq.McqView(
-            stem="Which number is prime?",
-            options=options,
-            correct_index=2,
-            path="questions[q1]",
-            stem_path="questions[q1].question",
-            option_path="questions[q1].options",
-            other_texts=(("questions[q1].hints[0]", hint),),
-        )
-        leaks = [i for i in mcq.check_answer_leak(view) if i.code == mcq.ANSWER_LEAK]
-        assert [i.path for i in leaks] == ["questions[q1].hints[0]"]
+    def test_a_hint_naming_a_distractor_then_the_answer_is_a_warning(self, hint, options):
+        issues = mcq.check_answer_leak(leak_view("Which number is prime?", options, 2, [hint]))
+        assert not errors(issues)
+        assert warnings_at(issues, mcq.ANSWER_LEAK_AMBIGUOUS) == ["questions[q1].hints[0]"]
 
-    def test_a_one_letter_distractor_is_no_evidence(self):
-        """'a' would be "found" in almost any English stem."""
+    def test_each_text_is_judged_on_its_own(self):
+        """The stem names both; a hint that names only the answer still leaks."""
+        view = leak_view(
+            "Which is larger: 3/4 or 2/3?",
+            ("3/4", "2/3", "They are equal", "It depends"),
+            0,
+            hints=["Hint: it is 3/4."],
+        )
+        issues = mcq.check_answer_leak(view)
+        assert [i.path for i in issues if i.code == mcq.ANSWER_LEAK] == ["questions[q1].hints[0]"]
+        assert warnings_at(issues, mcq.ANSWER_LEAK_AMBIGUOUS) == ["questions[q1].question"]
+
+    @pytest.mark.parametrize(
+        ("stem", "options"),
+        [
+            # "a" and "un" are under the leak-length floor: never evidence.
+            (
+                "Malaria is a disease spread by Anopheles. Which disease is it?",
+                ["a", "Malaria", "Measles", "Tuberculosis"],
+            ),
+            (
+                "Treize est un nombre premier. Lequel de ces nombres est un nombre premier ?",
+                ["un", "neuf", "treize", "vingt et un"],
+            ),
+        ],
+    )
+    def test_a_distractor_under_the_length_floor_is_no_evidence(self, stem, options):
+        correct = 1 if options[0] == "a" else 2
+        issues = mcq.check_quiz_question(q(question=stem, options=options, correct_answer=correct))
+        assert mcq.ANSWER_LEAK in errors(issues)
+        assert mcq.ANSWER_LEAK_AMBIGUOUS not in codes(issues)
+
+    def test_a_three_letter_distractor_counts(self):
+        """ "one" is as long as the leak floor, so it counts as named, even as
+        a pronoun. A higher floor would make "the RDT or the PCR" an error."""
         issues = mcq.check_quiz_question(
             q(
-                question="Malaria is a disease spread by Anopheles. Which disease is it?",
-                options=["a", "Malaria", "Measles", "Tuberculosis"],
+                question="Thirteen is prime. Which one of these is a prime number?",
+                options=["one", "nine", "thirteen", "twenty-one"],
+                correct_answer=2,
             )
         )
-        assert mcq.ANSWER_LEAK in errors(issues)
+        assert mcq.ANSWER_LEAK not in codes(issues)
+        assert warnings_at(issues, mcq.ANSWER_LEAK_AMBIGUOUS) == ["questions[q1].question"]
 
     def test_a_duplicate_of_the_answer_is_no_evidence(self):
         issues = mcq.check_quiz_question(
@@ -538,7 +633,32 @@ class TestComparisonStemsAreNotLeaks:
         )
         assert {mcq.ANSWER_LEAK, mcq.DUPLICATE_OPTIONS} <= errors(issues)
 
-    def test_story_choice_comparison_prompt_and_hint(self):
+    def test_a_distractor_inside_the_answer_is_no_evidence(self):
+        """ "malaria" in "cerebral malaria" is the answer, not a second option."""
+        issues = mcq.check_answer_leak(
+            leak_view(
+                "Cerebral malaria needs IV artesunate. Which form is it?",
+                ["cerebral malaria", "malaria", "dengue", "typhoid"],
+                0,
+            )
+        )
+        assert [i.path for i in issues if i.code == mcq.ANSWER_LEAK] == ["questions[q1].question"]
+        assert mcq.ANSWER_LEAK_AMBIGUOUS not in codes(issues)
+
+    def test_the_answer_inside_a_distractor_counts_as_naming_it(self):
+        """The reverse: answer "malaria" sits inside the distractor "cerebral
+        malaria", which is named as a whole, so the text names a distractor."""
+        issues = mcq.check_answer_leak(
+            leak_view(
+                "Is it cerebral malaria?",
+                ["malaria", "cerebral malaria", "dengue", "typhoid"],
+                0,
+            )
+        )
+        assert not errors(issues)
+        assert warnings_at(issues, mcq.ANSWER_LEAK_AMBIGUOUS) == ["questions[q1].question"]
+
+    def test_story_choice_comparison_prompt_and_hint_are_warnings_only(self):
         question = Question.model_validate(
             {
                 "id": "q1",
@@ -564,7 +684,13 @@ class TestComparisonStemsAreNotLeaks:
         issues = [
             i for view in mcq.from_story_choice_question(question) for i in mcq.check_mcq(view)
         ]
-        assert mcq.ANSWER_LEAK not in codes(issues)
+        assert not errors(issues)
+        assert sorted(warnings_at(issues, mcq.ANSWER_LEAK_AMBIGUOUS)) == [
+            "questions[q1].hints[0].en",
+            "questions[q1].hints[0].fr",
+            "questions[q1].prompt.en",
+            "questions[q1].prompt.fr",
+        ]
 
 
 class TestDuplicateOptions:

@@ -32,10 +32,13 @@ What these checks can and cannot decide:
   leak-checked — a bare ``"12"`` shows up in stems for innocent reasons — and
   that skip is reported as :data:`LEAK_UNCHECKED_SHORT_ANSWER` so a clean
   report is never mistaken for proof that a numeric quiz is leak-free.
-  A text that names the correct option only side by side with a distractor
-  ("Which is larger: 3/4 or 2/3?") does not single the answer out, so it is
-  not a leak; naming a distractor elsewhere in the text does not excuse an
-  answer named on its own.
+  Severity is tiered on one fact, with no grammar parsed: a text that names
+  the correct option and no distractor gives the answer away
+  (:data:`ANSWER_LEAK`, an error); a text that also names a distractor may be
+  comparing the options ("Is it malaria or cholera?", "aux enfants ou aux
+  adultes ?") and gets :data:`ANSWER_LEAK_AMBIGUOUS`, a warning for a person
+  to judge. No list of joining words covers the ways an either/or question is
+  written, and every miss was a hard error on a valid quiz.
 * **Duplicate options** are the deterministic form of "more than one correct
   answer": the schema stores one correct index, so two correct options can only
   happen as two options with the same text (case kept: ``"CO"`` and ``"Co"``
@@ -66,6 +69,9 @@ MIN_LEAK_LENGTH = 3
 # -- finding codes -----------------------------------------------------------
 
 ANSWER_LEAK = "answer_leak"
+#: The correct option is named beside a distractor: maybe a comparison, maybe
+#: a leak. A warning, never a hard code.
+ANSWER_LEAK_AMBIGUOUS = "answer_leak_ambiguous"
 DUPLICATE_OPTIONS = "duplicate_options"
 EMPTY_OPTION = "empty_option"
 DISTRACTOR_WITHOUT_MISCONCEPTION = "distractor_without_misconception"
@@ -267,112 +273,6 @@ def _spans(
     return spans
 
 
-def _occurs_in(needle: Sequence[str], text: Any) -> bool:
-    """Whether the needle's tokens appear, in order, as a whole value in ``text``."""
-    folded = _fold(text)
-    return bool(_spans(needle, folded, list(_TOKEN_RE.finditer(folded))))
-
-
-# -- alternatives named side by side -------------------------------------------
-
-#: Words that join alternatives named side by side: "3/4 or 2/3", "neuf ou
-#: treize", "nine and thirteen", "compare three quarters with two thirds".
-_ALTERNATIVE_WORDS = frozenset(
-    {"or", "and", "nor", "vs", "versus", "with", "ou", "et", "ni", "avec", "contre"}
-)
-#: List punctuation. It joins alternatives only in a list that a word above
-#: also joins ("nine, thirteen or twenty-one"); a comma alone is apposition
-#: ("Thirteen, one of the primes, …"), not a comparison.
-_LIST_PUNCTUATION = frozenset({",", "/"})
-#: Tokens that may sit around the joiner without breaking the pairing:
-#: articles, "either", a repeated preposition ("par l'eau ou par le
-#: moustique"), brackets and quotes.
-_PAIR_FILLERS = frozenset(
-    {"the", "a", "an", "either", "neither", "le", "la", "les", "l", "un", "une", "des", "du"}
-    | {"de", "d", "soit", "bien", "par", "by", "(", ")", "[", "]"}
-    | {"'", "’", '"', "«", "»", "“", "”", "‘"}
-)
-#: The most tokens between two alternatives ("» ou bien par le «").
-_MAX_PAIR_GAP = 5
-
-
-def _joins_alternatives(gap: Sequence[str]) -> str | None:
-    """How ``gap`` (the tokens between two values) joins them, if it does.
-
-    ``"word"`` when a joining word is in it, ``"list"`` when only list
-    punctuation is, ``None`` when anything else stands between the two values
-    (they are then not named side by side: "Nine is 3 × 3, so … thirteen").
-    """
-    tokens = [
-        token
-        for index, token in enumerate(gap)
-        if not (token == "." and index > 0 and gap[index - 1] in {"vs", "v"})
-    ]
-    if not tokens or len(tokens) > _MAX_PAIR_GAP:
-        return None
-    joiners = _ALTERNATIVE_WORDS | _LIST_PUNCTUATION
-    if any(token not in joiners and token not in _PAIR_FILLERS for token in tokens):
-        return None
-    if any(token in _ALTERNATIVE_WORDS for token in tokens):
-        return "word"
-    if any(token in _LIST_PUNCTUATION for token in tokens):
-        return "list"
-    return None
-
-
-def _singles_out(needle: Sequence[str], distractors: Sequence[Sequence[str]], text: Any) -> bool:
-    """Whether ``text`` names the correct option other than as one of the alternatives.
-
-    Every occurrence of the answer must stand in a run of options named side
-    by side — answer and distractors joined by "or", "and", "vs", "with" (or
-    French "ou", "et", …), possibly through list commas — for the text to be
-    a comparison. One occurrence anywhere else ("Thirteen is prime. Which one
-    of these…", "Nine is 3 × 3, so the prime one is thirteen.") gives the
-    answer away, whatever else the text names.
-    """
-    folded = _fold(text)
-    matches = list(_TOKEN_RE.finditer(folded))
-    answers = _spans(needle, folded, matches)
-    if not answers:
-        return False
-    others = {span for distractor in distractors for span in _spans(distractor, folded, matches)}
-    spans = [(span, True) for span in answers] + [(span, False) for span in sorted(others)]
-    if len(spans) == len(answers):
-        return True
-
-    # Union the spans that are named side by side; remember per run whether a
-    # joining word (not only list commas) holds it together.
-    parent = list(range(len(spans)))
-
-    def root(index: int) -> int:
-        while parent[index] != index:
-            parent[index] = parent[parent[index]]
-            index = parent[index]
-        return index
-
-    worded: set[int] = set()
-    words = [m.group() for m in matches]
-    bounds = [span for span, _ in spans]
-    for i, (_, end_i) in enumerate(bounds):
-        for j, (start_j, _) in enumerate(bounds):
-            if end_i > start_j:  # j does not come after i
-                continue
-            how = _joins_alternatives(words[end_i:start_j])
-            if how is None:
-                continue
-            a, b = root(i), root(j)
-            was_worded = a in worded or b in worded
-            parent[b] = a
-            if was_worded or how == "word":
-                worded.add(a)
-
-    runs_with_distractor = {root(i) for i, (_, is_answer) in enumerate(spans) if not is_answer}
-    return any(
-        is_answer and not (root(i) in runs_with_distractor and root(i) in worded)
-        for i, (_, is_answer) in enumerate(spans)
-    )
-
-
 def normalise_option_misconceptions(
     raw: Any, option_count: int, correct_index: int | None
 ) -> list[str | None] | None:
@@ -501,13 +401,26 @@ def _issue(severity: str, code: str, path: str, message: str) -> ValidationIssue
     return ValidationIssue(severity=severity, code=code, path=path, message=message)
 
 
-#: A distractor this short ("a", "1") would be "found" in almost any text, so
-#: it is not taken as evidence that a text names the options side by side.
-_MIN_DISTRACTOR_EVIDENCE_LENGTH = 2
+def _names_a_distractor(
+    distractors: Sequence[Sequence[str]],
+    answers: Sequence[tuple[int, int]],
+    folded: str,
+    matches: Sequence[re.Match],
+) -> bool:
+    """Whether a distractor stands somewhere in the text other than inside the answer.
+
+    A distractor span contained in an answer span is part of the answer
+    ("malaria" in "cerebral malaria"), not a second option named.
+    """
+    for distractor in distractors:
+        for start, end in _spans(distractor, folded, matches):
+            if not any(a_start <= start and end <= a_end for a_start, a_end in answers):
+                return True
+    return False
 
 
 def check_answer_leak(view: McqView, *, min_length: int = MIN_LEAK_LENGTH) -> list[ValidationIssue]:
-    """The correct option's text must not single itself out in the stem or hints.
+    """Report each text a learner reads before answering that names the correct option.
 
     Matching is on whole words and symbols (case, accents composition, spacing
     and the minus sign normalised), so ``"water"`` does not match ``"seawater"``
@@ -516,11 +429,18 @@ def check_answer_leak(view: McqView, *, min_length: int = MIN_LEAK_LENGTH) -> li
     so ``"50%"`` is checked as ``50%`` (never as ``50``) and ``"12."`` is a
     short answer.
 
-    A text that names the answer only side by side with a distractor is not a
-    leak: "Which is larger: 3/4 or 2/3?", "…the RDT or microscopy?", "Divide
-    nine and thirteen by 3" compare the options rather than give the answer
-    away. Merely naming a distractor somewhere else in the text is not enough
-    (see :func:`_singles_out`). Each text is judged on its own.
+    Each text (the stem, every hint) is judged on its own, and the severity of
+    a text that names the correct option is tiered:
+
+    * no distractor named in it: an error, :data:`ANSWER_LEAK`;
+    * a distractor named in it too: a warning, :data:`ANSWER_LEAK_AMBIGUOUS` —
+      "Which is larger: 3/4 or 2/3?" compares, "Malaria, unlike cholera, …"
+      may give the answer away; a person tells them apart, not this check.
+
+    A distractor counts as named only when it is at least ``min_length``
+    characters long (so "a" or "un" never does; "one" does), does not read the
+    same as the answer, and stands as a whole value outside every occurrence
+    of the answer.
     """
     answer = view.correct_option
     needle = _leak_needle(answer)
@@ -540,16 +460,27 @@ def check_answer_leak(view: McqView, *, min_length: int = MIN_LEAK_LENGTH) -> li
     distractors: list[list[str]] = []
     for index, option in enumerate(view.options):
         tokens = _leak_needle(option)
-        if (
-            index != view.correct_index
-            and tokens != needle
-            and len("".join(tokens)) >= _MIN_DISTRACTOR_EVIDENCE_LENGTH
-        ):
+        if index != view.correct_index and tokens != needle and len("".join(tokens)) >= min_length:
             distractors.append(tokens)
 
     issues: list[ValidationIssue] = []
     for path, text in ((view.stem_path, view.stem), *view.other_texts):
-        if not _singles_out(needle, distractors, text):
+        folded = _fold(text)
+        matches = list(_TOKEN_RE.finditer(folded))
+        answers = _spans(needle, folded, matches)
+        if not answers:
+            continue
+        if _names_a_distractor(distractors, answers, folded, matches):
+            issues.append(
+                _issue(
+                    "warning",
+                    ANSWER_LEAK_AMBIGUOUS,
+                    path,
+                    f"the correct option {answer!r} appears beside a distractor in the text "
+                    "a learner reads before answering: check that it compares the options "
+                    "rather than gives the answer away",
+                )
+            )
             continue
         issues.append(
             _issue(

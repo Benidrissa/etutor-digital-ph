@@ -650,6 +650,10 @@ class McqAuditSummary(BaseModel):
     questions_lacking_option_misconceptions: int = 0
     #: Questions whose correct option is too short to leak-check.
     short_answer_leak_unchecked: int = 0
+    #: Stems and hints naming the correct option beside a distractor
+    #: (``answer_leak_ambiguous`` warnings): a comparison or a leak, for a
+    #: person to judge. They affect neither ``ok`` nor ``fully_checked``.
+    answer_leak_ambiguous: int = 0
     parity_warning_count: int = 0
     #: Legacy rows superseded by an FK-keyed row (see ``McqAuditRow``). They
     #: are still counted above but ignored by ``fully_checked``.
@@ -731,6 +735,7 @@ def build_mcq_audit(
 
         lacking = sum(1 for i in issues if i.code == mcq_checks.MISCONCEPTIONS_UNCHECKED)
         short = sum(1 for i in issues if i.code == mcq_checks.LEAK_UNCHECKED_SHORT_ANSWER)
+        ambiguous = sum(1 for i in issues if i.code == mcq_checks.ANSWER_LEAK_AMBIGUOUS)
         errors = [i for i in issues if i.severity == "error"]
         warnings = [i for i in issues if i.severity != "error"]
         rows.append(
@@ -758,6 +763,7 @@ def build_mcq_audit(
         summary.rows_lacking_option_misconceptions += 1 if lacking else 0
         summary.questions_lacking_option_misconceptions += lacking
         summary.short_answer_leak_unchecked += short
+        summary.answer_leak_ambiguous += ambiguous
         summary.rows_superseded_by_fk_row += 1 if superseded else 0
         if superseded:
             continue  # never served: not compared across languages either
@@ -797,7 +803,8 @@ async def audit_course_mcqs(
 
     Report-only: it never changes ``content``, ``validated`` or
     ``quality_status``. Findings use the story validator's issue shape
-    (severity, code, path, message): answer leaked into the stem, duplicate or
+    (severity, code, path, message): answer leaked into the stem (a warning,
+    ``answer_leak_ambiguous``, where a distractor is named beside it), duplicate or
     empty options, distractors without a misconception (only where
     ``option_misconceptions`` exists — otherwise ``misconceptions_unchecked``),
     plus warn-only FR/EN parity per unit.
