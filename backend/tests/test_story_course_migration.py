@@ -34,6 +34,8 @@ BINDING_COLUMNS = {
     "source_lesson_revision",
     "source_quiz_content_id",
     "source_quiz_revision",
+    "source_lesson_digest",
+    "source_quiz_digest",
 }
 
 

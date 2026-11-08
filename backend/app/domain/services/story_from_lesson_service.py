@@ -8,29 +8,39 @@ week; the front end substitutes their first name for ``{child}``.
 Pipeline (one Celery task, :func:`app.tasks.content_generation.generate_story_task`):
 
 1. read the cached lesson row (generating it through the lesson service only
-   when the unit has none) and the unit's quiz row, if any;
+   when the unit has none) and the quiz the story's questions come from — the
+   lesson unit's own cached quiz, else the cached quiz of the module's quiz
+   unit that covers the lesson (:func:`covering_quiz_unit`); never a quiz
+   generated for the purpose;
 2. one model call for the *spine* (pedagogy and translations only);
 3. :func:`app.domain.services.story_repair.build_story_document` — the
    deterministic layer that builds everything structural and normalises the
    spine;
-4. :func:`validate_story_course` (Appendix C), plus the generator's own floor
-   on the number of questions;
+4. :func:`validate_story_course` (Appendix C), plus the generator's own checks
+   (question floor, stem leaks, copy-fallbacks);
 5. a bounded repair loop — at most :data:`MAX_REPAIR_CALLS` extra model calls,
    each told the remaining error codes and paths — then a salvage pass that
    drops model-authored items that still fail;
 6. persist: published and valid, or a draft with its report (the API then
    answers 409 ``story_unavailable``). The validator's ``checks`` block is
-   written into the stored document either way (C6).
+   written into the stored document either way (C6). A spine the builder
+   cannot use at all still ends as a stored draft, never as an exception, so
+   later views get the 409 instead of paying for another generation.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
+import re
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 import structlog
+from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,12 +63,59 @@ MAX_REPAIR_CALLS = 2
 
 STORY_FEATURE_FLAG = "story-mode-feature-enabled"
 
+#: Unit types that are not lessons and have no story mode. The same set as the
+#: front end's ``NON_LESSON_UNIT_TYPES``: such units are rendered by their own
+#: viewers, and a unit with no type (legacy rows) is a lesson.
+NON_LESSON_UNIT_TYPES = frozenset({"quiz", "case-study", "scenario"})
+
+#: The ``unit_type`` of the units whose quiz covers the lessons before them.
+QUIZ_UNIT_TYPE = "quiz"
+
+
+class NotALessonUnit(ValueError):
+    """Story mode was asked for a quiz, case-study or scenario unit."""
+
+
+def is_lesson_unit(unit_type: str | None) -> bool:
+    return unit_type not in NON_LESSON_UNIT_TYPES
+
 
 def story_mode_enabled() -> bool:
     """The admin master switch; on by default."""
     from app.domain.services.platform_settings_service import SettingsCache
 
     return bool(SettingsCache.instance().get(STORY_FEATURE_FLAG, True))
+
+
+def content_digest(content: Any) -> str:
+    """sha256 of a source row's content as canonical JSON.
+
+    Keys sorted, no whitespace in separators, so the digest changes exactly
+    when the content does — including an admin's manual edit, which does not
+    bump ``content_revision``.
+    """
+    canonical = json.dumps(content, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+# --------------------------------------------------------------------------
+# Generation dedup (shared by the API, which claims, and the task, which releases)
+# --------------------------------------------------------------------------
+
+
+def story_dispatch_key(module_unit_id: uuid.UUID, language: str) -> str:
+    """Redis key holding the task id generating a unit's story in ``language``."""
+    return f"story_dispatch:{module_unit_id}:{language}"
+
+
+#: Compare-and-delete: remove the dedup key only while it still holds the
+#: caller's task id, so nobody ever deletes a key another request now owns.
+RELEASE_IF_OWNER_SCRIPT = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+  return redis.call("del", KEYS[1])
+end
+return 0
+"""
 
 
 # --------------------------------------------------------------------------
@@ -68,7 +125,11 @@ def story_mode_enabled() -> bool:
 
 @dataclass(frozen=True)
 class StoryBinding:
-    """Which lesson unit a story tells, and which source rows it came from."""
+    """Which lesson unit a story tells, and which source rows it came from.
+
+    The quiz row is the lesson unit's own, or the covering quiz unit's; the
+    digests are :func:`content_digest` of each row's content.
+    """
 
     module_id: uuid.UUID
     module_unit_id: uuid.UUID
@@ -77,6 +138,8 @@ class StoryBinding:
     lesson_revision: int
     quiz_content_id: uuid.UUID | None = None
     quiz_revision: int | None = None
+    lesson_digest: str | None = None
+    quiz_digest: str | None = None
 
 
 async def upsert_story_course(
@@ -129,6 +192,8 @@ async def upsert_story_course(
         record.source_lesson_revision = binding.lesson_revision
         record.source_quiz_content_id = binding.quiz_content_id
         record.source_quiz_revision = binding.quiz_revision
+        record.source_lesson_digest = binding.lesson_digest
+        record.source_quiz_digest = binding.quiz_digest
     return record
 
 
@@ -145,13 +210,94 @@ async def find_unit_story(
     ).scalar_one_or_none()
 
 
+_UNIT_NUMBER_PART_RE = re.compile(r"(\d+)")
+
+
+def _unit_order(unit: Any) -> tuple[int, tuple[Any, ...]]:
+    """Teaching order: ``order_index``, then ``unit_number`` read naturally ("1.10" > "1.9")."""
+    number = str(getattr(unit, "unit_number", "") or "")
+    parts = tuple(
+        (0, int(p), "") if p.isdigit() else (1, 0, p)
+        for p in _UNIT_NUMBER_PART_RE.split(number)
+        if p
+    )
+    return (getattr(unit, "order_index", 0) or 0, parts)
+
+
+def covering_quiz_unit(units: Sequence[Any], lesson_unit_id: uuid.UUID) -> Any | None:
+    """The module's quiz unit whose quiz covers a lesson unit, if any.
+
+    Syllabus generation seeds a module's units in teaching order —
+    ``order_index`` 0, 1, 2… and ``unit_number`` "m.1", "m.2"… — exactly as the
+    syllabus lists them, and the syllabus puts a quiz unit after the lessons it
+    tests. So the rule is: **the first quiz-typed unit after the lesson in the
+    same module; if there is none after it, the nearest quiz-typed unit before
+    it** (a lesson that comes after the module's last quiz). The quiz units
+    are not skipped over: when that unit has no cached quiz, the story has no
+    quiz-derived questions rather than borrowing a quiz about other lessons.
+    ``units`` are the module's units (any objects with ``id``, ``unit_type``,
+    ``order_index`` and ``unit_number``).
+    """
+    ordered = sorted(units, key=_unit_order)
+    position = next((i for i, u in enumerate(ordered) if u.id == lesson_unit_id), None)
+    if position is None:
+        return None
+    after = [u for u in ordered[position + 1 :] if u.unit_type == QUIZ_UNIT_TYPE]
+    if after:
+        return after[0]
+    before = [u for u in ordered[:position] if u.unit_type == QUIZ_UNIT_TYPE]
+    return before[-1] if before else None
+
+
+async def find_covering_quiz_unit(session: AsyncSession, lesson_unit_id: uuid.UUID) -> Any | None:
+    """:func:`covering_quiz_unit` for a lesson unit, read from the database."""
+    module_id = (
+        select(ModuleUnit.module_id).where(ModuleUnit.id == lesson_unit_id).scalar_subquery()
+    )
+    units = (
+        await session.execute(
+            select(
+                ModuleUnit.id,
+                ModuleUnit.unit_number,
+                ModuleUnit.order_index,
+                ModuleUnit.unit_type,
+            ).where(ModuleUnit.module_id == module_id)
+        )
+    ).all()
+    return covering_quiz_unit(units, lesson_unit_id)
+
+
+async def _has_quiz(session: AsyncSession, unit_ids: list[uuid.UUID], language: str) -> bool:
+    found = (
+        await session.execute(
+            select(GeneratedContent.id)
+            .where(
+                GeneratedContent.module_unit_id.in_(unit_ids),
+                GeneratedContent.content_type == "quiz",
+                GeneratedContent.language == language,
+            )
+            .limit(1)
+        )
+    ).first()
+    return found is not None
+
+
 async def story_sources_are_fresh(session: AsyncSession, record: StoryCourseRecord) -> bool:
     """Whether the lesson and quiz a story was derived from are unchanged.
 
-    Stale when the lesson row is gone or regenerated (``content_revision``
-    moved), when the quiz row is gone or regenerated, or — for a story built
-    before the unit had a quiz — as soon as the unit has one, so the story's
-    questions come to be derived from it. Hand-authored weeks are never stale.
+    Stale when:
+
+    * the lesson row is gone, regenerated (``content_revision`` moved) or
+      edited (its content no longer matches ``source_lesson_digest`` — an
+      admin's manual edit does not bump the revision);
+    * the quiz row it used — the lesson unit's own or the covering quiz
+      unit's — is gone, regenerated or edited, the same way;
+    * it used the covering quiz unit's quiz and the lesson unit now has a quiz
+      of its own, which the generator prefers;
+    * it was built without a quiz and the lesson unit, or its covering quiz
+      unit, now has one — so its questions come to be derived from it.
+
+    Hand-authored weeks are never stale.
     """
     if record.module_unit_id is None:
         return True
@@ -161,35 +307,46 @@ async def story_sources_are_fresh(session: AsyncSession, record: StoryCourseReco
     ids = [record.source_lesson_content_id]
     if record.source_quiz_content_id is not None:
         ids.append(record.source_quiz_content_id)
-    revisions = {
-        row_id: (revision or 1)
-        for row_id, revision in (
+    rows = {
+        row.id: row
+        for row in (
             await session.execute(
-                select(GeneratedContent.id, GeneratedContent.content_revision).where(
-                    GeneratedContent.id.in_(ids)
-                )
+                select(
+                    GeneratedContent.id,
+                    GeneratedContent.content_revision,
+                    GeneratedContent.content,
+                    GeneratedContent.module_unit_id,
+                ).where(GeneratedContent.id.in_(ids))
             )
         ).all()
     }
-    if revisions.get(record.source_lesson_content_id) != record.source_lesson_revision:
-        return False
-    if record.source_quiz_revision is not None:
+
+    def unchanged(row: Any, revision: int | None, digest: str | None) -> bool:
         return (
-            record.source_quiz_content_id is not None
-            and revisions.get(record.source_quiz_content_id) == record.source_quiz_revision
+            row is not None
+            and (row.content_revision or 1) == revision
+            and digest is not None
+            and content_digest(row.content) == digest
         )
-    quiz_now = (
-        await session.execute(
-            select(GeneratedContent.id)
-            .where(
-                GeneratedContent.module_unit_id == record.module_unit_id,
-                GeneratedContent.content_type == "quiz",
-                GeneratedContent.language == record.language,
-            )
-            .limit(1)
-        )
-    ).first()
-    return quiz_now is None
+
+    lesson = rows.get(record.source_lesson_content_id)
+    if not unchanged(lesson, record.source_lesson_revision, record.source_lesson_digest):
+        return False
+
+    if record.source_quiz_revision is not None:
+        quiz = rows.get(record.source_quiz_content_id) if record.source_quiz_content_id else None
+        if not unchanged(quiz, record.source_quiz_revision, record.source_quiz_digest):
+            return False
+        if quiz.module_unit_id != record.module_unit_id:
+            # Built from the covering quiz unit: a quiz of the lesson's own wins.
+            return not await _has_quiz(session, [record.module_unit_id], record.language)
+        return True
+
+    candidates = [record.module_unit_id]
+    covering = await find_covering_quiz_unit(session, record.module_unit_id)
+    if covering is not None:
+        candidates.append(covering.id)
+    return not await _has_quiz(session, candidates, record.language)
 
 
 async def select_unit_content_row(
@@ -252,6 +409,27 @@ def validate_document(doc: dict[str, Any]) -> ValidationReport:
     return repair.publishable(validate_story_course(course), doc)
 
 
+def _parses(doc: dict[str, Any]) -> bool:
+    try:
+        StoryCourse.model_validate(doc)
+    except Exception:
+        return False
+    return True
+
+
+def _unbuildable_issue() -> ValidationIssue:
+    return ValidationIssue(
+        severity="error",
+        code="malformed_spine",
+        path="",
+        message=(
+            "the story could not be built from your previous JSON: a field has the wrong"
+            " shape. Return exactly the structure asked for (lists as lists, texts as"
+            ' {"en": ..., "fr": ...} objects)'
+        ),
+    )
+
+
 @dataclass
 class StoryGeneration:
     doc: dict[str, Any]
@@ -267,8 +445,14 @@ def build_context(
     language: str,
     lesson_content: dict[str, Any],
     quiz_row: GeneratedContent | None,
+    quiz_unit: Any | None = None,
 ) -> repair.LessonStoryContext:
-    """Everything the deterministic layer needs, read once from the ORM rows."""
+    """Everything the deterministic layer needs, read once from the ORM rows.
+
+    ``quiz_unit`` is the covering quiz unit ``quiz_row`` belongs to, or
+    ``None`` when the quiz is the lesson unit's own (every MCQ is then a
+    question; from a covering quiz they are candidates the model picks from).
+    """
     from app.ai.prompts.audience import detect_audience
 
     def pair(en: str | None, fr: str | None) -> dict[str, str]:
@@ -291,6 +475,8 @@ def build_context(
         mcqs=mcqs,
         has_quiz=bool(mcqs),
         is_kids=detect_audience(course).is_kids,
+        quiz_scope="covering" if quiz_unit is not None else "unit",
+        quiz_unit_number=str(quiz_unit.unit_number) if quiz_unit is not None else None,
     )
 
 
@@ -334,7 +520,10 @@ class StoryFromLessonService:
 
         Database-free, so the whole pipeline can be tested with a fake model.
         Returns the best document seen (fewest errors), with the validator's
-        ``checks`` written into it.
+        ``checks`` written into it. Never raises for a bad spine: a spine the
+        builder chokes on counts as an unreadable attempt, and when no attempt
+        could be built at all the result is an unpublishable placeholder whose
+        report carries ``malformed_course_file``.
         """
         from app.ai.prompts.story_from_lesson import (
             build_repair_message,
@@ -357,8 +546,13 @@ class StoryFromLessonService:
                 )
                 calls += 1
                 spine = await self._call_model(system_prompt, message)
-                build = repair.build_story_document(ctx, spine or {})
-                report = validate_document(build.doc)
+                attempted = self._build_and_validate(ctx, spine or {})
+                if attempted is None:
+                    # The spine was JSON but not a shape the builder can use.
+                    feedback_spine = spine
+                    issues = [_unbuildable_issue()]
+                    continue
+                build, report = attempted
                 logger.info(
                     "Story attempt validated",
                     slug=ctx.slug,
@@ -376,14 +570,21 @@ class StoryFromLessonService:
                 else:
                     issues = []
 
-        assert best is not None
-        spine, build, report = best
-        generation = StoryGeneration(doc=build.doc, report=report, model_calls=calls)
-        if not report.ok:
-            salvaged = self._salvage(ctx, spine, build, report)
-            if salvaged is not None:
-                generation = salvaged
-                generation.model_calls = calls
+        if best is None:
+            generation = self._unbuildable(ctx)
+        else:
+            spine, build, report = best
+            report = repair.settle_translations(report)
+            generation = StoryGeneration(doc=build.doc, report=report, model_calls=calls)
+            if not report.ok:
+                salvaged = self._salvage(ctx, spine, build, report)
+                if salvaged is not None:
+                    generation = salvaged
+        generation.model_calls = calls
+        if not _parses(generation.doc):
+            # Only a builder bug gets here; store the bare header as a draft
+            # (the report already says malformed_course_file) rather than fail.
+            generation.doc = repair.minimal_document(ctx)
 
         generation.doc["checks"] = generation.report.checks.model_dump(mode="json")
         logger.info(
@@ -396,6 +597,55 @@ class StoryFromLessonService:
             salvaged=generation.salvaged,
         )
         return generation
+
+    @staticmethod
+    def _build_and_validate(
+        ctx: repair.LessonStoryContext,
+        spine: dict[str, Any],
+        **drops: Any,
+    ) -> tuple[repair.StoryBuild, ValidationReport] | None:
+        """Build and validate one spine; ``None`` when the builder raised.
+
+        The builder is defensive about every shape it reads, but one missed
+        shape must cost an attempt, not the task: an exception here would store
+        nothing, and every later view would pay for a new generation. A Celery
+        time limit is not a bad spine and is never swallowed.
+        """
+        try:
+            build = repair.build_story_document(ctx, spine, **drops)
+            report = repair.with_generator_issues(validate_document(build.doc), build)
+        except SoftTimeLimitExceeded:
+            raise
+        except Exception as exc:
+            logger.warning(
+                "Story could not be built from the spine",
+                slug=ctx.slug,
+                error_type=type(exc).__name__,
+                error=str(exc)[:300],
+            )
+            return None
+        return build, report
+
+    def _unbuildable(self, ctx: repair.LessonStoryContext) -> StoryGeneration:
+        """The draft stored when no attempt could be built; it is never served.
+
+        Like any story that could not be made valid, it is not regenerated on
+        the next view (the API answers 409): only when its lesson or quiz
+        changes, or when an admin forces it.
+        """
+        attempted = self._build_and_validate(ctx, {})
+        doc = attempted[0].doc if attempted is not None else repair.minimal_document(ctx)
+        issue = ValidationIssue(
+            severity="error",
+            code="malformed_course_file",
+            path="",
+            message="no answer of the model could be built into a story",
+        )
+        report = ValidationReport(ok=False, errors=[issue])
+        report = report.model_copy(
+            update={"checks": report.checks.model_copy(update={"errors": 1})}
+        )
+        return StoryGeneration(doc=doc, report=report, model_calls=0)
 
     def _salvage(
         self,
@@ -413,14 +663,17 @@ class StoryFromLessonService:
         questions, exercises, minigame = repair.implicated_items(report)
         if not (questions or exercises or minigame):
             return None
-        rebuilt = repair.build_story_document(
+        attempted = self._build_and_validate(
             ctx,
             spine,
             drop_question_ids=questions,
             drop_exercise_ids=exercises,
             drop_minigame=minigame,
         )
-        rebuilt_report = validate_document(rebuilt.doc)
+        if attempted is None:
+            return None
+        rebuilt, rebuilt_report = attempted
+        rebuilt_report = repair.settle_translations(rebuilt_report)
         before = len(build.doc["questions"])
         after = len(rebuilt.doc["questions"])
         if not rebuilt_report.ok or after < max(repair.MIN_QUESTIONS, math.ceil(before / 2)):
@@ -451,6 +704,10 @@ class StoryFromLessonService:
         level: int,
         country: str,
     ) -> GeneratedContent:
+        if not is_lesson_unit(unit.unit_type):
+            # Never generate a lesson for a quiz, case-study or scenario unit:
+            # it would be an orphan nobody reads, paid for.
+            raise NotALessonUnit(f"Unit {unit.unit_number} is a {unit.unit_type} unit")
         row = await select_unit_content_row(session, unit.id, "lesson", language, level, country)
         if row is not None:
             return row
@@ -491,6 +748,9 @@ class StoryFromLessonService:
         not, so a story that could not be made valid is not regenerated (and
         paid for) on every view; it is retried when the lesson or quiz changes,
         or when an admin forces it.
+
+        Raises :class:`NotALessonUnit` for a quiz, case-study or scenario unit
+        before anything is generated.
         """
         from app.ai.prompts.story_from_lesson import get_story_system_prompt
 
@@ -510,6 +770,8 @@ class StoryFromLessonService:
         ).scalar_one_or_none()
         if unit is None:
             raise ValueError(f"Unit {unit_id} not found in module {module_id}")
+        if not is_lesson_unit(unit.unit_type):
+            raise NotALessonUnit(f"Unit {unit_id} is a {unit.unit_type} unit, not a lesson")
 
         existing = await find_unit_story(session, unit.id, language)
         if (
@@ -520,10 +782,8 @@ class StoryFromLessonService:
             return existing
 
         lesson_row = await self._lesson_row(session, module, unit, language, level, country)
-        quiz_row = await select_unit_content_row(
-            session, unit.id, "quiz", language, lesson_row.level, lesson_row.country_context
-        )
-        ctx = build_context(module, unit, language, lesson_row.content or {}, quiz_row)
+        quiz_row, quiz_unit = await self._quiz_source(session, unit, language, lesson_row)
+        ctx = build_context(module, unit, language, lesson_row.content or {}, quiz_row, quiz_unit)
 
         course = module.course
 
@@ -558,8 +818,44 @@ class StoryFromLessonService:
             lesson_revision=lesson_row.content_revision or 1,
             quiz_content_id=quiz_row.id if quiz_row is not None else None,
             quiz_revision=(quiz_row.content_revision or 1) if quiz_row is not None else None,
+            lesson_digest=content_digest(lesson_row.content),
+            quiz_digest=content_digest(quiz_row.content) if quiz_row is not None else None,
         )
         return await self._persist(session, generation, binding, module.course_id)
+
+    async def _quiz_source(
+        self,
+        session: AsyncSession,
+        unit: ModuleUnit,
+        language: str,
+        lesson_row: GeneratedContent,
+    ) -> tuple[GeneratedContent | None, Any | None]:
+        """``(quiz row, covering quiz unit)`` the story's questions come from.
+
+        1. The lesson unit's own cached quiz (an offline download can create
+           one), whose every MCQ becomes a question: ``(row, None)``.
+        2. Else the cached quiz of the module's quiz unit that covers the
+           lesson (:func:`covering_quiz_unit`), whose MCQs are candidates the
+           model picks from: ``(row, quiz unit)``.
+        3. Else ``(None, None)``: every question is model-authored. A quiz is
+           never generated for a story — that would be a second paid
+           generation the learner did not ask for.
+
+        Level and country follow the lesson row the story is built from.
+        """
+        level, country = lesson_row.level, lesson_row.country_context
+        own = await select_unit_content_row(session, unit.id, "quiz", language, level, country)
+        if own is not None:
+            return own, None
+        quiz_unit = await find_covering_quiz_unit(session, unit.id)
+        if quiz_unit is None:
+            return None, None
+        covering = await select_unit_content_row(
+            session, quiz_unit.id, "quiz", language, level, country
+        )
+        if covering is None:
+            return None, None
+        return covering, quiz_unit
 
     async def _persist(
         self,

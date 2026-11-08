@@ -585,3 +585,274 @@ def test_implicated_items_reads_paths():
         ],
     )
     assert repair.implicated_items(report) == ({"x2"}, {"E2"}, True)
+
+
+# --------------------------------------------------------------------------
+# Model output in the wrong shape never raises (FC-3)
+# --------------------------------------------------------------------------
+
+
+def _x1(doc: dict[str, Any]) -> dict[str, Any]:
+    return next(q for q in doc["questions"] if q["id"] == "x1")
+
+
+class TestShapeHardening:
+    def test_hints_given_as_one_object_are_one_hint(self, raw):
+        spine = spine_for(raw)
+        spine["questions"][0]["hints"] = {"en": "It is most people.", "fr": "La plupart."}
+        build = repair.build_story_document(make_ctx(raw), spine)
+        assert _x1(build.doc)["hints"] == [{"en": "It is most people.", "fr": "La plupart."}]
+        assert build.issues == []
+
+    def test_hints_given_as_a_string_are_one_hint_with_a_missing_translation(self, raw):
+        spine = spine_for(raw)
+        spine["questions"][0]["hints"] = "It is most of the people."
+        build = repair.build_story_document(make_ctx(raw), spine)
+        assert _x1(build.doc)["hints"] == [
+            {"en": "It is most of the people.", "fr": "It is most of the people."}
+        ]
+        assert [(i.code, i.path) for i in build.issues] == [
+            ("missing_translation", "questions[x1].hints[0]")
+        ]
+
+    @pytest.mark.parametrize("value", [7, None, True, 2.5])
+    def test_hints_of_no_usable_shape_are_no_hints(self, raw, value):
+        spine = spine_for(raw)
+        spine["questions"][0]["hints"] = value
+        assert _x1(repair.build_story_document(make_ctx(raw), spine).doc)["hints"] == []
+
+    WRONG = [{}, {"en": "x"}, "text", 7, None, True, [1, "two", None, {}]]
+
+    @pytest.mark.parametrize("value", WRONG)
+    @pytest.mark.parametrize(
+        "where",
+        [
+            ("objectives",),
+            ("misconceptions",),
+            ("characters",),
+            ("chapter_titles",),
+            ("story",),
+            ("story", "example_dialogue"),
+            ("concepts",),
+            ("example",),
+            ("key_points_home",),
+            ("derived",),
+            ("derived", 0, "distractors"),
+            ("derived", 0, "options_home"),
+            ("derived", 0, "hint"),
+            ("questions",),
+            ("questions", 0, "traps"),
+            ("questions", 0, "choices"),
+            ("exercises",),
+            ("exercises", 0, "working"),
+            ("minigame",),
+            ("minigame", "rounds"),
+            ("minigame", "rounds", 0, "items"),
+            ("tutor",),
+        ],
+        ids=lambda w: ".".join(map(str, w)) if isinstance(w, tuple) else None,
+    )
+    def test_any_field_in_any_wrong_shape_still_builds(self, raw, where, value):
+        spine = spine_for(raw)
+        target = spine
+        for key in where[:-1]:
+            target = target[key]
+        target[where[-1]] = copy.deepcopy(value)
+        build = repair.build_story_document(make_ctx(raw), spine)
+        StoryCourse.model_validate(build.doc)  # still a story-course/1 document
+
+    @pytest.mark.parametrize("spine", [None, [], "spine", 7, {"derived": {"q1": {}}}])
+    def test_a_spine_that_is_not_an_object_still_builds(self, raw, spine):
+        StoryCourse.model_validate(repair.build_story_document(make_ctx(raw), spine).doc)
+
+
+# --------------------------------------------------------------------------
+# Copy-fallbacks are recorded, never silent (FC-6)
+# --------------------------------------------------------------------------
+
+
+def _issue_paths(build: repair.StoryBuild) -> set[str]:
+    assert all(i.code == "missing_translation" for i in build.issues)
+    return {i.path for i in build.issues}
+
+
+class TestMissingTranslations:
+    @pytest.mark.parametrize("language", ["en", "fr"])
+    def test_a_well_behaved_spine_records_nothing(self, raw, language):
+        build = repair.build_story_document(make_ctx(raw, language), spine_for(raw, language))
+        assert build.issues == []
+
+    def test_text_object_records_a_copy_only_with_a_path_inside_a_build(self):
+        assert repair.text_object({"en": "Hi"}, path="x") == {"en": "Hi", "fr": "Hi"}
+        token = repair._SINK.set(repair._Translations())
+        try:
+            repair.text_object({"en": "Hi"}, path="objectives[0]")
+            repair.text_object({"en": "Hi"})  # lesson data: no path, nothing recorded
+            repair.text_object({"en": "Hi", "fr": "Salut"}, path="ok")
+            issues = repair._SINK.get().issues
+        finally:
+            repair._SINK.reset(token)
+        assert [(i.code, i.path) for i in issues] == [("missing_translation", "objectives[0].fr")]
+
+    def test_objective_without_its_french(self, raw):
+        spine = spine_for(raw)
+        spine["objectives"][0].pop("fr")
+        build = repair.build_story_document(make_ctx(raw), spine)
+        assert _issue_paths(build) == {"objectives[0].fr"}
+        # The copy is still made: the story keeps both keys.
+        assert build.doc["objectives"][0]["fr"] == build.doc["objectives"][0]["en"]
+
+    def test_story_line_without_its_english_on_a_french_story(self, raw):
+        spine = spine_for(raw, "fr")
+        spine["story"]["opening"].pop("en")
+        build = repair.build_story_document(make_ctx(raw, "fr"), spine)
+        assert _issue_paths(build) == {"story.opening.en"}
+
+    @pytest.mark.parametrize(
+        ("field", "value", "path"),
+        [
+            ("options_home", None, "derived[q1].options_home"),
+            ("options_home", ["Le matin", "À midi"], "derived[q1].options_home"),
+            (
+                "options_home",
+                ["Le matin", "Le matin", "La nuit", "Jamais"],
+                "derived[q1].options_home",
+            ),
+            ("prompt_home", None, "derived[q1].prompt_home"),
+            ("prompt_home", "Les anophèles piquent-ils la nuit ?", "derived[q1].prompt_home"),
+            ("explanation_home", None, "derived[q1].explanation_home"),
+        ],
+        ids=[
+            "no-options",
+            "too-few",
+            "duplicates",
+            "no-prompt",
+            "leaking-prompt",
+            "no-explanation",
+        ],
+    )
+    def test_home_side_of_a_derived_question(self, raw, field, value, path):
+        spine = spine_for(raw)
+        if value is None:
+            spine["derived"][0].pop(field)
+        else:
+            spine["derived"][0][field] = value
+        assert _issue_paths(repair.build_story_document(make_ctx(raw), spine)) == {path}
+
+    def test_course_misconception_copied_for_a_wrong_option(self, raw):
+        spine = spine_for(raw)
+        next(d for d in spine["derived"] if d["ref"] == "q4")["distractors"] = []
+        paths = _issue_paths(repair.build_story_document(make_ctx(raw), spine))
+        assert paths == {
+            f"derived[q4].distractors[{letter}].misconception.fr" for letter in ("b", "c", "d")
+        }
+
+    def test_key_points_without_their_translation(self, raw):
+        spine = spine_for(raw)
+        spine["key_points_home"] = spine["key_points_home"][:1]
+        assert _issue_paths(repair.build_story_document(make_ctx(raw), spine)) == {
+            "key_points_home"
+        }
+
+    def test_concepts_fall_back_to_the_lessons_own_prose(self, raw):
+        spine = spine_for(raw)
+        spine["concepts"] = []
+        assert _issue_paths(repair.build_story_document(make_ctx(raw), spine)) == {"concepts"}
+
+    def test_concept_rows_missing_one_language(self, raw):
+        spine = spine_for(raw)
+        spine["concepts"][1]["fr"] = []
+        assert _issue_paths(repair.build_story_document(make_ctx(raw), spine)) == {"concepts[1].fr"}
+
+    def test_example_falls_back_to_the_lessons_own(self, raw):
+        spine = spine_for(raw)
+        spine["example"].pop("en")
+        spine["example"].pop("fr")
+        assert _issue_paths(repair.build_story_document(make_ctx(raw), spine)) == {"example"}
+
+    def test_a_dropped_extra_question_reports_nothing(self, raw):
+        spine = spine_for(raw)
+        spine["questions"].append(
+            {
+                "id": "x9",
+                "type": "choice",
+                "prompt": {"en": "Is the answer Yes?"},  # leaks its answer: dropped
+                "choices": [{"id": "a", "en": "Yes"}, {"id": "b", "en": "No"}],
+                "answer": "a",
+            }
+        )
+        build = repair.build_story_document(make_ctx(raw), spine)
+        assert "x9" not in {q["id"] for q in build.doc["questions"]}
+        assert build.issues == []
+
+    def test_unused_misconceptions_report_nothing(self, raw):
+        spine = spine_for(raw)
+        spine["misconceptions"].append({"id": "m_unused", "en": "Never used."})
+        assert repair.build_story_document(make_ctx(raw), spine).issues == []
+
+    def test_settling_turns_copies_into_warnings_and_keeps_other_errors(self):
+        from app.api.v1.schemas.story_course import Checks, ValidationIssue
+
+        def issue(code):
+            return ValidationIssue(severity="error", code=code, path="p", message="m")
+
+        report = ValidationReport(
+            ok=False,
+            errors=[issue("missing_translation"), issue("missing_translation")],
+            checks=Checks(errors=2),
+        )
+        settled = repair.settle_translations(report)
+        assert settled.ok and settled.errors == []
+        assert [w.severity for w in settled.warnings] == ["warning", "warning"]
+        assert (settled.checks.errors, settled.checks.warnings) == (0, 2)
+        mixed = repair.settle_translations(
+            report.model_copy(update={"errors": [*report.errors, issue("answer_leak")]})
+        )
+        assert not mixed.ok and [e.code for e in mixed.errors] == ["answer_leak"]
+
+
+# --------------------------------------------------------------------------
+# X5: a long quiz stem keeps the lead-in, the situation step and a ``stem``
+# --------------------------------------------------------------------------
+
+
+class TestLongStem:
+    @pytest.mark.parametrize("language", ["en", "fr"])
+    def test_question_carries_the_verbatim_stem(self, raw, language):
+        doc = repair.build_story_document(make_ctx(raw, language), spine_for(raw, language)).doc
+        q3 = next(q for q in doc["questions"] if q["id"] == "q3")
+        stored = raw[language]["quiz"]["questions"][2]["question"]
+        home = "en" if language == "fr" else "fr"
+        home_stem = next(d for d in spine_for(raw, language)["derived"] if d["ref"] == "q3")[
+            "prompt_home"
+        ]
+        assert q3["stem"] == {language: stored, home: home_stem}
+        assert q3["prompt"][language] != stored  # the generic lead-in
+        steps = all_steps(doc)
+        index = next(i for i, s in enumerate(steps) if s.get("ref") == "q3")
+        assert steps[index - 1]["id"] == "situation-q3"
+        assert steps[index - 1][language] == [stored]
+
+    def test_short_stems_have_no_stem_field(self, raw):
+        doc = repair.build_story_document(make_ctx(raw), spine_for(raw)).doc
+        assert [q["id"] for q in doc["questions"] if "stem" in q] == ["q3"]
+
+    def test_fidelity_restores_an_edited_stem(self, raw):
+        ctx = make_ctx(raw)
+        doc = repair.build_story_document(ctx, spine_for(raw)).doc
+        q3 = next(q for q in doc["questions"] if q["id"] == "q3")
+        q3["stem"]["en"] = "edited"
+        repair.enforce_quiz_fidelity(doc, ctx)
+        assert q3["stem"]["en"] == raw["en"]["quiz"]["questions"][2]["question"]
+
+    @pytest.mark.parametrize("lang", ["en", "fr"])
+    def test_a_stem_giving_the_answer_away_is_an_error(self, raw, lang):
+        doc = repair.build_story_document(make_ctx(raw), spine_for(raw)).doc
+        q3 = next(q for q in doc["questions"] if q["id"] == "q3")
+        correct = next(c for c in q3["choices"] if c["id"] == q3["answer"])
+        q3["stem"][lang] += f" Hint: {correct[lang]}"
+        report = repair.publishable(validate(doc), doc)
+        assert ("answer_leak", f"questions[q3].stem.{lang}") in {
+            (e.code, e.path) for e in report.errors
+        }
+        assert repair.implicated_items(report)[0] == {"q3"}

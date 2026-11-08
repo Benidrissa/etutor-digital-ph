@@ -31,6 +31,13 @@ Language keying (cross-track contract C1): the ``en``/``fr`` fields of
 steps hold English and French respectively, whatever the target language.
 Story lines are capped at 100 characters in *both* languages (C2) so a story
 validates whether a validator reads those fields by language or by position.
+
+When the model leaves one language out, the builder still fills the gap by
+copying the other language — a story must always have both keys — but every
+such copy is recorded as a ``missing_translation`` issue, with the path of the
+model's own field (:attr:`StoryBuild.issues`). The repair loop feeds those back
+like any validator error; only after the repair budget does a copy survive,
+and then as a warning in the stored report, never silently.
 """
 
 from __future__ import annotations
@@ -39,7 +46,9 @@ import copy
 import math
 import re
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -76,6 +85,12 @@ MAX_ASKS_IN_A_ROW = 2
 
 #: A story with fewer questions than this is not worth publishing.
 MIN_QUESTIONS = 2
+
+#: The most MCQs a story takes from a quiz unit that covers several lessons.
+MAX_PICKED_MCQS = 4
+
+#: The issue code of a copy-fallback: one language copied under the other's key.
+MISSING_TRANSLATION = "missing_translation"
 
 CHOICE_IDS = "abcdef"
 MAX_OBJECTIVES = 3
@@ -166,21 +181,117 @@ def _as_str(value: Any) -> str:
     return " ".join(str(value).split())
 
 
-def text_object(value: Any, fallback: dict[str, str] | None = None) -> dict[str, str] | None:
+def _items(value: Any) -> list[Any]:
+    """A model value that should be a list, whatever shape it came in.
+
+    A lone object or string is one item; anything else that is not a list
+    (a number, ``null``, ``true``) is no items. The builders iterate, slice
+    and index what this returns, so a model that writes ``"hints": {...}``
+    instead of ``"hints": [{...}]`` costs a hint, not the whole story.
+    """
+    if isinstance(value, list):
+        return value
+    if isinstance(value, dict) or (isinstance(value, str) and value.strip()):
+        return [value]
+    return []
+
+
+def _get(value: Any, key: str) -> Any:
+    """``value[key]`` when ``value`` is an object, else ``None``."""
+    return value.get(key) if isinstance(value, dict) else None
+
+
+# --------------------------------------------------------------------------
+# Copy-fallbacks (C1): recorded, never silent
+# --------------------------------------------------------------------------
+
+
+class _Translations:
+    """The copy-fallbacks seen while one story is being built."""
+
+    def __init__(self) -> None:
+        self.issues: list[ValidationIssue] = []
+
+    def add(self, path: str, message: str) -> None:
+        if not any(i.path == path for i in self.issues):
+            self.issues.append(
+                ValidationIssue(
+                    severity="error", code=MISSING_TRANSLATION, path=path, message=message
+                )
+            )
+
+    def mark(self) -> int:
+        return len(self.issues)
+
+    def rollback(self, mark: int) -> None:
+        """Forget what was recorded for an item that was then left out."""
+        del self.issues[mark:]
+
+
+_SINK: ContextVar[_Translations | None] = ContextVar("story_translation_sink", default=None)
+
+_LANGUAGE_NAMES = {"en": "English", "fr": "French"}
+
+
+def note_missing(path: str | None, lang: str, detail: str = "") -> None:
+    """Record that ``lang`` was copied from the other language at ``path``.
+
+    ``path`` names the field of the model's JSON, so the repair loop can say
+    exactly what to write. A ``None`` path (lesson data the model does not
+    write) is not recorded.
+    """
+    sink = _SINK.get()
+    if sink is None or path is None:
+        return
+    message = detail or (
+        f"no {_LANGUAGE_NAMES[lang]} text: the {_LANGUAGE_NAMES[other_language(lang)]}"
+        " text was copied in its place"
+    )
+    sink.add(f"{path}.{lang}" if lang else path, message)
+
+
+@contextmanager
+def _unless_kept() -> Iterator[list[bool]]:
+    """Drop what was recorded inside the block unless the item was kept.
+
+    Usage: ``with _unless_kept() as kept: ...; kept.append(True)``.
+    """
+    sink = _SINK.get()
+    mark = sink.mark() if sink is not None else 0
+    kept: list[bool] = []
+    yield kept
+    if sink is not None and not kept:
+        sink.rollback(mark)
+
+
+def _text_parts(value: Any) -> tuple[dict[str, str], bool]:
+    """The non-empty languages of a model text value, and whether it was a bare string."""
+    if isinstance(value, dict):
+        out = {lang: _as_str(value.get(lang)) for lang in LANGS}
+        return {lang: text for lang, text in out.items() if text}, False
+    if isinstance(value, str) and value.strip():
+        return {lang: " ".join(value.split()) for lang in LANGS}, True
+    return {}, False
+
+
+def text_object(
+    value: Any,
+    fallback: dict[str, str] | None = None,
+    *,
+    path: str | None = None,
+) -> dict[str, str] | None:
     """Coerce a model value into ``{"en": ..., "fr": ...}``.
 
-    A missing language is filled from the other one (the player hides a home
-    line identical to the target line), then from ``fallback``. Returns
-    ``None`` when there is no text at all.
+    A missing language is filled from ``fallback``, then from the other
+    language (the player hides a home line identical to the target line).
+    Returns ``None`` when there is no text at all. A copy from the other
+    language, or a bare string standing for both, is recorded at ``path``.
     """
-    out: dict[str, str] = {}
-    if isinstance(value, dict):
-        for lang in LANGS:
-            text = _as_str(value.get(lang))
-            if text:
-                out[lang] = text
-    elif isinstance(value, str) and value.strip():
-        out = {lang: " ".join(value.split()) for lang in LANGS}
+    out, bare = _text_parts(value)
+    if bare and path is not None:
+        sink = _SINK.get()
+        if sink is not None:
+            sink.add(path, 'one string instead of an {"en": ..., "fr": ...} object')
     if fallback:
         for lang in LANGS:
             if not out.get(lang) and fallback.get(lang):
@@ -190,6 +301,7 @@ def text_object(value: Any, fallback: dict[str, str] | None = None) -> dict[str,
     for lang in LANGS:
         if not out.get(lang):
             out[lang] = out[other_language(lang)]
+            note_missing(path, lang)
     return {lang: out[lang] for lang in LANGS}
 
 
@@ -210,14 +322,18 @@ def _row_list(value: Any) -> list[str]:
     return [_as_str(v) for v in value if _as_str(v)]
 
 
-def parallel_rows(en: Any, fr: Any) -> dict[str, list[str]] | None:
-    """Two row lists of equal length (C.3), or ``None`` when both are empty."""
+def parallel_rows(en: Any, fr: Any, *, path: str | None = None) -> dict[str, list[str]] | None:
+    """Two row lists of equal length (C.3), or ``None`` when both are empty.
+
+    A language with no rows gets a copy of the other's, recorded at ``path``.
+    """
     rows = {"en": _row_list(en), "fr": _row_list(fr)}
     if not rows["en"] and not rows["fr"]:
         return None
     for lang in LANGS:
         if not rows[lang]:
             rows[lang] = list(rows[other_language(lang)])
+            note_missing(path, lang)
     size = min(len(rows["en"]), len(rows["fr"]))
     return {lang: rows[lang][:size] for lang in LANGS}
 
@@ -269,6 +385,18 @@ class LessonStoryContext:
     mcqs: list[QuizMcq] = field(default_factory=list)
     has_quiz: bool = False
     is_kids: bool = False
+    #: Where ``mcqs`` come from. ``"unit"``: the lesson unit's own quiz, every
+    #: MCQ of which becomes a question. ``"covering"``: the quiz of the quiz
+    #: unit that covers several lessons; its MCQs are *candidates*, and only
+    #: those the model picks as testing this lesson (at most
+    #: :data:`MAX_PICKED_MCQS`) become questions.
+    quiz_scope: str = "unit"
+    #: The unit number of the quiz unit the MCQs come from, for ``sources``.
+    quiz_unit_number: str | None = None
+
+    @property
+    def picks_from_quiz(self) -> bool:
+        return self.quiz_scope == "covering" and bool(self.mcqs)
 
     @property
     def target(self) -> str:
@@ -391,16 +519,27 @@ class _Misconceptions:
         self.entries: list[dict[str, Any]] = []
         self._by_id: dict[str, dict[str, Any]] = {}
         self._alias: dict[str, str] = {}
-        for item in raw if isinstance(raw, list) else []:
+        #: Copy-fallbacks per declared id, reported only for the ids a story
+        #: ends up using: ``(path, language copied into, detail)``.
+        self._missing: dict[str, list[tuple[str, str, str]]] = {}
+        for index, item in enumerate(_items(raw)):
             if not isinstance(item, dict):
                 continue
-            text = text_object({"en": item.get("en"), "fr": item.get("fr")})
+            parts, _bare = _text_parts({"en": item.get("en"), "fr": item.get("fr")})
+            text = text_object(parts)
             raw_id = _as_str(item.get("id"))
             if text is None:
                 continue
-            self._declare(raw_id or text["en"], text)
+            path = f"misconceptions[{raw_id or index}]"
+            missing = [(path, lang, "") for lang in LANGS if lang not in parts]
+            self._declare(raw_id or text["en"], text, missing)
 
-    def _declare(self, raw_id: str, text: dict[str, str]) -> str:
+    def _declare(
+        self,
+        raw_id: str,
+        text: dict[str, str],
+        missing: list[tuple[str, str, str]] | None = None,
+    ) -> str:
         base = _slug(raw_id, "m_") or "m_misconception"
         new_id, n = base, 2
         while new_id in self._by_id:
@@ -408,12 +547,22 @@ class _Misconceptions:
         entry = {"id": new_id, "en": text["en"], "fr": text["fr"], "from_test": False}
         self.entries.append(entry)
         self._by_id[new_id] = entry
+        if missing:
+            self._missing[new_id] = list(missing)
         if raw_id and raw_id not in self._alias:
             self._alias[raw_id] = new_id
         return new_id
 
-    def resolve(self, raw_id: Any, fallback: dict[str, str] | None = None) -> str | None:
-        """The declared id for ``raw_id``; declares it from ``fallback`` if new."""
+    def resolve(
+        self,
+        raw_id: Any,
+        fallback: dict[str, str] | None = None,
+        missing: list[tuple[str, str, str]] | None = None,
+    ) -> str | None:
+        """The declared id for ``raw_id``; declares it from ``fallback`` if new.
+
+        ``missing`` records the copy-fallbacks in ``fallback`` itself, if any.
+        """
         key = _as_str(raw_id)
         if not key:
             return None
@@ -423,13 +572,24 @@ class _Misconceptions:
             return key
         if fallback is None:
             return None
-        return self._declare(key, fallback)
+        return self._declare(key, fallback, missing)
 
-    def declare(self, raw_id: str, text: dict[str, str]) -> str:
-        return self.resolve(raw_id, text) or self._declare(raw_id, text)
+    def declare(
+        self,
+        raw_id: str,
+        text: dict[str, str],
+        missing: list[tuple[str, str, str]] | None = None,
+    ) -> str:
+        return self.resolve(raw_id, text, missing) or self._declare(raw_id, text, missing)
 
     def used_only(self, used: set[str]) -> list[dict[str, Any]]:
         return [e for e in self.entries if e["id"] in used]
+
+    def report_missing(self, used: set[str]) -> None:
+        """Record the copy-fallbacks of the misconceptions the story uses."""
+        for entry in self.used_only(used):
+            for path, lang, detail in self._missing.get(entry["id"], []):
+                note_missing(path, lang, detail)
 
 
 def _wrong_choice_statement(option: dict[str, str]) -> dict[str, str]:
@@ -486,14 +646,47 @@ def _index_for_option(value: Any, options: list[str], ids: list[str]) -> int | N
     return None
 
 
-def _hint(value: Any) -> dict[str, str] | None:
-    return capped(text_object(value), HINT_LIMITS)
+def _hint(value: Any, path: str | None = None) -> dict[str, str] | None:
+    return capped(text_object(value, path=path), HINT_LIMITS)
 
 
 def _leak_free(obj: dict[str, str] | None, answers: list[str]) -> bool:
     if obj is None:
         return True
     return not any(_leaks(a, v) for a in answers for v in obj.values())
+
+
+def _kept_hint(value: Any, path: str, answers: list[str]) -> dict[str, str] | None:
+    """A hint that does not give the answer away; its copy-fallbacks only if kept."""
+    with _unless_kept() as kept:
+        hint = _hint(value, path)
+        if hint is None or not _leak_free(hint, answers):
+            return None
+        kept.append(True)
+        return hint
+
+
+def _home_options(spec: dict[str, Any], mcq: QuizMcq, home: str, path: str) -> list[str]:
+    """The model's home-language options, else the quiz's own (recorded)."""
+    count = len(mcq.options)
+    raw = spec.get("options_home")
+    home_options = _row_list(raw) if isinstance(raw, list) else []
+    if len(home_options) != count:
+        note_missing(
+            f"{path}.options_home",
+            "",
+            f"expected {count} options translated into {_LANGUAGE_NAMES[home]};"
+            f" the {_LANGUAGE_NAMES[other_language(home)]} options were copied",
+        )
+        return list(mcq.options)
+    if _options_duplicate(home_options):
+        note_missing(
+            f"{path}.options_home",
+            "",
+            "two translated options are the same; the quiz's own options were copied",
+        )
+        return list(mcq.options)
+    return home_options
 
 
 def _derived_question(
@@ -503,26 +696,42 @@ def _derived_question(
     registry: _Misconceptions,
     objective_map: dict[str, str],
 ) -> _BuiltQuestion | None:
+    """One stored quiz MCQ as a story choice question, verbatim in the target language.
+
+    The model only writes the home-language side; every gap there is copied
+    from the quiz and recorded as ``missing_translation`` at the spine path
+    ``derived[<ref>]...``.
+
+    A stem too long for a prompt keeps the generic lead-in as ``prompt``, is
+    shown in full by a "situation" concept step just before the ask, and is
+    also carried verbatim on the question as ``stem`` (contract X5), a text
+    object. ``stem`` is text the learner reads before answering, so the shared
+    MCQ checks run their answer-leak check against it like the prompt;
+    :func:`publishable` already does so here.
+    """
     target, home = ctx.target, ctx.home
     count = len(mcq.options)
     ids = list(CHOICE_IDS[:count])
+    path = f"derived[{mcq.ref}]"
 
     # Home-language side: the only part the model writes.
-    home_options = _row_list(spec.get("options_home"))
-    if len(home_options) != count:
-        home_options = list(mcq.options)
-    home_options = [h or mcq.options[i] for i, h in enumerate(home_options)]
-    if _options_duplicate(home_options):
-        home_options = list(mcq.options)
-
+    home_options = _home_options(spec, mcq, home, path)
     choices: list[dict[str, Any]] = []
     for index in range(count):
         choices.append({"id": ids[index], target: mcq.options[index], home: home_options[index]})
     correct = choices[mcq.correct_index]
     correct_texts = [correct["en"], correct["fr"]]
 
-    stem = {target: mcq.stem, home: _as_str(spec.get("prompt_home")) or mcq.stem}
-    if _leaks(correct["en"], stem[home]) or _leaks(correct["fr"], stem[home]):
+    stem = {target: mcq.stem, home: _as_str(spec.get("prompt_home"))}
+    if not stem[home]:
+        note_missing(f"{path}.prompt_home", "", f"no {_LANGUAGE_NAMES[home]} translation")
+        stem[home] = mcq.stem
+    elif _leaks(correct["en"], stem[home]) or _leaks(correct["fr"], stem[home]):
+        note_missing(
+            f"{path}.prompt_home",
+            "",
+            "the translation names the correct answer; the quiz's own stem was used",
+        )
         stem[home] = mcq.stem
     if not _leak_free(stem, correct_texts):
         return None
@@ -534,7 +743,7 @@ def _derived_question(
 
     # Wrong options: a misconception and, when written, a targeted hint.
     distractors: dict[int, dict[str, Any]] = {}
-    for item in spec.get("distractors") or []:
+    for item in _items(spec.get("distractors")):
         if isinstance(item, dict):
             index = _index_for_option(item.get("option"), mcq.options, ids)
             if index is not None and index != mcq.correct_index:
@@ -547,21 +756,35 @@ def _derived_question(
         item = distractors.get(index, {})
         option_text = {"en": choice["en"], "fr": choice["fr"]}
         known = mcq.option_misconceptions[index] if index < len(mcq.option_misconceptions) else None
+        # The course's own misconception text exists in the target language
+        # only: declaring it copies that text under the home key too.
+        known_missing = [
+            (
+                f"{path}.distractors[{ids[index]}].misconception",
+                home,
+                f"no misconception for this wrong option; the course's"
+                f" {_LANGUAGE_NAMES[target]} wording was copied",
+            )
+        ]
         misconception = registry.resolve(
             item.get("misconception"),
             {lang: known for lang in LANGS} if known else _wrong_choice_statement(option_text),
+            known_missing if known else None,
         )
         if misconception is None and known:
             misconception = registry.declare(
-                f"m_{mcq.ref}_{ids[index]}", {"en": known, "fr": known}
+                f"m_{mcq.ref}_{ids[index]}", {"en": known, "fr": known}, known_missing
             )
         if misconception:
             choice["misconception"] = misconception
-        hint = _hint(item.get("hint"))
-        if misconception and hint and _leak_free(hint, correct_texts):
-            traps.append({"answer": ids[index], "misconception": misconception, "hint": hint})
+        if misconception:
+            hint = _kept_hint(
+                item.get("hint"), f"{path}.distractors[{ids[index]}].hint", correct_texts
+            )
+            if hint:
+                traps.append({"answer": ids[index], "misconception": misconception, "hint": hint})
 
-    hints = [h for h in [_hint(spec.get("hint"))] if h and _leak_free(h, correct_texts)]
+    hints = [h for h in [_kept_hint(spec.get("hint"), f"{path}.hint", correct_texts)] if h]
     question: dict[str, Any] = {
         "id": mcq.ref,
         "type": "choice",
@@ -574,28 +797,37 @@ def _derived_question(
         "hints": hints,
         "derived_from": mcq.source_id,
     }
+    if situation is not None:
+        question["stem"] = {lang: situation[lang] for lang in LANGS}
     if mcq.explanation:
+        explanation_home = _as_str(spec.get("explanation_home"))
+        if not explanation_home:
+            note_missing(f"{path}.explanation_home", "", f"no {_LANGUAGE_NAMES[home]} translation")
         question["explanation"] = {
             target: mcq.explanation,
-            home: _as_str(spec.get("explanation_home")) or mcq.explanation,
+            home: explanation_home or mcq.explanation,
         }
     return _BuiltQuestion(doc=question, derived=True, situation=situation)
 
 
-def _extra_choice(raw: dict[str, Any], registry: _Misconceptions) -> dict[str, Any] | None:
+def _extra_choice(
+    raw: dict[str, Any], registry: _Misconceptions, path: str
+) -> dict[str, Any] | None:
     raw_choices = raw.get("choices")
     if not isinstance(raw_choices, list) or not 2 <= len(raw_choices) <= len(CHOICE_IDS):
         return None
     texts: list[dict[str, str]] = []
     raw_ids: list[str] = []
     raw_misconceptions: list[Any] = []
-    for item in raw_choices:
+    for index, item in enumerate(raw_choices):
         if isinstance(item, dict):
-            text = text_object({"en": item.get("en"), "fr": item.get("fr")})
+            text = text_object(
+                {"en": item.get("en"), "fr": item.get("fr")}, path=f"{path}.choices[{index}]"
+            )
             raw_ids.append(_as_str(item.get("id")))
             raw_misconceptions.append(item.get("misconception"))
         else:
-            text = text_object(item)
+            text = text_object(item, path=f"{path}.choices[{index}]")
             raw_ids.append("")
             raw_misconceptions.append(None)
         if text is None:
@@ -611,6 +843,7 @@ def _extra_choice(raw: dict[str, Any], registry: _Misconceptions) -> dict[str, A
         answer_index = _index_for_option(raw.get("answer"), [t["fr"] for t in texts], lookup_ids)
     if answer_index is None:
         return None
+    answers = [texts[answer_index]["en"], texts[answer_index]["fr"]]
 
     choices: list[dict[str, Any]] = []
     for index, text in enumerate(texts):
@@ -624,7 +857,7 @@ def _extra_choice(raw: dict[str, Any], registry: _Misconceptions) -> dict[str, A
         choices.append(choice)
 
     traps: list[dict[str, Any]] = []
-    for trap in raw.get("traps") or []:
+    for number, trap in enumerate(_items(raw.get("traps"))):
         if not isinstance(trap, dict):
             continue
         index = _index_for_option(trap.get("answer"), [t["en"] for t in texts], lookup_ids)
@@ -633,18 +866,22 @@ def _extra_choice(raw: dict[str, Any], registry: _Misconceptions) -> dict[str, A
         misconception = choices[index].get("misconception") or registry.resolve(
             trap.get("misconception"), _wrong_choice_statement(texts[index])
         )
-        hint = _hint(trap.get("hint"))
-        if misconception and hint:
+        if not misconception:
+            continue
+        hint = _kept_hint(trap.get("hint"), f"{path}.traps[{number}].hint", answers)
+        if hint:
             traps.append({"answer": ids[index], "misconception": misconception, "hint": hint})
-    return {"answer": ids[answer_index], "choices": choices, "traps": traps}
+    return {"answer": ids[answer_index], "choices": choices, "traps": traps, "answers": answers}
 
 
-def _extra_exact_text(raw: dict[str, Any], registry: _Misconceptions) -> dict[str, Any] | None:
+def _extra_exact_text(
+    raw: dict[str, Any], registry: _Misconceptions, path: str
+) -> dict[str, Any] | None:
     answer = _as_str(raw.get("answer"))
     if not answer or len(answer) > 60:
         return None
     traps: list[dict[str, Any]] = []
-    for trap in raw.get("traps") or []:
+    for number, trap in enumerate(_items(raw.get("traps"))):
         if not isinstance(trap, dict):
             continue
         wrong = _as_str(trap.get("answer"))
@@ -657,10 +894,12 @@ def _extra_exact_text(raw: dict[str, Any], registry: _Misconceptions) -> dict[st
                 "fr": f"Répond « {wrong} » au lieu du bon terme.",
             },
         )
-        hint = _hint(trap.get("hint"))
-        if misconception and hint:
+        if not misconception:
+            continue
+        hint = _kept_hint(trap.get("hint"), f"{path}.traps[{number}].hint", [answer])
+        if hint:
             traps.append({"answer": wrong, "misconception": misconception, "hint": hint})
-    return {"answer": answer, "traps": traps}
+    return {"answer": answer, "traps": traps, "answers": [answer]}
 
 
 def _extra_question(
@@ -669,28 +908,52 @@ def _extra_question(
     registry: _Misconceptions,
     objective_map: dict[str, str],
 ) -> _BuiltQuestion | None:
-    """A model-authored question, kept only if it is a choice or exact_text."""
+    """A model-authored question, kept only if it is a choice or exact_text.
+
+    Its copy-fallbacks are recorded at ``questions[<qid>]...`` only if the
+    question is kept.
+    """
     if not isinstance(raw, dict):
         return None
+    with _unless_kept() as kept:
+        question = _extra_question_body(raw, qid, registry, objective_map)
+        if question is not None:
+            kept.append(True)
+        return question
+
+
+def _extra_question_body(
+    raw: dict[str, Any],
+    qid: str,
+    registry: _Misconceptions,
+    objective_map: dict[str, str],
+) -> _BuiltQuestion | None:
+    path = f"questions[{qid}]"
     kind = _as_str(raw.get("type"))
-    prompt = capped(text_object(raw.get("prompt")), PROMPT_LIMITS)
-    if prompt is None or kind not in ("choice", "exact_text"):
+    if kind not in ("choice", "exact_text"):
         return None
-    body = _extra_choice(raw, registry) if kind == "choice" else _extra_exact_text(raw, registry)
+    prompt = capped(text_object(raw.get("prompt"), path=f"{path}.prompt"), PROMPT_LIMITS)
+    if prompt is None:
+        return None
+    body = (
+        _extra_choice(raw, registry, path)
+        if kind == "choice"
+        else _extra_exact_text(raw, registry, path)
+    )
     if body is None:
         return None
 
-    if kind == "choice":
-        correct = next(c for c in body["choices"] if c["id"] == body["answer"])
-        answers = [correct["en"], correct["fr"]]
-    else:
-        answers = [body["answer"]]
+    answers = body["answers"]
     if not _leak_free(prompt, answers):
         return None
     hints = [
-        h for h in (_hint(v) for v in (raw.get("hints") or [])[:2]) if h and _leak_free(h, answers)
+        hint
+        for hint in (
+            _kept_hint(value, f"{path}.hints[{index}]", answers)
+            for index, value in enumerate(_items(raw.get("hints"))[:2])
+        )
+        if hint
     ]
-    traps = [t for t in body["traps"] if _leak_free(t["hint"], answers)]
 
     question: dict[str, Any] = {
         "id": qid,
@@ -699,12 +962,12 @@ def _extra_question(
         "calculator": False,
         "prompt": prompt,
         "answer": body["answer"],
-        "traps": traps,
+        "traps": body["traps"],
         "hints": hints,
     }
     if kind == "choice":
         question["choices"] = body["choices"]
-    explanation = text_object(raw.get("explanation"))
+    explanation = text_object(raw.get("explanation"), path=f"{path}.explanation")
     if explanation:
         question["explanation"] = explanation
     return _BuiltQuestion(doc=question, derived=False)
@@ -718,10 +981,12 @@ def _extra_question(
 def _objectives(raw: Any, ctx: LessonStoryContext) -> tuple[list[dict], dict[str, str]]:
     objectives: list[dict[str, Any]] = []
     mapping: dict[str, str] = {}
-    for item in raw if isinstance(raw, list) else []:
+    for index, item in enumerate(_items(raw)):
         if not isinstance(item, dict) or len(objectives) >= MAX_OBJECTIVES:
             continue
-        text = text_object({"en": item.get("en"), "fr": item.get("fr")})
+        text = text_object(
+            {"en": item.get("en"), "fr": item.get("fr")}, path=f"objectives[{index}]"
+        )
         if text is None:
             continue
         new_id = f"o{len(objectives) + 1}"
@@ -742,15 +1007,27 @@ def _objectives(raw: Any, ctx: LessonStoryContext) -> tuple[list[dict], dict[str
     return objectives, mapping
 
 
-def _exercise(raw: Any, exercise_id: str, objective_map: dict[str, str]) -> dict[str, Any] | None:
+def _exercise(
+    raw: Any, exercise_id: str, objective_map: dict[str, str], path: str
+) -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
-    prompt = capped(text_object(raw.get("prompt")), PROMPT_LIMITS)
+    with _unless_kept() as kept:
+        exercise = _exercise_body(raw, exercise_id, objective_map, path)
+        if exercise is not None:
+            kept.append(True)
+        return exercise
+
+
+def _exercise_body(
+    raw: dict[str, Any], exercise_id: str, objective_map: dict[str, str], path: str
+) -> dict[str, Any] | None:
+    prompt = capped(text_object(raw.get("prompt"), path=f"{path}.prompt"), PROMPT_LIMITS)
     if prompt is None:
         return None
     working_raw = raw.get("working") if isinstance(raw.get("working"), dict) else {}
-    working = parallel_rows(working_raw.get("en"), working_raw.get("fr"))
-    scheme = text_object(raw.get("mark_scheme")) or {
+    working = parallel_rows(working_raw.get("en"), working_raw.get("fr"), path=f"{path}.working")
+    scheme = text_object(raw.get("mark_scheme"), path=f"{path}.mark_scheme") or {
         "en": "A clear answer that matches the lesson",
         "fr": "Une réponse claire et fidèle à la leçon",
     }
@@ -884,34 +1161,41 @@ def _minigame(
 ) -> dict[str, Any] | None:
     raw = raw if isinstance(raw, dict) else {}
     rounds: list[dict[str, Any]] = []
-    for raw_round in raw.get("rounds") or []:
+    for round_index, raw_round in enumerate(_items(raw.get("rounds"))):
         if not isinstance(raw_round, dict):
             continue
-        items: list[dict[str, Any]] = []
-        seen: set[str] = set()
-        for raw_item in raw_round.get("items") or []:
-            if not isinstance(raw_item, dict):
-                continue
-            label = text_object(raw_item.get("label"))
-            if label is None or norm(label["en"]) in seen:
-                continue
-            if raw_item.get("correct") is True:
-                items.append({"label": label, "correct": True})
-            else:
-                trap = registry.resolve(
-                    raw_item.get("trap"),
-                    {"en": f"Believes: {label['en']}", "fr": f"Croit que : {label['fr']}"},
-                )
-                if not trap:
-                    continue  # a wrong item must name the trap it represents
-                items.append({"label": label, "correct": False, "trap": trap})
-            seen.add(norm(label["en"]))
-        if any(item["correct"] for item in items):
-            prompt = text_object(raw_round.get("prompt")) or {
-                "en": "Catch the statements that are true.",
-                "fr": "Attrape les affirmations justes.",
-            }
-            rounds.append({"prompt": prompt, "items": items})
+        round_path = f"minigame.rounds[{round_index}]"
+        with _unless_kept() as round_kept:
+            items: list[dict[str, Any]] = []
+            seen: set[str] = set()
+            for item_index, raw_item in enumerate(_items(raw_round.get("items"))):
+                if not isinstance(raw_item, dict):
+                    continue
+                with _unless_kept() as item_kept:
+                    label = text_object(
+                        raw_item.get("label"), path=f"{round_path}.items[{item_index}].label"
+                    )
+                    if label is None or norm(label["en"]) in seen:
+                        continue
+                    if raw_item.get("correct") is True:
+                        items.append({"label": label, "correct": True})
+                    else:
+                        trap = registry.resolve(
+                            raw_item.get("trap"),
+                            {"en": f"Believes: {label['en']}", "fr": f"Croit que : {label['fr']}"},
+                        )
+                        if not trap:
+                            continue  # a wrong item must name the trap it represents
+                        items.append({"label": label, "correct": False, "trap": trap})
+                    seen.add(norm(label["en"]))
+                    item_kept.append(True)
+            if any(item["correct"] for item in items):
+                prompt = text_object(raw_round.get("prompt"), path=f"{round_path}.prompt") or {
+                    "en": "Catch the statements that are true.",
+                    "fr": "Attrape les affirmations justes.",
+                }
+                rounds.append({"prompt": prompt, "items": items})
+                round_kept.append(True)
         if len(rounds) >= 4:
             break
 
@@ -940,13 +1224,14 @@ def _minigame(
     return {
         "id": MINIGAME_ID,
         "engine": "catch",
-        "title": text_object(raw.get("title")) or {"en": "Quick catch", "fr": "Attrape rapide"},
-        "instruction": text_object(raw.get("instruction"))
+        "title": text_object(raw.get("title"), path="minigame.title")
+        or {"en": "Quick catch", "fr": "Attrape rapide"},
+        "instruction": text_object(raw.get("instruction"), path="minigame.instruction")
         or {
             "en": "Catch only the right items. Let the traps fall!",
             "fr": "Attrape seulement les bonnes réponses. Laisse tomber les pièges !",
         },
-        "hint_after_wrong": _hint(raw.get("hint_after_wrong"))
+        "hint_after_wrong": _hint(raw.get("hint_after_wrong"), "minigame.hint_after_wrong")
         or {
             "en": "Think back to the lesson before you catch.",
             "fr": "Repense à la leçon avant d'attraper.",
@@ -1097,7 +1382,7 @@ class _Layout:
 
 def _image_step(ctx: LessonStoryContext) -> dict[str, Any] | None:
     """At most one ``show`` step, and only a real lesson figure (``image``)."""
-    for ref in ctx.lesson.get("source_image_refs") or []:
+    for ref in _items(ctx.lesson.get("source_image_refs")):
         if not isinstance(ref, dict) or not _as_str(ref.get("id")):
             continue
         params: dict[str, Any] = {"source_image_id": _as_str(ref.get("id"))}
@@ -1118,19 +1403,26 @@ def _image_step(ctx: LessonStoryContext) -> dict[str, Any] | None:
 
 
 def _concept_blocks(spine: dict[str, Any], ctx: LessonStoryContext) -> list[dict[str, Any]]:
-    """One block per lesson concept: model rows, else the lesson's own prose."""
+    """One block per lesson concept: model rows, else the lesson's own prose.
+
+    The lesson's prose exists in the target language only, so falling back to
+    it copies that language under the home key: recorded at ``concepts``.
+    """
     blocks: list[dict[str, Any]] = []
-    for raw in spine.get("concepts") or []:
+    for index, raw in enumerate(_items(spine.get("concepts"))):
         if not isinstance(raw, dict):
             continue
-        rows = parallel_rows(raw.get("en"), raw.get("fr"))
-        if rows is None:
-            continue
-        title = text_object(raw.get("title")) or {
-            "en": f"Key idea {len(blocks) + 1}",
-            "fr": f"Idée clé {len(blocks) + 1}",
-        }
-        blocks.append({"title": title, "rows": rows})
+        path = f"concepts[{index}]"
+        with _unless_kept() as kept:
+            rows = parallel_rows(raw.get("en"), raw.get("fr"), path=path)
+            if rows is None:
+                continue
+            title = text_object(raw.get("title"), path=f"{path}.title") or {
+                "en": f"Key idea {len(blocks) + 1}",
+                "fr": f"Idée clé {len(blocks) + 1}",
+            }
+            blocks.append({"title": title, "rows": rows})
+            kept.append(True)
     if blocks:
         return blocks
     for number, paragraph in enumerate(ctx.lesson_list("concepts"), start=1):
@@ -1142,6 +1434,13 @@ def _concept_blocks(spine: dict[str, Any], ctx: LessonStoryContext) -> list[dict
                     "rows": {"en": rows, "fr": list(rows)},
                 }
             )
+    if blocks:
+        note_missing(
+            "concepts",
+            "",
+            f"no concept rows: the lesson's {_LANGUAGE_NAMES[ctx.target]} text was used for"
+            " both languages",
+        )
     return blocks
 
 
@@ -1156,22 +1455,34 @@ def _key_points(spine: dict[str, Any], ctx: LessonStoryContext) -> dict[str, lis
         return None
     home_rows = _row_list(spine.get("key_points_home"))
     if len(home_rows) != len(target_rows):
+        note_missing(
+            "key_points_home",
+            "",
+            f"expected {len(target_rows)} key points translated into"
+            f" {_LANGUAGE_NAMES[ctx.home]}; the lesson's own were copied",
+        )
         home_rows = list(target_rows)
     return {ctx.target: target_rows, ctx.home: home_rows}
 
 
 def _example_block(spine: dict[str, Any], ctx: LessonStoryContext) -> dict[str, Any] | None:
     raw = spine.get("example") if isinstance(spine.get("example"), dict) else {}
-    rows = parallel_rows(raw.get("en"), raw.get("fr"))
+    rows = parallel_rows(raw.get("en"), raw.get("fr"), path="example")
     if rows is None:
         target_rows = split_sentences(ctx.lesson_text("aof_example"))
         if not target_rows:
             return None
+        note_missing(
+            "example",
+            "",
+            f"no example rows: the lesson's {_LANGUAGE_NAMES[ctx.target]} field example was"
+            " used for both languages",
+        )
         rows = {"en": target_rows, "fr": list(target_rows)}
     place = _as_str(raw.get("place"))
     if place not in PLACES:
         place = "school_yard" if ctx.is_kids else "market"
-    title = text_object(raw.get("title")) or {
+    title = text_object(raw.get("title"), path="example.title") or {
         "en": "An example from the field",
         "fr": "Un exemple de terrain",
     }
@@ -1180,19 +1491,24 @@ def _example_block(spine: dict[str, Any], ctx: LessonStoryContext) -> dict[str, 
 
 def _story_lines(spine: dict[str, Any]) -> dict[str, Any]:
     raw = spine.get("story") if isinstance(spine.get("story"), dict) else {}
-    lines = {
-        key: text_object(raw.get(key))
+    lines: dict[str, Any] = {
+        key: text_object(raw.get(key), path=f"story.{key}")
         for key in ("opening", "mentor_intro", "example_intro", "wrap_up")
     }
     dialogue = []
-    for item in raw.get("example_dialogue") or []:
+    for index, item in enumerate(_items(raw.get("example_dialogue"))):
+        if len(dialogue) >= 3:
+            break
         if isinstance(item, dict):
-            text = text_object({"en": item.get("en"), "fr": item.get("fr")})
+            text = text_object(
+                {"en": item.get("en"), "fr": item.get("fr")},
+                path=f"story.example_dialogue[{index}]",
+            )
             speaker = _as_str(item.get("who")).lower()
             who = PEER_ID if speaker in (PEER_ID, "colleague", "friend") else MENTOR_ID
             if text:
                 dialogue.append((who, text))
-    lines["example_dialogue"] = dialogue[:3]
+    lines["example_dialogue"] = dialogue
     return lines
 
 
@@ -1206,7 +1522,7 @@ def _chapter_titles(spine: dict[str, Any], ctx: LessonStoryContext) -> list[dict
     titles = []
     for index, default in enumerate(defaults):
         value = raw[index] if isinstance(raw, list) and index < len(raw) else None
-        titles.append(text_object(value) or default)
+        titles.append(text_object(value, path=f"chapter_titles[{index}]") or default)
     return titles
 
 
@@ -1395,7 +1711,7 @@ _DISCLOSURE = {
 
 def _tutor(spine: dict[str, Any], ctx: LessonStoryContext, objectives: list[dict]) -> dict:
     raw = spine.get("tutor") if isinstance(spine.get("tutor"), dict) else {}
-    intro = text_object(raw.get("intro")) or {
+    intro = text_object(raw.get("intro"), path="tutor.intro") or {
         "en": "Hi {child}! I'm Margo. I give hints; you do the thinking.",
         "fr": "Bonjour {child} ! Je suis Margo. Je donne des indices, c'est toi qui réfléchis.",
     }
@@ -1408,11 +1724,11 @@ def _tutor(spine: dict[str, Any], ctx: LessonStoryContext, objectives: list[dict
         if ctx.is_kids
         else {"en": "your supervisor or a colleague", "fr": "ton encadrant ou un collègue"}
     )
-    off_topic = text_object(raw.get("off_topic")) or {
+    off_topic = text_object(raw.get("off_topic"), path="tutor.off_topic") or {
         "en": f"Let's stay on this lesson. Ask {who_to_ask['en']} about that.",
         "fr": f"Restons sur cette leçon. Pose cette question à {who_to_ask['fr']}.",
     }
-    worry = text_object(raw.get("worry")) or {
+    worry = text_object(raw.get("worry"), path="tutor.worry") or {
         "en": "That sounds important. Please talk to someone you trust now.",
         "fr": "Cela semble important. Parles-en tout de suite à une personne de confiance.",
     }
@@ -1482,6 +1798,46 @@ class StoryBuild:
     doc: dict[str, Any]
     derived_ids: list[str]
     extra_ids: list[str]
+    #: The builder's own findings — every copy-fallback (``missing_translation``)
+    #: for an item the story kept. Errors while the repair loop runs; see
+    #: :func:`with_generator_issues` and :func:`settle_translations`.
+    issues: list[ValidationIssue] = field(default_factory=list)
+
+
+def picked_mcqs(ctx: LessonStoryContext, spine: Any) -> list[QuizMcq]:
+    """The quiz MCQs that become questions of this story.
+
+    For the lesson unit's own quiz, all of them. For a covering quiz unit's
+    quiz, only the candidates the model picked — those it wrote a
+    ``derived`` entry for — in quiz order, at most :data:`MAX_PICKED_MCQS`
+    (the first ones it picked). A ref that is not a candidate is ignored.
+    """
+    if not ctx.picks_from_quiz:
+        return list(ctx.mcqs)
+    known = {m.ref for m in ctx.mcqs}
+    picked: list[str] = []
+    for item in _items(_get(spine, "derived")):
+        ref = _as_str(_get(item, "ref"))
+        if ref in known and ref not in picked:
+            picked.append(ref)
+    unknown = [
+        _as_str(_get(item, "ref"))
+        for item in _items(_get(spine, "derived"))
+        if _as_str(_get(item, "ref")) not in known
+    ]
+    if unknown:
+        logger.info("Story spine picked unknown quiz questions (ignored)", refs=unknown[:10])
+    chosen = set(picked[:MAX_PICKED_MCQS])
+    return [m for m in ctx.mcqs if m.ref in chosen]
+
+
+def _issue_applies(issue: ValidationIssue, question_ids: set[str], exercise_ids: set[str]) -> bool:
+    """Whether a copy-fallback is about something the finished story contains."""
+    if match := re.match(r"^(?:derived|questions)\[([^\]]+)\]", issue.path):
+        return match.group(1) in question_ids
+    if match := re.match(r"^exercises\[(\d+)\]", issue.path):
+        return f"E{int(match.group(1)) + 1}" in exercise_ids
+    return True
 
 
 def build_story_document(
@@ -1496,22 +1852,46 @@ def build_story_document(
 
     Deterministic and side-effect free: the same context and spine always
     give the same document, so the repair loop can rebuild after every model
-    call and the salvage pass can rebuild without the items it drops.
+    call and the salvage pass can rebuild without the items it drops. Every
+    copy-fallback is returned in :attr:`StoryBuild.issues`.
     """
-    spine = spine if isinstance(spine, dict) else {}
-    drop_q = set(drop_question_ids)
-    drop_e = set(drop_exercise_ids)
+    sink = _Translations()
+    token = _SINK.set(sink)
+    try:
+        build = _assemble(
+            ctx,
+            spine if isinstance(spine, dict) else {},
+            drop_q=set(drop_question_ids),
+            drop_e=set(drop_exercise_ids),
+            drop_minigame=drop_minigame,
+        )
+    finally:
+        _SINK.reset(token)
+    question_ids = {q["id"] for q in build.doc["questions"]}
+    exercise_ids = {e["id"] for e in build.doc["exercises"]}
+    build.issues = [i for i in sink.issues if _issue_applies(i, question_ids, exercise_ids)]
+    return build
+
+
+def _assemble(
+    ctx: LessonStoryContext,
+    spine: dict[str, Any],
+    *,
+    drop_q: set[str],
+    drop_e: set[str],
+    drop_minigame: bool,
+) -> StoryBuild:
     registry = _Misconceptions(spine.get("misconceptions"))
     objectives, objective_map = _objectives(spine.get("objectives"), ctx)
     key_points = _key_points(spine, ctx)
 
     specs: dict[str, dict[str, Any]] = {}
-    for item in spine.get("derived") or []:
+    for item in _items(spine.get("derived")):
         if isinstance(item, dict) and _as_str(item.get("ref")):
             specs.setdefault(_as_str(item.get("ref")), item)
 
     built: list[_BuiltQuestion] = []
-    for mcq in ctx.mcqs:
+    for mcq in picked_mcqs(ctx, spine):
         if mcq.ref in drop_q:
             continue
         question = _derived_question(mcq, specs.get(mcq.ref, {}), ctx, registry, objective_map)
@@ -1519,9 +1899,10 @@ def build_story_document(
             logger.warning("Derived question dropped: answer leak", question=mcq.source_id)
             continue
         built.append(question)
+    derived_count = len(built)
 
     used_ids = {q.doc["id"] for q in built} | {m.ref for m in ctx.mcqs}
-    for number, raw in enumerate(spine.get("questions") or [], start=1):
+    for number, raw in enumerate(_items(spine.get("questions")), start=1):
         raw_id = _as_str(raw.get("id")) if isinstance(raw, dict) else ""
         qid = raw_id if _ID_RE.match(raw_id) and not _DERIVED_ID_RE.match(raw_id) else ""
         if not qid or qid in used_ids:
@@ -1538,10 +1919,10 @@ def build_story_document(
     # Exercise ids follow the spine's positions so a salvage pass can name
     # the same exercise again on a rebuild.
     exercises = []
-    for number, raw in enumerate(spine.get("exercises") or [], start=1):
+    for number, raw in enumerate(_items(spine.get("exercises")), start=1):
         if f"E{number}" in drop_e:
             continue
-        exercise = _exercise(raw, f"E{number}", objective_map)
+        exercise = _exercise(raw, f"E{number}", objective_map, f"exercises[{number - 1}]")
         if exercise is not None:
             exercises.append(exercise)
     objectives, exercises = _rebalance(objectives, built, exercises, key_points)
@@ -1565,6 +1946,7 @@ def build_story_document(
         used_misconceptions.update(
             i["trap"] for r in minigame["rounds"] for i in r["items"] if i.get("trap")
         )
+    registry.report_missing(used_misconceptions)
 
     lesson_sources = ctx.lesson_list("sources_cited")[:10]
     sources = [
@@ -1575,11 +1957,11 @@ def build_story_document(
         },
         *({"kind": "lesson", "ref": ref, "used_for": "concepts"} for ref in lesson_sources),
     ]
-    if ctx.has_quiz:
+    if ctx.has_quiz and derived_count:
         sources.append(
             {
                 "kind": "test",
-                "ref": f"Unit {ctx.unit_number} quiz",
+                "ref": f"Unit {ctx.quiz_unit_number or ctx.unit_number} quiz",
                 "used_for": "questions, derived verbatim",
             }
         )
@@ -1619,6 +2001,33 @@ def build_story_document(
     )
 
 
+def minimal_document(ctx: LessonStoryContext) -> dict[str, Any]:
+    """The bare header of the unit's story: what is stored when nothing could be built.
+
+    It parses as ``story-course/1`` (so it can be stored as a draft with its
+    report) but has no chapters, so it can never validate or be served.
+    """
+    return {
+        "format": FORMAT_VERSION,
+        "id": ctx.slug,
+        "course": ctx.course_title.get(ctx.target) or "Sira",
+        "unit": f"{ctx.unit_number} · {ctx.unit_title.get(ctx.target, '')}",
+        "week": max(int(ctx.module_number or 1), 1),
+        "title": dict(ctx.unit_title),
+        "languages": language_pair(ctx.language),
+        "learner": {"first_name": CHILD},
+        "sources": [],
+        "objectives": [],
+        "misconceptions": [],
+        "cast": [],
+        "chapters": [],
+        "questions": [],
+        "exercises": [],
+        "minigames": [],
+        "checks": {},
+    }
+
+
 def enforce_quiz_fidelity(doc: dict[str, Any], ctx: LessonStoryContext) -> None:
     """Re-assert that every derived question carries the quiz's own text.
 
@@ -1626,7 +2035,8 @@ def enforce_quiz_fidelity(doc: dict[str, Any], ctx: LessonStoryContext) -> None:
     but this runs after assembly regardless, so no later normalisation step
     — or a model that echoed back an edited stem — can change what the
     course's quiz says. For a long stem moved into its situation step, the
-    step's rows are re-asserted instead of the (generic) prompt.
+    step's rows and the question's ``stem`` are re-asserted instead of the
+    (generic) prompt.
     """
     target = ctx.target
     by_ref = {m.ref: m for m in ctx.mcqs}
@@ -1655,8 +2065,12 @@ def enforce_quiz_fidelity(doc: dict[str, Any], ctx: LessonStoryContext) -> None:
         situation = situations.get(mcq.ref)
         if situation is not None:
             situation[target] = [mcq.stem]
+            stem = question.get("stem") if isinstance(question.get("stem"), dict) else {}
+            home_rows = situation.get(ctx.home) or [mcq.stem]
+            question["stem"] = {target: mcq.stem, ctx.home: stem.get(ctx.home) or home_rows[0]}
         else:
             question["prompt"][target] = mcq.stem
+            question.pop("stem", None)
         if mcq.explanation and isinstance(question.get("explanation"), dict):
             question["explanation"][target] = mcq.explanation
 
@@ -1666,24 +2080,97 @@ def enforce_quiz_fidelity(doc: dict[str, Any], ctx: LessonStoryContext) -> None:
 # --------------------------------------------------------------------------
 
 
+def stem_leaks(doc: dict[str, Any]) -> list[ValidationIssue]:
+    """The correct option's text inside a choice question's ``stem`` (X5).
+
+    ``stem`` is read before answering, exactly like the prompt, but the
+    format's validator only leak-checks ``prompt``, ``hints`` and trap hints —
+    and for a choice question it compares the answer *id*, not the option
+    text. This is the same check, run on ``stem`` against the correct
+    option's text in every language.
+    """
+    issues: list[ValidationIssue] = []
+    for question in doc.get("questions") or []:
+        stem = question.get("stem")
+        if not isinstance(stem, dict):
+            continue
+        correct = next(
+            (c for c in question.get("choices") or [] if c.get("id") == question.get("answer")),
+            None,
+        )
+        answers = [correct[lang] for lang in LANGS if correct and correct.get(lang)]
+        for lang, text in stem.items():
+            if any(_leaks(answer, _as_str(text)) for answer in answers):
+                issues.append(
+                    ValidationIssue(
+                        severity="error",
+                        code="answer_leak",
+                        path=f"questions[{question.get('id')}].stem.{lang}",
+                        message="the answer appears in the stem a learner reads before answering",
+                    )
+                )
+    return issues
+
+
+def with_issues(report: ValidationReport, issues: Iterable[ValidationIssue]) -> ValidationReport:
+    """``report`` with extra errors appended (and its ``checks`` counts kept true)."""
+    extra = list(issues)
+    if not extra:
+        return report
+    errors = [*report.errors, *extra]
+    checks = report.checks.model_copy(update={"errors": len(errors)})
+    return report.model_copy(update={"ok": False, "errors": errors, "checks": checks})
+
+
 def publishable(report: ValidationReport, doc: dict[str, Any]) -> ValidationReport:
-    """The validator's verdict, plus the generator's own floor on questions.
+    """The validator's verdict, plus the generator's own checks.
 
     The format does not require questions, but a lesson story with fewer than
     :data:`MIN_QUESTIONS` is not worth showing a learner, so it is reported as
-    an error and the story stays unpublished.
+    an error and the story stays unpublished. A ``stem`` that gives the answer
+    away is an error too (:func:`stem_leaks`).
     """
-    if len(doc.get("questions") or []) >= MIN_QUESTIONS:
+    issues = stem_leaks(doc)
+    if len(doc.get("questions") or []) < MIN_QUESTIONS:
+        issues.append(
+            ValidationIssue(
+                severity="error",
+                code="too_few_questions",
+                path="questions",
+                message=f"a lesson story needs at least {MIN_QUESTIONS} questions",
+            )
+        )
+    return with_issues(report, issues)
+
+
+def with_generator_issues(report: ValidationReport, build: StoryBuild) -> ValidationReport:
+    """Fold the builder's own findings (copy-fallbacks) into the report as errors.
+
+    That is what makes the repair loop ask the model for the missing
+    translation, exactly as it asks for anything the validator found.
+    """
+    return with_issues(report, build.issues)
+
+
+def settle_translations(report: ValidationReport) -> ValidationReport:
+    """After the repair budget: keep each copied translation, as a warning.
+
+    A copy is the last resort — a story with a line in the wrong language is
+    still better than none — but it is never silent: it stays in the stored
+    report. Every other error keeps the story unpublished.
+    """
+    moved = [e for e in report.errors if e.code == MISSING_TRANSLATION]
+    if not moved:
         return report
-    issue = ValidationIssue(
-        severity="error",
-        code="too_few_questions",
-        path="questions",
-        message=f"a lesson story needs at least {MIN_QUESTIONS} questions",
+    errors = [e for e in report.errors if e.code != MISSING_TRANSLATION]
+    warnings = [
+        *report.warnings,
+        *(issue.model_copy(update={"severity": "warning"}) for issue in moved),
+    ]
+    checks = report.checks.model_copy(update={"errors": len(errors), "warnings": len(warnings)})
+    return report.model_copy(
+        update={"ok": not errors, "errors": errors, "warnings": warnings, "checks": checks}
     )
-    errors = [*report.errors, issue]
-    checks = report.checks.model_copy(update={"errors": len(errors)})
-    return report.model_copy(update={"ok": False, "errors": errors, "checks": checks})
 
 
 _PATH_QUESTION_RE = re.compile(r"^questions\[([^\]]+)\]")

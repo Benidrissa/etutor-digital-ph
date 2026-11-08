@@ -22,6 +22,7 @@ from app.api.v1.schemas.story_course import PLACES, ValidationIssue
 from app.domain.services.story_repair import (
     CHOICE_IDS,
     MAX_OBJECTIVES,
+    MAX_PICKED_MCQS,
     LessonStoryContext,
     clean_text,
 )
@@ -99,9 +100,14 @@ class StoryPlan:
 
 
 def plan_for(ctx: LessonStoryContext) -> StoryPlan:
-    """Enough objectives to be meaningful, each with 2 questions (C.5)."""
+    """Enough objectives to be meaningful, each with 2 questions (C.5).
+
+    With a covering quiz the number of derived questions is the model's pick,
+    so ``extra_questions`` is the total to reach: 2 per objective, from which
+    the model subtracts the candidates it picked.
+    """
     derived = len(ctx.mcqs)
-    if derived == 0:
+    if derived == 0 or ctx.picks_from_quiz:
         return StoryPlan(objectives=2, extra_questions=4)
     objectives = max(1, min(MAX_OBJECTIVES, derived // 2))
     return StoryPlan(objectives=objectives, extra_questions=max(0, 2 * objectives - derived))
@@ -132,10 +138,20 @@ def _quiz_block(ctx: LessonStoryContext) -> str:
             "QUIZ: this unit has no quiz yet. Write every question yourself, as extra"
             ' questions, and leave "derived" as an empty list.'
         )
-    lines = [
-        "QUIZ QUESTIONS (fixed: you translate them and explain their wrong options;"
-        " you never change them):"
-    ]
+    if ctx.picks_from_quiz:
+        lines = [
+            f"CANDIDATE QUIZ QUESTIONS from the quiz of unit {ctx.quiz_unit_number}, which"
+            " covers several lessons of this module. Pick ONLY the questions that test THIS"
+            f" lesson's content — at most {MAX_PICKED_MCQS}, none if none fits — and write a"
+            ' "derived" entry, with its ref, for each one you pick. Leave every other'
+            " candidate out. Picked questions are fixed: you translate them and explain"
+            " their wrong options; you never change them:"
+        ]
+    else:
+        lines = [
+            "QUIZ QUESTIONS (fixed: you translate them and explain their wrong options;"
+            " you never change them):"
+        ]
     for mcq in ctx.mcqs:
         lines.append(f"\n[{mcq.ref}] {mcq.stem}")
         for index, option in enumerate(mcq.options):
@@ -216,8 +232,7 @@ COUNTS AND RULES FOR THIS UNIT:
 - "objectives": exactly {plan.objectives}, ids o1..o{plan.objectives}.
 - "concepts": exactly {concept_count}, one per lesson concept, in order; 2-4 short rows each, same number of rows in "en" and "fr".
 - "key_points_home": exactly {key_point_count} entries, same order as the lesson's key points.
-- "derived": exactly {len(ctx.mcqs)} entries, one per quiz question above, with the same "ref". Give EVERY wrong option a "distractors" entry (option letter, misconception id, targeted hint). Assign each to the objective it tests.
-- "questions": exactly {plan.extra_questions} extra questions (type "choice" or "exact_text"), so that every objective has at least 2 questions.
+{_derived_rule(ctx, plan)}
 - "exercises": exactly {plan.exercises}, one per objective.
 - "minigame": 2 or 3 rounds of 4-5 items; at least 2 correct and 1 wrong item per round.
 - Every misconception id you use must be in "misconceptions". Never put a misconception on a correct option.
@@ -225,6 +240,28 @@ COUNTS AND RULES FOR THIS UNIT:
 - Story lines at most 90 characters per language; prompts at most 150; hints at most 120.
 - The learner is {{child}}: write it exactly like that. Speak to the learner as "you" / "tu"; French stays gender-neutral for the learner.
 """
+
+
+def _derived_rule(ctx: LessonStoryContext, plan: StoryPlan) -> str:
+    distractors = (
+        'Give EVERY wrong option a "distractors" entry (option letter, misconception id,'
+        " targeted hint). Assign each to the objective it tests."
+    )
+    if ctx.picks_from_quiz:
+        return (
+            f'- "derived": 0 to {MAX_PICKED_MCQS} entries, one per candidate quiz question'
+            ' you picked as testing THIS lesson, with its "ref" from the list above. Never'
+            f" pick a question about another lesson. {distractors}\n"
+            f'- "questions": {plan.extra_questions} minus the number of "derived" entries'
+            ' (never fewer than 0) extra questions (type "choice" or "exact_text"), so that'
+            " every objective has at least 2 questions."
+        )
+    return (
+        f'- "derived": exactly {len(ctx.mcqs)} entries, one per quiz question above, with'
+        f' the same "ref". {distractors}\n'
+        f'- "questions": exactly {plan.extra_questions} extra questions (type "choice" or'
+        ' "exact_text"), so that every objective has at least 2 questions.'
+    )
 
 
 def build_story_user_message(ctx: LessonStoryContext, plan: StoryPlan | None = None) -> str:
@@ -271,6 +308,9 @@ def build_repair_message(
         "How the paths map to your JSON: questions[qN] is your 'derived' entry with"
         " that ref; questions[<id>] is your extra question with that id; choices[i]"
         " is option letter a, b, c, d for i = 0, 1, 2, 3; exercises[EN] is your N-th"
-        " exercise; minigames[g1].rounds[i] is your mini-game round i (from 0).\n\n"
+        " exercise; minigames[g1].rounds[i] is your mini-game round i (from 0)."
+        " A [missing_translation] path is already the path of a field of YOUR JSON"
+        " (e.g. derived[q2].options_home, concepts[0].fr, story.opening.fr): write it"
+        ' in that language, with "en" in English and "fr" in French.\n\n'
         f"Your previous JSON:\n{previous}"
     )

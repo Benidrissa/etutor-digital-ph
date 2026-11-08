@@ -16,8 +16,9 @@ A row is one of two kinds:
 * a **lesson story** — the story mode of one lesson unit, generated from that
   unit's lesson and quiz the first time a learner opens it (migration 106).
   It is bound to ``(module_unit_id, language)`` and remembers which lesson and
-  quiz rows (and which revision of each) it was derived from, so a story goes
-  stale — and is regenerated — when either source is regenerated.
+  quiz rows it was derived from — with the revision and a content digest of
+  each — so a story goes stale, and is regenerated, when either source is
+  regenerated or edited.
 """
 
 from __future__ import annotations
@@ -127,13 +128,20 @@ class StoryCourseRecord(Base):
     )
     source_lesson_revision: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
 
-    #: The unit quiz the story's questions were derived from, and its
-    #: revision. Both null when the unit had no quiz yet; a non-null revision
-    #: with a null id means the quiz row was deleted since.
+    #: The quiz the story's questions were derived from — the lesson unit's
+    #: own, or that of the quiz unit covering the lesson — and its revision.
+    #: Both null when there was no cached quiz; a non-null revision with a
+    #: null id means the quiz row was deleted since.
     source_quiz_content_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("generated_content.id", ondelete="SET NULL"), nullable=True
     )
     source_quiz_revision: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+
+    #: sha256 of each source row's content as canonical JSON (sorted keys, no
+    #: whitespace). An admin's manual edit of a lesson or quiz changes its
+    #: content without bumping ``content_revision``; the digest catches it.
+    source_lesson_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_quiz_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
