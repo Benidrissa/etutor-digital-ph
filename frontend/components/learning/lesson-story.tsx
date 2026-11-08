@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { AlertTriangle, Loader2, RefreshCw, ScrollText, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { StoryPlayer } from '@/components/story/story-player';
+import { LessonStorySkeleton } from './lesson-story-skeleton';
 import { apiFetch, ApiError } from '@/lib/api';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { loadStory, OfflineContentNotAvailable } from '@/lib/offline/content-loader';
@@ -264,19 +265,7 @@ export function LessonStory({
   }
 
   if (state.kind === 'loading' || state.kind === 'ready' || !isHydrated) {
-    return (
-      <div aria-busy="true" className="mx-auto max-w-2xl">
-        <p className="sr-only" role="status">
-          {t('loading')}
-        </p>
-        <div className="h-6 w-2/3 animate-pulse rounded bg-gray-200" />
-        <div className="mt-4 space-y-3">
-          {[0, 1, 2].map((key) => (
-            <div key={key} className="h-14 animate-pulse rounded-lg bg-gray-200" />
-          ))}
-        </div>
-      </div>
-    );
+    return <LessonStorySkeleton />;
   }
 
   if (state.kind === 'generating') {

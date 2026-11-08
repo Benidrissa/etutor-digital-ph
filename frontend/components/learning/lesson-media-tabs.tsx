@@ -1,13 +1,25 @@
 'use client';
 
 import { useCallback, useState, type ReactNode } from 'react';
+import dynamic from 'next/dynamic';
 import { useTranslations } from 'next-intl';
 import { BookOpen, Headphones, ScrollText, Video as VideoIcon } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LessonAudio } from './lesson-audio';
-import { LessonStory } from './lesson-story';
+import { LessonStorySkeleton } from './lesson-story-skeleton';
 import { LessonVideo } from './lesson-video';
+
+/**
+ * The Story tab's panel and the whole story player behind it (~10 KB gzipped)
+ * load only once a learner first opens the tab, so the lesson page stays
+ * inside its JS budget on 2G. Client-only: the panel needs the learner's
+ * stored name and fetches nothing on the server anyway.
+ */
+const LessonStory = dynamic(
+  () => import('./lesson-story').then((mod) => mod.LessonStory),
+  { ssr: false, loading: () => <LessonStorySkeleton /> },
+);
 
 export type LessonMediaTab = 'read' | 'listen' | 'watch' | 'story';
 
@@ -34,8 +46,9 @@ interface LessonMediaTabsProps {
  * the ways of consuming a lesson. All panes are kept mounted via Base UI's
  * ``keepMounted`` so audio polling, audio playback continuity, video status
  * badging and the learner's place in the story survive tab switches. The
- * story pane is told whether it is the open tab, and fetches nothing until it
- * first is.
+ * story pane's code is split out and loaded the first time its tab opens;
+ * after that it is told whether it is the open tab, so a running mini-game
+ * pauses while the learner reads another tab.
  */
 export function LessonMediaTabs({
   lessonId,
@@ -51,6 +64,10 @@ export function LessonMediaTabs({
   const [audioDuration, setAudioDuration] = useState<number | null>(null);
   const [isVideoGenerating, setIsVideoGenerating] = useState(false);
   const [isStoryGenerating, setIsStoryGenerating] = useState(false);
+  // Latches the first time the Story tab is opened (state adjusted during
+  // render, so the panel's code starts loading in the same commit).
+  const [storyOpened, setStoryOpened] = useState(false);
+  if (activeTab === 'story' && !storyOpened) setStoryOpened(true);
 
   const handleValueChange = useCallback(
     (value: unknown) => {
@@ -155,16 +172,19 @@ export function LessonMediaTabs({
             keepMounted
             className="data-active:min-h-[40vh] p-4 md:p-8"
           >
-            {/* Keyed by lesson so a different lesson or language starts fresh. */}
-            <LessonStory
-              key={`${moduleId}:${unitId}:${language}`}
-              moduleId={moduleId}
-              unitId={unitId}
-              language={language}
-              active={activeTab === 'story'}
-              onActivelyGeneratingChange={setIsStoryGenerating}
-              onComplete={onStoryComplete}
-            />
+            {/* Keyed by lesson so a different lesson or language starts fresh.
+                Not rendered (so not downloaded) until the tab is first opened. */}
+            {storyOpened ? (
+              <LessonStory
+                key={`${moduleId}:${unitId}:${language}`}
+                moduleId={moduleId}
+                unitId={unitId}
+                language={language}
+                active={activeTab === 'story'}
+                onActivelyGeneratingChange={setIsStoryGenerating}
+                onComplete={onStoryComplete}
+              />
+            ) : null}
           </TabsContent>
         </CardContent>
       </Card>
