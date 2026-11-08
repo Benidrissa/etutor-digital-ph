@@ -2663,6 +2663,9 @@
     "useIndexForm": "Right primes — now write them with powers.",
     "missingRef": "Missing {kind} {ref}.",
     "visualNotDrawn": "Visual not drawn yet: {visual}",
-    "popped": "popped"
+    "popped": "popped",
+    "caught": "caught",
+    "notThisOne": "not this one",
+    "secondsLeft": "{seconds}s"
   }
 }

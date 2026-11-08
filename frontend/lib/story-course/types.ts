@@ -182,6 +182,24 @@ export interface Chapter {
   scenes: Scene[];
 }
 
+/** One tappable thing in an items-shaped round (contract C5). */
+export interface MinigameItem {
+  label: TextObject | string;
+  correct?: boolean;
+  /** The misconception id a wrong item represents. Only on wrong items. */
+  trap?: string;
+}
+
+/**
+ * A round that lists its items explicitly, each flagged right or wrong — the
+ * shape lesson stories use (engine `catch`), since a lesson's facts have no
+ * rule a client could evaluate the way `is_prime` can.
+ */
+export interface MinigameItemsRound {
+  prompt?: TextObject;
+  items: MinigameItem[];
+}
+
 export interface Minigame {
   id: string;
   engine: string;
@@ -189,6 +207,10 @@ export interface Minigame {
   title: TextObject;
   instruction: TextObject;
   rule?: { fn?: string };
+  /**
+   * Either a list of values the `rule` sorts into targets and traps (`pop`),
+   * or {@link MinigameItemsRound} objects. Other shapes are not rendered.
+   */
   rounds?: unknown[];
   traps?: Record<string, string>;
   hint_after_wrong?: TextObject;

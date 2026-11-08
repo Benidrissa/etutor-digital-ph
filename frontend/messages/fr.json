@@ -2663,6 +2663,9 @@
     "useIndexForm": "Bons facteurs premiers — écris-les maintenant avec des puissances.",
     "missingRef": "{kind} {ref} introuvable.",
     "visualNotDrawn": "Visuel pas encore dessiné : {visual}",
-    "popped": "touché"
+    "popped": "touché",
+    "caught": "trouvé",
+    "notThisOne": "pas celui-ci",
+    "secondsLeft": "{seconds} s"
   }
 }
