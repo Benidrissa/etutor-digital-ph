@@ -26,7 +26,7 @@ import { track } from '@/lib/analytics';
 import { isProviderQuotaError } from '@/lib/generation-errors';
 import { loadLesson, OfflineContentNotAvailable } from '@/lib/offline/content-loader';
 import { isHealedLessonResponse, type SelfHealCandidate } from '@/lib/learning/country-selfheal';
-import { addOfflineAction } from '@/lib/offline/db';
+import { completeLessonUnit } from '@/lib/learning/complete-lesson';
 import { OfflineBadge } from '@/components/shared/offline-badge';
 import { SubscriptionRequired } from '@/components/shared/subscription-required';
 import { useNetworkStatus } from '@/lib/hooks/use-network-status';
@@ -366,31 +366,26 @@ export function LessonViewer({
     setForceRegenerate(true);
   };
 
+  // One completion at a time: the story's end and a tap on the button can
+  // land together, and the unit must be recorded (or queued) once.
+  const completingRef = useRef(false);
+
   const handleMarkComplete = async () => {
+    if (completingRef.current) return;
+    completingRef.current = true;
     setCompleteError(null);
-    if (!isOnline) {
-      // Offline: queue for replay when reconnected. Optimistically show completed (#2151).
-      await addOfflineAction({
-        actionType: 'case_study_complete',
-        payload: { module_id: moduleId, unit_id: unitId },
-      });
-      setIsCompleted(true);
-      onComplete?.();
-      return;
-    }
     try {
-      await apiFetch(`/api/v1/progress/complete-lesson`, {
-        method: 'POST',
-        body: JSON.stringify({
-          module_id: moduleId,
-          unit_id: unitId,
-        }),
-      });
+      // Online POST; offline — or online but the request died on a flaky
+      // connection, or the server failed — queued for background sync and
+      // shown as completed optimistically (#2151). A 4xx is not queued.
+      await completeLessonUnit(moduleId, unitId, { online: isOnline });
       setIsCompleted(true);
       onComplete?.();
     } catch (err) {
       console.error('Error marking lesson complete:', err);
       setCompleteError(t('completeError'));
+    } finally {
+      completingRef.current = false;
     }
   };
 
