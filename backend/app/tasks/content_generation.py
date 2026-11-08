@@ -434,6 +434,108 @@ def generate_case_study_task(
     time_limit=POLL_HARD_LIMIT,
     rate_limit="5/m",
 )
+def generate_story_task(
+    self,
+    module_id: str,
+    unit_id: str,
+    language: str,
+    country: str = "CI",
+    level: int = 1,
+    force_regenerate: bool = False,
+) -> dict:
+    """Generate a lesson unit's story mode and cache it in ``story_courses``.
+
+    Dispatched by ``GET /story-courses/unit/{module_id}/{unit_id}`` the first
+    time a learner opens the Story tab. ``country``/``level`` only choose which
+    cached lesson seeds the story (one story serves every learner of the unit
+    in that language). ``content_id`` in the result is the ``story_courses``
+    row id; an invalid story is stored as a draft and still reports
+    ``complete`` — the client's re-fetch then gets 409 ``story_unavailable``.
+
+    Unlike the lesson task this does NOT chain ``assess_and_regenerate_unit_task``:
+    the quality rubric is written for lesson keys and its regenerator has no
+    story branch. The Appendix C validator is the story's quality gate.
+    """
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    from app.ai.claude_service import ClaudeService
+    from app.ai.rag.embeddings import EmbeddingService
+    from app.ai.rag.retriever import SemanticRetriever
+    from app.domain.models.ai_usage_event import FEATURE_STORY_GENERATION
+    from app.domain.services.lesson_service import LessonGenerationService
+    from app.domain.services.story_from_lesson_service import StoryFromLessonService
+    from app.infrastructure.config.settings import settings
+
+    logger.info(
+        "Starting async story generation",
+        module_id=module_id,
+        unit_id=unit_id,
+        language=language,
+        task_id=self.request.id,
+    )
+
+    async def _run() -> dict:
+        set_ai_context(FEATURE_STORY_GENERATION, module_id=_safe_uuid(module_id))  # ledger
+        engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
+        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        try:
+            async with session_factory() as session:
+                claude = ClaudeService()
+                embedding_service = EmbeddingService(
+                    api_key=settings.openai_api_key, model=settings.embedding_model
+                )
+                # The retriever is only used if the unit has no cached lesson yet.
+                lesson_service = LessonGenerationService(
+                    claude, SemanticRetriever(embedding_service)
+                )
+                service = StoryFromLessonService(claude, lesson_service=lesson_service)
+                record = await service.get_or_generate_unit_story(
+                    module_id=uuid.UUID(module_id),
+                    unit_id=unit_id,
+                    language=language,
+                    session=session,
+                    level=level,
+                    country=country,
+                    force_regenerate=force_regenerate,
+                )
+                return {
+                    "status": "complete",
+                    "content_id": str(record.id),
+                    "is_valid": bool(record.is_valid),
+                }
+        finally:
+            await engine.dispose()
+
+    try:
+        result = asyncio.run(_run())
+        logger.info(
+            "Async story generation completed",
+            module_id=module_id,
+            unit_id=unit_id,
+            result=result,
+            task_id=self.request.id,
+        )
+        return result
+    except Exception as exc:
+        logger.error(
+            "Async story generation failed",
+            module_id=module_id,
+            unit_id=unit_id,
+            exception=str(exc),
+            task_id=self.request.id,
+        )
+        return {"status": "failed", "error": str(exc)}
+
+
+@celery_app.task(
+    bind=True,
+    base=CallbackTask,
+    soft_time_limit=POLL_SOFT_LIMIT,
+    time_limit=POLL_HARD_LIMIT,
+    rate_limit="5/m",
+)
 def generate_quiz_task(
     self,
     module_id: str,
