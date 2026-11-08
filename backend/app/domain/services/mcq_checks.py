@@ -158,8 +158,20 @@ _NUMBER_SPACES = frozenset(" \u00a0\u202f\u2009")
 
 
 #: Characters written for one another, folded to one spelling: the minus sign
-#: and the en dash of a range ("2015–2030") to the hyphen-minus.
-_FOLD = str.maketrans({MINUS: "-", "–": "-"})
+#: and the en dash of a range ("2015–2030") to the hyphen-minus; curly
+#: quotes, the modifier-letter apostrophe and the acute accent typed for an
+#: apostrophe ("l’OMS", "lʼOMS", "l´OMS") to the straight one, since generated
+#: French mixes them within one quiz.
+_FOLD = str.maketrans(
+    {
+        MINUS: "-",
+        "–": "-",
+        "’": "'",
+        "‘": "'",
+        "ʼ": "'",
+        "´": "'",
+    }
+)
 
 
 def _normalise(text: Any) -> str:

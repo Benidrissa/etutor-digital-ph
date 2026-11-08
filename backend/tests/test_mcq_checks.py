@@ -363,6 +363,37 @@ class TestRangeEnds:
         assert findings("-") == findings("\u2013")
 
 
+#: Straight and curly apostrophes, and the look-alikes models emit for them.
+APOSTROPHES = ["'", "\u2019", "\u2018", "\u02bc", "\u00b4"]
+APOSTROPHE_IDS = ["straight", "right-quote", "left-quote", "modifier", "acute"]
+
+
+class TestApostrophes:
+    """Generated French mixes ' and ’: "l'OMS" in the stem, "L’OMS" as the
+    option. Matched character for character, the answer was never found."""
+
+    @pytest.mark.parametrize("stem_mark", APOSTROPHES, ids=APOSTROPHE_IDS)
+    @pytest.mark.parametrize("option_mark", ["'", "\u2019"], ids=["straight", "curly"])
+    def test_the_answer_is_found_whichever_apostrophe(self, stem_mark, option_mark):
+        a = stem_mark
+        stem = (
+            f"Selon l{a}Organisation mondiale de la santé, qui coordonne la riposte "
+            f"internationale ? Indice : c{a}est l{a}OMS."
+        )
+        o = option_mark
+        options = [f"L{o}OMS", f"L{o}UNICEF", "Le Fonds mondial", "Gavi"]
+        issues = mcq.check_quiz_question(q(question=stem, options=options, correct_answer=0))
+        assert [i.path for i in issues if i.code == mcq.ANSWER_LEAK] == ["questions[q1].question"]
+
+    @pytest.mark.parametrize("mark", APOSTROPHES[1:], ids=APOSTROPHE_IDS[1:])
+    def test_options_differing_only_by_apostrophe_are_duplicates(self, mark):
+        assert mcq.option_key(f"L{mark}OMS") == mcq.option_key("L'OMS")
+        issues = mcq.check_quiz_question(
+            q(options=[f"L{mark}OMS", "L'OMS", "Gavi", "Le Fonds mondial"], correct_answer=0)
+        )
+        assert mcq.DUPLICATE_OPTIONS in errors(issues)
+
+
 #: The spaces French typography puts between digit groups and before a unit:
 #: plain, no-break (U+00A0), narrow no-break (U+202F) and thin (U+2009).
 FRENCH_SPACES = [" ", "\u00a0", "\u202f", "\u2009"]
