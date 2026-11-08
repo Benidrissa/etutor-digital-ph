@@ -8,6 +8,16 @@ It is a single versioned document that the player downloads in one piece for
 offline use, and its format is versioned independently of this schema, so
 shredding it across a dozen tables would buy nothing and would silently drop
 any field a later format version adds.
+
+A row is one of two kinds:
+
+* a **hand-authored week** — the original use; every lesson-binding column
+  below is null;
+* a **lesson story** — the story mode of one lesson unit, generated from that
+  unit's lesson and quiz the first time a learner opens it (migration 106).
+  It is bound to ``(module_unit_id, language)`` and remembers which lesson and
+  quiz rows (and which revision of each) it was derived from, so a story goes
+  stale — and is regenerated — when either source is regenerated.
 """
 
 from __future__ import annotations
@@ -18,7 +28,17 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
-from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import (
+    Boolean,
+    ForeignKey,
+    Index,
+    Integer,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -42,6 +62,11 @@ class StoryCourseRecord(Base):
     __table_args__ = (
         Index("ix_story_courses_course_week", "course_id", "week"),
         Index("ix_story_courses_status", "status"),
+        # One lesson story per unit and language. NULLs are distinct in a
+        # PostgreSQL unique constraint, so hand-authored weeks (unbound) are
+        # unaffected.
+        UniqueConstraint("module_unit_id", "language", name="uq_story_courses_unit_language"),
+        Index("ix_story_courses_module_language", "module_id", "language"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -80,6 +105,35 @@ class StoryCourseRecord(Base):
     is_valid: Mapped[bool] = mapped_column(Boolean, server_default=sa.false(), nullable=False)
     validation_report: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     max_points: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
+
+    # -- lesson binding (migration 106); all null for hand-authored weeks ----
+
+    #: The module and unit whose lesson this story tells.
+    module_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("modules.id", ondelete="CASCADE"), nullable=True
+    )
+    module_unit_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("module_units.id", ondelete="CASCADE"), nullable=True
+    )
+    #: Language of instruction of the story ("fr" | "en"); the other one is
+    #: the home language.
+    language: Mapped[str | None] = mapped_column(String(2), nullable=True)
+
+    #: The ``generated_content`` lesson row the story was derived from, and
+    #: its ``content_revision`` at the time. A regenerated lesson bumps the
+    #: revision, which makes the story stale.
+    source_lesson_content_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("generated_content.id", ondelete="SET NULL"), nullable=True
+    )
+    source_lesson_revision: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+
+    #: The unit quiz the story's questions were derived from, and its
+    #: revision. Both null when the unit had no quiz yet; a non-null revision
+    #: with a null id means the quiz row was deleted since.
+    source_quiz_content_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("generated_content.id", ondelete="SET NULL"), nullable=True
+    )
+    source_quiz_revision: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
 
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
