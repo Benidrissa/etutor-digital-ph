@@ -287,13 +287,39 @@ class TestChoiceQuestionsSharedMcqChecks:
         assert report.warnings == [], [w.model_dump() for w in report.warnings]
 
     def test_correct_choice_text_in_prompt_is_a_leak(self, course):
-        # Not "Which one of these…": "one" is a distractor here, and a text
-        # naming a distractor too reads as a comparison, which is not a leak.
         q1 = _wordy_choice_question(course)
-        q1["prompt"]["en"] = "Thirteen is prime. Which of these numbers is prime?"
+        q1["prompt"]["en"] = "Thirteen is prime. Which one of these is a prime number?"
         report = validate(course)
         leaks = [e for e in report.errors if e.code == "answer_leak"]
         assert [e.path for e in leaks] == ["questions[q1].prompt.en"]
+
+    def test_a_distractor_named_in_passing_does_not_excuse_a_leak(self, course):
+        """ "one"/"un" is a distractor here, but as a pronoun or an article it
+        does not put the options side by side: the answer is still given."""
+        q1 = _wordy_choice_question(course)
+        q1["prompt"] = {
+            "en": "Thirteen is prime. Which one of these is a prime number?",
+            "fr": "Treize est un nombre premier. Lequel de ces nombres est un nombre premier ?",
+        }
+        leaks = [e for e in validate(course).errors if e.code == "answer_leak"]
+        assert sorted(e.path for e in leaks) == [
+            "questions[q1].prompt.en",
+            "questions[q1].prompt.fr",
+        ]
+
+    def test_a_hint_naming_a_distractor_then_the_answer_leaks(self, course):
+        q1 = _wordy_choice_question(course)
+        q1["hints"] = [
+            {
+                "en": "Nine is 3 × 3, so the prime one is thirteen.",
+                "fr": "Neuf = 3 × 3, donc le nombre premier est treize.",
+            }
+        ]
+        leaks = [e for e in validate(course).errors if e.code == "answer_leak"]
+        assert sorted(e.path for e in leaks) == [
+            "questions[q1].hints[0].en",
+            "questions[q1].hints[0].fr",
+        ]
 
     def test_correct_choice_text_in_hint_is_a_leak(self, course):
         q1 = _wordy_choice_question(course)

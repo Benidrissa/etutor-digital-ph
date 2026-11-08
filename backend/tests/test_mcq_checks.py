@@ -418,6 +418,23 @@ class TestComparisonStemsAreNotLeaks:
                 ["0,75", "0,7", "Ils sont égaux", "On ne peut pas savoir"],
                 0,
             ),
+            (
+                "Which is prime: nine, thirteen or twenty-one?",
+                ["one", "nine", "thirteen", "twenty-one"],
+                2,
+            ),
+            ("Is it the RDT or the microscopy?", ["Culture", "Microscopy", "RDT", "PCR"], 1),
+            ("Which is larger: 3/4 vs. 2/3?", ["3/4", "2/3", "They are equal", "It depends"], 0),
+            (
+                "Le paludisme est-il transmis par l'eau ou par le moustique Anopheles ?",
+                ["Par l'eau", "Par le moustique Anopheles", "Par l'air", "Par contact"],
+                1,
+            ),
+            (
+                "Lequel est premier : « neuf » ou « treize » ?",
+                ["un", "neuf", "treize", "vingt et un"],
+                2,
+            ),
         ],
     )
     def test_either_or_stem(self, stem, options, correct):
@@ -434,6 +451,70 @@ class TestComparisonStemsAreNotLeaks:
             stem_path="questions[q1].question",
             option_path="questions[q1].options",
             other_texts=(("questions[q1].hints[0]", "Hint: it is 3/4."),),
+        )
+        leaks = [i for i in mcq.check_answer_leak(view) if i.code == mcq.ANSWER_LEAK]
+        assert [i.path for i in leaks] == ["questions[q1].hints[0]"]
+
+    @pytest.mark.parametrize(
+        ("stem", "options", "correct"),
+        [
+            # A distractor that is also a common word ("one", "un").
+            (
+                "Thirteen is prime. Which one of these is a prime number?",
+                ["one", "nine", "thirteen", "twenty-one"],
+                2,
+            ),
+            (
+                "Treize est un nombre premier. Lequel de ces nombres est un nombre premier ?",
+                ["un", "neuf", "treize", "vingt et un"],
+                2,
+            ),
+            # A distractor mentioned in passing.
+            (
+                "Malaria, unlike cholera, is spread by mosquitoes. Which disease is it?",
+                ["Cholera", "Malaria", "Measles", "Tuberculosis"],
+                1,
+            ),
+            # A comma alone is apposition, not a list of alternatives.
+            (
+                "Thirteen, one of the primes, is odd. Which number is prime?",
+                ["one", "nine", "thirteen", "twenty-one"],
+                2,
+            ),
+            # Compared once, then named on its own.
+            (
+                "Nine and thirteen are odd; thirteen is prime. Which number is prime?",
+                ["one", "nine", "thirteen", "twenty-one"],
+                2,
+            ),
+        ],
+    )
+    def test_naming_a_distractor_elsewhere_does_not_excuse_a_leak(self, stem, options, correct):
+        issues = mcq.check_quiz_question(q(question=stem, options=options, correct_answer=correct))
+        assert mcq.ANSWER_LEAK in errors(issues)
+
+    @pytest.mark.parametrize(
+        ("hint", "options"),
+        [
+            (
+                "Nine is 3 × 3, so the prime one is thirteen.",
+                ("one", "nine", "thirteen", "twenty-one"),
+            ),
+            (
+                "Neuf = 3 × 3, donc le nombre premier est treize.",
+                ("un", "neuf", "treize", "vingt et un"),
+            ),
+        ],
+    )
+    def test_a_hint_that_names_a_distractor_then_gives_the_answer_leaks(self, hint, options):
+        view = mcq.McqView(
+            stem="Which number is prime?",
+            options=options,
+            correct_index=2,
+            path="questions[q1]",
+            stem_path="questions[q1].question",
+            option_path="questions[q1].options",
+            other_texts=(("questions[q1].hints[0]", hint),),
         )
         leaks = [i for i in mcq.check_answer_leak(view) if i.code == mcq.ANSWER_LEAK]
         assert [i.path for i in leaks] == ["questions[q1].hints[0]"]
