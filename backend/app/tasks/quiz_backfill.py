@@ -114,6 +114,11 @@ async def regenerate_quiz_row(
     gc = await session.get(GeneratedContent, content_id)
     if gc is None or gc.content_type != "quiz":
         return "missing"
+    # Re-read under the overwrite lock (FOR NO KEY UPDATE, as the generator
+    # takes it): a quality run regenerating this row right now is waited for,
+    # and the pre-image below is of the revision it leaves, not of the one
+    # loaded a moment ago — whose pre-image that run has just written.
+    await session.refresh(gc, with_for_update={"key_share": True})
     if gc.is_manually_edited:
         return "skipped_manually_edited"
     if not force and has_misconceptions(gc.content):

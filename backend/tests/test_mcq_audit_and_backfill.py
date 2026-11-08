@@ -484,6 +484,30 @@ class TestRegenerateQuizRow:
         assert gc.quality_status == "pending"
         session.commit.assert_awaited()
 
+    async def test_the_row_is_re_read_under_the_overwrite_lock_first(self):
+        """A quality run committed revision 2 after this row was loaded: the
+        pre-image is of revision 2, not a second one of revision 1 (which
+        collided on uq_genc_revision and failed the row)."""
+        gc = _gc("fr", [_legacy("q1")], unit_uuid=uuid.uuid4())
+        session = _row_session(gc, SimpleNamespace(unit_number="1.2"))
+        in_db = {"title": "Quality", "questions": [_legacy("q1"), _legacy("q2")], "unit_id": "1.2"}
+
+        async def refresh(obj, attribute_names=None, with_for_update=None):
+            if with_for_update:
+                obj.content_revision = 2
+                obj.content = copy.deepcopy(in_db)
+
+        session.refresh = AsyncMock(side_effect=refresh)
+        service = _quiz_service(gc)
+
+        outcome = await quiz_backfill.regenerate_quiz_row(session, service, gc.id)
+
+        assert outcome == "regenerated"
+        assert session.refresh.await_args_list[0].kwargs == {"with_for_update": {"key_share": True}}
+        (pre_image,) = [c.args[0] for c in session.add.call_args_list]
+        assert (pre_image.revision, pre_image.content) == (2, in_db)
+        assert service.get_or_generate_quiz.await_args.kwargs["num_questions"] == 2
+
     async def test_existing_pre_image_is_not_duplicated(self):
         gc = _gc("fr", [_legacy()], unit_uuid=uuid.uuid4())
         session = _row_session(gc, SimpleNamespace(unit_number="1.2"), revision_exists=True)
