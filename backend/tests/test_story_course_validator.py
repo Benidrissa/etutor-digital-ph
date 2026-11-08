@@ -287,8 +287,10 @@ class TestChoiceQuestionsSharedMcqChecks:
         assert report.warnings == [], [w.model_dump() for w in report.warnings]
 
     def test_correct_choice_text_in_prompt_is_a_leak(self, course):
+        # Not "Which one of these…": "one" is a distractor here, and a text
+        # naming a distractor too reads as a comparison, which is not a leak.
         q1 = _wordy_choice_question(course)
-        q1["prompt"]["en"] = "Thirteen is prime. Which one of these is a prime number?"
+        q1["prompt"]["en"] = "Thirteen is prime. Which of these numbers is prime?"
         report = validate(course)
         leaks = [e for e in report.errors if e.code == "answer_leak"]
         assert [e.path for e in leaks] == ["questions[q1].prompt.en"]
@@ -306,7 +308,7 @@ class TestChoiceQuestionsSharedMcqChecks:
 
     def test_duplicate_choice_text(self, course):
         q1 = _wordy_choice_question(course)
-        find(q1["choices"], "id", "d")["en"] = "Thirteen"
+        find(q1["choices"], "id", "d")["en"] = "thirteen."
         report = validate(course)
         dup = [e for e in report.errors if e.code == "duplicate_options"]
         assert [e.path for e in dup] == ["questions[q1].choices[3].en"]

@@ -21,16 +21,22 @@ What these checks can and cannot decide:
 
 * **Answer leak** is judged by the *text of the correct option* (the story
   validator's own leak check uses the answer value, which for a choice
-  question is only an id like ``"c"``). Answers shorter than
-  :data:`MIN_LEAK_LENGTH` characters are not leak-checked — a bare ``"12"``
-  shows up in stems for innocent reasons — and that skip is reported as
-  :data:`LEAK_UNCHECKED_SHORT_ANSWER` so a clean report is never mistaken for
-  proof that a numeric quiz is leak-free.
+  question is only an id like ``"c"``). Only sentence punctuation and quotes
+  are trimmed from the option; value-bearing symbols (``%``, ``°``, currency,
+  a leading minus) are part of the answer, so ``"50%"`` is not found in
+  "a survey of 50 people" and ``"−12"`` is not found in "12 months". Answers
+  shorter than :data:`MIN_LEAK_LENGTH` characters once trimmed are not
+  leak-checked — a bare ``"12"`` shows up in stems for innocent reasons — and
+  that skip is reported as :data:`LEAK_UNCHECKED_SHORT_ANSWER` so a clean
+  report is never mistaken for proof that a numeric quiz is leak-free.
+  A text that names the correct option *and a distractor* ("Which is larger:
+  3/4 or 2/3?") does not single the answer out, so it is not a leak.
 * **Duplicate options** are the deterministic form of "more than one correct
   answer": the schema stores one correct index, so two correct options can only
-  happen as two options with the same text. Two options that *mean* the same
-  thing in different words are not decidable here; that belongs to the
-  LLM quality agent, not a validator.
+  happen as two options with the same text (case kept: ``"CO"`` and ``"Co"``
+  are different options). Two options that *mean* the same thing in different
+  words are not decidable here; that belongs to the LLM quality agent, not a
+  validator.
 * **Distractor without misconception** needs ``option_misconceptions``. Quizzes
   generated before that field existed simply lack it; they get a
   :data:`MISCONCEPTIONS_UNCHECKED` warning rather than an error.
@@ -47,8 +53,9 @@ from typing import Any
 from app.ai.algorithms.story_maths import MINUS
 from app.api.v1.schemas.story_course import ValidationIssue
 
-#: Correct options shorter than this (whitespace removed) are not leak-checked.
-#: Mirrors ``story_course_validator._MIN_LEAK_LENGTH``.
+#: Correct options shorter than this (whitespace, sentence punctuation and
+#: quotes removed) are not leak-checked. Mirrors
+#: ``story_course_validator._MIN_LEAK_LENGTH``.
 MIN_LEAK_LENGTH = 3
 
 # -- finding codes -----------------------------------------------------------
@@ -118,25 +125,41 @@ class McqView:
 # -- normalisation -----------------------------------------------------------
 
 _TOKEN_RE = re.compile(r"\w+|[^\w\s]")
-_TRAILING_PUNCT = ".!;:,"
+#: Sentence punctuation, trimmed from the end of an option for duplicates.
+_TRAILING_PUNCT = ".,;:!?…"
+#: Sentence punctuation and quotes: the only symbols trimmed from the edges of
+#: the correct option before leak matching. Everything else — ``%``, ``°``,
+#: ``‰``, currency signs, a leading minus — carries the value.
+_EDGE_PUNCT = frozenset(_TRAILING_PUNCT + "\"'«»“”„‘’‚‹›")
+#: A sign glued to a number makes it a different number ("-12" is not "12").
+_SIGNS = frozenset("+-")
+#: Between two digits these make one decimal number ("3.125" is not "125").
+_DECIMAL_SEPARATORS = frozenset(".,")
+#: Glued after a number they make it a different quantity ("50%" is not "50").
+_UNIT_SUFFIXES = frozenset("%‰°")
 
 
-def _fold(text: Any) -> str:
-    """Unicode-compose, fold the minus sign and case.
+def _normalise(text: Any) -> str:
+    """Unicode-compose and fold the minus sign; case is kept.
 
     NFC rather than NFKC on purpose: NFKC would turn ``2³`` into ``23``.
     """
-    return unicodedata.normalize("NFC", str(text)).replace(MINUS, "-").casefold()
+    return unicodedata.normalize("NFC", str(text)).replace(MINUS, "-")
 
 
-def compact(text: Any) -> str:
-    """Folded text with every whitespace character removed."""
-    return re.sub(r"\s+", "", _fold(text))
+def _fold(text: Any) -> str:
+    """:func:`_normalise`, then case-folded (leak matching ignores case)."""
+    return _normalise(text).casefold()
 
 
 def option_key(text: Any) -> str:
-    """Comparison key for duplicate options: compact, trailing punctuation off."""
-    return compact(text).rstrip(_TRAILING_PUNCT)
+    """Comparison key for duplicate options.
+
+    Whitespace removed and trailing sentence punctuation off, but case kept:
+    ``"CO"`` (carbon monoxide) and ``"Co"`` (cobalt) are different options,
+    and calling them duplicates would be a hard error on a valid question.
+    """
+    return re.sub(r"\s+", "", _normalise(text)).rstrip(_TRAILING_PUNCT)
 
 
 def _tokens(text: Any) -> list[str]:
@@ -144,22 +167,57 @@ def _tokens(text: Any) -> list[str]:
     return _TOKEN_RE.findall(_fold(text))
 
 
-def _strip_edge_punctuation(tokens: list[str]) -> list[str]:
+def _leak_needle(text: Any) -> list[str]:
+    """The tokens of an option, with sentence punctuation and quotes trimmed."""
+    tokens = _tokens(text)
     start, end = 0, len(tokens)
-    while start < end and not tokens[start][0].isalnum():
+    while start < end and tokens[start] in _EDGE_PUNCT:
         start += 1
-    while end > start and not tokens[end - 1][0].isalnum():
+    while end > start and tokens[end - 1] in _EDGE_PUNCT:
         end -= 1
     return tokens[start:end]
 
 
-def _contains_sequence(haystack: Sequence[str], needle: Sequence[str]) -> bool:
-    if not needle or len(needle) > len(haystack):
+def _at_value_boundary(folded: str, start: int, end: int, needle: Sequence[str]) -> bool:
+    """Whether ``folded[start:end]`` stands on its own as the needle's value.
+
+    Token matching already keeps ``"12"`` out of ``"120"``; this keeps a number
+    out of a longer number or quantity glued to it: ``"12"`` is not found in
+    ``"-12"``, ``"3.12"``, ``"12.5"`` or ``"12%"``, and a needle that starts
+    with a sign (``"-12"``) is not found in the range ``"5-12"``.
+    """
+    first, last = needle[0], needle[-1]
+    before = folded[start - 1] if start > 0 else ""
+    after = folded[end] if end < len(folded) else ""
+    if first in _SIGNS and before.isalnum():
         return False
+    if first[0].isdigit():
+        if before in _SIGNS:
+            return False
+        if before in _DECIMAL_SEPARATORS and start >= 2 and folded[start - 2].isdigit():
+            return False
+    if last[-1].isdigit():
+        if after in _UNIT_SUFFIXES:
+            return False
+        if after in _DECIMAL_SEPARATORS and end + 1 < len(folded) and folded[end + 1].isdigit():
+            return False
+    return True
+
+
+def _occurs_in(needle: Sequence[str], text: Any) -> bool:
+    """Whether the needle's tokens appear, in order, as a whole value in ``text``."""
+    if not needle:
+        return False
+    folded = _fold(text)
+    matches = list(_TOKEN_RE.finditer(folded))
     width = len(needle)
-    return any(
-        list(haystack[i : i + width]) == list(needle) for i in range(len(haystack) - width + 1)
-    )
+    wanted = list(needle)
+    for i in range(len(matches) - width + 1):
+        if [m.group() for m in matches[i : i + width]] != wanted:
+            continue
+        if _at_value_boundary(folded, matches[i].start(), matches[i + width - 1].end(), needle):
+            return True
+    return False
 
 
 def normalise_option_misconceptions(
@@ -290,38 +348,65 @@ def _issue(severity: str, code: str, path: str, message: str) -> ValidationIssue
     return ValidationIssue(severity=severity, code=code, path=path, message=message)
 
 
+#: A distractor this short ("a", "1") would be "found" in almost any text, so
+#: it is not taken as evidence that a text names the options side by side.
+_MIN_DISTRACTOR_EVIDENCE_LENGTH = 2
+
+
 def check_answer_leak(view: McqView, *, min_length: int = MIN_LEAK_LENGTH) -> list[ValidationIssue]:
-    """The correct option's text must not appear in the stem or hints.
+    """The correct option's text must not single itself out in the stem or hints.
 
     Matching is on whole words and symbols (case, accents composition, spacing
     and the minus sign normalised), so ``"water"`` does not match ``"seawater"``
-    but ``"2³ × 3²"`` matches ``"2³×3²"``.
+    but ``"2³ × 3²"`` matches ``"2³×3²"``. Only sentence punctuation and quotes
+    are trimmed from the option, and ``min_length`` applies to what is left,
+    so ``"50%"`` is checked as ``50%`` (never as ``50``) and ``"12."`` is a
+    short answer.
+
+    A text that also names a distractor is not a leak: "Which is larger: 3/4
+    or 2/3?" or "…the RDT or microscopy?" put the options side by side rather
+    than give the answer away. Each text is judged on its own.
     """
     answer = view.correct_option
-    needle = _strip_edge_punctuation(_tokens(answer))
-    if len(compact(answer)) < min_length or not needle:
+    needle = _leak_needle(answer)
+    if len("".join(needle)) < min_length:
         return [
             _issue(
                 "warning",
                 LEAK_UNCHECKED_SHORT_ANSWER,
                 view.option_at(view.correct_index),
-                f"the correct option {answer!r} is shorter than {min_length} characters, so "
-                "it was not checked for leaking into the stem",
+                f"the correct option {answer!r} is shorter than {min_length} characters "
+                "(punctuation aside), so it was not checked for leaking into the stem",
             )
         ]
 
+    # A distractor reading the same as the answer is no evidence of a
+    # comparison; check_duplicate_options reports it.
+    distractors: list[list[str]] = []
+    for index, option in enumerate(view.options):
+        tokens = _leak_needle(option)
+        if (
+            index != view.correct_index
+            and tokens != needle
+            and len("".join(tokens)) >= _MIN_DISTRACTOR_EVIDENCE_LENGTH
+        ):
+            distractors.append(tokens)
+
     issues: list[ValidationIssue] = []
     for path, text in ((view.stem_path, view.stem), *view.other_texts):
-        if _contains_sequence(_tokens(text), needle):
-            issues.append(
-                _issue(
-                    "error",
-                    ANSWER_LEAK,
-                    path,
-                    f"the correct option {answer!r} appears in the text a learner reads "
-                    "before answering",
-                )
+        if not _occurs_in(needle, text):
+            continue
+        if any(_occurs_in(distractor, text) for distractor in distractors):
+            continue
+        issues.append(
+            _issue(
+                "error",
+                ANSWER_LEAK,
+                path,
+                f"the correct option {answer!r} appears in the text a learner reads "
+                "before answering",
             )
+        )
     return issues
 
 

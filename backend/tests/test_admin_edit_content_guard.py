@@ -139,7 +139,7 @@ class TestQuizEdits:
         assert all(issue["path"].startswith("questions.0") for issue in detail["issues"])
 
     async def test_duplicate_options_are_422(self):
-        posted = _quiz(_question(options=["Malaria", "malaria", "Measles", "Tuberculosis"]))
+        posted = _quiz(_question(options=["Malaria", "Malaria.", "Measles", "Tuberculosis"]))
         detail = await _rejected(_row("quiz", _quiz()), posted)
         assert "duplicate_options" in _codes(detail)
 

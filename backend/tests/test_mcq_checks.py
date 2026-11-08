@@ -184,6 +184,189 @@ class TestAnswerLeak:
         assert mcq.ANSWER_LEAK in codes(mcq.check_answer_leak(view, min_length=2))
 
 
+class TestLeakKeepsValueSymbols:
+    """Only sentence punctuation is trimmed: ``%``, ``°`` and a minus carry the value.
+
+    Trimming them used to turn "50%" into the needle "50", which then "leaked"
+    into any stem that mentioned 50 of anything — a hard error on a valid quiz.
+    """
+
+    @pytest.mark.parametrize(
+        ("stem", "options"),
+        [
+            (
+                "A survey of 50 people found that 25 smoke. What share of them smoke?",
+                ["50%", "25%", "10%", "75%"],
+            ),
+            (
+                "Over 12 months the balance fell by 12 each month. What is the final change?",
+                ["−12", "12", "0", "144"],
+            ),
+            (
+                "Water is liquid at 12°C. At what reading is it colder than the freezer?",
+                ["−12°C", "12°C", "4°C", "20°C"],
+            ),
+        ],
+    )
+    def test_a_number_in_the_stem_is_not_the_signed_or_unit_answer(self, stem, options):
+        issues = mcq.check_quiz_question(q(question=stem, options=options, correct_answer=0))
+        assert mcq.ANSWER_LEAK not in codes(issues)
+        # Long enough with its symbol, so it WAS checked — not skipped as short.
+        assert mcq.LEAK_UNCHECKED_SHORT_ANSWER not in codes(issues)
+
+    def test_a_signed_answer_is_not_found_inside_a_range(self):
+        issues = mcq.check_quiz_question(
+            q(
+                question="Children aged 5-12 attend this clinic. What was the coldest day?",
+                options=["-12", "12", "5", "-5"],
+                correct_answer=0,
+            )
+        )
+        assert mcq.ANSWER_LEAK not in codes(issues)
+
+    def test_an_unsigned_answer_is_not_found_in_a_negative_number(self):
+        """The reverse of −12°C vs 12°C: "12°C" is not in "−12°C" either."""
+        issues = mcq.check_quiz_question(
+            q(
+                question="It fell to −12°C overnight. What was the afternoon high?",
+                options=["12°C", "0°C", "4°C", "-4°C"],
+                correct_answer=0,
+            )
+        )
+        assert mcq.ANSWER_LEAK not in codes(issues)
+
+    def test_a_number_inside_a_decimal_is_not_the_answer(self):
+        issues = mcq.check_quiz_question(
+            q(
+                question="The sample weighs 3.125 kg. How many grams over 3 kg is that?",
+                options=["125", "250", "500", "1000"],
+                correct_answer=0,
+            )
+        )
+        assert mcq.ANSWER_LEAK not in codes(issues)
+
+    @pytest.mark.parametrize(
+        ("stem", "answer"),
+        [
+            ("Exactly 50% of cases were treated. What share were treated?", "50%"),
+            ("50 % des patients sont traités. Quelle part est traitée ?", "50 %"),
+            ("It fell to −12°C. What was the low?", "-12°C"),
+            ("The share was −12 points. By how much did it change?", "−12"),
+        ],
+    )
+    def test_the_full_value_in_the_stem_is_still_a_leak(self, stem, answer):
+        issues = mcq.check_quiz_question(
+            q(
+                question=stem,
+                options=[answer, "Other one", "Third one", "Fourth one"],
+                correct_answer=0,
+            )
+        )
+        assert mcq.ANSWER_LEAK in errors(issues)
+
+    def test_min_length_applies_after_trimming_punctuation(self):
+        """ "12." is two characters of answer: reported short, not checked."""
+        issues = mcq.check_quiz_question(
+            q(question="Is it 12?", options=["12.", "13", "14", "15"], correct_answer=0)
+        )
+        assert mcq.ANSWER_LEAK not in codes(issues)
+        assert mcq.LEAK_UNCHECKED_SHORT_ANSWER in codes(issues)
+
+    def test_quotes_are_trimmed_like_sentence_punctuation(self):
+        issues = mcq.check_quiz_question(
+            q(
+                question="Is malaria transmitted by mosquitoes?",
+                options=["Cholera", "« Malaria »", "Measles", "Tuberculosis"],
+            )
+        )
+        assert mcq.ANSWER_LEAK in errors(issues)
+
+
+class TestComparisonStemsAreNotLeaks:
+    """A text that names the answer *and* a distractor does not single it out."""
+
+    @pytest.mark.parametrize(
+        ("stem", "options", "correct"),
+        [
+            ("Which is larger: 3/4 or 2/3?", ["3/4", "2/3", "They are equal", "It depends"], 0),
+            (
+                "Which test confirms malaria fastest at the bedside, the RDT or microscopy?",
+                ["Culture", "Microscopy", "RDT", "PCR"],
+                1,
+            ),
+            (
+                "Lequel est le plus grand : 0,75 ou 0,7 ?",
+                ["0,75", "0,7", "Ils sont égaux", "On ne peut pas savoir"],
+                0,
+            ),
+        ],
+    )
+    def test_either_or_stem(self, stem, options, correct):
+        issues = mcq.check_quiz_question(q(question=stem, options=options, correct_answer=correct))
+        assert mcq.ANSWER_LEAK not in codes(issues)
+
+    def test_each_text_is_judged_on_its_own(self):
+        """The stem compares; a hint that names only the answer still leaks."""
+        view = mcq.McqView(
+            stem="Which is larger: 3/4 or 2/3?",
+            options=("3/4", "2/3", "They are equal", "It depends"),
+            correct_index=0,
+            path="questions[q1]",
+            stem_path="questions[q1].question",
+            option_path="questions[q1].options",
+            other_texts=(("questions[q1].hints[0]", "Hint: it is 3/4."),),
+        )
+        leaks = [i for i in mcq.check_answer_leak(view) if i.code == mcq.ANSWER_LEAK]
+        assert [i.path for i in leaks] == ["questions[q1].hints[0]"]
+
+    def test_a_one_letter_distractor_is_no_evidence(self):
+        """'a' would be "found" in almost any English stem."""
+        issues = mcq.check_quiz_question(
+            q(
+                question="Malaria is a disease spread by Anopheles. Which disease is it?",
+                options=["a", "Malaria", "Measles", "Tuberculosis"],
+            )
+        )
+        assert mcq.ANSWER_LEAK in errors(issues)
+
+    def test_a_duplicate_of_the_answer_is_no_evidence(self):
+        issues = mcq.check_quiz_question(
+            q(
+                question="Malaria is spread by Anopheles. Which disease is it?",
+                options=["Malaria.", "Malaria", "Measles", "Tuberculosis"],
+            )
+        )
+        assert {mcq.ANSWER_LEAK, mcq.DUPLICATE_OPTIONS} <= errors(issues)
+
+    def test_story_choice_comparison_prompt_and_hint(self):
+        question = Question.model_validate(
+            {
+                "id": "q1",
+                "type": "choice",
+                "prompt": {
+                    "en": "Which is larger: three quarters or two thirds?",
+                    "fr": "Lequel est le plus grand : trois quarts ou deux tiers ?",
+                },
+                "answer": "a",
+                "choices": [
+                    {"id": "a", "en": "three quarters", "fr": "trois quarts"},
+                    {"id": "b", "en": "two thirds", "fr": "deux tiers", "misconception": "m"},
+                    {"id": "c", "en": "they are equal", "fr": "égaux", "misconception": "m"},
+                ],
+                "hints": [
+                    {
+                        "en": "Compare three quarters with two thirds over twelfths.",
+                        "fr": "Compare trois quarts et deux tiers en douzièmes.",
+                    }
+                ],
+            }
+        )
+        issues = [
+            i for view in mcq.from_story_choice_question(question) for i in mcq.check_mcq(view)
+        ]
+        assert mcq.ANSWER_LEAK not in codes(issues)
+
+
 class TestDuplicateOptions:
     def test_duplicate_of_the_correct_option_means_two_correct_answers(self):
         issues = mcq.check_quiz_question(
@@ -199,7 +382,7 @@ class TestDuplicateOptions:
         assert "two options are correct" in dup[0].message
 
     def test_duplicate_distractors_are_an_error_too(self):
-        issues = mcq.check_quiz_question(q(options=["Cholera", "Malaria", "cholera.", "Measles"]))
+        issues = mcq.check_quiz_question(q(options=["Cholera", "Malaria", "Cholera.", "Measles"]))
         dup = [i for i in issues if i.code == mcq.DUPLICATE_OPTIONS]
         assert len(dup) == 1
         assert "same distractor" in dup[0].message
@@ -210,6 +393,25 @@ class TestDuplicateOptions:
 
     def test_unicode_minus_and_hyphen_minus_are_the_same_option(self):
         issues = mcq.check_quiz_question(q(options=["−5", "-5", "6", "7"]))
+        assert mcq.DUPLICATE_OPTIONS in codes(issues)
+
+    @pytest.mark.parametrize(
+        "options",
+        [
+            ["CO", "Co", "CO2", "C"],  # carbon monoxide vs cobalt
+            ["mg", "Mg", "mL", "g"],  # milligram vs magnesium
+            ["Malaria", "malaria", "Measles", "Tuberculosis"],
+        ],
+    )
+    def test_options_differing_only_by_case_are_not_duplicates(self, options):
+        issues = mcq.check_quiz_question(q(options=options, correct_answer=0))
+        assert mcq.DUPLICATE_OPTIONS not in codes(issues)
+
+    def test_composition_spacing_and_trailing_punctuation_still_match(self):
+        """NFC: a precomposed é and e + combining accent are one option."""
+        issues = mcq.check_quiz_question(
+            q(options=["Fièvre", "Fièvre !", "Toux", "Diarrhée"], correct_answer=2)
+        )
         assert mcq.DUPLICATE_OPTIONS in codes(issues)
 
     def test_empty_option(self):
