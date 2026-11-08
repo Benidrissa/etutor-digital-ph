@@ -7,7 +7,9 @@
  * works if the page does not show everything at once.
  *
  * Bilingual mode shows the language of instruction first and the home
- * language beneath it, which is how the printed booklet reads.
+ * language beneath it, which is how the printed booklet reads. It starts on
+ * for a standalone week and off inside a lesson, where the learner has
+ * already chosen her language; the lesson's choice is remembered per browser.
  *
  * Text is LANGUAGE-KEYED everywhere (contract C1): the `en` field of a
  * narrate/say/concept step is English and `fr` is French, exactly like a text
@@ -62,6 +64,30 @@ const MOOD_EMOJI: Record<string, string> = {
   walk: "🚶",
 };
 
+/** Where the lesson's Story tab remembers the bilingual toggle (per browser). */
+export const EMBEDDED_BILINGUAL_KEY = "sira.story.bilingual";
+
+/**
+ * The embedded player's starting bilingual mode: whatever this viewer chose
+ * last, else off. Storage can be missing or throw (private mode, blocked site
+ * data), so any failure just means "off".
+ */
+function readEmbeddedBilingual(): boolean {
+  try {
+    return window.localStorage.getItem(EMBEDDED_BILINGUAL_KEY) === "on";
+  } catch {
+    return false;
+  }
+}
+
+function writeEmbeddedBilingual(on: boolean): void {
+  try {
+    window.localStorage.setItem(EMBEDDED_BILINGUAL_KEY, on ? "on" : "off");
+  } catch {
+    // Not remembered; the toggle still works for this visit.
+  }
+}
+
 /** A source figure is served in the lesson's languages only. */
 function figureLanguage(target: string, home: string): "fr" | "en" {
   if (target === "fr" || target === "en") return target;
@@ -113,7 +139,16 @@ export function StoryPlayer({
   const TitleTag = embedded ? "h2" : "h1";
   const ChapterTag = embedded ? "h3" : "h2";
 
-  const [bilingual, setBilingual] = useState(true);
+  // Standalone weeks open bilingual, like the booklet. In a lesson the
+  // learner already picked her language, so the second line starts off.
+  const [bilingual, setBilingual] = useState(() =>
+    embedded ? readEmbeddedBilingual() : true,
+  );
+  const toggleBilingual = () => {
+    const next = !bilingual;
+    setBilingual(next);
+    if (embedded) writeEmbeddedBilingual(next);
+  };
   const [revealed, setRevealed] = useState(0);
   const [points, setPoints] = useState(0);
   const [settledSteps, setSettledSteps] = useState<Set<number>>(new Set());
@@ -275,7 +310,7 @@ export function StoryPlayer({
         </div>
         <button
           type="button"
-          onClick={() => setBilingual((on) => !on)}
+          onClick={toggleBilingual}
           aria-pressed={bilingual}
           title={t("bilingualToggle")}
           className="mt-2 min-h-11 rounded-lg border border-gray-300 px-3 text-sm text-gray-700 hover:border-teal-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"

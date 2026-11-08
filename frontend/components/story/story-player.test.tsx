@@ -10,13 +10,18 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { NextIntlClientProvider } from "next-intl";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import enMessages from "@/messages/en.json";
 import frMessages from "@/messages/fr.json";
 import type { Step, StoryCourse } from "@/lib/story-course/types";
 
-import { StoryPlayer } from "./story-player";
+import { EMBEDDED_BILINGUAL_KEY, StoryPlayer } from "./story-player";
+
+afterEach(() => {
+  window.localStorage.clear();
+  vi.restoreAllMocks();
+});
 
 /** A lesson story generated for a French learner: target fr, home en. */
 function frenchStory(extraSteps: Step[] = []): StoryCourse {
@@ -108,7 +113,8 @@ function precedes(a: Element, b: Element): boolean {
 describe("StoryPlayer — language keying (C1)", () => {
   it("shows a French-target story in French first, English beneath", async () => {
     const user = userEvent.setup();
-    renderPlayer(frenchStory());
+    // The standalone week opens bilingual (the embedded lesson one does not).
+    renderPlayer(frenchStory(), vi.fn(), { variant: "page" });
 
     expect(screen.getByRole("heading", { name: "Des mains propres sauvent des vies" })).toBeInTheDocument();
 
@@ -131,7 +137,7 @@ describe("StoryPlayer — language keying (C1)", () => {
 
   it("shows only the target language once bilingual mode is off", async () => {
     const user = userEvent.setup();
-    renderPlayer(frenchStory());
+    renderPlayer(frenchStory(), vi.fn(), { variant: "page" });
 
     await user.click(screen.getByRole("button", { name: /Afficher les deux langues/ }));
 
@@ -142,7 +148,7 @@ describe("StoryPlayer — language keying (C1)", () => {
   it("keeps an English-target week reading English first", () => {
     const story = frenchStory();
     story.languages = { target: "en", home: "fr" };
-    renderPlayer(story, vi.fn(), { locale: "en" });
+    renderPlayer(story, vi.fn(), { locale: "en", variant: "page" });
 
     const enNarrate = screen.getByText("Awa walks into the health centre.");
     const frNarrate = screen.getByText("Awa entre dans le centre de santé.");
@@ -214,5 +220,48 @@ describe("StoryPlayer — completion (C7)", () => {
     const { container } = renderPlayer(frenchStory(), vi.fn(), { variant: "page" });
     expect(container.querySelector(".fixed")).not.toBeNull();
     expect(screen.getByText(/Semaine 1/)).toBeInTheDocument();
+  });
+});
+
+describe("StoryPlayer — bilingual default", () => {
+  it("starts with the second language off inside a lesson, and remembers the toggle", async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderPlayer(frenchStory());
+
+    expect(screen.getByText("Awa entre dans le centre de santé.")).toBeInTheDocument();
+    expect(screen.queryByText("Awa walks into the health centre.")).not.toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: /Afficher les deux langues/ });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(toggle);
+    expect(screen.getByText("Awa walks into the health centre.")).toBeInTheDocument();
+    expect(window.localStorage.getItem(EMBEDDED_BILINGUAL_KEY)).toBe("on");
+
+    // The next lesson story opens the way she left it.
+    unmount();
+    renderPlayer(frenchStory());
+    expect(screen.getByText("Awa walks into the health centre.")).toBeInTheDocument();
+  });
+
+  it("keeps the standalone week bilingual by default, whatever the lesson choice", () => {
+    window.localStorage.setItem(EMBEDDED_BILINGUAL_KEY, "off");
+    renderPlayer(frenchStory(), vi.fn(), { variant: "page" });
+    expect(screen.getByText("Awa walks into the health centre.")).toBeInTheDocument();
+  });
+
+  it("falls back to off when storage is unavailable", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("SecurityError");
+    });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("QuotaExceededError");
+    });
+    renderPlayer(frenchStory());
+    expect(screen.queryByText("Awa walks into the health centre.")).not.toBeInTheDocument();
+
+    // The toggle still works for this visit.
+    await user.click(screen.getByRole("button", { name: /Afficher les deux langues/ }));
+    expect(screen.getByText("Awa walks into the health centre.")).toBeInTheDocument();
   });
 });
