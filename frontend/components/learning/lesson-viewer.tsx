@@ -367,17 +367,21 @@ export function LessonViewer({
   };
 
   // One completion at a time: the story's end and a tap on the button can
-  // land together, and the unit must be recorded (or queued) once.
+  // land together, and the unit must be recorded (or queued) once. The ref
+  // guards against both in the same tick; the state shows the button busy
+  // while the POST is in flight (up to its deadline on a stalled 2G link).
   const completingRef = useRef(false);
+  const [isCompleting, setIsCompleting] = useState(false);
 
   const handleMarkComplete = async () => {
     if (completingRef.current) return;
     completingRef.current = true;
+    setIsCompleting(true);
     setCompleteError(null);
     try {
-      // Online POST; offline — or online but the request died on a flaky
-      // connection, or the server failed — queued for background sync and
-      // shown as completed optimistically (#2151). A 4xx is not queued.
+      // Online POST; offline — or online but the request died or timed out on
+      // a flaky connection, or the server failed — queued for background sync
+      // and shown as completed optimistically (#2151). A 4xx is not queued.
       await completeLessonUnit(moduleId, unitId, { online: isOnline });
       setIsCompleted(true);
       onComplete?.();
@@ -386,6 +390,7 @@ export function LessonViewer({
       setCompleteError(t('completeError'));
     } finally {
       completingRef.current = false;
+      setIsCompleting(false);
     }
   };
 
@@ -706,7 +711,8 @@ export function LessonViewer({
       <div className="mt-8 text-center">
         <Button
           onClick={handleMarkComplete}
-          disabled={isCompleted || isLoading || isGenerating}
+          disabled={isCompleted || isCompleting || isLoading || isGenerating}
+          aria-busy={isCompleting}
           className="min-h-11 px-8"
           size="lg"
         >
@@ -716,7 +722,10 @@ export function LessonViewer({
               {t('completed')}
             </>
           ) : (
-            t('markComplete')
+            <>
+              {isCompleting && <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden />}
+              {t('markComplete')}
+            </>
           )}
         </Button>
         {completeError && (

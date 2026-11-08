@@ -12,10 +12,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError, apiFetch } from "@/lib/api";
-import { addOfflineAction, type OfflineAction } from "@/lib/offline/db";
+import { addOfflineAction, REPLAY_REQUESTED_EVENT, type OfflineAction } from "@/lib/offline/db";
 import { REPLAY_DELAYS_MS, SyncManager } from "@/lib/offline/sync-manager";
 
-import { completeLessonUnit, isTransientFailure } from "./complete-lesson";
+import {
+  COMPLETION_TIMEOUT_MS,
+  completeLessonUnit,
+  isTransientFailure,
+  type LessonCompletion,
+} from "./complete-lesson";
 
 const queue = vi.hoisted(() => ({ actions: [] as OfflineAction[], nextId: 1 }));
 
@@ -64,6 +69,8 @@ const queued = {
 const completePosts = () =>
   apiFetchMock.mock.calls.filter(([path]) => path === "/api/v1/progress/complete-lesson");
 
+const replayRequested = vi.fn();
+
 beforeEach(async () => {
   vi.useFakeTimers();
   queue.actions = [];
@@ -74,9 +81,12 @@ beforeEach(async () => {
   // As the app layout does (useSyncStatus); its start-up replay finds nothing.
   SyncManager.getInstance().start();
   await vi.runAllTimersAsync();
+  replayRequested.mockClear();
+  window.addEventListener(REPLAY_REQUESTED_EVENT, replayRequested);
 });
 
 afterEach(() => {
+  window.removeEventListener(REPLAY_REQUESTED_EVENT, replayRequested);
   SyncManager.getInstance().stop();
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -89,9 +99,14 @@ describe("completeLessonUnit", () => {
     expect(apiFetchMock).toHaveBeenCalledWith("/api/v1/progress/complete-lesson", {
       method: "POST",
       body: JSON.stringify({ module_id: "mod-1", unit_id: "1.2" }),
+      signal: expect.any(AbortSignal),
     });
     expect(addOfflineActionMock).not.toHaveBeenCalled();
-    expect(vi.getTimerCount()).toBe(0);
+    expect(replayRequested).not.toHaveBeenCalled();
+    // Its deadline passing afterwards changes nothing.
+    await vi.runAllTimersAsync();
+    expect(completePosts()).toHaveLength(1);
+    expect(addOfflineActionMock).not.toHaveBeenCalled();
   });
 
   it("queues it when offline, without trying the network", async () => {
@@ -165,7 +180,9 @@ describe("completeLessonUnit — replaying a completion queued while online", ()
 
     await completeLessonUnit("mod-1", "1.2", { online: true });
     await completeLessonUnit("mod-1", "1.3", { online: true });
-    expect(vi.getTimerCount()).toBe(1);
+    // Each POST's deadline (AbortSignal.timeout, which cannot be cleared) is
+    // still pending; besides those two, one replay timer serves both.
+    expect(vi.getTimerCount()).toBe(2 + 1);
 
     await vi.advanceTimersByTimeAsync(REPLAY_DELAYS_MS[0]);
 
@@ -190,7 +207,137 @@ describe("completeLessonUnit — replaying a completion queued while online", ()
     await expect(completeLessonUnit("mod-1", "1.2", { online: true })).rejects.toBeInstanceOf(
       ApiError,
     );
-    expect(vi.getTimerCount()).toBe(0);
+    expect(replayRequested).not.toHaveBeenCalled();
+    await vi.runAllTimersAsync();
+    expect(completePosts()).toHaveLength(1);
+    expect(queue.actions).toEqual([]);
+  });
+});
+
+/** The signal the first complete-lesson POST was given. */
+const firstPostSignal = () => (completePosts()[0][1] as RequestInit).signal as AbortSignal;
+
+/** Start a completion and track whether it has settled, and how. */
+function startCompletion() {
+  const outcome: { settled: boolean; value?: LessonCompletion } = { settled: false };
+  const promise = completeLessonUnit("mod-1", "1.2", { online: true }).then((value) => {
+    outcome.settled = true;
+    outcome.value = value;
+    return value;
+  });
+  return { outcome, promise };
+}
+
+// A browser without AbortSignal.timeout (Safari before 16, older Chromium).
+function withoutNativeTimeout() {
+  const native = AbortSignal.timeout;
+  Object.defineProperty(AbortSignal, "timeout", { value: undefined, configurable: true });
+  return () => Object.defineProperty(AbortSignal, "timeout", { value: native, configurable: true });
+}
+
+describe("completeLessonUnit — a POST that stalls on 2G", () => {
+  // As a real fetch does: the request is aborted with the signal's reason.
+  const honoursAbort = (_path: string, init?: RequestInit) =>
+    new Promise<never>((_, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+    });
+  // A browser without abort reasons rejects with a plain AbortError.
+  const abortsPlainly = (_path: string, init?: RequestInit) =>
+    new Promise<never>((_, reject) => {
+      init?.signal?.addEventListener("abort", () =>
+        reject(new DOMException("The user aborted a request.", "AbortError")),
+      );
+    });
+  // Stuck before the fetch (a token refresh that never answers): the signal
+  // never reaches a request, so only the deadline itself can end the wait.
+  const neverSettles = () => new Promise<never>(() => {});
+
+  it.each([
+    ["a fetch that honours the abort", honoursAbort],
+    ["a fetch that rejects with a plain AbortError", abortsPlainly],
+    ["a call that never settles", neverSettles],
+  ])("gives up at the deadline and queues it once: %s", async (_label, stall) => {
+    apiFetchMock.mockImplementationOnce(stall);
+    apiFetchMock.mockResolvedValue({ ok: true });
+
+    const { outcome, promise } = startCompletion();
+    await vi.advanceTimersByTimeAsync(COMPLETION_TIMEOUT_MS - 1);
+    expect(outcome.settled).toBe(false);
+    expect(addOfflineActionMock).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(promise).resolves.toBe("queued");
+    expect(firstPostSignal().aborted).toBe(true);
+    expect(addOfflineActionMock).toHaveBeenCalledTimes(1);
+    expect(addOfflineActionMock).toHaveBeenCalledWith(queued);
+    expect(replayRequested).toHaveBeenCalledTimes(1);
+
+    // The replay then records it; nothing is queued a second time.
+    await vi.runAllTimersAsync();
+    expect(addOfflineActionMock).toHaveBeenCalledTimes(1);
+    expect(completePosts()).toHaveLength(2);
+    expect(queue.actions).toEqual([]);
+  });
+
+  it("ignores an answer that arrives after the deadline", async () => {
+    apiFetchMock.mockImplementationOnce(
+      () => new Promise((resolve) => setTimeout(() => resolve({ ok: true }), 2 * COMPLETION_TIMEOUT_MS)),
+    );
+    apiFetchMock.mockResolvedValue({ ok: true });
+
+    const { promise } = startCompletion();
+    await vi.advanceTimersByTimeAsync(COMPLETION_TIMEOUT_MS);
+    await expect(promise).resolves.toBe("queued");
+
+    await vi.runAllTimersAsync();
+    expect(addOfflineActionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not time out a POST that answers before the deadline", async () => {
+    apiFetchMock.mockImplementationOnce(
+      () => new Promise((resolve) => setTimeout(() => resolve({ ok: true }), COMPLETION_TIMEOUT_MS - 1)),
+    );
+
+    const { promise } = startCompletion();
+    await vi.advanceTimersByTimeAsync(COMPLETION_TIMEOUT_MS - 1);
+    await expect(promise).resolves.toBe("recorded");
+    expect(firstPostSignal().aborted).toBe(false);
+
+    await vi.runAllTimersAsync();
+    expect(addOfflineActionMock).not.toHaveBeenCalled();
+    expect(replayRequested).not.toHaveBeenCalled();
+  });
+
+  describe("without AbortSignal.timeout", () => {
+    let restore: () => void;
+    beforeEach(() => {
+      restore = withoutNativeTimeout();
+    });
+    afterEach(() => restore());
+
+    it("falls back to an AbortController on a timer, and queues it once", async () => {
+      apiFetchMock.mockImplementationOnce(honoursAbort);
+      apiFetchMock.mockResolvedValue({ ok: true });
+
+      const { outcome, promise } = startCompletion();
+      await vi.advanceTimersByTimeAsync(COMPLETION_TIMEOUT_MS - 1);
+      expect(outcome.settled).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(promise).resolves.toBe("queued");
+      expect(firstPostSignal().aborted).toBe(true);
+      expect(firstPostSignal().reason).toMatchObject({ name: "TimeoutError" });
+      expect(addOfflineActionMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("clears its timer once the POST is recorded", async () => {
+      apiFetchMock.mockResolvedValue({ ok: true });
+
+      await expect(completeLessonUnit("mod-1", "1.2", { online: true })).resolves.toBe(
+        "recorded",
+      );
+      expect(vi.getTimerCount()).toBe(0);
+    });
   });
 });
 
