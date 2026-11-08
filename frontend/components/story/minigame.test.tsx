@@ -72,6 +72,30 @@ function renderGame(game: Minigame, onFinished = vi.fn(), bilingual = false) {
   return onFinished;
 }
 
+/** A game whose `active` flag the test can flip, as the lesson's tabs do. */
+function renderSwitchableGame(game: Minigame, onFinished = vi.fn()) {
+  const element = (active: boolean) => (
+    <NextIntlClientProvider locale="en" messages={messages}>
+      <MinigameView
+        game={game}
+        target="en"
+        home="fr"
+        bilingual={false}
+        active={active}
+        onFinished={onFinished}
+      />
+    </NextIntlClientProvider>
+  );
+  const view = render(element(true));
+  return { onFinished, setActive: (active: boolean) => view.rerender(element(active)) };
+}
+
+/** The slot (0-based) the item with this label is shown in. */
+function slotOf(label: string): number {
+  const items = within(screen.getByRole("list")).getAllByRole("button");
+  return items.findIndex((button) => button.textContent?.includes(label));
+}
+
 /**
  * Move the fake clock, one second at a time. The countdown schedules each
  * tick from an effect after the previous one renders, so React has to flush
@@ -228,5 +252,77 @@ describe("MinigameView — pop engine (rule rounds)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Skip for now" }));
     expect(onFinished).toHaveBeenCalledTimes(1);
     expect(onFinished).toHaveBeenCalledWith({ gameId: "g_pop", points: 0 });
+  });
+});
+
+describe("MinigameView — keys and visibility", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("ignores digits typed into a text field elsewhere on the page", () => {
+    renderGame(catchGame);
+    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    const slot = slotOf("Before touching a patient");
+
+    // The AI tutor's chat box, say.
+    const chat = document.createElement("textarea");
+    document.body.appendChild(chat);
+    fireEvent.keyDown(chat, { key: String(slot + 1) });
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    fireEvent.keyDown(input, { key: String(slot + 1) });
+    const editor = document.createElement("div");
+    editor.setAttribute("contenteditable", "true");
+    document.body.appendChild(editor);
+    fireEvent.keyDown(editor, { key: String(slot + 1) });
+
+    expect(screen.getByRole("button", { name: "Before touching a patient" })).toBeEnabled();
+    chat.remove();
+    input.remove();
+    editor.remove();
+  });
+
+  it("ignores shortcuts and IME composition", () => {
+    renderGame(catchGame);
+    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    const key = String(slotOf("Before touching a patient") + 1);
+
+    fireEvent.keyDown(window, { key, ctrlKey: true });
+    fireEvent.keyDown(window, { key, metaKey: true });
+    fireEvent.keyDown(window, { key, altKey: true });
+    fireEvent.keyDown(window, { key, isComposing: true });
+    expect(screen.getByRole("button", { name: "Before touching a patient" })).toBeEnabled();
+
+    // A plain press still plays.
+    fireEvent.keyDown(window, { key });
+    expect(screen.getByRole("button", { name: "Before touching a patient, caught" })).toBeDisabled();
+  });
+
+  it("pauses the countdown and the keys while out of sight", async () => {
+    const { onFinished, setActive } = renderSwitchableGame(catchGame);
+    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    await advance(2000);
+    expect(screen.getByText("3s")).toBeInTheDocument();
+
+    // The learner switches to another lesson tab for a while.
+    setActive(false);
+    await advance(30_000);
+    expect(screen.getByText("3s")).toBeInTheDocument();
+    expect(screen.getByText("Round 1 / 2")).toBeInTheDocument();
+    expect(onFinished).not.toHaveBeenCalled();
+    const key = String(slotOf("Before touching a patient") + 1);
+    fireEvent.keyDown(window, { key });
+    expect(screen.getByRole("button", { name: "Before touching a patient" })).toBeEnabled();
+
+    // Back on the Story tab: the clock and the keys pick up where they were.
+    setActive(true);
+    fireEvent.keyDown(window, { key });
+    expect(screen.getByRole("button", { name: "Before touching a patient, caught" })).toBeDisabled();
+    await advance(1000);
+    expect(screen.getByText("2s")).toBeInTheDocument();
   });
 });

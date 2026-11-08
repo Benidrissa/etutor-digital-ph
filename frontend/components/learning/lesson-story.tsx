@@ -252,7 +252,13 @@ export function LessonStory({
   if (personalized) {
     return (
       <section aria-label={t('regionLabel')}>
-        <StoryPlayer course={personalized} variant="embedded" onComplete={handleComplete} />
+        {/* `active` pauses a running mini-game while another tab is open. */}
+        <StoryPlayer
+          course={personalized}
+          variant="embedded"
+          active={active}
+          onComplete={handleComplete}
+        />
       </section>
     );
   }

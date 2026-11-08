@@ -300,6 +300,55 @@ describe("LessonStory", () => {
     ).toBeInTheDocument();
   });
 
+  it("pauses a running mini-game while another tab is open", async () => {
+    vi.useFakeTimers();
+    const story = lessonStory();
+    story.chapters[0].scenes[0].steps = [
+      { type: "narrate", en: "{child} plays.", fr: "{child} joue." },
+      { type: "game", ref: "g1" },
+    ];
+    story.minigames = [
+      {
+        id: "g1",
+        engine: "catch",
+        title: { en: "Clean hands", fr: "Mains propres" },
+        instruction: { en: "Tap the right moments.", fr: "Touche les bons moments." },
+        points: { per_correct: 1 },
+        timer_s: 10,
+        rounds: [
+          {
+            items: [
+              { label: { en: "Before a patient", fr: "Avant un patient" }, correct: true },
+              { label: { en: "Only if dirty", fr: "Seulement si sales" }, correct: false },
+            ],
+          },
+        ],
+      },
+    ];
+    loadStoryMock.mockResolvedValue(fromApi(story));
+    const { setActive } = renderPanel();
+    await act(async () => {});
+
+    fireEvent.click(screen.getByRole("button", { name: "Continuer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Commencer" }));
+    const tick = async () => {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+    };
+    await tick();
+    expect(screen.getByText("9 s")).toBeInTheDocument();
+
+    // Reading the lesson text for a minute: the round must not run out.
+    setActive(false);
+    for (let i = 0; i < 15; i += 1) await tick();
+    expect(screen.getByText("9 s")).toBeInTheDocument();
+
+    setActive(true);
+    await tick();
+    expect(screen.getByText("8 s")).toBeInTheDocument();
+  });
+
   it("completes the lesson once when the learner reaches the end", async () => {
     const user = userEvent.setup();
     loadStoryMock.mockResolvedValue(fromApi(lessonStory()));

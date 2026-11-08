@@ -14,7 +14,14 @@
  *
  * Either way the learner taps every right item before the timer runs out;
  * wrong items are the week's traps rather than random noise, and tapping one
- * shows `hint_after_wrong`. Keys 1-6 mirror the touch targets, as A.9 asks.
+ * shows `hint_after_wrong`. Keys 1-6 mirror the touch targets, as A.9 asks,
+ * but never while the learner is typing somewhere else on the page (the AI
+ * tutor's chat box, say) or holding a shortcut modifier.
+ *
+ * While `active` is false (the lesson's Story tab is hidden but kept mounted)
+ * the round's clock stands still and the keys are not listened to, so a
+ * learner who looks at the lesson text mid-game does not come back to rounds
+ * that ran out unseen.
  *
  * Points follow the validator's arithmetic (`per_correct` per right item, a
  * missing or zero `per_correct` counting as 1) so the score a learner sees can
@@ -43,6 +50,8 @@ interface MinigameViewProps {
   target: string;
   home: string;
   bilingual: boolean;
+  /** False while out of sight: the countdown pauses and keys are ignored. */
+  active?: boolean;
   onFinished: (outcome: { gameId: string; points: number }) => void;
 }
 
@@ -58,6 +67,24 @@ const DEFAULT_TIMER_LIST_S = 20;
 const CLEARED_ROUND_DELAY_MS = 600;
 /** Keys 1-6 (A.9). */
 const KEYED_SLOTS = 6;
+
+/**
+ * True when a key press belongs to something else: typing in a field (the AI
+ * tutor's chat, a search box), an IME composition, or a shortcut such as
+ * Ctrl+1 to switch browser tabs.
+ */
+function isForeignKeyPress(event: KeyboardEvent): boolean {
+  if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return true;
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  // isContentEditable, plus the attribute for engines that do not compute it.
+  return (
+    target.isContentEditable ||
+    !!target.closest('[contenteditable]:not([contenteditable="false"])')
+  );
+}
 
 interface PlayItem {
   label: TextObject | string;
@@ -177,6 +204,7 @@ export function MinigameView({
   target,
   home,
   bilingual,
+  active = true,
   onFinished,
 }: MinigameViewProps) {
   const t = useTranslations("Story");
@@ -208,9 +236,9 @@ export function MinigameView({
     [current],
   );
 
-  // Countdown for the active round.
+  // Countdown for the active round; it stands still while out of sight.
   useEffect(() => {
-    if (phase !== "playing") return;
+    if (phase !== "playing" || !active) return;
     const timer = setTimeout(() => {
       if (secondsLeft <= 1) {
         dispatch({ type: "advance", round, totalRounds: rounds.length, seconds });
@@ -219,7 +247,7 @@ export function MinigameView({
       }
     }, 1000);
     return () => clearTimeout(timer);
-  }, [phase, round, secondsLeft, rounds.length, seconds]);
+  }, [phase, active, round, secondsLeft, rounds.length, seconds]);
 
   // A round is cleared once every right item has been tapped.
   useEffect(() => {
@@ -247,10 +275,12 @@ export function MinigameView({
     onFinishedRef.current({ gameId: game.id, points: score });
   }, [phase, game.id, score]);
 
-  // Keys 1-6 mirror the touch targets (A.9).
+  // Keys 1-6 mirror the touch targets (A.9), only while the game is in sight
+  // and the key is not meant for something else.
   useEffect(() => {
-    if (phase !== "playing" || !current) return;
+    if (phase !== "playing" || !current || !active) return;
     const onKey = (event: KeyboardEvent) => {
+      if (isForeignKeyPress(event)) return;
       const slot = Number(event.key) - 1;
       if (!Number.isInteger(slot) || slot < 0 || slot >= KEYED_SLOTS) return;
       const item = current.items[slot];
@@ -259,7 +289,7 @@ export function MinigameView({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [phase, round, current, perCorrect]);
+  }, [phase, active, round, current, perCorrect]);
 
   if (rounds.length === 0) {
     return (

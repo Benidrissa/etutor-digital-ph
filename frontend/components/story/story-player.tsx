@@ -91,9 +91,20 @@ export interface StoryPlayerProps {
    * uses it to complete the lesson unit.
    */
   onComplete?: (outcome: { points: number; maxPoints: number }) => void;
+  /**
+   * False while the player is out of sight: the lesson keeps every tab
+   * mounted, so a hidden Story tab is still on the page. A running mini-game
+   * pauses its clock and stops listening to the keyboard until it is back.
+   */
+  active?: boolean;
 }
 
-export function StoryPlayer({ course, variant = "page", onComplete }: StoryPlayerProps) {
+export function StoryPlayer({
+  course,
+  variant = "page",
+  onComplete,
+  active = true,
+}: StoryPlayerProps) {
   const t = useTranslations("Story");
   const target = course.languages?.target ?? "en";
   const home = course.languages?.home ?? "fr";
@@ -296,6 +307,7 @@ export function StoryPlayer({ course, variant = "page", onComplete }: StoryPlaye
               game={item.step.ref ? games.get(item.step.ref) : undefined}
               video={item.step.ref ? videos.get(item.step.ref) : undefined}
               rewards={course.rewards}
+              active={active}
               settled={settledSteps.has(index)}
               onSettled={(earned) => settle(index, earned)}
             />
@@ -336,6 +348,7 @@ interface StepViewProps {
   game?: Minigame;
   video?: Video;
   rewards?: StoryCourse["rewards"];
+  active: boolean;
   settled: boolean;
   onSettled: (earned: number) => void;
 }
@@ -351,6 +364,7 @@ function StepView({
   game,
   video,
   rewards,
+  active,
   settled,
   onSettled,
 }: StepViewProps) {
@@ -477,6 +491,7 @@ function StepView({
           target={target}
           home={home}
           bilingual={bilingual}
+          active={active}
           onFinished={({ points }) => onSettled(points)}
         />
       );
