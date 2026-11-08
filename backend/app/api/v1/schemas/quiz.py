@@ -1,8 +1,21 @@
-"""Quiz API schemas for request/response validation."""
+"""Quiz API schemas for request/response validation.
 
+Three nested shapes of a quiz question, from least to most revealing:
+
+* :class:`PublicQuizQuestion` — no answer key. The only shape a summative
+  (module-validation) assessment may expose before submission.
+* :class:`PracticeQuizQuestion` — adds ``correct_answer`` and ``explanation``,
+  which the practice-quiz viewer uses for per-question feedback. This is what
+  :class:`QuizResponse` serves to learners.
+* :class:`QuizQuestion` — the full answer key as stored in
+  ``generated_content.content`` and validated on generation and admin edit.
+  Adds ``option_misconceptions``, which is server-side metadata only.
+"""
+
+from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class PublicQuizQuestion(BaseModel):
@@ -21,11 +34,33 @@ class PublicQuizQuestion(BaseModel):
     difficulty: str = Field(description="Question difficulty level", default="medium")
 
 
-class QuizQuestion(PublicQuizQuestion):
-    """Single quiz question with multiple choice options, including the answer key."""
+class PracticeQuizQuestion(PublicQuizQuestion):
+    """Practice-quiz question as served to learners: answer + explanation, no metadata."""
 
     correct_answer: int = Field(description="Index of correct option (0-3)", ge=0, le=3)
     explanation: str = Field(description="Explanation for the correct answer")
+
+
+class QuizQuestion(PracticeQuizQuestion):
+    """Single quiz question with multiple choice options, including the full answer key.
+
+    ``option_misconceptions`` must be declared here: without it the default
+    ``extra="ignore"`` would silently drop the stored key on every read. It is
+    optional because quizzes generated before it existed do not carry it.
+
+    It is NEVER served to a learner before submission — its ``null`` slot sits
+    at ``correct_answer``'s index, so it reveals the answer. Learner-facing
+    responses use :class:`PracticeQuizQuestion` / :class:`PublicQuizQuestion`,
+    which do not declare it.
+    """
+
+    option_misconceptions: list[str | None] | None = Field(
+        default=None,
+        description=(
+            "Parallel to options: the misconception that makes a learner pick each "
+            "wrong option; null at correct_answer's index. Server-side only."
+        ),
+    )
 
 
 class PublicQuizContent(BaseModel):
@@ -44,8 +79,16 @@ class PublicQuizContent(BaseModel):
     )
 
 
-class QuizContent(PublicQuizContent):
-    """Quiz content structure matching GeneratedContent.content schema."""
+class PracticeQuizContent(PublicQuizContent):
+    """Practice-quiz content as served to learners (see :class:`PracticeQuizQuestion`)."""
+
+    questions: list[PracticeQuizQuestion] = Field(
+        description="List of quiz questions", min_length=1, max_length=20
+    )
+
+
+class QuizContent(PracticeQuizContent):
+    """Quiz content structure matching GeneratedContent.content schema (full answer key)."""
 
     questions: list[QuizQuestion] = Field(
         description="List of quiz questions", min_length=1, max_length=20
@@ -81,9 +124,26 @@ def to_public_quiz_response(resp: "QuizResponse") -> PublicQuizResponse:
 
 
 class QuizResponse(PublicQuizResponse):
-    """Complete quiz response for frontend consumption."""
+    """Complete practice-quiz response for frontend consumption.
 
-    content: QuizContent = Field(description="Quiz content and questions")
+    ``content`` is :class:`PracticeQuizContent`, not :class:`QuizContent`:
+    callers routinely pass the stored answer key (``QuizContent``) in here, and
+    the validator below re-validates it into the practice shape so server-side
+    metadata (``option_misconceptions``) cannot ride along — neither in the
+    attribute nor in any serialisation of it.
+    """
+
+    content: PracticeQuizContent = Field(description="Quiz content and questions")
+
+    @field_validator("content", mode="before")
+    @classmethod
+    def _strip_answer_key_metadata(cls, value: Any) -> Any:
+        # Pydantic keeps a subclass instance as-is, so a QuizContent passed here
+        # would keep its extra fields on the attribute. Dumping it first makes
+        # the practice model's ``extra="ignore"`` drop them.
+        if isinstance(value, BaseModel):
+            return value.model_dump()
+        return value
 
     class Config:
         json_schema_extra = {
