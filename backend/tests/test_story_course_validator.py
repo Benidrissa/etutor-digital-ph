@@ -257,6 +257,241 @@ class TestNoLeaks:
         assert "answer_leak" not in codes(course)
 
 
+def _wordy_choice_question(course: dict) -> dict:
+    """Give q1 options long enough to be leak-checked (the shipped ones are
+    one- and two-digit numbers, which sit under the leak-length floor)."""
+    q1 = find(course["questions"], "id", "q1")
+    words = {
+        "a": ("one", "un"),
+        "b": ("nine", "neuf"),
+        "c": ("thirteen", "treize"),
+        "d": ("twenty-one", "vingt et un"),
+    }
+    for choice in q1["choices"]:
+        choice["en"], choice["fr"] = words[choice["id"]]
+    return q1
+
+
+class TestChoiceQuestionsSharedMcqChecks:
+    """The shared MCQ rules (``mcq_checks``) run on choice questions.
+
+    ``_assert_no_leak`` builds its needle from ``answer``, which for a choice
+    question is the choice id — so pasting the correct option's *text* into the
+    prompt used to validate clean.
+    """
+
+    def test_wordy_choices_still_validate_clean(self, course):
+        _wordy_choice_question(course)
+        report = validate(course)
+        assert report.errors == [], [e.model_dump() for e in report.errors]
+        assert report.warnings == [], [w.model_dump() for w in report.warnings]
+
+    def test_correct_choice_text_in_prompt_is_a_leak(self, course):
+        q1 = _wordy_choice_question(course)
+        q1["prompt"]["en"] = "Thirteen is prime. Which of these is a prime number?"
+        report = validate(course)
+        leaks = [e for e in report.errors if e.code == "answer_leak"]
+        assert [e.path for e in leaks] == ["questions[q1].prompt.en"]
+        assert report.ok is False
+
+    def test_a_distractor_named_in_passing_is_a_warning(self, course):
+        """ "one" (three letters) counts as a named distractor, so the English
+        prompt is for a person to judge; "un" is under the leak floor, so the
+        French prompt names the answer alone and is an error."""
+        q1 = _wordy_choice_question(course)
+        q1["prompt"] = {
+            "en": "Thirteen is prime. Which one of these is a prime number?",
+            "fr": "Treize est un nombre premier. Lequel de ces nombres est un nombre premier ?",
+        }
+        report = validate(course)
+        assert [e.path for e in report.errors if e.code == "answer_leak"] == [
+            "questions[q1].prompt.fr"
+        ]
+        assert [w.path for w in report.warnings if w.code == "answer_leak_ambiguous"] == [
+            "questions[q1].prompt.en"
+        ]
+
+    def test_a_hint_naming_a_distractor_then_the_answer_is_a_warning(self, course):
+        q1 = _wordy_choice_question(course)
+        q1["hints"] = [
+            {
+                "en": "Nine is 3 × 3, so the prime one is thirteen.",
+                "fr": "Neuf = 3 × 3, donc le nombre premier est treize.",
+            }
+        ]
+        report = validate(course)
+        assert "answer_leak" not in {e.code for e in report.errors}
+        assert sorted(w.path for w in report.warnings if w.code == "answer_leak_ambiguous") == [
+            "questions[q1].hints[0].en",
+            "questions[q1].hints[0].fr",
+        ]
+
+    def test_correct_choice_text_in_hint_is_a_leak(self, course):
+        q1 = _wordy_choice_question(course)
+        q1["hints"] = [{"en": "Try the odd ones.", "fr": "Regarde treize de près."}]
+        leaks = [e for e in validate(course).errors if e.code == "answer_leak"]
+        assert [e.path for e in leaks] == ["questions[q1].hints[0].fr"]
+
+    def test_a_distractor_in_the_prompt_is_not_a_leak(self, course):
+        q1 = _wordy_choice_question(course)
+        q1["prompt"]["en"] = "Nine is not prime. Which one of these is a prime number?"
+        assert "answer_leak" not in codes(course)
+
+    def test_an_either_or_prompt_and_hint_are_warnings_not_errors(self, course):
+        """Naming the answer next to a distractor may compare them: the story
+        stays publishable and the prompt is flagged for a person to read."""
+        q1 = _wordy_choice_question(course)
+        q1["prompt"] = {
+            "en": "Which is prime: nine or thirteen?",
+            "fr": "Lequel est premier : neuf ou treize ?",
+        }
+        q1["hints"] = [
+            {"en": "Divide nine and thirteen by 3.", "fr": "Divise neuf et treize par 3."}
+        ]
+        report = validate(course)
+        assert report.errors == [], [e.model_dump() for e in report.errors]
+        assert report.ok is True
+        assert sorted(w.path for w in report.warnings if w.code == "answer_leak_ambiguous") == [
+            "questions[q1].hints[0].en",
+            "questions[q1].hints[0].fr",
+            "questions[q1].prompt.en",
+            "questions[q1].prompt.fr",
+        ]
+
+    def test_an_either_or_prompt_with_repeated_prepositions_is_publishable(self, course):
+        """ "in children or in adults", "chez les enfants ou chez les adultes":
+        once hard errors that made the story unpublishable."""
+        q1 = find(course["questions"], "id", "q1")
+        words = {
+            "a": ("adults", "adultes"),
+            "b": ("the elderly", "personnes âgées"),
+            "c": ("children", "enfants"),
+            "d": ("newborns", "nouveau-nés"),
+        }
+        for choice in q1["choices"]:
+            choice["en"], choice["fr"] = words[choice["id"]]
+        q1["prompt"] = {
+            "en": "Is this disease more severe in children or in adults?",
+            "fr": "Cette maladie est-elle plus grave chez les enfants ou chez les adultes ?",
+        }
+        report = validate(course)
+        assert report.errors == [], [e.model_dump() for e in report.errors]
+        assert report.ok is True
+        assert sorted(w.path for w in report.warnings if w.code == "answer_leak_ambiguous") == [
+            "questions[q1].prompt.en",
+            "questions[q1].prompt.fr",
+        ]
+
+    def test_a_factorised_either_or_prompt_is_publishable(self, course):
+        """ "9 or 13 cm" writes the unit once for both choices: "9" names the
+        distractor "9 cm", so the prompt is a warning, not an unpublishable leak."""
+        q1 = find(course["questions"], "id", "q1")
+        for choice in q1["choices"]:
+            choice["en"] = choice["fr"] = f"{choice['en']} cm"
+        q1["prompt"] = {
+            "en": "Is the side 9 or 13 cm long?",
+            "fr": "Le côté mesure-t-il 9 ou 13 cm ?",
+        }
+        report = validate(course)
+        assert report.errors == [], [e.model_dump() for e in report.errors]
+        assert report.ok is True
+        assert sorted(w.path for w in report.warnings if w.code == "answer_leak_ambiguous") == [
+            "questions[q1].prompt.en",
+            "questions[q1].prompt.fr",
+        ]
+
+    def test_a_true_false_prompt_is_publishable(self, course):
+        """ "Is it true that…?" names the verdict it asks for: a warning."""
+        q1 = find(course["questions"], "id", "q1")
+        words = {
+            "a": ("False", "Faux"),
+            "b": ("Partly true", "En partie vrai"),
+            "c": ("True", "Vrai"),
+            "d": ("Unknown", "On ne sait pas"),
+        }
+        for choice in q1["choices"]:
+            choice["en"], choice["fr"] = words[choice["id"]]
+        q1["prompt"] = {
+            "en": "Is it true that 13 is a prime number?",
+            "fr": "Est-il vrai que 13 est un nombre premier ?",
+        }
+        report = validate(course)
+        assert report.errors == [], [e.model_dump() for e in report.errors]
+        assert report.ok is True
+        assert sorted(w.path for w in report.warnings if w.code == "answer_leak_ambiguous") == [
+            "questions[q1].prompt.en",
+            "questions[q1].prompt.fr",
+        ]
+
+    def test_a_hint_naming_only_the_answer_still_leaks_beside_a_comparison_prompt(self, course):
+        q1 = _wordy_choice_question(course)
+        q1["prompt"]["en"] = "Which is prime: nine or thirteen?"
+        q1["hints"] = [{"en": "It is thirteen.", "fr": "Regarde bien."}]
+        leaks = [e for e in validate(course).errors if e.code == "answer_leak"]
+        assert [e.path for e in leaks] == ["questions[q1].hints[0].en"]
+
+    def test_duplicate_choice_text(self, course):
+        q1 = _wordy_choice_question(course)
+        find(q1["choices"], "id", "d")["en"] = "thirteen."
+        report = validate(course)
+        dup = [e for e in report.errors if e.code == "duplicate_options"]
+        assert [e.path for e in dup] == ["questions[q1].choices[3].en"]
+
+    def test_short_answers_add_no_warning(self, course):
+        """The shipped q1 answer is "13": too short to leak-check, and the
+        "unchecked" note stays out of the report so the example stays clean."""
+        assert "leak_unchecked_short_answer" not in warning_codes(course)
+
+
+class TestFrenchTargetLanguageKeying:
+    """``en``/``fr`` on narrate/say/concept steps are language-keyed (C1).
+
+    A French-target story still keeps its French text in ``fr``. Reading the
+    fields positionally (``en`` = target) would check the French line against
+    the English length limit and report a missing English line as missing
+    French.
+    """
+
+    @pytest.fixture
+    def fr_course(self, course):
+        course["languages"] = {"target": "fr", "home": "en"}
+        return course
+
+    def test_french_target_example_validates_clean(self, fr_course):
+        report = validate(fr_course)
+        assert report.errors == [], [e.model_dump() for e in report.errors]
+        assert report.warnings == [], [w.model_dump() for w in report.warnings]
+
+    def test_french_line_gets_the_french_length_limit(self, fr_course):
+        """110 characters is inside French's 118 but over English's 100."""
+        fr_course["chapters"][0]["scenes"][0]["steps"][0]["fr"] = "é" * 110
+        assert "too_long" not in codes(fr_course)
+
+    def test_english_line_gets_the_english_length_limit(self, fr_course):
+        fr_course["chapters"][0]["scenes"][0]["steps"][0]["en"] = "x" * 101
+        report = validate(fr_course)
+        too_long = [e for e in report.errors if e.code == "too_long"]
+        assert [e.path for e in too_long] == ["chapters[ch1].scenes[s1].steps[0].en"]
+
+    def test_missing_line_is_reported_under_its_own_language(self, fr_course):
+        fr_course["chapters"][0]["scenes"][0]["steps"][0].pop("fr")
+        report = validate(fr_course)
+        missing = [e for e in report.errors if e.code == "missing_language"]
+        assert [e.path for e in missing] == ["chapters[ch1].scenes[s1].steps[0].fr"]
+
+    def test_concept_rows_are_keyed_by_language(self, fr_course):
+        concept = fr_course["chapters"][0]["scenes"][0]["steps"][2]
+        concept.pop("fr")
+        report = validate(fr_course)
+        missing = [e for e in report.errors if e.code == "missing_language"]
+        assert [e.path for e in missing] == ["chapters[ch1].scenes[s1].steps[2].fr"]
+
+    def test_english_target_line_still_keyed_the_same_way(self, course):
+        """Unchanged for the shipped English-target example."""
+        course["chapters"][0]["scenes"][0]["steps"][0]["fr"] = "é" * 110
+        assert "too_long" not in codes(course)
+
+
 class TestSpreadAndCoverage:
     """Appendix C.5."""
 
@@ -394,3 +629,32 @@ class TestScores:
     def test_authored_max_points_disagreement_warns(self, course):
         course["checks"]["max_points"] = 999
         assert "max_points_mismatch" in warning_codes(course)
+
+    def test_per_correct_zero_awards_no_minigame_points(self, course):
+        """``per_correct: 0`` used to be coerced to 1 by ``x or 1``, counting
+        points into max_points that the player never awards."""
+        course["minigames"][0]["points"] = {"per_correct": 0}
+        checks = validate(course).checks
+        assert checks.max_points == 29 - 9  # the 9 prime targets now score 0
+
+    def test_per_correct_defaults_to_one_when_absent(self, course):
+        course["minigames"][0]["points"] = {}
+        assert validate(course).checks.max_points == 29
+
+    def test_per_correct_zero_on_an_items_round(self, course):
+        course["minigames"][0]["rule"] = None
+        course["minigames"][0]["engine"] = "catch"
+        course["minigames"][0]["traps"] = {}
+        course["minigames"][0]["rounds"] = [
+            {
+                "prompt": {"en": "Catch the primes", "fr": "Attrape les premiers"},
+                "items": [
+                    {"label": {"en": "13", "fr": "13"}, "correct": True},
+                    {"label": {"en": "9", "fr": "9"}, "correct": False, "trap": "m_odd_prime"},
+                ],
+            }
+        ]
+        course["minigames"][0]["points"] = {"per_correct": 0}
+        assert validate(course).checks.max_points == 29 - 9
+        course["minigames"][0]["points"] = {"per_correct": 1}
+        assert validate(course).checks.max_points == 29 - 9 + 1

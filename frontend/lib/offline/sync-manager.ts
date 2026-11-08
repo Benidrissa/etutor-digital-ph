@@ -12,10 +12,18 @@ import {
   clearSyncedActions,
   getOfflineModulesByStatus,
   getOfflineContentByModule,
+  upsertOfflineContent,
   type OfflineAction,
 } from './db';
-import { apiFetch } from '@/lib/api';
+import {
+  apiFetch,
+  isQuizChangedError,
+  type Quiz,
+  type QuizAnswerSubmission,
+  type QuizAttemptRequest,
+} from '@/lib/api';
 import { prewarmPage } from './download-manager';
+import type { QueuedQuizAnswerPayload } from './offline-quiz-scorer';
 
 const PREWARM_V6_DONE_KEY = 'offline_prewarm_v6_done';
 const PREWARM_V7_DONE_KEY = 'offline_prewarm_v7_done';
@@ -24,8 +32,44 @@ const PREWARM_V8_DONE_KEY = 'offline_prewarm_v8_done';
 export type SyncStatus =
   | { state: 'idle' }
   | { state: 'syncing'; current: number; total: number }
-  | { state: 'complete'; synced: number }
-  | { state: 'error'; message: string; synced: number; failed: number };
+  // quizChanged: queued quiz answers dropped because the quiz was regenerated
+  // and their revision can no longer be graded (409 quiz_changed).
+  | { state: 'complete'; synced: number; quizChanged?: number }
+  | { state: 'error'; message: string; synced: number; failed: number; quizChanged?: number };
+
+type ActionOutcome = 'synced' | 'failed' | 'quiz_changed';
+
+/**
+ * The POST /quiz/attempt body for a queued offline quiz answer.
+ *
+ * The queue stores answers as a question_id -> option map (per-question timing
+ * is not tracked offline); the endpoint takes a list. content_revision pins
+ * the answers to the questions they were given to. Entries queued before it
+ * existed have none, and nothing else they hold says which questions they
+ * answered: the server grades them only if the quiz has never changed, and
+ * otherwise refuses them with 409 quiz_changed (the entry is then dropped and
+ * the quiz copy refreshed) rather than grade them against questions the
+ * learner never saw.
+ */
+export function buildQueuedQuizAttemptBody(payload: QueuedQuizAnswerPayload): QuizAttemptRequest {
+  const raw = payload.answers as unknown;
+  const answers: QuizAnswerSubmission[] = Array.isArray(raw)
+    ? (raw as QuizAnswerSubmission[])
+    : Object.entries((raw ?? {}) as Record<string, number>).map(([questionId, option]) => ({
+        question_id: questionId,
+        selected_option: option,
+        time_taken_seconds: 0,
+      }));
+  const body: QuizAttemptRequest = {
+    quiz_id: payload.quiz_id,
+    answers,
+    total_time_seconds: payload.total_time_seconds,
+  };
+  if (typeof payload.content_revision === 'number') {
+    body.content_revision = payload.content_revision;
+  }
+  return body;
+}
 
 export type SyncStatusListener = (status: SyncStatus) => void;
 
@@ -104,6 +148,7 @@ class SyncManager {
 
     let synced = 0;
     let failed = 0;
+    let quizChanged = 0;
 
     this.emit({ state: 'syncing', current: 0, total: actions.length });
 
@@ -111,9 +156,11 @@ class SyncManager {
       const action = actions[i];
       this.emit({ state: 'syncing', current: i + 1, total: actions.length });
 
-      const success = await this.processAction(action);
-      if (success) {
+      const outcome = await this.processAction(action);
+      if (outcome === 'synced') {
         synced++;
+      } else if (outcome === 'quiz_changed') {
+        quizChanged++;
       } else {
         failed++;
       }
@@ -123,9 +170,9 @@ class SyncManager {
     await clearSyncedActions();
 
     if (failed > 0) {
-      this.emit({ state: 'error', message: `${failed} actions failed`, synced, failed });
+      this.emit({ state: 'error', message: `${failed} actions failed`, synced, failed, quizChanged });
     } else {
-      this.emit({ state: 'complete', synced });
+      this.emit({ state: 'complete', synced, quizChanged });
     }
 
     this.isSyncing = false;
@@ -260,19 +307,32 @@ class SyncManager {
     }
   }
 
-  private async processAction(action: OfflineAction): Promise<boolean> {
+  private async processAction(action: OfflineAction): Promise<ActionOutcome> {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
         await this.sendAction(action);
         if (action.id !== undefined) {
           await markOfflineActionSynced(action.id);
         }
-        return true;
+        return 'synced';
       } catch (err: unknown) {
         // 401: auth expired — stop retrying entirely
         if (isHttpStatus(err, 401)) {
           console.warn('Sync: auth expired, skipping action', action.id);
-          return false;
+          return 'failed';
+        }
+
+        // 409 quiz_changed: the quiz was regenerated and the revision these
+        // answers were given to cannot be graded any more. Retrying cannot
+        // help, so drop them, refresh the offline copy of the quiz so the next
+        // attempt uses the current questions, and let the learner know.
+        if (action.actionType === 'quiz_answer' && isQuizChangedError(err)) {
+          console.warn('Sync: quiz changed since it was answered offline', action.id);
+          if (action.id !== undefined) {
+            await markOfflineActionSynced(action.id);
+          }
+          await refreshOfflineQuiz(action.payload as QueuedQuizAnswerPayload);
+          return 'quiz_changed';
         }
 
         // 409: conflict (duplicate) — treat as success
@@ -280,13 +340,13 @@ class SyncManager {
           if (action.id !== undefined) {
             await markOfflineActionSynced(action.id);
           }
-          return true;
+          return 'synced';
         }
 
         // 4xx (except 401/409): permanent error, don't retry
         if (isHttpStatus(err, 400) || isHttpStatus(err, 403) || isHttpStatus(err, 404) || isHttpStatus(err, 422)) {
           console.warn(`Sync: permanent error for action ${action.id}:`, err);
-          return false;
+          return 'failed';
         }
 
         // Transient error: exponential backoff
@@ -301,7 +361,7 @@ class SyncManager {
     }
 
     console.warn(`Sync: action ${action.id} failed after ${MAX_RETRIES} retries`);
-    return false;
+    return 'failed';
   }
 
   private async sendAction(action: OfflineAction): Promise<void> {
@@ -311,11 +371,7 @@ class SyncManager {
       case 'quiz_answer':
         await apiFetch('/api/v1/quiz/attempt', {
           method: 'POST',
-          body: JSON.stringify({
-            quiz_id: payload.quiz_id,
-            answers: payload.answers,
-            total_time_seconds: payload.total_time_seconds,
-          }),
+          body: JSON.stringify(buildQueuedQuizAttemptBody(action.payload as QueuedQuizAnswerPayload)),
         });
         break;
 
@@ -353,6 +409,23 @@ class SyncManager {
       default:
         console.warn(`Sync: unknown action type: ${action.actionType}`);
     }
+  }
+}
+
+/** Best effort: replace the offline copy of a quiz with its current version. */
+async function refreshOfflineQuiz(payload: QueuedQuizAnswerPayload): Promise<void> {
+  try {
+    const fresh = await apiFetch<Quiz>(`/api/v1/quiz/${payload.quiz_id}`);
+    await upsertOfflineContent({
+      unitId: payload.unit_id ?? fresh.unit_id,
+      moduleId: payload.module_id ?? fresh.module_id,
+      contentType: 'quiz',
+      locale: fresh.language === 'en' ? 'en' : 'fr',
+      content: fresh,
+      cachedAt: Date.now(),
+    });
+  } catch {
+    // The next online load refreshes it anyway.
   }
 }
 

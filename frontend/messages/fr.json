@@ -384,6 +384,7 @@
     "lessonNotValidated": "Leçon non validée",
     "lessonNotValidatedDesc": "Vous devez obtenir au moins {score}% pour valider cette leçon. Réessayez !",
     "refreshContent": "Actualiser le contenu",
+    "quizChanged": "Ce quiz a été mis à jour pendant que vous le passiez. Voici la nouvelle version : merci de le refaire.",
     "subscriptionRequired": "Un abonnement est requis pour accéder à ce contenu. La première unité de chaque module est gratuite.",
     "authRequired": "Veuillez vous connecter pour continuer.",
     "contentNotAvailableOffline": "Ce quiz n'est pas disponible hors-ligne. Téléchargez le module pour le passer sans internet.",
@@ -701,6 +702,7 @@
     "progress": "{answered} sur {total} répondues",
     "timeWarning": "Attention : Il ne reste que {minutes} minutes !",
     "timeUpAutoSubmitFailed": "Temps expiré mais la soumission automatique a échoué. Veuillez essayer de soumettre manuellement.",
+    "assessmentChanged": "Cette évaluation a été mise à jour pendant que vous la passiez. Voici la nouvelle version : merci de recommencer.",
     "completeAllQuestions": "Veuillez répondre à toutes les questions. {count} questions restantes.",
     "failedToSubmit": "Échec de la soumission de l'évaluation. Veuillez réessayer.",
     "selectOneAnswer": "Sélectionnez une réponse",
@@ -2367,7 +2369,8 @@
     "syncComplete": "Synchronisation terminée",
     "syncFailed": "Échec de synchronisation",
     "syncRetry": "Réessayer la synchronisation",
-    "syncSuccess": "{count} éléments synchronisés"
+    "syncSuccess": "{count} éléments synchronisés",
+    "syncQuizChanged": "{count, plural, one {Un quiz passé hors ligne a été mis à jour : vos réponses n'ont pas pu être enregistrées. Merci de le refaire.} other {# quiz passés hors ligne ont été mis à jour : vos réponses n'ont pas pu être enregistrées. Merci de les refaire.}}"
   },
   "Organization": {
     "title": "Organisation",

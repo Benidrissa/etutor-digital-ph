@@ -384,6 +384,7 @@
     "lessonNotValidated": "Lesson not validated",
     "lessonNotValidatedDesc": "You need at least {score}% to validate this lesson. Try again!",
     "refreshContent": "Refresh content",
+    "quizChanged": "This quiz was updated while you were taking it. Here is the new version: please take it again.",
     "subscriptionRequired": "A subscription is required to access this content. The first unit of each module is free.",
     "authRequired": "Please sign in to continue.",
     "contentNotAvailableOffline": "This quiz is not available offline. Download the module to take quizzes without internet.",
@@ -701,6 +702,7 @@
     "progress": "{answered} of {total} answered",
     "timeWarning": "Warning: Only {minutes} minutes remaining!",
     "timeUpAutoSubmitFailed": "Time expired but auto-submit failed. Please try submitting manually.",
+    "assessmentChanged": "This assessment was updated while you were taking it. Here is the new version: please start again.",
     "completeAllQuestions": "Please answer all questions. {count} questions remaining.",
     "failedToSubmit": "Failed to submit assessment. Please try again.",
     "selectOneAnswer": "Select one answer",
@@ -2367,7 +2369,8 @@
     "syncComplete": "Sync complete",
     "syncFailed": "Sync failed",
     "syncRetry": "Retry sync",
-    "syncSuccess": "{count} items synced"
+    "syncSuccess": "{count} items synced",
+    "syncQuizChanged": "{count, plural, one {A quiz you answered offline was updated, so your answers could not be saved. Please retake it.} other {# quizzes you answered offline were updated, so your answers could not be saved. Please retake them.}}"
   },
   "Organization": {
     "title": "Organization",

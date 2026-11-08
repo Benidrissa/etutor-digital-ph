@@ -63,12 +63,16 @@ from app.domain.models.course import Course
 from app.domain.models.course_quality import (
     CourseGlossaryTerm,
     CourseQualityRun,
-    GeneratedContentRevision,
     UnitQualityAssessment,
 )
 from app.domain.models.course_resource import CourseResource
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
+from app.domain.services.content_revisions import (
+    current_revision,
+    ensure_pre_image,
+    locked_for_overwrite,
+)
 
 logger = structlog.get_logger()
 
@@ -908,12 +912,30 @@ class CourseQualityService:
         Bounds:
         - Refuses if ``is_manually_edited=True``.
         - Refuses if ``regeneration_attempts >= MAX_REGEN_ATTEMPTS``.
+        - Re-reads the row under a row lock, so the revision it saves and the
+          generator bumps is the database's, not a stale session copy.
         - Writes a ``GeneratedContentRevision`` pre-image before the
-          generator overwrites the row.
+          generator overwrites the row (unless one already exists for this
+          revision: ``uq_genc_revision``).
+        - A quiz keeps its question count across the regeneration.
 
         Returns the refreshed ``GeneratedContent`` row.
         """
-        gc = await session.get(GeneratedContent, content_id)
+        # Re-read under a row lock rather than trust the session's copy: a
+        # course run loads every candidate up front, and another writer (the
+        # MCQ backfill) may have regenerated this row since. The pre-image
+        # below must be of the revision learners are being served now.
+        gc = (
+            (
+                await session.execute(
+                    locked_for_overwrite(
+                        select(GeneratedContent).where(GeneratedContent.id == content_id)
+                    )
+                )
+            )
+            .scalars()
+            .first()
+        )
         if gc is None:
             raise ValueError(f"GeneratedContent {content_id} not found")
 
@@ -929,18 +951,12 @@ class CourseQualityService:
             await session.flush()
             return gc
 
-        # Save pre-image.
-        rev = GeneratedContentRevision(
-            generated_content_id=gc.id,
-            revision=gc.content_revision,
-            content=gc.content,
-            sources_cited=gc.sources_cited,
-            quality_score_before=gc.quality_score,
-            quality_flags_before=gc.quality_flags,
-            trigger=trigger,
-            triggered_by_user_id=triggered_by_user_id,
+        # Save pre-image. The quiz generator checks for this one before writing
+        # its own, so a learner served this revision stays gradeable.
+        await ensure_pre_image(
+            session, gc, trigger=trigger, triggered_by_user_id=triggered_by_user_id
         )
-        session.add(rev)
+        revision_before = current_revision(gc)
 
         gc.quality_status = "regenerating"
         gc.regeneration_attempts = (gc.regeneration_attempts or 0) + 1
@@ -974,12 +990,15 @@ class CourseQualityService:
             from app.domain.services.quiz_service import QuizService
 
             svc = QuizService(self.claude_service, self.semantic_retriever)
+            questions = gc.content.get("questions") if isinstance(gc.content, dict) else None
             await svc.get_or_generate_quiz(
                 module_id=gc.module_id,
                 unit_id=unit_id_str,
                 language=gc.language,
                 country=gc.country_context or "CI",
                 level=gc.level,
+                # Keep the quiz's length; None falls back to the platform setting.
+                num_questions=len(questions or []) or None,
                 session=session,
                 force_regenerate=True,
                 quality_constraints=constraints,
@@ -1014,8 +1033,13 @@ class CourseQualityService:
         else:
             raise ValueError(f"Unknown content_type for regeneration: {gc.content_type}")
 
-        # Increment revision only after a successful generator call.
-        gc.content_revision = (gc.content_revision or 1) + 1
+        # Increment revision only after a successful generator call — and only
+        # if the generator did not already (an in-place overwrite bumps it).
+        # Bumping twice would skip a revision that learners may have been
+        # served between the generator's commit and this one, with no
+        # pre-image to grade it against.
+        if current_revision(gc) == revision_before:
+            gc.content_revision = revision_before + 1
         await session.flush()
 
         # Refresh the row from the DB after the generator overwrote it.

@@ -584,6 +584,12 @@ export interface Quiz {
   generated_at: string;
   cached: boolean;
   country_fallback?: boolean;
+  /**
+   * Revision of the questions served. Regeneration replaces them in place under
+   * the same id, so send it back with the attempt: the server grades against
+   * the revision the learner saw. Absent on payloads cached before it existed.
+   */
+  content_revision?: number;
 }
 
 export type SummativeQuiz = Omit<Quiz, "content"> & {
@@ -600,6 +606,34 @@ export interface QuizAttemptRequest {
   quiz_id: string;
   answers: QuizAnswerSubmission[];
   total_time_seconds: number;
+  /**
+   * `content_revision` of the quiz payload these answers were given to.
+   * Omitted (answers queued offline before payloads carried it): the server
+   * grades them only if the quiz has never changed, otherwise it answers 409
+   * `quiz_changed`.
+   */
+  content_revision?: number;
+}
+
+/**
+ * The server could not grade the answers against the quiz revision they were
+ * given to (the quiz was regenerated since): 409 `{"error": "quiz_changed"}`.
+ * The caller should reload the quiz and let the learner take it again.
+ */
+export function isQuizChangedError(err: unknown): boolean {
+  if (err === null || typeof err !== "object") return false;
+  const { status, code, detail } = err as {
+    status?: unknown;
+    code?: unknown;
+    detail?: unknown;
+  };
+  if (status !== 409) return false;
+  if (code === "quiz_changed") return true;
+  return (
+    detail !== null &&
+    typeof detail === "object" &&
+    (detail as { error?: unknown }).error === "quiz_changed"
+  );
 }
 
 export interface QuizAttemptResult {

@@ -1192,6 +1192,7 @@ async def get_quiz(
     from sqlalchemy import select
 
     from app.domain.models.content import GeneratedContent
+    from app.domain.services.content_revisions import current_revision
 
     try:
         query = select(GeneratedContent).where(
@@ -1221,6 +1222,7 @@ async def get_quiz(
             content=QuizContent(**content_dict),
             generated_at=quiz_content.generated_at.isoformat(),
             cached=True,
+            content_revision=current_revision(quiz_content),
         )
         if unit_id == "summative":
             # Summative payloads must never carry the answer key (#2550)

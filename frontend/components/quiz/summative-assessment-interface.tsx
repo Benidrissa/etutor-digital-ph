@@ -10,8 +10,13 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import type { SummativeQuiz, QuizAnswerSubmission, SummativeAssessmentResponse } from '@/lib/api';
-import { submitSummativeAssessmentAttempt } from '@/lib/api';
-import { loadQuizState, saveQuizState, clearQuizState } from '@/lib/quiz-state-persistence';
+import { isQuizChangedError, submitSummativeAssessmentAttempt } from '@/lib/api';
+import {
+  loadQuizState,
+  saveQuizState,
+  clearQuizState,
+  quizAttemptStorageKey,
+} from '@/lib/quiz-state-persistence';
 import {
   buildQuizDisplayOrders,
   displayToOriginal,
@@ -24,6 +29,11 @@ interface SummativeAssessmentInterfaceProps {
   assessment: SummativeQuiz;
   onComplete: (result: SummativeAssessmentResponse) => void;
   onError: (error: string) => void;
+  /**
+   * The assessment was regenerated while the learner was taking it (409
+   * `quiz_changed`): the parent reloads it. Without it, an error is shown.
+   */
+  onAssessmentChanged?: () => void;
   timeLimit?: number; // in minutes, default to 30
 }
 
@@ -51,12 +61,25 @@ export function SummativeAssessmentInterface({
   assessment,
   onComplete,
   onError,
+  onAssessmentChanged,
   timeLimit = 30
 }: SummativeAssessmentInterfaceProps) {
   const t = useTranslations('SummativeAssessment');
 
-  // Assessment IDs are unique per generation, so a regenerate auto-invalidates this key.
-  const storageKey = `summative-state:v1:${assessment.id}`;
+  // Regeneration keeps the assessment id but bumps content_revision, which the
+  // key includes, so answers to old questions are never restored onto new ones.
+  const storageKey = quizAttemptStorageKey('summative-state', assessment);
+
+  // A 409 quiz_changed means the answers belong to questions the server can no
+  // longer grade: drop them and let the parent load the current version.
+  const handleAssessmentChanged = useCallback(() => {
+    clearQuizState(storageKey);
+    if (onAssessmentChanged) {
+      onAssessmentChanged();
+    } else {
+      onError(t('assessmentChanged'));
+    }
+  }, [storageKey, onAssessmentChanged, onError, t]);
   const [restored] = useState<PersistedSummativeState | null>(() => {
     const raw = loadQuizState<PersistedSummativeState>(storageKey);
     if (!raw) return null;
@@ -134,17 +157,22 @@ export function SummativeAssessmentInterface({
         quiz_id: assessment.id,
         answers,
         total_time_seconds: totalTimeSeconds,
+        content_revision: assessment.content_revision,
       });
 
       clearQuizState(storageKey);
       onComplete(result);
     } catch (error) {
       console.error('Auto-submit failed:', error);
-      onError(t('timeUpAutoSubmitFailed'));
+      if (isQuizChangedError(error)) {
+        handleAssessmentChanged();
+      } else {
+        onError(t('timeUpAutoSubmitFailed'));
+      }
     } finally {
       setIsSubmitting(false);
     }
-  }, [assessment, questionStates, startTime, isSubmitting, onComplete, onError, t, storageKey]);
+  }, [assessment, questionStates, startTime, isSubmitting, onComplete, onError, t, storageKey, handleAssessmentChanged]);
 
   // Timer countdown effect
   useEffect(() => {
@@ -245,17 +273,22 @@ export function SummativeAssessmentInterface({
         quiz_id: assessment.id,
         answers,
         total_time_seconds: totalTimeSeconds,
+        content_revision: assessment.content_revision,
       });
 
       clearQuizState(storageKey);
       onComplete(result);
     } catch (error) {
       console.error('Assessment submission failed:', error);
-      onError(t('failedToSubmit'));
+      if (isQuizChangedError(error)) {
+        handleAssessmentChanged();
+      } else {
+        onError(t('failedToSubmit'));
+      }
     } finally {
       setIsSubmitting(false);
     }
-  }, [assessment, questionStates, startTime, isSubmitting, onComplete, onError, t, storageKey]);
+  }, [assessment, questionStates, startTime, isSubmitting, onComplete, onError, t, storageKey, handleAssessmentChanged]);
 
   const formatTime = (seconds: number): string => {
     const minutes = Math.floor(seconds / 60);

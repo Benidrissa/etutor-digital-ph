@@ -1050,6 +1050,10 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             '      "question": string,\n'
             '      "options": [string, string, string, string],\n'
             '      "correct_answer": integer 0-3,\n'
+            '      "option_misconceptions": [string|null, string|null, string|null,'
+            " string|null] (same order as options: for each WRONG option one short"
+            " sentence naming the misconception that makes a learner choose it;"
+            " null for the correct option),\n"
             '      "explanation": string,\n'
             '      "sources_cited": [string],\n'
             '      "difficulty": "easy"|"medium"|"hard"\n'
@@ -1414,6 +1418,10 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             '      "question": string,\n'
             '      "options": [string, string, string, string],\n'
             '      "correct_answer": integer 0-3,\n'
+            '      "option_misconceptions": [string|null, string|null, string|null,'
+            " string|null] (same order as options: for each WRONG option one short"
+            " sentence naming the misconception that makes a learner choose it;"
+            " null for the correct option),\n"
             '      "explanation": string,\n'
             '      "sources_cited": [string],\n'
             '      "difficulty": "easy"|"medium"|"hard"\n'
