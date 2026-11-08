@@ -5,7 +5,7 @@ lesson and quiz and cached here. A lesson story is keyed by
 ``(module_unit_id, language)`` and records the ``generated_content`` rows it
 was derived from — their ``content_revision`` and a sha256 digest of their
 content — so it goes stale when either the lesson or the quiz is regenerated
-or edited (an admin's manual edit does not bump the revision).
+or edited (an admin's manual edit of a lesson does not bump the revision).
 
 Every new column is nullable: hand-authored weeks keep all of them null and are
 untouched. PostgreSQL treats NULLs as distinct in a unique constraint, so the

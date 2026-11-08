@@ -138,17 +138,21 @@ class StoryCourseRecord(Base):
     source_quiz_revision: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
 
     #: sha256 of each source row's content as canonical JSON (sorted keys, no
-    #: whitespace). An admin's manual edit of a lesson or quiz changes its
-    #: content without bumping ``content_revision``; the digest catches it.
+    #: whitespace). An admin's manual edit of a lesson changes its content
+    #: without bumping ``content_revision`` (an edit of a quiz does bump it);
+    #: the digest catches either.
     source_lesson_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
     source_quiz_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
+    # TIMESTAMP WITH TIME ZONE, as migration 105 creates them.
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), onupdate=func.now(), nullable=False
+        sa.DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
     course: Mapped[Course | None] = relationship("Course", foreign_keys=[course_id])

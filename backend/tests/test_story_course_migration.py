@@ -158,6 +158,23 @@ def test_column_types_match_the_model(recorded):
             assert migration_type == model_type, name
 
 
+def test_timestamp_time_zones_match_the_model(recorded):
+    """A naive model column over a TIMESTAMPTZ column drifts in autogenerate
+    and round-trips values without their offset."""
+    migration = {
+        c.name: c.type.timezone
+        for c in recorded.columns("story_courses")
+        if isinstance(c.type, sa.DateTime)
+    }
+    model = {
+        c.name: c.type.timezone
+        for c in StoryCourseRecord.__table__.columns
+        if isinstance(c.type, sa.DateTime)
+    }
+    assert migration == model
+    assert model == {"created_at": True, "updated_at": True}
+
+
 def test_foreign_keys_match_the_model(recorded):
     def fks(columns):
         out = {}

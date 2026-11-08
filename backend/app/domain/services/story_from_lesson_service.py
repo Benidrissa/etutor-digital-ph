@@ -292,7 +292,7 @@ async def story_sources_are_fresh(session: AsyncSession, record: StoryCourseReco
 
     * the lesson row is gone, regenerated (``content_revision`` moved) or
       edited (its content no longer matches ``source_lesson_digest`` — an
-      admin's manual edit does not bump the revision);
+      admin's manual edit of a lesson does not bump the revision);
     * the quiz row it used — the lesson unit's own or the covering quiz
       unit's — is gone, regenerated or edited, the same way;
     * it used the covering quiz unit's quiz and the lesson unit now has a quiz
