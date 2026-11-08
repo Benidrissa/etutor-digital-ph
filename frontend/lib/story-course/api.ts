@@ -69,6 +69,10 @@ export interface StoryGenerating {
  * {@link StoryGenerating}, or 409 `story_unavailable` when the generator could
  * not produce a week that passes the validator.
  *
+ * `generate: false` (contract X1) only reads the cache: a story nobody has
+ * opened yet answers 404 `story_not_cached` and nothing is dispatched. The
+ * module downloader uses it so a download never pays for stories on demand.
+ *
  * Kept here so the lesson panel (through the offline loader) and the module
  * downloader request the very same URL.
  */
@@ -76,11 +80,27 @@ export function unitStoryPath(
   moduleId: string,
   unitId: string,
   language: "fr" | "en",
+  options: { generate?: boolean } = {},
 ): string {
+  const generate = options.generate === false ? "&generate=false" : "";
   return (
     `/api/v1/story-courses/unit/${encodeURIComponent(moduleId)}` +
-    `/${encodeURIComponent(unitId)}?language=${language}`
+    `/${encodeURIComponent(unitId)}?language=${language}${generate}`
   );
+}
+
+/**
+ * The machine-readable code in a story endpoint's error body
+ * (`{"detail": {"error": "..."}}`), whatever the HTTP status. Clients map on
+ * this, not on the status (contract X2): story mode switched off is a 404
+ * `story_mode_disabled`, not a 403.
+ */
+export function storyErrorCode(err: unknown): string | undefined {
+  if (!err || typeof err !== "object") return undefined;
+  const detail = (err as { detail?: unknown }).detail;
+  if (!detail || typeof detail !== "object") return undefined;
+  const code = (detail as { error?: unknown }).error;
+  return typeof code === "string" ? code : undefined;
 }
 
 /** True for the 202 "still writing it" envelope. */
@@ -109,12 +129,10 @@ export function isStoryDocument(value: unknown): value is StoryCourse {
 /** The 409 the unit endpoint sends when no valid story could be generated. */
 export function isStoryUnavailableError(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
-  const { status, detail } = err as { status?: unknown; detail?: unknown };
-  if (status !== 409) return false;
+  if ((err as { status?: unknown }).status !== 409) return false;
   // A 409 carrying some other error code goes down the generic failure path,
   // so a future, different conflict is not mistaken for "no story".
-  const code =
-    detail && typeof detail === "object" ? (detail as { error?: unknown }).error : undefined;
+  const code = storyErrorCode(err);
   return code === undefined || code === "story_unavailable";
 }
 

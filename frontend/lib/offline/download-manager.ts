@@ -8,15 +8,16 @@ import {
 } from "./db";
 import { apiFetch } from "@/lib/api";
 import type { ModuleUnitsResponse } from "@/lib/api";
-import { unitStoryPath } from "@/lib/story-course/api";
+import { isStoryDocument, unitStoryPath } from "@/lib/story-course/api";
 
 const MAX_OFFLINE_MODULES = 3;
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 3 * 60 * 1000;
 
 // Average bytes per content type (for size estimation).
-// ~80KB per unit: lesson + quiz + case study (~50KB) plus a lesson story, which
-// is one whole story-course/1 document (~20-30KB of JSON).
+// ~80KB per unit: lesson + quiz + case study (~50KB) plus a lesson story when
+// one is already cached, which is one whole story-course/1 document (~20-30KB
+// of JSON). An upper bound: uncached stories are skipped.
 const SIZE_ESTIMATE_PER_UNIT = 80_000;
 const SIZE_ESTIMATE_FLASHCARDS = 30_000; // ~30KB for module flashcards
 
@@ -262,9 +263,11 @@ export async function downloadModule(
         locale, signal
       );
 
-      // Download the lesson's story. Story mode is a tab on lesson units only,
-      // so quiz and case-study units are not asked for a story they never
-      // show. A 409 "story unavailable" is non-fatal, like a missing case.
+      // Save the lesson's story if one is already written. Story mode is a
+      // tab on lesson units only, so quiz and case-study units are not asked
+      // for a story they never show. Stories are written on demand, when a
+      // learner opens the tab, so the download only reads the cache: it never
+      // pays for a story nobody asked for, nor waits minutes for one.
       if (hasStoryMode(unit.unit_type)) {
         if (signal.aborted) throw new DOMException("Aborted", "AbortError");
 
@@ -276,11 +279,7 @@ export async function downloadModule(
           currentContentType: "story",
         });
 
-        await downloadUnitContent(
-          moduleId, unitId, "story",
-          unitStoryPath(moduleId, unitId, locale),
-          locale, signal
-        );
+        await downloadUnitStory(moduleId, unitId, locale, signal);
       }
 
       downloadedUnits++;
@@ -399,6 +398,53 @@ const NON_LESSON_UNIT_TYPES: ReadonlySet<string> = new Set(["quiz", "case-study"
 
 function hasStoryMode(unitType: string | undefined): boolean {
   return !unitType || !NON_LESSON_UNIT_TYPES.has(unitType);
+}
+
+/**
+ * Store a lesson's story when the server already has one cached.
+ *
+ * Asks with `generate=false` (contract X1): a story nobody has opened answers
+ * 404 `story_not_cached` and nothing is dispatched. A 202 "generating" (a
+ * learner opened the tab moments ago, or an older backend ignored the flag)
+ * is skipped too, never polled, so one module download cannot sit for minutes
+ * per lesson. Any other failure is non-fatal, like a missing case study.
+ */
+async function downloadUnitStory(
+  moduleId: string,
+  unitId: string,
+  locale: "fr" | "en",
+  signal: AbortSignal
+): Promise<void> {
+  let data: unknown;
+  try {
+    data = await apiFetch<unknown>(
+      unitStoryPath(moduleId, unitId, locale, { generate: false }),
+      { signal }
+    );
+  } catch (err: unknown) {
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    const status =
+      err && typeof err === "object" ? (err as { status?: unknown }).status : undefined;
+    // 404 not cached / disabled / not a lesson, 409 no valid story: expected.
+    if (status === 404 || status === 409) return;
+    console.warn(`Failed to download story for ${unitId}:`, err);
+    return;
+  }
+  // Only a real story document is stored, never an envelope.
+  if (!isStoryDocument(data)) return;
+  try {
+    await upsertOfflineContent({
+      unitId,
+      moduleId,
+      contentType: "story",
+      locale,
+      content: data,
+      cachedAt: Date.now(),
+    });
+  } catch (err: unknown) {
+    // Non-fatal, like any other unit content that could not be stored.
+    console.warn(`Failed to store story for ${unitId}:`, err);
+  }
 }
 
 async function downloadUnitContent(
