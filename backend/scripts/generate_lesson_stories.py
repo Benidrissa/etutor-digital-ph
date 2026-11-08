@@ -17,13 +17,19 @@ Usage (inside the backend container)::
     python scripts/generate_lesson_stories.py generate \
         --course <slug-or-uuid> --course <slug-or-uuid> --language fr --language en
 
-``generate`` exits non-zero unless every story ended up valid and published.
+    # Generate what a request file asks for (run after every deploy)
+    python scripts/generate_lesson_stories.py requests scripts/story_requests.json
+
+``generate`` and ``requests`` exit non-zero unless every story ended up valid
+and published. Re-running them is cheap: a story that is already cached and
+fresh is returned as it is, with no model call.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import sys
 import uuid
 from dataclasses import dataclass
@@ -249,37 +255,44 @@ async def wait_for_task(task_id: str, timeout_s: int, poll_s: float = 5.0) -> tu
         waited += poll_s
 
 
-async def cmd_generate(
+@dataclass(frozen=True)
+class GenerationSpec:
+    """One course whose ``lesson_index``-th lesson of module ``module_index``
+    gets a story in each of ``languages``."""
+
+    course: Course
+    module_index: int
+    lesson_index: int
+    languages: tuple[str, ...]
+
+
+async def run_generation(
     session_factory,
-    course_refs: list[str],
-    languages: list[str],
+    specs: list[GenerationSpec],
     *,
     force: bool,
-    module_index: int,
-    lesson_index: int,
     level: int,
     country: str,
     timeout_s: int,
 ) -> int:
+    """Dispatch every story, wait for all of them, report each; 0 if all are
+    valid and published."""
     from app.api.v1.story_courses import _dispatch_story_generation
 
     jobs: list[tuple[LessonTarget, str, str]] = []
     failed = False
     async with session_factory() as session:
-        for ref in course_refs:
-            course = await resolve_course(session, ref)
-            if course is None:
-                print(f"Course {ref!r}: not found")
-                failed = True
-                continue
-            target, why = await lesson_target(session, course, module_index, lesson_index)
+        for spec in specs:
+            course = spec.course
+            target, why = await lesson_target(session, course, spec.module_index, spec.lesson_index)
             if target is None:
                 print(
-                    f"Course {course.slug}: no lesson {lesson_index} in module {module_index}: {why}"
+                    f"Course {course.slug}: no lesson {spec.lesson_index} in module "
+                    f"{spec.module_index}: {why}"
                 )
                 failed = True
                 continue
-            for language in languages:
+            for language in spec.languages:
                 task_id = await _dispatch_story_generation(
                     module_id=target.module.id,
                     unit_id=target.unit.unit_number,
@@ -314,7 +327,124 @@ async def cmd_generate(
                 and summary.get("status") == "published"
             )
             failed = failed or not ok
-    return 1 if failed else 0
+    return 1 if failed or not jobs else 0
+
+
+async def cmd_generate(
+    session_factory,
+    course_refs: list[str],
+    languages: list[str],
+    *,
+    force: bool,
+    module_index: int,
+    lesson_index: int,
+    level: int,
+    country: str,
+    timeout_s: int,
+) -> int:
+    specs: list[GenerationSpec] = []
+    missing = False
+    async with session_factory() as session:
+        for ref in course_refs:
+            course = await resolve_course(session, ref)
+            if course is None:
+                print(f"Course {ref!r}: not found")
+                missing = True
+                continue
+            specs.append(GenerationSpec(course, module_index, lesson_index, tuple(languages)))
+    code = await run_generation(
+        session_factory, specs, force=force, level=level, country=country, timeout_s=timeout_s
+    )
+    return 1 if missing else code
+
+
+def load_requests(path: str) -> list[dict[str, Any]]:
+    """The ``requests`` list of a story request file, each entry checked.
+
+    An entry names courses by ``query`` (a title or slug fragment) and may set
+    ``kids_only`` (default false), ``include_drafts`` (default false),
+    ``max_courses`` (default 1: a query matching more courses is refused, so a
+    vague query never pays for stories nobody asked for), ``module_index`` and
+    ``lesson_index`` (default 1) and ``languages`` (default fr and en).
+    """
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    requests = data.get("requests") if isinstance(data, dict) else None
+    if not isinstance(requests, list) or not requests:
+        raise ValueError(f"{path}: no 'requests' list")
+    checked = []
+    for index, entry in enumerate(requests):
+        if not isinstance(entry, dict) or not str(entry.get("query") or "").strip():
+            raise ValueError(f"{path}: requests[{index}] needs a 'query'")
+        languages = entry.get("languages") or list(LANGUAGES)
+        if not set(languages) <= set(LANGUAGES):
+            raise ValueError(f"{path}: requests[{index}] has unknown languages {languages}")
+        checked.append(
+            {
+                "query": str(entry["query"]).strip(),
+                "kids_only": bool(entry.get("kids_only", False)),
+                "include_drafts": bool(entry.get("include_drafts", False)),
+                "max_courses": int(entry.get("max_courses", 1)),
+                "module_index": int(entry.get("module_index", 1)),
+                "lesson_index": int(entry.get("lesson_index", 1)),
+                "languages": tuple(languages),
+            }
+        )
+    return checked
+
+
+async def cmd_requests(
+    session_factory, path: str, *, force: bool, level: int, country: str, timeout_s: int
+) -> int:
+    """Generate the stories a request file asks for (see :func:`load_requests`)."""
+    requests = load_requests(path)
+    specs: list[GenerationSpec] = []
+    refused = False
+    async with session_factory() as session:
+        for request in requests:
+            matches = await find_courses(session, [request["query"]])
+            courses = [
+                c
+                for c in matches
+                if (request["include_drafts"] or c.status == "published")
+                and (not request["kids_only"] or detect_audience(c).is_kids)
+            ]
+            label = f"query {request['query']!r}{' (kids)' if request['kids_only'] else ''}"
+            if not courses:
+                print(f"{label}: no matching course. Courses matching the query:")
+                for course in matches:
+                    print(
+                        f"  - {course.slug}: {course.title_fr} status={course.status} "
+                        f"kids={detect_audience(course).is_kids}"
+                    )
+                refused = True
+                continue
+            if len(courses) > request["max_courses"]:
+                print(
+                    f"{label}: {len(courses)} courses match, more than max_courses="
+                    f"{request['max_courses']}; nothing generated for it. Candidates:"
+                )
+                for course in courses:
+                    print(f"  - {course.slug}: {course.title_fr} / {course.title_en}")
+                refused = True
+                continue
+            for course in courses:
+                print(f"{label}: {course.slug} ({course.title_fr})")
+                specs.append(
+                    GenerationSpec(
+                        course,
+                        request["module_index"],
+                        request["lesson_index"],
+                        request["languages"],
+                    )
+                )
+    code = (
+        await run_generation(
+            session_factory, specs, force=force, level=level, country=country, timeout_s=timeout_s
+        )
+        if specs
+        else 1
+    )
+    return 1 if refused else code
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -337,6 +467,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     generate.add_argument("--country", default="CI", help="preferred source lesson country")
     generate.add_argument("--timeout", type=int, default=1200, help="seconds to wait")
     common(generate)
+
+    requests = sub.add_parser("requests", help="generate what a request file asks for")
+    requests.add_argument("file", help="JSON request file (see load_requests)")
+    requests.add_argument("--force", action="store_true", help="regenerate even if fresh")
+    requests.add_argument("--level", type=int, default=1, help="preferred source lesson level")
+    requests.add_argument("--country", default="CI", help="preferred source lesson country")
+    requests.add_argument("--timeout", type=int, default=1200, help="seconds to wait")
     return parser.parse_args(argv)
 
 
@@ -348,6 +485,15 @@ async def main(argv: list[str] | None = None, session_factory=None) -> int:
         session_factory = async_session_factory
     if args.command == "list":
         return await cmd_list(session_factory, args.query, args.module_index, args.lesson_index)
+    if args.command == "requests":
+        return await cmd_requests(
+            session_factory,
+            args.file,
+            force=args.force,
+            level=args.level,
+            country=args.country,
+            timeout_s=args.timeout,
+        )
     return await cmd_generate(
         session_factory,
         args.course,

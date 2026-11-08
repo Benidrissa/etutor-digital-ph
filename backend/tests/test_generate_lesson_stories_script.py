@@ -8,6 +8,7 @@ course and language, and what it reports and returns.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import uuid
 from pathlib import Path
@@ -203,3 +204,101 @@ class TestGenerate:
     async def test_fails_for_an_unknown_course_without_dispatching(self, wired):
         assert await self.run("generate", "--course", "nope", "--language", "fr") == 1
         assert wired.dispatched == []
+
+
+def kids_course(slug, title, *, status="published", kids=True):
+    return SimpleNamespace(
+        id=uuid.uuid4(),
+        slug=slug,
+        title_fr=title,
+        title_en=title,
+        status=status,
+        taxonomy_categories=[SimpleNamespace(type="audience", slug="primary_school")]
+        if kids
+        else [],
+    )
+
+
+class TestRequests:
+    @pytest.fixture
+    def wired(self, monkeypatch, tmp_path):
+        """Fake course search, kids detection and the generation itself."""
+        courses = {
+            "biolog": [kids_course("bio-kids", "Biologie")],
+            "math": [
+                kids_course("maths-kids", "Mathématiques"),
+                kids_course("maths-adults", "Mathématiques avancées", kids=False),
+                kids_course("maths-draft", "Mathématiques brouillon", status="draft"),
+            ],
+        }
+        generated = []
+
+        async def find_courses(_session, queries):
+            return list(courses.get(queries[0], []))
+
+        def detect_audience(course):
+            return SimpleNamespace(is_kids=bool(course.taxonomy_categories))
+
+        async def run_generation(_factory, specs, **kwargs):
+            generated.extend(specs)
+            return 0
+
+        monkeypatch.setattr(script, "find_courses", find_courses)
+        monkeypatch.setattr(script, "detect_audience", detect_audience)
+        monkeypatch.setattr(script, "run_generation", run_generation)
+
+        def write(requests):
+            path = tmp_path / "requests.json"
+            path.write_text(json.dumps({"requests": requests}), encoding="utf-8")
+            return str(path)
+
+        return SimpleNamespace(courses=courses, generated=generated, write=write)
+
+    async def run(self, *argv):
+        return await script.main(list(argv), session_factory=FakeSession)
+
+    async def test_the_shipped_request_file_is_valid(self):
+        requests = script.load_requests(str(Path(script.__file__).parent / "story_requests.json"))
+        assert [r["query"] for r in requests] == ["biolog", "math"]
+        assert all(r["kids_only"] and r["languages"] == ("fr", "en") for r in requests)
+        assert all(r["module_index"] == 1 and r["lesson_index"] == 1 for r in requests)
+
+    async def test_picks_the_one_published_kids_course_per_query(self, wired):
+        path = wired.write(
+            [{"query": "biolog", "kids_only": True}, {"query": "math", "kids_only": True}]
+        )
+
+        assert await self.run("requests", path) == 0
+
+        assert [s.course.slug for s in wired.generated] == ["bio-kids", "maths-kids"]
+        assert all(s.languages == ("fr", "en") for s in wired.generated)
+
+    async def test_refuses_a_query_matching_too_many_courses(self, wired, capsys):
+        path = wired.write([{"query": "math"}, {"query": "biolog", "kids_only": True}])
+
+        assert await self.run("requests", path) == 1
+
+        # The vague query generates nothing; the precise one still does.
+        assert [s.course.slug for s in wired.generated] == ["bio-kids"]
+        assert "maths-adults" in capsys.readouterr().out
+
+    async def test_no_match_lists_the_near_misses(self, wired, capsys):
+        wired.courses["biolog"] = [kids_course("bio-draft", "Biologie", status="draft")]
+        path = wired.write([{"query": "biolog", "kids_only": True}])
+
+        assert await self.run("requests", path) == 1
+
+        assert wired.generated == []
+        out = capsys.readouterr().out
+        assert "bio-draft" in out and "status=draft" in out
+
+    def test_rejects_a_malformed_request_file(self, tmp_path):
+        bad = tmp_path / "bad.json"
+        bad.write_text(json.dumps({"requests": [{"languages": ["fr"]}]}), encoding="utf-8")
+        with pytest.raises(ValueError, match="query"):
+            script.load_requests(str(bad))
+        bad.write_text(
+            json.dumps({"requests": [{"query": "x", "languages": ["de"]}]}), encoding="utf-8"
+        )
+        with pytest.raises(ValueError, match="languages"):
+            script.load_requests(str(bad))
