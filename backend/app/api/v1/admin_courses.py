@@ -1143,6 +1143,133 @@ class EditContentRequest(BaseModel):
     content: dict
 
 
+def _invalid_content(message: str, issues: list[dict]) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        detail={"error": "invalid_content", "message": message, "issues": issues},
+    )
+
+
+def _schema_issues(exc: Exception) -> list[dict]:
+    """Pydantic errors as ValidationIssue-shaped dicts (JSON-safe: loc + msg only)."""
+    errors = exc.errors() if hasattr(exc, "errors") else []
+    return [
+        {
+            "severity": "error",
+            "code": "schema_invalid",
+            "path": ".".join(str(part) for part in err.get("loc", ())),
+            "message": str(err.get("msg", "")),
+        }
+        for err in errors
+    ]
+
+
+def _carry_forward_misconceptions(posted_questions: list, existing: dict | None) -> list:
+    """Keep stored option_misconceptions an editor did not send back.
+
+    The field is server-side only, so an editor built from a learner-shaped
+    payload would drop it. When a posted question omits the key entirely and
+    the stored question with the same id has the same options and answer, the
+    stored metadata still describes it and is kept; any change to the options
+    or answer means it no longer does, and it is not carried over.
+    """
+    stored = {
+        q.get("id"): q
+        for q in ((existing or {}).get("questions") or [])
+        if isinstance(q, dict) and q.get("id")
+    }
+    carried = []
+    for question in posted_questions:
+        if isinstance(question, dict) and "option_misconceptions" not in question:
+            previous = stored.get(question.get("id"))
+            if (
+                previous is not None
+                and previous.get("options") == question.get("options")
+                and previous.get("correct_answer") == question.get("correct_answer")
+                and previous.get("option_misconceptions") is not None
+            ):
+                question = {**question, "option_misconceptions": previous["option_misconceptions"]}
+        carried.append(question)
+    return carried
+
+
+def _validated_edit(content_type: str, posted: dict, existing: dict | None) -> dict:
+    """Validate an admin edit against the schema its read path uses; return what to store.
+
+    The read paths rebuild these models from the stored dict (``QuizContent``,
+    ``LessonContent``, ``CaseStudyContent``, ``FlashcardContent``), so an edit
+    they cannot parse would break every later read of the row. Quizzes must
+    also pass the hard shared MCQ checks (answer leaked into the stem,
+    duplicate or empty options, a distractor without a misconception when
+    misconceptions are present, duplicate question ids).
+
+    Raises a 422 ``invalid_content`` HTTPException listing ValidationIssue-shaped
+    findings.
+    """
+    from pydantic import ValidationError
+
+    from app.api.v1.schemas.content import CaseStudyContent, FlashcardContent, LessonContent
+    from app.api.v1.schemas.quiz import QuizContent
+    from app.domain.services import mcq_checks
+
+    # ``unit_id`` is a cache-key sentinel (the summative quiz key, the legacy
+    # unit match), not editable content: the stored value always wins.
+    unit_id = (existing or {}).get("unit_id", posted.get("unit_id"))
+    body = {k: v for k, v in posted.items() if k != "unit_id"}
+
+    try:
+        if content_type == "quiz":
+            if isinstance(body.get("questions"), list):
+                body["questions"] = _carry_forward_misconceptions(body["questions"], existing)
+            quiz = QuizContent.model_validate(body)
+            for question in quiz.questions:
+                question.option_misconceptions = mcq_checks.normalise_option_misconceptions(
+                    question.option_misconceptions, len(question.options), question.correct_answer
+                )
+            defects = mcq_checks.hard_errors(mcq_checks.check_quiz_content(quiz))
+            if defects:
+                raise _invalid_content(
+                    "Quiz content fails the multiple-choice checks",
+                    [issue.model_dump() for issue in defects],
+                )
+            # Stored in the same shape generation writes.
+            stored = quiz.model_dump()
+        elif content_type == "lesson":
+            LessonContent.model_validate(body)
+            stored = body
+        elif content_type in ("case", "case_study"):
+            CaseStudyContent.model_validate(body)
+            stored = body
+        elif content_type == "flashcard":
+            cards = body.get("flashcards")
+            if not isinstance(cards, list):
+                raise _invalid_content(
+                    "Flashcard content needs a 'flashcards' list",
+                    [
+                        {
+                            "severity": "error",
+                            "code": "schema_invalid",
+                            "path": "flashcards",
+                            "message": "expected a list of flashcards",
+                        }
+                    ],
+                )
+            for card in cards:
+                FlashcardContent.model_validate(card)
+            stored = body
+        else:
+            logger.warning("edit_content: no schema for content type", content_type=content_type)
+            stored = body
+    except ValidationError as exc:
+        raise _invalid_content(
+            f"Content does not match the {content_type} schema", _schema_issues(exc)
+        ) from exc
+
+    if unit_id is not None:
+        stored = {**stored, "unit_id": unit_id}
+    return stored
+
+
 @router.put("/{course_id}/content/{content_id}")
 async def edit_content(
     course_id: uuid.UUID,
@@ -1151,7 +1278,13 @@ async def edit_content(
     current_user: AuthenticatedUser = Depends(require_role(UserRole.admin, UserRole.sub_admin)),
     db=Depends(get_db_session),
 ) -> dict:
-    """Edit generated content and mark as manually edited (locked)."""
+    """Edit generated content and mark as manually edited (locked).
+
+    The posted content is validated against its content type's schema (and,
+    for quizzes, the hard multiple-choice checks) before it is saved: a locked
+    row is excluded from the quality agent, so a malformed edit would otherwise
+    break every later read with no automatic repair. 422 on failure.
+    """
     from app.domain.models.content import GeneratedContent
 
     result = await db.execute(select(GeneratedContent).where(GeneratedContent.id == content_id))
@@ -1162,7 +1295,8 @@ async def edit_content(
             detail="Content not found",
         )
 
-    content.content = request.content
+    existing = content.content if isinstance(content.content, dict) else None
+    content.content = _validated_edit(content.content_type, request.content, existing)
     content.is_manually_edited = True
     content.validated = True
     await db.commit()
