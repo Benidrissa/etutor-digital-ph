@@ -15,6 +15,15 @@ is graded against that revision's pre-image.
 Several writers can reach the same overwrite in one session (the quality agent
 and the backfill write their own pre-image, with their own ``trigger``, before
 calling the generator), so :func:`ensure_pre_image` checks before it inserts.
+
+Writers in *different* sessions can race on one row (a course quality run and
+the MCQ backfill, say). The revision an overwrite saves and bumps must be the
+database's, not that of an object a long-lived session loaded earlier, or an
+overwrite committed meanwhile is overwritten again under the same revision
+number with no pre-image of it. So the row an overwrite starts from is re-read
+under a row lock (:func:`locked_for_overwrite`), and a pre-image that already
+exists for the revision but holds other content is a :class:`RevisionConflict`,
+never a reason to skip.
 """
 
 from __future__ import annotations
@@ -22,13 +31,34 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.models.course_quality import GeneratedContentRevision
 
 #: ``trigger`` recorded on pre-images written by a plain ``force_regenerate``.
 REGENERATE_TRIGGER = "regenerate"
+
+
+class RevisionConflict(RuntimeError):
+    """A pre-image saved for this revision holds other content than the row.
+
+    The row was changed under the same revision number, so which questions a
+    learner served that revision saw is no longer known. Overwriting it again
+    would only bury that; the writer aborts instead.
+    """
+
+
+def locked_for_overwrite(stmt: Select) -> Select:
+    """``stmt`` (a select of ``GeneratedContent``) re-reading the row under a lock.
+
+    ``populate_existing`` refreshes an object the session already holds, so the
+    revision an overwrite saves and bumps is the database's; ``FOR NO KEY
+    UPDATE`` (what an UPDATE takes) makes a concurrent writer wait until this
+    transaction commits, without blocking inserts of pre-images, which only
+    reference the row.
+    """
+    return stmt.with_for_update(key_share=True).execution_options(populate_existing=True)
 
 
 def current_revision(row: Any) -> int:
@@ -65,14 +95,23 @@ async def ensure_pre_image(
 ) -> GeneratedContentRevision | None:
     """Save ``row``'s current content as the pre-image of its current revision.
 
-    Call it before overwriting the row. A no-op (returns ``None``) when that
-    pre-image already exists — the quality agent and the backfill write their
-    own first in the same session, and inserting again would violate
-    ``uq_genc_revision``. Returns the new, pending pre-image otherwise; the
-    caller's commit persists it together with the overwrite.
+    Call it before overwriting the row, on a row read with
+    :func:`locked_for_overwrite`. A no-op (returns ``None``) when that
+    pre-image already exists with the same content — the quality agent and
+    the backfill write their own first, and inserting again would violate
+    ``uq_genc_revision``. Raises :class:`RevisionConflict` when it exists with
+    other content: the row changed without a new revision. Returns the new,
+    pending pre-image otherwise; the caller's commit persists it together with
+    the overwrite.
     """
     revision = current_revision(row)
-    if await find_pre_image(session, row.id, revision) is not None:
+    existing = await find_pre_image(session, row.id, revision)
+    if existing is not None:
+        if existing.content != row.content:
+            raise RevisionConflict(
+                f"generated_content {row.id}: the pre-image of revision {revision} "
+                "holds other content than the row; refusing to overwrite it again"
+            )
         return None
     pre_image = GeneratedContentRevision(
         generated_content_id=row.id,

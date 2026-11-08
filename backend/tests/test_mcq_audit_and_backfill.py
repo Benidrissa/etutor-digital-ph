@@ -429,8 +429,9 @@ class TestBackfillStatus:
 
 def _row_session(gc, unit=None, *, revision_exists=False):
     revision_lookup = MagicMock()
+    # An existing pre-image of the row's current revision holds its content.
     revision_lookup.scalars.return_value.first.return_value = (
-        uuid.uuid4() if revision_exists else None
+        SimpleNamespace(id=uuid.uuid4(), content=gc.content) if revision_exists else None
     )
     session = MagicMock()
 

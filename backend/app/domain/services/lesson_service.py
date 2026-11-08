@@ -37,6 +37,7 @@ from app.domain.models.course import Course
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.source_image import SourceImage
+from app.domain.services.content_revisions import locked_for_overwrite
 from app.domain.services.exceptions import CourseNotIndexedError
 from app.domain.services.platform_settings_service import SettingsCache
 
@@ -172,6 +173,7 @@ async def update_cached_content_in_place(
         language=language,
         level=level,
         country_context=country_context,
+        for_update=True,
     )
     if row is None or row.is_manually_edited:
         return None
@@ -187,16 +189,21 @@ async def find_in_place_target(
     language: str,
     level: int,
     country_context: str | None,
+    for_update: bool = False,
 ) -> GeneratedContent | None:
     """The cached row ``update_cached_content_in_place`` would overwrite.
 
     Split out so a caller can act on the row before it is overwritten (the
     quiz service saves a revision pre-image of it first). Does not check
     ``is_manually_edited``; the caller must.
+
+    ``for_update``: the caller is about to overwrite the row, so it is re-read
+    from the database under a row lock (``content_revisions.locked_for_overwrite``)
+    — an object the session loaded earlier may be a revision behind.
     """
     if module_unit_uuid is None:
         return None
-    result = await session.execute(
+    query = (
         select(GeneratedContent)
         .where(
             and_(
@@ -209,6 +216,9 @@ async def find_in_place_target(
         )
         .order_by(GeneratedContent.generated_at.desc())
     )
+    if for_update:
+        query = locked_for_overwrite(query)
+    result = await session.execute(query)
     return result.scalars().first()
 
 

@@ -113,14 +113,23 @@ class FakeSession:
 
     ``pre_images`` maps ``(generated_content_id, revision)`` to a pre-image;
     every lookup is recorded in ``revision_lookups``.
+
+    ``db_state`` is the row as the database has it when the session's copy
+    (``row``) is stale: a select with ``populate_existing`` copies it onto the
+    row, as SQLAlchemy refreshes an identity-mapped object. Row locks taken by
+    selects are recorded in ``locks``.
     """
 
-    def __init__(self, *, row=None, pre_images=None, attempt=None, module_unit_id=None):
+    def __init__(
+        self, *, row=None, pre_images=None, attempt=None, module_unit_id=None, db_state=None
+    ):
         self.row = row
         self.pre_images = dict(pre_images or {})
         self.attempt = attempt
         self.module_unit_id = module_unit_id
+        self.db_state = dict(db_state or {})
         self.revision_lookups: list[tuple] = []
+        self.locks: list = []
         self.added: list = []
         self.commit = AsyncMock()
         self.flush = AsyncMock()
@@ -155,6 +164,11 @@ class FakeSession:
             self.revision_lookups.append(key)
             result.scalars.return_value.first.return_value = self.pre_images.get(key)
         elif entity is GeneratedContent:
+            if stmt._for_update_arg is not None:
+                self.locks.append(stmt._for_update_arg)
+            if stmt.get_execution_options().get("populate_existing") and self.row is not None:
+                for name, value in self.db_state.items():
+                    setattr(self.row, name, copy.deepcopy(value))
             result.scalar_one_or_none.return_value = self.row
             result.scalars.return_value.first.return_value = self.row
         elif entity is ModuleUnit:
@@ -549,6 +563,92 @@ class TestOverwriteWritesPreImage:
         assert resp.id == row.id
         assert resp.content_revision == 2
         assert len(session.attempts(GeneratedContentRevision)) == 1
+
+
+# ── An overwrite starts from the database's revision ─────────────────────────
+
+#: A third answer key: what another writer regenerated the row to meanwhile.
+REV3_KEY = {"q1": 2, "q2": 3, "q3": 0, "q4": 1}
+
+
+def _stale_row(unit_id: str = "1.2"):
+    """The session's copy at revision 1, while the database is at revision 2.
+
+    Another writer (the MCQ backfill) regenerated the row and committed after
+    this session loaded it: revision 2 holds REV3_KEY and learners are being
+    served it; the backfill saved revision 1's pre-image.
+    """
+    row = _row(unit_id, revision=1, key=REV1_KEY)
+    db_state = {"content_revision": 2, "content": _content(REV3_KEY, unit_id)}
+    pre_images = {(row.id, 1): _pre_image(row, 1, REV1_KEY)}
+    return row, db_state, pre_images
+
+
+class TestOverwriteStartsFromTheDatabaseRevision:
+    """A stale in-memory revision used to overwrite revision 2 under its own
+    number: no pre-image of it, and learners served it graded against new
+    questions. The row is now re-read under a lock before the pre-image."""
+
+    @pytest.mark.parametrize("unit_id", ["1.2", "summative"])
+    async def test_a_stale_copy_is_re_read_before_the_pre_image(self, unit_id):
+        row, db_state, pre_images = _stale_row(unit_id)
+        session = FakeSession(row=row, db_state=db_state, pre_images=pre_images)
+
+        await _overwrite(session, row, module_unit_uuid=row.module_unit_id)
+
+        (pre_image,) = session.attempts(GeneratedContentRevision)
+        assert pre_image.revision == 2
+        assert pre_image.content == _content(REV3_KEY, unit_id)
+        assert row.content_revision == 3
+        # A learner served revision 2 is graded against what they saw.
+        graded, revision = await quiz_api._content_to_grade(session, row, 2)
+        assert revision == 2
+        assert [q["correct_answer"] for q in graded["questions"]] == list(REV3_KEY.values())
+
+    @pytest.mark.parametrize("unit_id", ["1.2", "summative"])
+    async def test_the_row_is_locked_for_the_overwrite(self, unit_id):
+        row = _row(unit_id, revision=1, key=REV1_KEY)
+        session = FakeSession(row=row)
+        await _overwrite(session, row, module_unit_uuid=row.module_unit_id)
+        # FOR NO KEY UPDATE: concurrent writers wait; pre-image inserts do not.
+        assert [(lock.key_share, lock.read) for lock in session.locks] == [(True, False)]
+
+    async def test_a_pre_image_holding_other_content_is_a_conflict(self):
+        """Never skip a pre-image that does not match: that hid the overwrite."""
+        row = _row(revision=1, key=REV1_KEY)
+        session = FakeSession(row=row, pre_images={(row.id, 1): _pre_image(row, 1, REV3_KEY)})
+
+        with pytest.raises(content_revisions.RevisionConflict):
+            await _overwrite(session, row, module_unit_uuid=row.module_unit_id)
+
+        assert row.content_revision == 1
+        assert row.content == _content(REV1_KEY, "1.2")
+        assert session.attempts(GeneratedContentRevision) == []
+
+    async def test_quality_agent_saves_the_revision_learners_are_served(self):
+        """Its pre-image (trigger quality_loop) is of the database's revision 2."""
+        from app.domain.services.quality_agent_service import CourseQualityService
+
+        row, db_state, pre_images = _stale_row()
+        row.regeneration_attempts = 0
+        session = FakeSession(row=row, db_state=db_state, pre_images=pre_images)
+
+        async def get(model, key):
+            return row if model is GeneratedContent else SimpleNamespace(unit_number="1.2")
+
+        session.get = get
+        with patch(
+            "app.domain.services.quiz_service.QuizService.get_or_generate_quiz", AsyncMock()
+        ):
+            await CourseQualityService(MagicMock(), MagicMock()).regenerate_with_constraints(
+                content_id=row.id, constraints=[], session=session
+            )
+
+        (pre_image,) = session.attempts(GeneratedContentRevision)
+        assert (pre_image.revision, pre_image.trigger) == (2, "quality_loop")
+        assert pre_image.content == _content(REV3_KEY, "1.2")
+        assert row.content_revision == 3
+        assert session.locks and session.locks[0].key_share is True
 
 
 # ── Regeneration keeps the question count ────────────────────────────────────

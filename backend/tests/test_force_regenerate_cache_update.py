@@ -93,6 +93,27 @@ async def test_update_in_place_replaces_content_and_bumps_revision():
 
 
 @pytest.mark.asyncio
+async def test_update_in_place_re_reads_the_row_under_a_lock():
+    """The revision bumped is the database's, not a stale copy the session holds."""
+    session = _make_session(_existing_row(revision=3))
+
+    await update_cached_content_in_place(
+        session,
+        module_unit_uuid=uuid.uuid4(),
+        content_type="lesson",
+        language="fr",
+        level=1,
+        country_context="BF",
+        content={"introduction": "x"},
+        sources_cited=[],
+    )
+
+    stmt = session.execute.await_args.args[0]
+    assert stmt._for_update_arg is not None and stmt._for_update_arg.key_share is True
+    assert stmt.get_execution_options()["populate_existing"] is True
+
+
+@pytest.mark.asyncio
 async def test_update_in_place_skips_manually_edited_rows():
     session = _make_session(_existing_row(manually_edited=True))
 

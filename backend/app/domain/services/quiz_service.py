@@ -135,6 +135,10 @@ class QuizService:
             find_in_place_target,
         )
 
+        # Re-read under a row lock: the session may hold this row from long
+        # before (the quality run loads every candidate up front), and another
+        # writer may have regenerated it since. The pre-image and the bump
+        # below must start from the database's revision.
         if module_unit_uuid is not None:
             row = await find_in_place_target(
                 session,
@@ -143,20 +147,23 @@ class QuizService:
                 language=language,
                 level=level,
                 country_context=country,
+                for_update=True,
             )
         else:
             result = await session.execute(
-                select(GeneratedContent)
-                .where(
-                    GeneratedContent.content_type == "quiz",
-                    GeneratedContent.module_id == module_id,
-                    GeneratedContent.module_unit_id.is_(None),
-                    GeneratedContent.content["unit_id"].astext == unit_id,
-                    GeneratedContent.language == language,
-                    GeneratedContent.level == level,
-                    GeneratedContent.country_context == country,
+                content_revisions.locked_for_overwrite(
+                    select(GeneratedContent)
+                    .where(
+                        GeneratedContent.content_type == "quiz",
+                        GeneratedContent.module_id == module_id,
+                        GeneratedContent.module_unit_id.is_(None),
+                        GeneratedContent.content["unit_id"].astext == unit_id,
+                        GeneratedContent.language == language,
+                        GeneratedContent.level == level,
+                        GeneratedContent.country_context == country,
+                    )
+                    .order_by(GeneratedContent.generated_at.desc())
                 )
-                .order_by(GeneratedContent.generated_at.desc())
             )
             row = result.scalars().first()
         if row is None or row.is_manually_edited:

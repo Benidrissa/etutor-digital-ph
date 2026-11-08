@@ -68,7 +68,11 @@ from app.domain.models.course_quality import (
 from app.domain.models.course_resource import CourseResource
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
-from app.domain.services.content_revisions import current_revision, ensure_pre_image
+from app.domain.services.content_revisions import (
+    current_revision,
+    ensure_pre_image,
+    locked_for_overwrite,
+)
 
 logger = structlog.get_logger()
 
@@ -908,6 +912,8 @@ class CourseQualityService:
         Bounds:
         - Refuses if ``is_manually_edited=True``.
         - Refuses if ``regeneration_attempts >= MAX_REGEN_ATTEMPTS``.
+        - Re-reads the row under a row lock, so the revision it saves and the
+          generator bumps is the database's, not a stale session copy.
         - Writes a ``GeneratedContentRevision`` pre-image before the
           generator overwrites the row (unless one already exists for this
           revision: ``uq_genc_revision``).
@@ -915,7 +921,21 @@ class CourseQualityService:
 
         Returns the refreshed ``GeneratedContent`` row.
         """
-        gc = await session.get(GeneratedContent, content_id)
+        # Re-read under a row lock rather than trust the session's copy: a
+        # course run loads every candidate up front, and another writer (the
+        # MCQ backfill) may have regenerated this row since. The pre-image
+        # below must be of the revision learners are being served now.
+        gc = (
+            (
+                await session.execute(
+                    locked_for_overwrite(
+                        select(GeneratedContent).where(GeneratedContent.id == content_id)
+                    )
+                )
+            )
+            .scalars()
+            .first()
+        )
         if gc is None:
             raise ValueError(f"GeneratedContent {content_id} not found")
 
