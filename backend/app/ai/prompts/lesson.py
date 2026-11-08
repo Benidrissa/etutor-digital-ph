@@ -60,6 +60,8 @@ _UNIT_BINDING_REQUIRED_KEYS = frozenset(
         "ai-prompt-quiz-kids-system",
         "ai-prompt-case-study-system",
         "ai-prompt-case-study-kids-system",
+        "ai-prompt-story-system",
+        "ai-prompt-story-kids-system",
     }
 )
 _unit_binding_warned: set[str] = set()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from datetime import UTC, datetime
 
@@ -40,6 +41,30 @@ def _make_session_factory(settings):
     engine = create_async_engine(settings.database_url, echo=False, pool_size=3, max_overflow=1)
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     return engine, factory
+
+
+async def _cached_unit_story(
+    session, module_unit_id: uuid.UUID, language: str, unit_type: str | None = None
+) -> dict | None:
+    """The unit's story document, if it is a lesson unit and its story is ready.
+
+    Ready means cached, published and fresh. Quiz, case-study and scenario
+    units have no story mode, so they are not even looked up.
+    """
+    from app.domain.services.story_from_lesson_service import (
+        find_unit_story,
+        is_lesson_unit,
+        story_sources_are_fresh,
+    )
+
+    if not is_lesson_unit(unit_type):
+        return None
+    record = await find_unit_story(session, module_unit_id, language)
+    if record is None or not record.is_valid or record.status != "published":
+        return None
+    if not await story_sources_are_fresh(session, record):
+        return None
+    return record.content
 
 
 async def _mark_bundle_failed(bundle_id: str, error_msg: str, settings) -> None:
@@ -217,6 +242,23 @@ def generate_course_bundle_task(self, bundle_id: str) -> dict:
                             err = f"Module {mn} unit {un} lesson: {exc}"
                             errors.append(err)
                             logger.warning("bundle_task.lesson_failed", error=err)
+
+                        # Story mode — lesson units only, and only a story that is
+                        # already cached, valid and in step with its lesson: the
+                        # bundle never pays for generating one.
+                        try:
+                            story = await _cached_unit_story(session, unit.id, lang, unit.unit_type)
+                            if story is not None:
+                                zip_files.append(
+                                    (
+                                        f"{mn:03d}_{un}_story_{lang}.json",
+                                        json.dumps(story, ensure_ascii=False).encode(),
+                                    )
+                                )
+                        except Exception as exc:
+                            err = f"Module {mn} unit {un} story: {exc}"
+                            errors.append(err)
+                            logger.warning("bundle_task.story_failed", error=err)
 
                         # Quiz — only for quiz-typed units
                         if unit_type == "quiz":
