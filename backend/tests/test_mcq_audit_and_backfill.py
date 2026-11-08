@@ -197,6 +197,37 @@ class TestBuildMcqAudit:
         assert [row.superseded_by_fk_row for row in report.rows] == [False, True, False]
         assert report.fully_checked is False
 
+    def test_errors_of_superseded_rows_do_not_fail_the_course(self):
+        """No learner is served the legacy row and the backfill skips it, so
+        its defects are shown on the row but never make the course not ok."""
+        module_id = uuid.uuid4()
+        fk_row = _gc("en", [_question("q1")], unit_uuid=uuid.uuid4(), module_id=module_id)
+        leak = _question("q1", question="Malaria — which disease do they carry?")
+        legacy = _gc("en", [leak], module_id=module_id)
+
+        report = build_mcq_audit(COURSE_ID, [(fk_row, "1.2"), (legacy, "1.2")])
+
+        assert [row.superseded_by_fk_row for row in report.rows] == [False, True]
+        assert report.ok is True
+        assert report.fully_checked is True
+        assert [(e.code, e.path) for e in report.rows[1].errors] == [
+            ("answer_leak", "questions[q1].question")
+        ]
+        assert report.summary.error_count == 1
+        assert report.summary.superseded_error_count == 1
+        assert report.summary.rows_with_errors == 1
+
+    def test_a_live_error_still_fails_the_course(self):
+        module_id = uuid.uuid4()
+        leak = _question("q1", question="Malaria — which disease do they carry?")
+        fk_row = _gc("en", [leak], unit_uuid=uuid.uuid4(), module_id=module_id)
+        legacy = _gc("en", [leak], module_id=module_id)
+
+        report = build_mcq_audit(COURSE_ID, [(fk_row, "1.2"), (legacy, "1.2")])
+
+        assert report.ok is False
+        assert (report.summary.error_count, report.summary.superseded_error_count) == (2, 1)
+
     @pytest.mark.parametrize(
         "mutate",
         [

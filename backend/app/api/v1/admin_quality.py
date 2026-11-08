@@ -631,8 +631,8 @@ class McqAuditRow(BaseModel):
     has_option_misconceptions: bool = False
     #: A legacy row (``module_unit_id IS NULL``) whose unit has its own
     #: FK-keyed quiz row for the same language, level and country. It is never
-    #: served and the backfill skips it, so it does not count against
-    #: ``fully_checked``.
+    #: served and the backfill skips it, so its findings are listed but count
+    #: against neither ``ok`` nor ``fully_checked``.
     superseded_by_fk_row: bool = False
     errors: list[ValidationIssue] = Field(default_factory=list)
     warnings: list[ValidationIssue] = Field(default_factory=list)
@@ -656,18 +656,22 @@ class McqAuditSummary(BaseModel):
     answer_leak_ambiguous: int = 0
     parity_warning_count: int = 0
     #: Legacy rows superseded by an FK-keyed row (see ``McqAuditRow``). They
-    #: are still counted above but ignored by ``fully_checked``.
+    #: are still counted above but ignored by ``ok`` and ``fully_checked``.
     rows_superseded_by_fk_row: int = 0
+    #: The part of ``error_count`` found on those superseded rows.
+    superseded_error_count: int = 0
 
 
 class McqAuditResponse(BaseModel):
     """Report-only MCQ audit of one course's quizzes.
 
-    ``ok`` means zero errors. It is NOT a clean bill of health on its own:
-    ``fully_checked`` is false whenever some questions could not be checked
-    for misconceptions or for leaks (see the summary counts). Rows superseded
-    by an FK-keyed row are left out of ``fully_checked``: no learner sees them
-    and the backfill cannot (and should not) change them.
+    ``ok`` means zero errors on the rows learners can be served. It is NOT a
+    clean bill of health on its own: ``fully_checked`` is false whenever some
+    questions could not be checked for misconceptions or for leaks (see the
+    summary counts). Rows superseded by an FK-keyed row are left out of both
+    ``ok`` and ``fully_checked`` (their findings are still listed, and their
+    errors counted in ``summary.superseded_error_count``): no learner sees
+    them and the backfill cannot (and should not) change them.
     """
 
     course_id: uuid.UUID
@@ -765,6 +769,7 @@ def build_mcq_audit(
         summary.short_answer_leak_unchecked += short
         summary.answer_leak_ambiguous += ambiguous
         summary.rows_superseded_by_fk_row += 1 if superseded else 0
+        summary.superseded_error_count += len(errors) if superseded else 0
         if superseded:
             continue  # never served: not compared across languages either
         unchecked_live += lacking + short
@@ -784,7 +789,7 @@ def build_mcq_audit(
     return McqAuditResponse(
         course_id=course_id,
         language=language,
-        ok=summary.error_count == 0,
+        ok=summary.error_count - summary.superseded_error_count == 0,
         fully_checked=unchecked_live == 0,
         summary=summary,
         rows=rows,
