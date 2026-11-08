@@ -25,6 +25,7 @@ _CONTENT_TYPE_FEATURES = {
     "flashcards": "flashcard_generation",
     "case_study": "case_study",
     "case": "case_study",
+    "story": "story_generation",
 }
 
 
