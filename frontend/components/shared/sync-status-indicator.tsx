@@ -60,23 +60,33 @@ export function SyncStatusIndicator() {
     );
   }
 
-  // Sync error
+  // Sync error. Quiz answers dropped in the same run (quiz regenerated since)
+  // are already gone from the queue, so a retry would not report them again:
+  // say so here too, not only when everything else synced.
   if (status.state === 'error') {
+    const quizChanged = status.quizChanged ?? 0;
     return (
       <div
         role="alert"
-        className="flex items-center justify-center gap-2 bg-red-50 border-b border-red-100 px-4 py-1.5 text-xs font-medium text-red-700"
+        className="bg-red-50 border-b border-red-100 px-4 py-1.5 text-xs font-medium text-red-700"
       >
-        <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        <span>{t('syncFailed')}</span>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={syncNow}
-          className="h-6 px-2 text-xs text-red-700 hover:bg-red-100"
-        >
-          {t('syncRetry')}
-        </Button>
+        <div className="flex items-center justify-center gap-2">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span>{t('syncFailed')}</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={syncNow}
+            className="h-6 px-2 text-xs text-red-700 hover:bg-red-100"
+          >
+            {t('syncRetry')}
+          </Button>
+        </div>
+        {quizChanged > 0 && (
+          <p className="mt-1 text-center text-amber-800">
+            {t('syncQuizChanged', { count: quizChanged })}
+          </p>
+        )}
       </div>
     );
   }
