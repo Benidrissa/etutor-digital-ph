@@ -148,6 +148,56 @@ class TestParseQuizMcqs:
         assert mcqs == []
         assert dropped[0]["reason"] == "answer_in_stem"
 
+    @pytest.mark.parametrize(
+        ("question", "options", "answer", "reason"),
+        [
+            # The validator's checks fold these; the old filter did not.
+            (
+                "When is ORS best given?",
+                ["In the morning", "In the morning.", "At noon"],
+                0,
+                "duplicate_options",
+            ),
+            (
+                "Which children aged 3-59 months get SMC?",
+                ["3–59 months", "0–2 months", "Adults"],
+                0,
+                "answer_in_stem",
+            ),
+            (
+                "Qui publie l'avis de l’OMS ?",
+                ["l'OMS", "L’UNICEF", "Le district"],
+                0,
+                "answer_in_stem",
+            ),
+        ],
+        ids=["trailing-period", "en-dash-range", "curly-apostrophe"],
+    )
+    def test_a_question_the_validator_rejects_is_dropped(self, question, options, answer, reason):
+        """Kept, it would be copied verbatim and fail validation on every
+        repair call; dropped, the story is built from the other questions."""
+        mcqs, dropped = repair.parse_quiz_mcqs(
+            [{"id": "x", "question": question, "options": options, "correct_answer": answer}]
+        )
+        assert mcqs == []
+        assert dropped == [{"question": "x", "reason": reason}]
+
+    def test_an_either_or_comparison_is_kept(self):
+        """The validator only warns about it (answer_leak_ambiguous), so it can
+        be published; the old filter dropped it as a leak."""
+        mcqs, dropped = repair.parse_quiz_mcqs(
+            [
+                {
+                    "id": "cmp",
+                    "question": "Should ORS be given before or after meals?",
+                    "options": ["Before meals", "After meals", "Only at night", "Never"],
+                    "correct_answer": 1,
+                }
+            ]
+        )
+        assert dropped == []
+        assert [m.source_id for m in mcqs] == ["cmp"]
+
     def test_malformed_questions_are_dropped(self):
         mcqs, dropped = repair.parse_quiz_mcqs(
             [

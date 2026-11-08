@@ -167,6 +167,32 @@ async def test_story_follows_the_cross_track_contracts(raw, language):
     assert doc["id"] == f"lesson-{UNIT_ID.hex}-{language}"
 
 
+@pytest.mark.parametrize("language", ["en", "fr"])
+async def test_a_stored_question_the_validator_rejects_costs_no_repair_call(raw, language):
+    """A cached quiz question that the story validator's MCQ checks reject
+    (here: two options equal but for a final period) is left out before the
+    model is called, so the story still takes one call and validates clean."""
+    quiz = copy.deepcopy(raw[language]["quiz"]["questions"])
+    quiz.append(
+        {
+            "id": "defective",
+            "question": quiz[0]["question"],
+            "options": ["In the morning", "In the morning.", "At noon", "At night"],
+            "correct_answer": 0,
+        }
+    )
+    mcqs, dropped = repair.parse_quiz_mcqs(quiz)
+    assert dropped == [{"question": "defective", "reason": "duplicate_options"}]
+
+    model = FakeClaude(raw[language]["spine"])
+    generation = await StoryFromLessonService(model).generate_document(
+        make_ctx(raw, language, mcqs=mcqs, has_quiz=True), system_prompt="system"
+    )
+
+    assert generation.report.ok, [e.model_dump() for e in generation.report.errors]
+    assert generation.model_calls == 1
+
+
 # --------------------------------------------------------------------------
 # Quiz fidelity
 # --------------------------------------------------------------------------

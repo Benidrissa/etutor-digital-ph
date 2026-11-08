@@ -54,7 +54,6 @@ from typing import Any
 
 import structlog
 
-from app.ai.algorithms import story_maths as maths
 from app.api.v1.schemas.story_course import (
     FORMAT_VERSION,
     LENGTH_LIMITS,
@@ -63,6 +62,7 @@ from app.api.v1.schemas.story_course import (
     ValidationIssue,
     ValidationReport,
 )
+from app.domain.services import mcq_checks
 
 logger = structlog.get_logger(__name__)
 
@@ -130,8 +130,15 @@ def story_slug(module_unit_id: uuid.UUID, language: str) -> str:
 
 
 def norm(text: Any) -> str:
-    """The validator's leak normaliser: lowercase, no spaces, folded minus."""
-    return re.sub(r"\s+", "", str(text)).lower().replace(maths.MINUS, "-")
+    """Text folded as the validator's MCQ checks fold it (case, dashes and
+    apostrophes, digit groups; see :func:`mcq_checks._fold`), with no spaces.
+
+    The generator's own leak and duplicate tests (:func:`_leaks`,
+    :func:`_options_duplicate`) compare these keys as substrings, so they flag
+    at least everything the validator does: model text they accept never
+    fails validation on the same rule and costs a repair call.
+    """
+    return re.sub(r"\s+", "", mcq_checks._fold(text))
 
 
 def clean_text(text: Any) -> str:
@@ -461,18 +468,46 @@ class LessonStoryContext:
 
 
 def _options_duplicate(options: Iterable[str]) -> bool:
+    """Two options the same under :func:`norm` or the validator's
+    :func:`mcq_checks.option_key` ("In the morning" / "In the morning.")."""
     seen: set[str] = set()
     for option in options:
-        key = norm(option)
-        if key in seen:
+        keys = {("norm", norm(option)), ("key", mcq_checks.option_key(option))}
+        if keys & seen:
             return True
-        seen.add(key)
+        seen |= keys
     return False
 
 
 def _leaks(answer_text: str, haystack: str) -> bool:
-    needle = norm(answer_text)
+    """The answer's text inside ``haystack``, as a substring of the folded
+    text — a superset of what :func:`mcq_checks.check_answer_leak` finds,
+    with the answer's edge punctuation trimmed as the validator trims it."""
+    needle = "".join(mcq_checks._leak_needle(answer_text))
     return len(needle) >= MIN_LEAK_LENGTH and needle in norm(haystack)
+
+
+def _stored_mcq_defect(source_id: str, stem: str, options: list[str], answer: int) -> str | None:
+    """Why a stored MCQ cannot be shown verbatim in a story, by the very
+    rules the story validator applies (:mod:`mcq_checks`), or ``None``.
+
+    A question kept here is copied word for word, so it must not carry a hard
+    error the model cannot repair; one the checks only warn about (an either/or
+    comparison) is kept, since a warning does not block publication.
+    """
+    view = mcq_checks.from_quiz_question(
+        {"id": source_id, "question": stem, "options": options, "correct_answer": answer}
+    )
+    # Stricter than the validator on duplicates, on purpose: options equal but
+    # for case ("Fever and rash" / "fever and RASH") read as one to a learner;
+    # dropping the odd "CO" / "Co" pair costs a question, never a repair call.
+    if _options_duplicate(options) or mcq_checks.hard_errors(
+        mcq_checks.check_duplicate_options(view)
+    ):
+        return "duplicate_options"
+    if mcq_checks.hard_errors(mcq_checks.check_answer_leak(view)):
+        return "answer_in_stem"
+    return None
 
 
 def parse_quiz_mcqs(raw_questions: Any) -> tuple[list[QuizMcq], list[dict[str, str]]]:
@@ -483,9 +518,10 @@ def parse_quiz_mcqs(raw_questions: Any) -> tuple[list[QuizMcq], list[dict[str, s
     schema declares it yet.
 
     A stored MCQ is dropped — and reported, never shipped — when it is
-    malformed, when two of its options are the same text (the honest,
-    deterministic form of "more than one correct answer"), or when its correct
-    option's text appears in its own stem.
+    malformed, or when the story validator's MCQ checks find a hard error in
+    it (:func:`_stored_mcq_defect`): two options that read the same (the
+    honest, deterministic form of "more than one correct answer"), or its
+    correct option given away by its own stem.
     """
     kept: list[QuizMcq] = []
     dropped: list[dict[str, str]] = []
@@ -514,11 +550,9 @@ def parse_quiz_mcqs(raw_questions: Any) -> tuple[list[QuizMcq], list[dict[str, s
             dropped.append({"question": source_id, "reason": "malformed"})
             continue
         option_texts = [_as_str(o) for o in options]
-        if _options_duplicate(option_texts):
-            dropped.append({"question": source_id, "reason": "duplicate_options"})
-            continue
-        if _leaks(option_texts[answer], stem):
-            dropped.append({"question": source_id, "reason": "answer_in_stem"})
+        defect = _stored_mcq_defect(source_id, stem, option_texts, answer)
+        if defect:
+            dropped.append({"question": source_id, "reason": defect})
             continue
         misconceptions_raw = raw.get("option_misconceptions")
         option_misconceptions: list[str | None] = []
