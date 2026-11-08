@@ -1,0 +1,7 @@
+{
+  "_comment": "Lesson stories generated on the server after every successful deploy (.github/workflows/generate-lesson-story.yml). A cached, fresh story is reused at no cost, so entries can stay. See load_requests in generate_lesson_stories.py for the fields.",
+  "requests": [
+    {"query": "biolog", "kids_only": true, "module_index": 1, "lesson_index": 1, "languages": ["fr", "en"]},
+    {"query": "math", "kids_only": true, "module_index": 1, "lesson_index": 1, "languages": ["fr", "en"]}
+  ]
+}

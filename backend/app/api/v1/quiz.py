@@ -2,6 +2,7 @@
 
 import re
 import uuid
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import structlog
@@ -37,6 +38,12 @@ from app.domain.models.module import Module
 from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import QuizAttempt, SummativeAssessmentAttempt
 from app.domain.services.analytics_service import AnalyticsService
+from app.domain.services.content_revisions import (
+    current_revision,
+    find_pre_image,
+    has_pre_image,
+    superseded_at,
+)
 from app.domain.services.country_utils import canonicalize_country
 from app.domain.services.platform_settings_service import SettingsCache
 from app.domain.services.progress_service import ProgressService
@@ -153,6 +160,89 @@ def get_quiz_service(
 ) -> QuizService:
     """Dependency to get quiz service."""
     return QuizService(claude_service, semantic_retriever)
+
+
+#: A summative attempt is timed and taken online, so answers to a superseded
+#: revision are accepted only within the time limit, plus this grace, of the
+#: revision being superseded (a retried submission, a backgrounded tab whose
+#: timer ran slow, a pre-image stamped at the start of its transaction).
+SUMMATIVE_REVISION_GRACE = timedelta(minutes=30)
+
+
+def _summative_revision_window() -> timedelta:
+    """How long after a summative revision is superseded answers to it are graded."""
+    try:
+        minutes = float(SettingsCache.instance().get("quiz-summative-time-limit-minutes", 30))
+    except (TypeError, ValueError):
+        minutes = 30.0
+    return timedelta(minutes=max(minutes, 0.0)) + SUMMATIVE_REVISION_GRACE
+
+
+def _quiz_changed(row: GeneratedContent, served_revision: int | None, reason: str):
+    """409 ``quiz_changed``: the answers cannot be graded against what was served."""
+    logger.warning(
+        "Quiz submission for a revision that cannot be graded",
+        quiz_id=str(row.id),
+        served_revision=served_revision,
+        current_revision=current_revision(row),
+        reason=reason,
+    )
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "error": "quiz_changed",
+            "message": "This quiz was updated after it was loaded. Reload it and try again.",
+            "current_revision": current_revision(row),
+        },
+    )
+
+
+async def _content_to_grade(
+    session: AsyncSession,
+    row: GeneratedContent,
+    served_revision: int | None,
+    *,
+    superseded_within: timedelta | None = None,
+) -> tuple[dict, int]:
+    """The quiz content a submission is graded against, and its revision.
+
+    Regeneration overwrites a quiz in place (same id, same question ids, new
+    answer key), so a learner who loaded the quiz before it — mid-attempt, or
+    with answers queued offline — must be graded against the revision they
+    were served (``served_revision``, echoed from the payload's
+    ``content_revision``), not the current one.
+
+    ``None`` (an older client, or answers queued offline from a copy taken
+    before payloads carried a revision) names no questions at all, and when
+    they were answered says nothing about when the questions were obtained.
+    So it is graded only against a quiz that has never changed: revision 1
+    with no pre-image. Otherwise the answers may belong to questions the quiz
+    no longer has.
+
+    ``superseded_within``: an older revision is graded only if it stopped
+    being served at most this long ago (summatives: a learner can only have
+    been served it that recently). Without it, any recoverable revision is.
+
+    Raises 409 ``quiz_changed`` when there is no revision and the quiz has
+    ever changed, or when the served revision cannot be recovered (no
+    pre-image) or was superseded too long ago: the client reloads the quiz
+    rather than being graded against questions it never showed.
+    """
+    current = current_revision(row)
+    if served_revision is None:
+        if current == 1 and not await has_pre_image(session, row.id):
+            return row.content, current
+        raise _quiz_changed(row, served_revision, "unrevisioned_after_change")
+    if served_revision == current:
+        return row.content, current
+    pre_image = await find_pre_image(session, row.id, served_revision)
+    if pre_image is None or not isinstance(pre_image.content, dict):
+        raise _quiz_changed(row, served_revision, "no_pre_image")
+    if superseded_within is not None:
+        when = superseded_at(row, pre_image)
+        if when is None or datetime.now(UTC) - when > superseded_within:
+            raise _quiz_changed(row, served_revision, "superseded_too_long_ago")
+    return pre_image.content, served_revision
 
 
 @router.post(
@@ -275,6 +365,7 @@ async def generate_quiz(
                     generated_at=cached.generated_at.isoformat(),
                     cached=True,
                     country_fallback=is_country_fallback,
+                    content_revision=current_revision(cached),
                 )
                 if quiz_response.unit_id == "summative":
                     # Summative payloads must never carry the answer key (#2550)
@@ -401,6 +492,7 @@ async def get_quiz(
             content=QuizContent(**quiz_content.content),
             generated_at=quiz_content.generated_at.isoformat(),
             cached=True,
+            content_revision=current_revision(quiz_content),
         )
         if quiz_response.unit_id == "summative":
             # Summative payloads must never carry the answer key (#2550)
@@ -490,7 +582,10 @@ async def submit_quiz_attempt(
             current_user, quiz_content.content.get("unit_id", "")
         )
 
-        quiz_data = quiz_content.content
+        # Grade against the revision the learner was served, not the current one.
+        quiz_data, graded_revision = await _content_to_grade(
+            session, quiz_content, request.content_revision
+        )
         questions = quiz_data["questions"]
 
         # Validate answer count matches question count
@@ -566,6 +661,8 @@ async def submit_quiz_attempt(
                     }
                     for res in results
                 ],
+                # The quiz revision these answers were graded against.
+                "content_revision": graded_revision,
             },
             score=score,
             time_taken_sec=request.total_time_seconds,
@@ -894,6 +991,37 @@ async def can_attempt_summative_assessment(
         )
 
 
+async def _content_answered(
+    session: AsyncSession, row: GeneratedContent, attempt: SummativeAssessmentAttempt
+) -> dict:
+    """The assessment content as it was when ``attempt`` was graded.
+
+    Attempts record the revision they were graded against
+    (``answers["content_revision"]``). When the assessment has been
+    regenerated since, its pre-image holds the questions the learner answered.
+    Attempts from before revisions were recorded fall back to the current
+    content, as does a recorded revision whose pre-image is gone.
+    """
+    answers = attempt.answers if isinstance(attempt.answers, dict) else {}
+    recorded = answers.get("content_revision")
+    if (
+        not isinstance(recorded, int)
+        or isinstance(recorded, bool)
+        or recorded == current_revision(row)
+    ):
+        return row.content
+    pre_image = await find_pre_image(session, row.id, recorded)
+    if pre_image is not None and isinstance(pre_image.content, dict):
+        return pre_image.content
+    logger.warning(
+        "Summative review: answered revision has no pre-image, showing current content",
+        assessment_id=str(row.id),
+        answered_revision=recorded,
+        current_revision=current_revision(row),
+    )
+    return row.content
+
+
 @router.get(
     "/summative/{module_id}/review",
     response_model=SummativeReviewResponse,
@@ -951,7 +1079,8 @@ async def get_summative_assessment_review(
                 },
             )
 
-        question_lookup = {q["id"]: q for q in assessment_content.content.get("questions", [])}
+        reviewed_content = await _content_answered(session, assessment_content, attempt)
+        question_lookup = {q["id"]: q for q in reviewed_content.get("questions", [])}
         stored_results = (attempt.answers or {}).get("results", [])
 
         review_questions = []
@@ -1051,13 +1180,10 @@ async def submit_summative_assessment_attempt(
                 },
             )
 
-        assessment_data = assessment_content.content
-        questions = assessment_data["questions"]
-
         # The stored content is the source of truth for question count — the user
         # only ever sees and answers what was generated. The config drives generation,
         # not submission, so submission must trust the stored content.
-        if assessment_data.get("unit_id") != "summative":
+        if assessment_content.content.get("unit_id") != "summative":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={
@@ -1065,6 +1191,17 @@ async def submit_summative_assessment_attempt(
                     "message": "This endpoint is only for summative assessments",
                 },
             )
+        # ...and specifically the revision of it the learner was served. A
+        # summative is timed and taken online: a superseded revision can only
+        # have been served recently, so an old one (whose key a passing
+        # learner's review may show) is never graded.
+        assessment_data, graded_revision = await _content_to_grade(
+            session,
+            assessment_content,
+            request.content_revision,
+            superseded_within=_summative_revision_window(),
+        )
+        questions = assessment_data["questions"]
         question_count = len(questions)
         if question_count == 0:
             raise HTTPException(
@@ -1210,6 +1347,9 @@ async def submit_summative_assessment_attempt(
                     }
                     for res in results
                 ],
+                # The assessment revision these answers were graded against;
+                # the review shows that revision's questions.
+                "content_revision": graded_revision,
             },
             score=score,
             correct_answers=correct_count,

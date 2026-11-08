@@ -8,6 +8,7 @@
 
 import { getOfflineContent, upsertOfflineContent, type ContentType } from './db';
 import { apiFetch } from '@/lib/api';
+import { unitStoryPath } from '@/lib/story-course/api';
 
 export interface ContentLoadResult<T> {
   data: T;
@@ -101,6 +102,25 @@ export function loadCaseStudy<T>(
   return loadContent<T>(
     unitId, 'case_study', locale, moduleId,
     `/api/v1/content/cases/${moduleId}/${unitId}?language=${locale}&level=${level}&country=${country}${forceParam}`,
+  );
+}
+
+/**
+ * Load a lesson's story (story mode), checking IndexedDB when offline.
+ *
+ * Goes through the generic loader, so it inherits IndexedDB-only reads when
+ * offline, the fall-back to IndexedDB on a network error, and opportunistic
+ * caching that skips the 202 "generating" envelope. There is no level/country:
+ * one story is cached per unit and language and personalised on the client.
+ */
+export function loadStory<T>(
+  moduleId: string,
+  unitId: string,
+  locale: 'fr' | 'en',
+): Promise<ContentLoadResult<T>> {
+  return loadContent<T>(
+    unitId, 'story', locale, moduleId,
+    unitStoryPath(moduleId, unitId, locale),
   );
 }
 

@@ -4,6 +4,7 @@ import uuid
 
 import structlog
 from celery import Task
+from celery.exceptions import SoftTimeLimitExceeded
 
 from app.ai.usage_context import set_ai_context
 from app.tasks.celery_app import celery_app
@@ -12,6 +13,17 @@ logger = structlog.get_logger(__name__)
 
 POLL_SOFT_LIMIT = 300
 POLL_HARD_LIMIT = 320
+
+#: A story's worst case: the unit's lesson generated first (bounded by the
+#: lesson task's own POLL_SOFT_LIMIT, 300 s), then up to 3 story spine calls —
+#: the first one plus MAX_REPAIR_CALLS repairs — of up to ~150 s each, plus
+#: database work. Each spine call is ONE provider call: the story service turns
+#: off the client's own strict-JSON retry (``max_retries=0``), because an
+#: unreadable answer is already an attempt of the repair loop. 300 + 3 x 150 =
+#: 750 s, rounded up with slack; the hard limit follows the soft one by 60 s,
+#: as for the other long content tasks.
+STORY_SOFT_LIMIT = 900
+STORY_HARD_LIMIT = 960
 
 
 def _safe_uuid(value: str | uuid.UUID | None) -> uuid.UUID | None:
@@ -425,6 +437,151 @@ def generate_case_study_task(
             task_id=self.request.id,
         )
         return {"status": "failed", "error": str(exc)}
+
+
+def _release_story_dispatch(dedup_key: str | None, task_id: str | None) -> None:
+    """Release the API's dedup key if it still names this task (best effort).
+
+    A compare-and-delete, so a key another request has claimed since is left
+    alone. Uses a short-lived synchronous client: the task's event loop is
+    gone by the time this runs.
+    """
+    if not dedup_key or not task_id:
+        return
+    try:
+        import redis
+
+        from app.domain.services.story_from_lesson_service import RELEASE_IF_OWNER_SCRIPT
+        from app.infrastructure.config.settings import settings
+
+        client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+        try:
+            client.eval(RELEASE_IF_OWNER_SCRIPT, 1, dedup_key, task_id)
+        finally:
+            client.close()
+    except Exception as exc:
+        # The key expires on its own (the task's hard limit plus slack).
+        logger.warning("Story dispatch key not released", key=dedup_key, error=str(exc))
+
+
+@celery_app.task(
+    bind=True,
+    base=CallbackTask,
+    soft_time_limit=STORY_SOFT_LIMIT,
+    time_limit=STORY_HARD_LIMIT,
+    rate_limit="5/m",
+)
+def generate_story_task(
+    self,
+    module_id: str,
+    unit_id: str,
+    language: str,
+    country: str = "CI",
+    level: int = 1,
+    force_regenerate: bool = False,
+    dedup_key: str | None = None,
+) -> dict:
+    """Generate a lesson unit's story mode and cache it in ``story_courses``.
+
+    Dispatched by ``GET /story-courses/unit/{module_id}/{unit_id}`` the first
+    time a learner opens the Story tab. ``country``/``level`` only choose which
+    cached lesson seeds the story (one story serves every learner of the unit
+    in that language). ``content_id`` in the result is the ``story_courses``
+    row id; an invalid story is stored as a draft and still reports
+    ``complete`` — the client's re-fetch then gets 409 ``story_unavailable``.
+
+    ``dedup_key`` is the API's Redis key for this (unit, language); it is
+    released when the task ends, however it ends. Not retried
+    (``autoretry_for`` is unset): every retry would be another paid generation.
+    On the soft time limit nothing half-built is stored — the story row is
+    written in one transaction at the very end, and an interrupted session
+    rolls back — and the task reports ``failed``.
+
+    Unlike the lesson task this does NOT chain ``assess_and_regenerate_unit_task``:
+    the quality rubric is written for lesson keys and its regenerator has no
+    story branch. The Appendix C validator is the story's quality gate.
+    """
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    from app.ai.claude_service import ClaudeService
+    from app.ai.rag.embeddings import EmbeddingService
+    from app.ai.rag.retriever import SemanticRetriever
+    from app.domain.models.ai_usage_event import FEATURE_STORY_GENERATION
+    from app.domain.services.lesson_service import LessonGenerationService
+    from app.domain.services.story_from_lesson_service import StoryFromLessonService
+    from app.infrastructure.config.settings import settings
+
+    logger.info(
+        "Starting async story generation",
+        module_id=module_id,
+        unit_id=unit_id,
+        language=language,
+        task_id=self.request.id,
+    )
+
+    async def _run() -> dict:
+        set_ai_context(FEATURE_STORY_GENERATION, module_id=_safe_uuid(module_id))  # ledger
+        engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
+        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        try:
+            async with session_factory() as session:
+                claude = ClaudeService()
+                embedding_service = EmbeddingService(
+                    api_key=settings.openai_api_key, model=settings.embedding_model
+                )
+                # The retriever is only used if the unit has no cached lesson yet.
+                lesson_service = LessonGenerationService(
+                    claude, SemanticRetriever(embedding_service)
+                )
+                service = StoryFromLessonService(claude, lesson_service=lesson_service)
+                record = await service.get_or_generate_unit_story(
+                    module_id=uuid.UUID(module_id),
+                    unit_id=unit_id,
+                    language=language,
+                    session=session,
+                    level=level,
+                    country=country,
+                    force_regenerate=force_regenerate,
+                )
+                return {
+                    "status": "complete",
+                    "content_id": str(record.id),
+                    "is_valid": bool(record.is_valid),
+                }
+        finally:
+            await engine.dispose()
+
+    try:
+        result = asyncio.run(_run())
+        logger.info(
+            "Async story generation completed",
+            module_id=module_id,
+            unit_id=unit_id,
+            result=result,
+            task_id=self.request.id,
+        )
+        return result
+    except SoftTimeLimitExceeded:
+        logger.warning(
+            "Story generation hit its soft time limit; nothing stored",
+            module_id=module_id,
+            unit_id=unit_id,
+            task_id=self.request.id,
+        )
+        return {"status": "failed", "error": "time_limit_exceeded"}
+    except Exception as exc:
+        logger.error(
+            "Async story generation failed",
+            module_id=module_id,
+            unit_id=unit_id,
+            exception=str(exc),
+            task_id=self.request.id,
+        )
+        return {"status": "failed", "error": str(exc)}
+    finally:
+        _release_story_dispatch(dedup_key, self.request.id)
 
 
 @celery_app.task(

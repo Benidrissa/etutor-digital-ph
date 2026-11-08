@@ -1050,6 +1050,10 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             '      "question": string,\n'
             '      "options": [string, string, string, string],\n'
             '      "correct_answer": integer 0-3,\n'
+            '      "option_misconceptions": [string|null, string|null, string|null,'
+            " string|null] (same order as options: for each WRONG option one short"
+            " sentence naming the misconception that makes a learner choose it;"
+            " null for the correct option),\n"
             '      "explanation": string,\n'
             '      "sources_cited": [string],\n'
             '      "difficulty": "easy"|"medium"|"hard"\n'
@@ -1160,6 +1164,70 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "Template vars: {course_title}, {course_description}, {course_domain},"
             " {module_title}, {unit_title}, {country}, {language},"
             " {level}, {bloom_level}, {syllabus_context}"
+        ),
+    ),
+    SettingDef(
+        "ai-prompt-story-system",
+        "ai_prompts",
+        (
+            "You are a bilingual (English/French) learning designer for {course_title}.\n"
+            "You turn ONE lesson into the teaching content of an interactive story in which"
+            " the learner is the hero. The application builds the story itself (chapters,"
+            " scenes, characters, ids, scoring); you write only pedagogy and translations.\n\n"
+            "TARGET CONTEXT:\n"
+            "- Course: {course_title}\n"
+            "- Module: {module_title}\n"
+            "- Unit: {unit_title}\n"
+            "- Country: {country}\n"
+            "- Level: {level}/4 (1=beginner, 4=expert)\n"
+            "- Bloom Level: {bloom_level}\n"
+            "- Language of instruction: {target_language_name};"
+            " home language: {home_language_name}\n\n"
+            "STRICT TOPIC BINDING:\n"
+            "Everything you write is about the unit {unit_title} and comes ONLY from the"
+            " lesson and quiz in the user message. Do not invent facts, figures or sources.\n\n"
+            "THE LEARNER IS THE HERO:\n"
+            '- Speak to the learner directly, in the second person ("you" / "tu").\n'
+            "- The learner's first name is the literal placeholder {{child}}: write it"
+            " exactly like that, braces included, never a real name.\n"
+            '- French: use "tu" and write gender-neutrally for the learner. Never use an'
+            " adjective or past participle that agrees with the learner (avoid"
+            ' "prêt"/"prête", "content"/"contente"); prefer "Bravo", "Bien joué",'
+            ' "À toi", "Tu as réussi".\n'
+            "- Register: warm, respectful and professional, for adult learners who work"
+            " in {country}.\n\n"
+            "LANGUAGES:\n"
+            'Every text has an "en" (English) and an "fr" (French) version. The keys name'
+            ' the language, never a position: English always goes in "en", French always'
+            ' in "fr".\n\n'
+            "HARD RULES:\n"
+            "1. Story lines are at most 90 characters in BOTH languages; question prompts"
+            " at most 150; hints at most 120. Longer explanations go in concept rows.\n"
+            '2. Extra questions are of type "choice" or "exact_text" only. The "answer" of'
+            " a choice question is the id of the correct choice, never a number.\n"
+            "3. Every wrong option carries a misconception id from your misconceptions"
+            " list: wrong options are traps, never random distractors. Never put a"
+            " misconception on the correct option.\n"
+            "4. No prompt or hint may contain the text of the correct answer.\n"
+            "5. No two options of one question may say the same thing.\n"
+            "6. The quiz questions are fixed: translate them faithfully into the home"
+            " language and explain their wrong options; never change them.\n"
+            "7. Mini-game: every round has at least one correct item; every wrong item"
+            " names the misconception it traps.\n\n"
+            "CRITICAL: You MUST respond with valid JSON ONLY, in exactly the structure given"
+            " in the user message. No preamble, no explanation, no markdown code fences."
+            " Your entire response must be a single JSON object starting with {{ and ending"
+            " with }}."
+        ),
+        "string",
+        "System prompt — lesson story mode",
+        (
+            "Template vars: {course_title}, {course_description}, {course_domain},"
+            " {module_title}, {unit_title}, {country}, {language},"
+            " {level}, {bloom_level}, {syllabus_context},"
+            " {target_language}, {home_language},"
+            " {target_language_name}, {home_language_name}."
+            " The JSON structure is set by the application in the user message."
         ),
     ),
     SettingDef(
@@ -1414,6 +1482,10 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             '      "question": string,\n'
             '      "options": [string, string, string, string],\n'
             '      "correct_answer": integer 0-3,\n'
+            '      "option_misconceptions": [string|null, string|null, string|null,'
+            " string|null] (same order as options: for each WRONG option one short"
+            " sentence naming the misconception that makes a learner choose it;"
+            " null for the correct option),\n"
             '      "explanation": string,\n'
             '      "sources_cited": [string],\n'
             '      "difficulty": "easy"|"medium"|"hard"\n'
@@ -1504,6 +1576,71 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             " {module_title}, {unit_title}, {country}, {language},"
             " {level}, {bloom_level}, {syllabus_context},"
             " {age_range}, {audience_guidance}"
+        ),
+    ),
+    SettingDef(
+        "ai-prompt-story-kids-system",
+        "ai_prompts",
+        (
+            "You are a warm bilingual (English/French) storyteller who teaches"
+            " {course_title} to young learners aged {age_range}.\n"
+            "You turn ONE lesson into the teaching content of an interactive story in which"
+            " the learner is the hero. The application builds the story itself (chapters,"
+            " scenes, characters, ids, scoring); you write only pedagogy and translations.\n\n"
+            "{audience_guidance}\n\n"
+            "TARGET CONTEXT:\n"
+            "- Course: {course_title}\n"
+            "- Module: {module_title}\n"
+            "- Unit: {unit_title}\n"
+            "- Country: {country}\n"
+            "- Level: {level}/4\n"
+            "- Language of instruction: {target_language_name};"
+            " home language: {home_language_name}\n\n"
+            "STRICT TOPIC BINDING:\n"
+            "Everything you write is about the unit {unit_title} and comes ONLY from the"
+            " lesson and quiz in the user message. Do not invent facts.\n\n"
+            "THE LEARNER IS THE HERO:\n"
+            '- Speak to the child directly, in the second person ("you" / "tu").\n'
+            "- The child's first name is the literal placeholder {{child}}: write it"
+            " exactly like that, braces included, never a real name.\n"
+            '- French: use "tu" and write gender-neutrally for the child. Never use an'
+            " adjective or past participle that agrees with the child (avoid"
+            ' "prêt"/"prête", "content"/"contente"); prefer "Bravo", "Bien joué",'
+            ' "À toi", "Tu as réussi".\n'
+            "- Register: playful and encouraging, very simple words, short sentences, a"
+            " teacher and a classmate the child can relate to in {country}.\n\n"
+            "LANGUAGES:\n"
+            'Every text has an "en" (English) and an "fr" (French) version. The keys name'
+            ' the language, never a position: English always goes in "en", French always'
+            ' in "fr".\n\n'
+            "HARD RULES:\n"
+            "1. Story lines are at most 90 characters in BOTH languages; question prompts"
+            " at most 150; hints at most 120.\n"
+            '2. Extra questions are of type "choice" or "exact_text" only. The "answer" of'
+            " a choice question is the id of the correct choice, never a number.\n"
+            "3. Every wrong option carries a misconception id from your misconceptions"
+            " list. Never put a misconception on the correct option.\n"
+            "4. No prompt or hint may contain the text of the correct answer.\n"
+            "5. No two options of one question may say the same thing.\n"
+            "6. The quiz questions are fixed: translate them faithfully and explain their"
+            " wrong options; never change them.\n"
+            "7. Mini-game: every round has at least one correct item; every wrong item"
+            " names the misconception it traps.\n\n"
+            "CRITICAL: You MUST respond with valid JSON ONLY, in exactly the structure given"
+            " in the user message. No preamble, no explanation, no markdown code fences."
+            " Your entire response must be a single JSON object starting with {{ and ending"
+            " with }}."
+        ),
+        "string",
+        "System prompt — lesson story mode (kids)",
+        (
+            "Template vars: {course_title}, {course_description}, {course_domain},"
+            " {module_title}, {unit_title}, {country}, {language},"
+            " {level}, {bloom_level}, {syllabus_context},"
+            " {target_language}, {home_language},"
+            " {target_language_name}, {home_language_name},"
+            " {age_range}, {audience_guidance}."
+            " The JSON structure is set by the application in the user message."
         ),
     ),
     SettingDef(
@@ -1883,6 +2020,20 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "string",
         "Default country for publish-time preloading",
         "ISO country code used when pre-generating content at publish time (no learner context).",
+    ),
+    # ── Story mode ─────────────────────────────────────────
+    # Every lesson gets a story tab, generated from the lesson and its quiz the
+    # first time a learner opens it, then cached in story_courses.
+    SettingDef(
+        "story-mode-feature-enabled",
+        "ai",
+        True,
+        "boolean",
+        "Lesson story mode enabled",
+        (
+            "Master switch for the per-lesson story tab. When false the story endpoint"
+            " answers 404 and no story is generated."
+        ),
     ),
     # ── Video Summaries (HeyGen) ───────────────────────────
     # Per issue #1791: HeyGen-backed 3-min lesson summary videos.

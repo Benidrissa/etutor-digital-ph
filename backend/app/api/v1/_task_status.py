@@ -26,6 +26,7 @@ from app.infrastructure.cache.redis import redis_client
 logger = structlog.get_logger(__name__)
 
 _KEY_PREFIX = "content_task:"
+_OWNER_PREFIX = "content_task_owner:"
 _TTL_SECONDS = 3600  # match celery_app.conf.result_expires
 TASK_STALL_THRESHOLD_S = 30
 
@@ -58,3 +59,37 @@ async def dispatched_at(task_id: str) -> datetime | None:
         return datetime.fromisoformat(raw)
     except ValueError:
         return None
+
+
+async def vouch_while_owned(task_id: str, owner_key: str, ttl_s: int) -> None:
+    """Report ``task_id`` as queued, never stalled, while ``owner_key`` names it.
+
+    For a task that may legitimately wait in the queue longer than
+    :data:`TASK_STALL_THRESHOLD_S` — a rate-limited story generation that
+    concurrent requests join through a dedup key. The dispatcher writes this
+    before claiming ``owner_key`` (a Redis key whose value is the task id, with
+    its own TTL, released when the task ends). While that key still holds the
+    task id, the task is alive as far as the dispatcher is concerned, and the
+    status endpoint must agree with it: a PENDING state then means "queued".
+    Best effort: without Redis the plain stall rules apply.
+    """
+    if not task_id or not owner_key:
+        return
+    try:
+        await redis_client.setex(f"{_OWNER_PREFIX}{task_id}", ttl_s, owner_key)
+    except Exception as exc:
+        logger.warning("task_status.vouch_failed", task_id=task_id, error=str(exc))
+
+
+async def is_vouched(task_id: str) -> bool:
+    """Whether a dedup key still names ``task_id`` (see :func:`vouch_while_owned`)."""
+    if not task_id:
+        return False
+    try:
+        owner_key = await redis_client.get(f"{_OWNER_PREFIX}{task_id}")
+        if not owner_key:
+            return False
+        return await redis_client.get(owner_key) == task_id
+    except Exception as exc:
+        logger.warning("task_status.is_vouched_failed", task_id=task_id, error=str(exc))
+        return False

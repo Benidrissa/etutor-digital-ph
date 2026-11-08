@@ -1,0 +1,145 @@
+name: Generate Lesson Story
+
+# Generate the story mode of chosen lessons on the server, without waiting for
+# a learner to open the Story tab. Runs backend/scripts/generate_lesson_stories.py
+# inside the backend container: it dispatches the same Celery task (and Redis
+# dedup key) a learner's first view would, waits for it and prints what was
+# stored; it fails unless every story is valid and published.
+#
+# - After every successful Deploy run, it generates what
+#   backend/scripts/story_requests.json asks for, on the server that run
+#   deployed (production if its "Deploy to Production" job succeeded, else
+#   staging). A cached story that is still fresh is reused with no model call,
+#   so this costs nothing once the stories exist.
+# - Run it by hand to list courses (mode=list) or generate given courses.
+
+on:
+  workflow_run:
+    workflows: [Deploy]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Where to run"
+        required: true
+        type: choice
+        options: [staging, production]
+        default: staging
+      mode:
+        description: "list = show courses, lesson 1 and cached stories; generate = make them; requests = what story_requests.json asks for"
+        required: true
+        type: choice
+        options: [list, generate, requests]
+        default: list
+      queries:
+        description: "list: comma-separated title/slug fragments (e.g. biolog,math)"
+        required: false
+        default: "biolog,math"
+      courses:
+        description: "generate: comma-separated course slugs or UUIDs"
+        required: false
+        default: ""
+      languages:
+        description: "generate: comma-separated languages (fr,en)"
+        required: false
+        default: "fr,en"
+      force:
+        description: "generate/requests: regenerate even if a fresh story exists (paid)"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read   # read the triggering Deploy run's jobs
+
+jobs:
+  story:
+    name: Lesson stories
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Decide where and what to run
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          INPUT_ENV: ${{ inputs.environment }}
+          INPUT_MODE: ${{ inputs.mode }}
+        run: |
+          if [ "$EVENT" = "workflow_run" ]; then
+            prod=$(gh api "repos/${{ github.repository }}/actions/runs/$RUN_ID/jobs" \
+              --jq '[.jobs[] | select(.name == "Deploy to Production") | .conclusion] | first // ""')
+            if [ "$prod" = "success" ]; then env=production; else env=staging; fi
+            mode=requests
+          else
+            env="$INPUT_ENV"; mode="$INPUT_MODE"
+          fi
+          echo "environment=$env" >> "$GITHUB_OUTPUT"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "Running mode '$mode' on $env"
+
+      - name: SSH into the server and run the story script
+        uses: appleboy/ssh-action@v1
+        env:
+          MODE: ${{ steps.target.outputs.mode }}
+          QUERIES: ${{ inputs.queries }}
+          COURSES: ${{ inputs.courses }}
+          LANGUAGES: ${{ inputs.languages }}
+          FORCE: ${{ inputs.force }}
+        with:
+          host: ${{ steps.target.outputs.environment == 'production' && '94.250.201.110' || '167.86.115.58' }}
+          username: deploy
+          key: ${{ steps.target.outputs.environment == 'production' && secrets.PROD_DEPLOY_SSH_KEY || secrets.DEPLOY_SSH_KEY }}
+          envs: MODE,QUERIES,COURSES,LANGUAGES,FORCE
+          command_timeout: 30m
+          script: |
+            set -e
+            cd ~/etutor
+            run() { docker compose exec -T backend uv run python scripts/generate_lesson_stories.py "$@"; }
+
+            # Inputs are typed by hand: accept only plain slug-like values so
+            # nothing reaches the shell unquoted that could be interpreted.
+            check() {
+              case "$1" in
+                ""|*[!A-Za-z0-9._-]*) echo "::error::invalid value: '$1'"; exit 2 ;;
+              esac
+            }
+
+            args=""
+            case "$MODE" in
+              list)
+                for q in $(echo "$QUERIES" | tr ',' ' '); do
+                  check "$q"; args="$args --query $q"
+                done
+                [ -n "$args" ] || { echo "::error::list needs at least one query"; exit 2; }
+                echo "== list $args"
+                run list $args
+                ;;
+              generate)
+                for c in $(echo "$COURSES" | tr ',' ' '); do
+                  check "$c"; args="$args --course $c"
+                done
+                [ -n "$args" ] || { echo "::error::generate needs at least one course"; exit 2; }
+                for l in $(echo "$LANGUAGES" | tr ',' ' '); do
+                  case "$l" in fr|en) args="$args --language $l" ;; *) echo "::error::language '$l'"; exit 2 ;; esac
+                done
+                [ "$FORCE" = "true" ] && args="$args --force"
+                echo "== generate $args"
+                run generate $args
+                ;;
+              requests)
+                # Images deployed before this script existed have no request file.
+                if ! docker compose exec -T backend test -f scripts/story_requests.json; then
+                  echo "No scripts/story_requests.json in the deployed backend: nothing to do."
+                  exit 0
+                fi
+                [ "$FORCE" = "true" ] && args="--force"
+                echo "== requests scripts/story_requests.json $args"
+                run requests scripts/story_requests.json $args
+                ;;
+              *)
+                echo "::error::unknown mode '$MODE'"; exit 2
+                ;;
+            esac

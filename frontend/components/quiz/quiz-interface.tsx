@@ -14,9 +14,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import type { Quiz, QuizAnswerSubmission, QuizAttemptResponse } from '@/lib/api';
-import { ApiError, submitQuizAttempt } from '@/lib/api';
+import { ApiError, isQuizChangedError, submitQuizAttempt } from '@/lib/api';
 import { scoreQuizOffline } from '@/lib/offline/offline-quiz-scorer';
-import { loadQuizState, saveQuizState, clearQuizState } from '@/lib/quiz-state-persistence';
+import {
+  loadQuizState,
+  saveQuizState,
+  clearQuizState,
+  quizAttemptStorageKey,
+} from '@/lib/quiz-state-persistence';
 import {
   buildQuizDisplayOrders,
   displayToOriginal,
@@ -28,6 +33,12 @@ interface QuizInterfaceProps {
   quiz: Quiz;
   onComplete: (result: QuizAttemptResponse) => void;
   onError: (error: string) => void;
+  /**
+   * The quiz was regenerated while the learner was taking it (409
+   * `quiz_changed`): their answers belong to questions the server can no
+   * longer grade. The parent reloads the quiz. Without it, an error is shown.
+   */
+  onQuizChanged?: () => void;
 }
 
 interface QuestionState {
@@ -46,11 +57,12 @@ interface PersistedQuizState {
   displayOrders: number[][];
 }
 
-export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps) {
+export function QuizInterface({ quiz, onComplete, onError, onQuizChanged }: QuizInterfaceProps) {
   const t = useTranslations('Quiz');
 
-  // Quiz IDs are unique per generation, so a regenerate auto-invalidates this key.
-  const storageKey = `quiz-state:v1:${quiz.id}`;
+  // Regeneration keeps the quiz id but bumps content_revision, which the key
+  // includes, so answers to the old questions are never restored onto new ones.
+  const storageKey = quizAttemptStorageKey('quiz-state', quiz);
   const [restored] = useState<PersistedQuizState | null>(() => {
     const raw = loadQuizState<PersistedQuizState>(storageKey);
     if (!raw) return null;
@@ -183,11 +195,23 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
             quiz_id: quiz.id,
             answers,
             total_time_seconds: totalTimeSeconds,
+            content_revision: quiz.content_revision,
           });
           clearQuizState(storageKey);
           onComplete(result);
           return;
         } catch (serverErr) {
+          // The quiz was regenerated since it was loaded: these answers cannot
+          // be graded (and must not be scored offline against the old key).
+          if (isQuizChangedError(serverErr)) {
+            clearQuizState(storageKey);
+            if (onQuizChanged) {
+              onQuizChanged();
+            } else {
+              onError(t('quizChanged'));
+            }
+            return;
+          }
           // If it's an auth/subscription error, don't fall back
           if (serverErr instanceof ApiError && (serverErr.status === 401 || serverErr.status === 403)) {
             throw serverErr;
@@ -221,7 +245,7 @@ export function QuizInterface({ quiz, onComplete, onError }: QuizInterfaceProps)
     } finally {
       setIsSubmitting(false);
     }
-  }, [quiz, questionStates, startTime, isSubmitting, onComplete, onError, t, storageKey]);
+  }, [quiz, questionStates, startTime, isSubmitting, onComplete, onError, onQuizChanged, t, storageKey]);
 
   const handleNextQuestion = useCallback(() => {
     if (currentQuestionIndex < totalQuestions - 1) {
