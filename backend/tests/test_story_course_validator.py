@@ -382,6 +382,24 @@ class TestChoiceQuestionsSharedMcqChecks:
             "questions[q1].prompt.fr",
         ]
 
+    def test_a_factorised_either_or_prompt_is_publishable(self, course):
+        """ "9 or 13 cm" writes the unit once for both choices: "9" names the
+        distractor "9 cm", so the prompt is a warning, not an unpublishable leak."""
+        q1 = find(course["questions"], "id", "q1")
+        for choice in q1["choices"]:
+            choice["en"] = choice["fr"] = f"{choice['en']} cm"
+        q1["prompt"] = {
+            "en": "Is the side 9 or 13 cm long?",
+            "fr": "Le côté mesure-t-il 9 ou 13 cm ?",
+        }
+        report = validate(course)
+        assert report.errors == [], [e.model_dump() for e in report.errors]
+        assert report.ok is True
+        assert sorted(w.path for w in report.warnings if w.code == "answer_leak_ambiguous") == [
+            "questions[q1].prompt.en",
+            "questions[q1].prompt.fr",
+        ]
+
     def test_a_hint_naming_only_the_answer_still_leaks_beside_a_comparison_prompt(self, course):
         q1 = _wordy_choice_question(course)
         q1["prompt"]["en"] = "Which is prime: nine or thirteen?"

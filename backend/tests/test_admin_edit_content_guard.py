@@ -284,6 +284,53 @@ class TestEitherOrStems:
         assert row.is_manually_edited is True
         assert row.content["questions"][1]["explanation"].startswith("Les moustiques")
 
+    @pytest.mark.parametrize(
+        ("stem", "options", "correct"),
+        [
+            (
+                "Le SRO se donne-t-il avant ou après les repas ?",
+                ["Avant les repas", "Après les repas", "Pendant la nuit", "Jamais"],
+                1,
+            ),
+            (
+                "Should ORS be given before or after meals?",
+                ["Before meals", "After meals", "Only at night", "Never"],
+                1,
+            ),
+            (
+                "Le vaccin est-il administré par voie orale ou intramusculaire ?",
+                [
+                    "Par voie orale",
+                    "Par voie intramusculaire",
+                    "Par voie nasale",
+                    "Par voie cutanée",
+                ],
+                0,
+            ),
+        ],
+        ids=["avant-apres-repas", "before-after-meals", "voie-orale"],
+    )
+    async def test_editing_a_quiz_with_a_factorised_either_or_question_is_accepted(
+        self, stem, options, correct
+    ):
+        """ "avant ou après les repas" writes "les repas" once for both options:
+        the distractor is named by "avant", so a typo fix elsewhere is saved."""
+        q1 = _question(
+            "q1",
+            question=stem,
+            options=options,
+            correct_answer=correct,
+            option_misconceptions=[None if i == correct else f"Idée reçue {i}" for i in range(4)],
+        )
+        row = _row("quiz", _quiz(q1, _question("q2")))
+        q2 = _question("q2", explanation="Typo fixed in the explanation of q2.")
+
+        response, db = await _edit(row, _quiz(copy.deepcopy(q1), q2))
+
+        assert response["is_manually_edited"] is True
+        db.commit.assert_awaited_once()
+        assert row.content["questions"][1]["explanation"] == "Typo fixed in the explanation of q2."
+
 
 class TestQuizEditIsANewRevision:
     """Learners may hold the quiz at its current revision when an admin edits

@@ -41,7 +41,10 @@ What these checks can and cannot decide:
   comparing the options ("Is it malaria or cholera?", "aux enfants ou aux
   adultes ?") and gets :data:`ANSWER_LEAK_AMBIGUOUS`, a warning for a person
   to judge. No list of joining words covers the ways an either/or question is
-  written, and every miss was a hard error on a valid quiz.
+  written, and every miss was a hard error on a valid quiz. A factorised
+  either/or ("before or after meals", "5 or 10 mg/kg") writes the words the
+  options share once, so a distractor is also named by the words that set it
+  apart from the answer ("before", "5").
 * **Duplicate options** are the deterministic form of "more than one correct
   answer": the schema stores one correct index, so two correct options can only
   happen as two options with the same text (case kept: ``"CO"`` and ``"Co"``
@@ -459,6 +462,60 @@ def _issue(severity: str, code: str, path: str, message: str) -> ValidationIssue
     return ValidationIssue(severity=severity, code=code, path=path, message=message)
 
 
+def _same_word(left: str, right: str) -> bool:
+    """Whether two tokens are one word, a plural "s" or "x" aside ("dose", "doses")."""
+    if left == right:
+        return True
+    short, long_ = sorted((left, right), key=len)
+    return (
+        len(short) >= 3
+        and len(long_) == len(short) + 1
+        and long_[-1] in "sx"
+        and long_.startswith(short)
+    )
+
+
+def _distinctive_part(distractor: Sequence[str], answer: Sequence[str]) -> list[str]:
+    """The distractor's tokens with the words it shares with the answer at
+    either end removed: "before" from "Before meals" against "After meals",
+    "intramusculaire" from "Par voie intramusculaire" against "Par voie
+    orale", "5" from "5 mg/kg" against "10 mg/kg". An either/or stem writes
+    the shared words once ("before or after meals"), so this part is all of
+    the distractor it names. Empty when nothing sets the two apart at an end.
+    """
+    limit = min(len(distractor), len(answer))
+    head = 0
+    while head < limit and _same_word(distractor[head], answer[head]):
+        head += 1
+    tail = 0
+    while tail < limit - head and _same_word(distractor[-1 - tail], answer[-1 - tail]):
+        tail += 1
+    return list(distractor[head : len(distractor) - tail])
+
+
+def _distractor_needles(view: McqView, needle: Sequence[str], min_length: int) -> list[list[str]]:
+    """What counts as naming a distractor in a text, for :func:`check_answer_leak`.
+
+    Each distractor at least ``min_length`` characters long, whole; and, when
+    it shares words with the answer at either end, its distinctive part (see
+    :func:`_distinctive_part`) if that is at least ``min_length`` characters
+    or a number ("5 or 10 mg/kg"). A distractor reading the same as the answer
+    is no evidence of a comparison; :func:`check_duplicate_options` reports it.
+    """
+    needles: list[list[str]] = []
+    for index, option in enumerate(view.options):
+        tokens = _leak_needle(option)
+        if index == view.correct_index or not tokens or tokens == list(needle):
+            continue
+        if len("".join(tokens)) >= min_length:
+            needles.append(tokens)
+        part = _distinctive_part(tokens, needle)
+        joined = "".join(part)
+        if part and part != tokens and (len(joined) >= min_length or joined.isdigit()):
+            needles.append(part)
+    return needles
+
+
 def _names_a_distractor(
     distractors: Sequence[Sequence[str]],
     answers: Sequence[tuple[int, int]],
@@ -498,7 +555,10 @@ def check_answer_leak(view: McqView, *, min_length: int = MIN_LEAK_LENGTH) -> li
     A distractor counts as named only when it is at least ``min_length``
     characters long (so "a" or "un" never does; "one" does), does not read the
     same as the answer, and stands as a whole value outside every occurrence
-    of the answer.
+    of the answer. In a factorised either/or ("before or after meals", "5 or
+    10 mg/kg", "avant ou après les repas") the distractor never stands whole:
+    the words that set it apart from the answer ("before", "5", "avant") name
+    it, under the same floor, which a number of any length passes.
     """
     answer = view.correct_option
     needle = _leak_needle(answer)
@@ -513,14 +573,7 @@ def check_answer_leak(view: McqView, *, min_length: int = MIN_LEAK_LENGTH) -> li
             )
         ]
 
-    # A distractor reading the same as the answer is no evidence of a
-    # comparison; check_duplicate_options reports it.
-    distractors: list[list[str]] = []
-    for index, option in enumerate(view.options):
-        tokens = _leak_needle(option)
-        if index != view.correct_index and tokens != needle and len("".join(tokens)) >= min_length:
-            distractors.append(tokens)
-
+    distractors = _distractor_needles(view, needle, min_length)
     issues: list[ValidationIssue] = []
     for path, text in ((view.stem_path, view.stem), *view.other_texts):
         folded = _fold(text)

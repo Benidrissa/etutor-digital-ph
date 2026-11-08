@@ -567,6 +567,61 @@ EITHER_OR_STEMS = [
     ("Faut-il traiter des enfants ou des adultes en priorité ?", ["enfants", "adultes"], 0),
 ]
 
+#: Factorised either/or stems: the options share words the stem writes once
+#: ("before or after meals" for "Before meals" / "After meals"), so the
+#: distractor never stands whole in the stem, only the words that set it apart
+#: from the answer. Each was still a hard ``answer_leak``.
+FACTORISED_EITHER_OR_STEMS = [
+    (
+        "Should ORS be given before or after meals?",
+        ["Before meals", "After meals", "Only at night", "Never"],
+        1,
+    ),
+    (
+        "Is incidence higher in urban or rural areas?",
+        ["Urban areas", "Rural areas", "Equal in both", "Unknown"],
+        1,
+    ),
+    (
+        "Is the patient at high or low risk?",
+        ["High risk", "Low risk", "No risk", "Unknown risk"],
+        1,
+    ),
+    (
+        "Is the first or the second dose given at 9 months?",
+        ["The first dose", "The second dose", "Neither dose", "Both doses"],
+        1,
+    ),
+    (
+        "Is the recommended dose 5 or 10 mg/kg?",
+        ["5 mg/kg", "10 mg/kg", "20 mg/kg", "50 mg/kg"],
+        1,
+    ),
+    ("Was coverage closer to 50 or 75 %?", ["50 %", "75 %", "90 %", "100 %"], 1),
+    ("Is the side 9 or 13 cm long?", ["1 cm", "9 cm", "13 cm", "21 cm"], 2),
+    (
+        "Le SRO se donne-t-il avant ou après les repas ?",
+        ["Avant les repas", "Après les repas", "Pendant la nuit", "Jamais"],
+        1,
+    ),
+    (
+        "Le vaccin est-il administré par voie orale ou intramusculaire ?",
+        ["Par voie orale", "Par voie intramusculaire", "Par voie nasale", "Par voie cutanée"],
+        0,
+    ),
+    (
+        "Faut-il vacciner avant ou après 9 mois ?",
+        ["Avant 9 mois", "Après 9 mois", "À la naissance", "À 5 ans"],
+        1,
+    ),
+    (
+        "Faut-il une ou deux doses ?",
+        ["Une dose", "Deux doses", "Trois doses", "Aucune dose"],
+        1,
+    ),
+    ("Le côté mesure-t-il 9 ou 13 cm ?", ["1 cm", "9 cm", "13 cm", "21 cm"], 2),
+]
+
 
 class TestLeakSeverityIsTiered:
     """Where the correct option is found, the severity depends on one fact.
@@ -584,6 +639,51 @@ class TestLeakSeverityIsTiered:
         issues = mcq.check_answer_leak(leak_view(stem, options, correct))
         assert not errors(issues)
         assert warnings_at(issues, mcq.ANSWER_LEAK_AMBIGUOUS) == ["questions[q1].question"]
+
+    @pytest.mark.parametrize(("stem", "options", "correct"), FACTORISED_EITHER_OR_STEMS)
+    def test_a_factorised_either_or_stem_is_a_warning_not_an_error(self, stem, options, correct):
+        """The words that set the distractor apart from the answer ("before",
+        "intramusculaire", "5") name it, even with the shared words factored out."""
+        issues = mcq.check_quiz_question(
+            q(
+                question=stem,
+                options=options,
+                correct_answer=correct,
+                option_misconceptions=["m"] * len(options),
+            )
+        )
+        assert not errors(issues), [i.model_dump() for i in issues]
+        assert warnings_at(issues, mcq.ANSWER_LEAK_AMBIGUOUS) == ["questions[q1].question"]
+
+    @pytest.mark.parametrize(
+        ("stem", "options", "correct"),
+        [
+            # The distractor's own word ("before", "avant", "5") is absent.
+            ("Should ORS be given after meals?", ["Before meals", "After meals", "Never"], 1),
+            ("Faut-il vacciner après 9 mois ?", ["Avant 9 mois", "Après 9 mois", "Jamais"], 1),
+            (
+                "La dose est de 10 mg/kg, 2 fois par jour. Quelle est la dose ?",
+                ["10 mg/kg", "5 mg/kg", "20 mg/kg", "1 mg/kg"],
+                0,
+            ),
+            # What sets "Vitamin D" apart is one letter: under the floor.
+            (
+                "Night blindness comes from a lack of vitamin A, or is it D? Which vitamin?",
+                ["Vitamin A", "Vitamin D", "Vitamin C", "Iron"],
+                0,
+            ),
+            # Nothing is factored out of "5": a short number on its own is no
+            # evidence, as before.
+            ("125 is 5 cubed. What is 5³?", ["125", "5", "15", "25"], 0),
+        ],
+        ids=["en-absent", "fr-absent", "number-absent", "letter-floor", "unfactored-number"],
+    )
+    def test_a_factorised_leak_without_the_distractor_is_still_an_error(
+        self, stem, options, correct
+    ):
+        issues = mcq.check_answer_leak(leak_view(stem, options, correct))
+        assert [i.path for i in issues if i.code == mcq.ANSWER_LEAK] == ["questions[q1].question"]
+        assert mcq.ANSWER_LEAK_AMBIGUOUS not in codes(issues)
 
     @pytest.mark.parametrize(
         ("stem", "options", "correct"),
