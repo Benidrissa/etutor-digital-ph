@@ -650,7 +650,8 @@ class McqAuditSummary(BaseModel):
     questions_lacking_option_misconceptions: int = 0
     #: Questions whose correct option is too short to leak-check.
     short_answer_leak_unchecked: int = 0
-    #: Stems and hints naming the correct option beside a distractor
+    #: Stems and hints naming the correct option beside a distractor, and
+    #: stems naming a verdict answer ("Is it true that…?")
     #: (``answer_leak_ambiguous`` warnings): a comparison or a leak, for a
     #: person to judge. They affect neither ``ok`` nor ``fully_checked``.
     answer_leak_ambiguous: int = 0
@@ -809,10 +810,10 @@ async def audit_course_mcqs(
     Report-only: it never changes ``content``, ``validated`` or
     ``quality_status``. Findings use the story validator's issue shape
     (severity, code, path, message): answer leaked into the stem (a warning,
-    ``answer_leak_ambiguous``, where a distractor is named beside it), duplicate or
-    empty options, distractors without a misconception (only where
-    ``option_misconceptions`` exists — otherwise ``misconceptions_unchecked``),
-    plus warn-only FR/EN parity per unit.
+    ``answer_leak_ambiguous``, where a distractor is named beside it or the
+    stem asks for a verdict), duplicate or empty options, distractors without
+    a misconception (only where ``option_misconceptions`` exists — otherwise
+    ``misconceptions_unchecked``), plus warn-only FR/EN parity per unit.
     """
     await _assert_course_access(session, course_id, current_user)
 

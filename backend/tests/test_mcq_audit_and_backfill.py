@@ -148,6 +148,37 @@ class TestBuildMcqAudit:
             ("answer_leak_ambiguous", "questions[q1].question")
         ]
         assert report.summary.answer_leak_ambiguous == 1
+
+    @pytest.mark.parametrize(
+        ("stem", "options", "correct"),
+        [
+            (
+                "Le SRO se donne-t-il avant ou après les repas ?",
+                ["Avant les repas", "Après les repas", "Pendant la nuit", "Jamais"],
+                1,
+            ),
+            (
+                "Is it true that malaria is transmitted by mosquitoes?",
+                ["True", "False", "Partly true", "Unknown"],
+                0,
+            ),
+        ],
+        ids=["factorised-either-or", "verdict"],
+    )
+    def test_factorised_and_verdict_stems_are_counted_as_ambiguous(self, stem, options, correct):
+        question = _question(
+            "q1",
+            question=stem,
+            options=options,
+            correct_answer=correct,
+            option_misconceptions=[None if i == correct else f"m{i}" for i in range(4)],
+        )
+        report = build_mcq_audit(
+            COURSE_ID, [(_gc("fr", [question, _question("q2")], unit_uuid=uuid.uuid4()), "1.2")]
+        )
+        assert report.ok is True
+        assert report.rows[0].errors == []
+        assert report.summary.answer_leak_ambiguous == 1
         assert report.summary.warning_count == 1
 
     def test_parity_is_warning_only_and_per_unit(self):
