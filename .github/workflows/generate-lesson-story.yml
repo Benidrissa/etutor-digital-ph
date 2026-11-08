@@ -1,0 +1,98 @@
+name: Generate Lesson Story
+
+# Manually list or generate the story mode of a course's first lesson on
+# staging or production, without waiting for a learner to open the Story tab.
+# Runs backend/scripts/generate_lesson_stories.py inside the backend
+# container. "generate" dispatches the same Celery task (and Redis dedup key)
+# a learner's first view would, waits for it and prints what was stored; it
+# fails unless every story is valid and published.
+#
+# Typical use: run "list" with queries to find the courses' slugs and check
+# which unit is lesson 1, then "generate" with those slugs.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Where to run"
+        required: true
+        type: choice
+        options: [staging, production]
+        default: staging
+      mode:
+        description: "list = show courses, lesson 1 and cached stories; generate = make them"
+        required: true
+        type: choice
+        options: [list, generate]
+        default: list
+      queries:
+        description: "list: comma-separated title/slug fragments (e.g. biolog,math)"
+        required: false
+        default: "biolog,math"
+      courses:
+        description: "generate: comma-separated course slugs or UUIDs"
+        required: false
+        default: ""
+      languages:
+        description: "generate: comma-separated languages (fr,en)"
+        required: false
+        default: "fr,en"
+      force:
+        description: "generate: regenerate even if a fresh story exists (paid)"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  story:
+    name: ${{ inputs.mode }} lesson stories on ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH into the server and run the story script
+        uses: appleboy/ssh-action@v1
+        env:
+          MODE: ${{ inputs.mode }}
+          QUERIES: ${{ inputs.queries }}
+          COURSES: ${{ inputs.courses }}
+          LANGUAGES: ${{ inputs.languages }}
+          FORCE: ${{ inputs.force }}
+        with:
+          host: ${{ inputs.environment == 'production' && '94.250.201.110' || '167.86.115.58' }}
+          username: deploy
+          key: ${{ inputs.environment == 'production' && secrets.PROD_DEPLOY_SSH_KEY || secrets.DEPLOY_SSH_KEY }}
+          envs: MODE,QUERIES,COURSES,LANGUAGES,FORCE
+          command_timeout: 30m
+          script: |
+            set -e
+            cd ~/etutor
+
+            # Inputs are typed by hand: accept only plain slug-like values so
+            # nothing reaches the shell unquoted that could be interpreted.
+            check() {
+              case "$1" in
+                ""|*[!A-Za-z0-9._-]*) echo "::error::invalid value: '$1'"; exit 2 ;;
+              esac
+            }
+
+            args=""
+            if [ "$MODE" = "list" ]; then
+              for q in $(echo "$QUERIES" | tr ',' ' '); do
+                check "$q"; args="$args --query $q"
+              done
+              [ -n "$args" ] || { echo "::error::list needs at least one query"; exit 2; }
+              echo "== list $args"
+              docker compose exec -T backend uv run python scripts/generate_lesson_stories.py list $args
+            elif [ "$MODE" = "generate" ]; then
+              for c in $(echo "$COURSES" | tr ',' ' '); do
+                check "$c"; args="$args --course $c"
+              done
+              [ -n "$args" ] || { echo "::error::generate needs at least one course"; exit 2; }
+              for l in $(echo "$LANGUAGES" | tr ',' ' '); do
+                case "$l" in fr|en) args="$args --language $l" ;; *) echo "::error::language '$l'"; exit 2 ;; esac
+              done
+              [ "$FORCE" = "true" ] && args="$args --force"
+              echo "== generate $args"
+              docker compose exec -T backend uv run python scripts/generate_lesson_stories.py generate $args
+            else
+              echo "::error::unknown mode '$MODE'"; exit 2
+            fi
