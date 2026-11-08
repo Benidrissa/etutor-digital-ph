@@ -12,6 +12,7 @@ import {
   isStoryDocument,
   isStoryGenerating,
   isStoryUnavailableError,
+  storyErrorCode,
 } from '@/lib/story-course/api';
 import { firstNameOf, personalizeStory } from '@/lib/story-course/personalize';
 import type { StoryCourse } from '@/lib/story-course/types';
@@ -25,9 +26,12 @@ type PanelState =
   | { kind: 'loading' }
   | { kind: 'generating'; slow: boolean }
   | { kind: 'ready'; story: StoryCourse }
-  /** 409 story_unavailable: no story passing the validator could be written. */
+  /**
+   * 409 story_unavailable (no story passing the validator could be written),
+   * 404 not_a_lesson, or any other 403/404.
+   */
   | { kind: 'unavailable' }
-  /** 403: the backend has story mode switched off (like the video flag). */
+  /** detail.error story_mode_disabled (a 404): the backend has story mode off. */
   | { kind: 'disabled' }
   | { kind: 'offline' }
   | { kind: 'failed'; reason: 'failed' | 'timeout' };
@@ -112,12 +116,20 @@ export function LessonStory({
 
     function fromError(err: unknown): PanelState {
       if (err instanceof OfflineContentNotAvailable) return { kind: 'offline' };
+      // The body's code decides first, whatever the status (contract X2):
+      // switched off is a 404 `story_mode_disabled`, not a 403.
+      switch (storyErrorCode(err)) {
+        case 'story_mode_disabled':
+          return { kind: 'disabled' };
+        case 'story_unavailable':
+        case 'not_a_lesson':
+          return { kind: 'unavailable' };
+      }
       if (isStoryUnavailableError(err)) return { kind: 'unavailable' };
-      if (err instanceof ApiError && err.status === 404) return { kind: 'unavailable' };
-      if (err instanceof ApiError && err.status === 403) {
-        // Video's feature flag reaches the client the same way: a 403 from the
-        // endpoint. A paywall 403 is not "switched off", so it is kept apart.
-        return err.code === 'subscription_required' ? { kind: 'unavailable' } : { kind: 'disabled' };
+      // Any other 403/404 (a paywall, a unit that is gone) is not "switched
+      // off": the lesson simply has no story to show.
+      if (err instanceof ApiError && (err.status === 404 || err.status === 403)) {
+        return { kind: 'unavailable' };
       }
       return { kind: 'failed', reason: 'failed' };
     }

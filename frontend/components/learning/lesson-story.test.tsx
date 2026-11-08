@@ -257,13 +257,46 @@ describe("LessonStory", () => {
     expect(await screen.findByText(/n'a pas été téléchargée/)).toBeInTheDocument();
   });
 
-  it("honours the backend's feature switch (403)", async () => {
+  it("honours the backend's feature switch: 404 story_mode_disabled (X2)", async () => {
+    loadStoryMock.mockRejectedValue(
+      new ApiError("Story mode is disabled", 404, undefined, { error: "story_mode_disabled" }),
+    );
+    renderPanel();
+    expect(
+      await screen.findByText("Le mode histoire n'est pas encore activé sur cette plateforme."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("L'histoire de cette leçon n'est pas encore disponible.")).not.toBeInTheDocument();
+  });
+
+  it("maps by detail.error whatever the status", async () => {
     loadStoryMock.mockRejectedValue(
       new ApiError("disabled", 403, undefined, { error: "story_mode_disabled" }),
     );
     renderPanel();
     expect(
       await screen.findByText("Le mode histoire n'est pas encore activé sur cette plateforme."),
+    ).toBeInTheDocument();
+  });
+
+  it("says a quiz or case-study unit has no story (404 not_a_lesson, X3)", async () => {
+    loadStoryMock.mockRejectedValue(
+      new ApiError("Not a lesson", 404, undefined, { error: "not_a_lesson" }),
+    );
+    renderPanel();
+    expect(
+      await screen.findByText("L'histoire de cette leçon n'est pas encore disponible."),
+    ).toBeInTheDocument();
+  });
+
+  it("does not call a paywall 403 'switched off'", async () => {
+    loadStoryMock.mockRejectedValue(
+      new ApiError("Subscription required", 403, "subscription_required", {
+        code: "subscription_required",
+      }),
+    );
+    renderPanel();
+    expect(
+      await screen.findByText("L'histoire de cette leçon n'est pas encore disponible."),
     ).toBeInTheDocument();
   });
 
