@@ -139,7 +139,7 @@ class McqView:
 # -- normalisation -----------------------------------------------------------
 
 _TOKEN_RE = re.compile(r"\w+|[^\w\s]")
-#: Sentence punctuation, trimmed from the end of an option for duplicates.
+#: Sentence punctuation (with the ellipsis), part of :data:`_EDGE_PUNCT`.
 _TRAILING_PUNCT = ".,;:!?…"
 #: Sentence punctuation and quotes: the only symbols trimmed from the edges of
 #: the correct option before leak matching. Everything else — ``%``, ``°``,
@@ -175,14 +175,50 @@ def _fold(text: Any) -> str:
     return _normalise(text).casefold()
 
 
+_SPACE_RUN_RE = re.compile(r"\s+")
+_ELLIPSIS_RE = re.compile(r"\.{3,}")
+#: A space between digit groups ("12 500"): a digit, then exactly three.
+_DIGIT_GROUP_SPACE_RE = re.compile(r"(?<=\d) (?=\d{3}(?!\d))")
+#: A space next to a symbol ("12,5 %", "2³ × 3²", "Fièvre !", "1, 2").
+_SYMBOL_SPACE_RE = re.compile(r" (?=[^\w\s])|(?<=[^\w\s]) ")
+#: Sentence punctuation trimmed from the end of an option for duplicates. Not
+#: the ellipsis: "1, 2, 3, …" is a sequence that goes on, "1, 2, 3" is not.
+_SENTENCE_END = ".,;:!?"
+
+
 def option_key(text: Any) -> str:
     """Comparison key for duplicate options.
 
-    Whitespace removed and trailing sentence punctuation off, but case kept:
-    ``"CO"`` (carbon monoxide) and ``"Co"`` (cobalt) are different options,
-    and calling them duplicates would be a hard error on a valid question.
+    Spelling that does not change the value is folded: runs of whitespace,
+    a space between digit groups ("12 500"), a space next to a symbol
+    ("12,5 %", "2³ × 3²", "Fièvre !"), "..." for "…", and sentence
+    punctuation at the end ("Cholera."). What does change it is kept: the
+    space of a mixed number ("3 1/2" is not "31/2"), the "!" of a factorial
+    ("5!" is not "5", "n!" is not "n"), an ellipsis ("1, 2, 3, …" is not
+    "1, 2, 3"), and case (``"CO"``, carbon monoxide, is not ``"Co"``,
+    cobalt). Calling two of those duplicates would be a hard error on a valid
+    question. An option of only punctuation reads as empty.
     """
-    return re.sub(r"\s+", "", _normalise(text)).rstrip(_TRAILING_PUNCT)
+    key = _SPACE_RUN_RE.sub(" ", _normalise(text)).strip()
+    key = _ELLIPSIS_RE.sub("…", key)
+    key = _DIGIT_GROUP_SPACE_RE.sub("", key)
+    key = _SYMBOL_SPACE_RE.sub("", key)
+    while key and key[-1] in _SENTENCE_END:
+        if key[-1] == "!" and _is_factorial(key):
+            break
+        key = key[:-1].rstrip()
+    return "" if not key.strip("…") else key
+
+
+def _is_factorial(key: str) -> bool:
+    """Whether the ``"!"`` ending ``key`` follows a number, a bracket or a lone
+    letter ("5!", "(n+1)!", "n!"), rather than a word ("Fièvre!")."""
+    if len(key) < 2:
+        return False
+    before = key[-2]
+    if before.isdigit() or before == ")":
+        return True
+    return before.isalpha() and (len(key) == 2 or not key[-3].isalnum())
 
 
 def _tokens(text: Any) -> list[str]:

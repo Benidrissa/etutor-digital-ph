@@ -824,6 +824,97 @@ class TestDuplicateOptions:
     def test_empty_option(self):
         assert mcq.EMPTY_OPTION in errors(mcq.check_quiz_question(q(options=["A", "B", " ", "D"])))
 
+    @pytest.mark.parametrize("blank", ["...", "…", " . ", "?"])
+    def test_an_option_of_only_punctuation_is_empty(self, blank):
+        issues = mcq.check_quiz_question(q(options=["A", "B", blank, "D"]))
+        assert mcq.EMPTY_OPTION in errors(issues)
+
+
+class TestMathsOptionsAreNotDuplicates:
+    """A factorial, an ellipsis and a mixed number are values, not punctuation.
+
+    The duplicate key deleted every space and stripped a trailing "!" and "…",
+    so "5!" read as "5", "1, 2, 3, …" as "1, 2, 3" and "3 1/2" as "31/2": a
+    hard "two options are correct" error on a valid maths quiz, an admin edit
+    of it refused and a story using it unpublishable.
+    """
+
+    @pytest.mark.parametrize(
+        "options",
+        [
+            ["5", "5!", "25", "5^5"],
+            ["1, 2, 3, …", "1, 2, 3", "1, 2", "3"],
+            ["1, 2, 3, ...", "1, 2, 3", "1, 2", "3"],
+            ["3 1/2", "31/2", "3/2", "1/2"],
+            ["(n+1)!", "(n+1)", "n!", "n"],
+        ],
+        ids=["factorial", "ellipsis", "dotted-ellipsis", "mixed-number", "bracket-factorial"],
+    )
+    def test_maths_options_are_distinct(self, options):
+        issues = mcq.check_quiz_question(q(options=options, correct_answer=1))
+        assert mcq.DUPLICATE_OPTIONS not in codes(issues)
+
+    @pytest.mark.parametrize(
+        ("left", "right"),
+        [
+            ("12,5 %", "12,5%"),
+            ("12\u202f500", "12500"),
+            ("12 500", "12500"),
+            ("1 000 000", "1000000"),
+            ("2³ × 3²", "2³×3²"),
+            ("Fièvre !", "Fièvre"),
+            ("Oui!", "Oui"),
+            ("Cholera.", "Cholera"),
+            ("Fièvre  +  éruption ", "Fièvre + éruption"),
+            ("1, 2, 3, ...", "1, 2, 3, …"),
+            ("\u22125", "-5"),
+        ],
+    )
+    def test_spelling_variants_are_still_the_same_option(self, left, right):
+        assert mcq.option_key(left) == mcq.option_key(right)
+        issues = mcq.check_quiz_question(q(options=[left, right, "Toux", "Diarrhée"]))
+        assert mcq.DUPLICATE_OPTIONS in codes(issues)
+
+    @pytest.mark.parametrize(
+        ("left", "right"),
+        [
+            ("5!", "5"),
+            ("n!", "n"),
+            ("x + n!", "x + n"),
+            ("CO", "Co"),
+            ("3 1/2", "31/2"),
+            ("1, 2, 3, …", "1, 2, 3"),
+            ("−5", "5"),
+        ],
+    )
+    def test_different_values_get_different_keys(self, left, right):
+        assert mcq.option_key(left) != mcq.option_key(right)
+
+    def test_story_factorial_choices_are_publishable(self):
+        question = Question.model_validate(
+            {
+                "id": "q1",
+                "type": "choice",
+                "prompt": {
+                    "en": "In how many orders can 5 patients be seen by one nurse?",
+                    "fr": "De combien de façons une infirmière peut-elle voir 5 patients ?",
+                },
+                "answer": "c",
+                "choices": [
+                    {"id": "a", "en": "5", "fr": "5", "misconception": "m_count"},
+                    {"id": "b", "en": "25", "fr": "25", "misconception": "m_square"},
+                    {"id": "c", "en": "5!", "fr": "5!"},
+                    {"id": "d", "en": "5^5", "fr": "5^5", "misconception": "m_power"},
+                ],
+            }
+        )
+        issues = [
+            i
+            for view in mcq.from_story_choice_question(question)
+            for i in mcq.check_duplicate_options(view)
+        ]
+        assert issues == []
+
 
 class TestMisconceptions:
     def test_absent_metadata_is_a_warning_not_an_error(self):
