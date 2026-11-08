@@ -346,7 +346,9 @@ describe("StoryPlayer — paper exercises are self-marked (X6)", () => {
     await user.click(screen.getByRole("button", { name: "Avant un patient" }));
     await user.click(screen.getByRole("button", { name: "Après un patient" }));
     expect(await screen.findByText("Partie terminée — +2", {}, { timeout: 3000 })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Continuer" }));
+    // The game reports its score from an effect after that render, so the
+    // player's Continue can come a tick later.
+    await user.click(await screen.findByRole("button", { name: "Continuer" }));
 
     // The first exercise: done on paper, the worked answer opens, she marks it.
     expect(screen.getByRole("button", { name: "Réponds pour continuer" })).toBeDisabled();
