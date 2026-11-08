@@ -12,6 +12,7 @@ import {
   clearSyncedActions,
   getOfflineModulesByStatus,
   getOfflineContentByModule,
+  REPLAY_REQUESTED_EVENT,
   type OfflineAction,
 } from './db';
 import { apiFetch } from '@/lib/api';
@@ -33,12 +34,22 @@ const MAX_RETRIES = 3;
 const BACKOFF_BASE_MS = 1000;
 const BACKOFF_MAX_MS = 30_000;
 
+/**
+ * Delays before each automatic replay that scheduleSync() runs. Short first,
+ * so a completion queued on a 2G hiccup reaches the server quickly; then
+ * spaced out, so a link that stays bad is not hammered. Past the last one the
+ * next `online` event or app start takes over.
+ */
+export const REPLAY_DELAYS_MS = [5_000, 30_000, 2 * 60_000, 5 * 60_000] as const;
+
 class SyncManager {
   private static instance: SyncManager | null = null;
   private isSyncing = false;
   private listeners = new Set<SyncStatusListener>();
   private onlineHandler: (() => void) | null = null;
+  private replayRequestHandler: (() => void) | null = null;
   private started = false;
+  private replayTimer: ReturnType<typeof setTimeout> | null = null;
 
   static getInstance(): SyncManager {
     if (!SyncManager.instance) {
@@ -60,10 +71,20 @@ class SyncManager {
     };
     window.addEventListener('online', this.onlineHandler);
 
+    // requestOfflineReplay(): an action was queued while the device still
+    // looked online, so no `online` event will replay it.
+    this.replayRequestHandler = () => this.scheduleSync();
+    window.addEventListener(REPLAY_REQUESTED_EVENT, this.replayRequestHandler);
+
     // Also run on startup in case the app is already online — covers the
     // common case where a v5/v6 user opens the app online without a network
-    // toggle.
+    // toggle. The same goes for the queue: an action queued while the device
+    // still looked online (a POST that died on 2G) never sees an `online`
+    // event, so it is replayed when the app opens.
     if (typeof navigator !== 'undefined' && navigator.onLine) {
+      this.syncNow().catch(() => {
+        // best-effort; the next `online` event or replay request retries
+      });
       this.runV6PrewarmMigration();
       this.runV7PrewarmMigration();
       this.runV8PrewarmMigration();
@@ -76,7 +97,46 @@ class SyncManager {
       window.removeEventListener('online', this.onlineHandler);
       this.onlineHandler = null;
     }
+    if (this.replayRequestHandler) {
+      window.removeEventListener(REPLAY_REQUESTED_EVENT, this.replayRequestHandler);
+      this.replayRequestHandler = null;
+    }
+    this.cancelScheduledSync();
     this.started = false;
+  }
+
+  /**
+   * Replay the queue soon, without waiting for an `online` event.
+   *
+   * On 2G `navigator.onLine` often stays true while requests die. An action
+   * queued then gets no `online` event — the device never went offline — so
+   * it would sit in IndexedDB until the connection flips. This retries the
+   * queue on the REPLAY_DELAYS_MS backoff until it drains or the schedule
+   * runs out. A call while a replay is already scheduled is folded into it.
+   * A replay that comes due while the device is offline is left to the
+   * `online` handler.
+   */
+  scheduleSync(attempt = 0): void {
+    if (typeof window === 'undefined') return;
+    if (this.replayTimer !== null || attempt >= REPLAY_DELAYS_MS.length) return;
+    this.replayTimer = setTimeout(() => {
+      this.replayTimer = null;
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+      this.syncNow()
+        .then(() => this.getPendingCount())
+        .then((pending) => {
+          if (pending > 0) this.scheduleSync(attempt + 1);
+        })
+        .catch(() => this.scheduleSync(attempt + 1));
+    }, REPLAY_DELAYS_MS[attempt]);
+  }
+
+  /** Drop a replay scheduled by scheduleSync(), if any. */
+  cancelScheduledSync(): void {
+    if (this.replayTimer !== null) {
+      clearTimeout(this.replayTimer);
+      this.replayTimer = null;
+    }
   }
 
   /** Subscribe to sync status changes. Returns an unsubscribe function. */
@@ -95,41 +155,44 @@ class SyncManager {
   async syncNow(): Promise<{ synced: number; failed: number }> {
     if (this.isSyncing) return { synced: 0, failed: 0 };
     this.isSyncing = true;
-
-    const actions = await getPendingOfflineActions();
-    if (actions.length === 0) {
-      this.isSyncing = false;
-      return { synced: 0, failed: 0 };
-    }
-
-    let synced = 0;
-    let failed = 0;
-
-    this.emit({ state: 'syncing', current: 0, total: actions.length });
-
-    for (let i = 0; i < actions.length; i++) {
-      const action = actions[i];
-      this.emit({ state: 'syncing', current: i + 1, total: actions.length });
-
-      const success = await this.processAction(action);
-      if (success) {
-        synced++;
-      } else {
-        failed++;
+    // Released whatever happens: an IndexedDB error must not wedge the queue
+    // shut for the rest of the session.
+    try {
+      const actions = await getPendingOfflineActions();
+      if (actions.length === 0) {
+        return { synced: 0, failed: 0 };
       }
+
+      let synced = 0;
+      let failed = 0;
+
+      this.emit({ state: 'syncing', current: 0, total: actions.length });
+
+      for (let i = 0; i < actions.length; i++) {
+        const action = actions[i];
+        this.emit({ state: 'syncing', current: i + 1, total: actions.length });
+
+        const success = await this.processAction(action);
+        if (success) {
+          synced++;
+        } else {
+          failed++;
+        }
+      }
+
+      // Clean up synced actions
+      await clearSyncedActions();
+
+      if (failed > 0) {
+        this.emit({ state: 'error', message: `${failed} actions failed`, synced, failed });
+      } else {
+        this.emit({ state: 'complete', synced });
+      }
+
+      return { synced, failed };
+    } finally {
+      this.isSyncing = false;
     }
-
-    // Clean up synced actions
-    await clearSyncedActions();
-
-    if (failed > 0) {
-      this.emit({ state: 'error', message: `${failed} actions failed`, synced, failed });
-    } else {
-      this.emit({ state: 'complete', synced });
-    }
-
-    this.isSyncing = false;
-    return { synced, failed };
   }
 
   /**

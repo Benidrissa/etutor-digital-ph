@@ -8,10 +8,14 @@
  * exactly as it is offline, instead of being dropped. A 4xx is the server
  * refusing the completion: replaying it would only fail again, so it is
  * reported and nothing is queued.
+ *
+ * Offline, the queue is replayed on the next `online` event. A completion
+ * queued while the device still looked online gets no such event, so it asks
+ * the sync manager for a replay on a short backoff instead.
  */
 
 import { apiFetch } from '@/lib/api';
-import { addOfflineAction } from '@/lib/offline/db';
+import { addOfflineAction, requestOfflineReplay } from '@/lib/offline/db';
 
 export type LessonCompletion = 'recorded' | 'queued';
 
@@ -64,7 +68,9 @@ export async function completeLessonUnit(
     });
     return 'recorded';
   } catch (err) {
-    if (isTransientFailure(err)) return queueCompletion(moduleId, unitId);
-    throw err;
+    if (!isTransientFailure(err)) throw err;
+    const queued = await queueCompletion(moduleId, unitId);
+    requestOfflineReplay();
+    return queued;
   }
 }

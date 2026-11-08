@@ -5,7 +5,8 @@
  * so the lesson viewer is the only place left to make it stick. On 2G the
  * completion POST can die with `navigator.onLine` still true; it used to be
  * dropped for good. It is now queued for background sync, exactly once, and
- * the unit shows as completed — but a 4xx is not queued.
+ * the unit shows as completed — but a 4xx is not queued. As no `online` event
+ * follows, the sync manager is asked to replay the queue on its own.
  */
 
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -14,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError, apiFetch, getModuleDetailWithProgress } from "@/lib/api";
 import { loadLesson } from "@/lib/offline/content-loader";
-import { addOfflineAction } from "@/lib/offline/db";
+import { addOfflineAction, REPLAY_REQUESTED_EVENT } from "@/lib/offline/db";
 import frMessages from "@/messages/fr.json";
 
 import { LessonViewer } from "./lesson-viewer";
@@ -69,6 +70,10 @@ const apiFetchMock = vi.mocked(apiFetch);
 const loadLessonMock = vi.mocked(loadLesson);
 const addOfflineActionMock = vi.mocked(addOfflineAction);
 
+// A completion queued while online asks the sync manager for a replay; what
+// the manager does with it is covered by lib/offline/sync-manager.test.ts.
+const replayRequested = vi.fn();
+
 const lesson = {
   id: "lesson-1",
   module_id: "mod-1",
@@ -100,6 +105,8 @@ beforeEach(() => {
   apiFetchMock.mockReset();
   addOfflineActionMock.mockReset();
   addOfflineActionMock.mockResolvedValue(1);
+  replayRequested.mockClear();
+  window.addEventListener(REPLAY_REQUESTED_EVENT, replayRequested);
   vi.mocked(getModuleDetailWithProgress).mockResolvedValue(
     { units: [] } as unknown as Awaited<ReturnType<typeof getModuleDetailWithProgress>>,
   );
@@ -112,6 +119,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  window.removeEventListener(REPLAY_REQUESTED_EVENT, replayRequested);
   window.localStorage.clear();
   vi.restoreAllMocks();
 });
@@ -129,6 +137,7 @@ describe("LessonViewer — story completion", () => {
     expect(await screen.findByRole("button", { name: "Terminé" })).toBeDisabled();
     expect(completePosts()).toHaveLength(1);
     expect(addOfflineActionMock).not.toHaveBeenCalled();
+    expect(replayRequested).not.toHaveBeenCalled();
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
@@ -151,6 +160,8 @@ describe("LessonViewer — story completion", () => {
     });
     expect(onComplete).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    // No `online` event will come: the device never went offline.
+    expect(replayRequested).toHaveBeenCalledTimes(1);
   });
 
   it("queues it on a server error too", async () => {
@@ -179,6 +190,7 @@ describe("LessonViewer — story completion", () => {
     );
     await act(async () => {});
     expect(addOfflineActionMock).not.toHaveBeenCalled();
+    expect(replayRequested).not.toHaveBeenCalled();
     expect(onComplete).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Marquer comme Terminé" })).toBeEnabled(),
