@@ -43,13 +43,22 @@ def _make_session_factory(settings):
     return engine, factory
 
 
-async def _cached_unit_story(session, module_unit_id: uuid.UUID, language: str) -> dict | None:
-    """The unit's story document, if one is cached, published and fresh."""
+async def _cached_unit_story(
+    session, module_unit_id: uuid.UUID, language: str, unit_type: str | None = None
+) -> dict | None:
+    """The unit's story document, if it is a lesson unit and its story is ready.
+
+    Ready means cached, published and fresh. Quiz, case-study and scenario
+    units have no story mode, so they are not even looked up.
+    """
     from app.domain.services.story_from_lesson_service import (
         find_unit_story,
+        is_lesson_unit,
         story_sources_are_fresh,
     )
 
+    if not is_lesson_unit(unit_type):
+        return None
     record = await find_unit_story(session, module_unit_id, language)
     if record is None or not record.is_valid or record.status != "published":
         return None
@@ -234,11 +243,11 @@ def generate_course_bundle_task(self, bundle_id: str) -> dict:
                             errors.append(err)
                             logger.warning("bundle_task.lesson_failed", error=err)
 
-                        # Story mode — any unit, but only a story that is already
-                        # cached, valid and in step with its lesson: the bundle
-                        # never pays for generating one.
+                        # Story mode — lesson units only, and only a story that is
+                        # already cached, valid and in step with its lesson: the
+                        # bundle never pays for generating one.
                         try:
-                            story = await _cached_unit_story(session, unit.id, lang)
+                            story = await _cached_unit_story(session, unit.id, lang, unit.unit_type)
                             if story is not None:
                                 zip_files.append(
                                     (

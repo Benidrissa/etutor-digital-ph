@@ -2,15 +2,15 @@
 
 The database, the generation service and Celery are mocked: these pin the
 HTTP contract (200 story / 202 generating envelope / 409 story_unavailable /
-404 when the feature is off), the access gate, route ordering against
-``/{slug}``, and the dispatch dedup that keeps concurrent first views from
-paying for two generations.
+404 when the feature is off, for a non-lesson unit, or with generate=false and
+nothing cached), the access gate, route ordering against ``/{slug}``, that a
+lesson story is never served by slug to a learner, and the dispatch dedup that
+keeps concurrent first views from paying for two generations.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -76,7 +76,9 @@ def mocks():
     """Patch everything the handler calls; each test sets the return values."""
     with (
         patch.object(api, "story_mode_enabled", return_value=True) as enabled,
-        patch.object(api, "_resolve_unit", AsyncMock(return_value=(MODULE_ID, UNIT_ID))) as unit,
+        patch.object(
+            api, "_resolve_unit", AsyncMock(return_value=(MODULE_ID, UNIT_ID, "lesson"))
+        ) as unit,
         patch.object(api, "find_unit_story", AsyncMock(return_value=None)) as find,
         patch.object(api, "story_sources_are_fresh", AsyncMock(return_value=True)) as fresh,
         patch.object(
@@ -166,6 +168,60 @@ class TestUnitStory:
         assert resp.status_code == 202
         assert mocks.dispatch.await_args.kwargs["force_regenerate"] is True
 
+    @pytest.mark.parametrize("unit_type", ["quiz", "case-study", "scenario"])
+    async def test_non_lesson_unit_is_404_and_nothing_is_generated(
+        self, as_role, client, mocks, unit_type
+    ):
+        as_role()
+        mocks.unit.return_value = (MODULE_ID, UNIT_ID, unit_type)
+        resp = await client.get(URL)
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["error"] == "not_a_lesson"
+        mocks.find.assert_not_awaited()
+        mocks.dispatch.assert_not_awaited()
+
+    @pytest.mark.parametrize("unit_type", ["lesson", None])
+    async def test_lesson_and_untyped_units_have_a_story(self, as_role, client, mocks, unit_type):
+        as_role()
+        mocks.unit.return_value = (MODULE_ID, UNIT_ID, unit_type)
+        assert (await client.get(URL)).status_code == 202
+
+    async def test_cached_only_with_nothing_cached_is_404_and_dispatches_nothing(
+        self, as_role, client, mocks
+    ):
+        as_role()
+        resp = await client.get(URL, params={"generate": "false"})
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["error"] == "story_not_cached"
+        mocks.dispatch.assert_not_awaited()
+
+    async def test_cached_only_with_a_stale_story_is_404_and_dispatches_nothing(
+        self, as_role, client, mocks
+    ):
+        as_role("admin")
+        mocks.find.return_value = _record()
+        mocks.fresh.return_value = False
+        resp = await client.get(URL, params={"generate": "false", "force_regenerate": "true"})
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["error"] == "story_not_cached"
+        mocks.dispatch.assert_not_awaited()
+
+    async def test_cached_only_still_serves_a_fresh_story(self, as_role, client, mocks):
+        as_role()
+        mocks.find.return_value = _record()
+        resp = await client.get(URL, params={"generate": "false"})
+        assert resp.status_code == 200
+        assert resp.json() == STORY
+        mocks.dispatch.assert_not_awaited()
+
+    async def test_cached_only_reports_an_unavailable_story_as_409(self, as_role, client, mocks):
+        as_role()
+        mocks.find.return_value = _record(is_valid=False, status="draft")
+        resp = await client.get(URL, params={"generate": "false"})
+        assert resp.status_code == 409
+        assert resp.json()["detail"]["error"] == "story_unavailable"
+        mocks.dispatch.assert_not_awaited()
+
     async def test_unsupported_language_is_422(self, as_role, client, mocks):
         as_role()
         assert (await client.get(URL, params={"language": "de"})).status_code == 422
@@ -193,6 +249,59 @@ class TestUnitStory:
         route = next(r for r in api.router.routes if r.path.endswith("{unit_id}"))
         gates = [d.call for d in route.dependant.dependencies]
         assert require_subscription_or_first_unit in gates
+
+
+class _OneRow:
+    """A DB session stub whose one query returns ``record``."""
+
+    def __init__(self, record) -> None:
+        self.record = record
+
+    async def execute(self, statement):
+        return SimpleNamespace(scalar_one_or_none=lambda: self.record)
+
+
+def _stored(module_unit_id, status: str = "published"):
+    return SimpleNamespace(
+        slug=f"lesson-{UNIT_ID.hex}-fr" if module_unit_id else "igcse-maths-u1-w04",
+        status=status,
+        module_unit_id=module_unit_id,
+        content=dict(STORY),
+    )
+
+
+class TestSlugRoute:
+    """``GET /story-courses/{slug}`` never hands a learner a lesson story."""
+
+    async def _get(self, client, record, role: str):
+        async def db():
+            yield _OneRow(record)
+
+        app.dependency_overrides[get_current_user] = lambda: _user(role)
+        app.dependency_overrides[get_db] = db
+        app.dependency_overrides[get_db_session] = db
+        try:
+            return await client.get(f"/api/v1/story-courses/{record.slug}")
+        finally:
+            app.dependency_overrides.clear()
+
+    async def test_learner_cannot_read_a_published_lesson_story_by_slug(self, client):
+        resp = await self._get(client, _stored(UNIT_ID), "user")
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["error"] == "story_course_not_found"
+
+    @pytest.mark.parametrize("role", ["admin", "sub_admin"])
+    async def test_admin_can_read_a_lesson_story_but_never_from_a_shared_cache(self, client, role):
+        resp = await self._get(client, _stored(UNIT_ID), role)
+        assert resp.status_code == 200
+        assert resp.json() == STORY
+        assert resp.headers["cache-control"] == "private, no-store"
+        assert "public" not in resp.headers["cache-control"]
+
+    async def test_learner_still_reads_a_published_authored_week(self, client):
+        resp = await self._get(client, _stored(None), "user")
+        assert resp.status_code == 200
+        assert resp.headers["cache-control"] == "public, max-age=3600"
 
 
 class TestCatalog:
@@ -229,6 +338,7 @@ def redis():
     client.get = AsyncMock(return_value=None)
     client.set = AsyncMock(return_value=True)
     client.delete = AsyncMock(return_value=1)
+    client.eval = AsyncMock(return_value=1)
     with patch("app.infrastructure.cache.redis.redis_client", client):
         yield client
 
@@ -255,20 +365,29 @@ def _dispatch():
     )
 
 
+def _state(state: str):
+    return patch.object(api, "AsyncResult", return_value=SimpleNamespace(state=state))
+
+
+KEY = f"story_dispatch:{UNIT_ID}:fr"
+
+
 class TestDispatch:
     async def test_first_view_claims_the_key_and_dispatches(self, redis, celery):
         task_id = await _dispatch()
         key, value = redis.set.await_args.args
-        assert key == f"story_dispatch:{UNIT_ID}:fr" and value == task_id
+        assert key == KEY and value == task_id
         assert redis.set.await_args.kwargs == {"nx": True, "ex": api._STORY_DISPATCH_TTL_S}
         celery.task.apply_async.assert_called_once_with(
-            args=[str(MODULE_ID), "1.2", "fr", "CI", 1, False], task_id=task_id
+            args=[str(MODULE_ID), "1.2", "fr", "CI", 1, False],
+            kwargs={"dedup_key": KEY},
+            task_id=task_id,
         )
         celery.marked.assert_awaited_once_with(task_id)
 
     async def test_concurrent_view_joins_the_running_task(self, redis, celery):
         redis.get.return_value = "running-task"
-        with patch.object(api, "AsyncResult", return_value=SimpleNamespace(state="STARTED")):
+        with _state("STARTED"):
             assert await _dispatch() == "running-task"
         celery.task.apply_async.assert_not_called()
 
@@ -278,33 +397,54 @@ class TestDispatch:
         assert await _dispatch() == "winner-task"
         celery.task.apply_async.assert_not_called()
 
-    async def test_finished_task_no_longer_blocks_a_new_one(self, redis, celery):
+    @pytest.mark.parametrize("state", ["SUCCESS", "FAILURE", "REVOKED"])
+    async def test_finished_task_is_replaced_with_a_compare_and_delete(self, redis, celery, state):
         redis.get.return_value = "old-task"
-        with patch.object(api, "AsyncResult", return_value=SimpleNamespace(state="SUCCESS")):
+        with _state(state):
             task_id = await _dispatch()
         assert task_id != "old-task"
-        redis.delete.assert_awaited_once()
+        # Only the key still holding "old-task" may go: never a plain DELETE.
+        redis.delete.assert_not_awaited()
+        script, numkeys, key, value = redis.eval.await_args.args
+        assert 'redis.call("get", KEYS[1]) == ARGV[1]' in script
+        assert (numkeys, key, value) == (1, KEY, "old-task")
         celery.task.apply_async.assert_called_once()
 
-    async def test_task_that_never_started_is_replaced(self, redis, celery):
-        redis.get.return_value = "lost-task"
-        stale = datetime.now(tz=UTC) - timedelta(seconds=api.TASK_STALL_THRESHOLD_S + 5)
-        with (
-            patch.object(api, "AsyncResult", return_value=SimpleNamespace(state="PENDING")),
-            patch.object(api, "task_dispatched_at", AsyncMock(return_value=stale)),
-        ):
-            task_id = await _dispatch()
-        assert task_id != "lost-task"
-        celery.task.apply_async.assert_called_once()
-
-    async def test_queued_task_is_joined(self, redis, celery):
+    async def test_queued_task_past_the_stall_threshold_is_still_joined(self, redis, celery):
+        """FC-5(a): a long queue is not a dead task while its key lives."""
         redis.get.return_value = "queued-task"
-        with (
-            patch.object(api, "AsyncResult", return_value=SimpleNamespace(state="PENDING")),
-            patch.object(api, "task_dispatched_at", AsyncMock(return_value=datetime.now(tz=UTC))),
-        ):
+        marker = AsyncMock()
+        with _state("PENDING"), patch("app.api.v1._task_status.dispatched_at", marker):
             assert await _dispatch() == "queued-task"
         celery.task.apply_async.assert_not_called()
+        marker.assert_not_awaited()
+        redis.delete.assert_not_awaited()
+        redis.eval.assert_not_awaited()
+
+    async def test_just_claimed_task_without_a_dispatch_marker_is_joined(self, redis, celery):
+        """FC-5(b): between SET NX and the dispatch marker the key is PENDING, unmarked."""
+        redis.get.return_value = "just-claimed"
+        with _state("PENDING"):
+            assert await _dispatch() == "just-claimed"
+        celery.task.apply_async.assert_not_called()
+        redis.delete.assert_not_awaited()
+        redis.eval.assert_not_awaited()
+
+    async def test_key_released_between_set_and_get_is_claimed_again(self, redis, celery):
+        redis.get.return_value = None
+        redis.set.side_effect = [False, True]
+        task_id = await _dispatch()
+        assert redis.set.await_count == 2
+        celery.task.apply_async.assert_called_once()
+        assert celery.task.apply_async.call_args.kwargs["task_id"] == task_id
+
+    async def test_failed_dispatch_releases_only_its_own_key(self, redis, celery):
+        celery.task.apply_async.side_effect = ConnectionError("broker down")
+        with pytest.raises(ConnectionError):
+            await _dispatch()
+        task_id = redis.set.await_args.args[1]
+        assert redis.eval.await_args.args[1:] == (1, KEY, task_id)
+        redis.delete.assert_not_awaited()
 
     async def test_without_redis_it_fails_open(self, redis, celery):
         redis.get.side_effect = ConnectionError("redis down")
@@ -313,18 +453,26 @@ class TestDispatch:
         assert celery.task.apply_async.call_args.kwargs["task_id"] == task_id
 
 
-def test_story_task_is_registered_with_the_lesson_task_limits():
+def test_story_task_limits_fit_a_lesson_plus_three_story_calls():
+    from app.domain.services.story_from_lesson_service import MAX_REPAIR_CALLS
     from app.tasks.content_generation import (
-        POLL_HARD_LIMIT,
         POLL_SOFT_LIMIT,
+        STORY_HARD_LIMIT,
+        STORY_SOFT_LIMIT,
         generate_story_task,
     )
 
     assert generate_story_task.name == "app.tasks.content_generation.generate_story_task"
-    assert generate_story_task.soft_time_limit == POLL_SOFT_LIMIT
-    assert generate_story_task.time_limit == POLL_HARD_LIMIT
+    assert generate_story_task.soft_time_limit == STORY_SOFT_LIMIT
+    assert generate_story_task.time_limit == STORY_HARD_LIMIT
+    assert STORY_HARD_LIMIT > STORY_SOFT_LIMIT
+    # The lesson alone may take the lesson task's whole budget; then the spine
+    # calls (1 + MAX_REPAIR_CALLS) still need room.
+    assert STORY_SOFT_LIMIT >= POLL_SOFT_LIMIT + (1 + MAX_REPAIR_CALLS) * 150
     assert generate_story_task.rate_limit == "5/m"
     assert not getattr(generate_story_task, "autoretry_for", ())
+    # The dedup key outlives the task.
+    assert api._STORY_DISPATCH_TTL_S > STORY_HARD_LIMIT
 
 
 def test_story_task_reports_failure_instead_of_raising():
@@ -334,9 +482,56 @@ def test_story_task_reports_failure_instead_of_raising():
         coroutine.close()  # never started; close it so it is not left unawaited
         raise RuntimeError("model down")
 
-    with patch("asyncio.run", side_effect=failing_run):
+    with (
+        patch("asyncio.run", side_effect=failing_run),
+        patch.object(content_generation, "_release_story_dispatch") as release,
+    ):
         result = content_generation.generate_story_task.run(str(MODULE_ID), "1.2", "fr")
     assert result == {"status": "failed", "error": "model down"}
+    release.assert_called_once()
+
+
+def test_story_task_on_its_soft_time_limit_fails_and_releases_its_key():
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    from app.tasks import content_generation
+
+    def timed_out(coroutine):
+        coroutine.close()
+        raise SoftTimeLimitExceeded()
+
+    task = content_generation.generate_story_task
+    with (
+        patch("asyncio.run", side_effect=timed_out),
+        patch.object(content_generation, "_release_story_dispatch") as release,
+    ):
+        task.push_request(id="task-42")
+        try:
+            result = task.run(str(MODULE_ID), "1.2", "fr", dedup_key=KEY)
+        finally:
+            task.pop_request()
+    assert result == {"status": "failed", "error": "time_limit_exceeded"}
+    release.assert_called_once_with(KEY, "task-42")
+
+
+def test_task_key_release_is_a_compare_and_delete_on_its_own_id():
+    from app.tasks import content_generation
+
+    client = MagicMock()
+    with patch("redis.Redis.from_url", return_value=client):
+        content_generation._release_story_dispatch(KEY, "task-42")
+    script, numkeys, key, value = client.eval.call_args.args
+    assert "ARGV[1]" in script and (numkeys, key, value) == (1, KEY, "task-42")
+    client.delete.assert_not_called()
+    client.close.assert_called_once()
+
+
+def test_task_key_release_never_raises():
+    from app.tasks import content_generation
+
+    with patch("redis.Redis.from_url", side_effect=ConnectionError("redis down")):
+        content_generation._release_story_dispatch(KEY, "task-42")
+    content_generation._release_story_dispatch(None, "task-42")  # nothing claimed
 
 
 # --------------------------------------------------------------------------
@@ -361,6 +556,15 @@ class TestBundleStory:
 
         svc.find.return_value = SimpleNamespace(is_valid=True, status="published", content=STORY)
         assert await _cached_unit_story(object(), UNIT_ID, "fr") == STORY
+        assert await _cached_unit_story(object(), UNIT_ID, "fr", "lesson") == STORY
+
+    @pytest.mark.parametrize("unit_type", ["quiz", "case-study", "scenario"])
+    async def test_non_lesson_units_are_not_looked_up(self, svc, unit_type):
+        from app.tasks.course_bundle import _cached_unit_story
+
+        svc.find.return_value = SimpleNamespace(is_valid=True, status="published", content=STORY)
+        assert await _cached_unit_story(object(), UNIT_ID, "fr", unit_type) is None
+        svc.find.assert_not_awaited()
 
     @pytest.mark.parametrize(
         ("record", "fresh"),
