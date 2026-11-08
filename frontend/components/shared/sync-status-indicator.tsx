@@ -31,6 +31,21 @@ export function SyncStatusIndicator() {
     );
   }
 
+  // Sync complete, but some quiz answers were for a quiz that has since been
+  // regenerated: they could not be graded, so the learner must retake it.
+  if (status.state === 'complete' && (status.quizChanged ?? 0) > 0) {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        className="flex items-center justify-center gap-2 bg-amber-50 border-b border-amber-100 px-4 py-1.5 text-xs font-medium text-amber-800"
+      >
+        <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <span>{t('syncQuizChanged', { count: status.quizChanged ?? 0 })}</span>
+      </div>
+    );
+  }
+
   // Sync complete
   if (status.state === 'complete') {
     return (

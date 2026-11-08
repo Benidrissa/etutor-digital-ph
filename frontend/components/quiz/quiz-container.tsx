@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { Loader2, AlertTriangle, Play, RefreshCw } from 'lucide-react';
+import { Loader2, AlertTriangle, Info, Play, RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -62,6 +62,8 @@ export function QuizContainer({
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [result, setResult] = useState<QuizAttemptResponse | null>(null);
   const [error, setError] = useState<string>('');
+  // Shown on the start screen after the quiz changed under the learner.
+  const [notice, setNotice] = useState<string>('');
   const [subscriptionRequired, setSubscriptionRequired] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   // forceRegenerate is tracked via forceRegenerateRef (below) — not state — so
@@ -261,6 +263,7 @@ export function QuizContainer({
   }, [moduleId, unitId, language, level, retryCount, isHydrated]);
   
   const handleStartQuiz = () => {
+    setNotice('');
     setState('in-progress');
     track('quiz_started', {
       module_id: moduleId,
@@ -283,6 +286,18 @@ export function QuizContainer({
     onError?.(errorMessage);
   };
   
+  // The quiz was regenerated while the learner was answering it: reload the
+  // current version and say why they are back at the start.
+  const handleQuizChanged = () => {
+    setNotice(t('quizChanged'));
+    setResult(null);
+    setQuiz(null);
+    // Leave 'in-progress' first: the load effect ignores runs while answering.
+    stateRef.current = 'loading';
+    setState('loading');
+    setRetryCount(prev => prev + 1);
+  };
+
   const handleRetry = () => {
     setResult(null);
     setQuiz(null);
@@ -392,6 +407,15 @@ export function QuizContainer({
   if (state === 'ready' && quiz) {
     return (
       <div className="max-w-4xl mx-auto p-4 space-y-6">
+        {notice && (
+          <div
+            role="status"
+            className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"
+          >
+            <Info className="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
+            <span>{notice}</span>
+          </div>
+        )}
         <Card>
           <CardHeader className="text-center">
             <CardTitle className="text-2xl text-stone-900">
@@ -499,6 +523,7 @@ export function QuizContainer({
         quiz={quiz}
         onComplete={handleQuizComplete}
         onError={handleQuizError}
+        onQuizChanged={handleQuizChanged}
       />
     );
   }
