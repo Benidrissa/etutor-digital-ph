@@ -512,6 +512,83 @@ class TestFrenchNumberTypography:
         ]
         assert mcq.ANSWER_LEAK not in codes(issues)
 
+    @pytest.mark.parametrize("space", FRENCH_SPACES, ids=SPACE_IDS)
+    @pytest.mark.parametrize(
+        ("in_stem", "in_option"),
+        [
+            ("12{s}500", "12500"),
+            ("12500", "12{s}500"),
+            ("1{s}000{s}000", "1000000"),
+            ("1000000", "1{s}000{s}000"),
+        ],
+        ids=["grouped-stem", "grouped-option", "millions-stem", "millions-option"],
+    )
+    def test_a_grouped_number_and_its_ungrouped_spelling_are_one_value(
+        self, space, in_stem, in_option
+    ):
+        """option_key already reads "12 500" and "12500" as one option; the
+        leak check read them as two values and missed the answer."""
+        stem = f"Le district compte {in_stem.format(s=space)} cas. Combien de cas ?"
+        options = [in_option.format(s=space), "10 000", "15 000", "20 000"]
+        issues = mcq.check_quiz_question(q(question=stem, options=options, correct_answer=0))
+        assert [i.path for i in issues if i.code == mcq.ANSWER_LEAK] == ["questions[q1].question"]
+
+    def test_a_year_before_a_number_is_not_a_digit_group(self):
+        """ "2024 500" is a year and a count, not 2 024 500: the count leaks."""
+        issues = mcq.check_quiz_question(
+            q(
+                question="En 2024 500 enfants ont été vaccinés. Combien d'enfants vaccinés ?",
+                options=["500", "50", "5 000", "250"],
+                correct_answer=0,
+            )
+        )
+        assert mcq.ANSWER_LEAK in errors(issues)
+
+
+#: Hyphens other than the hyphen-minus: the hyphen (U+2010), the non-breaking
+#: hyphen (U+2011) word processors put in "COVID‑19", and the figure dash.
+HYPHENS = ["‐", "‑", "‒"]
+HYPHEN_IDS = ["hyphen", "non-breaking", "figure-dash"]
+
+
+class TestHyphens:
+    """ "COVID‑19" with a non-breaking hyphen is the option "COVID-19": the
+    leak check missed it and the duplicate check let both stand."""
+
+    @pytest.mark.parametrize("hyphen", HYPHENS, ids=HYPHEN_IDS)
+    @pytest.mark.parametrize("hyphen_in", ["stem", "option"])
+    def test_the_answer_is_found_whichever_hyphen(self, hyphen, hyphen_in):
+        stem_name = "COVID{h}19" if hyphen_in == "stem" else "COVID-19"
+        option = "COVID{h}19" if hyphen_in == "option" else "COVID-19"
+        issues = mcq.check_quiz_question(
+            q(
+                question=f"{stem_name.format(h=hyphen)} is caused by SARS-CoV-2. "
+                "Which disease does SARS-CoV-2 cause?",
+                options=[option.format(h=hyphen), "Influenza", "Measles", "Ebola"],
+                correct_answer=0,
+            )
+        )
+        assert [i.path for i in issues if i.code == mcq.ANSWER_LEAK] == ["questions[q1].question"]
+
+    @pytest.mark.parametrize("hyphen", HYPHENS, ids=HYPHEN_IDS)
+    def test_options_differing_only_by_hyphen_are_duplicates(self, hyphen):
+        assert mcq.option_key(f"COVID{hyphen}19") == mcq.option_key("COVID-19")
+        issues = mcq.check_quiz_question(
+            q(options=[f"COVID{hyphen}19", "COVID-19", "Influenza", "Ebola"], correct_answer=0)
+        )
+        assert mcq.DUPLICATE_OPTIONS in errors(issues)
+
+    @pytest.mark.parametrize("hyphen", HYPHENS, ids=HYPHEN_IDS)
+    def test_the_end_of_a_range_is_found_whichever_hyphen(self, hyphen):
+        issues = mcq.check_quiz_question(
+            q(
+                question=f"The SDGs run 2015{hyphen}2030. By which year should targets be met?",
+                options=["2030", "2025", "2035", "2050"],
+                correct_answer=0,
+            )
+        )
+        assert mcq.ANSWER_LEAK in errors(issues)
+
 
 def warnings_at(issues, code) -> list[str]:
     return [i.path for i in issues if i.code == code and i.severity == "warning"]

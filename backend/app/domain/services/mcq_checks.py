@@ -27,10 +27,14 @@ What these checks can and cannot decide:
   "a survey of 50 people" and ``"−12"`` is not found in "12 months". Nor is a
   bare number found inside a larger value: a signed number, a decimal, a
   digit group (``"500"`` in "12,500" or, French style, "12 500"), or a
-  quantity whose unit follows, glued or spaced ("50%", "50 %"). The end of a
-  range is a value of its own, whichever dash joins it: ``"2030"`` is found
-  in "2015-2030" and "2015–2030", a signed ``"-12"`` in neither "5-12" nor
-  "5–12". Answers shorter than :data:`MIN_LEAK_LENGTH` characters once
+  quantity whose unit follows, glued or spaced ("50%", "50 %"). A number
+  grouped with spaces is the same value ungrouped: ``"12 500"`` is found in
+  "12500" and the other way round. The end of a range is a value of its own,
+  whichever dash or hyphen joins it: ``"2030"`` is found in "2015-2030" and
+  "2015–2030", a signed ``"-12"`` in neither "5-12" nor "5–12". Known gap: a
+  decimal comma is not matched against a decimal point (``"3.5 %"`` is not
+  found in "3,5 %"), since "1,500" is 1500 in English and 1.5 in French.
+  Answers shorter than :data:`MIN_LEAK_LENGTH` characters once
   trimmed are not leak-checked — a bare ``"12"`` shows up in stems for
   innocent reasons — and that skip is reported as
   :data:`LEAK_UNCHECKED_SHORT_ANSWER` so a clean report is never mistaken for
@@ -187,15 +191,19 @@ _UNIT_SUFFIXES = frozenset("%‰°")
 _NUMBER_SPACES = frozenset(" \u00a0\u202f\u2009")
 
 
-#: Characters written for one another, folded to one spelling: the minus sign
-#: and the en dash of a range ("2015–2030") to the hyphen-minus; curly
-#: quotes, the modifier-letter apostrophe and the acute accent typed for an
-#: apostrophe ("l’OMS", "lʼOMS", "l´OMS") to the straight one, since generated
-#: French mixes them within one quiz.
+#: Characters written for one another, folded to one spelling: the minus sign,
+#: the en dash of a range ("2015–2030"), the hyphen, the non-breaking hyphen
+#: word processors put in "COVID‑19" and the figure dash to the hyphen-minus;
+#: curly quotes, the modifier-letter apostrophe and the acute accent typed for
+#: an apostrophe ("l’OMS", "lʼOMS", "l´OMS") to the straight one, since
+#: generated French mixes them within one quiz.
 _FOLD = str.maketrans(
     {
         MINUS: "-",
         "–": "-",
+        "‐": "-",
+        "‑": "-",
+        "‒": "-",
         "’": "'",
         "‘": "'",
         "ʼ": "'",
@@ -212,15 +220,29 @@ def _normalise(text: Any) -> str:
     return unicodedata.normalize("NFC", str(text)).translate(_FOLD)
 
 
+#: A number written in digit groups ("12 500", "1 000 000"): a group of one to
+#: three digits, then groups of exactly three, each after one number space.
+#: "2024 500" (a year, then a count) is not one: its first group has four.
+_GROUPED_NUMBER_RE = re.compile(
+    "(?<!\\d)\\d{1,3}(?:[" + "".join(sorted(_NUMBER_SPACES)) + "]\\d{3})+(?!\\d)"
+)
+_NUMBER_SPACE_RE = re.compile("[" + "".join(sorted(_NUMBER_SPACES)) + "]")
+
+
+def _join_digit_groups(text: str) -> str:
+    """Write each grouped number without its spaces: "12 500" as "12500"."""
+    return _GROUPED_NUMBER_RE.sub(lambda match: _NUMBER_SPACE_RE.sub("", match.group()), text)
+
+
 def _fold(text: Any) -> str:
-    """:func:`_normalise`, then case-folded (leak matching ignores case)."""
-    return _normalise(text).casefold()
+    """:func:`_normalise`, case-folded (leak matching ignores case), with digit
+    groups joined, so "12 500" and "12500" are one value as in
+    :func:`option_key`, and neither "12" nor "500" is found in it."""
+    return _join_digit_groups(_normalise(text).casefold())
 
 
 _SPACE_RUN_RE = re.compile(r"\s+")
 _ELLIPSIS_RE = re.compile(r"\.{3,}")
-#: A space between digit groups ("12 500"): a digit, then exactly three.
-_DIGIT_GROUP_SPACE_RE = re.compile(r"(?<=\d) (?=\d{3}(?!\d))")
 #: A space next to a symbol ("12,5 %", "2³ × 3²", "Fièvre !", "1, 2").
 _SYMBOL_SPACE_RE = re.compile(r" (?=[^\w\s])|(?<=[^\w\s]) ")
 #: Sentence punctuation trimmed from the end of an option for duplicates. Not
@@ -243,7 +265,7 @@ def option_key(text: Any) -> str:
     """
     key = _SPACE_RUN_RE.sub(" ", _normalise(text)).strip()
     key = _ELLIPSIS_RE.sub("…", key)
-    key = _DIGIT_GROUP_SPACE_RE.sub("", key)
+    key = _join_digit_groups(key)
     key = _SYMBOL_SPACE_RE.sub("", key)
     while key and key[-1] in _SENTENCE_END:
         if key[-1] == "!" and _is_factorial(key):
@@ -279,33 +301,17 @@ def _leak_needle(text: Any) -> list[str]:
     return tokens[start:end]
 
 
-def _digits_before(text: str, index: int) -> int:
-    """How many digits run back from ``text[index - 1]``."""
-    count = 0
-    while index - count > 0 and text[index - count - 1].isdigit():
-        count += 1
-    return count
-
-
-def _digits_from(text: str, index: int) -> int:
-    """How many digits run forward from ``text[index]``."""
-    count = 0
-    while index + count < len(text) and text[index + count].isdigit():
-        count += 1
-    return count
-
-
 def _at_value_boundary(folded: str, start: int, end: int, needle: Sequence[str]) -> bool:
     """Whether ``folded[start:end]`` stands on its own as the needle's value.
 
-    Token matching already keeps ``"12"`` out of ``"120"``; this keeps a number
-    out of a longer number or quantity around it: ``"12"`` is not found in
-    ``"-12"``, ``"3.12"``, ``"12.5"``, ``"12%"`` or ``"12 %"``, ``"500"`` is not
-    found in ``"12 500"`` (a space between digit groups, French style) any
-    more than in ``"12,500"``, and a needle that starts with a sign
-    (``"-12"``) is not found in the range ``"5-12"``. A dash after a digit
-    joins a range rather than signs a number, so ``"2030"`` is found at the
-    end of ``"2015-2030"`` (and of ``"2015–2030"``, folded to the same).
+    Token matching already keeps ``"12"`` out of ``"120"`` and, digit groups
+    being joined by :func:`_fold`, ``"500"`` out of ``"12 500"``; this keeps a
+    number out of a longer number or quantity around it: ``"12"`` is not
+    found in ``"-12"``, ``"3.12"``, ``"12.5"``, ``"12%"`` or ``"12 %"``,
+    ``"500"`` is not found in ``"12,500"``, and a needle that starts with a
+    sign (``"-12"``) is not found in the range ``"5-12"``. A dash after a
+    digit joins a range rather than signs a number, so ``"2030"`` is found at
+    the end of ``"2015-2030"`` (and of ``"2015–2030"``, folded to the same).
     """
     first, last = needle[0], needle[-1]
     before = folded[start - 1] if start > 0 else ""
@@ -317,14 +323,6 @@ def _at_value_boundary(folded: str, start: int, end: int, needle: Sequence[str])
             return False
         if before in _DECIMAL_SEPARATORS and start >= 2 and folded[start - 2].isdigit():
             return False
-        # "12 500": a three-digit group after a group of one to three digits and
-        # one space is the tail of a larger number.
-        if (
-            before in _NUMBER_SPACES
-            and _digits_from(first, 0) == 3
-            and 1 <= _digits_before(folded, start - 1) <= 3
-        ):
-            return False
     if last[-1].isdigit():
         unit_at = end
         while unit_at < len(folded) and folded[unit_at] in _NUMBER_SPACES:
@@ -332,14 +330,6 @@ def _at_value_boundary(folded: str, start: int, end: int, needle: Sequence[str])
         if unit_at < len(folded) and folded[unit_at] in _UNIT_SUFFIXES:
             return False
         if after in _DECIMAL_SEPARATORS and end + 1 < len(folded) and folded[end + 1].isdigit():
-            return False
-        # "12 500": a group of one to three digits followed by one space and a
-        # group of exactly three digits is the head of a larger number.
-        if (
-            after in _NUMBER_SPACES
-            and 1 <= _digits_before(last, len(last)) <= 3
-            and _digits_from(folded, end + 1) == 3
-        ):
             return False
     return True
 
@@ -564,12 +554,13 @@ def _names_a_distractor(
 def check_answer_leak(view: McqView, *, min_length: int = MIN_LEAK_LENGTH) -> list[ValidationIssue]:
     """Report each text a learner reads before answering that names the correct option.
 
-    Matching is on whole words and symbols (case, accents composition, spacing
-    and the minus sign normalised), so ``"water"`` does not match ``"seawater"``
-    but ``"2³ × 3²"`` matches ``"2³×3²"``. Only sentence punctuation and quotes
-    are trimmed from the option, and ``min_length`` applies to what is left,
-    so ``"50%"`` is checked as ``50%`` (never as ``50``) and ``"12."`` is a
-    short answer.
+    Matching is on whole words and symbols (case, accents composition, spacing,
+    digit groups, dashes and apostrophes normalised), so ``"water"`` does not
+    match ``"seawater"`` but ``"2³ × 3²"`` matches ``"2³×3²"``, ``"12 500"``
+    matches ``"12500"`` and ``"COVID‑19"`` matches ``"COVID-19"``. Only
+    sentence punctuation and quotes are trimmed from the option, and
+    ``min_length`` applies to what is left, so ``"50%"`` is checked as
+    ``50%`` (never as ``50``) and ``"12."`` is a short answer.
 
     Each text (the stem, every hint) is judged on its own, and the severity of
     a text that names the correct option is tiered:
