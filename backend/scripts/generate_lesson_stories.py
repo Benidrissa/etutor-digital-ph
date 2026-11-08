@@ -39,6 +39,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import func, or_, select  # noqa: E402
+from sqlalchemy.orm import selectinload  # noqa: E402
 
 from app.ai.prompts.audience import detect_audience  # noqa: E402
 from app.domain.models.content import GeneratedContent  # noqa: E402
@@ -101,10 +102,15 @@ async def resolve_course(session, ref: str) -> Course | None:
 
 
 async def lesson_target(
-    session, course: Course, module_index: int, lesson_index: int
+    session,
+    course: Course,
+    module_index: int,
+    lesson_index: int,
+    module_id: uuid.UUID | None = None,
 ) -> tuple[LessonTarget | None, str]:
-    """The ``lesson_index``-th lesson of the ``module_index``-th module, in
-    teaching order (modules by number, units by order then unit number)."""
+    """The ``lesson_index``-th lesson of the ``module_index``-th module (or of
+    the module ``module_id``), in teaching order: modules by number, units by
+    order then unit number."""
     modules = list(
         (
             await session.execute(
@@ -114,9 +120,14 @@ async def lesson_target(
         .scalars()
         .all()
     )
-    if len(modules) < module_index:
+    if module_id is not None:
+        module = next((m for m in modules if m.id == module_id), None)
+        if module is None:
+            return None, f"module {module_id} is not in the course"
+    elif len(modules) < module_index:
         return None, f"the course has {len(modules)} module(s)"
-    module = modules[module_index - 1]
+    else:
+        module = modules[module_index - 1]
     units = sorted(
         (await session.execute(select(ModuleUnit).where(ModuleUnit.module_id == module.id)))
         .scalars()
@@ -179,6 +190,29 @@ def story_summary(record: StoryCourseRecord | None) -> dict[str, Any]:
         "warnings": [i.get("code") for i in report.get("warnings") or []],
         "updated_at": record.updated_at.isoformat() if record.updated_at else None,
     }
+
+
+def story_excerpt(content: dict[str, Any] | None, limit: int = 8) -> list[str]:
+    """A few lines to judge a story by from a log: its title, chapter titles
+    and question prompts, in the language it teaches in. The learner's name is
+    still the ``{child}`` placeholder in a stored story."""
+    if not isinstance(content, dict):
+        return []
+    language = (content.get("languages") or {}).get("target") or "fr"
+
+    def text(value: Any) -> str:
+        if isinstance(value, dict):
+            value = value.get(language) or next(iter(value.values()), "")
+        return " ".join(str(value or "").split())[:160]
+
+    lines = [f"title: {text(content.get('title'))}"]
+    for chapter in (content.get("chapters") or [])[:limit]:
+        if isinstance(chapter, dict):
+            lines.append(f"chapter: {text(chapter.get('title'))}")
+    for question in (content.get("questions") or [])[:limit]:
+        if isinstance(question, dict):
+            lines.append(f"{question.get('id', '?')}: {text(question.get('prompt'))}")
+    return lines
 
 
 def print_summary(prefix: str, summary: dict[str, Any]) -> None:
@@ -264,6 +298,8 @@ class GenerationSpec:
     module_index: int
     lesson_index: int
     languages: tuple[str, ...]
+    #: Set when a request names the module itself; ``module_index`` is unused then.
+    module_id: uuid.UUID | None = None
 
 
 async def run_generation(
@@ -284,11 +320,13 @@ async def run_generation(
     async with session_factory() as session:
         for spec in specs:
             course = spec.course
-            target, why = await lesson_target(session, course, spec.module_index, spec.lesson_index)
+            target, why = await lesson_target(
+                session, course, spec.module_index, spec.lesson_index, spec.module_id
+            )
             if target is None:
                 print(
                     f"Course {course.slug}: no lesson {spec.lesson_index} in module "
-                    f"{spec.module_index}: {why}"
+                    f"{spec.module_id or spec.module_index}: {why}"
                 )
                 failed = True
                 continue
@@ -321,6 +359,8 @@ async def run_generation(
             record = await find_unit_story(session, target.unit.id, language)
             summary = story_summary(record)
             print_summary("  ", summary)
+            for line in story_excerpt(record.content if record is not None else None):
+                print(f"    {line}")
             ok = (
                 state == "SUCCESS"
                 and summary.get("is_valid")
@@ -365,7 +405,8 @@ def load_requests(path: str) -> list[dict[str, Any]]:
     ``kids_only`` (default false), ``include_drafts`` (default false),
     ``max_courses`` (default 1: a query matching more courses is refused, so a
     vague query never pays for stories nobody asked for), ``module_index`` and
-    ``lesson_index`` (default 1) and ``languages`` (default fr and en).
+    ``lesson_index`` (default 1) and ``languages`` (default fr and en). Or it
+    names one module by ``module_id`` (a UUID), whatever its course's status.
     """
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     requests = data.get("requests") if isinstance(data, dict) else None
@@ -373,14 +414,23 @@ def load_requests(path: str) -> list[dict[str, Any]]:
         raise ValueError(f"{path}: no 'requests' list")
     checked = []
     for index, entry in enumerate(requests):
-        if not isinstance(entry, dict) or not str(entry.get("query") or "").strip():
-            raise ValueError(f"{path}: requests[{index}] needs a 'query'")
+        if not isinstance(entry, dict) or not (
+            str(entry.get("query") or "").strip() or entry.get("module_id")
+        ):
+            raise ValueError(f"{path}: requests[{index}] needs a 'query' or a 'module_id'")
+        module_id = None
+        if entry.get("module_id"):
+            try:
+                module_id = uuid.UUID(str(entry["module_id"]))
+            except ValueError as exc:
+                raise ValueError(f"{path}: requests[{index}] has a bad module_id") from exc
         languages = entry.get("languages") or list(LANGUAGES)
         if not set(languages) <= set(LANGUAGES):
             raise ValueError(f"{path}: requests[{index}] has unknown languages {languages}")
         checked.append(
             {
-                "query": str(entry["query"]).strip(),
+                "query": str(entry.get("query") or "").strip(),
+                "module_id": module_id,
                 "kids_only": bool(entry.get("kids_only", False)),
                 "include_drafts": bool(entry.get("include_drafts", False)),
                 "max_courses": int(entry.get("max_courses", 1)),
@@ -395,12 +445,40 @@ def load_requests(path: str) -> list[dict[str, Any]]:
 async def cmd_requests(
     session_factory, path: str, *, force: bool, level: int, country: str, timeout_s: int
 ) -> int:
-    """Generate the stories a request file asks for (see :func:`load_requests`)."""
+    """Generate the stories a request file asks for (see :func:`load_requests`).
+
+    The same file runs after every deploy, on staging and on production, where
+    different courses exist: a request that matches nothing there is skipped
+    with a note. A vague query (too many matches) and any story that does not
+    end valid and published fail the run.
+    """
     requests = load_requests(path)
     specs: list[GenerationSpec] = []
     refused = False
     async with session_factory() as session:
         for request in requests:
+            if request["module_id"] is not None:
+                module = (
+                    await session.execute(
+                        select(Module)
+                        .options(selectinload(Module.course))
+                        .where(Module.id == request["module_id"])
+                    )
+                ).scalar_one_or_none()
+                if module is None or module.course is None:
+                    print(f"module {request['module_id']}: not on this server; skipped")
+                    continue
+                print(f"module {module.id}: {module.course.slug} ({module.course.title_fr})")
+                specs.append(
+                    GenerationSpec(
+                        module.course,
+                        request["module_index"],
+                        request["lesson_index"],
+                        request["languages"],
+                        module_id=module.id,
+                    )
+                )
+                continue
             matches = await find_courses(session, [request["query"]])
             courses = [
                 c
@@ -410,13 +488,12 @@ async def cmd_requests(
             ]
             label = f"query {request['query']!r}{' (kids)' if request['kids_only'] else ''}"
             if not courses:
-                print(f"{label}: no matching course. Courses matching the query:")
+                print(f"{label}: no matching course on this server; skipped.")
                 for course in matches:
                     print(
-                        f"  - {course.slug}: {course.title_fr} status={course.status} "
-                        f"kids={detect_audience(course).is_kids}"
+                        f"  near match - {course.slug}: {course.title_fr} "
+                        f"status={course.status} kids={detect_audience(course).is_kids}"
                     )
-                refused = True
                 continue
             if len(courses) > request["max_courses"]:
                 print(
@@ -437,12 +514,11 @@ async def cmd_requests(
                         request["languages"],
                     )
                 )
-    code = (
-        await run_generation(
-            session_factory, specs, force=force, level=level, country=country, timeout_s=timeout_s
-        )
-        if specs
-        else 1
+    if not specs:
+        print("Nothing to generate on this server.")
+        return 1 if refused else 0
+    code = await run_generation(
+        session_factory, specs, force=force, level=level, country=country, timeout_s=timeout_s
     )
     return 1 if refused else code
 

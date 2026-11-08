@@ -101,6 +101,21 @@ class TestLessonTarget:
         assert target.unit is lesson
         assert target.quiz_unit is quiz  # nearest quiz before, none after
 
+    async def test_a_module_id_picks_that_module(self):
+        first, second = module(1), module(2)
+        lesson = unit("2.1", "lesson", 0)
+        session = FakeSession([first, second], [lesson])
+
+        target, _ = await script.lesson_target(session, COURSE, 1, 1, module_id=second.id)
+
+        assert target.module is second and target.unit is lesson
+
+    async def test_a_module_id_outside_the_course_is_reported(self):
+        target, why = await script.lesson_target(
+            FakeSession([module(1)]), COURSE, 1, 1, module_id=uuid.uuid4()
+        )
+        assert target is None and "not in the course" in why
+
     async def test_reports_a_missing_module_or_lesson(self):
         target, why = await script.lesson_target(FakeSession([]), COURSE, 1, 1)
         assert target is None and "0 module" in why
@@ -130,6 +145,24 @@ def record(**overrides):
     return SimpleNamespace(**values)
 
 
+class TestStoryExcerpt:
+    def test_title_chapters_and_prompts_in_the_target_language(self):
+        content = {
+            "languages": {"target": "fr", "home": "en"},
+            "title": {"fr": "Le moustique de {child}", "en": "{child}'s mosquito"},
+            "chapters": [{"title": {"fr": "Au marché", "en": "At the market"}}],
+            "questions": [{"id": "Q1", "prompt": {"fr": "Qui pique ?", "en": "Who bites?"}}],
+        }
+        assert script.story_excerpt(content) == [
+            "title: Le moustique de {child}",
+            "chapter: Au marché",
+            "Q1: Qui pique ?",
+        ]
+
+    def test_no_content(self):
+        assert script.story_excerpt(None) == []
+
+
 class TestStorySummary:
     def test_summarises_a_stored_story(self):
         summary = script.story_summary(record())
@@ -153,7 +186,7 @@ class TestGenerate:
         async def resolve_course(_session, ref):
             return COURSE if ref == COURSE.slug else None
 
-        async def lesson_target(_session, _course, _m, _l):
+        async def lesson_target(_session, _course, _m, _l, _module_id=None):
             return target, ""
 
         async def dispatch(**kwargs):
@@ -259,9 +292,12 @@ class TestRequests:
 
     async def test_the_shipped_request_file_is_valid(self):
         requests = script.load_requests(str(Path(script.__file__).parent / "story_requests.json"))
-        assert [r["query"] for r in requests] == ["biolog", "math"]
-        assert all(r["kids_only"] and r["languages"] == ("fr", "en") for r in requests)
-        assert all(r["module_index"] == 1 and r["lesson_index"] == 1 for r in requests)
+        kids, test = requests[:2], requests[2:]
+        assert [r["query"] for r in kids] == ["biolog", "math"]
+        assert all(r["kids_only"] and r["languages"] == ("fr", "en") for r in kids)
+        assert all(r["module_index"] == 1 and r["lesson_index"] == 1 for r in kids)
+        assert [str(r["module_id"]) for r in test] == ["aab749f1-fba3-45d3-bcff-e0f4f925475a"]
+        assert test[0]["languages"] == ("fr",) and test[0]["lesson_index"] == 1
 
     async def test_picks_the_one_published_kids_course_per_query(self, wired):
         path = wired.write(
@@ -282,15 +318,41 @@ class TestRequests:
         assert [s.course.slug for s in wired.generated] == ["bio-kids"]
         assert "maths-adults" in capsys.readouterr().out
 
-    async def test_no_match_lists_the_near_misses(self, wired, capsys):
+    async def test_no_match_is_skipped_with_the_near_misses(self, wired, capsys):
+        """The same file runs on staging and production, where different
+        courses exist: a request with no match there must not fail the run."""
         wired.courses["biolog"] = [kids_course("bio-draft", "Biologie", status="draft")]
         path = wired.write([{"query": "biolog", "kids_only": True}])
 
-        assert await self.run("requests", path) == 1
+        assert await self.run("requests", path) == 0
 
         assert wired.generated == []
         out = capsys.readouterr().out
-        assert "bio-draft" in out and "status=draft" in out
+        assert "skipped" in out and "bio-draft" in out and "status=draft" in out
+
+    async def test_a_module_id_request_targets_that_module(self, wired, tmp_path):
+        course = kids_course("santé", "Santé publique", status="draft", kids=False)
+        module_obj = SimpleNamespace(id=uuid.uuid4(), course=course)
+        path = wired.write(
+            [{"module_id": str(module_obj.id), "lesson_index": 1, "languages": ["fr"]}]
+        )
+
+        code = await script.main(
+            ["requests", path], session_factory=lambda: FakeSession([module_obj])
+        )
+
+        assert code == 0
+        [spec] = wired.generated
+        assert spec.course is course and spec.module_id == module_obj.id
+        assert spec.languages == ("fr",)
+
+    async def test_a_module_id_missing_on_this_server_is_skipped(self, wired, capsys):
+        path = wired.write([{"module_id": str(uuid.uuid4())}])
+
+        code = await script.main(["requests", path], session_factory=lambda: FakeSession([]))
+
+        assert code == 0 and wired.generated == []
+        assert "not on this server" in capsys.readouterr().out
 
     def test_rejects_a_malformed_request_file(self, tmp_path):
         bad = tmp_path / "bad.json"
@@ -301,4 +363,7 @@ class TestRequests:
             json.dumps({"requests": [{"query": "x", "languages": ["de"]}]}), encoding="utf-8"
         )
         with pytest.raises(ValueError, match="languages"):
+            script.load_requests(str(bad))
+        bad.write_text(json.dumps({"requests": [{"module_id": "nope"}]}), encoding="utf-8")
+        with pytest.raises(ValueError, match="module_id"):
             script.load_requests(str(bad))
