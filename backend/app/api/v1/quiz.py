@@ -2,6 +2,7 @@
 
 import re
 import uuid
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import structlog
@@ -38,9 +39,9 @@ from app.domain.models.progress import UserModuleProgress
 from app.domain.models.quiz import QuizAttempt, SummativeAssessmentAttempt
 from app.domain.services.analytics_service import AnalyticsService
 from app.domain.services.content_revisions import (
-    content_at_revision,
     current_revision,
     find_pre_image,
+    superseded_at,
 )
 from app.domain.services.country_utils import canonicalize_country
 from app.domain.services.platform_settings_service import SettingsCache
@@ -160,8 +161,47 @@ def get_quiz_service(
     return QuizService(claude_service, semantic_retriever)
 
 
+#: A summative attempt is timed and taken online, so answers to a superseded
+#: revision are accepted only within the time limit, plus this grace, of the
+#: revision being superseded (a retried submission, a backgrounded tab whose
+#: timer ran slow, a pre-image stamped at the start of its transaction).
+SUMMATIVE_REVISION_GRACE = timedelta(minutes=30)
+
+
+def _summative_revision_window() -> timedelta:
+    """How long after a summative revision is superseded answers to it are graded."""
+    try:
+        minutes = float(SettingsCache.instance().get("quiz-summative-time-limit-minutes", 30))
+    except (TypeError, ValueError):
+        minutes = 30.0
+    return timedelta(minutes=max(minutes, 0.0)) + SUMMATIVE_REVISION_GRACE
+
+
+def _quiz_changed(row: GeneratedContent, served_revision: int | None, reason: str):
+    """409 ``quiz_changed``: the answers cannot be graded against what was served."""
+    logger.warning(
+        "Quiz submission for a revision that cannot be graded",
+        quiz_id=str(row.id),
+        served_revision=served_revision,
+        current_revision=current_revision(row),
+        reason=reason,
+    )
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "error": "quiz_changed",
+            "message": "This quiz was updated after it was loaded. Reload it and try again.",
+            "current_revision": current_revision(row),
+        },
+    )
+
+
 async def _content_to_grade(
-    session: AsyncSession, row: GeneratedContent, served_revision: int | None
+    session: AsyncSession,
+    row: GeneratedContent,
+    served_revision: int | None,
+    *,
+    superseded_within: timedelta | None = None,
 ) -> tuple[dict, int]:
     """The quiz content a submission is graded against, and its revision.
 
@@ -172,27 +212,25 @@ async def _content_to_grade(
     ``content_revision``), not the current one. ``None`` means an older client
     that does not send it: graded against the current revision, as before.
 
+    ``superseded_within``: an older revision is graded only if it stopped
+    being served at most this long ago (summatives: a learner can only have
+    been served it that recently). Without it, any recoverable revision is.
+
     Raises 409 ``quiz_changed`` when the served revision cannot be recovered
-    (no pre-image): the client reloads the quiz rather than being graded
-    against questions it never showed.
+    (no pre-image) or was superseded too long ago: the client reloads the quiz
+    rather than being graded against questions it never showed.
     """
-    resolved = await content_at_revision(session, row, served_revision)
-    if resolved is None:
-        logger.warning(
-            "Quiz submission for an unrecoverable revision",
-            quiz_id=str(row.id),
-            served_revision=served_revision,
-            current_revision=current_revision(row),
-        )
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "error": "quiz_changed",
-                "message": "This quiz was updated after it was loaded. Reload it and try again.",
-                "current_revision": current_revision(row),
-            },
-        )
-    return resolved
+    current = current_revision(row)
+    if served_revision is None or served_revision == current:
+        return row.content, current
+    pre_image = await find_pre_image(session, row.id, served_revision)
+    if pre_image is None or not isinstance(pre_image.content, dict):
+        raise _quiz_changed(row, served_revision, "no_pre_image")
+    if superseded_within is not None:
+        when = superseded_at(row, pre_image)
+        if when is None or datetime.now(UTC) - when > superseded_within:
+            raise _quiz_changed(row, served_revision, "superseded_too_long_ago")
+    return pre_image.content, served_revision
 
 
 @router.post(
@@ -1141,9 +1179,15 @@ async def submit_summative_assessment_attempt(
                     "message": "This endpoint is only for summative assessments",
                 },
             )
-        # ...and specifically the revision of it the learner was served.
+        # ...and specifically the revision of it the learner was served. A
+        # summative is timed and taken online: a superseded revision can only
+        # have been served recently, so an old one (whose key a passing
+        # learner's review may show) is never graded.
         assessment_data, graded_revision = await _content_to_grade(
-            session, assessment_content, request.content_revision
+            session,
+            assessment_content,
+            request.content_revision,
+            superseded_within=_summative_revision_window(),
         )
         questions = assessment_data["questions"]
         question_count = len(questions)

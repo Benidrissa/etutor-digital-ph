@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import copy
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -92,12 +92,16 @@ def _row(unit_id: str = "1.2", *, revision: int = 2, key=REV2_KEY) -> SimpleName
     )
 
 
-def _pre_image(row, revision: int, key: dict[str, int]) -> SimpleNamespace:
+def _pre_image(
+    row, revision: int, key: dict[str, int], *, created_at: datetime | None = None
+) -> SimpleNamespace:
+    """A saved pre-image; written (its revision superseded) just now by default."""
     return SimpleNamespace(
         id=uuid.uuid4(),
         generated_content_id=row.id,
         revision=revision,
         content=_content(key, row.content["unit_id"]),
+        created_at=created_at or datetime.now(UTC),
     )
 
 
@@ -323,6 +327,68 @@ class TestSummativeSubmission:
         assert response.score == 100.0
         (attempt,) = session.attempts(SummativeAssessmentAttempt)
         assert attempt.answers["content_revision"] == 2
+
+
+class TestSummativeOnlyGradesRecentlySupersededRevisions:
+    """A summative is timed and taken online: an older revision can only have
+    been served to this learner within the time limit of being superseded. Any
+    recoverable revision used to be graded, so a key exposed by a passing
+    learner's review of revision 1 passed the module gate at revision 5."""
+
+    async def test_a_revision_superseded_long_ago_is_409(self):
+        row = _row("summative", revision=5, key=REV2_KEY)
+        old = _pre_image(row, 1, REV1_KEY, created_at=datetime.now(UTC) - timedelta(days=30))
+        session = FakeSession(row=row, pre_images={(row.id, 1): old})
+
+        with pytest.raises(HTTPException) as exc_info:
+            await _submit_summative(session, row, _sheet(REV1_KEY), revision=1)
+
+        assert exc_info.value.status_code == 409
+        assert exc_info.value.detail["error"] == "quiz_changed"
+        assert session.attempts(SummativeAssessmentAttempt) == []
+
+    @pytest.mark.parametrize(("minutes_ago", "graded"), [(89, True), (91, False)])
+    async def test_the_window_is_the_time_limit_plus_a_grace(self, minutes_ago, graded):
+        """Time limit 60 min (platform setting) + 30 min grace."""
+        row = _row("summative", revision=3, key=REV2_KEY)  # generated_at months ago
+        superseded = datetime.now(UTC) - timedelta(minutes=minutes_ago)
+        pre_image = _pre_image(row, 2, REV1_KEY, created_at=superseded)
+        session = FakeSession(row=row, pre_images={(row.id, 2): pre_image})
+        cache = MagicMock()
+        cache.get.side_effect = lambda key, default=None: (
+            60 if key == "quiz-summative-time-limit-minutes" else default
+        )
+
+        with patch("app.api.v1.quiz.SettingsCache.instance", return_value=cache):
+            if graded:
+                response = await _submit_summative(session, row, _sheet(REV1_KEY), revision=2)
+                assert response.score == 100.0
+            else:
+                with pytest.raises(HTTPException) as exc_info:
+                    await _submit_summative(session, row, _sheet(REV1_KEY), revision=2)
+                assert exc_info.value.detail["error"] == "quiz_changed"
+
+    async def test_the_overwrite_time_counts_when_the_pre_image_was_stamped_early(self):
+        """created_at is the start of the regenerating transaction (an AI call
+        earlier); the row's generated_at is stamped at the overwrite itself."""
+        row = _row("summative", revision=2, key=REV2_KEY)
+        row.generated_at = (datetime.now(UTC) - timedelta(minutes=5)).replace(tzinfo=None)
+        early = _pre_image(row, 1, REV1_KEY, created_at=datetime.now(UTC) - timedelta(hours=3))
+        session = FakeSession(row=row, pre_images={(row.id, 1): early})
+
+        response = await _submit_summative(session, row, _sheet(REV1_KEY), revision=1)
+
+        assert response.score == 100.0
+
+    async def test_unit_quizzes_keep_old_revisions_gradeable(self):
+        """Unit quiz answers can sit in the offline queue for days."""
+        row = _row(revision=2, key=REV2_KEY)
+        old = _pre_image(row, 1, REV1_KEY, created_at=datetime.now(UTC) - timedelta(days=30))
+        session = FakeSession(row=row, pre_images={(row.id, 1): old})
+
+        response = await _submit_unit(session, row, _sheet(REV1_KEY), revision=1)
+
+        assert response.score == 100.0
 
 
 def _passed_attempt(row, *, answered_key, revision) -> SimpleNamespace:

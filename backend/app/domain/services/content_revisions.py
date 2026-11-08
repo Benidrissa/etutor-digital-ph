@@ -29,6 +29,7 @@ never a reason to skip.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import Select, select
@@ -129,20 +130,25 @@ async def ensure_pre_image(
     return pre_image
 
 
-async def content_at_revision(
-    session: AsyncSession, row: Any, revision: int | None
-) -> tuple[dict, int] | None:
-    """``(content, revision)`` of ``row`` as it was at ``revision``.
-
-    ``None`` (not given) or the row's current revision → the current content.
-    An older revision → its pre-image's content. Returns ``None`` when that
-    revision cannot be recovered (no pre-image), so the caller can refuse to
-    grade instead of grading against the wrong questions.
-    """
-    current = current_revision(row)
-    if revision is None or revision == current:
-        return row.content, current
-    pre_image = await find_pre_image(session, row.id, revision)
-    if pre_image is None or not isinstance(pre_image.content, dict):
+def as_utc(value: Any) -> datetime | None:
+    """``value`` as an aware UTC datetime; naive values are UTC (``generated_at``)."""
+    if not isinstance(value, datetime):
         return None
-    return pre_image.content, revision
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
+def superseded_at(row: Any, pre_image: Any) -> datetime | None:
+    """When the revision saved in ``pre_image`` stopped being served.
+
+    The pre-image is written just before its revision is overwritten; its
+    ``created_at`` is the writing transaction's start, so it can be early by
+    the length of that transaction (an AI call). When the overwrite produced
+    the row's current content, the row's ``generated_at`` is stamped at the
+    overwrite itself. The later of the two is the best estimate; ``None``
+    when neither is known.
+    """
+    times = [as_utc(getattr(pre_image, "created_at", None))]
+    if getattr(pre_image, "revision", None) == current_revision(row) - 1:
+        times.append(as_utc(getattr(row, "generated_at", None)))
+    known = [time for time in times if time is not None]
+    return max(known) if known else None

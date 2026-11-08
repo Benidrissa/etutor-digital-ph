@@ -128,7 +128,7 @@ class QuizService:
         current content is saved as the pre-image of its current revision
         (unless the caller — quality agent, backfill — already saved one).
         A learner who was served that revision is then still graded against
-        the questions they saw (``content_revisions.content_at_revision``).
+        the questions they saw (``app.api.v1.quiz._content_to_grade``).
         """
         from app.domain.services.lesson_service import (
             apply_in_place_update,
