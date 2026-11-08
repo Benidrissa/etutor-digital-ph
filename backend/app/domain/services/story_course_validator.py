@@ -39,6 +39,7 @@ from app.api.v1.schemas.story_course import (
     ValidationIssue,
     ValidationReport,
 )
+from app.domain.services import mcq_checks
 
 logger = structlog.get_logger(__name__)
 
@@ -433,6 +434,19 @@ class StoryCourseValidator:
                     "traps, never random distractors",
                 )
 
+        # The shared MCQ rules, judged on the options' text. _assert_no_leak
+        # cannot catch a choice leak: for a choice question its needle is the
+        # choice id ("c"), not what the learner reads. Only errors are adopted:
+        # the short-answer "not leak-checked" note is informational, and the
+        # misconception rule is already enforced above per choice.
+        for view in mcq_checks.from_story_choice_question(question):
+            for issue in (
+                *mcq_checks.check_answer_leak(view),
+                *mcq_checks.check_duplicate_options(view),
+            ):
+                if issue.severity == "error":
+                    self._error(issue.code, issue.path, issue.message)
+
     # -- C.3 languages and lengths -----------------------------------------
 
     def _check_languages_and_lengths(self) -> None:
@@ -481,9 +495,11 @@ class StoryCourseValidator:
         elif step.type == "concept":
             if step.title:
                 self._text(step.title, f"{path}.title", "title")
+            # Language-keyed like a text object: ``en`` rows are English and
+            # ``fr`` rows French, whichever of them is the target language.
             rows = {
                 lang: value
-                for lang, value in ((self._target, step.en), (self._home, step.fr))
+                for lang, value in (("en", step.en), ("fr", step.fr))
                 if isinstance(value, list)
             }
             self._check_parallel_lists(rows, path, "concept rows")
@@ -491,12 +507,19 @@ class StoryCourseValidator:
             self._text(step.caption, f"{path}.caption", "caption")
 
     def _flat_text(self, step: Any, path: str, kind: str) -> None:
-        """``narrate``/``say`` carry flat ``en``/``fr`` rather than a text object."""
+        """``narrate``/``say`` carry flat ``en``/``fr`` rather than a text object.
+
+        The two fields are language-keyed, exactly like a text object: ``en`` is
+        the English line and ``fr`` the French one, regardless of which is the
+        target language. Reading them positionally (``en`` = target) would show
+        a French-target story's lines in the wrong language and apply each
+        language's length limit to the other's text.
+        """
         as_object = {}
         if isinstance(step.en, str):
-            as_object[self._target] = step.en
+            as_object["en"] = step.en
         if isinstance(step.fr, str):
-            as_object[self._home] = step.fr
+            as_object["fr"] = step.fr
         self._text(as_object, path, kind)
 
     def _text(self, obj: Any, path: str, kind: str) -> None:
@@ -892,7 +915,11 @@ class StoryCourseValidator:
         minigame_points = 0
         minigame_rounds = 0
         for game in self.course.minigames:
-            per_correct = int((game.points or {}).get("per_correct", 1) or 1)
+            # An explicit None check: ``x or 1`` would turn an authored
+            # ``per_correct: 0`` (a game that awards nothing) back into 1, so
+            # max_points would count points the player can never earn.
+            raw_per_correct = (game.points or {}).get("per_correct")
+            per_correct = 1 if raw_per_correct is None else int(raw_per_correct)
             rule_fn = (game.rule or {}).get("fn")
             for round_data in game.rounds:
                 minigame_rounds += 1

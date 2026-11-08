@@ -257,6 +257,115 @@ class TestNoLeaks:
         assert "answer_leak" not in codes(course)
 
 
+def _wordy_choice_question(course: dict) -> dict:
+    """Give q1 options long enough to be leak-checked (the shipped ones are
+    one- and two-digit numbers, which sit under the leak-length floor)."""
+    q1 = find(course["questions"], "id", "q1")
+    words = {
+        "a": ("one", "un"),
+        "b": ("nine", "neuf"),
+        "c": ("thirteen", "treize"),
+        "d": ("twenty-one", "vingt et un"),
+    }
+    for choice in q1["choices"]:
+        choice["en"], choice["fr"] = words[choice["id"]]
+    return q1
+
+
+class TestChoiceQuestionsSharedMcqChecks:
+    """The shared MCQ rules (``mcq_checks``) run on choice questions.
+
+    ``_assert_no_leak`` builds its needle from ``answer``, which for a choice
+    question is the choice id — so pasting the correct option's *text* into the
+    prompt used to validate clean.
+    """
+
+    def test_wordy_choices_still_validate_clean(self, course):
+        _wordy_choice_question(course)
+        report = validate(course)
+        assert report.errors == [], [e.model_dump() for e in report.errors]
+        assert report.warnings == [], [w.model_dump() for w in report.warnings]
+
+    def test_correct_choice_text_in_prompt_is_a_leak(self, course):
+        q1 = _wordy_choice_question(course)
+        q1["prompt"]["en"] = "Thirteen is prime. Which one of these is a prime number?"
+        report = validate(course)
+        leaks = [e for e in report.errors if e.code == "answer_leak"]
+        assert [e.path for e in leaks] == ["questions[q1].prompt.en"]
+
+    def test_correct_choice_text_in_hint_is_a_leak(self, course):
+        q1 = _wordy_choice_question(course)
+        q1["hints"] = [{"en": "Try the odd ones.", "fr": "Regarde treize de près."}]
+        leaks = [e for e in validate(course).errors if e.code == "answer_leak"]
+        assert [e.path for e in leaks] == ["questions[q1].hints[0].fr"]
+
+    def test_a_distractor_in_the_prompt_is_not_a_leak(self, course):
+        q1 = _wordy_choice_question(course)
+        q1["prompt"]["en"] = "Nine is not prime. Which one of these is a prime number?"
+        assert "answer_leak" not in codes(course)
+
+    def test_duplicate_choice_text(self, course):
+        q1 = _wordy_choice_question(course)
+        find(q1["choices"], "id", "d")["en"] = "Thirteen"
+        report = validate(course)
+        dup = [e for e in report.errors if e.code == "duplicate_options"]
+        assert [e.path for e in dup] == ["questions[q1].choices[3].en"]
+
+    def test_short_answers_add_no_warning(self, course):
+        """The shipped q1 answer is "13": too short to leak-check, and the
+        "unchecked" note stays out of the report so the example stays clean."""
+        assert "leak_unchecked_short_answer" not in warning_codes(course)
+
+
+class TestFrenchTargetLanguageKeying:
+    """``en``/``fr`` on narrate/say/concept steps are language-keyed (C1).
+
+    A French-target story still keeps its French text in ``fr``. Reading the
+    fields positionally (``en`` = target) would check the French line against
+    the English length limit and report a missing English line as missing
+    French.
+    """
+
+    @pytest.fixture
+    def fr_course(self, course):
+        course["languages"] = {"target": "fr", "home": "en"}
+        return course
+
+    def test_french_target_example_validates_clean(self, fr_course):
+        report = validate(fr_course)
+        assert report.errors == [], [e.model_dump() for e in report.errors]
+        assert report.warnings == [], [w.model_dump() for w in report.warnings]
+
+    def test_french_line_gets_the_french_length_limit(self, fr_course):
+        """110 characters is inside French's 118 but over English's 100."""
+        fr_course["chapters"][0]["scenes"][0]["steps"][0]["fr"] = "é" * 110
+        assert "too_long" not in codes(fr_course)
+
+    def test_english_line_gets_the_english_length_limit(self, fr_course):
+        fr_course["chapters"][0]["scenes"][0]["steps"][0]["en"] = "x" * 101
+        report = validate(fr_course)
+        too_long = [e for e in report.errors if e.code == "too_long"]
+        assert [e.path for e in too_long] == ["chapters[ch1].scenes[s1].steps[0].en"]
+
+    def test_missing_line_is_reported_under_its_own_language(self, fr_course):
+        fr_course["chapters"][0]["scenes"][0]["steps"][0].pop("fr")
+        report = validate(fr_course)
+        missing = [e for e in report.errors if e.code == "missing_language"]
+        assert [e.path for e in missing] == ["chapters[ch1].scenes[s1].steps[0].fr"]
+
+    def test_concept_rows_are_keyed_by_language(self, fr_course):
+        concept = fr_course["chapters"][0]["scenes"][0]["steps"][2]
+        concept.pop("fr")
+        report = validate(fr_course)
+        missing = [e for e in report.errors if e.code == "missing_language"]
+        assert [e.path for e in missing] == ["chapters[ch1].scenes[s1].steps[2].fr"]
+
+    def test_english_target_line_still_keyed_the_same_way(self, course):
+        """Unchanged for the shipped English-target example."""
+        course["chapters"][0]["scenes"][0]["steps"][0]["fr"] = "é" * 110
+        assert "too_long" not in codes(course)
+
+
 class TestSpreadAndCoverage:
     """Appendix C.5."""
 
@@ -394,3 +503,32 @@ class TestScores:
     def test_authored_max_points_disagreement_warns(self, course):
         course["checks"]["max_points"] = 999
         assert "max_points_mismatch" in warning_codes(course)
+
+    def test_per_correct_zero_awards_no_minigame_points(self, course):
+        """``per_correct: 0`` used to be coerced to 1 by ``x or 1``, counting
+        points into max_points that the player never awards."""
+        course["minigames"][0]["points"] = {"per_correct": 0}
+        checks = validate(course).checks
+        assert checks.max_points == 29 - 9  # the 9 prime targets now score 0
+
+    def test_per_correct_defaults_to_one_when_absent(self, course):
+        course["minigames"][0]["points"] = {}
+        assert validate(course).checks.max_points == 29
+
+    def test_per_correct_zero_on_an_items_round(self, course):
+        course["minigames"][0]["rule"] = None
+        course["minigames"][0]["engine"] = "catch"
+        course["minigames"][0]["traps"] = {}
+        course["minigames"][0]["rounds"] = [
+            {
+                "prompt": {"en": "Catch the primes", "fr": "Attrape les premiers"},
+                "items": [
+                    {"label": {"en": "13", "fr": "13"}, "correct": True},
+                    {"label": {"en": "9", "fr": "9"}, "correct": False, "trap": "m_odd_prime"},
+                ],
+            }
+        ]
+        course["minigames"][0]["points"] = {"per_correct": 0}
+        assert validate(course).checks.max_points == 29 - 9
+        course["minigames"][0]["points"] = {"per_correct": 1}
+        assert validate(course).checks.max_points == 29 - 9 + 1
