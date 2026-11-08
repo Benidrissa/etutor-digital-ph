@@ -1249,6 +1249,7 @@
         "image_generation": "Image generation",
         "image_metadata": "Image metadata",
         "translation": "Translation",
+        "story_generation": "Story mode generation",
         "unknown": "Other"
       },
       "reco": {
