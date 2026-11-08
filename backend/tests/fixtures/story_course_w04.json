@@ -1,0 +1,389 @@
+{
+  "format": "story-course/1",
+  "id": "igcse-maths-u1-w04",
+  "course": "IGCSE Mathematics",
+  "unit": "Unit 1 · Number",
+  "week": 4,
+  "title": {"en": "Number Fingerprints", "fr": "Les empreintes des nombres"},
+  "languages": {"target": "en", "home": "fr"},
+  "learner": {"first_name": "Nandi", "age": 11, "gender": "girl"},
+  "sources": [
+    {"kind": "lesson", "ref": "W4 lesson notes — primes, HCF and LCM", "used_for": "objectives and worked examples"},
+    {"kind": "test", "ref": "Summative test week 1 (marked)", "used_for": "calibration and traps"},
+    {"kind": "booklet", "ref": "week4_story_number_fingerprints.md", "used_for": "story, numbers and exercise ids"}
+  ],
+  "objectives": [
+    {"id": "o1", "en": "Recognise prime numbers up to 100", "fr": "Reconnaître les nombres premiers jusqu'à 100", "syllabus": "C1.1"},
+    {"id": "o2", "en": "Write a number as a product of prime factors, in index form", "fr": "Décomposer un nombre en facteurs premiers, avec des puissances", "syllabus": "C1.2"},
+    {"id": "o3", "en": "Find the HCF and the LCM of two numbers", "fr": "Trouver le PGCD et le PPCM de deux nombres", "syllabus": "C1.3"}
+  ],
+  "glossary": [
+    {"en": "prime number", "fr": "nombre premier", "note": {"en": "Exactly two factors: 1 and itself. 1 is not prime.", "fr": "Exactement deux diviseurs : 1 et lui-même. 1 n'est pas premier."}},
+    {"en": "index form", "fr": "forme avec puissances", "note": {"en": "2 × 2 × 2 is written 2³. The small number counts the 2s.", "fr": "2 × 2 × 2 s'écrit 2³. Le petit chiffre compte les 2."}},
+    {"en": "HCF (highest common factor)", "fr": "PGCD (plus grand commun diviseur)", "note": {"en": "The biggest number that divides both. Careful: PGCD, not PPCM.", "fr": "Le plus grand nombre qui divise les deux. Attention : PGCD, pas PPCM."}},
+    {"en": "LCM (lowest common multiple)", "fr": "PPCM (plus petit commun multiple)", "note": {"en": "The smallest number both divide into.", "fr": "Le plus petit nombre que les deux divisent."}},
+    {"en": "significant figures", "fr": "chiffres significatifs", "note": {"en": "Count from the first non-zero digit, not from the point.", "fr": "On compte à partir du premier chiffre non nul, pas de la virgule."}}
+  ],
+  "calibration": [
+    {"test_q": "Round 0.07396 to 2 s.f.", "her_answer": "0.07", "mark": "A0", "correct": "0.074", "misconception": "m_sf_as_dp"},
+    {"test_q": "Write 84 as a product of prime factors", "her_answer": "2 × 42", "mark": "M0", "correct": "2² × 3 × 7", "misconception": "m_lost_factor"}
+  ],
+  "misconceptions": [
+    {"id": "m_sf_as_dp", "en": "Rounds to 2 decimal places instead of 2 significant figures.", "fr": "Arrondit à 2 décimales au lieu de 2 chiffres significatifs.", "from_test": true},
+    {"id": "m_lost_factor", "en": "Stops before every factor is prime; does not multiply back to check.", "fr": "S'arrête avant que tous les facteurs soient premiers ; ne remultiplie pas pour vérifier.", "from_test": true},
+    {"id": "m_one_prime", "en": "Thinks 1 is a prime number.", "fr": "Pense que 1 est un nombre premier."},
+    {"id": "m_odd_prime", "en": "Thinks every odd number is prime (9, 21, 25, 49…).", "fr": "Pense que tout nombre impair est premier (9, 21, 25, 49…)."},
+    {"id": "m_not_index_form", "en": "Writes 2 × 2 × 2 when index form (2³) is asked.", "fr": "Écrit 2 × 2 × 2 quand on demande les puissances (2³)."},
+    {"id": "m_hcf_lcm_swap", "en": "Swaps the HCF and the LCM.", "fr": "Confond le PGCD et le PPCM."}
+  ],
+  "cast": [
+    {"id": "nandi", "name": "Nandi", "kind": "child", "art": "nandi", "voice": {"pitch": 1.5, "rate": 1.0}},
+    {"id": "papa", "name": "Papa Ben", "kind": "adult", "art": "papa_ben", "voice": {"pitch": 0.8, "rate": 0.95}},
+    {"id": "kabore", "name": "Mr. Kaboré", "kind": "adult", "art": "mr_kabore", "voice": {"pitch": 0.85, "rate": 0.95}},
+    {"id": "margo", "name": "Margo", "kind": "ai_tutor", "art": "margo", "voice": {"pitch": 1.8, "rate": 1.05}}
+  ],
+  "facts": [
+    {"en": "Ouagadougou's Grand Marché sells mangoes by the crate in mango season.", "fr": "Le Grand Marché de Ouagadougou vend les mangues à la caisse en saison.", "source": "Ville de Ouagadougou", "invented": false},
+    {"en": "Burkina Faso harvests mangoes mainly between March and June.", "fr": "Le Burkina Faso récolte les mangues surtout entre mars et juin.", "source": "FAO country brief", "invented": false},
+    {"en": "Mr. Kaboré teaches the Year 1 maths class.", "fr": "M. Kaboré enseigne les maths en première année.", "invented": true}
+  ],
+  "chapters": [
+    {
+      "id": "ch1",
+      "title": {"en": "36 mangoes and a fingerprint", "fr": "36 mangues et une empreinte"},
+      "scenes": [
+        {
+          "id": "s1",
+          "place": "classroom",
+          "objective": "o1",
+          "steps": [
+            {"type": "say", "who": "kabore", "mood": "talk", "en": "Some numbers cannot be split at all. We call those prime.", "fr": "Certains nombres ne se partagent pas du tout. On les appelle premiers."},
+            {"type": "show", "visual": "hundred_square", "params": {"highlight": "primes"}, "caption": {"en": "Every prime below 100, shaded.", "fr": "Tous les nombres premiers sous 100, colorés."}},
+            {"type": "concept", "id": "c1", "title": {"en": "Prime or not?", "fr": "Premier ou pas ?"}, "en": ["A prime has exactly two factors: 1 and itself.", "1 has only one factor, so 1 is not prime.", "2 is the only even prime.", "Test 2, 3, 5 and 7 before you decide."], "fr": ["Un nombre premier a exactement deux diviseurs : 1 et lui-même.", "1 n'a qu'un seul diviseur, donc 1 n'est pas premier.", "2 est le seul nombre premier pair.", "Teste 2, 3, 5 et 7 avant de décider."]},
+            {"type": "ask", "ref": "q1"},
+            {"type": "ask", "ref": "q2"},
+            {"type": "game", "ref": "g1"}
+          ]
+        },
+        {
+          "id": "s2",
+          "place": "market",
+          "objective": "o1",
+          "steps": [
+            {"type": "narrate", "en": "At the market, Nandi counts crates while Papa Ben haggles.", "fr": "Au marché, Nandi compte les caisses pendant que Papa Ben marchande."},
+            {"type": "say", "who": "nandi", "mood": "think", "en": "23 crates. Nobody can share them evenly. That one is prime!", "fr": "23 caisses. Personne ne peut les partager également. Celui-là est premier !"},
+            {"type": "photo", "ref": "A1"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ch2",
+      "title": {"en": "The fingerprint of a number", "fr": "L'empreinte d'un nombre"},
+      "scenes": [
+        {
+          "id": "s3",
+          "place": "classroom",
+          "objective": "o2",
+          "steps": [
+            {"type": "say", "who": "kabore", "mood": "talk", "en": "Every whole number above 1 has a fingerprint: its prime factors.", "fr": "Chaque nombre entier plus grand que 1 a une empreinte : ses facteurs premiers."},
+            {"type": "show", "visual": "factor_tree", "params": {"n": 72, "first_split": [8, 9]}},
+            {"type": "say", "who": "nandi", "mood": "happy", "en": "Three 2s and two 3s. I can write that shorter with powers!", "fr": "Trois 2 et deux 3. Je peux écrire ça plus court avec des puissances !"},
+            {"type": "ask", "ref": "q4"},
+            {"type": "show", "visual": "division_ladder", "params": {"n": 360}},
+            {"type": "ask", "ref": "q3"},
+            {"type": "photo", "ref": "D1"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ch3",
+      "title": {"en": "Rally: shared factors and a look back", "fr": "Rallye : diviseurs communs et un retour"},
+      "scenes": [
+        {
+          "id": "s4",
+          "place": "school_yard",
+          "objective": "o3",
+          "steps": [
+            {"type": "say", "who": "kabore", "mood": "talk", "en": "Two numbers can share factors. The shared part gives the HCF.", "fr": "Deux nombres peuvent partager des facteurs. La part commune donne le PGCD."},
+            {"type": "show", "visual": "venn_primes", "params": {"a": 24, "b": 36}},
+            {"type": "concept", "id": "c2", "title": {"en": "HCF and LCM from the fingerprint", "fr": "PGCD et PPCM depuis l'empreinte"}, "en": ["Put the prime factors of both numbers in a Venn diagram.", "Multiply the overlap: that is the HCF.", "Multiply everything once: that is the LCM.", "The HCF is never bigger than the smaller number."], "fr": ["Place les facteurs premiers des deux nombres dans un diagramme de Venn.", "Multiplie l'intersection : c'est le PGCD.", "Multiplie tout une seule fois : c'est le PPCM.", "Le PGCD n'est jamais plus grand que le plus petit nombre."]},
+            {"type": "ask", "ref": "q5"},
+            {"type": "ask", "ref": "q6"},
+            {"type": "photo", "ref": "C1"}
+          ]
+        },
+        {
+          "id": "s5",
+          "place": "desk",
+          "steps": [
+            {"type": "narrate", "en": "Before she closes the book, one question from Week 1 comes back.", "fr": "Avant de fermer le cahier, une question de la semaine 1 revient."},
+            {"type": "ask", "ref": "q7"},
+            {"type": "video", "ref": "v1"}
+          ]
+        }
+      ]
+    }
+  ],
+  "questions": [
+    {
+      "id": "q1",
+      "type": "choice",
+      "objective": "o1",
+      "calculator": false,
+      "prompt": {"en": "Which one of these is a prime number?", "fr": "Lequel de ces nombres est un nombre premier ?"},
+      "answer": "c",
+      "choices": [
+        {"id": "a", "en": "1", "fr": "1", "misconception": "m_one_prime"},
+        {"id": "b", "en": "9", "fr": "9", "misconception": "m_odd_prime"},
+        {"id": "c", "en": "13", "fr": "13"},
+        {"id": "d", "en": "21", "fr": "21", "misconception": "m_odd_prime"}
+      ],
+      "hints": [{"en": "Try dividing each one by 2, 3, 5 and 7.", "fr": "Essaie de diviser chacun par 2, 3, 5 et 7."}],
+      "explanation": {"en": "1 has one factor, so it is not prime. 9 = 3 × 3 and 21 = 3 × 7. Only 13 has exactly two factors.", "fr": "1 n'a qu'un diviseur, il n'est pas premier. 9 = 3 × 3 et 21 = 3 × 7. Seul 13 a exactement deux diviseurs."},
+      "tutor_notes": "She often says 1 is prime. Ask her how many factors 1 has; never name the right option."
+    },
+    {
+      "id": "q2",
+      "type": "list",
+      "objective": "o1",
+      "calculator": false,
+      "order": "ascending",
+      "prompt": {"en": "List the prime numbers between 30 and 40.", "fr": "Donne les nombres premiers entre 30 et 40."},
+      "answer": [31, 37],
+      "verify": {"fn": "primes_between", "args": [30, 40]},
+      "traps": [
+        {"answer": [31, 33, 37], "misconception": "m_odd_prime", "hint": {"en": "One of yours divides by 3. Add its digits and check.", "fr": "L'un des tiens se divise par 3. Additionne ses chiffres et vérifie."}},
+        {"answer": [31, 37, 39], "misconception": "m_odd_prime", "hint": {"en": "39 is odd, but odd is not the same as prime.", "fr": "39 est impair, mais impair ne veut pas dire premier."}}
+      ],
+      "hints": [{"en": "Check every odd number from 31 upwards against 3 and 7.", "fr": "Teste chaque nombre impair à partir de 31 avec 3 et 7."}],
+      "explanation": {"en": "33 = 3 × 11 and 39 = 3 × 13, so they are out. 31 and 37 have exactly two factors.", "fr": "33 = 3 × 11 et 39 = 3 × 13, donc ils sortent. 31 et 37 ont exactement deux diviseurs."},
+      "tutor_notes": "If she lists 33 or 39, point her at the digit-sum test for 3. Never read out the list."
+    },
+    {
+      "id": "q3",
+      "type": "index_form",
+      "objective": "o2",
+      "calculator": false,
+      "require_index": true,
+      "prompt": {"en": "Write 360 as a product of prime factors, in index form.", "fr": "Décompose 360 en facteurs premiers, avec des puissances."},
+      "answer": "2³ × 3² × 5",
+      "verify": {"fn": "index_form", "args": [360]},
+      "traps": [
+        {"answer": "2 × 2 × 2 × 3 × 3 × 5", "misconception": "m_not_index_form", "hint": {"en": "Right primes! Now use powers: three 2s becomes a small 3.", "fr": "Bons facteurs ! Utilise les puissances : trois 2 donnent un petit 3."}},
+        {"answer": "2³ × 3 × 5", "misconception": "m_lost_factor", "hint": {"en": "Multiply yours back: 8 × 3 × 5 = 120. Something is missing.", "fr": "Remultiplie le tien : 8 × 3 × 5 = 120. Il manque quelque chose."}}
+      ],
+      "hints": [{"en": "Follow the ladder: divide by the smallest prime each time.", "fr": "Suis l'échelle : divise par le plus petit nombre premier à chaque fois."}],
+      "explanation": {"en": "Divide by 2, 2, 2, 3, 3, 5 until you reach 1. Group the repeats with powers, then check 8 × 9 × 5 = 360.", "fr": "Divise par 2, 2, 2, 3, 3, 5 jusqu'à 1. Regroupe les répétitions avec des puissances, puis vérifie 8 × 9 × 5 = 360."},
+      "tutor_notes": "She may type 2^3 or use the ² ³ buttons. Never write the full factorisation for her."
+    },
+    {
+      "id": "q4",
+      "type": "index_form",
+      "objective": "o2",
+      "calculator": false,
+      "require_index": true,
+      "prompt": {"en": "Write 72 as a product of prime factors, in index form.", "fr": "Décompose 72 en facteurs premiers, avec des puissances."},
+      "answer": "2³ × 3²",
+      "verify": {"fn": "index_form", "args": [72]},
+      "traps": [
+        {"answer": "2 × 2 × 2 × 3 × 3", "misconception": "m_not_index_form", "hint": {"en": "The primes are right. Count each one and use a power.", "fr": "Les facteurs sont bons. Compte-les et utilise une puissance."}},
+        {"answer": "8 × 9", "misconception": "m_lost_factor", "hint": {"en": "8 and 9 are not prime. Keep splitting until every leaf is.", "fr": "8 et 9 ne sont pas premiers. Continue jusqu'à ce que chaque feuille le soit."}}
+      ],
+      "hints": [{"en": "The tree splits 72 into 8 and 9. Keep going from there.", "fr": "L'arbre partage 72 en 8 et 9. Continue à partir de là."}],
+      "explanation": {"en": "72 = 8 × 9 = (2 × 2 × 2) × (3 × 3), which is 2³ with 3², and 8 × 9 = 72 checks out.", "fr": "72 = 8 × 9 = (2 × 2 × 2) × (3 × 3), soit 2³ avec 3², et 8 × 9 = 72 le confirme."},
+      "tutor_notes": "Let her finish the tree herself. Only remind her that a leaf must be prime."
+    },
+    {
+      "id": "q5",
+      "type": "number",
+      "objective": "o3",
+      "calculator": false,
+      "prompt": {"en": "Find the HCF of 24 and 36.", "fr": "Trouve le PGCD de 24 et 36."},
+      "answer": 12,
+      "verify": {"fn": "hcf", "args": [24, 36]},
+      "traps": [
+        {"answer": 72, "misconception": "m_hcf_lcm_swap", "hint": {"en": "That is the smallest shared multiple, not the biggest shared factor.", "fr": "C'est le plus petit multiple commun, pas le plus grand diviseur commun."}},
+        {"answer": 6, "misconception": "m_lost_factor", "hint": {"en": "6 divides both, but look for a bigger one in the overlap.", "fr": "6 divise les deux, mais cherche plus grand dans l'intersection."}}
+      ],
+      "hints": [{"en": "Use the Venn diagram: multiply only the overlap.", "fr": "Utilise le diagramme de Venn : multiplie seulement l'intersection."}],
+      "explanation": {"en": "24 = 2³ × 3 and 36 = 2² × 3². The overlap is 2² × 3, so the HCF is 4 × 3.", "fr": "24 = 2³ × 3 et 36 = 2² × 3². L'intersection est 2² × 3, donc le PGCD est 4 × 3."},
+      "tutor_notes": "If she answers the LCM, ask whether a factor can be larger than the number itself."
+    },
+    {
+      "id": "q6",
+      "type": "number",
+      "objective": "o3",
+      "calculator": false,
+      "prompt": {"en": "Find the LCM of 24 and 36.", "fr": "Trouve le PPCM de 24 et 36."},
+      "answer": 72,
+      "verify": {"fn": "lcm", "args": [24, 36]},
+      "traps": [
+        {"answer": 12, "misconception": "m_hcf_lcm_swap", "hint": {"en": "That is the biggest shared factor. A multiple is bigger, not smaller.", "fr": "C'est le plus grand diviseur commun. Un multiple est plus grand, pas plus petit."}},
+        {"answer": 864, "misconception": "m_lost_factor", "hint": {"en": "You multiplied both numbers. Count each shared prime only once.", "fr": "Tu as multiplié les deux nombres. Compte chaque facteur commun une seule fois."}}
+      ],
+      "hints": [{"en": "Multiply everything in the Venn diagram, each part once.", "fr": "Multiplie tout le diagramme de Venn, chaque partie une seule fois."}],
+      "explanation": {"en": "Take 2³ from 24 and 3² from 36, so the LCM is 8 × 9. Both 24 and 36 divide into it.", "fr": "Prends 2³ de 24 et 3² de 36, donc le PPCM est 8 × 9. 24 et 36 le divisent tous les deux."},
+      "tutor_notes": "She sometimes multiplies 24 × 36. Ask her to test whether a smaller number also works."
+    },
+    {
+      "id": "q7",
+      "type": "exact_text",
+      "calculator": false,
+      "review_of": 1,
+      "prompt": {"en": "Round 0.05183 to 2 significant figures.", "fr": "Arrondis 0,05183 à 2 chiffres significatifs."},
+      "answer": "0.052",
+      "verify": {"fn": "round_sf", "args": [0.05183, 2]},
+      "traps": [
+        {"answer": "0.05", "misconception": "m_sf_as_dp", "hint": {"en": "You rounded to 2 decimal places. Start counting at the first 5.", "fr": "Tu as arrondi à 2 décimales. Commence à compter au premier 5."}},
+        {"answer": "0.0518", "misconception": "m_sf_as_dp", "hint": {"en": "That is 3 significant figures. Stop one digit earlier.", "fr": "Ça fait 3 chiffres significatifs. Arrête-toi un chiffre plus tôt."}}
+      ],
+      "hints": [{"en": "The zeros in front do not count. The first significant digit is 5.", "fr": "Les zéros devant ne comptent pas. Le premier chiffre significatif est 5."}],
+      "explanation": {"en": "The first two significant digits are 5 and 1. The next digit is 8, so the 1 rounds up to 2.", "fr": "Les deux premiers chiffres significatifs sont 5 et 1. Le suivant est 8, donc le 1 devient 2."},
+      "tutor_notes": "This is the exact mistake from her week 1 test. Ask her to point at the first significant digit."
+    }
+  ],
+  "exercises": [
+    {
+      "id": "A1",
+      "part": "A",
+      "objective": "o1",
+      "marks": 1,
+      "calculator": false,
+      "prompt": {"en": "Write down all the prime numbers between 20 and 30.", "fr": "Écris tous les nombres premiers entre 20 et 30."},
+      "answer": [23, 29],
+      "verify": {"fn": "primes_between", "args": [20, 30]},
+      "working": {
+        "en": ["21 = 3 × 7, so not prime", "25 = 5 × 5, so not prime", "27 = 3 × 9, so not prime", "23 and 29: no factor from 2, 3 or 5"],
+        "fr": ["21 = 3 × 7, donc pas premier", "25 = 5 × 5, donc pas premier", "27 = 3 × 9, donc pas premier", "23 et 29 : aucun diviseur parmi 2, 3 ou 5"]
+      },
+      "mark_scheme": [
+        {"code": "B1", "en": "Both 23 and 29, and nothing else", "fr": "23 et 29, et rien d'autre"}
+      ],
+      "traps": [
+        {"answer": [21, 23, 29], "misconception": "m_odd_prime", "hint": {"en": "Add the digits of 21: that tells you about 3.", "fr": "Additionne les chiffres de 21 : ça te parle de 3."}}
+      ],
+      "explanation": {"en": "Only 23 and 29 survive the 2, 3 and 5 tests.", "fr": "Seuls 23 et 29 passent les tests de 2, 3 et 5."}
+    },
+    {
+      "id": "C1",
+      "part": "C",
+      "objective": "o3",
+      "marks": 3,
+      "calculator": false,
+      "prompt": {"en": "Two taps drip every 20 and every 30 seconds. They drip together now.", "fr": "Deux robinets gouttent toutes les 20 et toutes les 30 secondes. Ils gouttent ensemble maintenant."},
+      "parts": [
+        {"label": "(a)", "type": "number", "marks": 1, "answer": 10, "verify": {"fn": "hcf", "args": [20, 30]}},
+        {"label": "(b)", "type": "number", "marks": 2, "answer": 60, "verify": {"fn": "lcm", "args": [20, 30]}}
+      ],
+      "working": {
+        "en": ["20 = 2² × 5 and 30 = 2 × 3 × 5", "(a) overlap = 2 × 5", "(b) everything once = 2² × 3 × 5", "Check: both 20 and 30 divide 60", "Answer: they drip together again after 60 seconds"],
+        "fr": ["20 = 2² × 5 et 30 = 2 × 3 × 5", "(a) intersection = 2 × 5", "(b) tout une fois = 2² × 3 × 5", "Vérif : 20 et 30 divisent tous les deux 60", "Réponse : ils gouttent ensemble après 60 secondes"]
+      },
+      "mark_scheme": [
+        {"code": "M1", "en": "Both numbers written as products of primes", "fr": "Les deux nombres écrits en produits de facteurs premiers"},
+        {"code": "A1", "en": "(a) 10", "fr": "(a) 10"},
+        {"code": "A1", "en": "(b) 60 seconds, with units", "fr": "(b) 60 secondes, avec l'unité"}
+      ],
+      "traps": [
+        {"answer": 600, "misconception": "m_lost_factor", "hint": {"en": "You multiplied 20 by 30. The shared 2 and 5 are counted twice.", "fr": "Tu as multiplié 20 par 30. Le 2 et le 5 communs comptent deux fois."}}
+      ],
+      "explanation": {"en": "The HCF is the overlap, 2 × 5. The LCM takes every prime once at its highest power, 2² × 3 × 5.", "fr": "Le PGCD est l'intersection, 2 × 5. Le PPCM prend chaque facteur une fois à sa plus haute puissance, 2² × 3 × 5."}
+    },
+    {
+      "id": "D1",
+      "part": "D",
+      "objective": "o2",
+      "marks": 2,
+      "calculator": false,
+      "prompt": {"en": "Write 252 as a product of prime factors, in index form. Show your working.", "fr": "Décompose 252 en facteurs premiers, avec des puissances. Montre ton raisonnement."},
+      "answer": "2² × 3² × 7",
+      "verify": {"fn": "index_form", "args": [252]},
+      "working": {
+        "en": ["2 | 252", "2 | 126", "3 | 63", "3 | 21", "7 | 7", "  | 1", "Check: 4 × 9 × 7 = 252"],
+        "fr": ["2 | 252", "2 | 126", "3 | 63", "3 | 21", "7 | 7", "  | 1", "Vérif : 4 × 9 × 7 = 252"]
+      },
+      "mark_scheme": [
+        {"code": "M1", "en": "2 × 2 × 3 × 3 × 7 in any order", "fr": "2 × 2 × 3 × 3 × 7 dans n'importe quel ordre"},
+        {"code": "A1", "en": "Written with powers", "fr": "Écrit avec des puissances"}
+      ],
+      "traps": [
+        {"answer": "2 × 2 × 3 × 3 × 7", "misconception": "m_not_index_form", "hint": {"en": "M1 only so far. Group the repeated primes with powers.", "fr": "M1 seulement pour l'instant. Regroupe les facteurs répétés avec des puissances."}},
+        {"answer": "2² × 3 × 7", "misconception": "m_lost_factor", "hint": {"en": "Multiply yours back: 4 × 3 × 7 = 84, not 252.", "fr": "Remultiplie le tien : 4 × 3 × 7 = 84, pas 252."}}
+      ],
+      "photo_check": {"copy": "division_ladder", "check": {"fn": "ladder_steps", "n": 252}},
+      "explanation": {"en": "Divide by the smallest prime each time until you reach 1, then group the repeats with powers.", "fr": "Divise par le plus petit nombre premier à chaque fois jusqu'à 1, puis regroupe les répétitions avec des puissances."}
+    }
+  ],
+  "minigames": [
+    {
+      "id": "g1",
+      "engine": "pop",
+      "objective": "o1",
+      "title": {"en": "Prime Pop", "fr": "Mangues premières"},
+      "instruction": {"en": "Tap only the prime mangoes! 20 seconds per round.", "fr": "Touche seulement les mangues premières ! 20 secondes par manche."},
+      "rule": {"fn": "is_prime"},
+      "timer_s": 20,
+      "rounds": [
+        [2, 9, 13, 15, 17, 21],
+        [1, 23, 27, 29, 33, 31],
+        [5, 25, 35, 37, 49, 53]
+      ],
+      "traps": {
+        "1": "m_one_prime",
+        "9": "m_odd_prime",
+        "15": "m_odd_prime",
+        "21": "m_odd_prime",
+        "25": "m_odd_prime",
+        "27": "m_odd_prime",
+        "33": "m_odd_prime",
+        "35": "m_odd_prime",
+        "49": "m_odd_prime"
+      },
+      "hint_after_wrong": {"en": "Test 2, 3, 5 and 7 before you tap.", "fr": "Teste 2, 3, 5 et 7 avant de toucher."},
+      "points": {"per_correct": 1}
+    }
+  ],
+  "videos": [
+    {"id": "v1", "provider": "Khan Academy", "lang": "en", "title": "Prime factorization", "url": "https://www.khanacademy.org/math/pre-algebra/pre-algebra-factors-multiples/pre-algebra-prime-factorization-prealg/v/prime-factorization"}
+  ],
+  "tutor": {
+    "persona": "margo",
+    "intro": {
+      "en": "Hi, I'm Margo! I'm an AI helper, not a real person. I give hints, you do the maths.",
+      "fr": "Salut, je suis Margo ! Je suis une IA, pas une vraie personne. Je donne des indices, c'est toi qui calcules."
+    },
+    "scope": {
+      "this_week": ["o1", "o2", "o3"],
+      "earlier_weeks": "Week 1 place value, rounding, estimation · Week 2 negative numbers · Week 3 BIDMAS"
+    },
+    "style": [
+      "Reply in the language the child used; in bilingual mode, English first, then French.",
+      "At most 3 short sentences, then one question back.",
+      "One hint at a time, starting from her own working."
+    ],
+    "never": [
+      "Give the final answer of a question or exercise before the app shows the explanation.",
+      "Decide whether an answer is right: the app does that.",
+      "Ask for or repeat personal information (surname, address, phone).",
+      "Talk about anything other than school work; no links except the course videos."
+    ],
+    "off_topic": {"en": "Let's keep to maths! Ask Papa, Maman or Mr. Kaboré about that.", "fr": "Restons sur les maths ! Demande à Papa, Maman ou M. Kaboré."},
+    "worry": {"en": "That sounds important. Please tell Papa or Maman now.", "fr": "Ça a l'air important. Parle-en tout de suite à Papa ou Maman."},
+    "max_turns_per_item": 6
+  },
+  "rewards": {
+    "unit": {"en": "mangoes", "fr": "mangues"},
+    "first_try": 2,
+    "second_try": 1,
+    "streak": {"every": 3, "bonus": 1},
+    "stars": {"3": 0.85, "2": 0.6}
+  },
+  "checks": {
+    "predicted_typical": {
+      "plan": "traps on q3, q4 and q7, right on the 2nd try (1 each); q1, q2, q5, q6 right first try; A1 full, D1 M1 only, C1 (a) right and (b) wrong; all 9 primes popped with wrong taps on 9 and 25",
+      "points": 24
+    }
+  }
+}
