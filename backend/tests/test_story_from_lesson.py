@@ -30,6 +30,7 @@ from app.api.v1.schemas.story_course import StoryCourse, ValidationIssue
 from app.domain.models.story_course import StoryCourseRecord
 from app.domain.services import story_from_lesson_service as service_module
 from app.domain.services import story_repair as repair
+from app.domain.services.story_bible import default_bible
 from app.domain.services.story_course_validator import validate_story_course
 from app.domain.services.story_from_lesson_service import (
     ModuleStoryBinding,
@@ -44,6 +45,8 @@ from app.domain.services.story_from_lesson_service import (
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "lesson_story_unit.json"
+#: The digest of the adult default bible: a course with no stored bible.
+DEFAULT_BIBLE = default_bible(False).digest
 UNIT_ID = uuid.UUID("2f1e0d3c-4b5a-4968-8776-655443322110")
 MODULE_ID = uuid.UUID("7a6b5c4d-3e2f-4a1b-9c8d-7e6f5a4b3c2d")
 QUIZ_UNIT_ID = uuid.UUID("3a2b1c0d-5e4f-4a7b-8c9d-0e1f2a3b4c5d")
@@ -148,13 +151,14 @@ async def test_story_follows_the_cross_track_contracts(raw, language):
     for step in steps(doc):
         if step["type"] in ("narrate", "say", "concept"):
             assert step["en"] and step["fr"]
-    # C2: story lines at most 100 characters in BOTH languages.
+    # C2: story lines at most 100 characters in English and 118 in French.
     for step in steps(doc):
         if step["type"] in ("narrate", "say"):
-            assert len(step["en"]) <= 100 and len(step["fr"]) <= 100
+            assert len(step["en"]) <= 100 and len(step["fr"]) <= 118
     # C4: the learner is the hero.
     assert doc["learner"] == {"first_name": "{child}"}
-    assert any("{child}" in s.get("en", "") for s in steps(doc) if s["type"] == "narrate")
+    assert any("{child}" in s.get("en", "") for s in steps(doc) if s["type"] == "say")
+    assert any(s.get("who") == "hero" for s in steps(doc))
     # C5: catch mini-game, items rounds, per_correct 1, no rule.
     (game,) = doc["minigames"]
     assert game["engine"] == "catch" and game["points"] == {"per_correct": 1}
@@ -423,6 +427,19 @@ async def test_unit_without_a_quiz_still_validates(raw):
             start=1,
         )
     ]
+    # The scenes ask the new questions after the concept they test.
+    asks = iter([["x1", "x2"], ["x3", "x4"], []])
+    for scene in spine["scenes"]:
+        refs = next(asks)
+        steps_out, placed = [], False
+        for step in scene["steps"]:
+            if step["type"] == "ask":
+                if not placed:
+                    steps_out += [{"type": "ask", "ref": ref} for ref in refs]
+                    placed = True
+                continue
+            steps_out.append(step)
+        scene["steps"] = steps_out
     ctx = make_ctx(raw, "en", mcqs=[], has_quiz=False)
     assert plan_for(ctx).extra_questions == 4
     assert "this unit has no quiz yet" in build_story_user_message(ctx)
@@ -467,7 +484,8 @@ def test_kids_courses_get_the_kids_prompt():
         title_fr="Sciences",
     )
     prompt = get_story_system_prompt("en", "CI", 1, "remember", "Science", course=course)
-    assert "young learners aged 8-10" in prompt
+    assert "teaches Science to children aged 8-10" in prompt
+    assert "{friend}" in prompt and "SCREENPLAY" in prompt
 
 
 def test_feature_is_attributed_in_the_cost_ledger():
@@ -572,7 +590,10 @@ def _bound_record(**overrides: Any) -> StoryCourseRecord:
         "module_id": MODULE_ID,
         "module_unit_id": UNIT_ID,
         "language": "en",
-        "content": {"sira_builder": repair.CHAPTER_BUILDER_VERSION},
+        "content": {
+            "sira_builder": repair.CHAPTER_BUILDER_VERSION,
+            "sira_chapter": {"kind": "lesson", "bible": DEFAULT_BIBLE, "arc": "continues"},
+        },
         "source_lesson_content_id": uuid.UUID(int=1),
         "source_lesson_revision": 2,
         "source_lesson_digest": content_digest(LESSON_CONTENT),
@@ -662,7 +683,7 @@ class TestFreshness:
         assert await story_sources_are_fresh(session, _bound_record())
         assert len(session.statements) == 1  # one query of the sources, nothing else
 
-    @pytest.mark.parametrize("builder", [None, 1, 3, "2"])
+    @pytest.mark.parametrize("builder", [None, 1, 2, "3"])
     async def test_a_chapter_of_another_builder_is_stale_without_a_query(self, builder):
         """Rows without sira_builder (shipped per-lesson stories) are rebuilt once."""
         content = {} if builder is None else {"sira_builder": builder}
@@ -1007,6 +1028,7 @@ async def test_generate_and_store_a_unit_story(raw, valid):
     session = FakeSession(
         FakeResult(module),  # the module, with its course
         FakeResult(unit),  # the unit
+        FakeResult(None),  # the course has no bible yet: the default one
         FakeResult(None),  # no cached story yet
         FakeResult(rows=[lesson]),  # cached lesson rows
         _module_units(*LESSON_THEN_QUIZ),  # the module's units: 1.3 covers 1.2
@@ -1048,6 +1070,7 @@ async def test_a_fresh_cached_story_is_returned_without_calling_the_model(raw):
     session = FakeSession(
         FakeResult(module),
         FakeResult(unit),
+        FakeResult(None),  # no stored bible
         FakeResult(cached),
         FakeResult(rows=list(FRESH_SOURCES)),
     )
@@ -1071,7 +1094,11 @@ async def test_unknown_unit_is_a_value_error():
 async def test_missing_lesson_without_a_lesson_service_is_a_value_error(raw):
     module, unit = _module_and_unit()
     session = FakeSession(
-        FakeResult(module), FakeResult(unit), FakeResult(None), FakeResult(rows=[])
+        FakeResult(module),
+        FakeResult(unit),
+        FakeResult(None),
+        FakeResult(None),
+        FakeResult(rows=[]),
     )
     with pytest.raises(ValueError, match="No lesson is cached"):
         await StoryFromLessonService(FakeClaude({})).get_or_generate_unit_story(
@@ -1150,14 +1177,25 @@ def covering_quiz(raw: dict[str, Any], language: str) -> dict[str, Any]:
     return {"questions": [other[0], *copy.deepcopy(raw[language]["quiz"]["questions"]), other[1]]}
 
 
+def _renumber(value: Any) -> Any:
+    """Every quiz ref q1..q4 (picks and asks) as the covering quiz numbers it, q2..q5."""
+    if isinstance(value, dict):
+        out = {k: _renumber(v) for k, v in value.items()}
+        ref = out.get("ref")
+        if isinstance(ref, str) and ref[:1] == "q" and ref[1:].isdigit():
+            out["ref"] = f"q{int(ref[1:]) + 1}"
+        return out
+    if isinstance(value, list):
+        return [_renumber(v) for v in value]
+    return value
+
+
 def picking_spine(raw: dict[str, Any], language: str, *extra_refs: str) -> dict[str, Any]:
-    """The fixture spine, its picks renumbered to the covering quiz (q1..q4 -> q2..q5).
+    """The fixture screenplay, its picks and asks renumbered to the covering quiz.
 
     ``extra_refs`` are appended as further picks (unknown ids, or more picks).
     """
-    spine = copy.deepcopy(raw[language]["spine"])
-    for entry in spine["derived"]:
-        entry["ref"] = f"q{int(entry['ref'][1:]) + 1}"
+    spine = _renumber(copy.deepcopy(raw[language]["spine"]))
     template = spine["derived"][0]
     for ref in extra_refs:
         spine["derived"].append({**copy.deepcopy(template), "ref": ref})
@@ -1239,6 +1277,7 @@ def _sibling_session(raw, module, unit, *, cached_quiz: bool):
     results = [
         FakeResult(module),  # the module, with its course
         FakeResult(unit),  # the unit
+        FakeResult(None),  # no stored bible
         FakeResult(None),  # no cached story yet
         FakeResult(rows=[lesson]),  # cached lesson rows
         _module_units(*LESSON_THEN_QUIZ),  # the module's units
@@ -1266,7 +1305,7 @@ async def test_a_unit_story_is_built_from_its_covering_quiz_unit(raw):
     assert {d["quiz_unit"] for d in derived} == {"1.3"}
     assert "CANDIDATE QUIZ QUESTIONS from the quiz of unit 1.3" in model.messages[0]
     # The quiz of the covering unit was read from the cache, not generated.
-    assert QUIZ_UNIT_ID in session.statements[5].compile().params.values()
+    assert QUIZ_UNIT_ID in session.statements[6].compile().params.values()
     assert model.content_types == ["story"]
 
 
@@ -1276,6 +1315,7 @@ async def test_the_lesson_units_own_quiz_is_never_read(raw):
     session = FakeSession(
         FakeResult(module),
         FakeResult(unit),
+        FakeResult(None),  # no stored bible
         FakeResult(None),  # no cached story yet
         FakeResult(rows=[_content_row(raw["en"]["lesson"], 2, 1)]),
         _module_units((UNIT_ID, "1.2", 1, "lesson")),  # no quiz unit in the module
@@ -1357,6 +1397,7 @@ async def test_when_nothing_can_be_built_a_draft_is_stored_not_retried(raw):
     session = FakeSession(
         FakeResult(module),
         FakeResult(unit),
+        FakeResult(None),  # no stored bible
         FakeResult(None),
         FakeResult(rows=[lesson]),
         _module_units(*LESSON_THEN_QUIZ),
@@ -1386,7 +1427,8 @@ async def test_when_only_the_spine_is_unusable_the_empty_build_is_the_draft(raw)
         )
     assert not generation.report.ok
     assert [e.code for e in generation.report.errors] == ["malformed_course_file"]
-    assert generation.doc["chapters"]  # the deterministic build of an empty spine
+    # The build of an empty answer: the quiz, but no scene (the model writes them all).
+    assert generation.doc["chapters"] == [] and generation.doc["questions"]
     assert generation.doc["checks"]["errors"] == 1
 
 
@@ -1411,6 +1453,7 @@ async def test_a_time_limit_mid_generation_stores_nothing(raw):
     session = FakeSession(
         FakeResult(module),
         FakeResult(unit),
+        FakeResult(None),  # no stored bible
         FakeResult(None),
         FakeResult(rows=[_content_row(raw["en"]["lesson"], 2, 1)]),
         _module_units(*LESSON_THEN_QUIZ),
@@ -1447,6 +1490,7 @@ async def test_a_translation_still_missing_after_the_budget_is_a_stored_warning(
     session = FakeSession(
         FakeResult(module),
         FakeResult(unit),
+        FakeResult(None),  # no stored bible
         FakeResult(None),
         FakeResult(rows=[_content_row(raw["en"]["lesson"], 2, 1)]),
         _module_units(*LESSON_THEN_QUIZ),
@@ -1639,7 +1683,7 @@ async def test_an_unreadable_answer_never_beats_a_readable_attempt(raw, language
     doc = generation.doc
     assert [q["id"] for q in doc["questions"]] == ["q1", "q2", "q3", "q4"]
     # The model's own story, fully translated.
-    opening = spine["story"]["opening"]
+    opening = spine["scenes"][0]["steps"][0]
     assert any(s["type"] == "narrate" and s["en"] == opening["en"] for s in steps(doc))
     concepts = [s for s in steps(doc) if s["type"] == "concept"]
     assert concepts and all(s["en"] != s["fr"] for s in concepts)
@@ -1664,11 +1708,13 @@ async def test_a_story_without_model_content_is_never_published(raw, language, a
 
     assert generation.model_calls == 3
     assert not generation.report.ok
-    assert [e.code for e in generation.report.errors] == ["no_model_content"]
-    assert generation.doc["checks"]["errors"] == 1
+    codes = [e.code for e in generation.report.errors]
+    # No scene of its own: never a chapter, and the draft says why.
+    assert "no_model_content" in codes and "missing_chapters" in codes
+    assert generation.doc["chapters"] == []
+    assert generation.doc["checks"]["errors"] == len(codes)
     # Its copies are kept on record, as the warnings they would settle into.
-    assert generation.report.warnings
-    assert {w.code for w in generation.report.warnings} == {"missing_translation"}
+    assert "missing_translation" in {w.code for w in generation.report.warnings}
     if answer == "unreadable":
         assert "could not be read as JSON" in model.messages[1]
     else:
@@ -1691,6 +1737,7 @@ async def test_a_story_without_model_content_is_stored_as_a_draft(raw):
     session = FakeSession(
         FakeResult(module),
         FakeResult(unit),
+        FakeResult(None),  # no stored bible
         FakeResult(None),
         FakeResult(rows=[lesson]),
         _module_units(*LESSON_THEN_QUIZ),
@@ -1706,7 +1753,7 @@ async def test_a_story_without_model_content_is_stored_as_a_draft(raw):
     # From the covering quiz nothing is picked without an answer, so the
     # question floor fails too; the draft says why: no model content.
     codes = [e["code"] for e in record.validation_report["errors"]]
-    assert codes == ["too_few_questions", "no_model_content"]
+    assert {"too_few_questions", "no_model_content", "missing_chapters"} <= set(codes)
     assert record.source_quiz_digest == content_digest(quiz.content)
 
 
@@ -1772,9 +1819,14 @@ def test_valid_results_are_ranked_copies_then_drops_then_warnings():
 
 
 def _spine_with_x9(raw: dict[str, Any], language: str) -> dict[str, Any]:
-    """The fixture spine plus x9: a real error salvage can drop (no misconception on 'b')."""
+    """The fixture spine plus x9: a real error salvage can drop (no misconception on 'b').
+
+    x9 is asked right after q4, as the model would place it.
+    """
     spine = copy.deepcopy(raw[language]["spine"])
     spine["questions"].append(_choice_without_misconception(9))
+    last = spine["scenes"][-1]["steps"]
+    last.insert(last.index({"type": "ask", "ref": "q4"}) + 1, {"type": "ask", "ref": "x9"})
     return spine
 
 
@@ -1801,9 +1853,12 @@ def _thin_answer(raw: dict[str, Any], language: str, kind: str) -> dict[str, Any
     spine = copy.deepcopy(raw[language]["spine"])
     home = "fr" if language == "en" else "en"
     return {
-        "opening only": {"story": {"opening": spine["story"]["opening"]}},
-        "questions only": {"questions": copy.deepcopy(raw["en"]["spine"]["questions"])},
-        "derived only": {"derived": spine["derived"]},
+        "opening only": {"scenes": spine["scenes"][:1]},
+        "questions only": {
+            "questions": copy.deepcopy(raw["en"]["spine"]["questions"]),
+            "scenes": copy.deepcopy(spine["scenes"]),
+        },
+        "derived only": {"derived": spine["derived"], "scenes": spine["scenes"]},
         "target language only": _without_home_side(spine, home),
     }[kind]
 
@@ -1841,7 +1896,7 @@ async def test_a_clean_salvage_beats_an_answer_valid_only_on_copies(
     doc = generation.doc
     assert "x9" not in {q["id"] for q in doc["questions"]}
     # The model's own story, fully translated.
-    opening = real["story"]["opening"]
+    opening = real["scenes"][0]["steps"][0]
     assert any(s["type"] == "narrate" and s["en"] == opening["en"] for s in steps(doc))
     concepts = [s for s in steps(doc) if s["type"] == "concept"]
     assert concepts and all(s["en"] != s["fr"] for s in concepts)

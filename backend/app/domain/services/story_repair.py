@@ -1,56 +1,65 @@
-"""The deterministic half of lesson-story generation.
+"""The deterministic half of story generation: checking the model's screenplay.
 
-A lesson story is a ``story-course/1`` week built from one lesson unit. The
-work is split so that zero validator errors is a property of the code rather
-than something hoped for from a model:
+A chapter of a module story is a ``story-course/1`` week built from one
+lesson unit (or, for the module's final rally, from its quizzes). Since
+#2674 the model writes the **screenplay** itself — the scenes, each at one of
+the course's places with the characters on stage, and their steps: dialogue
+(``say`` with a speaker and a mood), narration, the concept card of each
+lesson concept, the questions (``ask``), figures (``show``), the mini-game
+and the paper exercises — plus the pedagogy around it: objectives,
+misconceptions, the home-language side of the quiz MCQs with a misconception
+and a targeted hint for each wrong option, extra questions, paper exercises,
+mini-game items and the tutor's prose (see
+:mod:`app.ai.prompts.story_from_lesson`).
 
-* the model writes **pedagogy and translations only** — objectives,
-  misconceptions, the home-language translation of the unit quiz and a
-  misconception plus a targeted hint for each wrong option, a few extra
-  questions, paper exercises, mini-game items, concept rows and the tutor's
-  prose (the "spine", see :mod:`app.ai.prompts.story_from_lesson`);
-* this module builds **everything structural** — format, id, week,
-  languages, learner, cast, sources, chapters, scenes and steps, the
-  ask/game/photo wiring, rewards and the ``checks`` plan — and normalises the
-  spine (:func:`build_story_document` is ``normalise_story_doc`` in the
-  design: it runs before every validation).
+This module **checks, numbers and resolves**; it never writes story lines:
+
+* every step is checked against the course bible (:mod:`story_bible`): a
+  ``say`` speaker and a scene's ``cast`` are cast ids, a mood is one of
+  :data:`MOODS`, a place is one of the bible's places;
+* every line is both languages, without a "Name:" label, within the
+  :data:`STORY_LINE_LIMITS`; a line told twice is dropped;
+* ids are numbered (scenes ``s1..``, concept cards ``c1..``, questions,
+  exercises) and every ``ask``/``photo``/``game`` ref is resolved;
+* every lesson concept must be taught by a concept card that names it
+  (``teaches``), never more than :data:`MAX_ASKS_IN_A_ROW` questions in a row,
+  2 to 4 scenes.
+
+Whatever the builder has to fix in the model's JSON — a copied translation,
+a label stripped, a line cut, a question the model never asked placed after
+a concept card, a speaker who is not in the cast left out — is recorded as an
+issue at the path of the model's own field (:attr:`StoryBuild.issues`). The
+repair loop feeds them back like any validator error; only after the repair
+budget does a fix survive, and then as a warning in the stored report, never
+silently (:func:`settle_translations`).
 
 Two invariants are enforced here, not trusted to the model:
 
-* **Quiz fidelity.** Every stored MCQ of the unit becomes a choice question
+* **Quiz fidelity.** Every stored MCQ the story uses becomes a choice question
   whose target-language prompt, options and correct option are the quiz's own,
   verbatim (:func:`enforce_quiz_fidelity` re-asserts it after assembly). The
-  model only ever writes the home-language side.
+  model only ever writes the home-language side; a quiz's
+  ``option_misconceptions`` are prompt input and never reach a story.
 * **Learner is the hero.** ``learner.first_name`` is the literal ``{child}``
-  placeholder; story lines address the learner in the second person and the
-  front end substitutes the real name at display time, so one cached story
-  serves every learner.
+  placeholder and the hero's name; the best friend is ``{friend}``. The front
+  end substitutes both at display time, so one cached story serves every
+  learner.
 
-Language keying (cross-track contract C1): the ``en``/``fr`` fields of
-``narrate``/``say`` steps and the ``en``/``fr`` row lists of ``concept``
-steps hold English and French respectively, whatever the target language.
-Story lines are capped at 100 characters in *both* languages (C2) so a story
-validates whether a validator reads those fields by language or by position.
+Language keying (C1): the ``en``/``fr`` fields of ``narrate``/``say`` steps
+and the ``en``/``fr`` row lists of ``concept`` steps hold English and French
+respectively, whatever the target language.
 
-A lesson story is also one chapter of its module's story, which
+A lesson story is one chapter of its module's story, which
 :mod:`app.domain.services.story_module_assembly` joins without a model call.
-For that (contract C-1) every chapter has the same :func:`pinned_cast`, its
-four deterministic frame steps carry a ``frame`` marker, every derived
-question names its source in ``derived_from`` and the document records the
-builder in ``sira_builder``.
-
-When the model leaves one language out, the builder still fills the gap by
-copying the other language — a story must always have both keys — but every
-such copy is recorded as a ``missing_translation`` issue, with the path of the
-model's own field (:attr:`StoryBuild.issues`). The repair loop feeds those back
-like any validator error; only after the repair budget does a copy survive,
-and then as a warning in the stored report, never silently.
+Every chapter carries the bible's cast and places; ``sira_builder`` and
+``sira_chapter`` (the bible digest and the chapter's part in the module's
+mission) say what it was built with, so a chapter of an older generator or
+another bible is stale.
 """
 
 from __future__ import annotations
 
 import copy
-import math
 import re
 import uuid
 from collections.abc import Iterable, Iterator
@@ -64,12 +73,26 @@ import structlog
 from app.api.v1.schemas.story_course import (
     FORMAT_VERSION,
     LENGTH_LIMITS,
-    PLACES,
+    MOODS,
     REWARD_DEFAULTS,
+    VISUALS,
     ValidationIssue,
     ValidationReport,
 )
 from app.domain.services import mcq_checks
+from app.domain.services.story_bible import (
+    FAMILY,
+    FRIEND,
+    HERO,
+    MENTOR,
+    TUTOR,
+    StoryBible,
+    default_place,
+    doc_cast,
+    doc_places,
+    normalise_bible,
+)
+from app.domain.services.story_course_validator import MIN_REPEAT_LENGTH, line_key
 
 logger = structlog.get_logger(__name__)
 
@@ -78,47 +101,93 @@ LANGS = ("en", "fr")
 #: The learner's first name. The front end replaces it before rendering.
 CHILD = "{child}"
 
-#: C2 — story lines are kept to the stricter of the two A.2 story limits in
-#: both languages.
-STORY_LINE_LIMIT = 100
+#: A story line's length limit per language (A.2): 100 in English, 118 in French.
+STORY_LINE_LIMITS: dict[str, int] = dict(LENGTH_LIMITS["story"])
+#: The English limit, the stricter one.
+STORY_LINE_LIMIT = STORY_LINE_LIMITS["en"]
 PROMPT_LIMITS: dict[str, int] = dict(LENGTH_LIMITS["prompt"])
 HINT_LIMITS: dict[str, int] = dict(LENGTH_LIMITS["hint"])
+#: A figure's caption, as the stage shows it under the picture.
+CAPTION_LIMIT = 140
 
 #: Mirrors the validator's leak floor: shorter answers are not leak-checked.
 MIN_LEAK_LENGTH = 3
 
-#: Never more than this many ``ask`` steps in a row (the validator allows 3).
-MAX_ASKS_IN_A_ROW = 2
+#: Never more than this many ``ask`` steps in a row (the validator's limit).
+MAX_ASKS_IN_A_ROW = 3
 
 #: A story with fewer questions than this is not worth publishing.
 MIN_QUESTIONS = 2
 
-#: The most MCQs a story takes from a quiz unit that covers several lessons.
+#: The most MCQs a lesson chapter takes from a quiz unit covering several lessons.
 MAX_PICKED_MCQS = 4
+#: The most MCQs the module's rally takes from its quizzes.
+MAX_RALLY_PICKS = 6
 
-#: The issue code of a copy-fallback: one language copied under the other's key.
+#: Issue codes of the builder's fixes. Each is an error while the repair loop
+#: runs and a warning once its budget is spent (:func:`settle_translations`).
+#: None is a validator code, so settling never touches a validator error.
 MISSING_TRANSLATION = "missing_translation"
+SPEAKER_PREFIX = "line_labelled"
+LINE_TOO_LONG = "line_cut"
+UNKNOWN_SPEAKER = "speaker_not_in_cast"
+UNKNOWN_MOOD = "mood_not_in_list"
+UNKNOWN_PLACE = "place_not_in_bible"
+UNKNOWN_VISUAL = "visual_not_usable"
+UNKNOWN_STEP = "step_type_unknown"
+DANGLING_REF = "ref_not_found"
+ASKED_TWICE = "question_asked_twice"
+REPEATED_LINE = "line_told_twice"
+QUESTION_NOT_ASKED = "question_not_asked"
+TOO_MANY_ASKS = "ask_run_too_long"
+UNPLACED_ITEM = "item_not_placed"
+CONCEPT_NOT_COVERED = "concept_not_covered"
+CONCEPT_TOO_LONG = "concept_card_too_long"
+SCENE_COUNT = "scene_count"
+SCENE_CAST = "scene_cast_size"
+SETTLEABLE = frozenset(
+    {
+        MISSING_TRANSLATION,
+        SPEAKER_PREFIX,
+        LINE_TOO_LONG,
+        UNKNOWN_SPEAKER,
+        UNKNOWN_MOOD,
+        UNKNOWN_PLACE,
+        UNKNOWN_VISUAL,
+        UNKNOWN_STEP,
+        DANGLING_REF,
+        ASKED_TWICE,
+        REPEATED_LINE,
+        QUESTION_NOT_ASKED,
+        TOO_MANY_ASKS,
+        UNPLACED_ITEM,
+        CONCEPT_NOT_COVERED,
+        CONCEPT_TOO_LONG,
+        SCENE_COUNT,
+        SCENE_CAST,
+    }
+)
+#: Never settled: a chapter the model wrote no readable scene for.
+NO_SCENES = "no_scenes"
 
 CHOICE_IDS = "abcdef"
 MAX_OBJECTIVES = 3
 MINIGAME_ID = "g1"
-TUTOR_ID = "margo"
-MENTOR_ID = "mentor"
-PEER_ID = "peer"
 
-#: Written as the document's top-level ``sira_builder``. A lesson story is
-#: one chapter of its module's story (contract C-1); a cached chapter whose
-#: ``sira_builder`` differs was built by an older builder and is stale.
-CHAPTER_BUILDER_VERSION = 2
+#: Cast ids (the course bible's).
+HERO_ID, FRIEND_ID, MENTOR_ID, FAMILY_ID, TUTOR_ID = HERO, FRIEND, MENTOR, FAMILY, TUTOR
 
-#: The ``frame`` marker of the deterministic frame steps (C-1). The module
-#: assembler edits these steps by marker, never by matching their text, and
-#: no other step carries the key.
-FRAME_OPENER = "opener"
-FRAME_OBJECTIVES = "objectives"
-FRAME_FINISHED = "finished"
-FRAME_ASK_TUTOR = "ask_tutor"
-FRAMES = (FRAME_OPENER, FRAME_OBJECTIVES, FRAME_FINISHED, FRAME_ASK_TUTOR)
+#: Written as the document's top-level ``sira_builder``. A lesson story is one
+#: chapter of its module's story; a cached chapter whose ``sira_builder``
+#: differs was built by an older generator and is stale. 3: the model writes
+#: the screenplay, with the course bible's cast and places (#2674).
+CHAPTER_BUILDER_VERSION = 3
+
+#: A chapter's part in its module's mission (``sira_chapter.arc``).
+ARC_OPENS = "opens"
+ARC_CONTINUES = "continues"
+ARC_CLOSES = "closes"
+ARC_OPENS_CLOSES = "opens_closes"
 
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 _DERIVED_ID_RE = re.compile(r"^q\d+$")
@@ -127,8 +196,24 @@ _MD_LINK_RE = re.compile(r"\[([^\]]+)\]\((?:[^)]+)\)")
 _MD_EMPHASIS_RE = re.compile(r"(\*\*|__|\*|`)")
 _MD_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s*", re.MULTILINE)
 _MD_BULLET_RE = re.compile(r"^\s*(?:[-*+•]|\d+[.)])\s+", re.MULTILINE)
-_SENTENCE_RE = re.compile(r"(?<=[.!?…])\s+(?=[A-ZÀ-ÖØ-Þ0-9«\"(])")
 _AI_DISCLOSURE_RE = re.compile(r"\b(ai|ia|robot|intelligence artificielle)\b", re.IGNORECASE)
+
+
+def mission_arc(position: int, lessons: int, *, has_rally: bool) -> str:
+    """The part the ``position``-th of ``lessons`` lesson chapters plays in the mission.
+
+    The first lesson sets the module's mission; the module's rally resolves
+    it, or, in a module without a quiz unit, the last lesson does.
+    """
+    first = position == 0
+    last = position == lessons - 1 and not has_rally
+    if first and last:
+        return ARC_OPENS_CLOSES
+    if first:
+        return ARC_OPENS
+    if last:
+        return ARC_CLOSES
+    return ARC_CONTINUES
 
 
 # --------------------------------------------------------------------------
@@ -173,16 +258,6 @@ def clean_text(text: Any) -> str:
     value = _MD_BULLET_RE.sub("", value)
     value = _MD_EMPHASIS_RE.sub("", value)
     return " ".join(value.split())
-
-
-def split_sentences(text: str, max_rows: int = 4) -> list[str]:
-    """Split prose into at most ``max_rows`` rows, merging the overflow."""
-    sentences = [s.strip() for s in _SENTENCE_RE.split(text) if s.strip()]
-    if len(sentences) <= max_rows:
-        return sentences
-    head = sentences[: max_rows - 1]
-    head.append(" ".join(sentences[max_rows - 1 :]))
-    return head
 
 
 def truncate(text: str, limit: int) -> str:
@@ -240,12 +315,10 @@ class _Translations:
     def __init__(self) -> None:
         self.issues: list[ValidationIssue] = []
 
-    def add(self, path: str, message: str) -> None:
-        if not any(i.path == path for i in self.issues):
+    def add(self, path: str, message: str, code: str = MISSING_TRANSLATION) -> None:
+        if not any((i.path, i.code, i.message) == (path, code, message) for i in self.issues):
             self.issues.append(
-                ValidationIssue(
-                    severity="error", code=MISSING_TRANSLATION, path=path, message=message
-                )
+                ValidationIssue(severity="error", code=code, path=path, message=message)
             )
 
     def mark(self) -> int:
@@ -258,7 +331,10 @@ class _Translations:
     def restore(self, issues: Iterable[ValidationIssue]) -> None:
         """Record issues that were held back (see :class:`_Held`)."""
         for issue in issues:
-            if not any(i.path == issue.path for i in self.issues):
+            if not any(
+                (i.path, i.code, i.message) == (issue.path, issue.code, issue.message)
+                for i in self.issues
+            ):
                 self.issues.append(issue)
 
 
@@ -284,6 +360,13 @@ def note_missing(path: str | None, lang: str, detail: str = "") -> None:
     sink.add(f"{path}.{lang}" if lang else path, message)
 
 
+def builder_issue(code: str, path: str, message: str) -> None:
+    """Record a fix the builder made to the model's JSON (one of :data:`SETTLEABLE`)."""
+    sink = _SINK.get()
+    if sink is not None:
+        sink.add(path, message, code)
+
+
 @contextmanager
 def _unless_kept() -> Iterator[list[bool]]:
     """Drop what was recorded inside the block unless the item was kept.
@@ -301,9 +384,8 @@ def _unless_kept() -> Iterator[list[bool]]:
 class _Held:
     """Copy-fallbacks of items whose place in the story is only known later.
 
-    An objective may be merged away by :func:`_rebalance`; the field example's
-    lines and the second chapter title are only shown when the layout has a
-    place for them. ``with held.item(key): ...`` keeps what the block records
+    An objective may be merged away by :func:`_rebalance`.
+    ``with held.item(key): ...`` keeps what the block records
     under ``key`` instead of in the story's sink, and :meth:`report` passes on
     those of the keys the finished story uses — as
     :meth:`_Misconceptions.report_missing` does for misconceptions — so the
@@ -433,6 +515,10 @@ class QuizMcq:
     #: positional, ``None`` at the correct index. Absent on older quizzes.
     #: Prompt input only: never copied into a story a learner receives.
     option_misconceptions: list[str | None] = field(default_factory=list)
+    #: The quiz unit the MCQ comes from, when a story draws on several (a rally).
+    quiz_unit: str | None = None
+    #: A rally: an earlier chapter already asked it (a review question if picked).
+    asked_before: bool = False
 
     @property
     def correct_text(self) -> str:
@@ -465,10 +551,40 @@ class LessonStoryContext:
     quiz_scope: str = "unit"
     #: The unit number of the quiz unit the MCQs come from, for ``sources``.
     quiz_unit_number: str | None = None
+    #: ``"lesson"``: a lesson unit's chapter. ``"rally"``: the module's final
+    #: chapter, which mixes questions of its quizzes and resolves the mission.
+    kind: str = "lesson"
+    #: The course bible's content (:mod:`story_bible`); ``None``: the default
+    #: bible of the audience (a module without a course).
+    bible: dict[str, Any] | None = None
+    #: The module's mission and this chapter's part in it (``ARC_*``).
+    mission: dict[str, str] | None = None
+    arc: str = ARC_CONTINUES
+    #: Where the course is set, for the prompt ("CI").
+    country: str = ""
+    #: A rally: the module's lesson chapters it looks back on, in order
+    #: (``{"unit_number", "title", "objectives"}``).
+    lessons_recap: list[dict[str, Any]] = field(default_factory=list)
+    #: How many candidate MCQs the model may pick.
+    max_picks: int = MAX_PICKED_MCQS
 
     @property
     def picks_from_quiz(self) -> bool:
         return self.quiz_scope == "covering" and bool(self.mcqs)
+
+    @property
+    def is_rally(self) -> bool:
+        return self.kind == "rally"
+
+    @property
+    def bible_content(self) -> dict[str, Any]:
+        if self.bible is not None:
+            return self.bible
+        return normalise_bible({}, is_kids=self.is_kids)
+
+    @property
+    def bible_digest_value(self) -> str:
+        return StoryBible.of(self.bible_content).digest
 
     @property
     def target(self) -> str:
@@ -885,7 +1001,7 @@ def _derived_question(
         # C-1: which quiz unit and which of its questions this one copies.
         # The module assembler de-duplicates on the pair across chapters.
         "derived_from": {
-            "quiz_unit": ctx.quiz_unit_number or ctx.unit_number,
+            "quiz_unit": mcq.quiz_unit or ctx.quiz_unit_number or ctx.unit_number,
             "question_id": mcq.source_id,
         },
     }
@@ -1149,9 +1265,7 @@ def _exercise_body(
     return exercise
 
 
-def _fallback_exercise(
-    objective: dict[str, Any], key_points: dict[str, list[str]] | None
-) -> dict[str, Any]:
+def _fallback_exercise(objective: dict[str, Any]) -> dict[str, Any]:
     """A reflection exercise for an objective the model left without one."""
     exercise: dict[str, Any] = {
         "id": f"R{objective['id']}",
@@ -1171,8 +1285,6 @@ def _fallback_exercise(
             }
         ],
     }
-    if key_points:
-        exercise["working"] = copy.deepcopy(key_points)
     return exercise
 
 
@@ -1180,16 +1292,17 @@ def _rebalance(
     objectives: list[dict[str, Any]],
     questions: list[_BuiltQuestion],
     exercises: list[dict[str, Any]],
-    key_points: dict[str, list[str]] | None,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, str]]:
     """Give every objective at least 2 questions and 1 exercise (C.5 warnings).
 
     Questions move from objectives with a surplus; an objective that cannot be
     covered is merged away. Objectives without an exercise borrow a surplus
-    one, else get a reflection exercise.
+    one, else get a reflection exercise. Also returns where each objective id
+    went (merged and renumbered), for the scenes that name one.
     """
     objectives = list(objectives)
     ids = [o["id"] for o in objectives]
+    merged: dict[str, str] = {}
 
     def counts() -> dict[str, int]:
         out = dict.fromkeys(ids, 0)
@@ -1218,6 +1331,7 @@ def _rebalance(
         victim = min(poor, key=lambda i: (current[i], -ids.index(i)))
         ids.remove(victim)
         heir = min(ids, key=lambda i: (current[i], ids.index(i)))
+        merged[victim] = heir
         for q in questions:
             if q.doc["objective"] == victim:
                 q.doc["objective"] = heir
@@ -1228,6 +1342,13 @@ def _rebalance(
     objectives = [o for o in objectives if o["id"] in ids]
     # Renumber o1..oN so ids stay tidy after a merge.
     renumber = {o["id"]: f"o{n + 1}" for n, o in enumerate(objectives)}
+
+    def where(objective_id: str) -> str:
+        while objective_id in merged:
+            objective_id = merged[objective_id]
+        return renumber.get(objective_id, "")
+
+    moved = {old: where(old) for old in [*renumber, *merged]}
     for o in objectives:
         o["id"] = renumber[o["id"]]
     for q in questions:
@@ -1251,8 +1372,8 @@ def _rebalance(
                 donors[-1]["objective"] = objective_id
             else:
                 objective = next(o for o in objectives if o["id"] == objective_id)
-                kept.append(_fallback_exercise(objective, key_points))
-    return objectives, kept
+                kept.append(_fallback_exercise(objective))
+    return objectives, kept, moved
 
 
 # --------------------------------------------------------------------------
@@ -1261,7 +1382,7 @@ def _rebalance(
 
 
 def _minigame(
-    raw: Any, registry: _Misconceptions, key_points: dict[str, list[str]] | None
+    raw: Any, registry: _Misconceptions, fallback_rows: dict[str, list[str]] | None
 ) -> dict[str, Any] | None:
     raw = raw if isinstance(raw, dict) else {}
     rounds: list[dict[str, Any]] = []
@@ -1303,20 +1424,20 @@ def _minigame(
         if len(rounds) >= 4:
             break
 
-    if not rounds and key_points and key_points["en"]:
-        # Fallback: the lesson's own takeaways, every one of them true.
-        for start in range(0, min(len(key_points["en"]), 6), 3):
+    if not rounds and fallback_rows and fallback_rows["en"]:
+        # Fallback: the chapter's own concept rows, every one of them true.
+        for start in range(0, min(len(fallback_rows["en"]), 6), 3):
             rounds.append(
                 {
                     "prompt": {
-                        "en": "Catch the key points of the lesson.",
-                        "fr": "Attrape les points clés de la leçon.",
+                        "en": "Catch the ideas you just learned.",
+                        "fr": "Attrape les idées que tu viens d'apprendre.",
                     },
                     "items": [
                         {"label": {"en": en, "fr": fr}, "correct": True}
                         for en, fr in zip(
-                            key_points["en"][start : start + 3],
-                            key_points["fr"][start : start + 3],
+                            fallback_rows["en"][start : start + 3],
+                            fallback_rows["fr"][start : start + 3],
                             strict=True,
                         )
                     ],
@@ -1346,487 +1467,589 @@ def _minigame(
 
 
 # --------------------------------------------------------------------------
-# Cast, lines and layout
+# The screenplay: scenes and steps the model wrote, checked and numbered
 # --------------------------------------------------------------------------
 
+#: Spoken-name aliases the model may use in ``who`` / ``cast`` for each role.
+_WHO_ALIASES: dict[str, str] = {
+    "hero": HERO_ID,
+    "learner": HERO_ID,
+    "child": HERO_ID,
+    "you": HERO_ID,
+    "{child}": HERO_ID,
+    "friend": FRIEND_ID,
+    "peer": FRIEND_ID,
+    "colleague": FRIEND_ID,
+    "{friend}": FRIEND_ID,
+    "mentor": MENTOR_ID,
+    "teacher": MENTOR_ID,
+    "supervisor": MENTOR_ID,
+    "family": FAMILY_ID,
+    "parent": FAMILY_ID,
+    "mother": FAMILY_ID,
+    "father": FAMILY_ID,
+    "margo": TUTOR_ID,
+    "tutor": TUTOR_ID,
+    "ai_tutor": TUTOR_ID,
+}
 
-def pinned_cast(is_kids: bool, language: str) -> list[dict[str, Any]]:
-    """The one cast of every chapter of every module story (contract C-1).
+#: Moods a model writes that mean one of :data:`MOODS`.
+_MOOD_ALIASES: dict[str, str] = {
+    "neutral": "idle",
+    "calm": "idle",
+    "speaking": "talk",
+    "explaining": "talk",
+    "curious": "think",
+    "thinking": "think",
+    "confused": "think",
+    "puzzled": "think",
+    "excited": "happy",
+    "proud": "happy",
+    "laughing": "happy",
+    "joyful": "happy",
+    "worried": "sad",
+    "upset": "sad",
+    "disappointed": "sad",
+    "shocked": "surprised",
+    "amazed": "surprised",
+    "walking": "walk",
+}
 
-    The names match the fixed art and never come from the model: the spine
-    has no ``characters`` key any more, and one that is sent anyway is
-    ignored, so every chapter of a module tells the story of the same people.
-    Fresh dicts on every call: callers may edit what they get.
-    """
-    margo = {"id": TUTOR_ID, "name": "Margo", "kind": "ai_tutor", "art": "margo"}
-    if is_kids:
-        mentor_name = "M. Kaboré" if language == "fr" else "Mr Kaboré"
-        mentor = {"id": MENTOR_ID, "name": mentor_name, "kind": "adult", "art": "mr_kabore"}
-        peer = {"id": PEER_ID, "name": "Awa", "kind": "child", "art": "friend"}
-    else:
-        mentor = {"id": MENTOR_ID, "name": "Dr Kaboré", "kind": "adult", "art": "mr_kabore"}
-        peer = {"id": PEER_ID, "name": "Awa", "kind": "adult", "art": "maman_olivia"}
-    return [margo, mentor, peer]
+#: A step the model wrote with a mood the stage has no pose for gets this one.
+DEFAULT_MOOD = "talk"
+
+#: A chapter tells its lesson in this many scenes (a rally in 2 or 3).
+MIN_SCENES, MAX_SCENES = 2, 4
+#: Characters on stage in one scene.
+MIN_ON_STAGE, MAX_ON_STAGE = 2, 3
+#: Rows of a concept card.
+MAX_CONCEPT_ROWS = 4
+
+_SPEECH_TAG_RE = (
+    r"(?:\s*:|\s+(?:says|said|asks|asked|replies|answers|explains|shouts|whispers|"
+    r"dit|demande|répond|repond|explique|crie|chuchote)\b\s*:?)"
+)
+_HONORIFIC_RE = r"(?:(?:mr|mrs|ms|miss|dr|m|mme|mlle|monsieur|madame|maître|maitre)\.?\s+)?"
+_QUOTES = " \"'«»“”‘’"
 
 
-def _framed(step: dict[str, Any] | None, marker: str) -> dict[str, Any] | None:
-    """``step`` with its C-1 ``frame`` marker (one of :data:`FRAMES`)."""
-    if step is not None:
-        step["frame"] = marker
-    return step
+@dataclass
+class _Cast:
+    """The bible's cast as a story uses it: ids, and every name a line may label."""
+
+    members: list[dict[str, Any]]
+
+    @property
+    def ids(self) -> list[str]:
+        return [m["id"] for m in self.members]
+
+    def resolve(self, value: Any) -> str | None:
+        """A cast id for what the model wrote in ``who`` or ``cast``."""
+        key = _as_str(value).strip().lower()
+        if not key:
+            return None
+        if key in self.ids:
+            return key
+        alias = _WHO_ALIASES.get(key)
+        if alias in self.ids:
+            return alias
+        for member in self.members:
+            names = {
+                _as_str(member.get("name")).lower(),
+                _as_str(member.get("default_name")).lower(),
+            }
+            if key in names - {""}:
+                return member["id"]
+        return None
+
+    def names(self) -> list[str]:
+        out: list[str] = []
+        for member in self.members:
+            out += [member["id"], _as_str(member.get("name")), _as_str(member.get("default_name"))]
+        return [name for name in out if name]
 
 
-def _line(kind: str, value: dict[str, str] | None, who: str | None = None) -> dict | None:
-    """A narrate/say step, capped at C2's 100 characters in both languages."""
-    if value is None:
+def _prefix_re(cast: _Cast) -> re.Pattern[str]:
+    names = sorted({n for n in cast.names()}, key=len, reverse=True)
+    joined = "|".join(re.escape(n) for n in names) or r"(?!)"
+    return re.compile(rf"^[{_QUOTES}(]*{_HONORIFIC_RE}(?:{joined}){_SPEECH_TAG_RE}", re.IGNORECASE)
+
+
+def _strip_prefix(text: str, pattern: re.Pattern[str]) -> str | None:
+    """``text`` without its "Name: " / "Name dit :" label, or ``None`` if it has none."""
+    match = pattern.match(text)
+    if not match:
+        return None
+    rest = text[match.end() :].strip()
+    if len(rest) >= 2 and rest[0] in "\"'«“‘" and rest[-1] in "\"'»”’":
+        rest = rest[1:-1].strip()
+    return rest or None
+
+
+def _story_line(
+    kind: str,
+    raw: dict[str, Any],
+    path: str,
+    *,
+    who: str | None = None,
+    mood: str | None = None,
+    prefix: re.Pattern[str] | None = None,
+) -> dict[str, Any] | None:
+    """A ``narrate``/``say`` step: both languages, no name label, within the limits."""
+    text = text_object({"en": raw.get("en"), "fr": raw.get("fr")}, path=path)
+    if text is None:
         return None
     step: dict[str, Any] = {"type": kind}
     if who:
         step["who"] = who
-    step["en"] = truncate(value["en"], STORY_LINE_LIMIT)
-    step["fr"] = truncate(value["fr"], STORY_LINE_LIMIT)
+    if mood:
+        step["mood"] = mood
+    for lang in LANGS:
+        value = text[lang]
+        if prefix is not None and (stripped := _strip_prefix(value, prefix)) is not None:
+            builder_issue(
+                SPEAKER_PREFIX,
+                f"{path}.{lang}",
+                "the line starts with the speaker's name: 'who' already says who speaks,"
+                " so write only the words they say",
+            )
+            value = stripped
+        limit = STORY_LINE_LIMITS[lang]
+        if len(value) > limit:
+            builder_issue(
+                LINE_TOO_LONG,
+                f"{path}.{lang}",
+                f"{len(value)} characters: a story line is at most {limit} in {_LANGUAGE_NAMES[lang]}",
+            )
+            value = truncate(value, limit)
+        step[lang] = value
     return step
 
 
-_BRIDGES = (
-    (
-        {
-            "en": "Keep going, {child}. Here is the next one.",
-            "fr": "Continue, {child}. Voici la suivante.",
-        }
-    ),
-    ({"en": "Take a breath. One more question.", "fr": "Respire un coup. Encore une question."}),
-    ({"en": "Good work so far, {child}.", "fr": "Beau travail jusqu'ici, {child}."}),
-)
+def _mood(value: Any, path: str) -> str:
+    mood = _as_str(value).lower()
+    if not mood:
+        return DEFAULT_MOOD
+    if mood in MOODS:
+        return mood
+    if mood in _MOOD_ALIASES:
+        return _MOOD_ALIASES[mood]
+    builder_issue(
+        UNKNOWN_MOOD, f"{path}.mood", f"{mood!r} is not a mood: use one of {', '.join(MOODS)}"
+    )
+    return DEFAULT_MOOD
 
 
-def bridge_line(index: int) -> dict[str, Any]:
-    """The ``index``-th bridge: a Margo line set between two runs of asks."""
-    return _line("say", _BRIDGES[index % len(_BRIDGES)], TUTOR_ID) or {}
+def _figure_step(ctx: LessonStoryContext, raw: dict[str, Any]) -> dict[str, Any] | None:
+    """A lesson figure by its number in the prompt (1-based) or its id."""
+    refs = [r for r in _items(ctx.lesson.get("source_image_refs")) if isinstance(r, dict)]
+    refs = [r for r in refs if _as_str(r.get("id"))]
+    wanted = raw.get("figure")
+    ref: dict[str, Any] | None = None
+    if isinstance(wanted, int) and not isinstance(wanted, bool) and 1 <= wanted <= len(refs):
+        ref = refs[wanted - 1]
+    elif _as_str(wanted).isdigit() and 1 <= int(_as_str(wanted)) <= len(refs):
+        ref = refs[int(_as_str(wanted)) - 1]
+    else:
+        source_id = _as_str(
+            _get(raw.get("params"), "source_image_id") or raw.get("source_image_id")
+        )
+        ref = (
+            next((r for r in refs if _as_str(r.get("id")) == source_id), None)
+            if source_id
+            else None
+        )
+    if ref is None:
+        return None
+    params: dict[str, Any] = {"source_image_id": _as_str(ref.get("id"))}
+    if ref.get("figure_number"):
+        params["figure_number"] = _as_str(ref.get("figure_number"))
+    alt = text_object({"en": ref.get("alt_text_en"), "fr": ref.get("alt_text_fr")})
+    if alt:
+        params["alt"] = alt
+    step: dict[str, Any] = {"type": "show", "visual": "image", "params": params}
+    caption = text_object(
+        {"en": ref.get("caption_en"), "fr": ref.get("caption_fr")},
+        fallback={"en": _as_str(ref.get("caption")), "fr": _as_str(ref.get("caption"))},
+    )
+    if caption:
+        step["caption"] = capped(caption, CAPTION_LIMIT)
+    return step
 
 
-def enforce_ask_spacing(chapters: list[dict[str, Any]], *, first_bridge: int = 0) -> int:
-    """Insert a bridge line before any ask that would make the run too long.
+def _show_step(ctx: LessonStoryContext, raw: dict[str, Any], path: str) -> dict[str, Any] | None:
+    visual = _as_str(raw.get("visual"))
+    if raw.get("figure") is not None or visual in ("", "image"):
+        step = _figure_step(ctx, raw)
+        if step is None:
+            builder_issue(
+                DANGLING_REF,
+                path,
+                "this show step names no figure of the lesson: use"
+                ' {"type": "show", "figure": N} with a figure listed above, or leave it out',
+            )
+        return step
+    if visual not in VISUALS or not isinstance(raw.get("params"), dict):
+        builder_issue(
+            UNKNOWN_VISUAL,
+            path,
+            f"{visual!r} with these params is not a visual of the catalog: use a lesson"
+            " figure or a catalog visual with its params, or leave it out",
+        )
+        return None
+    step = {"type": "show", "visual": visual, "params": copy.deepcopy(raw["params"])}
+    caption = text_object(raw.get("caption"), path=f"{path}.caption")
+    if caption:
+        step["caption"] = capped(caption, CAPTION_LIMIT)
+    return step
 
-    The run is counted over the flattened story, across scene and chapter
-    boundaries, exactly as the validator counts it, and never exceeds
-    :data:`MAX_ASKS_IN_A_ROW`. Bridges cycle from ``first_bridge``; returns the
-    index of the next one. Shared by a lesson story's layout and the module
-    assembler, so both space questions the same way.
-    """
-    bridge = first_bridge
-    run = 0
-    for chapter in chapters:
-        for scene in chapter["scenes"]:
-            steps: list[dict[str, Any]] = []
-            for step in scene["steps"]:
-                if step["type"] == "ask":
-                    if run >= MAX_ASKS_IN_A_ROW:
-                        steps.append(bridge_line(bridge))
-                        bridge += 1
-                        run = 0
-                    run += 1
-                else:
-                    run = 0
-                steps.append(step)
-            scene["steps"] = steps
-    return bridge
+
+@dataclass
+class _Refs:
+    """What ``ask``/``photo``/``game`` steps may point at, and what they did."""
+
+    #: The model's own ref (``q1``, ``x2``, the id it gave) → the question id.
+    questions: dict[str, str]
+    exercises: dict[str, str]
+    minigame: str | None
+    situations: dict[str, _BuiltQuestion]
+    #: Question and exercise ids a salvage pass left out: their steps go too, silently.
+    dropped: set[str] = field(default_factory=set)
+    asked: list[str] = field(default_factory=list)
+    placed: list[str] = field(default_factory=list)
+    game_placed: bool = False
 
 
-class _Layout:
-    """Builds chapters while keeping asks spread out (C.5)."""
+class _ScreenplayBuilder:
+    """Turns the model's ``scenes`` into the chapter's scenes, recording every fix."""
 
-    def __init__(self, ctx: LessonStoryContext) -> None:
+    def __init__(
+        self,
+        ctx: LessonStoryContext,
+        cast: _Cast,
+        places: set[str],
+        objective_map: dict[str, str],
+        refs: _Refs,
+    ) -> None:
         self.ctx = ctx
-        self.chapters: list[dict[str, Any]] = []
-        self._scene_count = 0
-        self._concept_count = 0
-        self._bridge = 0
+        self.cast = cast
+        self.places = places
+        self.objective_map = objective_map
+        self.refs = refs
+        self.prefix = _prefix_re(cast)
+        self.concepts = 0
+        self.default_place = default_place(ctx.bible_content, ctx.is_kids)
 
-    def chapter(self, title: dict[str, str]) -> dict[str, Any]:
-        chapter = {"id": f"ch{len(self.chapters) + 1}", "title": title, "scenes": []}
-        self.chapters.append(chapter)
-        return chapter
+    def scenes(self, raw_scenes: Any) -> list[dict[str, Any]]:
+        scenes: list[dict[str, Any]] = []
+        for index, raw in enumerate(_items(raw_scenes)):
+            if isinstance(raw, dict):
+                scene = self.scene(raw, f"scenes[{index}]")
+                if scene is not None:
+                    scenes.append(scene)
+        return scenes
 
-    def scene(self, chapter: dict[str, Any], place: str) -> dict[str, Any]:
-        self._scene_count += 1
-        scene: dict[str, Any] = {"id": f"s{self._scene_count}", "place": place, "steps": []}
-        chapter["scenes"].append(scene)
+    def scene(self, raw: dict[str, Any], path: str) -> dict[str, Any] | None:
+        place = _as_str(raw.get("place"))
+        if place not in self.places:
+            slug = _slug(place, "")
+            place_fixed = slug if slug in self.places else self.default_place
+            builder_issue(
+                UNKNOWN_PLACE,
+                f"{path}.place",
+                f"{place!r} is not a place of the course: use one of the place ids listed",
+            )
+            place = place_fixed
+        on_stage: list[str] = []
+        for member in _items(raw.get("cast")):
+            resolved = self.cast.resolve(member)
+            if resolved is None:
+                builder_issue(
+                    UNKNOWN_SPEAKER, f"{path}.cast", f"{_as_str(member)!r} is not in the cast"
+                )
+            elif resolved not in on_stage:
+                on_stage.append(resolved)
+
+        steps: list[dict[str, Any]] = []
+        for index, raw_step in enumerate(_items(raw.get("steps"))):
+            if isinstance(raw_step, dict):
+                steps.extend(self.step(raw_step, f"{path}.steps[{index}]"))
+        if not steps:
+            return None
+        for step in steps:
+            if step["type"] == "say" and step["who"] not in on_stage:
+                on_stage.append(step["who"])
+        if not MIN_ON_STAGE <= len(on_stage) <= MAX_ON_STAGE:
+            builder_issue(
+                SCENE_CAST,
+                f"{path}.cast",
+                f"{len(on_stage)} characters on stage: a scene shows {MIN_ON_STAGE} or"
+                f" {MAX_ON_STAGE}, and every speaker of the scene is one of them",
+            )
+        scene: dict[str, Any] = {"id": "", "place": place, "cast": on_stage}
+        objective = self.objective_map.get(_as_str(raw.get("objective")))
+        if objective:
+            scene["objective"] = objective
+        scene["steps"] = steps
         return scene
 
-    def concept(self, title: dict[str, str], rows: dict[str, list[str]]) -> dict[str, Any]:
-        self._concept_count += 1
-        return {
-            "type": "concept",
-            "id": f"c{self._concept_count}",
-            "title": title,
-            "en": list(rows["en"]),
-            "fr": list(rows["fr"]),
-        }
-
-    def situation(self, question: _BuiltQuestion) -> dict[str, Any]:
-        """The full quiz stem, shown just before a question whose prompt is capped."""
-        assert question.situation is not None
-        return {
-            "type": "concept",
-            "id": situation_step_id(question.doc["id"]),
-            "title": dict(_SITUATION_TITLE),
-            "en": [question.situation["en"]],
-            "fr": [question.situation["fr"]],
-        }
-
-    def enforce_spacing(self) -> None:
-        """Insert a bridge line before any ask that would make the run too long."""
-        self._bridge = enforce_ask_spacing(self.chapters, first_bridge=self._bridge)
-
-
-def _image_step(ctx: LessonStoryContext) -> dict[str, Any] | None:
-    """At most one ``show`` step, and only a real lesson figure (``image``)."""
-    for ref in _items(ctx.lesson.get("source_image_refs")):
-        if not isinstance(ref, dict) or not _as_str(ref.get("id")):
-            continue
-        params: dict[str, Any] = {"source_image_id": _as_str(ref.get("id"))}
-        if ref.get("figure_number"):
-            params["figure_number"] = _as_str(ref.get("figure_number"))
-        alt = text_object({"en": ref.get("alt_text_en"), "fr": ref.get("alt_text_fr")})
-        if alt:
-            params["alt"] = alt
-        step: dict[str, Any] = {"type": "show", "visual": "image", "params": params}
-        caption = text_object(
-            {"en": ref.get("caption_en"), "fr": ref.get("caption_fr")},
-            fallback={"en": _as_str(ref.get("caption")), "fr": _as_str(ref.get("caption"))},
+    def step(self, raw: dict[str, Any], path: str) -> list[dict[str, Any]]:
+        kind = _as_str(raw.get("type"))
+        if kind == "narrate":
+            step = _story_line("narrate", raw, path)
+            return [step] if step else []
+        if kind == "say":
+            who = self.cast.resolve(raw.get("who"))
+            if who is None:
+                builder_issue(
+                    UNKNOWN_SPEAKER,
+                    f"{path}.who",
+                    f"{_as_str(raw.get('who'))!r} is not in the cast: 'who' is one of"
+                    f" {', '.join(self.cast.ids)}",
+                )
+                return []
+            step = _story_line(
+                "say", raw, path, who=who, mood=_mood(raw.get("mood"), path), prefix=self.prefix
+            )
+            return [step] if step else []
+        if kind == "concept":
+            return self.concept(raw, path)
+        if kind == "ask":
+            return self.ask(raw, path)
+        if kind == "show":
+            step = _show_step(self.ctx, raw, path)
+            return [step] if step else []
+        if kind == "game":
+            if self.refs.minigame is None or self.refs.game_placed:
+                return []
+            self.refs.game_placed = True
+            return [{"type": "game", "ref": self.refs.minigame}]
+        if kind == "photo":
+            ref = self.refs.exercises.get(_as_str(raw.get("ref")).upper())
+            if ref is None and _as_str(raw.get("ref")).upper() in self.refs.dropped:
+                return []
+            if ref is None:
+                builder_issue(
+                    DANGLING_REF, f"{path}.ref", f"{_as_str(raw.get('ref'))!r} is not an exercise"
+                )
+                return []
+            if ref in self.refs.placed:
+                return []
+            self.refs.placed.append(ref)
+            return [{"type": "photo", "ref": ref}]
+        builder_issue(
+            UNKNOWN_STEP,
+            f"{path}.type",
+            f"{kind!r} is not a step type: use narrate, say, concept, ask, show, game or photo",
         )
-        if caption:
-            step["caption"] = caption
-        return step
-    return None
+        return []
 
-
-def _concept_blocks(spine: dict[str, Any], ctx: LessonStoryContext) -> list[dict[str, Any]]:
-    """One block per lesson concept: model rows, else the lesson's own prose.
-
-    The lesson's prose exists in the target language only, so falling back to
-    it copies that language under the home key: recorded at ``concepts``.
-    """
-    blocks: list[dict[str, Any]] = []
-    for index, raw in enumerate(_items(spine.get("concepts"))):
-        if not isinstance(raw, dict):
-            continue
-        path = f"concepts[{index}]"
+    def concept(self, raw: dict[str, Any], path: str) -> list[dict[str, Any]]:
         with _unless_kept() as kept:
             rows = parallel_rows(raw.get("en"), raw.get("fr"), path=path)
             if rows is None:
-                continue
-            title = text_object(raw.get("title"), path=f"{path}.title") or {
-                "en": f"Key idea {len(blocks) + 1}",
-                "fr": f"Idée clé {len(blocks) + 1}",
-            }
-            blocks.append({"title": title, "rows": rows})
-            kept.append(True)
-    if blocks:
-        return blocks
-    for number, paragraph in enumerate(ctx.lesson_list("concepts"), start=1):
-        rows = split_sentences(paragraph)
-        if rows:
-            blocks.append(
-                {
-                    "title": {"en": f"Key idea {number}", "fr": f"Idée clé {number}"},
-                    "rows": {"en": rows, "fr": list(rows)},
-                }
-            )
-    if blocks:
-        note_missing(
-            "concepts",
-            "",
-            f"no concept rows: the lesson's {_LANGUAGE_NAMES[ctx.target]} text was used for"
-            " both languages",
-        )
-    return blocks
-
-
-def _key_points(spine: dict[str, Any], ctx: LessonStoryContext) -> dict[str, list[str]] | None:
-    """The lesson's takeaways, verbatim in the target language.
-
-    Read from ``content["key_points"]`` directly — ``extract_lesson_text``
-    silently drops them.
-    """
-    target_rows = ctx.lesson_list("key_points")
-    if not target_rows:
-        return None
-    home_rows = _row_list(spine.get("key_points_home"))
-    if len(home_rows) != len(target_rows):
-        note_missing(
-            "key_points_home",
-            "",
-            f"expected {len(target_rows)} key points translated into"
-            f" {_LANGUAGE_NAMES[ctx.home]}; the lesson's own were copied",
-        )
-        home_rows = list(target_rows)
-    return {ctx.target: target_rows, ctx.home: home_rows}
-
-
-def _example_block(spine: dict[str, Any], ctx: LessonStoryContext) -> dict[str, Any] | None:
-    raw = spine.get("example") if isinstance(spine.get("example"), dict) else {}
-    rows = parallel_rows(raw.get("en"), raw.get("fr"), path="example")
-    if rows is None:
-        target_rows = split_sentences(ctx.lesson_text("aof_example"))
-        if not target_rows:
-            return None
-        note_missing(
-            "example",
-            "",
-            f"no example rows: the lesson's {_LANGUAGE_NAMES[ctx.target]} field example was"
-            " used for both languages",
-        )
-        rows = {"en": target_rows, "fr": list(target_rows)}
-    place = _as_str(raw.get("place"))
-    if place not in PLACES:
-        place = "school_yard" if ctx.is_kids else "market"
-    title = text_object(raw.get("title"), path="example.title") or {
-        "en": "An example from the field",
-        "fr": "Un exemple de terrain",
-    }
-    return {"title": title, "rows": rows, "place": place}
-
-
-def _story_lines(spine: dict[str, Any], held: _Held) -> dict[str, Any]:
-    """The model's story lines; copy-fallbacks held under ``("story", key)``.
-
-    The layout reports the keys it shows: the example's lines only appear
-    when the story has a field example.
-    """
-    raw = spine.get("story") if isinstance(spine.get("story"), dict) else {}
-    lines: dict[str, Any] = {}
-    for key in ("opening", "mentor_intro", "example_intro", "wrap_up"):
-        with held.item(("story", key)):
-            lines[key] = text_object(raw.get(key), path=f"story.{key}")
-    dialogue = []
-    with held.item(("story", "example_dialogue")):
-        for index, item in enumerate(_items(raw.get("example_dialogue"))):
-            if len(dialogue) >= 3:
-                break
-            if isinstance(item, dict):
-                text = text_object(
-                    {"en": item.get("en"), "fr": item.get("fr")},
-                    path=f"story.example_dialogue[{index}]",
+                return []
+            if len(rows["en"]) > MAX_CONCEPT_ROWS:
+                builder_issue(
+                    CONCEPT_TOO_LONG,
+                    path,
+                    f"{len(rows['en'])} rows: a concept card has 2 to {MAX_CONCEPT_ROWS}",
                 )
-                speaker = _as_str(item.get("who")).lower()
-                who = PEER_ID if speaker in (PEER_ID, "colleague", "friend") else MENTOR_ID
-                if text:
-                    dialogue.append((who, text))
-    lines["example_dialogue"] = dialogue
-    return lines
+                rows = {lang: rows[lang][:MAX_CONCEPT_ROWS] for lang in LANGS}
+            self.concepts += 1
+            title = text_object(raw.get("title"), path=f"{path}.title") or {
+                "en": f"Key idea {self.concepts}",
+                "fr": f"Idée clé {self.concepts}",
+            }
+            step: dict[str, Any] = {
+                "type": "concept",
+                "id": f"c{self.concepts}",
+                "title": title,
+                "en": list(rows["en"]),
+                "fr": list(rows["fr"]),
+            }
+            teaches = raw.get("teaches")
+            if isinstance(teaches, str) and teaches.strip().isdigit():
+                teaches = int(teaches.strip())
+            if isinstance(teaches, int) and not isinstance(teaches, bool) and teaches > 0:
+                step["teaches"] = teaches
+            kept.append(True)
+            return [step]
 
-
-def _chapter_titles(spine: dict[str, Any], held: _Held) -> list[dict[str, str]]:
-    """The three chapter titles; copy-fallbacks held under ``("chapter", index)``.
-
-    The layout reports the chapters it opens: the second one only exists when
-    the story has enough concepts, or a field example, to fill it.
-    """
-    defaults = [
-        {"en": "Your mission", "fr": "Ta mission"},
-        {"en": "In the field", "fr": "Sur le terrain"},
-        {"en": "Your turn", "fr": "À toi de jouer"},
-    ]
-    raw = spine.get("chapter_titles")
-    titles = []
-    for index, default in enumerate(defaults):
-        value = raw[index] if isinstance(raw, list) and index < len(raw) else None
-        with held.item(("chapter", index)):
-            titles.append(text_object(value, path=f"chapter_titles[{index}]") or default)
-    return titles
-
-
-def _distribute(items: list[Any], slots: int) -> list[list[Any]]:
-    """Split ``items`` into ``slots`` consecutive groups, earliest groups fullest."""
-    if slots <= 0:
-        return []
-    size = math.ceil(len(items) / slots) if items else 0
-    return [items[i * size : (i + 1) * size] for i in range(slots)]
-
-
-def _layout(
-    ctx: LessonStoryContext,
-    spine: dict[str, Any],
-    objectives: list[dict[str, Any]],
-    questions: list[_BuiltQuestion],
-    exercises: list[dict[str, Any]],
-    minigame: dict[str, Any] | None,
-    key_points: dict[str, list[str]] | None,
-    held: _Held,
-) -> list[dict[str, Any]]:
-    layout = _Layout(ctx)
-    lines = _story_lines(spine, held)
-    titles = _chapter_titles(spine, held)
-    study_place = "classroom" if ctx.is_kids else "desk"
-
-    def ask_steps(group: list[_BuiltQuestion]) -> list[dict[str, Any]]:
-        steps: list[dict[str, Any]] = []
-        for q in group:
-            if q.situation:
-                steps.append(layout.situation(q))
-            steps.append({"type": "ask", "ref": q.doc["id"]})
-        return steps
-
-    def scene_objective(scene: dict[str, Any], group: list[_BuiltQuestion]) -> None:
-        if group and group[0].doc.get("objective"):
-            scene["objective"] = group[0].doc["objective"]
-
-    concepts = _concept_blocks(spine, ctx)
-    example = _example_block(spine, ctx)
-    # Teaching blocks, in lesson order; questions follow the blocks.
-    blocks: list[tuple[str, Any]] = [("concept", c) for c in concepts]
-    if example:
-        blocks.append(("example", example))
-    if key_points:
-        blocks.append(("key_points", key_points))
-    groups = _distribute(questions, max(len(blocks), 1))
-    first_half = math.ceil(len(concepts) / 2)
-    your_turn: dict[str, Any] | None = None
-
-    # Chapter 1 — the mission: who you are, what you will learn.
-    ch1 = layout.chapter(titles[0])
-    intro = layout.scene(ch1, study_place)
-    intro["objective"] = objectives[0]["id"]
-    opener = _line(
-        "narrate",
-        {
-            "en": "This story is about you, {child}.",
-            "fr": "Cette histoire parle de toi, {child}.",
-        },
-    )
-    intro_steps = [
-        _framed(opener, FRAME_OPENER),
-        _line("narrate", lines["opening"]),
-        _line(
-            "say",
-            lines["mentor_intro"]
-            or {
-                "en": "Welcome, {child}. Today we work on this lesson together.",
-                "fr": "Bienvenue, {child}. Aujourd'hui, on travaille cette leçon ensemble.",
-            },
-            MENTOR_ID,
-        ),
-        _image_step(ctx),
-        _framed(
-            layout.concept(
-                {"en": "What you will learn", "fr": "Ce que tu vas apprendre"},
-                {lang: [o[lang] for o in objectives] for lang in LANGS},
-            ),
-            FRAME_OBJECTIVES,
-        ),
-    ]
-    intro["steps"] = [s for s in intro_steps if s]
-
-    chapter = ch1
-    for index, (kind, block) in enumerate(blocks):
-        group = groups[index] if index < len(groups) else []
-        if kind == "concept":
-            if index == first_half and len(layout.chapters) == 1:
-                chapter = layout.chapter(titles[1])
-            scene = layout.scene(chapter, study_place)
-            scene["steps"] = [layout.concept(block["title"], block["rows"]), *ask_steps(group)]
-            scene_objective(scene, group)
-        elif kind == "example":
-            if len(layout.chapters) == 1:
-                chapter = layout.chapter(titles[1])
-            scene = layout.scene(chapter, block["place"])
-            steps = [
-                _line(
-                    "narrate",
-                    lines["example_intro"]
-                    or {
-                        "en": "Now picture yourself in the field, {child}.",
-                        "fr": "Imagine-toi maintenant sur le terrain, {child}.",
-                    },
-                ),
-                layout.concept(block["title"], block["rows"]),
-            ]
-            steps += [_line("say", text, who) for who, text in lines["example_dialogue"]]
-            steps += ask_steps(group)
-            if minigame:
-                steps.append({"type": "game", "ref": minigame["id"]})
-            scene["steps"] = [s for s in steps if s]
-            scene_objective(scene, group)
-        else:  # key points
-            chapter = your_turn = layout.chapter(titles[2])
-            scene = layout.scene(chapter, study_place)
-            scene["steps"] = [
-                layout.concept({"en": "Key points", "fr": "Points clés"}, block),
-                *ask_steps(group),
-            ]
-            scene_objective(scene, group)
-
-    if not blocks and questions:
-        scene = layout.scene(chapter, study_place)
-        scene["steps"] = ask_steps(questions)
-
-    # Mini-game, if no example scene hosted it.
-    if minigame and not any(
-        step.get("ref") == minigame["id"]
-        for c in layout.chapters
-        for s in c["scenes"]
-        for step in s["steps"]
-    ):
-        scene = layout.scene(layout.chapters[-1], study_place)
-        scene["steps"] = [{"type": "game", "ref": minigame["id"]}]
-
-    # Closing scene: paper exercises, then the wrap-up.
-    if your_turn is None:
-        your_turn = layout.chapter(titles[2])
-    closing = layout.scene(your_turn, study_place)
-    closing_steps: list[dict[str, Any] | None] = []
-    if exercises:
-        closing_steps.append(
-            _line(
-                "say",
-                {
-                    "en": "Now take a sheet of paper, {child}. Work it out yourself.",
-                    "fr": "Prends maintenant une feuille, {child}. À toi de le faire.",
-                },
-                MENTOR_ID,
+    def ask(self, raw: dict[str, Any], path: str) -> list[dict[str, Any]]:
+        question_id = self.refs.questions.get(_as_str(raw.get("ref")))
+        if question_id is None and _as_str(raw.get("ref")) in self.refs.dropped:
+            return []  # left out on purpose (salvage): its ask goes with it
+        if question_id is None:
+            builder_issue(
+                DANGLING_REF,
+                f"{path}.ref",
+                f"{_as_str(raw.get('ref'))!r} is not one of your questions: ask each"
+                " question by its ref",
             )
-        )
-        closing_steps += [{"type": "photo", "ref": e["id"]} for e in exercises]
-    closing_steps.append(_line("narrate", lines["wrap_up"]))
-    closing_steps.append(
-        _framed(
-            _line(
-                "narrate",
-                {
-                    "en": "Well done, {child}: you have finished this story.",
-                    "fr": "Bravo, {child} : tu as terminé cette histoire.",
-                },
-            ),
-            FRAME_FINISHED,
-        )
-    )
-    closing_steps.append(
-        _framed(
-            _line(
-                "say",
-                {
-                    "en": "Questions about this lesson? Ask me any time, {child}.",
-                    "fr": "Une question sur cette leçon ? Demande-moi quand tu veux, {child}.",
-                },
-                TUTOR_ID,
-            ),
-            FRAME_ASK_TUTOR,
-        )
-    )
-    closing["steps"] = [s for s in closing_steps if s]
+            return []
+        if question_id in self.refs.asked:
+            builder_issue(ASKED_TWICE, f"{path}.ref", f"{question_id} is already asked earlier")
+            return []
+        self.refs.asked.append(question_id)
+        return ask_steps(self.refs.situations.get(question_id), question_id)
 
-    layout.enforce_spacing()
-    held.report(("story", key) for key in ("opening", "mentor_intro", "wrap_up"))
-    if example:
-        held.report([("story", "example_intro"), ("story", "example_dialogue")])
-    held.report(
-        ("chapter", index)
-        for index, title in enumerate(titles)
-        if any(chapter["title"] is title for chapter in layout.chapters)
-    )
-    return layout.chapters
+
+def ask_steps(question: _BuiltQuestion | None, question_id: str) -> list[dict[str, Any]]:
+    """An ``ask`` step, after the situation card of a quiz question whose stem is long."""
+    steps: list[dict[str, Any]] = []
+    if question is not None and question.situation is not None:
+        steps.append(
+            {
+                "type": "concept",
+                "id": situation_step_id(question_id),
+                "title": dict(_SITUATION_TITLE),
+                "en": [question.situation["en"]],
+                "fr": [question.situation["fr"]],
+            }
+        )
+    steps.append({"type": "ask", "ref": question_id})
+    return steps
+
+
+def _flat(scenes: list[dict[str, Any]]) -> Iterator[tuple[dict[str, Any], int, dict[str, Any]]]:
+    for scene in scenes:
+        for index, step in enumerate(scene["steps"]):
+            yield scene, index, step
+
+
+def _drop_repeated_lines(scenes: list[dict[str, Any]], seen: set[tuple[str, str]]) -> None:
+    """Keep the first telling of a line; a later one is dropped and reported."""
+    for scene in scenes:
+        kept: list[dict[str, Any]] = []
+        for step in scene["steps"]:
+            if step["type"] in ("narrate", "say") and not step.get("frame"):
+                keys = {(lang, line_key(step[lang])) for lang in LANGS}
+                keys = {k for k in keys if len(k[1]) >= MIN_REPEAT_LENGTH}
+                if keys & seen:
+                    builder_issue(
+                        REPEATED_LINE,
+                        "scenes",
+                        f"this line is told twice: {step['en'][:60]!r}; every line is"
+                        " written for its own moment",
+                    )
+                    continue
+                seen |= keys
+            kept.append(step)
+        scene["steps"] = kept
+
+
+def _place_unasked(
+    scenes: list[dict[str, Any]], questions: list[_BuiltQuestion], refs: _Refs
+) -> None:
+    """Ask every question the model left out, right after a concept card that has room.
+
+    A card followed by fewer than two asks takes it; with none, the last
+    scene's end does. Reported, so the repair loop asks the model to place it.
+    """
+    for question in questions:
+        qid = question.doc["id"]
+        if qid in refs.asked:
+            continue
+        spine_path = f"derived[{qid}]" if question.derived else f"questions[{qid}]"
+        builder_issue(
+            QUESTION_NOT_ASKED,
+            "scenes",
+            f'{spine_path} is never asked: add {{"type": "ask", "ref": "{qid}"}} right'
+            " after the concept card it tests",
+        )
+        target: tuple[dict[str, Any], int] | None = None
+        for scene, index, step in _flat(scenes):
+            if step["type"] != "concept" or str(step.get("id", "")).startswith("situation-"):
+                continue
+            after = index + 1
+            while after < len(scene["steps"]) and scene["steps"][after]["type"] == "ask":
+                after += 1
+            if after - index - 1 < 2:
+                target = (scene, after)
+                break
+        if target is None:
+            scene = scenes[-1]
+            target = (scene, len(scene["steps"]))
+        scene, position = target
+        scene["steps"][position:position] = ask_steps(question, qid)
+        refs.asked.append(qid)
+
+
+def _cap_ask_runs(scenes: list[dict[str, Any]]) -> set[str]:
+    """Asks beyond :data:`MAX_ASKS_IN_A_ROW` in a run are left out; their ids returned."""
+    dropped: set[str] = set()
+    run = 0
+    for scene in scenes:
+        kept: list[dict[str, Any]] = []
+        for step in scene["steps"]:
+            if step["type"] == "ask":
+                if run >= MAX_ASKS_IN_A_ROW:
+                    dropped.add(step["ref"])
+                    builder_issue(
+                        TOO_MANY_ASKS,
+                        "scenes",
+                        f"more than {MAX_ASKS_IN_A_ROW} questions in a row: a line, a card"
+                        f" or a figure goes between them ({step['ref']} was left out)",
+                    )
+                    continue
+                run += 1
+            else:
+                run = 0
+            kept.append(step)
+        scene["steps"] = kept
+    if dropped:
+        situations = {situation_step_id(qid) for qid in dropped}
+        for scene in scenes:
+            scene["steps"] = [s for s in scene["steps"] if s.get("id") not in situations]
+    return dropped
+
+
+def _check_coverage(ctx: LessonStoryContext, scenes: list[dict[str, Any]]) -> None:
+    """Every concept of the lesson is taught by a concept card that names it."""
+    concepts = ctx.lesson_list("concepts")
+    taught = {step.get("teaches") for _scene, _index, step in _flat(scenes)}
+    for number, paragraph in enumerate(concepts, start=1):
+        if number not in taught:
+            builder_issue(
+                CONCEPT_NOT_COVERED,
+                f"lesson.concepts[{number}]",
+                f"lesson concept {number} ({truncate(paragraph, 70)!r}) is never taught:"
+                " show it happening to the characters, then add a concept card with"
+                f' "teaches": {number}',
+            )
+
+
+def _place_items(
+    scenes: list[dict[str, Any]], refs: _Refs, exercises: list[dict[str, Any]]
+) -> None:
+    """The mini-game and the paper exercises the model did not place go at the end."""
+    last = scenes[-1]["steps"]
+    if refs.minigame is not None and not refs.game_placed:
+        builder_issue(
+            UNPLACED_ITEM,
+            "minigame",
+            'the mini-game is never played: add {"type": "game"} where it fits the story',
+        )
+        last.append({"type": "game", "ref": refs.minigame})
+        refs.game_placed = True
+    for number, exercise in enumerate(exercises, start=1):
+        if exercise["id"] in refs.placed:
+            continue
+        if not exercise["id"].startswith("R"):
+            builder_issue(
+                UNPLACED_ITEM,
+                f"exercises[{_exercise_index(exercise['id'], number)}]",
+                f"exercise {exercise['id']} is never given: add"
+                f' {{"type": "photo", "ref": "{exercise["id"]}"}} where a character hands it over',
+            )
+        last.append({"type": "photo", "ref": exercise["id"]})
+        refs.placed.append(exercise["id"])
+
+
+def _exercise_index(exercise_id: str, fallback: int) -> int:
+    digits = exercise_id[1:]
+    return int(digits) - 1 if exercise_id.startswith("E") and digits.isdigit() else fallback - 1
 
 
 # --------------------------------------------------------------------------
@@ -1929,8 +2152,9 @@ class StoryBuild:
     doc: dict[str, Any]
     derived_ids: list[str]
     extra_ids: list[str]
-    #: The builder's own findings — every copy-fallback (``missing_translation``)
-    #: for an item the story kept. Errors while the repair loop runs; see
+    #: The builder's own findings — every fix it made to the model's JSON (a
+    #: copied translation, a name label stripped, a line cut, a question
+    #: placed...). Errors while the repair loop runs; see
     #: :func:`with_generator_issues` and :func:`settle_translations`.
     issues: list[ValidationIssue] = field(default_factory=list)
 
@@ -1939,9 +2163,10 @@ def picked_mcqs(ctx: LessonStoryContext, spine: Any) -> list[QuizMcq]:
     """The quiz MCQs that become questions of this story.
 
     For the lesson unit's own quiz, all of them. For a covering quiz unit's
-    quiz, only the candidates the model picked — those it wrote a
-    ``derived`` entry for — in quiz order, at most :data:`MAX_PICKED_MCQS`
-    (the first ones it picked). A ref that is not a candidate is ignored.
+    quiz (or the module's quizzes, for a rally), only the candidates the
+    model picked — those it wrote a ``derived`` entry for — in quiz order, at
+    most :attr:`LessonStoryContext.max_picks` (the first ones it picked). A
+    ref that is not a candidate is ignored.
     """
     if not ctx.picks_from_quiz:
         return list(ctx.mcqs)
@@ -1958,21 +2183,19 @@ def picked_mcqs(ctx: LessonStoryContext, spine: Any) -> list[QuizMcq]:
     ]
     if unknown:
         logger.info("Story spine picked unknown quiz questions (ignored)", refs=unknown[:10])
-    chosen = set(picked[:MAX_PICKED_MCQS])
+    chosen = set(picked[: ctx.max_picks])
     return [m for m in ctx.mcqs if m.ref in chosen]
 
 
 def _issue_applies(issue: ValidationIssue, question_ids: set[str], exercise_ids: set[str]) -> bool:
-    """Whether a copy-fallback is about something the finished story contains.
+    """Whether a builder issue is about something the finished story contains.
 
-    Questions and exercises are filtered here, by the ids the story kept. The
-    other items whose survival depends on assembly (objectives, the example's
-    lines, the second chapter's title) are never recorded unless kept: see
-    :class:`_Held`.
+    Questions and exercises are filtered here, by the ids the story kept.
+    Objectives merged away are never recorded unless kept: see :class:`_Held`.
     """
     if match := re.match(r"^(?:derived|questions)\[([^\]]+)\]", issue.path):
         return match.group(1) in question_ids
-    if match := re.match(r"^exercises\[(\d+)\]", issue.path):
+    if (match := re.match(r"^exercises\[(\d+)\]", issue.path)) and issue.code != UNPLACED_ITEM:
         return f"E{int(match.group(1)) + 1}" in exercise_ids
     return True
 
@@ -1985,12 +2208,12 @@ def build_story_document(
     drop_exercise_ids: Iterable[str] = (),
     drop_minigame: bool = False,
 ) -> StoryBuild:
-    """Normalise a model spine and assemble the whole story-course/1 week.
+    """Check the model's screenplay and turn it into a ``story-course/1`` chapter.
 
-    Deterministic and side-effect free: the same context and spine always
+    Deterministic and side-effect free: the same context and answer always
     give the same document, so the repair loop can rebuild after every model
     call and the salvage pass can rebuild without the items it drops. Every
-    copy-fallback is returned in :attr:`StoryBuild.issues`.
+    fix made to the answer is returned in :attr:`StoryBuild.issues`.
     """
     sink = _Translations()
     token = _SINK.set(sink)
@@ -2010,25 +2233,21 @@ def build_story_document(
     return build
 
 
-def _assemble(
+def _questions(
     ctx: LessonStoryContext,
     spine: dict[str, Any],
-    *,
+    registry: _Misconceptions,
+    objective_map: dict[str, str],
     drop_q: set[str],
-    drop_e: set[str],
-    drop_minigame: bool,
-) -> StoryBuild:
-    registry = _Misconceptions(spine.get("misconceptions"))
-    held = _Held()
-    objectives, objective_map, origins = _objectives(spine.get("objectives"), ctx, held)
-    key_points = _key_points(spine, ctx)
-
+) -> tuple[list[_BuiltQuestion], dict[str, str]]:
+    """The derived and extra questions, and the refs an ``ask`` step may use for each."""
     specs: dict[str, dict[str, Any]] = {}
     for item in _items(spine.get("derived")):
         if isinstance(item, dict) and _as_str(item.get("ref")):
             specs.setdefault(_as_str(item.get("ref")), item)
 
     built: list[_BuiltQuestion] = []
+    refs: dict[str, str] = {}
     for mcq in picked_mcqs(ctx, spine):
         if mcq.ref in drop_q:
             continue
@@ -2037,7 +2256,7 @@ def _assemble(
             logger.warning("Derived question dropped: answer leak", question=mcq.source_id)
             continue
         built.append(question)
-    derived_count = len(built)
+        refs[mcq.ref] = mcq.ref
 
     used_ids = {q.doc["id"] for q in built} | {m.ref for m in ctx.mcqs}
     for number, raw in enumerate(_items(spine.get("questions")), start=1):
@@ -2053,6 +2272,82 @@ def _assemble(
         question = _extra_question(raw, qid, registry, objective_map)
         if question is not None:
             built.append(question)
+            refs[qid] = qid
+            if raw_id and raw_id not in refs:
+                refs[raw_id] = qid
+    return built, refs
+
+
+def _fallback_rows(scenes: list[dict[str, Any]]) -> dict[str, list[str]] | None:
+    """The rows of the chapter's concept cards: true statements for a fallback game."""
+    rows: dict[str, list[str]] = {"en": [], "fr": []}
+    for _scene, _index, step in _flat(scenes):
+        if step["type"] == "concept" and not str(step.get("id", "")).startswith("situation-"):
+            for en, fr in zip(step["en"], step["fr"], strict=False):
+                if len(en) <= 120 and len(fr) <= 140:
+                    rows["en"].append(en)
+                    rows["fr"].append(fr)
+    return rows if rows["en"] else None
+
+
+def _sources(ctx: LessonStoryContext, derived_count: int) -> list[dict[str, Any]]:
+    if ctx.is_rally:
+        sources: list[dict[str, Any]] = []
+    else:
+        sources = [
+            {
+                "kind": "lesson",
+                "ref": f"Lesson {ctx.unit_number} — {ctx.unit_title[ctx.target]}",
+                "used_for": "story, concepts and key points",
+            },
+            *(
+                {"kind": "lesson", "ref": ref, "used_for": "concepts"}
+                for ref in ctx.lesson_list("sources_cited")[:10]
+            ),
+        ]
+    if ctx.has_quiz and derived_count:
+        units = sorted({m.quiz_unit for m in ctx.mcqs if m.quiz_unit}) or [
+            ctx.quiz_unit_number or ctx.unit_number
+        ]
+        sources += [
+            {"kind": "test", "ref": f"Unit {unit} quiz", "used_for": "questions, derived verbatim"}
+            for unit in units
+        ]
+    return sources
+
+
+def _chapter_facts(spine: dict[str, Any]) -> list[dict[str, Any]]:
+    """Local details the chapter tells: with a source, or marked invented."""
+    facts: list[dict[str, Any]] = []
+    for item in _items(spine.get("facts"))[:6]:
+        if not isinstance(item, dict):
+            continue
+        text = text_object({"en": item.get("en"), "fr": item.get("fr")})
+        if text is None:
+            continue
+        fact: dict[str, Any] = {"en": text["en"], "fr": text["fr"]}
+        source = _as_str(item.get("source"))
+        if source and item.get("invented") is not True:
+            fact["source"] = source[:200]
+            fact["invented"] = False
+        else:
+            fact["invented"] = True
+        facts.append(fact)
+    return facts
+
+
+def _assemble(
+    ctx: LessonStoryContext,
+    spine: dict[str, Any],
+    *,
+    drop_q: set[str],
+    drop_e: set[str],
+    drop_minigame: bool,
+) -> StoryBuild:
+    registry = _Misconceptions(spine.get("misconceptions"))
+    held = _Held()
+    objectives, objective_map, origins = _objectives(spine.get("objectives"), ctx, held)
+    built, question_refs = _questions(ctx, spine, registry, objective_map, drop_q)
 
     # Exercise ids follow the spine's positions so a salvage pass can name
     # the same exercise again on a rebuild.
@@ -2063,22 +2358,76 @@ def _assemble(
         exercise = _exercise(raw, f"E{number}", objective_map, f"exercises[{number - 1}]")
         if exercise is not None:
             exercises.append(exercise)
-    objectives, exercises = _rebalance(objectives, built, exercises, key_points)
+
+    bible = ctx.bible_content
+    cast = _Cast(doc_cast(bible))
+    refs = _Refs(
+        questions=question_refs,
+        exercises={e["id"]: e["id"] for e in exercises},
+        minigame=MINIGAME_ID,
+        situations={q.doc["id"]: q for q in built},
+        dropped=drop_q | drop_e,
+    )
+    # A generated scene is set at one of the bible's places, never at a key of
+    # the old catalog: the course's art is made for those places only.
+    bible_places = {str(place["id"]) for place in bible.get("places") or []}
+    builder = _ScreenplayBuilder(ctx, cast, bible_places, objective_map, refs)
+    scenes = builder.scenes(spine.get("scenes"))
+    if scenes:
+        _drop_repeated_lines(scenes, set())
+        scenes = [s for s in scenes if s["steps"]]
+    if scenes:
+        _place_unasked(scenes, built, refs)
+        dropped = _cap_ask_runs(scenes)
+        built = [q for q in built if q.doc["id"] not in dropped]
+        if not MIN_SCENES <= len(scenes) <= MAX_SCENES:
+            builder_issue(
+                SCENE_COUNT,
+                "scenes",
+                f"{len(scenes)} scenes: a chapter tells its lesson in {MIN_SCENES} to"
+                f" {MAX_SCENES} scenes, each at one of the course's places",
+            )
+        if not ctx.is_rally:
+            _check_coverage(ctx, scenes)
+
+    objectives, exercises, moved = _rebalance(objectives, built, exercises)
+    for scene in scenes:
+        if scene.get("objective"):
+            new_id = moved.get(scene["objective"])
+            if new_id:
+                scene["objective"] = new_id
+            else:
+                scene.pop("objective")
     held.report(
         ("objective", index)
         for objective, index in origins
         if any(objective is kept for kept in objectives)
     )
 
-    minigame = None if drop_minigame else _minigame(spine.get("minigame"), registry, key_points)
-    if minigame is None and key_points:
-        minigame = _minigame({}, registry, key_points)
+    fallback = _fallback_rows(scenes)
+    minigame = None if drop_minigame else _minigame(spine.get("minigame"), registry, fallback)
+    if minigame is None and fallback:
+        minigame = _minigame({}, registry, fallback)
     if minigame is not None:
         minigame["objective"] = objectives[0]["id"]
 
-    chapters = _layout(ctx, spine, objectives, built, exercises, minigame, key_points, held)
-    questions = [q.doc for q in built]
+    if scenes:
+        if minigame is None:
+            for scene in scenes:
+                scene["steps"] = [s for s in scene["steps"] if s["type"] != "game"]
+            refs.minigame = None
+        _place_items(scenes, refs, exercises)
+        for number, scene in enumerate(scenes, start=1):
+            scene["id"] = f"s{number}"
+    else:
+        builder_issue(
+            NO_SCENES,
+            "scenes",
+            "no scene could be read: write the chapter as 2 to 4 scenes, each with a place,"
+            " the cast on stage and its steps",
+        )
 
+    questions = [q.doc for q in built]
     used_misconceptions: set[str] = set()
     for q in questions:
         used_misconceptions.update(
@@ -2091,41 +2440,30 @@ def _assemble(
         )
     registry.report_missing(used_misconceptions)
 
-    lesson_sources = ctx.lesson_list("sources_cited")[:10]
-    sources = [
-        {
-            "kind": "lesson",
-            "ref": f"Lesson {ctx.unit_number} — {ctx.unit_title[ctx.target]}",
-            "used_for": "story, concepts and key points",
-        },
-        *({"kind": "lesson", "ref": ref, "used_for": "concepts"} for ref in lesson_sources),
-    ]
-    if ctx.has_quiz and derived_count:
-        sources.append(
-            {
-                "kind": "test",
-                "ref": f"Unit {ctx.quiz_unit_number or ctx.unit_number} quiz",
-                "used_for": "questions, derived verbatim",
-            }
-        )
-
+    title = text_object(spine.get("chapter_title"), path="chapter_title") if ctx.is_rally else None
+    chapters = (
+        [{"id": "ch1", "title": title or dict(ctx.unit_title), "scenes": scenes}] if scenes else []
+    )
+    derived_count = sum(1 for q in built if q.derived)
     doc: dict[str, Any] = {
         "format": FORMAT_VERSION,
         "id": ctx.slug,
         "sira_builder": CHAPTER_BUILDER_VERSION,
+        "sira_chapter": chapter_marker(ctx),
         "course": ctx.course_title[ctx.target] or ctx.module_title[ctx.target] or "Sira",
         "unit": f"{ctx.unit_number} · {ctx.unit_title[ctx.target]}",
         "week": max(int(ctx.module_number or 1), 1),
         "title": dict(ctx.unit_title),
         "languages": language_pair(ctx.language),
         "learner": {"first_name": CHILD},
-        "sources": sources,
+        "sources": _sources(ctx, derived_count),
         "objectives": objectives,
         "glossary": [],
         "calibration": [],
         "misconceptions": registry.used_only(used_misconceptions),
-        "cast": pinned_cast(ctx.is_kids, ctx.target),
-        "facts": [],
+        "cast": cast.members,
+        "places": doc_places(bible),
+        "facts": _chapter_facts(spine),
         "chapters": chapters,
         "questions": questions,
         "exercises": exercises,
@@ -2145,6 +2483,16 @@ def _assemble(
     )
 
 
+def chapter_marker(ctx: LessonStoryContext) -> dict[str, Any]:
+    """``sira_chapter``: what a chapter was told with, for freshness.
+
+    ``bible`` is the digest of the course bible (cast, places, missions) and
+    ``arc`` the chapter's part in the module's mission. A chapter whose
+    marker differs from what the module needs now is stale.
+    """
+    return {"kind": ctx.kind, "bible": ctx.bible_digest_value, "arc": ctx.arc}
+
+
 def minimal_document(ctx: LessonStoryContext) -> dict[str, Any]:
     """The bare header of the unit's story: what is stored when nothing could be built.
 
@@ -2155,6 +2503,7 @@ def minimal_document(ctx: LessonStoryContext) -> dict[str, Any]:
         "format": FORMAT_VERSION,
         "id": ctx.slug,
         "sira_builder": CHAPTER_BUILDER_VERSION,
+        "sira_chapter": chapter_marker(ctx),
         "course": ctx.course_title.get(ctx.target) or "Sira",
         "unit": f"{ctx.unit_number} · {ctx.unit_title.get(ctx.target, '')}",
         "week": max(int(ctx.module_number or 1), 1),
@@ -2298,16 +2647,17 @@ def with_generator_issues(report: ValidationReport, build: StoryBuild) -> Valida
 
 
 def settle_translations(report: ValidationReport) -> ValidationReport:
-    """After the repair budget: keep each copied translation, as a warning.
+    """After the repair budget: keep each fix of the builder, as a warning.
 
-    A copy is the last resort — a story with a line in the wrong language is
-    still better than none — but it is never silent: it stays in the stored
-    report. Every other error keeps the story unpublished.
+    A copied translation, a line cut to its limit, a question placed by the
+    builder — each is a last resort (a story with a line in the wrong
+    language is still better than none) but never silent: it stays in the
+    stored report. Every other error keeps the story unpublished.
     """
-    moved = [e for e in report.errors if e.code == MISSING_TRANSLATION]
+    moved = [e for e in report.errors if e.code in SETTLEABLE]
     if not moved:
         return report
-    errors = [e for e in report.errors if e.code != MISSING_TRANSLATION]
+    errors = [e for e in report.errors if e.code not in SETTLEABLE]
     warnings = [
         *report.warnings,
         *(issue.model_copy(update={"severity": "warning"}) for issue in moved),

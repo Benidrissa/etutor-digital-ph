@@ -30,9 +30,11 @@ import structlog
 from app.ai.algorithms import story_maths as maths
 from app.api.v1.schemas.story_course import (
     ART_KEYS,
+    CAST_ROLES,
     COPY_SHAPES,
     LENGTH_LIMITS,
     MINIGAME_ENGINES,
+    MOODS,
     PLACES,
     VISUALS,
     Checks,
@@ -51,6 +53,19 @@ VALIDATOR_NAME = "story_course_validator v1"
 #: ignore the check.
 _MIN_LEAK_LENGTH = 3
 
+#: Lines shorter than this ("Yes!", "Merci !") may come back in any chapter.
+MIN_REPEAT_LENGTH = 12
+
+
+def longest_ask_run(step_types: list[str]) -> int:
+    """The most ``ask`` steps in a row in ``step_types``."""
+    longest = run = 0
+    for step_type in step_types:
+        run = run + 1 if step_type == "ask" else 0
+        longest = max(longest, run)
+    return longest
+
+
 #: Appendix A.4 step kinds that point at another collection by ``ref``.
 _REF_TARGETS = {
     "ask": "questions",
@@ -63,6 +78,35 @@ _REF_TARGETS = {
 def _norm(text: str) -> str:
     """Lowercase, strip spaces and fold the minus sign, for leak comparison."""
     return re.sub(r"\s+", "", str(text)).lower().replace(maths.MINUS, "-")
+
+
+#: Honorifics a line may put before a speaker's name ("M. Kaboré dit : ...").
+_HONORIFIC = r"(?:(?:mr|mrs|ms|miss|dr|m|mme|mlle|monsieur|madame|maître|maitre|teacher)\.?\s+)?"
+#: What follows a speaker's name when a line is labelled with it.
+_SPEECH_TAG = (
+    r"(?:\s*:|\s+(?:says|said|asks|asked|replies|answers|explains|shouts|whispers|"
+    r"dit|demande|répond|repond|explique|crie|chuchote)\b)"
+)
+
+
+def speaker_prefix_pattern(names: list[str]) -> re.Pattern[str] | None:
+    """A line that opens with a speaker's name used as a label, or ``None``.
+
+    ``M. Kaboré dit : « ... »``, ``Awa: ...`` or ``{friend} says: ...`` — a
+    ``say`` step already names its speaker in ``who``, and the stage shows the
+    bubble on that character, so the line must be the words alone.
+    """
+    alternatives = sorted({n.strip() for n in names if n and n.strip()}, key=len, reverse=True)
+    if not alternatives:
+        return None
+    joined = "|".join(re.escape(n) for n in alternatives)
+    return re.compile(rf"^[\s«\"'“‘(]*{_HONORIFIC}(?:{joined}){_SPEECH_TAG}", re.IGNORECASE)
+
+
+def line_key(text: Any) -> str:
+    """A story line folded for the repetition check: case, spaces, edge punctuation."""
+    value = re.sub(r"\s+", " ", str(text or "")).strip().casefold()
+    return value.strip(" .!?…,;:«»\"'“”‘’-–—")
 
 
 class StoryCourseValidator:
@@ -82,6 +126,10 @@ class StoryCourseValidator:
         self._video_ids = {v.id for v in course.videos}
         self._declared_art = {a.name for a in course.art_requests}
         self._declared_engines = {e.engine for e in course.engine_requests}
+        self._place_ids = {p.id for p in course.places}
+        names = [c.name for c in course.cast] + [c.id for c in course.cast]
+        names += [c.default_name for c in course.cast if c.default_name]
+        self._prefix = speaker_prefix_pattern(names)
 
     # -- issue helpers ------------------------------------------------------
 
@@ -144,6 +192,17 @@ class StoryCourseValidator:
                     f"cast[{index}].art",
                     f"{member.art!r} is not in the art catalog and has no art_requests entry",
                 )
+            if member.role is not None and member.role not in CAST_ROLES:
+                self._error(
+                    "unknown_role",
+                    f"cast[{index}].role",
+                    f"{member.role!r} is not one of {', '.join(CAST_ROLES)}",
+                )
+            variant_ids = [v.id for v in member.variants]
+            if len(variant_ids) != len(set(variant_ids)):
+                self._error("duplicate_id", f"cast[{index}].variants", "a variant id is used twice")
+        for index, place in enumerate(course.places):
+            self._text(place.title, f"places[{index}].title", "title")
 
         for chapter in course.chapters:
             for scene in chapter.scenes:
@@ -174,6 +233,7 @@ class StoryCourseValidator:
             "minigames": [g.id for g in self.course.minigames],
             "videos": [v.id for v in self.course.videos],
             "chapters": [c.id for c in self.course.chapters],
+            "places": [p.id for p in self.course.places],
         }
         scene_ids: list[str] = []
         for chapter in self.course.chapters:
@@ -189,13 +249,21 @@ class StoryCourseValidator:
 
     def _check_scene(self, chapter_id: str, scene: Any) -> None:
         path = f"chapters[{chapter_id}].scenes[{scene.id}]"
-        if scene.place not in PLACES and scene.place not in self._declared_art:
+        if (
+            scene.place not in PLACES
+            and scene.place not in self._place_ids
+            and scene.place not in self._declared_art
+        ):
             self._error(
                 "unknown_place",
                 f"{path}.place",
-                f"{scene.place!r} is not in the place catalog and has no art_requests entry",
+                f"{scene.place!r} is not one of the story's places, not in the place catalog"
+                " and has no art_requests entry",
             )
         self._check_objective_ref(scene.objective, f"{path}.objective")
+        for member in scene.cast or []:
+            if member not in self._cast_ids:
+                self._error("unknown_scene_cast", f"{path}.cast", f"{member!r} is not in the cast")
 
         for index, step in enumerate(scene.steps):
             step_path = f"{path}.steps[{index}]"
@@ -206,6 +274,7 @@ class StoryCourseValidator:
                     self._error(
                         "unknown_speaker", f"{step_path}.who", f"{step.who!r} is not in the cast"
                     )
+                self._check_speaker_prefix(step, step_path)
             elif step.type == "show":
                 if not step.visual:
                     self._error("missing_visual", step_path, "a 'show' step needs 'visual'")
@@ -219,16 +288,26 @@ class StoryCourseValidator:
             elif step.type in _REF_TARGETS:
                 self._check_step_ref(step, step_path)
 
-            if step.mood and step.mood not in (
-                "idle",
-                "talk",
-                "happy",
-                "think",
-                "sad",
-                "surprised",
-                "walk",
-            ):
-                self._warn("unknown_mood", f"{step_path}.mood", f"{step.mood!r} is not an A.2 mood")
+            if step.mood and step.mood not in MOODS:
+                self._error(
+                    "unknown_mood",
+                    f"{step_path}.mood",
+                    f"{step.mood!r} is not a mood: use one of {', '.join(MOODS)}",
+                )
+
+    def _check_speaker_prefix(self, step: Any, step_path: str) -> None:
+        """A ``say`` line is the words alone: never "Awa: ..." or "M. Kaboré dit : ..."."""
+        if self._prefix is None:
+            return
+        for lang in ("en", "fr"):
+            value = getattr(step, lang, None)
+            if isinstance(value, str) and self._prefix.match(value):
+                self._error(
+                    "speaker_prefix",
+                    f"{step_path}.{lang}",
+                    "the line starts with the speaker's name: 'who' already says who"
+                    " speaks, so write only the words they say",
+                )
 
     def _check_step_ref(self, step: Any, step_path: str) -> None:
         collection = _REF_TARGETS[step.type]
@@ -610,13 +689,17 @@ class StoryCourseValidator:
 
     def _check_spread_and_coverage(self) -> None:
         asked: list[str] = []
-        flat_types: list[str] = []
+        runs: list[list[str]] = []
         for chapter in self.course.chapters:
+            # A chapter ends on its own screen, so a run of questions never
+            # carries over into the next chapter.
+            flat_types: list[str] = []
             for scene in chapter.scenes:
                 for step in scene.steps:
                     flat_types.append(step.type)
                     if step.type == "ask" and step.ref:
                         asked.append(step.ref)
+            runs.append(flat_types)
 
         for question in self.course.questions:
             if question.id not in asked:
@@ -626,16 +709,13 @@ class StoryCourseValidator:
                     "every question must be asked by an 'ask' step in the story",
                 )
 
-        run = 0
-        for step_type in flat_types:
-            run = run + 1 if step_type == "ask" else 0
-            if run > 3:
-                self._error(
-                    "too_many_questions_in_a_row",
-                    "chapters",
-                    "more than 3 questions in a row — put a concept or visual between them",
-                )
-                break
+        if any(longest_ask_run(flat_types) > 3 for flat_types in runs):
+            self._error(
+                "too_many_questions_in_a_row",
+                "chapters",
+                "more than 3 questions in a row — put a concept or visual between them",
+            )
+        self._check_lines_not_repeated()
 
         questions_per_objective: dict[str, int] = {}
         for question in self.course.questions:
@@ -664,6 +744,33 @@ class StoryCourseValidator:
                 )
 
         self._check_test_mistakes_practised()
+
+    def _check_lines_not_repeated(self) -> None:
+        """No story line told again in another chapter.
+
+        A line every chapter opens or closes with ("Well done, {child}: the
+        lesson is over") reads as boilerplate, not story. Steps marked with
+        ``frame`` are the application's own placeholder lines and exempt.
+        """
+        first_seen: dict[tuple[str, str], str] = {}
+        for chapter in self.course.chapters:
+            for scene in chapter.scenes:
+                for index, step in enumerate(scene.steps):
+                    if step.type not in ("narrate", "say") or getattr(step, "frame", None):
+                        continue
+                    for lang in ("en", "fr"):
+                        value = getattr(step, lang, None)
+                        key = line_key(value) if isinstance(value, str) else ""
+                        if len(key) < MIN_REPEAT_LENGTH:
+                            continue
+                        seen_in = first_seen.setdefault((lang, key), chapter.id)
+                        if seen_in != chapter.id:
+                            self._error(
+                                "repeated_line",
+                                f"chapters[{chapter.id}].scenes[{scene.id}].steps[{index}].{lang}",
+                                f"this line was already told in chapter {seen_in}: every"
+                                " line of the story is written for its own moment",
+                            )
 
     def _check_test_mistakes_practised(self) -> None:
         """Every mistake from the marked test must be practised by a trap."""

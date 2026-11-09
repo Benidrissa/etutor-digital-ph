@@ -2,9 +2,11 @@
 
 The module assembler (:mod:`app.domain.services.story_module_assembly`) joins
 cached lesson stories without a model call, so every chapter must give it the
-same things: one pinned cast, a ``frame`` marker on each deterministic frame
-step (it edits by marker, never by text), ``derived_from`` on every question
-copied from a quiz, and the builder version in ``sira_builder``.
+same things: the course bible's cast and places (never names the model
+writes), no line of the application's own (the screenplay is the model's,
+#2674), ``derived_from`` on every question copied from a quiz, and what it was
+built with: the generator version in ``sira_builder`` and the bible and the
+chapter's part in the mission in ``sira_chapter``.
 """
 
 from __future__ import annotations
@@ -17,12 +19,14 @@ from typing import Any
 
 import pytest
 
-from app.ai.prompts.story_from_lesson import CHAPTER_LINE, build_story_user_message
+from app.ai.prompts.story_from_lesson import build_story_user_message
 from app.api.v1.schemas.story_course import StoryCourse
 from app.domain.services import story_repair as repair
+from app.domain.services.story_bible import default_bible, doc_cast, doc_places
 from app.domain.services.story_course_validator import validate_story_course
 from app.domain.services.story_from_lesson_service import (
     StoryFromLessonService,
+    chapter_marker_matches,
     validate_document,
 )
 
@@ -60,13 +64,6 @@ OTHER = {
             "correct_answer": 1,
         },
     ],
-}
-
-FRAME_TEXT = {
-    "opener": ("narrate", None, "This story is about you, {child}."),
-    "objectives": ("concept", None, "What you will learn"),
-    "finished": ("narrate", None, "Well done, {child}: you have finished this story."),
-    "ask_tutor": ("say", "margo", "Questions about this lesson? Ask me any time, {child}."),
 }
 
 
@@ -108,24 +105,27 @@ def covering_ctx(raw: dict[str, Any], language: str = "en", **overrides: Any):
     )
 
 
+def renumber_refs(value: Any) -> Any:
+    """The fixture's quiz refs q1..q4 as the covering quiz numbers them, q2..q5."""
+    if isinstance(value, dict):
+        out = {k: renumber_refs(v) for k, v in value.items()}
+        for key in ("ref",):
+            ref = out.get(key)
+            if isinstance(ref, str) and ref[:1] == "q" and ref[1:].isdigit():
+                out[key] = f"q{int(ref[1:]) + 1}"
+        return out
+    if isinstance(value, list):
+        return [renumber_refs(v) for v in value]
+    return value
+
+
 def picking_spine(raw: dict[str, Any], language: str = "en") -> dict[str, Any]:
-    """The fixture spine with its picks renumbered to the covering quiz."""
-    spine = copy.deepcopy(raw[language]["spine"])
-    for entry in spine["derived"]:
-        entry["ref"] = f"q{int(entry['ref'][1:]) + 1}"
-    return spine
+    """The fixture screenplay with its picks (and asks) renumbered to the covering quiz."""
+    return renumber_refs(copy.deepcopy(raw[language]["spine"]))
 
 
 def all_steps(doc: dict[str, Any]) -> list[dict[str, Any]]:
     return [step for c in doc["chapters"] for s in c["scenes"] for step in s["steps"]]
-
-
-def framed(doc: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
-    out: dict[str, list[dict[str, Any]]] = {}
-    for step in all_steps(doc):
-        if "frame" in step:
-            out.setdefault(step["frame"], []).append(step)
-    return out
 
 
 class FakeClaude:
@@ -140,46 +140,39 @@ class FakeClaude:
 
 
 # --------------------------------------------------------------------------
-# The pinned cast
+# The course bible's cast and places
 # --------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    ("is_kids", "language", "mentor", "peer"),
-    [
-        (True, "fr", "M. Kaboré", {"kind": "child", "art": "friend"}),
-        (True, "en", "Mr Kaboré", {"kind": "child", "art": "friend"}),
-        (False, "fr", "Dr Kaboré", {"kind": "adult", "art": "maman_olivia"}),
-        (False, "en", "Dr Kaboré", {"kind": "adult", "art": "maman_olivia"}),
-    ],
-)
-def test_pinned_cast_is_exactly_the_contract(is_kids, language, mentor, peer):
-    assert repair.pinned_cast(is_kids, language) == [
-        {"id": "margo", "name": "Margo", "kind": "ai_tutor", "art": "margo"},
-        {"id": "mentor", "name": mentor, "kind": "adult", "art": "mr_kabore"},
-        {"id": "peer", "name": "Awa", **peer},
-    ]
-
-
-def test_pinned_cast_returns_fresh_dicts():
-    first = repair.pinned_cast(True, "fr")
-    first[1]["name"] = "Someone else"
-    assert repair.pinned_cast(True, "fr")[1]["name"] == "M. Kaboré"
 
 
 @pytest.mark.parametrize("language", ["en", "fr"])
 @pytest.mark.parametrize("is_kids", [True, False])
-def test_cast_names_never_come_from_the_spine(raw, language, is_kids):
-    ctx = make_ctx(raw, language, is_kids=is_kids)
+def test_the_cast_is_the_bibles_and_never_comes_from_the_answer(raw, language, is_kids):
+    bible = default_bible(is_kids)
+    ctx = make_ctx(raw, language, is_kids=is_kids, bible=bible.content)
     plain = repair.build_story_document(ctx, copy.deepcopy(raw[language]["spine"])).doc
     spine = copy.deepcopy(raw[language]["spine"])
     spine["characters"] = {"mentor": "Dr Zinsou Diallo", "peer": "Koffi"}
+    spine["cast"] = [{"id": "mentor", "name": "Koffi"}]
     named = repair.build_story_document(ctx, spine).doc
 
     assert json.dumps(named, ensure_ascii=False) == json.dumps(plain, ensure_ascii=False)
-    assert named["cast"] == repair.pinned_cast(is_kids, language)
+    assert named["cast"] == doc_cast(bible.content)
+    assert named["places"] == doc_places(bible.content)
     text = json.dumps(named["cast"], ensure_ascii=False)
     assert "Koffi" not in text and "Diallo" not in text
+
+
+def test_the_cast_carries_the_contract_fields(raw):
+    doc = repair.build_story_document(make_ctx(raw), copy.deepcopy(raw["en"]["spine"])).doc
+    by_id = {member["id"]: member for member in doc["cast"]}
+    assert list(by_id) == ["hero", "friend", "mentor", "family", "margo"]
+    assert by_id["hero"]["name"] == "{child}"
+    assert [v["id"] for v in by_id["hero"]["variants"]] == ["woman", "man"]
+    assert by_id["friend"]["name"] == "{friend}" and by_id["friend"]["default_name"]
+    assert by_id["margo"]["kind"] == "ai_tutor" and by_id["margo"]["role"] == "tutor"
+    for member in doc["cast"]:
+        assert member["role"] and member["look"] and set(member["voice"]) == {"pitch", "rate"}
+        assert "about" not in member
 
 
 @pytest.mark.parametrize("value", [None, "Koffi", ["Koffi"], {"mentor": 7}])
@@ -187,7 +180,7 @@ def test_a_characters_key_of_any_shape_is_ignored(raw, value):
     spine = copy.deepcopy(raw["en"]["spine"])
     spine["characters"] = value
     doc = repair.build_story_document(make_ctx(raw), spine).doc
-    assert doc["cast"] == repair.pinned_cast(False, "en")
+    assert doc["cast"] == doc_cast(default_bible(False).content)
 
 
 # --------------------------------------------------------------------------
@@ -195,27 +188,43 @@ def test_a_characters_key_of_any_shape_is_ignored(raw, value):
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    ("is_kids", "language", "mentor"),
-    [(True, "fr", "M. Kaboré"), (True, "en", "Mr Kaboré"), (False, "en", "Dr Kaboré")],
-)
-def test_the_prompt_names_the_cast_and_asks_for_no_names(raw, is_kids, language, mentor):
-    message = build_story_user_message(make_ctx(raw, language, is_kids=is_kids))
+@pytest.mark.parametrize("is_kids", [True, False])
+def test_the_prompt_lists_the_bibles_cast_and_places(raw, is_kids):
+    bible = default_bible(is_kids)
+    message = build_story_user_message(make_ctx(raw, is_kids=is_kids, bible=bible.content))
+    for member in bible.content["cast"]:
+        assert f'- "{member["id"]}"' in message
+    for place in bible.content["places"]:
+        assert f'- "{place["id"]}"' in message
     assert '"characters"' not in message
-    assert f"the mentor is {mentor}, the peer is Awa and the AI tutor is Margo" in message
+    # Code-owned: the bible sits before the JSON contract, in the user message.
+    assert message.index("=== THE COURSE BIBLE") < message.index("=== OUTPUT ===")
+
+
+@pytest.mark.parametrize(
+    ("arc", "phrase"),
+    [
+        (repair.ARC_OPENS, "FIRST chapter"),
+        (repair.ARC_CONTINUES, "MIDDLE chapter"),
+        (repair.ARC_CLOSES, "LAST chapter"),
+        (repair.ARC_OPENS_CLOSES, "only this chapter"),
+    ],
+)
+def test_the_prompt_gives_the_mission_and_the_chapters_part_in_it(raw, arc, phrase):
+    mission = {"en": "Win the district prize", "fr": "Gagner le prix du district"}
+    message = build_story_user_message(make_ctx(raw, arc=arc, mission=mission))
+    assert "Win the district prize" in message and "Gagner le prix du district" in message
+    assert phrase in message
 
 
 def test_the_prompt_says_the_lesson_is_one_chapter_of_the_module(raw):
     message = build_story_user_message(make_ctx(raw))
-    assert CHAPTER_LINE in message
-    assert "one chapter of the module's story" in CHAPTER_LINE
-    assert '"story.wrap_up" closes only this lesson\'s part' in CHAPTER_LINE
-    # Code-owned: it sits before the JSON contract, in the user message.
-    assert message.index(CHAPTER_LINE) < message.index("=== OUTPUT ===")
+    assert "one chapter (one episode) of the module's story" in message
+    assert "CONCEPT 3:" in message and '"teaches"' in message
 
 
 # --------------------------------------------------------------------------
-# Frame markers
+# No line of the application's own
 # --------------------------------------------------------------------------
 
 
@@ -257,43 +266,29 @@ CASES = {
 
 
 @pytest.mark.parametrize("case", sorted(CASES))
-def test_each_frame_marker_is_on_exactly_one_step(raw, case):
+def test_every_story_line_is_the_answers_own(raw, case):
     doc = CASES[case](raw)
-    found = framed(doc)
-    assert sorted(found) == sorted(repair.FRAMES)
-    for marker, (kind, who, english) in FRAME_TEXT.items():
-        (step,) = found[marker]
-        assert step["type"] == kind
-        assert step.get("who") == who
-        shown = step["title"]["en"] if kind == "concept" else step["en"]
-        assert shown == english
-
-
-@pytest.mark.parametrize("case", sorted(CASES))
-def test_frame_steps_sit_where_the_assembler_expects_them(raw, case):
-    doc = CASES[case](raw)
-    first_scene = doc["chapters"][0]["scenes"][0]["steps"]
-    last_scene = doc["chapters"][-1]["scenes"][-1]["steps"]
-    assert first_scene[0]["frame"] == "opener"
-    assert [s.get("frame") for s in first_scene].count("objectives") == 1
-    assert [s.get("frame") for s in last_scene[-2:]] == ["finished", "ask_tutor"]
-
-
-def test_the_objectives_step_lists_the_objectives(raw):
-    doc = CASES["fixture-fr"](raw)
-    (step,) = framed(doc)["objectives"]
-    assert step["fr"] == [o["fr"] for o in doc["objectives"]]
-    assert step["en"] == [o["en"] for o in doc["objectives"]]
+    written = {
+        (step.get("en"), step.get("fr"))
+        for scene in raw["en"]["spine"]["scenes"] + raw["fr"]["spine"]["scenes"]
+        for step in scene["steps"]
+        if step["type"] in ("narrate", "say")
+    }
+    for step in all_steps(doc):
+        assert "frame" not in step
+        if step["type"] in ("narrate", "say"):
+            assert (step["en"], step["fr"]) in written
 
 
 @pytest.mark.parametrize("language", ["en", "fr"])
-def test_frame_markers_survive_validation_and_a_round_trip(raw, language):
+def test_a_chapter_survives_validation_and_a_round_trip(raw, language):
     doc = CASES[f"fixture-{language}"](raw)
     report = validate_document(doc)
     assert report.ok and report.warnings == [], [i.model_dump() for i in report.warnings]
     dumped = StoryCourse.model_validate(copy.deepcopy(doc)).model_dump(by_alias=True)
-    assert sorted(framed(dumped)) == sorted(repair.FRAMES)
     assert dumped["sira_builder"] == repair.CHAPTER_BUILDER_VERSION
+    assert dumped["sira_chapter"] == doc["sira_chapter"]
+    assert dumped["chapters"][0]["scenes"][0]["cast"] == ["mentor", "hero"]
 
 
 # --------------------------------------------------------------------------
@@ -320,28 +315,62 @@ def test_derived_from_of_a_units_own_quiz_names_the_unit(raw):
     assert all("derived_from" not in q for q in build.doc["questions"] if q["id"] == "x1")
 
 
+def test_a_question_names_its_own_quiz_unit_when_a_story_draws_on_several(raw):
+    ctx = covering_ctx(raw)
+    for mcq in ctx.mcqs:
+        mcq.quiz_unit = "1.9" if mcq.ref == "q3" else "1.3"
+    build = repair.build_story_document(ctx, picking_spine(raw))
+    units = {
+        q["id"]: q["derived_from"]["quiz_unit"]
+        for q in build.doc["questions"]
+        if "derived_from" in q
+    }
+    assert units == {"q2": "1.3", "q3": "1.9", "q4": "1.3", "q5": "1.3"}
+    assert {s["ref"] for s in build.doc["sources"] if s["kind"] == "test"} == {
+        "Unit 1.3 quiz",
+        "Unit 1.9 quiz",
+    }
+
+
 def test_no_quiz_means_no_derived_from(raw):
     doc = CASES["no-quiz"](raw)
     assert doc["questions"] and all("derived_from" not in q for q in doc["questions"])
 
 
 # --------------------------------------------------------------------------
-# sira_builder and determinism
+# sira_builder, sira_chapter and determinism
 # --------------------------------------------------------------------------
 
 
-def test_builder_version_is_two():
-    assert repair.CHAPTER_BUILDER_VERSION == 2
+def test_builder_version_is_three():
+    assert repair.CHAPTER_BUILDER_VERSION == 3
 
 
 @pytest.mark.parametrize("case", sorted(CASES))
-def test_every_build_records_the_builder(raw, case):
-    assert CASES[case](raw)["sira_builder"] == repair.CHAPTER_BUILDER_VERSION
+def test_every_build_records_the_builder_and_its_bible(raw, case):
+    doc = CASES[case](raw)
+    assert doc["sira_builder"] == repair.CHAPTER_BUILDER_VERSION
+    assert doc["sira_chapter"]["kind"] == "lesson"
+    assert doc["sira_chapter"]["bible"] == default_bible(case == "kids").digest
+
+
+def test_the_marker_says_which_bible_and_arc(raw):
+    bible = default_bible(True)
+    ctx = make_ctx(raw, is_kids=True, bible=bible.content, arc=repair.ARC_OPENS)
+    marker = repair.build_story_document(ctx, copy.deepcopy(raw["en"]["spine"])).doc["sira_chapter"]
+    assert marker == {"kind": "lesson", "bible": bible.digest, "arc": "opens"}
+    assert chapter_marker_matches(marker, bible.digest, "opens")
+    assert chapter_marker_matches(marker, bible.digest, None)
+    assert not chapter_marker_matches(marker, bible.digest, "closes")
+    assert not chapter_marker_matches(marker, default_bible(False).digest, "opens")
+    assert not chapter_marker_matches(marker, None, "opens")
+    assert not chapter_marker_matches(None, bible.digest, "opens")
 
 
 def test_the_minimal_document_records_the_builder(raw):
     doc = repair.minimal_document(make_ctx(raw))
     assert doc["sira_builder"] == repair.CHAPTER_BUILDER_VERSION
+    assert doc["sira_chapter"]["kind"] == "lesson"
     StoryCourse.model_validate(doc)
 
 
@@ -352,10 +381,11 @@ async def test_the_generated_chapter_keeps_the_contract(raw, language):
         FakeClaude(picking_spine(raw, language))
     ).generate_document(ctx, system_prompt="system")
     doc = generation.doc
-    assert generation.report.ok and generation.report.warnings == []
+    assert generation.report.ok and generation.report.warnings == [], [
+        i.model_dump() for i in generation.report.errors + generation.report.warnings
+    ]
     assert doc["sira_builder"] == repair.CHAPTER_BUILDER_VERSION
-    assert sorted(framed(doc)) == sorted(repair.FRAMES)
-    assert doc["cast"] == repair.pinned_cast(False, language)
+    assert doc["cast"] == doc_cast(default_bible(False).content)
     assert all(
         q["derived_from"]["quiz_unit"] == "1.3" for q in doc["questions"] if "derived_from" in q
     )

@@ -1,14 +1,16 @@
-"""Prompts for a lesson's story mode.
+"""Prompts of story mode: a chapter's screenplay (#2674).
 
-The model is asked for a *spine* only — pedagogy and translations — and the
-application assembles the ``story-course/1`` week around it
-(:mod:`app.domain.services.story_repair`). Keeping the split explicit in the
-prompt is what makes zero validator errors structural rather than hoped for.
+The model writes the **screenplay** of one chapter — scenes at the course's
+places, with its characters teaching through dialogue — and the pedagogy
+around it (objectives, misconceptions, questions, exercises, mini-game,
+tutor). The application only checks, numbers and resolves what it wrote
+(:mod:`app.domain.services.story_repair`).
 
-The system prompt (register, the learner-as-hero rules, hard rules) is an
-admin-editable platform setting, like every other content prompt. The JSON
-contract lives in the user message, which is code: the parser depends on it,
-so an admin override of the system prompt must not be able to drop it.
+The system prompt (register, the learner-as-hero rules, the craft of the
+screenplay) is an admin-editable platform setting, like every other content
+prompt. The course bible, the lesson, the quiz and the JSON contract live in
+the user message, which is code: the parser depends on it, so an admin
+override of the system prompt must not be able to drop them.
 """
 
 from __future__ import annotations
@@ -18,17 +20,20 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from app.ai.prompts.lesson import _apply_settings_template
-from app.api.v1.schemas.story_course import PLACES, ValidationIssue
+from app.api.v1.schemas.story_course import MOODS, VISUALS, ValidationIssue
 from app.domain.services.story_repair import (
+    ARC_CLOSES,
+    ARC_CONTINUES,
+    ARC_OPENS,
+    ARC_OPENS_CLOSES,
     CHOICE_IDS,
+    MAX_ASKS_IN_A_ROW,
     MAX_OBJECTIVES,
-    MAX_PICKED_MCQS,
-    MENTOR_ID,
-    PEER_ID,
-    TUTOR_ID,
+    MAX_SCENES,
+    MIN_SCENES,
+    STORY_LINE_LIMITS,
     LessonStoryContext,
     clean_text,
-    pinned_cast,
 )
 
 if TYPE_CHECKING:
@@ -93,9 +98,12 @@ def get_story_system_prompt(
 
 @dataclass(frozen=True)
 class StoryPlan:
-    """How much the model must write, derived from the unit's quiz."""
+    """How much the model must write, derived from the lesson and its quiz."""
 
     objectives: int
+    #: Questions to reach in all: derived + extra.
+    questions: int
+    #: Extra questions to write (without a covering quiz: all of them).
     extra_questions: int
 
     @property
@@ -104,17 +112,101 @@ class StoryPlan:
 
 
 def plan_for(ctx: LessonStoryContext) -> StoryPlan:
-    """Enough objectives to be meaningful, each with 2 questions (C.5).
+    """Enough questions for one or two after each concept, and 2 per objective (C.5).
 
     With a covering quiz the number of derived questions is the model's pick,
-    so ``extra_questions`` is the total to reach: 2 per objective, from which
-    the model subtracts the candidates it picked.
+    so ``extra_questions`` is the total to reach, from which the model
+    subtracts the candidates it picked.
     """
+    if ctx.is_rally:
+        return StoryPlan(objectives=1, questions=4, extra_questions=0)
+    concepts = max(len(ctx.lesson_list("concepts")), 1)
     derived = len(ctx.mcqs)
     if derived == 0 or ctx.picks_from_quiz:
-        return StoryPlan(objectives=2, extra_questions=4)
+        objectives = 2
+        total = max(2 * objectives, concepts + 1)
+        return StoryPlan(objectives=objectives, questions=total, extra_questions=total)
     objectives = max(1, min(MAX_OBJECTIVES, derived // 2))
-    return StoryPlan(objectives=objectives, extra_questions=max(0, 2 * objectives - derived))
+    total = max(2 * objectives, concepts + 1, derived)
+    return StoryPlan(objectives=objectives, questions=total, extra_questions=total - derived)
+
+
+# --------------------------------------------------------------------------
+# The blocks of the user message
+# --------------------------------------------------------------------------
+
+_ARC_LINE = {
+    ARC_OPENS: (
+        "This is the FIRST chapter of the module: the mission appears here (someone brings"
+        " the problem, a challenge is announced, something goes missing...) and the"
+        " characters decide to take it on. It is not solved yet."
+    ),
+    ARC_CONTINUES: (
+        "This is a MIDDLE chapter: the mission is already known; this chapter moves it"
+        " forward with what the lesson teaches, without solving it."
+    ),
+    ARC_CLOSES: (
+        "This is the LAST chapter of the module: the mission is solved here, thanks to what"
+        " the characters learned. End on that success, in the story's own words."
+    ),
+    ARC_OPENS_CLOSES: (
+        "This module has only this chapter: the mission appears at the start and is solved"
+        " at the end."
+    ),
+}
+
+
+def _bible_block(ctx: LessonStoryContext) -> str:
+    bible = ctx.bible_content
+    cast_rows = []
+    for member in bible.get("cast") or []:
+        name = member["name"]
+        if member["id"] == "friend":
+            name = '{friend} (the learner types the name; write exactly "{friend}")'
+        elif member["id"] == "hero":
+            name = '{child} (the learner; write exactly "{child}")'
+        cast_rows.append(f'- "{member["id"]}" — {name}: {member.get("about", "")}')
+    place_rows = [
+        f'- "{place["id"]}" — {place["title"]["en"]} / {place["title"]["fr"]}: {place["look"]}'
+        for place in bible.get("places") or []
+    ]
+    fact_rows = [
+        f"- {fact['en']}" + ("" if not fact.get("invented") else " (invented)")
+        for fact in bible.get("facts") or []
+    ]
+    mission = ctx.mission or {}
+    mission_line = (
+        f'THE MODULE\'S MISSION: "{mission.get("en", "")}" / "{mission.get("fr", "")}"\n'
+        if mission
+        else ""
+    )
+    return (
+        "=== THE COURSE BIBLE (the same in every chapter of every module) ===\n"
+        'CAST — use these ids in "who" and in a scene\'s "cast":\n'
+        + "\n".join(cast_rows)
+        + '\nPLACES — use these ids in a scene\'s "place":\n'
+        + "\n".join(place_rows)
+        + ("\nLOCAL DETAILS you may use:\n" + "\n".join(fact_rows) if fact_rows else "")
+        + "\n\n"
+        + mission_line
+        + _ARC_LINE.get(ctx.arc, _ARC_LINE[ARC_CONTINUES])
+        + "\n"
+    )
+
+
+def _figures_block(ctx: LessonStoryContext) -> str:
+    refs = [
+        r
+        for r in ctx.lesson.get("source_image_refs") or []
+        if isinstance(r, dict) and str(r.get("id") or "").strip()
+    ]
+    if not refs:
+        return "FIGURES: none."
+    rows = []
+    for number, ref in enumerate(refs, start=1):
+        caption = clean_text(ref.get("caption_en") or ref.get("caption") or ref.get("caption_fr"))
+        rows.append(f"FIGURE {number}: {caption or ref.get('figure_number') or 'a lesson figure'}")
+    return "\n".join(rows)
 
 
 def _lesson_block(ctx: LessonStoryContext) -> str:
@@ -133,7 +225,18 @@ def _lesson_block(ctx: LessonStoryContext) -> str:
     sources = ctx.lesson_list("sources_cited")
     if sources:
         parts.append("SOURCES: " + "; ".join(sources[:10]))
+    parts.append(_figures_block(ctx))
     return "\n\n".join(parts)
+
+
+def _recap_block(ctx: LessonStoryContext) -> str:
+    rows = []
+    for lesson in ctx.lessons_recap:
+        title = lesson.get("title") or {}
+        rows.append(f"- {lesson.get('unit_number')}: {title.get(ctx.target) or title.get('en')}")
+        for objective in lesson.get("objectives") or []:
+            rows.append(f"    · {objective}")
+    return "THE MODULE'S LESSONS, already told as chapters:\n" + ("\n".join(rows) or "- (none)")
 
 
 def _quiz_block(ctx: LessonStoryContext) -> str:
@@ -142,11 +245,20 @@ def _quiz_block(ctx: LessonStoryContext) -> str:
             "QUIZ: this unit has no quiz yet. Write every question yourself, as extra"
             ' questions, and leave "derived" as an empty list.'
         )
-    if ctx.picks_from_quiz:
+    if ctx.is_rally:
+        lines = [
+            "CANDIDATE QUIZ QUESTIONS from the module's quiz. Pick 3 to"
+            f" {ctx.max_picks} that together cover the module's lessons — prefer the ones"
+            " NOT marked (already asked); a marked one may come back once as a review."
+            ' Write a "derived" entry, with its ref, for each one you pick. Picked'
+            " questions are fixed: you translate them and explain their wrong options;"
+            " you never change them:"
+        ]
+    elif ctx.picks_from_quiz:
         lines = [
             f"CANDIDATE QUIZ QUESTIONS from the quiz of unit {ctx.quiz_unit_number}, which"
             " covers several lessons of this module. Pick ONLY the questions that test THIS"
-            f" lesson's content — at most {MAX_PICKED_MCQS}, none if none fits — and write a"
+            f" lesson's content — at most {ctx.max_picks}, none if none fits — and write a"
             ' "derived" entry, with its ref, for each one you pick. Leave every other'
             " candidate out. Picked questions are fixed: you translate them and explain"
             " their wrong options; you never change them:"
@@ -157,7 +269,8 @@ def _quiz_block(ctx: LessonStoryContext) -> str:
             " you never change them):"
         ]
     for mcq in ctx.mcqs:
-        lines.append(f"\n[{mcq.ref}] {mcq.stem}")
+        marker = " (already asked)" if mcq.asked_before else ""
+        lines.append(f"\n[{mcq.ref}]{marker} {mcq.stem}")
         for index, option in enumerate(mcq.options):
             mark = "  <- correct" if index == mcq.correct_index else ""
             lines.append(f"  {CHOICE_IDS[index]}) {option}{mark}")
@@ -173,25 +286,38 @@ def _quiz_block(ctx: LessonStoryContext) -> str:
 
 def _schema(ctx: LessonStoryContext, plan: StoryPlan) -> str:
     target, home = ctx.target, ctx.home
-    concept_count = max(len(ctx.lesson_list("concepts")), 1)
-    key_point_count = len(ctx.lesson_list("key_points"))
-    places = ", ".join(PLACES)
+    concepts = len(ctx.lesson_list("concepts"))
+    moods = ", ".join(MOODS)
+    visuals = ", ".join(v for v in VISUALS if v != "image")
+    en_limit, fr_limit = STORY_LINE_LIMITS["en"], STORY_LINE_LIMITS["fr"]
+    title_line = (
+        '  "chapter_title": {"en": "the rally\'s title", "fr": "..."},\n' if ctx.is_rally else ""
+    )
+    concept_rule = (
+        f"- Every lesson concept (CONCEPT 1 to {concepts}) is taught in the story: first the"
+        " characters meet it in a small situation (a discovery, a mistake, a joke, a real"
+        ' local detail), then ONE concept card sums it up, with "teaches": its number.'
+        "\n"
+        if concepts and not ctx.is_rally
+        else ""
+    )
     return f"""Return ONE JSON object with exactly these keys. Every {{"en": ..., "fr": ...}} object has English in "en" and French in "fr".
 
 {{
-  "objectives": [{{"id": "o1", "en": "learning objective", "fr": "objectif"}}],
+{title_line}  "objectives": [{{"id": "o1", "en": "learning objective", "fr": "objectif"}}],
   "misconceptions": [{{"id": "m_short_slug", "en": "Thinks that ...", "fr": "Pense que ..."}}],
-  "chapter_titles": [{{"en": "...", "fr": "..."}}, {{"en": "...", "fr": "..."}}, {{"en": "...", "fr": "..."}}],
-  "story": {{
-    "opening": {{"en": "max 90 chars, speaks to {{child}}", "fr": "max 90 caractères"}},
-    "mentor_intro": {{"en": "the mentor greets {{child}} and sets the mission", "fr": "..."}},
-    "example_intro": {{"en": "...", "fr": "..."}},
-    "example_dialogue": [{{"who": "mentor" or "peer", "en": "...", "fr": "..."}}],
-    "wrap_up": {{"en": "...", "fr": "..."}}
-  }},
-  "concepts": [{{"title": {{"en": "...", "fr": "..."}}, "en": ["row", "row"], "fr": ["ligne", "ligne"]}}],
-  "example": {{"place": "one of: {places}", "title": {{"en": "...", "fr": "..."}}, "en": ["row"], "fr": ["ligne"]}},
-  "key_points_home": ["each lesson key point translated into the home language"],
+  "scenes": [
+    {{"place": "a place id", "cast": ["hero", "friend"], "objective": "o1",
+      "steps": [
+        {{"type": "narrate", "en": "what happens", "fr": "ce qui se passe"}},
+        {{"type": "say", "who": "friend", "mood": "surprised", "en": "the words only", "fr": "les mots seulement"}},
+        {{"type": "show", "figure": 1}},
+        {{"type": "concept", "teaches": 1, "title": {{"en": "...", "fr": "..."}}, "en": ["row", "row"], "fr": ["ligne", "ligne"]}},
+        {{"type": "ask", "ref": "q1"}},
+        {{"type": "game"}},
+        {{"type": "photo", "ref": "E1"}}
+      ]}}
+  ],
   "derived": [
     {{
       "ref": "q1",
@@ -221,6 +347,7 @@ def _schema(ctx: LessonStoryContext, plan: StoryPlan) -> str:
       "items": [{{"label": {{"en": "true statement or key term", "fr": "..."}}, "correct": true}},
                 {{"label": {{"en": "a tempting wrong idea", "fr": "..."}}, "correct": false, "trap": "m_short_slug"}}]}}]
   }},
+  "facts": [{{"en": "a real local detail the story uses", "fr": "...", "source": "where it comes from"}}],
   "tutor": {{
     "intro": {{"en": "Margo greets {{child}} and says she is an AI, not a real person", "fr": "... une IA, pas une vraie personne"}},
     "off_topic": {{"en": "kind redirect back to the lesson", "fr": "..."}},
@@ -230,18 +357,28 @@ def _schema(ctx: LessonStoryContext, plan: StoryPlan) -> str:
   "__complete": true
 }}
 
-COUNTS AND RULES FOR THIS UNIT:
+THE SCREENPLAY ("scenes"):
+- {MIN_SCENES} to {MAX_SCENES} scenes{" (2 or 3 for the rally)" if ctx.is_rally else ""}, each at ONE place of the bible and with 2 or 3 characters on stage ("cast").
+{concept_rule}- A concept card has 2 to 4 short rows, the same number in "en" and "fr". Right after it, 1 or 2 "ask" steps on that concept. Never more than {MAX_ASKS_IN_A_ROW} "ask" steps in a row.
+- Ask every question exactly once, by its ref: a "derived" entry by its "ref" (q1, q2...), an extra question by its "id" (x1, x2...).
+- "say": "who" is a cast id and "mood" one of {moods}. The line is ONLY the words spoken: never "Name:", "Name says" or "X dit :" in front, no quotation marks around it.
+- The hero ({{child}}) speaks in the first person, often: asks, guesses, gets something wrong, works it out. The friend is "{{friend}}", written exactly so. Margo appears at most once or twice, to give a hint, never an answer.
+- "narrate" is short stage direction in the present tense: where we are, what happens.
+- "show": {{"type": "show", "figure": N}} with a FIGURE listed above, or a catalog visual ({visuals}) with its "params" when the lesson's numbers fit one. Only where it helps.
+- {{"type": "game"}} once, where a playful moment fits; {{"type": "photo", "ref": "E1"}} once per exercise (E1, E2... in the order of "exercises"), when a character hands over a task to do on paper.
+- Every line is written for its moment: no "This story is about you", no "Well done, the lesson is over", no line that would fit any chapter, nothing about pages, quizzes or the app.
+- Story lines at most {en_limit} characters in English and {fr_limit} in French; question prompts at most 150; hints at most 120.
+
+COUNTS AND RULES FOR THIS CHAPTER:
 - Language of instruction: "{target}". Home language: "{home}". Write both languages everywhere.
 - "objectives": exactly {plan.objectives}, ids o1..o{plan.objectives}.
-- "concepts": exactly {concept_count}, one per lesson concept, in order; 2-4 short rows each, same number of rows in "en" and "fr".
-- "key_points_home": exactly {key_point_count} entries, same order as the lesson's key points.
 {_derived_rule(ctx, plan)}
-- "exercises": exactly {plan.exercises}, one per objective.
+- "exercises": exactly {plan.exercises}, one per objective{" (a short recap task on paper)" if ctx.is_rally else ""}.
 - "minigame": 2 or 3 rounds of 4-5 items; at least 2 correct and 1 wrong item per round.
+- "facts": the real local details your scenes use, each with its source; a detail you made up has "invented": true instead.
 - Every misconception id you use must be in "misconceptions". Never put a misconception on a correct option.
 - No prompt or hint may contain the correct answer's words. No two options of a question may be the same.
-- Story lines at most 90 characters per language; prompts at most 150; hints at most 120.
-- The learner is {{child}}: write it exactly like that. Speak to the learner as "you" / "tu"; French stays gender-neutral for the learner.
+- The learner is {{child}}: write it exactly like that. Speak to the learner as "you" / "tu"; in French never make an adjective or participle agree with {{child}} or {{friend}} (either may be a girl or a boy).
 """
 
 
@@ -250,60 +387,59 @@ def _derived_rule(ctx: LessonStoryContext, plan: StoryPlan) -> str:
         'Give EVERY wrong option a "distractors" entry (option letter, misconception id,'
         " targeted hint). Assign each to the objective it tests."
     )
+    if ctx.is_rally:
+        return (
+            f'- "derived": 3 to {ctx.max_picks} entries, one per candidate quiz question you'
+            f' picked, with its "ref". {distractors}\n'
+            '- "questions": 0 to 2 extra questions (type "choice" or "exact_text") that mix'
+            " ideas of two lessons."
+        )
     if ctx.picks_from_quiz:
         return (
-            f'- "derived": 0 to {MAX_PICKED_MCQS} entries, one per candidate quiz question'
+            f'- "derived": 0 to {ctx.max_picks} entries, one per candidate quiz question'
             ' you picked as testing THIS lesson, with its "ref" from the list above. Never'
             f" pick a question about another lesson. {distractors}\n"
-            f'- "questions": {plan.extra_questions} minus the number of "derived" entries'
+            f'- "questions": {plan.questions} minus the number of "derived" entries'
             ' (never fewer than 0) extra questions (type "choice" or "exact_text"), so that'
-            " every objective has at least 2 questions."
+            " every concept has a question and every objective at least 2."
         )
     return (
         f'- "derived": exactly {len(ctx.mcqs)} entries, one per quiz question above, with'
         f' the same "ref". {distractors}\n'
         f'- "questions": exactly {plan.extra_questions} extra questions (type "choice" or'
-        ' "exact_text"), so that every objective has at least 2 questions.'
+        ' "exact_text"), so that every concept has a question and every objective at least 2.'
     )
-
-
-def _cast_line(ctx: LessonStoryContext) -> str:
-    """The fixed cast, by name: the builder ignores any name the model writes."""
-    names = {member["id"]: member["name"] for member in pinned_cast(ctx.is_kids, ctx.target)}
-    return (
-        f"CAST (fixed, the same in every chapter of the module): the mentor is"
-        f" {names[MENTOR_ID]}, the peer is {names[PEER_ID]} and the AI tutor is"
-        f" {names[TUTOR_ID]}. Name no other character;"
-        ' in "example_dialogue", "who" is "mentor" or "peer".\n'
-    )
-
-
-#: The lesson is one chapter of the module story (contract C-1).
-CHAPTER_LINE = (
-    "MODULE STORY: this lesson is one chapter of the module's story, which runs"
-    ' through its lessons in order. "story.wrap_up" closes only this lesson\'s part,'
-    " not the module.\n"
-)
 
 
 def build_story_user_message(ctx: LessonStoryContext, plan: StoryPlan | None = None) -> str:
-    """The user message: the lesson, the quiz to derive from, and the contract.
+    """The user message: the bible, the lesson (or the module), the quiz and the contract.
 
-    The cast and the chapter line live here, in code, so an admin override of
-    the system prompt cannot drop them.
+    The bible, the mission and the contract live here, in code, so an admin
+    override of the system prompt cannot drop them.
     """
     plan = plan or plan_for(ctx)
-    unit_title = ctx.unit_title[ctx.target]
-    return (
-        f'REQUEST: write the story-mode spine for unit {ctx.unit_number} — "{unit_title}"'
-        f' of the module "{ctx.module_title[ctx.target]}".\n'
-        "STRICT CONSTRAINT: use ONLY the lesson and quiz below; stay on this unit.\n"
-        f"{CHAPTER_LINE}"
-        f"{_cast_line(ctx)}\n"
-        f"=== LESSON ({ctx.target}) ===\n{_lesson_block(ctx)}\n\n"
-        f"=== QUIZ ===\n{_quiz_block(ctx)}\n\n"
-        f"=== OUTPUT ===\n{_schema(ctx, plan)}"
-    )
+    module_title = ctx.module_title[ctx.target]
+    if ctx.is_rally:
+        request = (
+            f'REQUEST: write the screenplay of the RALLY, the last chapter of the module "'
+            f'{module_title}": the characters meet once more for a lively challenge that mixes'
+            " the module's quiz questions, and the module's mission is solved.\n"
+            "STRICT CONSTRAINT: use ONLY the module's lessons and quiz below.\n"
+        )
+        body = f"{_recap_block(ctx)}\n\n=== QUIZ ===\n{_quiz_block(ctx)}\n\n"
+    else:
+        unit_title = ctx.unit_title[ctx.target]
+        request = (
+            f'REQUEST: write the screenplay of the chapter for unit {ctx.unit_number} — "'
+            f'{unit_title}" of the module "{module_title}". It is one chapter (one episode)'
+            " of the module's story, which runs through its lessons in order.\n"
+            "STRICT CONSTRAINT: use ONLY the lesson and quiz below; stay on this unit.\n"
+        )
+        body = (
+            f"=== LESSON ({ctx.target}) ===\n{_lesson_block(ctx)}\n\n"
+            f"=== QUIZ ===\n{_quiz_block(ctx)}\n\n"
+        )
+    return f"{request}\n{_bible_block(ctx)}\n{body}=== OUTPUT ===\n{_schema(ctx, plan)}"
 
 
 def build_repair_message(
@@ -313,10 +449,10 @@ def build_repair_message(
     attempt: int,
     budget: int,
 ) -> str:
-    """Feed the validator's remaining errors back, with the spine that caused them.
+    """Feed the remaining errors back, with the JSON that caused them.
 
-    Paths are those of the assembled story; the legend maps them onto the
-    spine the model wrote.
+    The builder's paths are those of the model's JSON; the validator's are
+    those of the built chapter, and the legend maps them back.
     """
     bullets = "\n".join(f"- [{i.code}] {i.path}: {i.message}" for i in issues[:40]) or (
         "- your previous response could not be read as JSON (or was cut off); "
@@ -330,15 +466,17 @@ def build_repair_message(
     return (
         f"{user_message}\n\n"
         f"=== REPAIR (attempt {attempt} of {budget}) ===\n"
-        "The story built from your previous JSON failed these checks. Fix every one"
+        "The chapter built from your previous JSON failed these checks. Fix every one"
         " and return the COMPLETE JSON again, same structure:\n"
         f"{bullets}\n\n"
-        "How the paths map to your JSON: questions[qN] is your 'derived' entry with"
-        " that ref; questions[<id>] is your extra question with that id; choices[i]"
-        " is option letter a, b, c, d for i = 0, 1, 2, 3; exercises[EN] is your N-th"
-        " exercise; minigames[g1].rounds[i] is your mini-game round i (from 0)."
-        " A [missing_translation] path is already the path of a field of YOUR JSON"
-        " (e.g. derived[q2].options_home, concepts[0].fr, story.opening.fr): write it"
-        ' in that language, with "en" in English and "fr" in French.\n\n'
+        "How the paths map to your JSON: scenes[i].steps[j] is step j of your scene i (both"
+        " from 0); chapters[ch1].scenes[sN] is your scenes[N-1]; questions[qN] is your"
+        " 'derived' entry with that ref; questions[<id>] is your extra question with that"
+        " id; choices[i] is option letter a, b, c, d for i = 0, 1, 2, 3; exercises[EN] is"
+        " your N-th exercise; minigames[g1].rounds[i] is your mini-game round i (from 0);"
+        " lesson.concepts[N] is CONCEPT N of the lesson. A [missing_translation] path is"
+        " already the path of a field of YOUR JSON (e.g. derived[q2].options_home,"
+        ' scenes[0].steps[2].fr): write it in that language, with "en" in English and'
+        ' "fr" in French.\n\n'
         f"Your previous JSON:\n{previous}"
     )

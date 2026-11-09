@@ -40,7 +40,7 @@ def test_the_task_is_declared_with_its_budget_and_no_retry():
 
     task = generate_module_story_task
     assert task.name == "app.tasks.content_generation.generate_module_story_task"
-    assert (MODULE_STORY_SOFT_LIMIT, MODULE_STORY_HARD_LIMIT) == (1200, 1260)
+    assert (MODULE_STORY_SOFT_LIMIT, MODULE_STORY_HARD_LIMIT) == (1620, 1680)
     assert task.soft_time_limit == MODULE_STORY_SOFT_LIMIT
     assert task.time_limit == MODULE_STORY_HARD_LIMIT
     assert task.rate_limit == "5/m"

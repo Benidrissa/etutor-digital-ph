@@ -80,8 +80,13 @@ ART_KEYS = (
     "margo",
 )
 
-#: Character moods (A.2).
+#: Character moods (A.2). A ``say`` step's ``mood`` is one of these; the
+#: cartoon stage has a pose per mood (contract of #2672).
 MOODS = ("idle", "talk", "happy", "think", "sad", "surprised", "walk")
+
+#: A cast member's role in a generated story (contract of #2672). Optional:
+#: hand-authored weeks and stories stored before the course bible have none.
+CAST_ROLES = ("hero", "friend", "mentor", "family", "tutor")
 
 #: Mini-game engines (A.9). Open via ``engine_requests``.
 MINIGAME_ENGINES = ("catch", "hop", "which_first", "pop")
@@ -184,12 +189,39 @@ class Voice(_Loose):
     rate: float = 1.0
 
 
+class CastVariant(_Loose):
+    """One look the learner can pick for the hero ("girl"/"boy", "woman"/"man")."""
+
+    id: str
+    look: str
+
+
 class CastMember(_Loose):
+    """A character. ``art`` is the placeholder art key (A.8 catalog).
+
+    The course bible (#2674) adds the optional ``role``, ``look`` (one English
+    sentence for the image model), ``variants`` (hero only) and, for the
+    friend, ``default_name``. Every one is optional, so weeks stored before
+    it keep parsing.
+    """
+
     id: str
     name: str
     kind: Literal["child", "adult", "animal", "ai_tutor"]
     art: str
     voice: Voice = Field(default_factory=Voice)
+    role: str | None = None
+    look: str | None = None
+    variants: list[CastVariant] = Field(default_factory=list)
+    default_name: str | None = None
+
+
+class Place(_Loose):
+    """A backdrop of the course bible: ``scene.place`` may name its ``id``."""
+
+    id: str
+    title: TextObject
+    look: str | None = None
 
 
 class Fact(_Loose):
@@ -232,6 +264,8 @@ class Scene(_Loose):
     id: str
     place: str
     objective: str | None = None
+    #: The cast ids on stage (two or three), optional (#2672).
+    cast: list[str] | None = None
     steps: list[Step] = Field(default_factory=list)
 
 
@@ -431,6 +465,9 @@ class StoryCourse(_Loose):
     calibration: list[CalibrationRow] = Field(default_factory=list)
     misconceptions: list[Misconception] = Field(default_factory=list)
     cast: list[CastMember] = Field(default_factory=list)
+    #: The course's backdrops (#2672); a scene's ``place`` names one of these
+    #: ids or a key of the :data:`PLACES` catalog.
+    places: list[Place] = Field(default_factory=list)
     facts: list[Fact] = Field(default_factory=list)
     chapters: list[Chapter] = Field(default_factory=list)
     questions: list[Question] = Field(default_factory=list)
