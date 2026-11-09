@@ -46,6 +46,9 @@ STORY = {
         "revision": "0123456789abcdef",
     },
 }
+#: STORY as the routes serve it: with the ``art`` map (#2675), ``none`` because
+#: STORY has no looks.
+SERVED = {**STORY, "art": {"status": "none", "characters": {}, "places": {}}}
 
 
 def _story_unit(number: str, role: str, unit_type: str | None) -> StoryUnit:
@@ -364,7 +367,7 @@ class TestModuleStory:
         mocks.find.return_value = _record()
         resp = await client.get(URL, params={"language": "fr"})
         assert resp.status_code == 200
-        assert resp.json() == STORY
+        assert resp.json() == SERVED
         assert resp.headers["cache-control"] == "private, no-cache"
         mocks.dispatch.assert_not_awaited()
         assert mocks.find.await_args.args[1:] == (MODULE_ID, "fr")
@@ -478,7 +481,7 @@ class TestModuleStory:
         _install()
         mocks.find.return_value = _record()
         resp = await client.get(URL, params={"generate": "false"})
-        assert resp.status_code == 200 and resp.json() == STORY
+        assert resp.status_code == 200 and resp.json() == SERVED
         mocks.dispatch.assert_not_awaited()
 
     async def test_cached_only_reports_an_unavailable_story_as_409(self, client, mocks):
@@ -570,7 +573,7 @@ class TestGateOnTheRoute:
         db = _ModuleDb(roster=FREE_MODULE)
         _install("user", db, gate=True)
         resp = await client.get(URL)
-        assert resp.status_code == 200 and resp.json() == STORY
+        assert resp.status_code == 200 and resp.json() == SERVED
         assert any("FROM module_units" in sql for sql in db.statements)
 
     async def test_a_subscriber_reads_a_paid_module(self, client, subscription):
@@ -1152,7 +1155,7 @@ class TestSlugRoute:
     @pytest.mark.parametrize("role", ["admin", "sub_admin"])
     async def test_admin_reads_one_but_never_from_a_shared_cache(self, client, kind, role):
         resp = await self._get(client, _stored(kind), role)
-        assert resp.status_code == 200 and resp.json() == STORY
+        assert resp.status_code == 200 and resp.json() == SERVED
         assert resp.headers["cache-control"] == "private, no-store"
 
     async def test_learner_still_reads_a_published_authored_week(self, client):

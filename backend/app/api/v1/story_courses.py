@@ -17,6 +17,7 @@ to a learner, and the authoring routes cannot write one.
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from collections.abc import Sequence
 from typing import Literal
@@ -50,6 +51,12 @@ from app.domain.models.module import Module
 from app.domain.models.story_course import StoryCourseRecord
 from app.domain.models.user import UserRole
 from app.domain.services.country_utils import canonicalize_country
+from app.domain.services.story_art_service import (
+    build_art_map,
+    collect_looks,
+    empty_art,
+    load_art_rows,
+)
 from app.domain.services.story_course_validator import validate_story_course
 from app.domain.services.story_from_lesson_service import (
     RELEASE_IF_OWNER_SCRIPT,
@@ -66,6 +73,11 @@ from app.domain.services.story_module_service import (
     story_dispatch_key as module_story_dispatch_key,
 )
 from app.tasks.content_generation import MODULE_STORY_DISPATCH_TTL_S, generate_module_story_task
+from app.tasks.story_art import (
+    STORY_ART_DISPATCH_TTL_S,
+    generate_story_art,
+    story_art_dispatch_key,
+)
 
 logger = get_logger(__name__)
 
@@ -329,6 +341,85 @@ async def dispatch_module_story_generation(
     return task_id
 
 
+# -- Story art (#2675) ----------------------------------------------------------
+
+
+async def dispatch_story_art_generation(course_id: uuid.UUID) -> str | None:
+    """Start (or join) the course's art run; its task id, or None when none was started.
+
+    One run per course at a time, through the same claim-a-Redis-key dedup as
+    the story dispatch (the task re-arms the key when it starts and releases
+    it when it ends). Unlike the story dispatch it fails *closed*: without
+    Redis nothing is dispatched, because every view would otherwise start a
+    paid run. The art then stays ``pending`` until Redis is back.
+    """
+    from app.infrastructure.cache.redis import redis_client
+
+    key = story_art_dispatch_key(course_id)
+    task_id = str(uuid.uuid4())
+    try:
+        running = await _in_flight_story_task(key)
+        if running:
+            return running
+        if not await redis_client.set(key, task_id, nx=True, ex=STORY_ART_DISPATCH_TTL_S):
+            # Another view claimed it in between: that one dispatches.
+            return await redis_client.get(key)
+    except Exception as exc:
+        logger.warning("Story art dispatch dedup unavailable (not dispatched)", error=str(exc))
+        return None
+
+    try:
+        generate_story_art.apply_async(
+            args=[str(course_id)], kwargs={"dedup_key": key}, task_id=task_id
+        )
+    except Exception as exc:
+        # Nothing was queued: free the key so the next view can dispatch.
+        try:
+            await _release_dispatch_key(key, task_id)
+        except Exception as release_exc:
+            logger.warning("Story art dispatch key not released", error=str(release_exc))
+        logger.warning("Story art dispatch failed", course_id=str(course_id), error=str(exc))
+        return None
+    logger.info("Story art generation dispatched", course_id=str(course_id), task_id=task_id)
+    return task_id
+
+
+async def _story_art(db: AsyncSession, record: StoryCourseRecord, content: dict) -> dict:
+    """The ``art`` map for a story served from ``record`` (contract #2672).
+
+    ``none`` when the document has no looks (an old story) or no course to
+    hold its art. Otherwise the ready images' URLs; when some are missing or
+    stale for the document's looks, the course's art run is dispatched
+    (deduplicated) and the map says ``pending`` or ``partial``. Never waits
+    for a drawing, and never fails the story: on any error the story is
+    served with a ``pending`` map and nothing dispatched.
+    """
+    items = collect_looks([content])
+    course_id = getattr(record, "course_id", None)
+    if not items or course_id is None:
+        return empty_art("none")
+    try:
+        rows = await load_art_rows(db, course_id)
+    except Exception as exc:
+        logger.warning("Story art unavailable", course_id=str(course_id), error=str(exc))
+        with contextlib.suppress(Exception):
+            await db.rollback()
+        return empty_art("pending")
+    art_map = build_art_map(items, rows, document_updated_at=getattr(record, "updated_at", None))
+    if art_map.outstanding:
+        try:
+            await dispatch_story_art_generation(course_id)
+        except Exception as exc:
+            logger.warning("Story art not dispatched", course_id=str(course_id), error=str(exc))
+    return art_map.art
+
+
+async def _served(db: AsyncSession, record: StoryCourseRecord) -> dict:
+    """The stored document as served: a copy with the ``art`` map (never stored)."""
+    content = record.content if isinstance(record.content, dict) else {}
+    return {**content, "art": await _story_art(db, record, content)}
+
+
 # -- Module story mode --------------------------------------------------------
 
 
@@ -399,7 +490,10 @@ async def get_module_story(
 
     * **200** — the cached story, valid and in step with the module's units,
       lessons and quizzes. Strings carry the ``{child}`` placeholder; the
-      client substitutes the learner's first name.
+      client substitutes the learner's first name. It carries the ``art`` map
+      (contract #2672), added on the way out and never stored; when art is
+      missing or stale the course's art run is started (deduplicated) and the
+      map says ``pending`` or ``partial``.
     * **202** — ``{"status": "generating", "task_id": ...}``: the story is
       being generated (now, or by a request that came first); a first open
       that must generate lessons and quizzes too can take several minutes.
@@ -436,7 +530,7 @@ async def get_module_story(
     if record is not None and not force and await module_story_is_fresh(db, record, units=units):
         if record.is_valid and record.status == "published":
             return JSONResponse(
-                content=record.content,
+                content=await _served(db, record),
                 status_code=status.HTTP_200_OK,
                 headers={"Cache-Control": "private, no-cache"},
             )
@@ -568,7 +662,12 @@ async def get_story_course(
     current_user: AuthenticatedUser = Depends(get_current_user),
     db=Depends(get_db_session),
 ) -> dict:
-    """Return the authored course file exactly as stored.
+    """Return the authored course file as stored, plus its ``art`` map.
+
+    ``art`` (contract #2672) is added on the way out, never stored: the URLs of
+    the course's ready character poses and backdrops, with a ``status``. When
+    the document's looks have art missing or stale, the course's art run is
+    started (deduplicated) and the status says ``pending`` or ``partial``.
 
     The player needs the whole document in one request: it caches the week in
     IndexedDB and then runs with no network. Responses are gzipped by the
@@ -596,15 +695,20 @@ async def get_story_course(
             detail={"error": "story_course_not_found", "message": f"No week {slug!r}"},
         )
 
+    served = await _served(db, record)
     if is_generated:
         response.headers["Cache-Control"] = _PRIVATE_NO_STORE
+    elif record.status != "published":
+        response.headers["Cache-Control"] = "no-store"
+    elif served["art"]["status"] in ("pending", "partial"):
+        # Its art is still being drawn: a shared cache would keep serving the
+        # placeholders for an hour.
+        response.headers["Cache-Control"] = "public, no-cache"
     else:
         # Published weeks are immutable in practice but can be corrected, so
         # allow a short cache rather than marking them immutable for a year.
-        response.headers["Cache-Control"] = (
-            "public, max-age=3600" if record.status == "published" else "no-store"
-        )
-    return record.content
+        response.headers["Cache-Control"] = "public, max-age=3600"
+    return served
 
 
 @router.post(
