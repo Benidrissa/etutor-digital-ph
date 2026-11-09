@@ -6,11 +6,15 @@ import asyncio
 import json
 import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from celery import Task
 
 from app.tasks.celery_app import celery_app
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = structlog.get_logger(__name__)
 
@@ -43,7 +47,9 @@ def _make_session_factory(settings):
     return engine, factory
 
 
-async def _cached_module_story(session, module_id: uuid.UUID, language: str) -> dict | None:
+async def _cached_module_story(
+    session: AsyncSession, module_id: uuid.UUID, language: str
+) -> dict[str, Any] | None:
     """The module's story document, if one is ready: cached, valid, published and fresh.
 
     Read from the cache only: the bundle never pays for generating a story.

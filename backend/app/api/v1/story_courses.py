@@ -18,6 +18,7 @@ to a learner, and the authoring routes cannot write one.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from typing import Literal
 
 from celery.result import AsyncResult
@@ -25,6 +26,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from app.api.deps import get_db as get_db_session
@@ -54,6 +56,7 @@ from app.domain.services.story_from_lesson_service import (
     story_mode_enabled,
     upsert_story_course,
 )
+from app.domain.services.story_module_assembly import StoryUnit
 from app.domain.services.story_module_service import (
     find_module_story,
     load_story_units,
@@ -327,7 +330,7 @@ async def dispatch_module_story_generation(
 # -- Module story mode --------------------------------------------------------
 
 
-async def _resolve_module(db, module_id: str) -> uuid.UUID:
+async def _resolve_module(db: AsyncSession, module_id: str) -> uuid.UUID:
     """The module's UUID, or a 404 ``module_not_found``.
 
     Only a UUID names a module here: a module code (``M01``) is shared by
@@ -348,7 +351,7 @@ async def _resolve_module(db, module_id: str) -> uuid.UUID:
     )
 
 
-def _has_lesson(units) -> bool:
+def _has_lesson(units: Sequence[StoryUnit]) -> bool:
     return any(unit.role == "lesson" for unit in units)
 
 
