@@ -37,6 +37,18 @@ export function moduleStoryId(moduleId: string, language: "fr" | "en"): string {
   return `module-${moduleId.replace(/-/g, "").toLowerCase()}-${language}`;
 }
 
+/** C-2's namespace of a chapter-local id: `u{unit number, non-alphanumerics as _}-`. */
+const CHAPTER_NAMESPACE = /^u[A-Za-z0-9_]+-(?=.)/;
+
+/**
+ * An id of a module story as its chapter wrote it, for display: the
+ * assembler namespaces every chapter-local id (`u1_1-E1`), and a learner
+ * should read `E1`. Only for module stories: an authored week's ids are its own.
+ */
+export function chapterLocalId(id: string): string {
+  return id.replace(CHAPTER_NAMESPACE, "");
+}
+
 export function emptyStoryProgress(): StoryProgress {
   return { v: 1, completedUnits: [], points: {} };
 }

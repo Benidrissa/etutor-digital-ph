@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   chapterKey,
+  chapterLocalId,
   completedChapterCount,
   emptyStoryProgress,
   firstIncompleteChapter,
@@ -135,5 +136,16 @@ describe("story progress", () => {
     const progress = { v: 1 as const, completedUnits: ["gone", "a"], points: {} };
     expect(firstIncompleteChapter(chapters, progress)).toBe(1);
     expect(completedChapterCount(chapters, progress)).toBe(1);
+  });
+});
+
+describe("chapterLocalId", () => {
+  it("strips the assembler's u{key}- namespace and nothing else", () => {
+    expect(chapterLocalId("u1_1-E1")).toBe("E1");
+    expect(chapterLocalId("u2_10-E-2")).toBe("E-2");
+    expect(chapterLocalId("uA_1_2-situation-q3")).toBe("situation-q3");
+    // Not namespaced: left alone.
+    expect(chapterLocalId("E1")).toBe("E1");
+    expect(chapterLocalId("u1_1-")).toBe("u1_1-");
   });
 });

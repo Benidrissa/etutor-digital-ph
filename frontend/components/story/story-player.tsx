@@ -24,6 +24,7 @@ import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { starsFor, text } from "@/lib/story-course/answer";
+import { chapterLocalId } from "@/lib/story-course/progress";
 import type {
   CastMember,
   Exercise,
@@ -375,6 +376,7 @@ export function StoryPlayer({
               cast={cast}
               question={item.step.ref ? questions.get(item.step.ref) : undefined}
               exercise={item.step.ref ? exercises.get(item.step.ref) : undefined}
+              moduleStory={!!course.module_story}
               game={item.step.ref ? games.get(item.step.ref) : undefined}
               video={item.step.ref ? videos.get(item.step.ref) : undefined}
               rewards={course.rewards}
@@ -420,6 +422,8 @@ interface StepViewProps {
   cast: Map<string, CastMember>;
   question?: Question;
   exercise?: Exercise;
+  /** A module story: its ids are namespaced per chapter (C-2). */
+  moduleStory?: boolean;
   game?: Minigame;
   video?: Video;
   rewards?: StoryCourse["rewards"];
@@ -436,6 +440,7 @@ function StepView({
   cast,
   question,
   exercise,
+  moduleStory = false,
   game,
   video,
   rewards,
@@ -576,6 +581,7 @@ function StepView({
       return (
         <PaperExercise
           exercise={exercise}
+          label={moduleStory ? chapterLocalId(exercise.id) : exercise.id}
           target={target}
           home={home}
           bilingual={bilingual}
@@ -621,6 +627,7 @@ function StepView({
  */
 function PaperExercise({
   exercise,
+  label,
   target,
   home,
   bilingual,
@@ -628,6 +635,8 @@ function PaperExercise({
   onMarked,
 }: {
   exercise: Exercise;
+  /** The exercise's name for the learner (its id, without a module namespace). */
+  label: string;
   target: string;
   home: string;
   bilingual: boolean;
@@ -655,7 +664,7 @@ function PaperExercise({
       <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
         {[
           t("onPaper"),
-          exercise.id,
+          label,
           t("part", { part: exercise.part }),
           exercise.marks ? `[${exercise.marks}]` : null,
         ]

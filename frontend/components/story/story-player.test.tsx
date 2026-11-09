@@ -415,6 +415,51 @@ describe("StoryPlayer — paper exercises are self-marked (X6)", () => {
   });
 });
 
+/** A story that opens on one paper exercise with id `id`. */
+function paperStory(id: string, { module }: { module: boolean }): StoryCourse {
+  const story = frenchStory();
+  story.chapters[0].scenes[0].steps = [{ type: "photo", ref: id }];
+  story.questions = [];
+  story.exercises = [
+    {
+      id,
+      part: "A",
+      marks: 1,
+      prompt: { en: "List the three tools.", fr: "Cite les trois outils." },
+      working: { en: ["Net, spray, drug"], fr: ["Moustiquaire, spray, médicament"] },
+    },
+  ];
+  story.checks = { max_points: 1 };
+  if (module) {
+    story.id = "module-6f1c2d3e4b5a69788a9b0c1d2e3f4a5b-fr";
+    story.module_story = {
+      module_id: "6f1c2d3e-4b5a-6978-8a9b-0c1d2e3f4a5b",
+      module_number: 1,
+      assembler: 1,
+      revision: "0123456789abcdef",
+    };
+  }
+  return story;
+}
+
+describe("StoryPlayer — a paper exercise's name", () => {
+  it("is the chapter's own id in a module story, not the assembler's namespace", () => {
+    renderPlayer(paperStory("u1_1-E1", { module: true }));
+    expect(screen.getByText("Sur papier · E1 · Partie A · [1]")).toBeInTheDocument();
+    expect(screen.queryByText(/u1_1/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps a dash inside the chapter's own id", () => {
+    renderPlayer(paperStory("u2_10-E-2", { module: true }));
+    expect(screen.getByText("Sur papier · E-2 · Partie A · [1]")).toBeInTheDocument();
+  });
+
+  it("is left as written in an authored week", () => {
+    renderPlayer(paperStory("u2-x", { module: false }));
+    expect(screen.getByText("Sur papier · u2-x · Partie A · [1]")).toBeInTheDocument();
+  });
+});
+
 /**
  * A two-chapter module story: the first chapter is the French story above
  * (one question, 2 points), the second a short checkpoint with no question.
