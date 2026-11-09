@@ -884,6 +884,26 @@ def test_the_dedup_key_outlives_the_task_and_nothing_else():
     assert ttl < _task_status._TTL_SECONDS
 
 
+def test_the_task_releases_its_key_with_a_compare_and_delete_on_its_own_id():
+    from app.tasks import content_generation
+
+    client = MagicMock()
+    with patch("redis.Redis.from_url", return_value=client):
+        content_generation._release_story_dispatch(KEY, "task-42")
+    script, numkeys, key, value = client.eval.call_args.args
+    assert "ARGV[1]" in script and (numkeys, key, value) == (1, KEY, "task-42")
+    client.delete.assert_not_called()
+    client.close.assert_called_once()
+
+
+def test_the_task_key_release_never_raises():
+    from app.tasks import content_generation
+
+    with patch("redis.Redis.from_url", side_effect=ConnectionError("redis down")):
+        content_generation._release_story_dispatch(KEY, "task-42")
+    content_generation._release_story_dispatch(None, "task-42")  # nothing claimed
+
+
 class _FakeRedis:
     """Just enough of redis.asyncio for the task-status helpers."""
 
@@ -1050,6 +1070,40 @@ class TestRealRedisDedup:
 #: The real helpers, taken before any fixture replaces them on ``api``.
 _real_dispatch = api.dispatch_module_story_generation
 _real_in_flight = api._in_flight_story_task
+
+
+# --------------------------------------------------------------------------
+# The per-unit story is gone
+# --------------------------------------------------------------------------
+
+
+class TestPerUnitStoryRemoved:
+    """One story per module replaces one per lesson: no route, task or key is left."""
+
+    async def test_the_unit_route_is_404(self, client):
+        _install("admin", _Unusable())
+        for path in (
+            f"/api/v1/story-courses/unit/{MODULE_ID}/1.2",
+            "/api/v1/story-courses/unit/M03/1.2",
+        ):
+            assert (await client.get(path)).status_code == 404
+
+    def test_no_route_serves_a_unit_story(self):
+        paths = [getattr(route, "path", "") for route in app.routes]
+        assert not [p for p in paths if p.startswith("/api/v1/story-courses/unit")]
+
+    def test_the_per_unit_task_and_key_are_gone(self):
+        from app.domain.services import story_from_lesson_service
+        from app.tasks import content_generation
+        from app.tasks.celery_app import celery_app
+
+        for name in ("generate_story_task", "STORY_SOFT_LIMIT", "STORY_HARD_LIMIT"):
+            assert not hasattr(content_generation, name), name
+        assert "app.tasks.content_generation.generate_story_task" not in celery_app.tasks
+        assert "app.tasks.content_generation.generate_module_story_task" in celery_app.tasks
+        assert not hasattr(story_from_lesson_service, "story_dispatch_key")
+        for name in ("get_unit_story", "_dispatch_story_generation", "_STORY_DISPATCH_TTL_S"):
+            assert not hasattr(api, name), name
 
 
 # --------------------------------------------------------------------------

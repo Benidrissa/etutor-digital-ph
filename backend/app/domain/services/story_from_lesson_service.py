@@ -113,16 +113,6 @@ def content_digest(content: Any) -> str:
 # --------------------------------------------------------------------------
 
 
-def story_dispatch_key(module_unit_id: uuid.UUID, language: str) -> str:
-    """Redis key of the per-unit story route (deprecated).
-
-    Kept only while ``GET /story-courses/unit/...`` exists; it goes with that
-    route. A module story's key is
-    :func:`app.domain.services.story_module_service.story_dispatch_key`.
-    """
-    return f"story_dispatch:{module_unit_id}:{language}"
-
-
 #: Compare-and-delete: remove the dedup key only while it still holds the
 #: caller's task id, so nobody ever deletes a key another request now owns.
 RELEASE_IF_OWNER_SCRIPT = """
