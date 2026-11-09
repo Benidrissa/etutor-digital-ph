@@ -1385,3 +1385,175 @@ class TestBundleTask:
         }
         assert files.index("001_00_flashcards_fr.html") < files.index("001_00_story_fr.json")
         assert bundle.status == "ready"
+
+
+# --------------------------------------------------------------------------
+# On a real database: the routes, the bundle and the operators' script
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def story_db_url():
+    from tests._story_db import create_tables, scratch_database, story_tables
+
+    with scratch_database("story_api") as url:
+        create_tables(url, story_tables())
+        yield url
+
+
+@pytest_asyncio.fixture(loop_scope="function")
+async def stored(story_db_url):
+    """A module story made by the real service (fake model) on PostgreSQL."""
+    import json
+
+    import sqlalchemy as sa
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from tests import test_story_module_service as service_tests
+    from tests._story_db import story_tables
+
+    engine = create_async_engine(story_db_url, pool_size=8, max_overflow=2)
+    sessions = service_tests.Sessions(engine)
+    raw = json.loads(service_tests.FIXTURE.read_text(encoding="utf-8"))
+    with patch("app.tasks.quality_assessment.assess_and_regenerate_unit_task"):
+        seed = await service_tests.seed(sessions, raw)
+        service, *_ = service_tests.make_service(raw)
+        record = await service_tests.generate(service, seed, sessions)
+    assert record.status == "published" and record.is_valid
+
+    async def get_session():
+        async with sessions.maker() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = get_session
+    yield SimpleNamespace(engine=engine, sessions=sessions, seed=seed, record=record)
+    app.dependency_overrides.clear()
+    names = ", ".join(t.name for t in story_tables())
+    async with engine.begin() as conn:
+        await conn.execute(sa.text(f"TRUNCATE {names} CASCADE"))
+    await engine.dispose()
+
+
+async def _bump_a_lesson(stored) -> None:
+    """Regenerate unit 1.2's lesson (its revision moves): its chapter and the story go stale."""
+    import sqlalchemy as sa
+
+    from app.domain.models.content import GeneratedContent
+
+    async with stored.sessions.maker() as session:
+        await session.execute(
+            sa.update(GeneratedContent)
+            .where(
+                GeneratedContent.module_unit_id == stored.seed.units["1.2"],
+                GeneratedContent.content_type == "lesson",
+            )
+            .values(content_revision=GeneratedContent.content_revision + 1)
+        )
+        await session.commit()
+
+
+class TestOnARealDatabase:
+    @pytest.fixture(autouse=True)
+    def _wiring(self, subscription):
+        """Story mode on, no learner subscribed, dispatch and Redis replaced."""
+        with (
+            patch.object(api, "story_mode_enabled", return_value=True),
+            patch.object(
+                api, "dispatch_module_story_generation", AsyncMock(return_value="task-7")
+            ) as dispatch,
+            patch.object(api, "_in_flight_story_task", AsyncMock(return_value=None)),
+        ):
+            self.dispatch = dispatch
+            yield
+
+    @staticmethod
+    def _as(role: str) -> None:
+        app.dependency_overrides[get_current_user] = lambda: _user(role)
+
+    async def test_the_stored_story_is_served_and_reported_ready(self, client, stored):
+        url = f"/api/v1/story-courses/module/{stored.seed.module_id}"
+        self._as("admin")
+        resp = await client.get(url, params={"language": "en", "generate": "false"})
+        assert resp.status_code == 200
+        assert resp.json() == stored.record.content
+        status_body = (await client.get(f"{url}/status", params={"language": "en"})).json()
+        assert status_body == {
+            "state": "ready",
+            "task_id": None,
+            "chapters": 6,
+            "revision": stored.record.content["module_story"]["revision"],
+            "access": "ok",
+        }
+        # Nothing in French yet: not ready, and a cached-only GET starts nothing.
+        assert (await client.get(f"{url}/status")).json()["state"] == "not_ready"
+        assert (await client.get(url, params={"generate": "false"})).status_code == 404
+        self.dispatch.assert_not_awaited()
+
+    async def test_a_learner_without_a_subscription_is_refused_the_paid_module(
+        self, client, stored
+    ):
+        url = f"/api/v1/story-courses/module/{stored.seed.module_id}"
+        self._as("user")
+        resp = await client.get(url, params={"language": "en"})
+        assert resp.status_code == 403
+        assert resp.json()["detail"]["code"] == "subscription_required"
+        body = (await client.get(f"{url}/status", params={"language": "en"})).json()
+        assert (body["state"], body["access"]) == ("ready", "subscription_required")
+
+    async def test_a_changed_lesson_makes_the_story_stale_everywhere(self, client, stored):
+        from app.tasks.course_bundle import _cached_module_story
+
+        url = f"/api/v1/story-courses/module/{stored.seed.module_id}"
+        async with stored.sessions.maker() as session:
+            assert await _cached_module_story(session, stored.seed.module_id, "en")
+        await _bump_a_lesson(stored)
+
+        self._as("admin")
+        resp = await client.get(url, params={"language": "en", "generate": "false"})
+        assert resp.status_code == 404 and resp.json()["detail"]["error"] == "story_not_cached"
+        status_body = (await client.get(f"{url}/status", params={"language": "en"})).json()
+        assert status_body["state"] == "not_ready"
+        resp = await client.get(url, params={"language": "en"})
+        assert resp.status_code == 202 and resp.json()["task_id"] == "task-7"
+        assert self.dispatch.await_args.kwargs["module_id"] == stored.seed.module_id
+        async with stored.sessions.maker() as session:
+            assert await _cached_module_story(session, stored.seed.module_id, "en") is None
+
+    async def test_an_unknown_module_is_404(self, client, stored):
+        self._as("admin")
+        resp = await client.get(f"/api/v1/story-courses/module/{uuid.uuid4()}")
+        assert resp.status_code == 404 and resp.json()["detail"]["error"] == "module_not_found"
+
+    async def test_the_scripts_list_and_generate_read_the_real_rows(self, stored, capsys):
+        import importlib.util
+        import sys
+        from pathlib import Path
+
+        path = Path(__file__).resolve().parent.parent / "scripts" / "generate_lesson_stories.py"
+        spec = importlib.util.spec_from_file_location("generate_lesson_stories_on_db", path)
+        script = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = script
+        spec.loader.exec_module(script)
+
+        argv = ["list", "--query", "Public health", "--module-index", "2"]
+        assert await script.main(argv, session_factory=stored.sessions.maker) == 0
+        out = capsys.readouterr().out
+        assert "units=6 lessons=4" in out
+        assert "1.3 quiz_checkpoint (type=quiz)" in out
+        assert "1.4 case_checkpoint (type=case-study)" in out
+        assert "[en] chapter: lesson-" in out and "fresh=True" in out
+        assert "[en] module story: module-" in out
+        assert "valid=True fresh=True chapters=6 (ready=4 unavailable=0 checkpoint=2)" in out
+        assert "[fr] module story: none" in out
+
+        async def wait_for_task(_task_id, _timeout):
+            return "SUCCESS", {"status": "complete", "content_id": str(stored.record.id)}
+
+        course_id = str(stored.seed.course_id)
+        with patch.object(script, "wait_for_task", wait_for_task):
+            argv = ["generate", "--course", course_id, "--module-index", "2", "--language", "en"]
+            assert await script.main(argv, session_factory=stored.sessions.maker) == 0
+            # French was never made: the run fails.
+            argv[-1] = "fr"
+            assert await script.main(argv, session_factory=stored.sessions.maker) == 1
+        assert [c.kwargs["language"] for c in self.dispatch.await_args_list] == ["en", "fr"]
