@@ -19,7 +19,7 @@ const DAY_IN_SECONDS = 24 * 60 * 60;
 
 // Bump when storage shape or routing changes so clients drop stale caches.
 // v6 added an ExpirationPlugin to the pages cache, pre-warmed by
-// frontend/lib/offline/download-manager.ts (PAGES_CACHE_NAME constant must
+// frontend/lib/offline/prewarm.ts (PAGES_CACHE_NAME constant must
 // match `pages-${CACHE_VERSION}`) so downloaded modules render offline.
 // v7 excludes /api/v1/content/status/ from the API SWR cache so a stale
 // "generating" body can't keep the quiz spinner alive forever offline.

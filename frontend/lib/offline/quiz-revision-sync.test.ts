@@ -19,7 +19,7 @@ vi.mock("./db", () => ({
   upsertOfflineContent: vi.fn(async () => undefined),
 }));
 
-vi.mock("./download-manager", () => ({ prewarmPage: vi.fn(async () => undefined) }));
+vi.mock("./prewarm", () => ({ prewarmPage: vi.fn(async () => undefined) }));
 
 import { ApiError, isQuizChangedError, type Quiz } from "../api";
 import { quizAttemptStorageKey } from "../quiz-state-persistence";

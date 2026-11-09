@@ -56,7 +56,7 @@ vi.mock("@/lib/offline/db", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/offline/download-manager", () => ({ prewarmPage: vi.fn() }));
+vi.mock("@/lib/offline/prewarm", () => ({ prewarmPage: vi.fn() }));
 
 const apiFetchMock = vi.mocked(apiFetch);
 const addOfflineActionMock = vi.mocked(addOfflineAction);

@@ -6,6 +6,7 @@ import {
   deleteOfflineModule,
   type ContentType,
 } from "./db";
+import { prewarmPage } from "./prewarm";
 import { apiFetch } from "@/lib/api";
 import type { ModuleUnitsResponse } from "@/lib/api";
 import { isStoryDocument, unitStoryPath } from "@/lib/story-course/api";
@@ -537,29 +538,5 @@ async function downloadUnitQuiz(
   } catch (err: unknown) {
     if (err instanceof DOMException && err.name === "AbortError") throw err;
     console.warn(`Failed to download quiz for ${unitId}:`, err);
-  }
-}
-
-// Cache name MUST stay aligned with `pages-${CACHE_VERSION}` in frontend/sw.ts.
-// Bump both together when changing.
-const PAGES_CACHE_NAME = "pages-v9-api-keys-tab";
-
-/**
- * Pre-fetch a same-origin page and stash it in the SW page cache so an offline
- * navigation hits cache instead of falling through to /offline.html.
- *
- * Failures are swallowed — pre-warm is best-effort and must never fail a
- * download.
- */
-export async function prewarmPage(url: string): Promise<void> {
-  try {
-    if (typeof caches === "undefined") return;
-    const cache = await caches.open(PAGES_CACHE_NAME);
-    const res = await fetch(url, { credentials: "include" });
-    if (res.ok) {
-      await cache.put(url, res.clone());
-    }
-  } catch {
-    // best-effort
   }
 }

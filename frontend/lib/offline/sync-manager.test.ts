@@ -43,7 +43,7 @@ vi.mock("@/lib/offline/db", async (importOriginal) => {
   };
 });
 
-vi.mock("./download-manager", () => ({ prewarmPage: vi.fn() }));
+vi.mock("./prewarm", () => ({ prewarmPage: vi.fn() }));
 
 const apiFetchMock = vi.mocked(apiFetch);
 const manager = SyncManager.getInstance();
