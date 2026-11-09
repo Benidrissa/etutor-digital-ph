@@ -1172,3 +1172,162 @@ class TestReservedSlugs:
         assert resp.status_code == 422
         assert resp.json()["detail"]["error"] == "reserved_slug"
         assert record.status == "draft"
+
+
+# --------------------------------------------------------------------------
+# The offline bundle
+# --------------------------------------------------------------------------
+
+
+class TestCachedModuleStory:
+    """The bundle carries a module's story only when one is ready, from the cache."""
+
+    @pytest.fixture
+    def svc(self):
+        service = "app.domain.services.story_module_service"
+        with (
+            patch(f"{service}.find_module_story", AsyncMock()) as find,
+            patch(f"{service}.module_story_is_fresh", AsyncMock(return_value=True)) as fresh,
+        ):
+            yield SimpleNamespace(find=find, fresh=fresh)
+
+    async def test_a_ready_story_is_bundled(self, svc):
+        from app.tasks.course_bundle import _cached_module_story
+
+        svc.find.return_value = _record()
+        assert await _cached_module_story(object(), MODULE_ID, "fr") == STORY
+        assert svc.find.await_args.args[1:] == (MODULE_ID, "fr")
+
+    @pytest.mark.parametrize(
+        ("record", "fresh"),
+        [
+            (None, True),
+            (_record(is_valid=False, status="draft"), True),
+            (_record(is_valid=True, status="draft"), True),
+            (_record(), False),
+        ],
+        ids=["missing", "invalid", "draft", "stale"],
+    )
+    async def test_a_story_that_is_not_ready_is_not_bundled(self, svc, record, fresh):
+        from app.tasks.course_bundle import _cached_module_story
+
+        svc.find.return_value = record
+        svc.fresh.return_value = fresh
+        assert await _cached_module_story(object(), MODULE_ID, "fr") is None
+
+
+class _BundleSession:
+    """The bundle task's session: the bundle row, then the course with its modules."""
+
+    def __init__(self, bundle, course) -> None:
+        self.bundle, self.course = bundle, course
+
+    async def get(self, _model, _key):
+        return self.bundle
+
+    async def execute(self, _statement):
+        return SimpleNamespace(scalar_one_or_none=lambda: self.course)
+
+    async def commit(self):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+def _bundle_course():
+    def unit(module_number: int, minor: int, unit_type: str | None):
+        return SimpleNamespace(
+            id=uuid.uuid4(),
+            unit_number=f"{module_number}.{minor}",
+            unit_type=unit_type,
+            order_index=minor - 1,
+            title_fr=f"Unité {module_number}.{minor}",
+            title_en=f"Unit {module_number}.{minor}",
+        )
+
+    def module(number: int):
+        return SimpleNamespace(
+            id=uuid.uuid5(MODULE_ID, str(number)),
+            module_number=number,
+            title_fr=f"Module {number}",
+            title_en=f"Module {number}",
+            units=[unit(number, 1, "lesson"), unit(number, 2, None), unit(number, 3, "quiz")],
+        )
+
+    return SimpleNamespace(title_fr="Cours", title_en="Course", modules=[module(2), module(1)])
+
+
+class TestBundleTask:
+    def test_one_story_file_per_module_and_only_when_ready(self):
+        from app.tasks import course_bundle
+
+        course = _bundle_course()
+        ready_module = next(m for m in course.modules if m.module_number == 1)
+        bundle = SimpleNamespace(
+            status="pending", course_id=uuid.uuid4(), language="fr", level=1, country="CI"
+        )
+        engine = SimpleNamespace(dispose=AsyncMock())
+        session = _BundleSession(bundle, course)
+        zipped: list[list[str]] = []
+
+        def build_zip(files):
+            zipped.append([name for name, _ in files])
+            return b"zip"
+
+        render = AsyncMock(return_value="<html></html>")
+        bundle_service = SimpleNamespace(
+            render_flashcards=render,
+            render_lesson=render,
+            render_quiz=render,
+            render_case_study=render,
+            build_zip=build_zip,
+        )
+        flashcards = SimpleNamespace(
+            get_or_generate_flashcard_set=AsyncMock(return_value=SimpleNamespace(flashcards=[]))
+        )
+        lessons = SimpleNamespace(get_or_generate_lesson=AsyncMock(return_value=object()))
+        quizzes = SimpleNamespace(get_or_generate_quiz=AsyncMock(return_value=object()))
+        storage = SimpleNamespace(upload_bytes=AsyncMock(return_value="https://minio/x.zip"))
+
+        async def cached(_session, module_id, language):
+            # Module 2's story is stale (or missing): the bundle skips it.
+            return dict(STORY) if module_id == ready_module.id else None
+
+        cached_story = AsyncMock(side_effect=cached)
+        with (
+            patch.object(
+                course_bundle, "_make_session_factory", return_value=(engine, lambda: session)
+            ),
+            patch.object(course_bundle, "_cached_module_story", cached_story),
+            patch.object(course_bundle.generate_course_bundle_task, "update_state"),
+            patch("app.ai.claude_service.ClaudeService"),
+            patch("app.ai.rag.retriever.SemanticRetriever"),
+            patch("app.domain.services.bundle_service.BundleService", return_value=bundle_service),
+            patch(
+                "app.domain.services.flashcard_service.FlashcardGenerationService",
+                return_value=flashcards,
+            ),
+            patch(
+                "app.domain.services.lesson_service.LessonGenerationService", return_value=lessons
+            ),
+            patch("app.domain.services.lesson_service.CaseStudyGenerationService"),
+            patch("app.domain.services.quiz_service.QuizService", return_value=quizzes),
+            patch("app.infrastructure.storage.s3.S3StorageService", return_value=storage),
+        ):
+            result = course_bundle.generate_course_bundle_task.run(str(uuid.uuid4()))
+
+        assert result["status"] == "ready", result
+        [files] = zipped
+        stories = [name for name in files if "_story_" in name]
+        assert stories == ["001_00_story_fr.json"]
+        # Looked up once per module, never per unit, and only from the cache.
+        assert cached_story.await_count == 2
+        assert {call.args[1] for call in cached_story.await_args_list} == {
+            m.id for m in course.modules
+        }
+        assert files.index("001_00_flashcards_fr.html") < files.index("001_00_story_fr.json")
+        assert bundle.status == "ready"
