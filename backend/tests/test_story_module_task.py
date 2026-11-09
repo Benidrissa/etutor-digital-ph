@@ -170,7 +170,9 @@ def test_an_invalid_story_still_completes(wiring):
 
 
 def test_failed_chapters_are_reported_by_unit_and_release_the_key(wiring):
-    FakeModuleStoryService.outcome = ChapterGenerationFailed(["1.2", "1.5"])
+    FakeModuleStoryService.outcome = ChapterGenerationFailed(
+        ["1.2", "1.5"], {"1.2": "RuntimeError: provider down"}
+    )
     result = run_task(str(MODULE_ID), "en", dedup_key="k")
     assert result == {
         "status": "failed",
@@ -178,6 +180,8 @@ def test_failed_chapters_are_reported_by_unit_and_release_the_key(wiring):
         "is_valid": False,
         "error": "chapter_generation_failed",
         "failed_units": ["1.2", "1.5"],
+        # Each failed unit's reason, for the operators' run log.
+        "unit_errors": {"1.2": "RuntimeError: provider down", "1.5": ""},
     }
     wiring.engine.dispose.assert_awaited_once()
     wiring.release.assert_called_once_with("k", TASK_ID)

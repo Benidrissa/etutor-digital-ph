@@ -621,6 +621,7 @@ class ModuleStoryService:
                 unit=unit.unit_number,
                 error_type=type(exc).__name__,
                 error=str(exc)[:300],
+                exc_info=True,
             )
 
     async def _ensure_lesson(self, run: _Run, session: AsyncSession, unit: StoryUnit) -> None:
@@ -690,9 +691,12 @@ class ModuleStoryService:
             except SoftTimeLimitExceeded:
                 raise
             except Exception as exc:
-                run.quiz_failed[quiz_unit_id] = type(exc).__name__
+                # Keep the cause: it is the only reason the covered chapters
+                # report, in the task result and the operators' run log.
+                run.quiz_failed[quiz_unit_id] = f"{type(exc).__name__}: {exc}"[:200]
                 raise CoveringQuizUnavailable(
                     f"The quiz of unit {quiz_unit.unit_number} could not be generated"
+                    f" ({run.quiz_failed[quiz_unit_id]})"
                 ) from exc
             run.quiz_ready.add(quiz_unit_id)
             run.quiz_generated.add(quiz_unit_id)
