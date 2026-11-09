@@ -43,8 +43,17 @@ describe("messages", () => {
     );
   });
 
+  // The per-lesson story mode is gone: its tab, panel and per-unit download
+  // label have no caller left, so their labels must not linger.
+  it.each(["LessonStory", "LessonMediaTabs.storyTab", "Offline.downloadingStory"])(
+    "no longer has the per-lesson %s in either language",
+    (key) => {
+      expect(at(en as Tree, key)).toBeUndefined();
+      expect(at(fr as Tree, key)).toBeUndefined();
+    },
+  );
+
   it.each([
-    "Offline.downloadingStory",
     "Offline.downloadingModuleStory",
     "ModuleOverview.storyCard.title",
     "ModuleOverview.storyCard.start",

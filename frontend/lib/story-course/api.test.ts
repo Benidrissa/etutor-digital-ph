@@ -7,6 +7,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { apiFetch } from "../api";
+import * as storyApi from "./api";
 import {
   getModuleStoryStatus,
   isStoryDocument,
@@ -90,5 +91,11 @@ describe("response guards (unchanged)", () => {
     expect(storyErrorCode({ status: 403, detail: { code: "subscription_required" } })).toBe(
       undefined,
     );
+  });
+});
+
+describe("the per-lesson story", () => {
+  it("has no path helper left: the /story-courses/unit/ route is gone", () => {
+    expect(storyApi).not.toHaveProperty("unitStoryPath");
   });
 });

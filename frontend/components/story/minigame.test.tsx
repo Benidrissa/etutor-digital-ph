@@ -308,7 +308,7 @@ describe("MinigameView — keys and visibility", () => {
     await advance(2000);
     expect(screen.getByText("3s")).toBeInTheDocument();
 
-    // The learner switches to another lesson tab for a while.
+    // The player is hidden (but kept mounted) for a while.
     setActive(false);
     await advance(30_000);
     expect(screen.getByText("3s")).toBeInTheDocument();
@@ -318,7 +318,7 @@ describe("MinigameView — keys and visibility", () => {
     fireEvent.keyDown(window, { key });
     expect(screen.getByRole("button", { name: "Before touching a patient" })).toBeEnabled();
 
-    // Back on the Story tab: the clock and the keys pick up where they were.
+    // Shown again: the clock and the keys pick up where they were.
     setActive(true);
     fireEvent.keyDown(window, { key });
     expect(screen.getByRole("button", { name: "Before touching a patient, caught" })).toBeDisabled();

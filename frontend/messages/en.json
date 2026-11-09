@@ -839,22 +839,7 @@
     "readTab": "Read",
     "listenTab": "Listen",
     "watchTab": "Video",
-    "storyTab": "Story",
     "generatingBadge": "generating…"
-  },
-  "LessonStory": {
-    "regionLabel": "Lesson story",
-    "loading": "Loading the story…",
-    "generating": "Writing this lesson's story…",
-    "generatingDescription": "The story is written from this lesson the first time it is opened, so this can take a minute.",
-    "slowWarning": "Still working — longer lessons take a little more time.",
-    "unavailable": "A story isn't available for this lesson yet.",
-    "unavailableHint": "The lesson itself is still here to read, listen to or watch.",
-    "disabled": "Story mode is not enabled on this platform yet.",
-    "offline": "This story hasn't been downloaded for offline use. Reconnect to open it.",
-    "failed": "The story could not be prepared. Please try again.",
-    "timeout": "This is taking longer than expected. Please try again in a moment.",
-    "retry": "Try again"
   },
   "ModuleStory": {
     "pageTitle": "Module story",
@@ -2409,7 +2394,6 @@
     "downloadingLesson": "Downloading lesson",
     "downloadingQuiz": "Downloading quiz",
     "downloadingCaseStudy": "Downloading case study",
-    "downloadingStory": "Downloading story",
     "downloadingModuleStory": "Downloading the module story",
     "cancel": "Cancel download",
     "cancelAction": "Cancel",

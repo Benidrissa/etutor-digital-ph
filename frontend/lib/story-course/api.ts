@@ -65,32 +65,6 @@ export interface StoryGenerating {
 }
 
 /**
- * The path of one lesson's story (contract C3). A GET is learner-readable and
- * generates the story on first access: 200 with the document, 202 with
- * {@link StoryGenerating}, or 409 `story_unavailable` when the generator could
- * not produce a week that passes the validator.
- *
- * `generate: false` (contract X1) only reads the cache: a story nobody has
- * opened yet answers 404 `story_not_cached` and nothing is dispatched. The
- * module downloader uses it so a download never pays for stories on demand.
- *
- * Kept here so the lesson panel (through the offline loader) and the module
- * downloader request the very same URL.
- */
-export function unitStoryPath(
-  moduleId: string,
-  unitId: string,
-  language: "fr" | "en",
-  options: { generate?: boolean } = {},
-): string {
-  const generate = options.generate === false ? "&generate=false" : "";
-  return (
-    `/api/v1/story-courses/unit/${encodeURIComponent(moduleId)}` +
-    `/${encodeURIComponent(unitId)}?language=${language}${generate}`
-  );
-}
-
-/**
  * The path of one module's story (contract C-5, served per C-4). A GET is
  * gated (subscribers and admins, or a module whose units are all free) and
  * generates the story on first access: 200 with the document, 202 with
