@@ -384,11 +384,15 @@ class TestGenerate:
         wired.result = {
             "status": "failed",
             "error": "chapter_generation_failed",
-            "failed_units": ["1.2"],
+            "failed_units": ["1.2", "1.5"],
+            "unit_errors": {"1.2": "ValueError: no lesson", "1.5": ""},
         }
         code = await self.run("generate", "--course", COURSE.slug, "--language", "fr")
         assert code == 1
-        assert "failed units=['1.2']" in capsys.readouterr().out
+        out = capsys.readouterr().out
+        assert "failed units=['1.2', '1.5']" in out
+        assert "unit 1.2: ValueError: no lesson" in out
+        assert "unit 1.5: no reason recorded" in out
 
     async def test_fails_for_an_unknown_course_without_dispatching(self, wired):
         assert await self.run("generate", "--course", "nope", "--language", "fr") == 1

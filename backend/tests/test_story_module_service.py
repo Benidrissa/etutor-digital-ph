@@ -822,6 +822,9 @@ async def test_a_failed_covering_quiz_fails_its_chapters_once(raw, sessions):
         await generate(service, seed_, sessions)
 
     assert failed.value.failed_units == LESSONS
+    # Every covered chapter reports the quiz's own cause, not just its type.
+    for unit in LESSONS:
+        assert "RuntimeError: quiz failed" in failed.value.errors[unit]
     assert quizzes.calls == ["1.3"]  # tried once, not once per chapter
     assert model.calls == []  # no chapter is built without its quiz
     assert await module_row(sessions, seed_) is None

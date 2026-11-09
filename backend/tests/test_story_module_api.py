@@ -955,6 +955,31 @@ class TestStatusOfAQueuedStory:
         body = await self._status("task-1", marker_age_s=TASK_STALL_THRESHOLD_S + 60)
         assert body == {"status": "pending"}
 
+    async def test_a_failed_story_shows_learners_only_its_error_code(self, store):
+        """unit_errors are for operators: /content/status never forwards them."""
+        import json
+
+        from app.api.v1 import content as content_module
+
+        result = {
+            "status": "failed",
+            "content_id": None,
+            "is_valid": False,
+            "error": "chapter_generation_failed",
+            "failed_units": ["1.1"],
+            "unit_errors": {"1.1": "RuntimeError: internal detail"},
+        }
+        with patch.object(
+            content_module,
+            "AsyncResult",
+            return_value=SimpleNamespace(state="SUCCESS", result=result),
+        ):
+            response = await content_module.get_generation_status("task-1")
+        assert json.loads(response.body) == {
+            "status": "failed",
+            "error": "chapter_generation_failed",
+        }
+
     async def test_a_just_claimed_story_without_a_marker_is_pending(self, store):
         from app.api.v1._task_status import vouch_while_owned
 

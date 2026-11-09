@@ -666,14 +666,23 @@ def generate_module_story_task(
         )
         return {**failed, "error": "time_limit_exceeded"}
     except ChapterGenerationFailed as exc:
+        # Each failed unit's reason ("Type: message", truncated) is kept for
+        # the operators' script; /content/status forwards only "error".
+        unit_errors = {unit: exc.errors.get(unit, "") for unit in exc.failed_units}
         logger.warning(
             "Module story generation failed: chapters could not be made",
             module_id=module_id,
             language=language,
             failed_units=exc.failed_units,
+            unit_errors=unit_errors,
             task_id=self.request.id,
         )
-        return {**failed, "error": "chapter_generation_failed", "failed_units": exc.failed_units}
+        return {
+            **failed,
+            "error": "chapter_generation_failed",
+            "failed_units": exc.failed_units,
+            "unit_errors": unit_errors,
+        }
     except Exception as exc:
         logger.error(
             "Async module story generation failed",

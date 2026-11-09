@@ -461,6 +461,8 @@ async def run_generation(
             print(f"  task {task_id}: {state} {'' if completed else result}".rstrip())
             if isinstance(result, dict) and result.get("failed_units"):
                 print(f"  failed units={result['failed_units']}")
+                for unit, reason in (result.get("unit_errors") or {}).items():
+                    print(f"    unit {unit}: {reason or 'no reason recorded'}")
             record = await find_module_story(session, target.module.id, language)
             summary = module_story_summary(record)
             print_module_summary("  ", summary)
