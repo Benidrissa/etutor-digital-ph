@@ -8,6 +8,7 @@ other story tests) and is skipped when no server is reachable.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import importlib.util
 import inspect
 import io
@@ -401,8 +402,60 @@ class TestClassifyFailure:
             status, request=httpx.Request("POST", "https://api.test/images"), headers=headers
         )
 
-    def _status_error(self, cls, status: int, headers: dict | None = None):
-        return cls("boom", response=self._http(status, headers), body=None)
+    def _status_error(self, cls, status: int, headers: dict | None = None, body=None):
+        return cls("boom", response=self._http(status, headers), body=body)
+
+    def _chain(self, exc: BaseException, runs: int) -> list[datetime | None]:
+        """The ``retry_after`` of ``runs`` runs in a row failing with ``exc``."""
+        waits: list[datetime | None] = []
+        previous = None
+        for _ in range(runs):
+            failure = svc.classify_failure(exc, previous, MARKET.digest, now=NOW)
+            waits.append(failure.retry_after)
+            previous = row(
+                MARKET,
+                "backdrop",
+                status="failed",
+                failed_runs=failure.failed_runs,
+                retry_after=failure.retry_after,
+            )
+        return waits
+
+    @pytest.mark.parametrize("code", ["billing_hard_limit_reached", "insufficient_quota"])
+    def test_a_400_saying_the_account_is_out_of_credit_is_transient(self, code):
+        # The SDK lifts the body's code to exc.code; a raw body is read too.
+        exc = self._status_error(
+            openai.BadRequestError, 400, body={"code": code, "type": "invalid_request_error"}
+        )
+        assert exc.code == code
+        assert svc.failure_is_transient(exc)
+        failure = svc.classify_failure(exc, None, MARKET.digest, now=NOW)
+        assert failure.retry_after == NOW + timedelta(hours=1)
+
+    def test_another_400_stays_deterministic(self):
+        exc = self._status_error(openai.BadRequestError, 400, body={"code": "moderation_blocked"})
+        assert not svc.failure_is_transient(exc)
+
+    def test_a_timeout_gets_one_later_run_then_is_final(self):
+        request = httpx.Request("POST", "https://api.test/images")
+        for exc in (openai.APITimeoutError(request=request), TimeoutError()):
+            assert svc.failure_is_timeout(exc)
+            assert self._chain(exc, 2) == [NOW + timedelta(hours=1), None]
+
+    def test_other_transient_failures_keep_the_full_schedule(self):
+        request = httpx.Request("POST", "https://api.test/images")
+        connection = openai.APIConnectionError(request=request)
+        assert not svc.failure_is_timeout(connection)
+        assert self._chain(connection, 4)[-1] is None
+        assert self._chain(connection, 3)[-1] == NOW + timedelta(hours=24)
+
+    def test_a_pose_never_attempted_does_not_count_as_a_failed_run(self):
+        # Stored as "idle pose unavailable" with failed_runs=0 while its idle
+        # failed: its first own failure is its first run.
+        exc = self._status_error(openai.InternalServerError, 503)
+        never_tried = row(GIRL, "talk", status="failed", failed_runs=0)
+        failure = svc.classify_failure(exc, never_tried, GIRL.digest, now=NOW)
+        assert failure.failed_runs == 1 and failure.retry_after == NOW + timedelta(hours=1)
 
     @pytest.mark.parametrize(
         ("cls", "status"),
@@ -558,6 +611,14 @@ class TestArtMap:
     def test_an_older_art_version_is_outstanding(self):
         rows = [row(MARKET, "backdrop", art_version=svc.ART_VERSION - 1)]
         assert build_art_map([MARKET], rows).outstanding == 1
+
+    def test_a_newer_art_version_is_current(self):
+        # Code rolled back after a version bump keeps serving the newer art.
+        rows = ready_rows(ALL_ITEMS)
+        for art in rows:
+            art.art_version = svc.ART_VERSION + 1
+        assert build_art_map(ALL_ITEMS, rows).art["status"] == "ready"
+        assert plan_art(ALL_ITEMS, rows) == []
 
     def test_a_document_with_a_replaced_look_is_served_the_courses_art(self):
         # Symptom 1 of the review: week1 says mentor A, the newest story says
@@ -1100,10 +1161,47 @@ class TestRun:
         stored = sessions.by_item()
         idle = stored[("hero:girl", "idle")]
         assert idle.retry_after is not None and idle.failed_runs == 1
-        for pose in CHARACTER_POSES[1:]:
-            art = stored[("hero:girl", pose)]
-            assert art.error == "idle pose unavailable"
-            assert (art.retry_after, art.failed_runs) == (idle.retry_after, idle.failed_runs)
+        poses = [stored[("hero:girl", pose)] for pose in CHARACTER_POSES[1:]]
+        # Never attempted: no failed run of their own.
+        assert {(art.error, art.failed_runs) for art in poses} == {("idle pose unavailable", 0)}
+        rows = [row(GIRL, "idle", status="failed", failed_runs=1, retry_after=idle.retry_after)]
+        rows += [row(GIRL, art.pose, status="failed") for art in poses]
+        # They wait with the idle, and come back with it.
+        assert plan_art([GIRL], rows, now=idle.retry_after - timedelta(seconds=1)) == []
+        assert plan_art([GIRL], rows, now=idle.retry_after) == [ArtJob(GIRL, CHARACTER_POSES)]
+
+    async def test_after_a_long_idle_outage_a_poses_first_failure_still_waits_an_hour(self):
+        # The idle failed in 3 runs in a row; its poses were never attempted.
+        rows = [
+            row(GIRL, "idle", status="failed", failed_runs=3, retry_after=NOW - timedelta(1))
+        ] + [row(GIRL, pose, status="failed") for pose in CHARACTER_POSES[1:]]
+        down = _api_error(openai.InternalServerError, 503)
+        images = FakeImages(errors={POSE_CHANGES["happy"]: [down, down]})
+        before = datetime.now(UTC)
+        _, _, sessions = await run_generator([GIRL], rows, images=images)
+        stored = sessions.by_item()
+        assert stored[("hero:girl", "idle")].status == "ready"
+        happy = stored[("hero:girl", "happy")]
+        assert happy.status == "failed" and happy.failed_runs == 1
+        assert timedelta(minutes=59) <= happy.retry_after - before <= timedelta(hours=1, minutes=1)
+
+    async def test_a_pose_that_times_out_twice_in_two_runs_is_final(self):
+        request = httpx.Request("POST", "https://api.test/images")
+        timeout = openai.APITimeoutError(request=request)
+        idle = row(GIRL, "idle")
+        first_failure = row(
+            GIRL, "talk", status="failed", failed_runs=1, retry_after=NOW - timedelta(1)
+        )
+        images = FakeImages(errors={POSE_CHANGES["talk"]: [timeout, timeout]})
+        _, images, sessions = await run_generator(
+            [GIRL],
+            [idle, first_failure, row(GIRL, "happy"), row(GIRL, "think")],
+            images=images,
+            sessions=FakeSessions(idle_webp=process_character(figure_png())[0]),
+        )
+        assert len(images.calls) == 2  # this run's two attempts, no SDK re-sends
+        talk = sessions.by_item()[("hero:girl", "talk")]
+        assert talk.failed_runs == 2 and talk.retry_after is None  # final
 
 
 # --------------------------------------------------------------------------
@@ -1889,6 +1987,22 @@ def task_wiring():
     generator.run = AsyncMock(return_value={"status": "complete", "planned": 0})
     cache = MagicMock()
     cache.get.return_value = "gemini-2.5-flash-image"
+    #: Courses whose advisory lock some run holds (a stand-in for PostgreSQL's).
+    held: set[uuid.UUID] = set()
+    lock_calls: list[tuple[Any, uuid.UUID]] = []
+
+    @contextlib.asynccontextmanager
+    async def fake_lock(lock_engine, course_id):
+        lock_calls.append((lock_engine, course_id))
+        if course_id in held:
+            yield False
+            return
+        held.add(course_id)
+        try:
+            yield True
+        finally:
+            held.discard(course_id)
+
     with (
         patch("sqlalchemy.ext.asyncio.create_async_engine", return_value=engine),
         patch(
@@ -1900,6 +2014,7 @@ def task_wiring():
         ),
         patch.object(story_art_task, "_hold_story_dispatch", return_value=1) as hold,
         patch.object(story_art_task, "_release_story_dispatch") as release,
+        patch.object(story_art_task, "course_run_lock", fake_lock),
     ):
         yield SimpleNamespace(
             engine=engine,
@@ -1908,6 +2023,8 @@ def task_wiring():
             cache=cache,
             hold=hold,
             release=release,
+            held=held,
+            lock_calls=lock_calls,
         )
 
 
@@ -1948,6 +2065,45 @@ class TestTask:
             task_wiring.generator.run.reset_mock()
             run_task(str(COURSE_ID), dedup_key=KEY)
             task_wiring.generator.run.assert_awaited_once_with(COURSE_ID)
+
+    def test_the_run_holds_the_course_lock_on_the_tasks_engine(self, task_wiring):
+        seen: list[bool] = []
+
+        async def run(course_id):
+            seen.append(course_id in task_wiring.held)
+            return {"status": "complete", "planned": 0}
+
+        task_wiring.generator.run.side_effect = run
+        run_task(str(COURSE_ID), dedup_key=KEY)
+        assert seen == [True]  # held while drawing
+        assert task_wiring.held == set()  # released after
+        assert task_wiring.lock_calls == [(task_wiring.engine, COURSE_ID)]
+
+    def test_a_redelivered_copy_with_the_same_task_id_skips(self, task_wiring):
+        # Copy A of TASK_ID is drawing (it holds the lock); the broker delivers
+        # TASK_ID again. Redis names this very id, so the key lets it through;
+        # the lock does not.
+        task_wiring.held.add(COURSE_ID)
+        task_wiring.hold.return_value = 1
+        result = run_task(str(COURSE_ID), dedup_key=KEY)
+        assert result == {"status": "skipped", "reason": "course_run_in_progress"}
+        task_wiring.generator_cls.assert_not_called()
+        task_wiring.generator.run.assert_not_awaited()
+        # Copy A's key (same id) is left alone, and the engine is still disposed.
+        task_wiring.release.assert_not_called()
+        task_wiring.engine.dispose.assert_awaited_once()
+        assert task_wiring.held == {COURSE_ID}  # copy A keeps its lock
+
+    def test_a_crash_still_releases_the_course_lock(self, task_wiring):
+        task_wiring.generator.run.side_effect = RuntimeError("db down")
+        run_task(str(COURSE_ID), dedup_key=KEY)
+        assert task_wiring.held == set()
+
+    def test_the_lock_key_is_stable_per_course_and_a_signed_bigint(self):
+        key = story_art_task.story_art_lock_key(COURSE_ID)
+        assert key == story_art_task.story_art_lock_key(uuid.UUID(str(COURSE_ID)))
+        assert key != story_art_task.story_art_lock_key(uuid.uuid4())
+        assert -(2**63) <= key < 2**63
 
     def test_the_hold_reports_the_scripts_answer(self):
         from app.tasks import content_generation
@@ -2258,5 +2414,37 @@ def test_on_postgres_the_slug_route_survives_an_unreadable_story_art_table():
                     app.dependency_overrides.clear()
             finally:
                 await engine.dispose()
+
+        asyncio.run(scenario())
+
+
+def test_on_postgres_the_course_lock_lets_one_run_in():
+    """Review round 2, item 5: the advisory lock on a real server.
+
+    A second run of the same course (another engine, as another worker
+    process would have) is turned away while the first holds the lock, a run
+    of another course is not, and the lock is free again afterwards.
+    """
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from tests._story_db import scratch_database
+
+    with scratch_database("story_art_lock") as url:
+
+        async def scenario() -> None:
+            first, second = create_async_engine(url), create_async_engine(url)
+            lock = story_art_task.course_run_lock
+            try:
+                async with lock(first, COURSE_ID) as taken:
+                    assert taken is True
+                    async with lock(second, COURSE_ID) as again:
+                        assert again is False
+                    async with lock(second, uuid.uuid4()) as other_course:
+                        assert other_course is True
+                async with lock(second, COURSE_ID) as after:
+                    assert after is True
+            finally:
+                await first.dispose()
+                await second.dispose()
 
         asyncio.run(scenario())

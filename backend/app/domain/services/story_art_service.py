@@ -94,6 +94,9 @@ RATE_LIMIT_WAIT_CAP_S = 60.0
 #: run, and give up after the last (the failure is then final, like a
 #: deterministic one, until the look changes).
 TRANSIENT_RETRY_BACKOFF = (timedelta(hours=1), timedelta(hours=6), timedelta(hours=24))
+#: A client-side timeout is likely billed (the server often finishes the image
+#: the client gave up on), so it gets one later run, not three.
+TIMEOUT_LATER_RUNS = 1
 
 #: A look longer than this is cut: it is one sentence by contract.
 MAX_LOOK_CHARS = 600
@@ -311,11 +314,13 @@ RowState = Literal["ready", "failed", "outstanding"]
 def row_state(row: Any, accepted: Mapping[str, str], *, now: datetime) -> RowState:
     """How one stored image stands against the looks that count as current.
 
-    ``outstanding`` (a run draws it): no row, a look no live story uses any
-    more, an older :data:`ART_VERSION`, or a transient failure whose wait is
-    over. ``failed``: a final failure, or a transient one still waiting.
+    ``outstanding`` (a run draws it): no row, a look that is not the course's
+    any more, an older :data:`ART_VERSION`, or a transient failure whose wait
+    is over. ``failed``: a final failure, or a transient one still waiting. A
+    row of a *newer* version is current: code rolled back after a version bump
+    keeps serving the newer art instead of redrawing every course.
     """
-    if row is None or row.look_digest not in accepted or row.art_version != ART_VERSION:
+    if row is None or row.look_digest not in accepted or row.art_version < ART_VERSION:
         return "outstanding"
     if row.status == STATUS_READY:
         return "ready"
@@ -659,6 +664,32 @@ class Failure:
     retry_after: datetime | None = None
 
 
+#: Error codes of a refused request (400) that are about the account, not the
+#: request: the image succeeds once the account is topped up.
+ACCOUNT_ERROR_CODES = frozenset({"billing_hard_limit_reached", "insufficient_quota"})
+
+
+def _error_code(exc: BaseException) -> str | None:
+    """The API's error ``code`` (``exc.code``, or the body's own ``error.code``)."""
+    code = getattr(exc, "code", None)
+    if isinstance(code, str):
+        return code
+    body = getattr(exc, "body", None)
+    if isinstance(body, Mapping):
+        inner = body.get("error") if isinstance(body.get("error"), Mapping) else body
+        code = inner.get("code")
+        return code if isinstance(code, str) else None
+    return None
+
+
+def failure_is_timeout(exc: BaseException | None) -> bool:
+    """A client-side timeout: the server may well have finished, and billed, the image."""
+    import httpx
+    import openai
+
+    return isinstance(exc, openai.APITimeoutError | TimeoutError | httpx.TimeoutException)
+
+
 def failure_is_transient(exc: BaseException | None) -> bool:
     """Whether a later run may succeed where this one failed.
 
@@ -666,8 +697,9 @@ def failure_is_transient(exc: BaseException | None) -> bool:
     (:class:`ArtProcessingError`), the model cannot do the call, or the request
     was refused (400, including moderation; 422). Transient: an outage or the
     account (authentication, permission, unknown model, rate limit or quota,
-    timeout, connection, 5xx). Anything else is treated as deterministic, so an
-    unknown error never keeps being paid for.
+    a 400 saying the account is out of credit, timeout, connection, 5xx).
+    Anything else is treated as deterministic, so an unknown error never keeps
+    being paid for.
     """
     import httpx
     import openai
@@ -676,6 +708,8 @@ def failure_is_transient(exc: BaseException | None) -> bool:
 
     if exc is None:
         return False
+    if isinstance(exc, openai.BadRequestError) and _error_code(exc) in ACCOUNT_ERROR_CODES:
+        return True  # out of credit: works again once the account is topped up
     if isinstance(
         exc,
         ArtProcessingError
@@ -707,7 +741,11 @@ def classify_failure(
 
     A transient failure waits :data:`TRANSIENT_RETRY_BACKOFF` (one more step
     per run that failed it in a row, for the same look) and is final once the
-    waits are used up.
+    waits are used up. A timeout is likely billed even though no image came
+    back, so it gets at most :data:`TIMEOUT_LATER_RUNS` later run(s) before it
+    is final. ``previous`` is the row the run found; only this image's own
+    failed runs count (a pose never attempted because its idle failed is
+    stored with ``failed_runs=0``).
     """
     error = _error_text(exc or ImageFailed())
     if not failure_is_transient(exc):
@@ -721,9 +759,8 @@ def classify_failure(
         and previous.failed_runs
     ):
         runs = previous.failed_runs + 1
-    retry_after = (
-        now + TRANSIENT_RETRY_BACKOFF[runs - 1] if runs <= len(TRANSIENT_RETRY_BACKOFF) else None
-    )
+    later_runs = TIMEOUT_LATER_RUNS if failure_is_timeout(exc) else len(TRANSIENT_RETRY_BACKOFF)
+    retry_after = now + TRANSIENT_RETRY_BACKOFF[runs - 1] if runs <= later_runs else None
     return Failure(error=error, failed_runs=runs, retry_after=retry_after)
 
 
@@ -866,9 +903,8 @@ class StoryArtGenerator:
             )
             return
 
-        idle_failure: Failure | None = None
         if POSE_IDLE in job.poses:
-            raw_idle, idle_failure = await self._draw(
+            raw_idle, _ = await self._draw(
                 course_id,
                 item,
                 POSE_IDLE,
@@ -889,19 +925,14 @@ class StoryArtGenerator:
         poses = [pose for pose in job.poses if pose != POSE_IDLE]
         if reference is None:
             # No idle to edit from: the poses cannot share its face, so they are
-            # not drawn at all (nothing is paid). They fail as the idle did, so
-            # they come back with it when its failure is transient.
-            failure = idle_failure or Failure(error="idle pose unavailable")
+            # not drawn at all (nothing is paid). While the idle is not ready
+            # they share its state (item_states), and they are drawn again with
+            # it. They were never attempted, so none of the idle's failed runs
+            # count against them (failed_runs=0): their own count starts when
+            # they are first tried.
             for pose in poses:
                 await self._store_failed(
-                    course_id,
-                    item,
-                    pose,
-                    Failure(
-                        error="idle pose unavailable",
-                        failed_runs=failure.failed_runs,
-                        retry_after=failure.retry_after,
-                    ),
+                    course_id, item, pose, Failure(error="idle pose unavailable")
                 )
                 report.failed += 1
             return

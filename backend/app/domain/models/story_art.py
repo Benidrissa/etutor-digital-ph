@@ -12,8 +12,8 @@ one row per ``(course_id, kind, key, pose)``.
 
 ``look_digest`` is the digest of the look sentence the image was drawn from
 (:func:`app.domain.services.story_art_service.look_digest`) and
-``art_version`` the version of the prompts and post-processing: a look no
-story uses any more, or an older version, makes the row stale and it is drawn
+``art_version`` the version of the prompts and post-processing: a look that is
+not the course's any more, or an older version, makes the row stale and it is drawn
 again. A row is ``ready`` (``image_data`` holds a WebP; characters keep their
 alpha channel) or ``failed`` (``error`` says why). A deterministic failure is
 final until the look changes, so a refused prompt never costs more than its
@@ -82,7 +82,8 @@ class StoryArt(Base):
     kind: Mapped[str] = mapped_column(String(16), nullable=False)
     key: Mapped[str] = mapped_column(String(100), nullable=False)
     pose: Mapped[str] = mapped_column(String(16), nullable=False)
-    #: sha256 of the look the image was drawn from (and of the art version).
+    #: sha256 of the (normalised) look the image was drawn from; the art version
+    #: is not part of it (``art_version``).
     look_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     #: The WebP. Deferred: the art map reads every row of a course on each story
     #: view and needs none of the bytes; only the data route loads them.
