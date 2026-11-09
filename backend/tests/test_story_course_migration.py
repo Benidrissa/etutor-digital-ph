@@ -12,17 +12,22 @@ bites: a column present in one and missing from the other.
 from __future__ import annotations
 
 import importlib.util
+import uuid
 from pathlib import Path
 from typing import Any
 
 import pytest
 import sqlalchemy as sa
 
+from app.domain.models import Base
 from app.domain.models.story_course import StoryCourseRecord
+from tests._story_db import create_tables, scratch_database, story_tables, sync_engine
 
-VERSIONS = Path(__file__).resolve().parents[1] / "migrations" / "versions"
+BACKEND = Path(__file__).resolve().parents[1]
+VERSIONS = BACKEND / "migrations" / "versions"
 MIGRATION_105 = VERSIONS / "105_add_story_courses.py"
 MIGRATION_106 = VERSIONS / "106_add_story_unit_binding.py"
+MIGRATION_107 = VERSIONS / "107_story_module_binding.py"
 
 #: Columns migration 106 adds; every one must stay nullable so hand-authored
 #: weeks are untouched.
@@ -38,6 +43,14 @@ BINDING_COLUMNS = {
     "source_quiz_digest",
 }
 
+#: Columns migration 107 adds: a module story's manifest and roster digest.
+MODULE_COLUMNS = {"source_rows", "source_units_digest"}
+
+MODULE_STORY_INDEX = "uq_story_courses_module_story"
+MODULE_ROWS_DELETE = (
+    "DELETE FROM story_courses WHERE module_id IS NOT NULL AND module_unit_id IS NULL"
+)
+
 
 class _RecordingOp:
     """Captures the DDL calls a migration makes instead of executing them."""
@@ -46,28 +59,47 @@ class _RecordingOp:
         self.tables: dict[str, list[sa.Column]] = {}
         self.added: dict[str, list[sa.Column]] = {}
         self.indexes: list[tuple[str, str, list[str]]] = []
+        #: ``create_index`` keyword arguments by index name (unique, where…).
+        self.index_options: dict[str, dict[str, Any]] = {}
         self.unique_constraints: list[tuple[str, str, list[str]]] = []
+        #: Every call in order, as ``(operation, first argument)``.
+        self.calls: list[tuple[str, Any]] = []
 
     def create_table(self, name: str, *columns: Any, **_: Any) -> None:
+        self.calls.append(("create_table", name))
         self.tables[name] = [c for c in columns if isinstance(c, sa.Column)]
 
     def add_column(self, table: str, column: sa.Column, **_: Any) -> None:
+        self.calls.append(("add_column", column.name))
         self.added.setdefault(table, []).append(column)
 
-    def create_index(self, name: str, table: str, columns: list[str], **_: Any) -> None:
+    def create_index(self, name: str, table: str, columns: list[str], **kwargs: Any) -> None:
+        self.calls.append(("create_index", name))
         self.indexes.append((name, table, columns))
+        self.index_options[name] = kwargs
 
     def create_unique_constraint(self, name: str, table: str, columns: list[str], **_: Any) -> None:
+        self.calls.append(("create_unique_constraint", name))
         self.unique_constraints.append((name, table, columns))
+
+    def execute(self, statement: Any, *_a: Any, **_k: Any) -> None:
+        self.calls.append(("execute", str(statement)))
 
     def columns(self, table: str) -> list[sa.Column]:
         return self.tables.get(table, []) + self.added.get(table, [])
 
-    # Not exercised by upgrade(), but present so a future edit does not crash.
-    def drop_table(self, *_a: Any, **_k: Any) -> None: ...
-    def drop_index(self, *_a: Any, **_k: Any) -> None: ...
-    def drop_column(self, *_a: Any, **_k: Any) -> None: ...
-    def drop_constraint(self, *_a: Any, **_k: Any) -> None: ...
+    def drop_table(self, name: str, *_a: Any, **_k: Any) -> None:
+        self.calls.append(("drop_table", name))
+
+    def drop_index(self, name: str, *_a: Any, **_k: Any) -> None:
+        self.calls.append(("drop_index", name))
+
+    def drop_column(self, _table: str, name: str, *_a: Any, **_k: Any) -> None:
+        self.calls.append(("drop_column", name))
+
+    def drop_constraint(self, name: str, *_a: Any, **_k: Any) -> None:
+        self.calls.append(("drop_constraint", name))
+
     def get_bind(self) -> None:
         return None
 
@@ -82,9 +114,13 @@ def _load(path: Path, name: str):
 
 @pytest.fixture(scope="module")
 def recorded() -> _RecordingOp:
-    """Replay 105 then 106 into one recorder: the table as the head defines it."""
+    """Replay 105, 106 then 107 into one recorder: the table as the head defines it."""
     recorder = _RecordingOp()
-    for path, name in ((MIGRATION_105, "migration_105"), (MIGRATION_106, "migration_106")):
+    for path, name in (
+        (MIGRATION_105, "migration_105"),
+        (MIGRATION_106, "migration_106"),
+        (MIGRATION_107, "migration_107"),
+    ):
         module = _load(path, name)
         module.op = recorder  # type: ignore[attr-defined]
         module.upgrade()
@@ -100,6 +136,35 @@ def recorded_106() -> _RecordingOp:
     return recorder
 
 
+@pytest.fixture(scope="module")
+def recorded_107() -> _RecordingOp:
+    recorder = _RecordingOp()
+    module = _load(MIGRATION_107, "migration_107_only")
+    module.op = recorder  # type: ignore[attr-defined]
+    module.upgrade()
+    return recorder
+
+
+@pytest.fixture(scope="module")
+def downgraded_107() -> _RecordingOp:
+    recorder = _RecordingOp()
+    module = _load(MIGRATION_107, "migration_107_down")
+    module.op = recorder  # type: ignore[attr-defined]
+    module.downgrade()
+    return recorder
+
+
+def _where(clause: Any) -> str:
+    """A partial index's WHERE clause as SQL text."""
+    return (
+        str(clause.compile(dialect=sa.dialects.postgresql.dialect())) if clause is not None else ""
+    )
+
+
+def _model_index(name: str) -> sa.Index:
+    return next(i for i in StoryCourseRecord.__table__.indexes if i.name == name)
+
+
 def test_revision_chain():
     module = _load(MIGRATION_105, "migration_105_meta")
     assert module.revision == "105_add_story_courses"
@@ -111,6 +176,13 @@ def test_106_revision_chain():
     assert module.revision == "106_add_story_unit_binding"
     assert module.down_revision == "105_add_story_courses"
     # alembic_version.version_num is VARCHAR(32).
+    assert len(module.revision) <= 32
+
+
+def test_107_revision_chain():
+    module = _load(MIGRATION_107, "migration_107_meta")
+    assert module.revision == "107_story_module_binding"
+    assert module.down_revision == "106_add_story_unit_binding"
     assert len(module.revision) <= 32
 
 
@@ -139,6 +211,45 @@ def test_binding_columns_are_nullable(recorded_106):
         assert StoryCourseRecord.__table__.columns[column.name].nullable is True
 
 
+def test_107_adds_exactly_the_module_columns(recorded_107):
+    added = recorded_107.added["story_courses"]
+    assert {c.name for c in added} == MODULE_COLUMNS
+    for column in added:
+        assert column.nullable is True, column.name
+        assert StoryCourseRecord.__table__.columns[column.name].nullable is True
+    types = {c.name: c.type for c in added}
+    assert isinstance(types["source_rows"], sa.dialects.postgresql.JSONB)
+    assert isinstance(types["source_units_digest"], sa.String)
+    assert types["source_units_digest"].length == 64
+    assert StoryCourseRecord.__table__.columns["source_units_digest"].type.length == 64
+
+
+def test_107_creates_the_partial_unique_index_of_the_model(recorded_107):
+    assert recorded_107.indexes == [
+        (MODULE_STORY_INDEX, "story_courses", ["module_id", "language"])
+    ]
+    options = recorded_107.index_options[MODULE_STORY_INDEX]
+    assert options["unique"] is True
+    assert _where(options["postgresql_where"]) == "module_unit_id IS NULL"
+
+    model = _model_index(MODULE_STORY_INDEX)
+    assert [c.name for c in model.columns] == ["module_id", "language"]
+    assert model.unique is True
+    assert _where(model.dialect_options["postgresql"]["where"]) == "module_unit_id IS NULL"
+    # Nothing else: the 106 constraint and index stay as they are.
+    assert recorded_107.unique_constraints == []
+
+
+def test_107_downgrade_deletes_the_module_stories_first(downgraded_107):
+    """At 106 a row with no unit is a public hand-authored week: delete them first."""
+    assert downgraded_107.calls == [
+        ("execute", MODULE_ROWS_DELETE),
+        ("drop_index", MODULE_STORY_INDEX),
+        ("drop_column", "source_units_digest"),
+        ("drop_column", "source_rows"),
+    ]
+
+
 def test_nullability_matches_the_model(recorded):
     migration = {c.name: bool(c.nullable) for c in recorded.columns("story_courses")}
     model = {c.name: bool(c.nullable) for c in StoryCourseRecord.__table__.columns}
@@ -148,7 +259,7 @@ def test_nullability_matches_the_model(recorded):
 def test_column_types_match_the_model(recorded):
     """A type drift (e.g. Integer vs SmallInteger for a revision) is a real bug."""
     migration = {c.name: type(c.type).__name__ for c in recorded.columns("story_courses")}
-    for name in BINDING_COLUMNS:
+    for name in BINDING_COLUMNS | MODULE_COLUMNS:
         model_type = type(StoryCourseRecord.__table__.columns[name].type).__name__
         migration_type = migration[name]
         # The model spells UUID columns via the generic Uuid type.
@@ -210,12 +321,29 @@ def test_unit_language_unique_constraint_matches_the_model(recorded):
 
 
 def test_indexes_match_the_model(recorded):
-    migration_indexes = {(name, tuple(cols)) for name, _table, cols in recorded.indexes}
+    """Names, columns, uniqueness and partial-index predicates alike."""
+    migration_indexes = {
+        (
+            name,
+            tuple(cols),
+            bool(recorded.index_options[name].get("unique")),
+            _where(recorded.index_options[name].get("postgresql_where")),
+        )
+        for name, _table, cols in recorded.indexes
+    }
     model_indexes = {
-        (index.name, tuple(c.name for c in index.columns))
+        (
+            index.name,
+            tuple(c.name for c in index.columns),
+            bool(index.unique),
+            _where(index.dialect_options["postgresql"]["where"]),
+        )
         for index in StoryCourseRecord.__table__.indexes
     }
     assert migration_indexes == model_indexes
+    assert (MODULE_STORY_INDEX, ("module_id", "language"), True, "module_unit_id IS NULL") in (
+        model_indexes
+    )
 
 
 def test_model_ddl_compiles_for_postgres():
@@ -231,3 +359,174 @@ def test_model_ddl_compiles_for_postgres():
     # course, author, module, unit, lesson source and quiz source.
     assert ddl.count("REFERENCES") == 6
     assert "UNIQUE (module_unit_id, language)" in ddl
+    assert "source_rows JSONB" in ddl
+    assert "source_units_digest VARCHAR(64)" in ddl
+    index = str(
+        sa.schema.CreateIndex(_model_index(MODULE_STORY_INDEX)).compile(
+            dialect=sa.dialects.postgresql.dialect()
+        )
+    )
+    assert index == (
+        "CREATE UNIQUE INDEX uq_story_courses_module_story ON story_courses "
+        "(module_id, language) WHERE module_unit_id IS NULL"
+    )
+
+
+# --------------------------------------------------------------------------
+# The real migrations on a scratch PostgreSQL database
+# --------------------------------------------------------------------------
+
+
+def _alembic_config():
+    from alembic.config import Config
+
+    # No ini file: env.py then leaves the test run's logging alone.
+    config = Config()
+    config.set_main_option("script_location", str(BACKEND / "migrations"))
+    return config
+
+
+def _story_row(**values: Any) -> dict[str, Any]:
+    row = {
+        "id": uuid.uuid4(),
+        "course_label": "Course",
+        "week": 1,
+        "title": {"en": "T", "fr": "T"},
+        "languages": {"target": "en", "home": "fr"},
+        "format_version": "story-course/1",
+        "content": {},
+    }
+    row.update(values)
+    return row
+
+
+def test_107_on_postgres_upgrades_enforces_and_downgrades(monkeypatch):
+    """Upgrade 106 -> 107, one module story per (module, language), downgrade, re-upgrade."""
+    from alembic import command
+
+    from app.infrastructure.config.settings import settings
+
+    with scratch_database("story_mig") as url:
+        # pgvector is not needed: the tables 105-107 reference are created from
+        # the models, the history before 105 is stamped, and 105, 106 and 107
+        # then run for real.
+        create_tables(url, story_tables(without={"story_courses"}))
+        monkeypatch.setattr(settings, "database_url", url)
+        config = _alembic_config()
+        command.stamp(config, "104_add_ai_usage_events")
+        command.upgrade(config, "106_add_story_unit_binding")
+        command.upgrade(config, "head")
+
+        engine = sync_engine(url)
+        tables = Base.metadata.tables
+        story = tables["story_courses"]
+        module_id, other_module_id = uuid.uuid4(), uuid.uuid4()
+        units = [uuid.uuid4(), uuid.uuid4()]
+        try:
+            with engine.begin() as conn:
+                version = conn.execute(sa.text("SELECT version_num FROM alembic_version"))
+                assert version.scalar_one() == "107_story_module_binding"
+                index = conn.execute(
+                    sa.text("SELECT indexdef FROM pg_indexes WHERE indexname = :name"),
+                    {"name": MODULE_STORY_INDEX},
+                ).scalar_one()
+                assert index == (
+                    "CREATE UNIQUE INDEX uq_story_courses_module_story ON public.story_courses "
+                    "USING btree (module_id, language) WHERE (module_unit_id IS NULL)"
+                )
+                for number, mid in ((901, module_id), (902, other_module_id)):
+                    conn.execute(
+                        tables["modules"]
+                        .insert()
+                        .values(id=mid, module_number=number, level=1, title_fr="M", title_en="M")
+                    )
+                for index_, uid in enumerate(units):
+                    conn.execute(
+                        tables["module_units"]
+                        .insert()
+                        .values(
+                            id=uid,
+                            module_id=module_id,
+                            unit_number=f"1.{index_ + 1}",
+                            title_fr="U",
+                            title_en="U",
+                            order_index=index_,
+                        )
+                    )
+                rows = [
+                    _story_row(slug="authored-w1"),
+                    *(
+                        _story_row(
+                            slug=f"lesson-{uid.hex}-en",
+                            module_id=module_id,
+                            module_unit_id=uid,
+                            language="en",
+                        )
+                        for uid in units
+                    ),
+                    _story_row(
+                        slug=f"module-{module_id.hex}-en",
+                        module_id=module_id,
+                        language="en",
+                        source_rows={"assembler": 1, "units": []},
+                        source_units_digest="0" * 64,
+                    ),
+                    # The other language, and another module: both allowed.
+                    _story_row(
+                        slug=f"module-{module_id.hex}-fr", module_id=module_id, language="fr"
+                    ),
+                    _story_row(
+                        slug=f"module-{other_module_id.hex}-en",
+                        module_id=other_module_id,
+                        language="en",
+                    ),
+                ]
+                for row in rows:  # one by one: an executemany takes the first row's keys
+                    conn.execute(story.insert().values(**row))
+
+            # A second module story for the same module and language is refused.
+            with (
+                pytest.raises(sa.exc.IntegrityError, match=MODULE_STORY_INDEX),
+                engine.begin() as conn,
+            ):
+                conn.execute(
+                    story.insert().values(
+                        **_story_row(slug="another-module-row", module_id=module_id, language="en")
+                    )
+                )
+
+            def kinds() -> dict[str, str]:
+                """slug -> row kind, read back from the table."""
+                query = sa.text(
+                    "SELECT slug, CASE WHEN module_id IS NULL THEN 'authored'"
+                    " WHEN module_unit_id IS NOT NULL THEN 'chapter' ELSE 'module' END"
+                    " FROM story_courses"
+                )
+                with engine.connect() as conn:
+                    return dict(conn.execute(query).tuples().all())
+
+            before = kinds()
+            assert sorted(before.values()) == ["authored", "chapter", "chapter"] + ["module"] * 3
+
+            def slugs() -> set[str]:
+                return set(kinds())
+
+            command.downgrade(config, "106_add_story_unit_binding")
+            module_slugs = {slug for slug, kind in before.items() if kind == "module"}
+            assert {slug for slug in module_slugs if slug.startswith("module-")} == module_slugs
+            # Only the module stories went; authored and chapter rows are untouched.
+            assert kinds() == {s: k for s, k in before.items() if k != "module"}
+            columns = {c["name"] for c in sa.inspect(engine).get_columns("story_courses")}
+            assert not MODULE_COLUMNS & columns
+            assert MODULE_STORY_INDEX not in {
+                i["name"] for i in sa.inspect(engine).get_indexes("story_courses")
+            }
+
+            command.upgrade(config, "head")
+            inspector = sa.inspect(engine)
+            columns = {c["name"] for c in inspector.get_columns("story_courses")}
+            assert columns >= MODULE_COLUMNS
+            assert MODULE_STORY_INDEX in {i["name"] for i in inspector.get_indexes("story_courses")}
+            assert slugs() == set(before) - module_slugs
+        finally:
+            engine.dispose()

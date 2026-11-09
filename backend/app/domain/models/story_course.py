@@ -9,16 +9,24 @@ offline use, and its format is versioned independently of this schema, so
 shredding it across a dozen tables would buy nothing and would silently drop
 any field a later format version adds.
 
-A row is one of two kinds:
+A row is one of three kinds:
 
-* a **hand-authored week** — the original use; every lesson-binding column
-  below is null;
-* a **lesson story** — the story mode of one lesson unit, generated from that
-  unit's lesson and quiz the first time a learner opens it (migration 106).
-  It is bound to ``(module_unit_id, language)`` and remembers which lesson and
-  quiz rows it was derived from — with the revision and a content digest of
-  each — so a story goes stale, and is regenerated, when either source is
-  regenerated or edited.
+* a **hand-authored week** (``module_id IS NULL``) — the original use; every
+  binding column below is null;
+* a **chapter** (``module_unit_id IS NOT NULL``) — the story of one lesson
+  unit, slug ``lesson-{unit hex}-{lang}``, generated from that unit's lesson
+  and the quiz of the quiz unit covering it (migration 106). It is bound to
+  ``(module_unit_id, language)`` and remembers which lesson and quiz rows it
+  was derived from — with the revision and a content digest of each — so it
+  goes stale, and is regenerated, when either source is regenerated or
+  edited. It is the cache of one chapter of its module's story;
+* a **module story** (``module_id IS NOT NULL AND module_unit_id IS NULL``) —
+  one story per ``(module_id, language)``, slug ``module-{module hex}-{lang}``,
+  assembled deterministically from the module's chapters (migration 107). Its
+  manifest (``source_rows``) records the assembler version and, per unit, the
+  chapter row it was merged from; ``source_units_digest`` is a digest of the
+  module's roster. A changed roster, or any chapter row changed or stale,
+  makes it stale.
 """
 
 from __future__ import annotations
@@ -68,6 +76,15 @@ class StoryCourseRecord(Base):
         # unaffected.
         UniqueConstraint("module_unit_id", "language", name="uq_story_courses_unit_language"),
         Index("ix_story_courses_module_language", "module_id", "language"),
+        # One module story per module and language (migration 107). Partial,
+        # because a module's chapter rows share its module_id and language.
+        Index(
+            "uq_story_courses_module_story",
+            "module_id",
+            "language",
+            unique=True,
+            postgresql_where=sa.text("module_unit_id IS NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -109,7 +126,8 @@ class StoryCourseRecord(Base):
 
     # -- lesson binding (migration 106); all null for hand-authored weeks ----
 
-    #: The module and unit whose lesson this story tells.
+    #: The module and unit whose lesson this story tells. A module story has
+    #: the module and no unit.
     module_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("modules.id", ondelete="CASCADE"), nullable=True
     )
@@ -128,10 +146,10 @@ class StoryCourseRecord(Base):
     )
     source_lesson_revision: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
 
-    #: The quiz the story's questions were derived from — the lesson unit's
-    #: own, or that of the quiz unit covering the lesson — and its revision.
-    #: Both null when there was no cached quiz; a non-null revision with a
-    #: null id means the quiz row was deleted since.
+    #: The quiz the story's questions were derived from — that of the quiz
+    #: unit covering the lesson, never the lesson unit's own — and its
+    #: revision. Both null when there was no cached quiz; a non-null revision
+    #: with a null id means the quiz row was deleted since.
     source_quiz_content_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("generated_content.id", ondelete="SET NULL"), nullable=True
     )
@@ -143,6 +161,16 @@ class StoryCourseRecord(Base):
     #: the digest catches either.
     source_lesson_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
     source_quiz_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # -- module binding (migration 107); null for every other kind ----------
+
+    #: A module story's manifest: ``{"assembler": int, "units": [{
+    #: "module_unit_id", "unit_number", "role", "status", "chapter_story_id",
+    #: "chapter_updated_at"}, ...]}``, one entry per unit in teaching order.
+    source_rows: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    #: sha256 of the module's roster as canonical JSON: ``[[id, unit_number,
+    #: order_index, role, title_en, title_fr], ...]`` in teaching order.
+    source_units_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
