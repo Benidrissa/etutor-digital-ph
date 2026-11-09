@@ -414,3 +414,114 @@ describe("StoryPlayer — paper exercises are self-marked (X6)", () => {
     expect(screen.getByText("1. Avant un patient")).toBeInTheDocument();
   });
 });
+
+/**
+ * A two-chapter module story: the first chapter is the French story above
+ * (one question, 2 points), the second a short checkpoint with no question.
+ */
+function moduleStory(): StoryCourse {
+  const story = frenchStory();
+  story.title = { en: "Module 1 · Hygiene", fr: "Module 1 · Hygiène" };
+  story.chapters.push({
+    id: "c2",
+    title: { en: "Quiz checkpoint", fr: "Étape quiz" },
+    scenes: [
+      {
+        id: "s2",
+        place: "classroom",
+        steps: [{ type: "narrate", en: "Time for the quiz.", fr: "C'est l'heure du quiz." }],
+      },
+    ],
+  });
+  // The whole module is worth more than one chapter.
+  story.checks = { max_points: 10 };
+  return story;
+}
+
+function renderModulePlayer(props: Partial<React.ComponentProps<typeof StoryPlayer>> = {}) {
+  const onComplete = vi.fn();
+  render(
+    <NextIntlClientProvider locale="fr" messages={frMessages}>
+      <StoryPlayer
+        course={moduleStory()}
+        variant="embedded"
+        onComplete={onComplete}
+        {...props}
+      />
+    </NextIntlClientProvider>,
+  );
+  return onComplete;
+}
+
+describe("StoryPlayer — one chapter of a module story", () => {
+  it("plays only the chapter it is given, titled by that chapter", () => {
+    renderModulePlayer({ chapterId: "c2" });
+
+    expect(screen.getByRole("heading", { level: 2, name: "Étape quiz" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Module 1 · Hygiène" })).not.toBeInTheDocument();
+    expect(screen.getByText("C'est l'heure du quiz.")).toBeInTheDocument();
+    // Nothing of the first chapter, and no second, in-list chapter heading.
+    expect(screen.queryByText("Awa entre dans le centre de santé.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 3 })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Continuer" })).not.toBeInTheDocument();
+  });
+
+  it("stops at the end of the chapter instead of running into the next", async () => {
+    const user = userEvent.setup();
+    const onComplete = renderModulePlayer({ chapterId: "c1", maxPoints: 2 });
+
+    for (let i = 0; i < 3; i += 1) {
+      await user.click(screen.getByRole("button", { name: "Continuer" }));
+    }
+    await user.click(screen.getByRole("button", { name: "Avant de toucher un patient" }));
+
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(onComplete).toHaveBeenCalledWith({ points: 2, maxPoints: 2 });
+    expect(screen.queryByText("C'est l'heure du quiz.")).not.toBeInTheDocument();
+  });
+
+  it("scores against the maxPoints it is given, not the module's", () => {
+    renderModulePlayer({ chapterId: "c1", maxPoints: 2 });
+    expect(screen.getByText("/2")).toBeInTheDocument();
+    expect(screen.queryByText("/10")).not.toBeInTheDocument();
+  });
+
+  it("completes a chapter with no question as soon as it is shown", () => {
+    const onComplete = renderModulePlayer({ chapterId: "c2", maxPoints: 0 });
+    expect(onComplete).toHaveBeenCalledWith({ points: 0, maxPoints: 0 });
+  });
+
+  it("leaves the finish summary to the parent with hideFinishSummary", () => {
+    const onComplete = renderModulePlayer({
+      chapterId: "c2",
+      maxPoints: 0,
+      hideFinishSummary: true,
+    });
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Histoire terminée !")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("still shows the summary by default", () => {
+    renderModulePlayer({ chapterId: "c2", maxPoints: 0 });
+    expect(screen.getByText("Histoire terminée !")).toBeInTheDocument();
+  });
+
+  it("plays every chapter without chapterId, as before", () => {
+    renderModulePlayer();
+    expect(screen.getByRole("heading", { level: 2, name: "Module 1 · Hygiène" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 3, name: "Au centre de santé" })).toBeInTheDocument();
+    expect(screen.getByText("/10")).toBeInTheDocument();
+  });
+});
+
+describe("StoryPlayer — the page bar clears the bottom navigation", () => {
+  it("sits above the phone's bottom nav and at the bottom from md up", () => {
+    renderPlayer(frenchStory(), vi.fn(), { variant: "page" });
+    const bar = screen.getByTestId("story-controls-bar");
+    expect(bar.className).toMatch(/\bbottom-16\b/);
+    expect(bar.className).toMatch(/\bmd:bottom-0\b/);
+    // Above the page, below the bottom nav (z-50).
+    expect(bar.className).toMatch(/\bz-40\b/);
+  });
+});
