@@ -130,7 +130,28 @@ describe("downloadModule — module story", () => {
   });
 
   it.each([
-    ["404 story_not_cached", () => new ApiError("Not cached", 404, undefined, { error: "story_not_cached" })],
+    ["404 story_not_cached", async () => {
+      throw new ApiError("Not cached", 404, undefined, { error: "story_not_cached" });
+    }],
+    ["the 202 envelope", async () => ({ status: "generating", task_id: "task-story-1" })],
+  ])("pre-warms the story page of a story not written yet (%s)", async (_label, answer) => {
+    // The usual order: the module is downloaded before anyone opens its
+    // story. Opening it online later stores it (loadModuleStory), so the
+    // page must already be there for it to open offline.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    storyAnswer = answer;
+    const ticks: DownloadProgress[] = [];
+    await downloadModule("mod-1", "fr", { onProgress: (p) => ticks.push(p) });
+
+    expect(storyRequests()).toEqual([STORY_PATH]);
+    expect(storedStories()).toEqual([]);
+    expect(prewarmed()).toContain("/fr/modules/mod-1/story");
+    expect(warn).not.toHaveBeenCalled();
+    expect(ticks.at(-1)?.phase).toBe("complete");
+    warn.mockRestore();
+  });
+
+  it.each([
     ["404 story_mode_disabled", () => new ApiError("Off", 404, undefined, { error: "story_mode_disabled" })],
     ["404 no_story_content", () => new ApiError("No lesson", 404, undefined, { error: "no_story_content" })],
     ["409 story_unavailable", () => new ApiError("No story", 409, undefined, { error: "story_unavailable" })],
@@ -155,7 +176,6 @@ describe("downloadModule — module story", () => {
   });
 
   it.each([
-    ["the 202 envelope", { status: "generating", task_id: "task-story-1" }],
     ["a body that is not a story", { detail: "odd" }],
   ])("stores nothing for %s", async (_label, body) => {
     storyAnswer = async () => body;
@@ -194,6 +214,8 @@ describe("downloadModule — module story", () => {
 
     expect(ticks.at(-1)?.phase).toBe("complete");
     expect(storedStories()).toEqual([]);
+    // It may well be there: opened online later, it is stored then.
+    expect(prewarmed()).toContain("/fr/modules/mod-1/story");
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining("story of module mod-1"),
       expect.any(ApiError),

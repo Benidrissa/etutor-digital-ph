@@ -9,7 +9,12 @@ import {
 import { prewarmPage } from "./prewarm";
 import { apiFetch } from "@/lib/api";
 import type { ModuleUnitsResponse } from "@/lib/api";
-import { isStoryDocument, moduleStoryPath } from "@/lib/story-course/api";
+import {
+  isStoryDocument,
+  isStoryGenerating,
+  moduleStoryPath,
+  storyErrorCode,
+} from "@/lib/story-course/api";
 
 const MAX_OFFLINE_MODULES = 3;
 const POLL_INTERVAL_MS = 3000;
@@ -319,8 +324,10 @@ export async function downloadModule(
       currentContentType: "story",
     });
 
-    if (await downloadModuleStory(moduleId, locale, signal)) {
-      // So the story page itself opens offline; it then plays this copy.
+    if ((await downloadModuleStory(moduleId, locale, signal)) !== "none") {
+      // So the story page itself opens offline; it then plays the stored
+      // copy — this one, or the one loadModuleStory stores when a story not
+      // written yet is first opened online.
       await prewarmPage(`/${locale}/modules/${moduleId}/story`);
     }
 
@@ -402,13 +409,17 @@ export async function removeOfflineModule(moduleId: string): Promise<void> {
  * non-fatal, like a missing case study.
  *
  * Stored under the module's pseudo-unit key, the one module flashcards use
- * and loadModuleStory reads. Returns whether a story was stored.
+ * and loadModuleStory reads. Returns "stored"; "later" when the story is not
+ * written yet (404 `story_not_cached`, the 202) or could not be fetched now:
+ * opening it online later stores it, so its page is still worth pre-warming;
+ * "none" when there is nothing to play here (403, the other 404s, 409, a body
+ * that is not a story, or a story that could not be stored).
  */
 async function downloadModuleStory(
   moduleId: string,
   locale: "fr" | "en",
   signal: AbortSignal
-): Promise<boolean> {
+): Promise<"stored" | "later" | "none"> {
   let data: unknown;
   try {
     data = await apiFetch<unknown>(
@@ -419,12 +430,14 @@ async function downloadModuleStory(
     if (err instanceof DOMException && err.name === "AbortError") throw err;
     const status =
       err && typeof err === "object" ? (err as { status?: unknown }).status : undefined;
-    if (status === 403 || status === 404 || status === 409) return false;
+    if (status === 404 && storyErrorCode(err) === "story_not_cached") return "later";
+    if (status === 403 || status === 404 || status === 409) return "none";
     console.warn(`Failed to download the story of module ${moduleId}:`, err);
-    return false;
+    return "later";
   }
+  if (isStoryGenerating(data)) return "later";
   // Only a real story document is stored, never an envelope.
-  if (!isStoryDocument(data)) return false;
+  if (!isStoryDocument(data)) return "none";
   try {
     await upsertOfflineContent({
       unitId: `__module_${moduleId}__`,
@@ -434,11 +447,11 @@ async function downloadModuleStory(
       content: data,
       cachedAt: Date.now(),
     });
-    return true;
+    return "stored";
   } catch (err: unknown) {
     // Non-fatal, like any other content that could not be stored.
     console.warn(`Failed to store the story of module ${moduleId}:`, err);
-    return false;
+    return "none";
   }
 }
 
