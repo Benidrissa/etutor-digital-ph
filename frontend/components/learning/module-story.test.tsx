@@ -533,6 +533,30 @@ describe("ModuleStory — reading", () => {
     expect(within(index).getByRole("button", { name: /Des mains propres/ })).toBeInTheDocument();
   });
 
+  it("never counts a saved score above what its chapter is worth now", async () => {
+    // 6 points were earned on lesson 1.1 when its chapter was worth 6; this
+    // revision's chapter is worth 4. Lesson 1.2's chapter is worth nothing.
+    window.localStorage.setItem(
+      storyProgressKey(STORY_ID, USER_ID),
+      JSON.stringify({
+        v: 1,
+        completedUnits: ["unit-1.1", "unit-1.2"],
+        points: { "unit-1.1": 6, "unit-1.2": 3 },
+      }),
+    );
+    const story = moduleStory();
+    story.module_story!.revision = "fedcba9876543210";
+    story.chapters[0].covers!.max_points = 4;
+    loadMock.mockResolvedValue(story);
+    renderPanel();
+
+    expect(await screen.findByText("Aminata, le quiz t'attend.")).toBeInTheDocument();
+    const index = screen.getByRole("navigation", { name: "Chapitres" });
+    expect(within(index).getByText("4/4")).toBeInTheDocument();
+    expect(within(index).queryByText("6/4")).not.toBeInTheDocument();
+    expect(screen.getByText("4 sur 4 points")).toBeInTheDocument();
+  });
+
   it("still plays when the saved progress is corrupt", async () => {
     window.localStorage.setItem(storyProgressKey(STORY_ID, USER_ID), "{oops");
     loadMock.mockResolvedValue(moduleStory());

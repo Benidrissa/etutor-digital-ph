@@ -459,10 +459,15 @@ function ModuleStoryReader({ storyId, userId, story, moduleId }: ReaderProps) {
     if (chapters.some((chapter) => chapter.covers)) return fromCovers;
     return Number(story.checks?.max_points ?? 0);
   }, [chapters, story.checks]);
-  const totalPoints = chapters.reduce(
-    (sum, chapter) => sum + (progress.points[chapterKey(chapter)] ?? 0),
-    0,
-  );
+  // A saved score never counts for more than its chapter is worth now: the
+  // best score is kept across revisions, and a regenerated chapter (or one
+  // whose repeated questions another chapter's change dropped) can be worth less.
+  const chapterPoints = (chapter: Chapter) => {
+    const saved = progress.points[chapterKey(chapter)] ?? 0;
+    return chapter.covers ? Math.min(saved, chapter.covers.max_points ?? 0) : saved;
+  };
+  const summed = chapters.reduce((sum, chapter) => sum + chapterPoints(chapter), 0);
+  const totalPoints = totalMax > 0 ? Math.min(summed, totalMax) : summed;
   const doneCount = completedChapterCount(chapters, progress);
   const nextIncomplete = firstIncompleteChapter(chapters, progress);
 
@@ -590,7 +595,7 @@ function ModuleStoryReader({ storyId, userId, story, moduleId }: ReaderProps) {
               const isCurrent = index === selected;
               const reachable = isDone || isCurrent || index === nextIncomplete;
               const max = c.covers?.max_points ?? 0;
-              const points = progress.points[chapterKey(c)] ?? 0;
+              const points = chapterPoints(c);
               const state = isCurrent
                 ? t('chapterCurrent')
                 : isDone
