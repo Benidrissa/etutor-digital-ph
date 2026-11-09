@@ -874,7 +874,11 @@
     "stillToDo": "Encore à faire",
     "stillToDoHint": "L'histoire ne remplace pas ces unités : fais-les sur leur page.",
     "allDone": "Toutes les unités de ce module sont terminées.",
-    "openUnit": "{kind, select, quiz {Aller au quiz {number}} case {Aller à l'étude de cas {number}} other {Aller à la leçon {number}}}"
+    "openUnit": "{kind, select, quiz {Aller au quiz {number}} case {Aller à l'étude de cas {number}} other {Aller à la leçon {number}}}",
+    "chaptersProgress": "{done, plural, one {# chapitre terminé} other {# chapitres terminés}} sur {total}",
+    "scoreIn": "{points} sur {max} {unit}",
+    "pointsIn": "{points} {unit}",
+    "pointsWord": "points"
   },
   "CaseStudyViewer": {
     "error": "Une erreur est survenue",
@@ -2745,6 +2749,16 @@
       "boy": "Un garçon",
       "woman": "Une femme",
       "man": "Un homme"
-    }
+    },
+    "previous": "Précédent",
+    "lookCloser": "Regarde de près",
+    "lookCloserAt": "Regarde de près : {name}",
+    "backToStory": "Retour à l'histoire",
+    "creditCourse": "Tiré du cours",
+    "creditDrawing": "Dessin fait par une IA",
+    "creditSource": "Source",
+    "publicDomain": "Domaine public",
+    "loadPhoto": "Afficher la photo ({kb} Ko)",
+    "imageCredits": "Crédits images"
   }
 }

@@ -564,7 +564,9 @@ describe("ModuleStory — reading", () => {
     const index = screen.getByRole("navigation", { name: "Chapitres" });
     expect(within(index).getByText("4/4")).toBeInTheDocument();
     expect(within(index).queryByText("6/4")).not.toBeInTheDocument();
-    expect(screen.getByText("4 sur 4 points")).toBeInTheDocument();
+    // The panel counts chapters; points are counted once, by the player (#2682).
+    expect(screen.getByText("2 chapitres terminés sur 4")).toBeInTheDocument();
+    expect(screen.queryByText(/sur \d+ points/)).not.toBeInTheDocument();
   });
 
   it("still plays when the saved progress is corrupt", async () => {
@@ -615,6 +617,9 @@ describe("ModuleStory — completion", () => {
       v: 1,
       completedUnits: ["unit-1.1"],
       points: { "unit-1.1": 2 },
+      // The revision read here and its chapters, for the module page's card.
+      chapterKeys: ["unit-1.1", "unit-1.2", "unit-1.3", "unit-1.4"],
+      revision: "0123456789abcdef",
     });
 
     // Chapter 2, lesson 1.2: already completed on the server, so not posted.
@@ -714,7 +719,7 @@ describe("ModuleStory — completion", () => {
     // Learner u1 starts at the first chapter, with none of A's points.
     expect(await screen.findByText(CH1_LINE)).toBeInTheDocument();
     expect(screen.getByText("Chapitre 1 sur 4")).toBeInTheDocument();
-    expect(screen.getByText("0 sur 2 points")).toBeInTheDocument();
+    expect(screen.getByText("0 chapitre terminé sur 4")).toBeInTheDocument();
     expect(screen.queryByText("Histoire terminée !")).not.toBeInTheDocument();
     expect(screen.queryByText("Toutes les unités de ce module sont terminées.")).not.toBeInTheDocument();
   });
@@ -779,6 +784,42 @@ describe("ModuleStory — completion", () => {
     expect(screen.getByText("Histoire terminée !")).toBeInTheDocument();
     expect(screen.getAllByText("1 sur 2 points").length).toBeGreaterThan(0);
     expect(screen.queryByText(CH1_LINE)).not.toBeInTheDocument();
+  });
+
+  it("never says all is done from an empty list of units (#2682)", async () => {
+    window.localStorage.setItem(
+      storyProgressKey(STORY_ID, USER_ID),
+      JSON.stringify({
+        v: 1,
+        completedUnits: ["unit-1.1", "unit-1.2", "unit-1.3", "unit-1.4"],
+        points: {},
+      }),
+    );
+    detailMock.mockResolvedValue({ ...moduleDetail(), units: [] });
+    loadMock.mockResolvedValue(moduleStory());
+    renderPanel();
+
+    expect(await screen.findByText("Histoire terminée !")).toBeInTheDocument();
+    await waitFor(() => expect(detailMock).toHaveBeenCalledWith(MODULE_ID));
+    await act(async () => {});
+    expect(screen.queryByText("Toutes les unités de ce module sont terminées.")).not.toBeInTheDocument();
+    // What the story cannot complete itself is still listed, from its chapters.
+    expect(screen.getByRole("link", { name: /Aller au quiz 1.3/ })).toBeInTheDocument();
+  });
+
+  it("counts the score in the story's own unit, like the player (#2682)", async () => {
+    window.localStorage.setItem(
+      storyProgressKey(STORY_ID, USER_ID),
+      JSON.stringify({ v: 1, completedUnits: ["unit-1.1", "unit-1.2", "unit-1.3", "unit-1.4"], points: { "unit-1.1": 2 } }),
+    );
+    const story = moduleStory();
+    story.rewards = { ...story.rewards, unit: { en: "mangoes", fr: "mangues" } };
+    loadMock.mockResolvedValue(story);
+    renderPanel();
+
+    expect(await screen.findByText("Histoire terminée !")).toBeInTheDocument();
+    expect(screen.getByText("2 sur 2 mangues")).toBeInTheDocument();
+    expect(screen.queryByText(/points/)).not.toBeInTheDocument();
   });
 });
 

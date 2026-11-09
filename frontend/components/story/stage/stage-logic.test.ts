@@ -10,6 +10,7 @@ import type { CastMember, Chapter, StoryCourse } from "@/lib/story-course/types"
 import {
   artFor,
   buildActors,
+  genderIn,
   heroVariants,
   lookFor,
   poseFor,
@@ -130,6 +131,49 @@ describe("cast", () => {
     expect(lookFor(member)).toEqual(lookFor(member));
   });
 
+  it("is not fooled by a word about someone else, or a letter that looks like a title (#2682)", () => {
+    // "his daughter" is about her father: the person is a man.
+    expect(genderIn("a tall man holding his daughter's hand")).toBe(false);
+    // "her" is the person herself.
+    expect(genderIn("smiles with her friends")).toBe(true);
+    // A bare "m" in a size or a word is no "M." title.
+    expect(genderIn("1.5 m tall, round face, orange top")).toBeUndefined();
+    expect(genderIn("a mango in hand")).toBeUndefined();
+    // So the girl preset of the friend's art key stands.
+    const friend = lookFor({ id: "friend", name: "{friend}", kind: "child", art: "friend", look: "1.5 m tall, round face" });
+    expect(friend.feminine).toBe(true);
+    // A title in front of the name still says who is meant.
+    expect(lookFor({ id: "teacher", name: "M. Sanou", kind: "adult", art: "teacher" }).feminine).toBe(false);
+    expect(lookFor({ id: "nurse", name: "Mme Traoré", kind: "adult", art: "nurse" }).feminine).toBe(true);
+  });
+
+  it("dresses everyone differently, the hero and the friend above all (#2682)", () => {
+    // Two girls whose presets are the same white top, blue skirt and headband.
+    const cast: CastMember[] = [
+      { id: "hero", role: "hero", name: "Aminata", kind: "child", art: "nandi" },
+      { id: "friend", role: "friend", name: "Awa", kind: "child", art: "friend" },
+      { id: "mentor", role: "mentor", name: "M. Kaboré", kind: "adult", art: "mr_kabore" },
+      { id: "family", role: "family", name: "Maman", kind: "adult", art: "maman_olivia" },
+    ];
+    const actors = buildActors(course(cast), undefined);
+    const hero = actors.get("hero")!.look;
+    const friend = actors.get("friend")!.look;
+    expect(friend.top).not.toBe(hero.top);
+    expect(friend.bottomStyle).not.toBe(hero.bottomStyle);
+    // Every top differs from every other one.
+    const tops = [...actors.values()].map((actor) => actor.look.top);
+    expect(new Set(tops).size).toBe(tops.length);
+    // The same story dresses them the same way every time.
+    expect(buildActors(course(cast), undefined).get("friend")!.look).toEqual(friend);
+  });
+
+  it("keeps the hero's outfit and moves the others off it (#2682)", () => {
+    const actors = buildActors(course(CONTRACT_CAST), "girl");
+    const before = lookFor(CONTRACT_CAST[0], "girl");
+    expect(actors.get("hero")!.look.top).toBe(before.top);
+    for (const id of ["friend", "mentor"]) expect(actors.get(id)!.look.top).not.toBe(before.top);
+  });
+
   it("maps every mood to a pose, unknown ones to talking", () => {
     expect(poseFor("happy", true)).toBe("happy");
     expect(poseFor("dancing", true)).toBe("talk");
@@ -175,6 +219,22 @@ describe("speech bubbles", () => {
     const box = bubbleBox({ x: 15, height: 42 }, [{ x: 85, height: 50 }]);
     expect(box.left).toBeGreaterThan(15);
     expect(box.bottom).toBeLessThan(GROUND + 42 + 1);
+  });
+
+  it("stays beside an edge speaker's head when it only passes over someone's shoulder (#2682)", () => {
+    // The friend speaks from the left; the hero stands at the right edge.
+    // The bubble reaches past the hero's arm but not their face.
+    const box = bubbleBox({ x: 17, height: 42 }, [{ x: 83, height: 42 }]);
+    expect(box.bottom).toBeLessThan(GROUND + 42);
+    // Over a face it does rise.
+    const over = bubbleBox({ x: 17, height: 42 }, [{ x: 60, height: 42 }]);
+    expect(over.bottom).toBeGreaterThanOrEqual(GROUND + 42 + 3);
+  });
+
+  it("does not rise for someone whose head is below it already", () => {
+    // A small tutor under a tall speaker's bubble.
+    const box = bubbleBox({ x: 17, height: 50 }, [{ x: 50, height: 22 }]);
+    expect(box.bottom).toBeLessThan(GROUND + 50);
   });
 
   it("rises above the face of anyone it would cover", () => {

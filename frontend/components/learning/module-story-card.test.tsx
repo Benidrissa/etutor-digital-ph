@@ -69,12 +69,19 @@ function status(overrides: Partial<ModuleStoryStatus> = {}): ModuleStoryStatus {
   };
 }
 
-function saveProgress(completedUnits: string[], userId = USER_ID) {
+function saveProgress(
+  completedUnits: string[],
+  userId = USER_ID,
+  snapshot?: { chapterKeys: string[]; revision: string },
+) {
   window.localStorage.setItem(
     storyProgressKey(STORY_ID, userId),
-    JSON.stringify({ v: 1, completedUnits, points: {} }),
+    JSON.stringify({ v: 1, completedUnits, points: {}, ...snapshot }),
   );
 }
+
+/** What the story reader notes of the revision it opened (#2682). */
+const SNAPSHOT = { chapterKeys: ["a", "b", "c", "d"], revision: "0123456789abcdef" };
 
 function renderCard(locale: "fr" | "en" = "fr") {
   return render(
@@ -85,7 +92,9 @@ function renderCard(locale: "fr" | "en" = "fr") {
 }
 
 async function cardLink() {
-  return screen.findByRole("link", { name: /Histoire du module/ });
+  // The module page around it (ModuleLockGate) renders a lot: headroom when
+  // the whole suite runs at once on a busy machine.
+  return screen.findByRole("link", { name: /Histoire du module/ }, { timeout: 4000 });
 }
 
 beforeEach(() => {
@@ -135,14 +144,32 @@ describe("ModuleStoryCard", () => {
   });
 
   it("says the story is finished once every chapter is done", async () => {
-    saveProgress(["a", "b", "c", "d"]);
+    saveProgress(["a", "b", "c", "d"], USER_ID, SNAPSHOT);
     statusMock.mockResolvedValue(status());
     renderCard();
     expect(await cardLink()).toHaveTextContent("Histoire terminée — la rejouer");
   });
 
+  it("does not count keys of chapters the story no longer has (#2682)", async () => {
+    // The old quiz checkpoint and two dropped chapters are still saved; of
+    // this revision's four chapters only "a" is done.
+    saveProgress(["quiz-checkpoint", "old-1", "old-2", "a"], USER_ID, SNAPSHOT);
+    statusMock.mockResolvedValue(status());
+    renderCard();
+    expect(await cardLink()).toHaveTextContent("Continuer — chapitre 2 sur 4");
+  });
+
+  it("never says finished without a snapshot of the revision served now", async () => {
+    saveProgress(["a", "b", "c", "d"], USER_ID, { ...SNAPSHOT, revision: "an-older-revision" });
+    statusMock.mockResolvedValue(status());
+    renderCard();
+    const link = await cardLink();
+    expect(link).not.toHaveTextContent("Histoire terminée");
+    expect(link).toHaveTextContent("Continuer — chapitre 4 sur 4");
+  });
+
   it("never shows another learner's progress (a shared phone)", async () => {
-    saveProgress(["a", "b", "c", "d"], "another-learner");
+    saveProgress(["a", "b", "c", "d"], "another-learner", SNAPSHOT);
     statusMock.mockResolvedValue(status());
     renderCard();
     const link = await cardLink();

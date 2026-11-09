@@ -8,7 +8,7 @@ import { Link } from '@/i18n/routing';
 import { ApiError } from '@/lib/api';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { getModuleStoryStatus } from '@/lib/story-course/api';
-import { moduleStoryId, readStoryProgress } from '@/lib/story-course/progress';
+import { moduleStoryId, readStoryProgress, storyStanding } from '@/lib/story-course/progress';
 import type { ModuleStoryStatus } from '@/lib/story-course/types';
 
 type CardState =
@@ -21,12 +21,21 @@ type CardState =
   | { kind: 'subscribersOnly' }
   | { kind: 'unavailable' };
 
-/** Start, resume or done, from this learner's progress here and the chapter count. */
-function fromProgress(storyId: string, userId: string | null, chapters: number | null): CardState {
-  const completed = readStoryProgress(storyId, userId).completedUnits.length;
-  if (!chapters || chapters <= 0 || completed <= 0) return { kind: 'start' };
-  if (completed >= chapters) return { kind: 'done' };
-  return { kind: 'resume', current: completed + 1, total: chapters };
+/**
+ * Start, resume or done, from this learner's progress here and the status.
+ * Only chapters of the revision the server serves now count (#2682): a key
+ * left over from an older revision (a checkpoint the rally replaced) must not
+ * make a story look further along, or finished, than it is.
+ */
+function fromProgress(
+  storyId: string,
+  userId: string | null,
+  status: Pick<ModuleStoryStatus, 'chapters' | 'revision'> | null,
+): CardState {
+  const { completed, total, certain } = storyStanding(readStoryProgress(storyId, userId), status);
+  if (total <= 0 || completed <= 0) return { kind: 'start' };
+  if (certain && completed >= total) return { kind: 'done' };
+  return { kind: 'resume', current: Math.min(completed + 1, total), total };
 }
 
 function cardStateFor(
@@ -43,7 +52,7 @@ function cardStateFor(
       return { kind: 'generating' };
     default:
       // ready, or not_ready (opening it writes the story).
-      return fromProgress(storyId, userId, status.chapters);
+      return fromProgress(storyId, userId, status);
   }
 }
 

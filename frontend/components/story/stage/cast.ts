@@ -115,8 +115,20 @@ const PRESETS: Record<string, Partial<Look>> = {
   },
 };
 
-const FEMININE = /\b(girl|woman|women|lady|female|mother|mum|mom|grandmother|granny|aunt|sister|daughter|she|her|maman|tantie|mme|mrs|ms|miss|mlle|madame)\b/i;
-const MASCULINE = /\b(boy|man|men|male|father|dad|grandfather|grandpa|uncle|brother|son|he|his|papa|tonton|monsieur|mr|m)\b\.?/i;
+const FEMININE_WORDS: ReadonlySet<string> = new Set([
+  "girl", "woman", "women", "lady", "female", "mother", "mum", "mom", "grandmother", "granny",
+  "aunt", "sister", "daughter", "she", "her", "maman", "tantie", "madame", "fille", "femme",
+]);
+const MASCULINE_WORDS: ReadonlySet<string> = new Set([
+  "boy", "man", "men", "male", "father", "dad", "grandfather", "grandpa", "uncle", "brother",
+  "son", "he", "his", "him", "papa", "tonton", "monsieur", "garçon", "homme",
+]);
+/** A gendered word right after one of these is about someone else ("his daughter"). */
+const POSSESSIVES: ReadonlySet<string> = new Set(["his", "her", "their", "its", "my", "your", "our", "a", "an"]);
+
+/** A title in front of a name says who is meant: "M. Kaboré", "Mme Ouédraogo". */
+const NAME_FEMININE = /^(mme|mrs|ms|miss|mlle|madame|maman|tantie)\.?\s/i;
+const NAME_MASCULINE = /^(m|mr|monsieur|papa|tonton)\.?\s/i;
 
 const COLOR_WORDS: Record<string, string> = {
   red: "#e63946", blue: "#2f6db5", navy: "#1d3557", green: "#2f9e5b", yellow: "#f1c40f",
@@ -138,11 +150,34 @@ function colorNear(look: string, nouns: RegExp): string | undefined {
   return undefined;
 }
 
-/** What a look sentence says about gender, if anything. */
-function genderIn(sentence: string): boolean | undefined {
+/**
+ * What a look sentence says about the person's gender, if anything: the
+ * earliest gendered word, skipping one that is about someone else ("holding
+ * his daughter's hand", "a tie his sister gave him" → the person is "his").
+ */
+export function genderIn(sentence: string): boolean | undefined {
   if (!sentence) return undefined;
-  if (FEMININE.test(sentence)) return true;
-  if (MASCULINE.test(sentence)) return false;
+  const words = sentence.toLowerCase().split(/[^a-zà-ÿ'-]+/).map((word) => word.replace(/'s$/, ""));
+  for (let i = 0; i < words.length; i += 1) {
+    const word = words[i];
+    const feminine = FEMININE_WORDS.has(word);
+    const masculine = MASCULINE_WORDS.has(word);
+    if (!feminine && !masculine) continue;
+    // "her" and "his" stand for the person themselves; a noun after a
+    // possessive ("his daughter") is someone else.
+    const isPronoun = word === "her" || word === "his" || word === "him" || word === "he" || word === "she";
+    if (!isPronoun && i > 0 && POSSESSIVES.has(words[i - 1]) && words[i - 1] !== "a" && words[i - 1] !== "an") {
+      continue;
+    }
+    return feminine;
+  }
+  return undefined;
+}
+
+/** What a title in front of a name says, if anything. */
+function genderOfName(name: string): boolean | undefined {
+  if (NAME_FEMININE.test(name)) return true;
+  if (NAME_MASCULINE.test(name)) return false;
   return undefined;
 }
 
@@ -170,7 +205,7 @@ export function lookFor(member: CastMember, variant?: string): Look {
   const preset =
     said !== undefined && rawPreset.feminine !== undefined && rawPreset.feminine !== said ? {} : rawPreset;
 
-  const feminine = said ?? preset.feminine ?? genderIn(member.name ?? "") ?? seed % 2 === 0;
+  const feminine = said ?? preset.feminine ?? genderOfName(member.name ?? "") ?? seed % 2 === 0;
 
   const look: Look = {
     feminine,
@@ -286,7 +321,89 @@ export function buildActors(
       },
     });
   }
+  distinctOutfits([...actors.values()]);
   return actors;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Everyone dressed differently                                               */
+/* -------------------------------------------------------------------------- */
+
+/** Clearly different top colours, tried in a per-person order. */
+const OUTFIT_TOPS = [
+  "#e63946", "#2a9d8f", "#f4a261", "#457b9d", "#8e44ad", "#f1c40f",
+  "#27ae60", "#ff7eb6", "#4cc9f0", "#ffffff", "#7b2d26", "#06d6a0",
+] as const;
+const OUTFIT_BOTTOMS = ["#1d3557", "#6d4c41", "#3c4a3e", "#5f6b7a", "#2b4ea2", "#7b2d26"] as const;
+
+function rgb(hex: string): [number, number, number] {
+  const value = hex.replace("#", "").padEnd(6, "0");
+  return [0, 2, 4].map((i) => parseInt(value.slice(i, i + 2), 16) || 0) as [number, number, number];
+}
+
+/** Two colours a child would call the same. */
+function alike(a: string, b: string): boolean {
+  const [r1, g1, b1] = rgb(a);
+  const [r2, g2, b2] = rgb(b);
+  return Math.hypot(r1 - r2, g1 - g2, b1 - b2) < 90;
+}
+
+const ROLE_ORDER: Record<string, number> = { hero: 0, friend: 1, mentor: 2, family: 3 };
+
+/**
+ * No two people on the cast wear the same outfit: the hero keeps theirs,
+ * and everyone after (the friend first) takes the next colour, in an order
+ * fixed by their id, that nobody before has. The hero and the friend also
+ * never share a cut (dress, skirt, trousers, shorts) or a hair accent.
+ */
+export function distinctOutfits(actors: StageActor[]): void {
+  const people = actors
+    .filter((actor) => actor.figure !== "gecko")
+    .sort((a, b) => {
+      const rank = (actor: StageActor) =>
+        actor.isHero ? -1 : ROLE_ORDER[actor.role ?? actor.id] ?? 4;
+      return rank(a) - rank(b) || a.id.localeCompare(b.id);
+    });
+  const tops: string[] = [];
+  const bottoms: string[] = [];
+  const accents: string[] = [];
+  const hero = people.find((actor) => actor.isHero);
+  for (const actor of people) {
+    const look = actor.look;
+    const seed = hashOf(actor.id);
+    const wasDress = look.bottomStyle === "dress";
+    if (tops.some((taken) => alike(taken, look.top))) {
+      const free = OUTFIT_TOPS.map((_, i) => OUTFIT_TOPS[(seed + i) % OUTFIT_TOPS.length]).find(
+        (candidate) => !tops.some((taken) => alike(taken, candidate)),
+      );
+      if (free) look.top = free;
+    }
+    if (wasDress) look.bottom = look.top;
+    else if (bottoms.some((taken) => alike(taken, look.bottom))) {
+      const free = OUTFIT_BOTTOMS.map((_, i) => OUTFIT_BOTTOMS[(seed + i) % OUTFIT_BOTTOMS.length]).find(
+        (candidate) => !bottoms.some((taken) => alike(taken, candidate)) && !alike(candidate, look.top),
+      );
+      if (free) look.bottom = free;
+    }
+    if (accents.some((taken) => alike(taken, look.accent))) {
+      const free = ["#ffd23f", "#ff7eb6", "#06d6a0", "#ff9f1c", "#4cc9f0", "#c77dff"].find(
+        (candidate) => !accents.some((taken) => alike(taken, candidate)),
+      );
+      if (free) look.accent = free;
+    }
+    // The hero's best friend never comes in the hero's cut either.
+    const isFriend = actor.role === "friend" || actor.id === "friend" || actor.id === "peer";
+    if (hero && actor !== hero && isFriend && look.bottomStyle === hero.look.bottomStyle) {
+      const other: Record<BottomStyle, BottomStyle> = look.feminine
+        ? { dress: "skirt", skirt: "dress", trousers: "skirt", shorts: "skirt" }
+        : { trousers: "shorts", shorts: "trousers", dress: "trousers", skirt: "trousers" };
+      look.bottomStyle = other[look.bottomStyle];
+      if (look.bottomStyle === "dress") look.bottom = look.top;
+    }
+    tops.push(look.top);
+    if (look.bottomStyle !== "dress") bottoms.push(look.bottom);
+    accents.push(look.accent);
+  }
 }
 
 /* -------------------------------------------------------------------------- */

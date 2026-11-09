@@ -236,10 +236,12 @@ describe("Stage — the learner's choices", () => {
       variant: "boy",
     });
 
-    // The next story of the course opens straight away, with the same friend.
+    // The next story of the course opens straight away (its title first),
+    // with the same friend.
     unmount();
     renderPlayer(contractStory());
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Suite" }));
     expect(screen.getByText("Salut, c'est Fatou !")).toBeInTheDocument();
   });
 
@@ -341,7 +343,8 @@ describe("Stage — review fixes", () => {
 
     const card = document.querySelector('[data-step-panel="ask"]')!;
     expect(card).toHaveAttribute("data-armed", "false");
-    expect(card).toHaveAttribute("inert");
+    // Not inert: a screen reader announces the question as it appears.
+    expect(card).not.toHaveAttribute("inert");
     // The quick second tap of a double tap does not land on an answer.
     const wrong = screen.getByText("Le caillou").closest("button")!;
     await expect(user.click(wrong)).rejects.toThrow(/pointer-events/);
@@ -349,7 +352,6 @@ describe("Stage — review fixes", () => {
 
     // Once the card is ready, a tap counts, and right first time scores 2.
     await cardReady();
-    expect(card).not.toHaveAttribute("inert");
     await user.click(screen.getByRole("button", { name: "La grenouille" }));
     await user.click(next());
     expect(onComplete).toHaveBeenCalledWith({ points: 2, maxPoints: 2 });
@@ -363,14 +365,32 @@ describe("Stage — review fixes", () => {
     const dialogue = screen.getByTestId("story-stage").lastElementChild as HTMLElement;
 
     expect(container.querySelector("[data-title-card]")).not.toBeNull();
-    expect(dialogue.style.visibility).toBe("hidden");
+    // The first line is not there under the beat (#2682): nothing types out
+    // unseen, and the live region that will announce it stays in the page.
+    expect(dialogue).toBeEmptyDOMElement();
+    expect(dialogue).toHaveAttribute("aria-live", "polite");
+    expect(dialogue.style.visibility).toBe("");
     // Next ends the title's beat and brings up the first line, no further.
     await user.click(next());
     expect(container.querySelector("[data-title-card]")).toBeNull();
-    expect(dialogue.style.visibility).toBe("");
     expect(screen.getByText("Observe bien.")).toBeInTheDocument();
     await user.click(next());
     expect(screen.getByText("Elle a bougé !")).toBeInTheDocument();
+  });
+
+  it("never arms a question card under the title beat (#2682)", async () => {
+    const user = userEvent.setup();
+    const story = oldStory();
+    story.chapters[0].scenes[0].steps = [{ type: "ask", ref: "q1" }, ...story.chapters[0].scenes[0].steps];
+    renderPlayer(story);
+    expect(document.querySelector('[data-step-panel="ask"]')).toBeNull();
+    // Long enough for a card mounted under the beat to have armed itself.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(document.querySelector('[data-step-panel="ask"]')).toBeNull();
+    await user.click(next());
+    // It comes up with the first Next, and arms only now, in sight.
+    expect(document.querySelector('[data-step-panel="ask"]')).toHaveAttribute("data-armed", "false");
+    await cardReady();
   });
 
   it("fades the title card on its own", async () => {
@@ -380,7 +400,7 @@ describe("Stage — review fixes", () => {
     await waitFor(() => expect(container.querySelector("[data-title-card]")).toBeNull(), {
       timeout: TITLE_BEAT_MS + 2000,
     });
-    expect((screen.getByTestId("story-stage").lastElementChild as HTMLElement).style.visibility).toBe("");
+    expect(screen.getByText("Observe bien.")).toBeInTheDocument();
   });
 
   it("keeps the title over a narrator's caption, and never under a speech bubble", async () => {

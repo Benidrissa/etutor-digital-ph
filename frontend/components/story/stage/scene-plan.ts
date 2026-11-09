@@ -8,9 +8,16 @@
  * speakers, or the course's teacher, so the stage is never left empty.
  */
 
-import type { Chapter, Step, TextObject } from "@/lib/story-course/types";
+import type { Chapter, Prop, PropMedia, Step, TextObject } from "@/lib/story-course/types";
 
 import { stageOrder, type StageActor } from "./cast";
+import { closeUpProp, pictureFor, planSceneProps, sameOriginMedia } from "./props";
+
+/** What the planner needs to know about the story's props (#2681). */
+export interface PropContext {
+  props: ReadonlyMap<string, Prop>;
+  media?: Readonly<Record<string, PropMedia>>;
+}
 
 export interface PlannedStep {
   step: Step;
@@ -32,6 +39,14 @@ export interface PlannedStep {
   placeRun: number;
   /** Cast ids on stage, left to right. */
   cast: string[];
+  /** Prop ids on stage at this step (#2681). */
+  props: string[];
+  /** Props popping in at this step. */
+  entering: string[];
+  /** Props this step's line names: they bounce. */
+  pointed: string[];
+  /** Every prop the scene uses, for fetching their pictures ahead. */
+  sceneProps: string[];
 }
 
 /** At most this many on stage: beyond, a 320px stage gets crowded. */
@@ -56,18 +71,35 @@ function defaultCast(actors: Map<string, StageActor>): string[] {
   return unique([hero?.id, mentor?.id].filter(Boolean) as string[]);
 }
 
+/**
+ * A close-up of a prop with nothing to show (no picture, no sticker) is
+ * dropped: the line before it already names the thing, and an empty card is
+ * worse than none. Progress is kept per unit, not per step, so this is safe.
+ */
+function keepsStep(step: Step, context: PropContext | undefined): boolean {
+  const id = closeUpProp(step);
+  if (!id) return true;
+  const prop = context?.props.get(id);
+  if (!prop) return false;
+  const media = context?.media?.[id];
+  return !!pictureFor(prop, media, "en") || !!sameOriginMedia(media?.sticker);
+}
+
 export function planSteps(
   chapters: Chapter[],
   allChapters: Chapter[],
   actors: Map<string, StageActor>,
+  context?: PropContext,
 ): PlannedStep[] {
   const out: PlannedStep[] = [];
+  const known = context?.props ?? new Map<string, Prop>();
   for (const chapter of chapters) {
     const chapterNumber = Math.max(1, allChapters.findIndex((c) => c.id === chapter.id) + 1);
     const chapterSpeakers = speakersOf((chapter.scenes ?? []).flatMap((scene) => scene.steps ?? [])).filter(
       (id) => actors.has(id),
     );
     let carried: string[] = [];
+    let carriedProps: string[] = [];
     let firstOfChapter = true;
     let lastPlace: string | null = null;
     let placeRun = out.length;
@@ -84,10 +116,19 @@ export function planSteps(
       }
       carried = ids;
       const cast = stageOrder(ids, actors).slice(0, MAX_ON_STAGE);
-      if (scene.place !== lastPlace) placeRun = out.length;
+      const newPlace = scene.place !== lastPlace;
+      if (newPlace) placeRun = out.length;
       lastPlace = scene.place;
+      const steps = (scene.steps ?? []).filter((step) => keepsStep(step, context));
+      // Props carry over within a stretch at one place; a new place starts afresh.
+      const propPlan = planSceneProps(scene.props, steps, known, newPlace ? [] : carriedProps);
+      const sceneProps = unique([
+        ...(scene.props ?? []).filter((id) => known.has(id)),
+        ...propPlan.flatMap((entry) => entry.props),
+      ]);
       let firstOfScene = true;
-      for (const step of scene.steps ?? []) {
+      steps.forEach((step, index) => {
+        const props = propPlan[index] ?? { props: [], entering: [], pointed: [] };
         out.push({
           step,
           chapterId: chapter.id,
@@ -99,10 +140,15 @@ export function planSteps(
           startsScene: firstOfScene,
           placeRun,
           cast,
+          props: props.props,
+          entering: props.entering,
+          pointed: props.pointed,
+          sceneProps,
         });
         firstOfChapter = false;
         firstOfScene = false;
-      }
+      });
+      carriedProps = propPlan.length ? propPlan[propPlan.length - 1].props : carriedProps;
     }
   }
   return out;

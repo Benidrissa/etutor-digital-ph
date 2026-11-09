@@ -19,7 +19,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { SourceImage } from "@/components/learning/source-image";
 import {
@@ -58,6 +58,9 @@ export function ConceptVisual({
   label,
   language = "en",
 }: ConceptVisualProps) {
+  // A prop's close-up (#2681) is drawn by the stage player itself; an older
+  // player or an authored week has nothing to show for it.
+  if (visual === "prop") return null;
   if (visual === "image") {
     return <SourceFigure params={params} caption={caption} language={language} />;
   }
@@ -140,8 +143,10 @@ const nonEmpty = (value: unknown): string | undefined => {
 };
 
 /**
- * `{source_image_id, figure_number, alt: {en, fr}}` drawn by the lesson's
- * SourceImage. Without an image id there is nothing to show, so nothing is.
+ * `{source_image_id, figure_number, alt: {en, fr}, attribution}` drawn by the
+ * lesson's SourceImage, with its credit. Without an image id there is
+ * nothing to show, so nothing is; a figure whose picture fails to load says
+ * so, with its caption, instead of leaving an empty box.
  */
 function SourceFigure({
   params,
@@ -152,8 +157,22 @@ function SourceFigure({
   caption?: string;
   language: "fr" | "en";
 }) {
+  const t = useTranslations("Story");
+  const [failed, setFailed] = useState(false);
   const id = nonEmpty(params?.source_image_id);
   if (!id) return null;
+  if (failed) {
+    return (
+      <figure className="my-4" data-figure-failed="">
+        <p className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-center text-sm text-gray-600">
+          {t("visualUnavailable")}
+        </p>
+        {caption ? (
+          <figcaption className="mt-2 text-center text-sm text-gray-600">{caption}</figcaption>
+        ) : null}
+      </figure>
+    );
+  }
   const alt =
     params?.alt && typeof params.alt === "object"
       ? (params.alt as Record<string, unknown>)
@@ -164,8 +183,10 @@ function SourceFigure({
       figure_number={nonEmpty(params?.figure_number)}
       alt_text_en={nonEmpty(alt.en)}
       alt_text_fr={nonEmpty(alt.fr)}
+      attribution={nonEmpty(params?.attribution)}
       caption={caption}
       language={language}
+      onError={() => setFailed(true)}
     />
   );
 }

@@ -36,6 +36,7 @@ import {
   firstIncompleteChapter,
   readStoryProgress,
   withChapterDone,
+  withChapterSnapshot,
   writeStoryProgress,
   type StoryProgress,
 } from '@/lib/story-course/progress';
@@ -441,6 +442,15 @@ function ModuleStoryReader({ storyId, userId, story, moduleId, language }: Reade
   });
   const [progress, setProgress] = useState<StoryProgress>(initial.progress);
   const progressRef = useRef(initial.progress);
+  // Note which chapters this revision has, for the module page's story card
+  // (which never loads the story): it counts only these (#2682).
+  const revision = story.module_story?.revision;
+  useEffect(() => {
+    const next = withChapterSnapshot(progressRef.current, chapters, revision);
+    if (next === progressRef.current) return;
+    progressRef.current = next;
+    writeStoryProgress(storyId, userId, next);
+  }, [chapters, revision, storyId, userId]);
   const [selected, setSelected] = useState(initial.selected);
   // Bumped on every chapter opened, so replaying the open chapter restarts it.
   const [run, setRun] = useState(0);
@@ -491,6 +501,9 @@ function ModuleStoryReader({ storyId, userId, story, moduleId, language }: Reade
   }, [moduleId, markServerCompleted]);
 
   const completedUnits = useMemo(() => new Set(progress.completedUnits), [progress]);
+  // Scores are counted in the story's own unit (mangoes…), like the counter
+  // in the player: one counter, one word for it.
+  const unitLabel = text(story.rewards?.unit, target, home) || t('pointsWord');
   const totalMax = useMemo(() => {
     const fromCovers = chapters.reduce((sum, chapter) => sum + (chapter.covers?.max_points ?? 0), 0);
     if (chapters.some((chapter) => chapter.covers)) return fromCovers;
@@ -589,8 +602,11 @@ function ModuleStoryReader({ storyId, userId, story, moduleId, language }: Reade
   const chapterFor = (unitId: string) =>
     chapters.find((c) => c.covers?.module_unit_id === unitId && !c.covers.rally) ??
     chapters.find((c) => c.covers?.module_unit_id === unitId);
-  const stillToDo: Array<{ id: string; number: string; kind: UnitKind; title: string }> = serverUnits
-    ? serverUnits
+  // An empty list says nothing about this module's units: it is read as no
+  // list at all (#2682), never as "every unit is done".
+  const knownUnits = serverUnits && serverUnits.length > 0 ? serverUnits : null;
+  const stillToDo: Array<{ id: string; number: string; kind: UnitKind; title: string }> = knownUnits
+    ? knownUnits
         .filter((unit) => !serverCompleted.has(unit.id) && !posting.has(unit.id))
         .map((unit) => {
           const covering = chapterFor(unit.id);
@@ -617,8 +633,7 @@ function ModuleStoryReader({ storyId, userId, story, moduleId, language }: Reade
         }))
         .filter((item, index, list) => list.findIndex((other) => other.id === item.id) === index);
   // "Every unit is done" is the server's word, never this browser's alone.
-  const allDone =
-    serverRead && !!serverUnits && serverUnits.every((unit) => serverCompleted.has(unit.id));
+  const allDone = serverRead && !!knownUnits && knownUnits.every((unit) => serverCompleted.has(unit.id));
   const moduleStars = starsFor(totalMax ? totalPoints / totalMax : 0, story.rewards?.stars);
 
   return (
@@ -631,9 +646,9 @@ function ModuleStoryReader({ storyId, userId, story, moduleId, language }: Reade
           <h1 className="min-w-0 text-xl font-bold text-gray-900 sm:text-2xl">
             {text(shown.title, target, home)}
           </h1>
-          {totalMax > 0 ? (
+          {chapters.length > 0 ? (
             <p className="shrink-0 pt-1 text-sm font-semibold text-teal-700">
-              {t('score', { points: totalPoints, max: totalMax })}
+              {t('chaptersProgress', { done: doneCount, total: chapters.length })}
             </p>
           ) : null}
         </div>
@@ -760,7 +775,7 @@ function ModuleStoryReader({ storyId, userId, story, moduleId, language }: Reade
               <p className="font-semibold text-gray-900">{t('chapterComplete')}</p>
               {done.maxPoints > 0 ? (
                 <p className="text-sm text-gray-700">
-                  {t('score', { points: done.points, max: done.maxPoints })}
+                  {t('scoreIn', { points: done.points, max: done.maxPoints, unit: unitLabel })}
                 </p>
               ) : null}
               {chapter.covers && recorded.has(chapter.covers.module_unit_id) ? (
@@ -799,8 +814,8 @@ function ModuleStoryReader({ storyId, userId, story, moduleId, language }: Reade
             ) : null}
             <p className="text-sm text-gray-700">
               {totalMax > 0
-                ? t('score', { points: totalPoints, max: totalMax })
-                : t('points', { points: totalPoints })}
+                ? t('scoreIn', { points: totalPoints, max: totalMax, unit: unitLabel })
+                : t('pointsIn', { points: totalPoints, unit: unitLabel })}
             </p>
           </div>
 

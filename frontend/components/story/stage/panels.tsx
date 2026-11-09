@@ -13,6 +13,7 @@
 import {
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -71,6 +72,11 @@ export interface BubbleBox {
 /**
  * Where a bubble sits on a wide stage: beside the speaker's head (above it
  * for the middle slot), and above the head of anyone else it would cover.
+ *
+ * Only a face counts (the middle half of a figure's width, at the top of
+ * it), and only when the bubble would come down over it: a bubble that
+ * merely passes over someone's shoulder, or already sits higher than their
+ * head, stays where it is.
  */
 export function bubbleBox(speaker: Standing | undefined, others: Standing[]): BubbleBox {
   if (!speaker) return { left: 20, width: 60, bottom: GROUND + 50, tail: 50 };
@@ -93,9 +99,10 @@ export function bubbleBox(speaker: Standing | undefined, others: Standing[]): Bu
     bottom = GROUND + height + 3;
   }
   for (const other of others) {
-    const half = figureWidth(other.height) / 2;
-    const covers = other.x + half > left && other.x - half < left + width;
-    if (covers) bottom = Math.max(bottom, GROUND + other.height + 3);
+    const headHalf = figureWidth(other.height) / 4;
+    const headTop = GROUND + other.height;
+    const over = other.x + headHalf > left && other.x - headHalf < left + width;
+    if (over && bottom < headTop) bottom = Math.max(bottom, headTop + 3);
   }
   return { left, width, bottom, tail };
 }
@@ -193,13 +200,30 @@ export function CaptionBar({
   secondaryLang,
   animate,
   typedRef,
-}: Omit<BubbleProps, "name" | "aiLabel" | "actor" | "speaker" | "others">) {
+  at = "bottom",
+  eyebrow,
+}: Omit<BubbleProps, "name" | "aiLabel" | "actor" | "speaker" | "others"> & {
+  /**
+   * Where the caption sits on a wide stage: at the top when props stand in
+   * front of the cast's feet, so it never hides the thing the line is about.
+   * On a phone it is under the stage either way.
+   */
+  at?: "top" | "bottom";
+  /** A small line over the caption: where we are, when the ribbon gives way. */
+  eyebrow?: string;
+}) {
   return (
     <div
-      className={`${styles.panel} ${styles.caption} ${styles.rise} rounded-2xl border-[3px] border-[#ffd23f] px-4 py-3 shadow-[0_5px_0_rgba(0,0,0,0.2)]`}
+      className={`${styles.panel} ${styles.caption} ${at === "top" ? styles.captionTop : ""} ${styles.rise} rounded-2xl border-[3px] border-[#ffd23f] px-4 py-3 shadow-[0_5px_0_rgba(0,0,0,0.2)]`}
       style={{ background: "rgb(29 43 79 / 0.93)" }}
       data-step-panel="narrate"
+      data-at={at}
     >
+      {eyebrow ? (
+        <p className="mb-1 truncate text-xs font-extrabold uppercase tracking-wide text-[#ffd23f]" lang={primaryLang}>
+          {eyebrow}
+        </p>
+      ) : null}
       <TypedText
         ref={typedRef}
         text={primary}
@@ -256,11 +280,21 @@ export function Chalkboard({
 }: ChalkboardProps) {
   // Tapping the stage while rows are still coming shows them all.
   const startedRef = useRef(0);
+  const boardRef = useRef<HTMLElement | null>(null);
   const [all, setAll] = useState(false);
   const total = rowDelays.length ? rowDelays[rowDelays.length - 1] : 0;
   useEffect(() => {
     startedRef.current = Date.now();
   }, []);
+  // A board capped above a middle presenter's head that cannot hold its rows
+  // there takes its full height instead of scrolling inside: reading a
+  // concept matters more than seeing the teacher's face.
+  useLayoutEffect(() => {
+    const board = boardRef.current;
+    if (!board) return;
+    board.classList.remove(styles.boardUncapped);
+    if (maxHeight && board.scrollHeight > board.clientHeight + 1) board.classList.add(styles.boardUncapped);
+  }, [maxHeight, rows, homeRows, title]);
   useImperativeHandle(
     ref,
     () => ({
@@ -275,6 +309,7 @@ export function Chalkboard({
   const Heading = headingLevel === 3 ? "h3" : "h4";
   return (
     <section
+      ref={boardRef}
       className={`${styles.panel} ${styles.board} ${
         side === "right" ? styles.boardRight : side === "left" ? styles.boardLeft : ""
       } ${styles.chalk} ${styles.popIn} rounded-xl px-4 py-3 text-[#f7f4ea]`}
@@ -340,12 +375,14 @@ interface StageCardProps {
   banner?: string;
   bannerColor?: string;
   paper?: boolean;
+  /** Seen again with Previous: already answered, nothing to tap by mistake. */
+  review?: boolean;
   children: ReactNode;
   ref?: Ref<HTMLDivElement>;
 }
 
-export function StageCard({ kind, banner, bannerColor = "#1d6fb8", paper, children, ref }: StageCardProps) {
-  const needsArming = ARMED_KINDS.has(kind);
+export function StageCard({ kind, banner, bannerColor = "#1d6fb8", paper, review, children, ref }: StageCardProps) {
+  const needsArming = ARMED_KINDS.has(kind) && !review;
   const [armed, setArmed] = useState(!needsArming);
   useEffect(() => {
     if (!needsArming) return;
@@ -355,11 +392,11 @@ export function StageCard({ kind, banner, bannerColor = "#1d6fb8", paper, childr
   return (
     <div
       ref={ref}
-      className={`${styles.panel} ${styles.card} ${styles.popIn} rounded-2xl border-[3px] shadow-[0_6px_0_rgba(29,43,79,0.25)] ${
+      className={`${styles.panel} ${styles.card} ${review ? "" : styles.popIn} rounded-2xl border-[3px] shadow-[0_6px_0_rgba(29,43,79,0.25)] ${
         paper ? styles.paper : "bg-white"
       }`}
-      // Until armed, the card is shown but takes no taps, clicks or focus.
-      inert={!armed}
+      // Until armed, the card is shown but takes no taps or clicks. It is
+      // not made inert: a screen reader announces it as it appears.
       style={{ borderColor: NAVY, pointerEvents: armed ? undefined : "none" }}
       data-step-panel={kind}
       data-armed={armed ? "true" : "false"}

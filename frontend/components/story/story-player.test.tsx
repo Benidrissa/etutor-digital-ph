@@ -456,19 +456,27 @@ function paperStory(id: string, { module }: { module: boolean }): StoryCourse {
 }
 
 describe("StoryPlayer — a paper exercise's name", () => {
-  it("is the chapter's own id in a module story, not the assembler's namespace", () => {
+  /** The chapter opens on the exercise: its title shows alone first. */
+  async function pastTheTitle() {
+    await userEvent.setup().click(screen.getByRole("button", { name: "Suite" }));
+  }
+
+  it("is the chapter's own id in a module story, not the assembler's namespace", async () => {
     renderPlayer(paperStory("u1_1-E1", { module: true }));
+    await pastTheTitle();
     expect(screen.getByText("Sur papier · E1 · Partie A · [1]")).toBeInTheDocument();
     expect(screen.queryByText(/u1_1/i)).not.toBeInTheDocument();
   });
 
-  it("keeps a dash inside the chapter's own id", () => {
+  it("keeps a dash inside the chapter's own id", async () => {
     renderPlayer(paperStory("u2_10-E-2", { module: true }));
+    await pastTheTitle();
     expect(screen.getByText("Sur papier · E-2 · Partie A · [1]")).toBeInTheDocument();
   });
 
-  it("is left as written in an authored week", () => {
+  it("is left as written in an authored week", async () => {
     renderPlayer(paperStory("u2-x", { module: false }));
+    await pastTheTitle();
     expect(screen.getByText("Sur papier · u2-x · Partie A · [1]")).toBeInTheDocument();
   });
 });

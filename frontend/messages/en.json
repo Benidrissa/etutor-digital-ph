@@ -874,7 +874,11 @@
     "stillToDo": "Still to do",
     "stillToDoHint": "The story does not replace these units: do them on their own page.",
     "allDone": "Every unit of this module is done.",
-    "openUnit": "{kind, select, quiz {Go to quiz {number}} case {Go to case study {number}} other {Go to lesson {number}}}"
+    "openUnit": "{kind, select, quiz {Go to quiz {number}} case {Go to case study {number}} other {Go to lesson {number}}}",
+    "chaptersProgress": "{done} of {total} chapters done",
+    "scoreIn": "{points} of {max} {unit}",
+    "pointsIn": "{points} {unit}",
+    "pointsWord": "points"
   },
   "CaseStudyViewer": {
     "error": "An error occurred",
@@ -2745,6 +2749,16 @@
       "boy": "A boy",
       "woman": "A woman",
       "man": "A man"
-    }
+    },
+    "previous": "Previous",
+    "lookCloser": "Look closely",
+    "lookCloserAt": "Look closely: {name}",
+    "backToStory": "Back to the story",
+    "creditCourse": "From the course",
+    "creditDrawing": "Drawing made with AI",
+    "creditSource": "Source",
+    "publicDomain": "Public domain",
+    "loadPhoto": "Show the photo ({kb} KB)",
+    "imageCredits": "Image credits"
   }
 }

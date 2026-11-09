@@ -108,6 +108,90 @@ export interface StoryArt {
   characters?: Record<string, Partial<Record<string, string>>>;
   /** Backdrop URL per place id. */
   places?: Record<string, string>;
+  /** Pictures and stickers of the story's props, per prop id (#2681). */
+  props?: Record<string, PropMedia>;
+  props_status?: "ready" | "pending" | "partial" | "none";
+}
+
+/* ---- Props (#2681): the concrete things the story talks about ------------ */
+
+export type PropKind = "sticker" | "real" | "figure";
+export type PropPlacement = "ground" | "table" | "held" | "sky" | "back";
+export type PropSize = "s" | "m" | "l";
+
+/** A course figure the builder resolved (the model writes "figure": N). */
+export interface PropFigure {
+  source_image_id: string;
+  figure_number?: string;
+  /** source_images.image_hash: finds the figure again after a re-index changes its id. */
+  image_hash?: string;
+  alt?: TextObject;
+  caption?: TextObject;
+  attribution?: string;
+}
+
+/** A concrete thing the story talks about: drawn on stage, shown for real in a close-up. */
+export interface Prop {
+  /** snake_case, unique in the document. */
+  id: string;
+  /** "a snail" / "un escargot": alt text, close-up title, fallback tag. */
+  label: TextObject;
+  /** English picture-search words; for the resolver only, never shown. */
+  query: string;
+  kind: PropKind;
+  /** True: one close-up right after its first mention. */
+  educational?: boolean;
+  /** One pictographic grapheme, drawn until a sticker or picture exists. */
+  emoji?: string;
+  /** Default "ground"; "back" for scenery. */
+  at?: PropPlacement;
+  /** Default: held/sky "s", ground/table "m", back "l". */
+  size?: PropSize;
+  /** The cast id holding it, when `at` is "held". */
+  holder?: string;
+  /** Set by the builder only. */
+  figure?: PropFigure;
+  /** Module-level props from the beat sheet. */
+  chapters?: number[];
+}
+
+export interface MediaCredit {
+  kind: "course" | "web" | "generated";
+  title?: string;
+  author?: string;
+  author_url?: string;
+  /** "Wikimedia Commons", or the course document title. */
+  source?: string;
+  /** "CC0-1.0" | "PDM" | "CC-BY-<v>" | "CC-BY-SA-<v>". */
+  license?: string;
+  license_url?: string;
+  /** A link only; the player never fetches it. */
+  page_url?: string;
+  attribution_required?: boolean;
+  /** The full credit line, rendered server-side in EN and FR. */
+  text: TextObject;
+}
+
+export interface PropPicture {
+  /** At most 400 px on the long side, WebP, same origin. */
+  src: string;
+  /** At most 960 px. */
+  src_large?: string;
+  /** Reserves an aspect-ratio box, so the layout does not shift. */
+  width: number;
+  height: number;
+  /** For "Show the photo (N KB)" in data-saver mode. */
+  bytes?: number;
+  alt: TextObject;
+  caption?: TextObject;
+  via: "lesson_figure" | "course_figure" | "open_photo" | "ai_drawing";
+  credit: MediaCredit;
+}
+
+export interface PropMedia {
+  /** Cut-out WebP with alpha, same origin. */
+  sticker?: string;
+  picture?: PropPicture;
 }
 
 export interface GlossaryEntry {
@@ -223,6 +307,8 @@ export interface Step {
    * module assembler rewrites steps by this marker, never by their text.
    */
   frame?: StepFrame;
+  /** The props this say/narrate/concept line points at, at most 2 (#2681). */
+  props?: string[];
 }
 
 export type StepFrame = "opener" | "objectives" | "finished" | "ask_tutor";
@@ -234,6 +320,8 @@ export interface Scene {
   objective?: string;
   /** Cast ids on stage, two or three (#2672). Absent on older stories. */
   cast?: string[];
+  /** The props present in this scene, at most 5 (#2681). */
+  props?: string[];
   steps: Step[];
 }
 
@@ -371,6 +459,8 @@ export interface StoryCourse {
   places?: Place[];
   /** Generated art (#2672), attached by the API, never by the model. */
   art?: StoryArt;
+  /** The concrete things the story talks about, one declaration each (#2681). */
+  props?: Prop[];
   facts?: { en: string; fr: string; source?: string; invented?: boolean }[];
   chapters: Chapter[];
   questions: Question[];

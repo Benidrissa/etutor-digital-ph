@@ -7,7 +7,7 @@
  * image id — on the learner's screen.
  */
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { NextIntlClientProvider } from "next-intl";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -74,6 +74,42 @@ describe("ConceptVisual — source figures (X4)", () => {
       caption: "Une légende",
       language: "fr",
     });
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("credits the figure (#2681)", () => {
+    renderVisual({
+      visual: "image",
+      params: { ...figureParams, attribution: "OpenStax, CC BY 4.0" },
+      language: "fr",
+    });
+    expect(screen.getByText("OpenStax, CC BY 4.0")).toBeInTheDocument();
+  });
+
+  it("says the picture is missing instead of leaving an empty box (#2681)", () => {
+    renderVisual({ visual: "image", params: figureParams, caption: "Le lavage des mains", language: "fr" });
+    fireEvent.error(screen.getByRole("img", { name: "Des mains sous l'eau courante" }));
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    expect(screen.getByText("Cette illustration n'est pas encore disponible.")).toBeInTheDocument();
+    expect(screen.getByText("Le lavage des mains")).toBeInTheDocument();
+  });
+
+  it("opens the full-screen view over the whole page, not inside the stage (#2682)", async () => {
+    const user = userEvent.setup();
+    const { container } = renderVisual({ visual: "image", params: figureParams, language: "fr" });
+    await user.click(screen.getByRole("button", { name: /plein écran/i }));
+    const viewer = screen.getByRole("dialog");
+    // Portalled to the body: no stacking context of the stage can hide it.
+    expect(container.contains(viewer)).toBe(false);
+    expect(viewer.parentElement).toBe(document.body);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});
+
+describe("ConceptVisual — a prop's close-up outside the stage (#2681)", () => {
+  it("draws nothing: only the stage player shows props", () => {
+    const { container } = renderVisual({ visual: "prop", params: { prop: "snail" }, language: "fr" });
     expect(container).toBeEmptyDOMElement();
   });
 });
