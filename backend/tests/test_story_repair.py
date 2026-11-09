@@ -424,11 +424,13 @@ class TestLayout:
     def test_long_quiz_stem_moves_to_a_situation_step(self, raw):
         doc = repair.build_story_document(make_ctx(raw), spine_for(raw)).doc
         q3 = next(q for q in doc["questions"] if q["id"] == "q3")
-        assert q3["prompt"]["en"] == "Read the situation above, then choose the best answer."
+        # #2680: the stem is a card a character holds up, in the story's world.
+        assert q3["prompt"]["en"] == "Read the card, then choose the best answer."
         steps = all_steps(doc)
         index = next(i for i, s in enumerate(steps) if s.get("ref") == "q3")
         situation = steps[index - 1]
         assert situation["id"] == "situation-q3"
+        assert situation["title"] == {"en": "On the card", "fr": "Sur la carte"}
         assert situation["en"] == [raw["en"]["quiz"]["questions"][2]["question"]]
 
     def test_unknown_place_falls_back_to_the_bibles_first_place(self, raw):
@@ -1128,17 +1130,24 @@ class TestScreenplay:
         build = repair.build_story_document(make_ctx(raw), spine)
         lines = [s["en"] for s in all_steps(build.doc) if s["type"] == "say"]
         assert len(lines) == len(set(lines))
-        assert ("line_told_twice", "scenes") in _codes(build)
+        # The path names the model's own step (#2680).
+        assert ("line_told_twice", "scenes[2].steps[1]") in _codes(build)
 
-    def test_items_the_model_never_placed_go_at_the_end_reported(self, raw):
+    def test_items_the_model_never_placed_go_before_the_closing_lines_reported(self, raw):
         spine = spine_for(raw)
         spine["scenes"][2]["steps"] = [
             s for s in spine["scenes"][2]["steps"] if s["type"] not in ("game", "photo")
         ]
+        spine["scenes"][2]["steps"].append(
+            {"type": "narrate", "en": "The sun sets on the market.", "fr": "Le soleil se couche."}
+        )
         build = repair.build_story_document(make_ctx(raw), spine)
         last = build.doc["chapters"][0]["scenes"][-1]["steps"]
-        assert [s["type"] for s in last[-2:]] == ["game", "photo"]
-        assert last[-1]["ref"] == "E1"
+        # #2680: never the last steps — the chapter still ends on its story line.
+        kinds = [s["type"] for s in last]
+        game = kinds.index("game")
+        assert kinds[game + 1] == "photo" and last[game + 1]["ref"] == "E1"
+        assert kinds[-1] == "narrate" and set(kinds[game + 2 :]) <= {"say", "narrate"}
         assert _codes(build) == {
             ("item_not_placed", "minigame"),
             ("item_not_placed", "exercises[0]"),

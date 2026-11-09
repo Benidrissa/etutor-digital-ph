@@ -1997,3 +1997,87 @@ async def test_a_concept_the_model_never_teaches_is_taught_from_the_lesson(raw):
     taught = sorted(s["teaches"] for s in steps(generation.doc) if "teaches" in s)
     assert taught == [1, 2, 3]
     assert revalidate(generation.doc).ok
+
+
+# --------------------------------------------------------------------------
+# #2680: the v4 system prompts and the story register
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("kind", ["plan", "screenplay", "pack"])
+@pytest.mark.parametrize("kids", [True, False])
+def test_the_v4_system_prompts_render_with_the_story_register(kind, kids):
+    import re
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from app.ai.prompts import audience as audience_module
+    from app.ai.prompts.story_from_lesson import get_story_v4_system_prompt
+
+    detected = audience_module.AudienceContext(is_kids=kids, age_min=9, age_max=12)
+    with patch.object(audience_module, "detect_audience", return_value=detected):
+        rendered = get_story_v4_system_prompt(
+            kind,
+            language="fr",
+            country="BF",
+            course=SimpleNamespace(),
+            course_title="Les détectives du vivant",
+            module_title="Qu'est-ce qui est vivant ?",
+        )
+    assert rendered and "Les détectives du vivant" in rendered
+    leftovers = set(re.findall(r"\{[a-z_]+\}", rendered)) - {"{child}", "{friend}"}
+    assert leftovers == set(), leftovers
+    for text in ("Essaie toi-même", "Bloom", "Level:", "audience_guidance"):
+        assert text not in rendered
+    if kind == "pack":
+        assert ("children aged 9-12" if kids else "adult professionals") in rendered
+    else:
+        assert "{child}" in rendered and "{friend}" in rendered
+        assert ("AGES 9-12" if kids else "ADULT LEARNERS") in rendered
+
+
+def test_the_story_register_follows_the_oldest_age():
+    from app.ai.prompts.audience import AudienceContext, story_register
+
+    def tier(age_min, age_max):
+        return story_register(AudienceContext(is_kids=True, age_min=age_min, age_max=age_max))
+
+    assert tier(5, 8).startswith("AGES 5-8")
+    assert tier(9, 12).startswith("AGES 9-12")
+    assert tier(13, 15).startswith("AGES 13-15")
+    assert story_register(AudienceContext(is_kids=False)).startswith("ADULT LEARNERS")
+
+
+def test_the_old_story_prompts_are_kept_but_marked_deprecated():
+    from app.ai.prompts.lesson import _UNIT_BINDING_REQUIRED_KEYS
+    from app.infrastructure.config.platform_defaults import DEFAULTS_BY_KEY
+
+    for key in ("ai-prompt-story-system", "ai-prompt-story-kids-system"):
+        assert "deprecated" in DEFAULTS_BY_KEY[key].label
+    for key in (
+        "ai-prompt-story-plan-kids-system",
+        "ai-prompt-story-plan-system",
+        "ai-prompt-story-screenplay-kids-system",
+        "ai-prompt-story-screenplay-system",
+        "ai-prompt-story-pack-system",
+    ):
+        assert DEFAULTS_BY_KEY[key].default
+        assert key not in _UNIT_BINDING_REQUIRED_KEYS
+
+
+def test_the_fact_sheet_drops_the_lessons_own_examples_and_keeps_a_stable_digest():
+    from app.ai.prompts.story_from_lesson import build_fact_sheet, fact_sheet_digest
+
+    lesson = {
+        "introduction": "Intro.",
+        "concepts": ["Idea one.", "Idea two."],
+        "key_points": ["Point."],
+        "aof_example": "In Bouaké, Aminata...",
+        "synthesis": "In short.",
+        "sources_cited": ["Book"],
+    }
+    sheet = build_fact_sheet(lesson)
+    assert sheet.ideas == ("Idea one.", "Idea two.") and sheet.key_facts == ("Point.",)
+    reworded = {**lesson, "introduction": "Another intro.", "aof_example": "Elsewhere."}
+    assert fact_sheet_digest(reworded) == fact_sheet_digest(lesson)
+    assert fact_sheet_digest({**lesson, "concepts": ["Idea one!", "Idea two."]}) != sheet.digest

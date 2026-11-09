@@ -16,12 +16,15 @@ import pytest
 from celery.exceptions import SoftTimeLimitExceeded
 
 from app.ai.usage_context import current_ai_context
-from app.domain.services.story_module_service import ChapterGenerationFailed, story_dispatch_key
+from app.domain.services.story_module_service import (
+    ChapterGenerationFailed,
+    find_module_story,
+    story_dispatch_key,
+)
 from app.tasks import content_generation
 from app.tasks.content_generation import (
     MODULE_STORY_HARD_LIMIT,
     MODULE_STORY_SOFT_LIMIT,
-    POLL_SOFT_LIMIT,
     generate_module_story_task,
 )
 
@@ -35,29 +38,19 @@ TASK_ID = "task-42"
 
 
 def test_the_task_is_declared_with_its_budget_and_no_retry():
-    from app.domain.services.story_from_lesson_service import MAX_REPAIR_CALLS
     from app.tasks.celery_app import celery_app
 
     task = generate_module_story_task
     assert task.name == "app.tasks.content_generation.generate_module_story_task"
-    assert (MODULE_STORY_SOFT_LIMIT, MODULE_STORY_HARD_LIMIT) == (1800, 1860)
+    # #2680: the chapters are told one after another (8-10 min for 3 lessons,
+    # 14 for 6); the run keeps its own deadline and continues in a new task.
+    assert (MODULE_STORY_SOFT_LIMIT, MODULE_STORY_HARD_LIMIT) == (2400, 2460)
     assert task.soft_time_limit == MODULE_STORY_SOFT_LIMIT
     assert task.time_limit == MODULE_STORY_HARD_LIMIT
     assert task.rate_limit == "5/m"
     assert not getattr(task, "autoretry_for", ())
-    # A chapter's slowest path: its lesson, the covering quiz, then every spine call.
-    assert MODULE_STORY_SOFT_LIMIT >= 2 * POLL_SOFT_LIMIT + (1 + MAX_REPAIR_CALLS) * 150
-    # Before them the course bible (up to 2 calls), after them the rally.
-    from app.domain.services.story_bible import StoryBibleService
-    from app.domain.services.story_module_service import RALLY_REPAIR_CALLS
-
-    worst = (
-        StoryBibleService.MAX_CALLS * 150
-        + 2 * POLL_SOFT_LIMIT
-        + (1 + MAX_REPAIR_CALLS) * 150
-        + (1 + RALLY_REPAIR_CALLS) * 150
-    )
-    assert worst <= MODULE_STORY_SOFT_LIMIT
+    assert content_generation.MODULE_STORY_DEADLINE_MARGIN_S == 150
+    assert content_generation.MODULE_STORY_MAX_CONTINUATIONS == 2
     # The API's dedup key (HARD + 60) expires before a redelivery or a lost result.
     dedup_ttl = MODULE_STORY_HARD_LIMIT + 60
     assert dedup_ttl < 3600
@@ -81,7 +74,15 @@ class FakeModuleStoryService:
         FakeModuleStoryService.instances.append(self)
 
     async def get_or_generate_module_story(
-        self, module_id, language, session_factory, *, level, country, force_regenerate
+        self,
+        module_id,
+        language,
+        session_factory,
+        *,
+        level,
+        country,
+        force_regenerate,
+        deadline=None,
     ):
         self.calls.append(
             {
@@ -91,6 +92,7 @@ class FakeModuleStoryService:
                 "level": level,
                 "country": country,
                 "force_regenerate": force_regenerate,
+                "deadline": deadline,
                 "feature": current_ai_context().feature,
             }
         )
@@ -169,6 +171,13 @@ def test_a_complete_run_builds_the_services_and_reports_the_story(wiring):
     assert (call["level"], call["country"], call["force_regenerate"]) == (2, "SN", True)
     assert call["feature"] == "story_generation"  # the ledger's default for the run
     assert callable(call["session_factory"])
+    # The run's own deadline: the soft limit less a margin, on the monotonic clock.
+    import time
+
+    left = call["deadline"] - time.monotonic()
+    assert MODULE_STORY_SOFT_LIMIT - 200 < left <= MODULE_STORY_SOFT_LIMIT - 150
+    # A figure whose binary is gone is never offered (#2681).
+    assert "figure_storage" in service.kwargs
     # The key is armed again as the task starts, then released as it ends.
     wiring.hold.assert_called_once_with(key, TASK_ID, MODULE_STORY_HARD_LIMIT + 60)
     wiring.release.assert_called_once_with(key, TASK_ID)
@@ -192,6 +201,49 @@ def test_failed_chapters_are_reported_by_unit_and_release_the_key(wiring):
     }
     wiring.engine.dispose.assert_awaited_once()
     wiring.release.assert_called_once_with("k", TASK_ID)
+
+
+def test_a_run_that_reaches_its_deadline_continues_in_a_new_task(wiring):
+    from app.domain.services.story_module_service import StoryDeadlineReached
+
+    FakeModuleStoryService.outcome = StoryDeadlineReached(["1.1", "1.2"])
+    with (
+        patch.object(
+            generate_module_story_task, "apply_async", return_value=SimpleNamespace(id="next-1")
+        ) as dispatch,
+        patch("redis.Redis.from_url") as redis_client,
+    ):
+        result = run_task(str(MODULE_ID), "fr", country="SN", force_regenerate=True, dedup_key="k")
+    assert result == {
+        "status": "complete",
+        "content_id": None,
+        "is_valid": False,
+        "continued_by": "next-1",
+        "told": ["1.1", "1.2"],
+    }
+    kwargs = dispatch.call_args.kwargs["kwargs"]
+    assert kwargs["continuation"] == 1 and kwargs["dedup_key"] == "k"
+    assert kwargs["force_regenerate"] is False  # never pays twice for what was told
+    assert (kwargs["module_id"], kwargs["country"]) == (str(MODULE_ID), "SN")
+    # The dedup key is handed to the continuation, so a learner's GET joins it.
+    script, _n, key, holder, new, ttl = redis_client.return_value.eval.call_args.args
+    assert (key, holder, new, ttl) == ("k", TASK_ID, "next-1", MODULE_STORY_HARD_LIMIT + 60)
+    wiring.release.assert_called_once_with("k", TASK_ID)
+
+
+def test_a_continuation_never_forces_and_the_last_one_stops(wiring):
+    from app.domain.services.story_module_service import StoryDeadlineReached
+
+    FakeModuleStoryService.outcome = SimpleNamespace(id=STORY_ID, is_valid=True)
+    run_task(str(MODULE_ID), "fr", force_regenerate=True, continuation=1)
+    (service,) = FakeModuleStoryService.instances
+    assert service.calls[0]["force_regenerate"] is False
+
+    FakeModuleStoryService.outcome = StoryDeadlineReached(["1.3"])
+    with patch.object(generate_module_story_task, "apply_async") as dispatch:
+        result = run_task(str(MODULE_ID), "fr", continuation=2)
+    dispatch.assert_not_called()
+    assert result["status"] == "failed" and result["error"] == "time_limit_exceeded"
 
 
 def test_the_soft_time_limit_fails_the_task_and_releases_the_key(wiring):
@@ -327,45 +379,40 @@ def _redis_or_skip():
 
 
 def test_end_to_end_a_time_limit_then_a_complete_run(monkeypatch):
-    """Soft limit mid-run: chapters cancelled, nothing written, key released; then it completes."""
+    """Soft limit mid-run: packs cancelled, no module written, key released; then it completes."""
     import asyncio
-    import json
-    from pathlib import Path
-
-    from sqlalchemy.ext.asyncio import create_async_engine
 
     from app.infrastructure.config.settings import settings
     from tests._story_db import create_tables, scratch_database, story_tables
     from tests.test_story_module_service import (
-        LESSONS,
-        FakeClaude,
         FakeLessonService,
+        FakeModel,
         FakeQuizService,
         Sessions,
         chapter_rows,
-        module_row,
         seed,
     )
 
-    raw = json.loads(
-        (Path(__file__).parent / "fixtures" / "lesson_story_unit.json").read_text("utf-8")
-    )
     client = _redis_or_skip()
     with scratch_database("story_task") as url:
         create_tables(url, story_tables())
 
         async def with_sessions(work):
-            engine = create_async_engine(url)
+            sessions = Sessions(url)
             try:
-                return await work(Sessions(engine))
+                return await work(sessions)
             finally:
-                await engine.dispose()
+                await sessions.engine.dispose()
 
-        seeded = asyncio.run(with_sessions(lambda sessions: seed(sessions, raw)))
+        async def module_row(sessions, seeded):
+            async with sessions.maker() as session:
+                return await find_module_story(session, seeded.module_id, "fr")
+
+        seeded = asyncio.run(with_sessions(lambda sessions: seed(sessions)))
         monkeypatch.setattr(settings, "database_url", url)
-        key = story_dispatch_key(seeded.module_id, "en")
+        key = story_dispatch_key(seeded.module_id, "fr")
 
-        def run_with(model: FakeClaude) -> dict:
+        def run_with(model) -> dict:
             client.set(key, TASK_ID, ex=60)
             with (
                 patch("app.ai.claude_service.ClaudeService", return_value=model),
@@ -373,27 +420,27 @@ def test_end_to_end_a_time_limit_then_a_complete_run(monkeypatch):
                 patch("app.ai.rag.retriever.SemanticRetriever"),
                 patch(
                     "app.domain.services.lesson_service.LessonGenerationService",
-                    return_value=FakeLessonService(raw),
+                    return_value=FakeLessonService(),
                 ),
                 patch(
                     "app.domain.services.quiz_service.QuizService",
-                    return_value=FakeQuizService(raw),
+                    return_value=FakeQuizService(),
                 ),
+                patch("app.infrastructure.storage.s3.S3StorageService", return_value=_NoFigures()),
                 patch("app.tasks.quality_assessment.assess_and_regenerate_unit_task"),
             ):
-                return run_task(str(seeded.module_id), "en", dedup_key=key)
+                return run_task(str(seeded.module_id), "fr", country="BF", dedup_key=key)
 
         try:
-            slow = FakeClaude(raw, "en", delay=30.0, soft_limit_on_call=2)
+            slow = FakeModel(delay=0.05)
+            slow.broken[("story", "1.1")] = SoftTimeLimitExceeded()
             result = run_with(slow)
             assert result["status"] == "failed" and result["error"] == "time_limit_exceeded"
-            assert len(slow.cancelled) == 3
             assert client.get(key) is None
             assert asyncio.run(with_sessions(lambda s: module_row(s, seeded))) is None
-            # The lessons generated before the limit are cached; no chapter is.
             assert asyncio.run(with_sessions(lambda s: chapter_rows(s, seeded))) == {}
 
-            model = FakeClaude(raw, "en")
+            model = FakeModel()
             result = run_with(model)
             record = asyncio.run(with_sessions(lambda s: module_row(s, seeded)))
             assert result == {
@@ -401,7 +448,9 @@ def test_end_to_end_a_time_limit_then_a_complete_run(monkeypatch):
                 "content_id": str(record.id),
                 "is_valid": True,
             }
-            assert sorted(model.calls) == LESSONS
+            # The plan was kept from the first run: only packs and stories now.
+            assert model.count("plan") == 0
+            assert [u for k, u in model.calls if k == "story"] == ["1.1", "1.2", "1.3", "rally"]
             assert record.status == "published"
             assert client.get(key) is None
         finally:
@@ -409,61 +458,60 @@ def test_end_to_end_a_time_limit_then_a_complete_run(monkeypatch):
             client.close()
 
 
-def test_end_to_end_a_signalled_time_limit_closes_every_chapter_session(monkeypatch):
-    """The soft limit as Celery delivers it: a signal while every chapter awaits the model.
+class _NoFigures:
+    async def object_exists(self, key: str) -> bool:
+        return False
+
+
+def test_end_to_end_a_signalled_time_limit_closes_every_session(monkeypatch):
+    """The soft limit as Celery delivers it: a signal while the packs await the model.
 
     The signal lands in the event loop's ``select()``, outside any task, so
-    ``asyncio.run``'s teardown cancels every task, and the main task's
-    TaskGroup then cancels the chapters a second time. A chapter already in
-    its session's ``__aexit__`` ends on that second cancel while the shielded
-    close task still holds its connection. The teardown cancels in set order;
-    the test puts the chapters first, the order that left those connections
-    checked out when the engine was disposed (and open in a long-lived worker).
+    ``asyncio.run``'s teardown cancels every task. The teardown cancels in
+    set order; the test puts the packs first. No connection may be checked
+    out when the engine is disposed (or stay open in a long-lived worker).
     """
     import asyncio
-    import json
     import signal
     import threading
     import time
-    from pathlib import Path
 
     import sqlalchemy as sa
-    from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+    from sqlalchemy.ext.asyncio import AsyncEngine
 
     from app.infrastructure.config.settings import settings
     from tests._story_db import create_tables, scratch_database, story_tables, sync_engine
     from tests.test_story_module_service import (
-        LESSONS,
-        FakeClaude,
         FakeLessonService,
+        FakeModel,
         FakeQuizService,
         Sessions,
-        module_row,
         seed,
     )
 
-    raw = json.loads(
-        (Path(__file__).parent / "fixtures" / "lesson_story_unit.json").read_text("utf-8")
-    )
     with scratch_database("story_signal") as url:
         create_tables(url, story_tables())
         database = url.rsplit("/", 1)[1]
 
         async def with_sessions(work):
-            engine = create_async_engine(url)
+            sessions = Sessions(url)
             try:
-                return await work(Sessions(engine))
+                return await work(sessions)
             finally:
-                await engine.dispose()
+                await sessions.engine.dispose()
 
-        seeded = asyncio.run(with_sessions(lambda sessions: seed(sessions, raw)))
+        async def module_row(sessions, seeded):
+            async with sessions.maker() as session:
+                return await find_module_story(session, seeded.module_id, "fr")
+
+        seeded = asyncio.run(with_sessions(lambda sessions: seed(sessions)))
         monkeypatch.setattr(settings, "database_url", url)
 
         real_all_tasks = asyncio.tasks.all_tasks
 
-        def chapters_first(loop=None):
+        def packs_first(loop=None):
             found = real_all_tasks(loop)
-            return sorted(found, key=lambda t: not t.get_name().startswith("story-chapter-"))
+            return sorted(found, key=lambda t: not t.get_name().startswith("story-pack-"))
 
         checked_out_at_dispose: list[int] = []
         real_dispose = AsyncEngine.dispose
@@ -475,18 +523,27 @@ def test_end_to_end_a_signalled_time_limit_closes_every_chapter_session(monkeypa
         def soft_timeout_sighandler(signum, frame):  # billiard's, in a prefork child
             raise SoftTimeLimitExceeded()
 
-        model = FakeClaude(raw, "en", delay=30.0)
+        model = FakeModel(delay=0.01)
+        slow_kinds = {"pack", "story"}
+        real_call = model.generate_structured_content
+
+        async def slow(system, user, content_type, max_retries=1):
+            if FakeModel.kind_of(user)[0] in slow_kinds:
+                model.delay = 30.0
+            return await real_call(system, user, content_type, max_retries)
+
+        model.generate_structured_content = slow  # type: ignore[method-assign]
         main_thread = threading.main_thread().ident
 
-        def signal_once_every_chapter_waits() -> None:
+        def signal_once_the_packs_wait() -> None:
             deadline = time.monotonic() + 20
-            while model.in_flight < len(LESSONS) and time.monotonic() < deadline:
+            while model.in_flight < 4 and time.monotonic() < deadline:
                 time.sleep(0.01)
             time.sleep(0.1)  # the loop is back in select()
             signal.pthread_kill(main_thread, signal.SIGALRM)
 
         previous = signal.signal(signal.SIGALRM, soft_timeout_sighandler)
-        sender = threading.Thread(target=signal_once_every_chapter_waits, daemon=True)
+        sender = threading.Thread(target=signal_once_the_packs_wait, daemon=True)
         try:
             with (
                 patch("app.ai.claude_service.ClaudeService", return_value=model),
@@ -494,28 +551,27 @@ def test_end_to_end_a_signalled_time_limit_closes_every_chapter_session(monkeypa
                 patch("app.ai.rag.retriever.SemanticRetriever"),
                 patch(
                     "app.domain.services.lesson_service.LessonGenerationService",
-                    return_value=FakeLessonService(raw),
+                    return_value=FakeLessonService(),
                 ),
                 patch(
                     "app.domain.services.quiz_service.QuizService",
-                    return_value=FakeQuizService(raw),
+                    return_value=FakeQuizService(),
                 ),
+                patch("app.infrastructure.storage.s3.S3StorageService", return_value=_NoFigures()),
                 patch("app.tasks.quality_assessment.assess_and_regenerate_unit_task"),
-                patch("asyncio.tasks.all_tasks", chapters_first),
+                patch("asyncio.tasks.all_tasks", packs_first),
                 patch.object(AsyncEngine, "dispose", dispose),
             ):
                 sender.start()
-                result = run_task(str(seeded.module_id), "en", dedup_key=None)
+                result = run_task(str(seeded.module_id), "fr", country="BF", dedup_key=None)
         finally:
             sender.join(timeout=30)
             signal.signal(signal.SIGALRM, previous)
 
         assert result["status"] == "failed" and result["error"] == "time_limit_exceeded"
-        assert sorted(model.cancelled) == LESSONS  # every chapter was waiting on the model
+        assert len({c for c in model.cancelled if c[0] == "pack"}) >= 4
         assert asyncio.run(with_sessions(lambda s: module_row(s, seeded))) is None
-        # Every chapter session was closed before the engine went away...
         assert checked_out_at_dispose == [0]
-        # ...so no connection outlives the task (no garbage collection needed).
         monitor = sync_engine(url)
         try:
             with monitor.connect() as conn:

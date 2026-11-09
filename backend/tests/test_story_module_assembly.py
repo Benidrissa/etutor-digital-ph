@@ -330,7 +330,8 @@ def test_the_fixture_module_validates_with_zero_errors_and_zero_warnings(fixture
     assert report.errors == [] and report.warnings == [], [w.model_dump() for w in report.warnings]
     direct = validate_story_course(StoryCourse.model_validate(json.loads(json.dumps(doc))))
     assert direct.ok and direct.warnings == []
-    assert report.checks.questions == len(doc["questions"]) == 3 * 5 - 2 + 4
+    # 3 + 3 + 3 course questions and 2 of the packs' own, then the rally's 3.
+    assert report.checks.questions == len(doc["questions"]) == 9 + 2 + 3
 
 
 @pytest.mark.parametrize("language", LANGUAGES)
@@ -344,7 +345,7 @@ def test_the_header_follows_the_contract(fixture, language):
     )
     assert doc["course"] == fixture["module"]["course_title"][language]
     assert doc["unit"] == f"Module 1 · {title[language]}"
-    assert doc["week"] == 1 and doc["title"] == title
+    assert doc["week"] == 1 and doc["title"] == title  # no episode title given
     assert doc["languages"] == {"target": language, "home": "fr" if language == "en" else "en"}
     assert doc["learner"] == {"first_name": "{child}"}
     assert doc["cast"] == doc_cast(fixture["bible"])
@@ -358,7 +359,9 @@ def test_the_header_follows_the_contract(fixture, language):
         "bible": StoryBible.of(fixture["bible"]).digest,
         "revision": doc["module_story"]["revision"],
     }
-    assert assembly.MODULE_ASSEMBLER_VERSION == 2
+    assert assembly.MODULE_ASSEMBLER_VERSION == 3
+    episode = {"en": "The basket of mysteries", "fr": "Le panier des mystères"}
+    assert assemble(fixture, language, episode_title=episode)["title"] == episode
     assert "sira_builder" not in doc
 
 
@@ -378,11 +381,10 @@ def test_one_chapter_per_lesson_then_the_rally_with_its_covers(fixture, language
             "completes_unit": True,
             "max_points": covers["max_points"],
         }
-        title = units[number]["title"]
-        assert chapter["title"] == {
-            "en": f"{number} · {title['en']}",
-            "fr": f"{number} · {title['fr']}",
-        }
+        # #2680: the plan's story title, no "1.2 · " prefix (the chapter list
+        # shows "Leçon 1.2" from covers.unit_number).
+        assert chapter["title"] == fixture["chapters"][language][number]["chapters"][0]["title"]
+        assert "·" not in chapter["title"]["en"]
     rally_chapter = doc["chapters"][3]
     assert rally_chapter["covers"] == {
         "module_unit_id": units["1.5"]["module_unit_id"],
@@ -417,7 +419,7 @@ def test_ids_are_unique_and_every_reference_resolves(fixture, language):
     check_ids_unique(doc)
     check_references_resolve(doc)
     ids = {q["id"] for q in doc["questions"]}
-    assert {"u1_1-q1", "u1_2-q4", "u1_3-x1", "u1_5-q1"} <= ids
+    assert {"u1_1-q1", "u1_2-q4", "u1_1-x1", "u1_5-q10"} <= ids
 
 
 @pytest.mark.parametrize("language", LANGUAGES)
@@ -433,7 +435,7 @@ def test_quiz_mcqs_stay_verbatim(fixture, language):
     doc = assemble(fixture, language)
     quiz = {q["id"]: q for q in fixture["quiz"][language]}
     derived = [q for q in doc["questions"] if "derived_from" in q]
-    assert len(derived) == 13
+    assert len(derived) == 12
     for question in derived:
         assert question["derived_from"]["quiz_unit"] == "1.5"
         mcq = quiz[question["derived_from"]["question_id"]]
@@ -486,15 +488,32 @@ def test_a_later_copy_is_dropped_unless_its_chapter_would_fall_below_the_floor(f
 
 
 @pytest.mark.parametrize("language", LANGUAGES)
-def test_the_rally_keeps_its_review_question(fixture, language):
-    """The rally asks q8 again on purpose: a review is never de-duplicated."""
-    doc = assemble(fixture, language)
-    q8 = [q["id"] for q in doc["questions"] if q.get("derived_from", {}).get("question_id") == "q8"]
-    assert sorted(q8) == ["u1_3-q8", "u1_5-q11"]
+def test_the_rally_keeps_a_review_question(fixture, language):
+    """A question the rally asks again on purpose is never de-duplicated."""
+    rally_doc = rally(fixture, language)
+    first = chapter_sources(fixture, language)[0].doc
+    review = copy.deepcopy(next(q for q in first["questions"] if q["id"] == "q1"))
+    review["id"] = "q13"
+    rally_doc["questions"].append(review)
+    rally_doc["misconceptions"] += [
+        m
+        for m in first["misconceptions"]
+        if m["id"] not in {x["id"] for x in rally_doc["misconceptions"]}
+    ]
+    steps = rally_doc["chapters"][0]["scenes"][0]["steps"]
+    ask = next(i for i, s in enumerate(steps) if s.get("type") == "ask")
+    steps.insert(ask + 2, {"type": "ask", "ref": "q13"})
+    steps.insert(ask + 3, {"type": "say", "who": "hero", "en": "Again!", "fr": "Encore !"})
+    doc = assemble_module_story(
+        module_ctx(fixture, language), chapter_sources(fixture, language), rally_doc
+    )
+    q1 = [q["id"] for q in doc["questions"] if q.get("derived_from", {}).get("question_id") == "q1"]
+    assert sorted(q1) == ["u1_1-q1", "u1_5-q13"]
 
 
 @pytest.mark.parametrize("language", LANGUAGES)
-def test_a_line_told_in_an_earlier_chapter_is_left_out(fixture, language):
+def test_a_line_told_in_an_earlier_chapter_is_kept_and_marked_retold(fixture, language):
+    """#2680: deleting it left gaps in the dialogue; it is kept, marked ``retold``."""
     sources = chapter_sources(fixture, language)
     first = next(s.doc for s in sources if s.unit.unit_number == "1.1")
     second = next(s.doc for s in sources if s.unit.unit_number == "1.2")
@@ -502,7 +521,17 @@ def test_a_line_told_in_an_earlier_chapter_is_left_out(fixture, language):
     second["chapters"][0]["scenes"][0]["steps"].insert(1, told)
     doc = assemble_module_story(module_ctx(fixture, language), sources, rally(fixture, language))
     lines = [s for s in chapter_steps(doc["chapters"][1]) if s["type"] in ("say", "narrate")]
-    assert told["en"] not in [s["en"] for s in lines]
+    kept = next(s for s in lines if s["en"] == told["en"])
+    assert kept["retold"] is True
+    report = validate_module_story(doc)
+    assert report.ok and "repeated_line" not in {w.code for w in report.warnings}
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+def test_a_refrain_is_never_marked_retold(fixture, language):
+    doc = assemble(fixture, language)
+    refrains = [s for s in all_steps(doc) if s.get("refrain")]
+    assert len(refrains) == 3 and not any(s.get("retold") for s in refrains)
     assert validate_module_story(doc).ok
 
 
@@ -695,11 +724,15 @@ def test_an_unusable_chapter_becomes_a_placeholder(fixture, spoil):
         0,
     )
     steps = chapter_steps(module["chapters"][1])
-    assert {s["frame"] for s in steps} == {"unavailable"}
-    assert steps[0]["en"] == "Lesson 1.2 is not in the story yet, {child}."
+    # #2680: one line in the story's voice; the player adds its open-the-lesson button.
+    assert [(s["type"], s["frame"]) for s in steps] == [("narrate", "unavailable")]
+    assert steps[0]["en"] == assembly.STILL_BEING_WRITTEN["en"]
+    assert steps[0]["fr"] == "Cette partie de l'aventure est encore en cours d'écriture."
     assert not [q for q in module["questions"] if q["id"].startswith("u1_2-")]
     report = validate_module_story(module)
-    assert report.ok and report.warnings == [], [e.model_dump() for e in report.errors]
+    assert report.ok, [e.model_dump() for e in report.errors]
+    # Chapter 1.2 holds the episode's one game: until it is ready, a warning.
+    assert {w.code for w in report.warnings} <= {"missing_minigame"}
 
 
 @pytest.mark.parametrize("spoil", SPOILERS[:2] + SPOILERS[4:], ids=lambda f: f.__name__.strip("_"))
@@ -724,11 +757,8 @@ def test_a_module_with_no_ready_lesson_is_never_publishable(fixture):
     assert [c["covers"]["status"] for c in doc["chapters"]] == ["unavailable"] * 3
     report = validate_module_story(doc)
     assert not report.ok
-    assert {e.code for e in report.errors} == {
-        "missing_objectives",
-        "missing_minigame",
-        "too_few_questions",
-    }
+    assert {e.code for e in report.errors} == {"missing_objectives", "too_few_questions"}
+    assert "missing_minigame" in {w.code for w in report.warnings}
     assert doc["checks"]["predicted_typical"]["points"] == 0
 
 

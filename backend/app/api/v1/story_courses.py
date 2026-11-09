@@ -908,3 +908,50 @@ async def publish_story_course(
         is_valid=record.is_valid,
         validation=report,
     )
+
+
+class BibleResetResponse(BaseModel):
+    """What an admin's reset of a course's story bible did."""
+
+    course_id: uuid.UUID
+    reset: bool
+    was: str | None = Field(None, description="The removed bible's marker (defaulted)")
+
+
+@router.post(
+    "/bibles/{course_id}/reset",
+    response_model=BibleResetResponse,
+    summary="Admins: remove a course's story bible of defaults so the next story makes a real one",
+    responses={409: {"description": "The course's bible is a real one (bible_not_defaulted)"}},
+)
+async def reset_story_bible(
+    course_id: uuid.UUID,
+    current_user: AuthenticatedUser = Depends(_ADMIN),
+    db=Depends(get_db_session),
+) -> BibleResetResponse:
+    """Remove a bible made of defaults (#2680) — never a real one.
+
+    A course whose bible answers were unusable twice keeps a bible of
+    defaults (generic cast and places). Once the cause is fixed, an admin
+    resets it here; the next module story of the course asks the model again
+    and its stories are told again (paid) with the new cast. A real bible is
+    refused: the course's art is keyed on it.
+    """
+    from app.domain.services.story_bible import reset_defaulted_bible
+
+    removed = await reset_defaulted_bible(db, course_id)
+    if removed is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": "bible_not_defaulted",
+                "message": "This course has no bible of defaults to reset.",
+            },
+        )
+    logger.info(
+        "Story bible of defaults reset",
+        course_id=str(course_id),
+        was=removed,
+        user_id=str(current_user.id),
+    )
+    return BibleResetResponse(course_id=course_id, reset=True, was=removed)
