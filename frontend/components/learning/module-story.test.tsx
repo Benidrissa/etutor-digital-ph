@@ -26,6 +26,7 @@ import {
   LEAVE_HINT_MS,
   ModuleStory,
   POLL_INTERVAL_MS,
+  POLL_MAX_CONSECUTIVE_ERRORS,
   POLL_TIMEOUT_MS,
 } from "./module-story";
 
@@ -321,6 +322,60 @@ describe("ModuleStory — being written", () => {
     await advance(10 * POLL_INTERVAL_MS);
     expect(apiFetchMock).toHaveBeenCalledTimes(polls);
     expect(screen.getByRole("button", { name: /Réessayer/ })).toBeInTheDocument();
+  });
+
+  it.each([
+    ["a dropped request", new TypeError("Failed to fetch")],
+    ["a 502 during a deploy", new ApiError("Bad gateway", 502)],
+    ["a 429", new ApiError("Too many requests", 429)],
+  ])("keeps polling through %s: the task is still writing", async (_label, error) => {
+    installFakeTimers();
+    loadMock
+      .mockResolvedValueOnce({ status: "generating", task_id: "task-1" })
+      .mockResolvedValueOnce(moduleStory());
+    apiFetchMock
+      .mockResolvedValueOnce({ status: "generating" })
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce({ status: "generating" })
+      .mockResolvedValueOnce({ status: "complete", content_id: "story-1" });
+    renderPanel();
+
+    await advance(0);
+    await advance(2 * POLL_INTERVAL_MS);
+    expect(apiFetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText(GENERATING)).toBeInTheDocument();
+
+    await advance(2 * POLL_INTERVAL_MS);
+    expect(apiFetchMock).toHaveBeenCalledTimes(4);
+    expect(screen.getByText(CH1_LINE)).toBeInTheDocument();
+  });
+
+  it("gives up after a run of failed polls, and on a refusal at once", async () => {
+    installFakeTimers();
+    loadMock.mockResolvedValue({ status: "generating", task_id: "task-1" });
+    apiFetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    renderPanel();
+
+    await advance(0);
+    await advance(POLL_MAX_CONSECUTIVE_ERRORS * POLL_INTERVAL_MS);
+    expect(apiFetchMock).toHaveBeenCalledTimes(POLL_MAX_CONSECUTIVE_ERRORS);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "L'histoire n'a pas pu être préparée. Réessaie : les chapitres déjà écrits sont conservés.",
+    );
+    await advance(10 * POLL_INTERVAL_MS);
+    expect(apiFetchMock).toHaveBeenCalledTimes(POLL_MAX_CONSECUTIVE_ERRORS);
+
+    // A 4xx is an answer, not a dropped request: no second try.
+    apiFetchMock.mockReset();
+    apiFetchMock.mockRejectedValue(new ApiError("Not found", 404));
+    fireEvent.click(screen.getByRole("button", { name: /Réessayer/ }));
+    await advance(0);
+    await advance(3 * POLL_INTERVAL_MS);
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByText("L'histoire de ce module n'est pas encore disponible."),
+    ).toBeInTheDocument();
   });
 
   it("treats a failed task as a failure the learner can retry", async () => {

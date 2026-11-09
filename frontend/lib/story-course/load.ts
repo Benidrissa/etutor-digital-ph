@@ -29,7 +29,7 @@ export function moduleStoryUnitKey(moduleId: string): string {
 }
 
 /** True when the request never reached the server (as opposed to a 4xx/5xx answer). */
-function isNetworkFailure(err: unknown): boolean {
+export function isNetworkFailure(err: unknown): boolean {
   if (err && typeof err === "object" && "status" in err) return false;
   if (err instanceof TypeError) return true;
   return (

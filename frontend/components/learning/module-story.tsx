@@ -27,7 +27,7 @@ import {
   isStoryUnavailableError,
   storyErrorCode,
 } from '@/lib/story-course/api';
-import { loadModuleStory } from '@/lib/story-course/load';
+import { isNetworkFailure, loadModuleStory } from '@/lib/story-course/load';
 import { firstNameOf, personalizeStory } from '@/lib/story-course/personalize';
 import {
   chapterKey,
@@ -51,6 +51,11 @@ import { ModuleStorySkeleton } from './module-story-skeleton';
 export const POLL_INTERVAL_MS = 5000;
 export const POLL_TIMEOUT_MS = 15 * 60 * 1000;
 export const LEAVE_HINT_MS = 30 * 1000;
+/**
+ * Status polls in a row that may fail on the way (the request dropped, a
+ * 429 or a 5xx) before the panel gives up: about 2 min of a lost link.
+ */
+export const POLL_MAX_CONSECUTIVE_ERRORS = 24;
 
 type PanelState =
   | { kind: 'loading' }
@@ -86,6 +91,12 @@ function sendsToUnit(covers: ChapterCovers | undefined): covers is ChapterCovers
 
 function isOnline(): boolean {
   return typeof navigator === 'undefined' || navigator.onLine !== false;
+}
+
+/** A status poll that failed on the way, not an answer about the task. */
+function isTransientPollError(err: unknown): boolean {
+  if (err instanceof ApiError) return err.status === 429 || err.status >= 500;
+  return isNetworkFailure(err);
 }
 
 function fromError(err: unknown): PanelState {
@@ -183,16 +194,31 @@ export function ModuleStory({ moduleId, language }: ModuleStoryProps) {
       settle({ kind: 'ready', story: data });
     }
 
-    function poll(taskId: string, startedAt: number) {
+    /** `errors`: transient status failures in a row, so far. */
+    function poll(taskId: string, startedAt: number, errors = 0) {
       pollTimer = setTimeout(async () => {
         if (cancelled) return;
         if (Date.now() - startedAt >= POLL_TIMEOUT_MS) {
           settle({ kind: 'failed', reason: 'timeout' });
           return;
         }
+        let status: ContentStatus;
         try {
-          const status = await apiFetch<ContentStatus>(`/api/v1/content/status/${taskId}`);
+          status = await apiFetch<ContentStatus>(`/api/v1/content/status/${taskId}`);
+        } catch (err) {
           if (cancelled) return;
+          // A dropped request or a 5xx (a flaky 2G link, a deploy) says
+          // nothing about the task, which keeps writing: ask again on the
+          // next tick, under the same 15 min cap.
+          if (isTransientPollError(err) && errors + 1 < POLL_MAX_CONSECUTIVE_ERRORS) {
+            poll(taskId, startedAt, errors + 1);
+          } else {
+            settle(fromError(err));
+          }
+          return;
+        }
+        if (cancelled) return;
+        try {
           if (status.status === 'complete') {
             // Re-read through the loader, so the finished story is also
             // stored for offline use.
