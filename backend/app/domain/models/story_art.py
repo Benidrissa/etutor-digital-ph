@@ -11,11 +11,14 @@ one row per ``(course_id, kind, key, pose)``.
 * ``kind="place"``: ``key`` is the place id; ``pose`` is ``backdrop``.
 
 ``look_digest`` is the digest of the look sentence the image was drawn from
-(:func:`app.domain.services.story_art_service.look_digest`): a changed look
-makes the row stale and it is drawn again. A row is ``ready`` (``image_data``
-holds a WebP; characters keep their alpha channel) or ``failed`` (``error``
-says why; retried only when the look changes, so a broken prompt never costs
-more than its two attempts).
+(:func:`app.domain.services.story_art_service.look_digest`) and
+``art_version`` the version of the prompts and post-processing: a look no
+story uses any more, or an older version, makes the row stale and it is drawn
+again. A row is ``ready`` (``image_data`` holds a WebP; characters keep their
+alpha channel) or ``failed`` (``error`` says why). A deterministic failure is
+final until the look changes, so a refused prompt never costs more than its
+two attempts; a transient one is tried again by later runs after a backoff
+(``failed_runs``, ``retry_after``), then given up.
 
 Every stored image gets a fresh ``id``: the data route serves it as immutable,
 so a redrawn image must never reuse the URL of the one it replaces.
@@ -90,6 +93,15 @@ class StoryArt(Base):
     model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: The art version (prompts and post-processing) it was drawn with; a row of
+    #: an older version is redrawn (``story_art_service.ART_VERSION``).
+    art_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    #: A ``failed`` row: how many runs in a row failed it for this look with a
+    #: transient error (outage, quota, timeout), and when a run may try it
+    #: again. ``retry_after`` is null for a final failure: a deterministic one
+    #: (a refused prompt, an unusable image), or a transient one given up.
+    failed_runs: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    retry_after: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), server_default=func.now(), nullable=False
     )

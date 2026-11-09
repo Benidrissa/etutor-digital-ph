@@ -8,14 +8,23 @@ images are ready.
 * :func:`collect_looks` reads the looks out of story documents: ``cast[].look``
   (keyed by cast id), each ``cast[].variants[].look`` of the hero (keyed
   ``hero:<variant id>``) and ``places[].look`` (keyed by place id).
-* :class:`StoryArtGenerator` draws what is missing or stale. A character's
-  ``idle`` pose comes first: full body, front view, on a transparent
-  background. ``talk``, ``happy`` and ``think`` are then **image edits** of the
-  idle image that change only the expression and the arms, so the face and the
-  outfit stay the same. A place gets one 1536x1024 backdrop with no people and
-  no text. Each image is tried at most twice, then stored as ``failed``.
-* :func:`build_art_map` is the ``art`` map the story routes attach to the
-  document they serve (the contract in #2672). It is never stored.
+  :func:`load_course_looks` gives each key one course-level look, from the
+  course's live stories: module stories (which carry the course bible) first,
+  then the others, newest first. A story whose look differs is served the
+  course's art; it never asks for its own.
+* :func:`plan_art` is what a run must draw, and :func:`build_art_map` the
+  ``art`` map the story routes attach to the document they serve (the
+  contract in #2672; never stored). Both judge every image by the same rule
+  (:func:`row_state`) against the same course-level looks, so a view starts a
+  run exactly when the run has something to draw.
+* :class:`StoryArtGenerator` draws it. A character's ``idle`` pose comes
+  first: full body, front view, on a transparent background. ``talk``,
+  ``happy`` and ``think`` are then **image edits** of the idle image that
+  change only the expression and the arms, so the face and the outfit stay
+  the same. A place gets one 1536x1024 backdrop with no people and no text.
+  Each image is tried at most twice per run (the SDK's own retries are off),
+  then stored as ``failed``: for good when the failure is deterministic, or
+  to be tried again by a later run after a backoff when it is transient.
 
 Every image call goes through :mod:`app.ai.providers.image_provider`, which
 records each attempt in ``ai_usage_events``.
@@ -31,9 +40,10 @@ import re
 import uuid
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
+import sqlalchemy as sa
 import structlog
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -56,8 +66,9 @@ logger = structlog.get_logger(__name__)
 #: Ledger feature for every image call of an art run (``ai_usage_events.feature``).
 FEATURE_STORY_ART = "story_art"
 
-#: Part of every look digest. Bump it to redraw every course's art (a prompt or
-#: post-processing change worth paying for); leave it alone otherwise.
+#: Stored on every row (``story_art.art_version``). Bump it to redraw every
+#: course's art (a prompt or post-processing change worth paying for): rows of
+#: an older version are stale, so the next view of each course starts a run.
 ART_VERSION = 1
 
 #: Cost guard: images one run may draw (about 26 for a usual course: two hero
@@ -66,8 +77,23 @@ ART_VERSION = 1
 MAX_IMAGES_PER_RUN = 40
 #: Image calls in flight at once.
 CONCURRENCY = 3
-#: Tries per image: the first and one retry.
+#: Tries per image and run: the first and one retry. The SDK's own retries are
+#: turned off (``max_retries=0``), so this is the real bound on paid calls.
 ATTEMPTS_PER_IMAGE = 2
+#: SDK retries for story-art calls: none (see ATTEMPTS_PER_IMAGE).
+SDK_MAX_RETRIES = 0
+#: A 1024x1536 edit with ``input_fidelity="high"`` is the slowest image call:
+#: it gets more than the client's 120 s rather than an SDK re-send.
+EDIT_TIMEOUT_S = 210.0
+#: Wait before the second attempt after a 429 (not billed): the server's
+#: ``retry-after`` when it sends one, else the default, never more than the cap.
+RATE_LIMIT_WAIT_S = 20.0
+RATE_LIMIT_WAIT_CAP_S = 60.0
+#: A transient failure (outage, auth, quota, rate limit, timeout, 5xx) is not
+#: final: later runs try the image again after these waits, one per failed
+#: run, and give up after the last (the failure is then final, like a
+#: deterministic one, until the look changes).
+TRANSIENT_RETRY_BACKOFF = (timedelta(hours=1), timedelta(hours=6), timedelta(hours=24))
 
 #: A look longer than this is cut: it is one sentence by contract.
 MAX_LOOK_CHARS = 600
@@ -139,8 +165,8 @@ def normalise_look(look: str) -> str:
 
 
 def look_digest(look: str) -> str:
-    """sha256 of the art version and the normalised look."""
-    canonical = json.dumps([ART_VERSION, normalise_look(look)], ensure_ascii=False)
+    """sha256 of the normalised look (the art version is a column of its own)."""
+    canonical = json.dumps([normalise_look(look)], ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
@@ -200,21 +226,57 @@ def collect_looks(documents: Iterable[Any]) -> list[ArtItem]:
     return sorted(items, key=lambda item: item.kind != KIND_CHARACTER)
 
 
-async def load_course_looks(session: AsyncSession, course_id: uuid.UUID) -> list[ArtItem]:
-    """The looks of every story of the course, the newest story first.
+#: ``(kind, key)`` -> ``{look digest: look}``: the looks that count as current.
+AcceptedLooks = Mapping[tuple[str, str], Mapping[str, str]]
 
-    Reads only each document's ``cast`` and ``places``, not the whole document.
-    Archived stories are left out.
+
+@dataclass
+class CourseLooks:
+    """The course-level look of each key: the one look its art must match.
+
+    ``items`` is what a run draws; ``accepted`` maps each ``(kind, key)`` to
+    ``{digest: look}`` of that look, the form :func:`row_state` judges with.
     """
+
+    items: list[ArtItem] = field(default_factory=list)
+    accepted: dict[tuple[str, str], dict[str, str]] = field(default_factory=dict)
+
+
+def collect_course_looks(documents: Iterable[Any]) -> CourseLooks:
+    """:class:`CourseLooks` of ``documents``, given in authority order (first wins)."""
+    items = collect_looks(documents)
+    return CourseLooks(
+        items=items,
+        accepted={(item.kind, item.key): {item.digest: item.look} for item in items},
+    )
+
+
+async def load_course_looks(session: AsyncSession, course_id: uuid.UUID) -> CourseLooks:
+    """The course-level looks, from every live story of the course.
+
+    Authority order: generated module stories first (they carry the course
+    bible, #2674), then every other story (lesson chapters, hand-authored
+    weeks), each newest first. So a key's look follows the bible as soon as
+    one module story carries a new one, and a chapter or an authored week
+    that disagrees never makes the art flip; it only supplies keys the module
+    stories lack. Reads only each document's ``cast`` and ``places``, not the
+    whole document. Archived stories are left out.
+    """
+    is_module_story = sa.and_(
+        StoryCourseRecord.module_id.is_not(None), StoryCourseRecord.module_unit_id.is_(None)
+    )
     result = await session.execute(
         select(StoryCourseRecord.content["cast"], StoryCourseRecord.content["places"])
         .where(
             StoryCourseRecord.course_id == course_id,
             StoryCourseRecord.status != "archived",
         )
-        .order_by(StoryCourseRecord.updated_at.desc())
+        .order_by(
+            sa.case((is_module_story, 0), else_=1),
+            StoryCourseRecord.updated_at.desc(),
+        )
     )
-    return collect_looks({"cast": cast, "places": places} for cast, places in result.all())
+    return collect_course_looks({"cast": cast, "places": places} for cast, places in result.all())
 
 
 async def load_art_rows(session: AsyncSession, course_id: uuid.UUID) -> list[StoryArt]:
@@ -236,50 +298,95 @@ def empty_art(status: ArtStatus = "none") -> dict[str, Any]:
 
 @dataclass
 class ArtMap:
-    """The ``art`` map of one document, and whether a run should be started."""
+    """The ``art`` map of one document, and how much of it a run still has to draw."""
 
     art: dict[str, Any]
-    #: Images the document needs that are neither ready nor failed for its look.
+    #: Images the document shows that a run would (re)draw now.
     outstanding: int = 0
 
 
-def _covers(row: Any, item: ArtItem, document_updated_at: datetime | None) -> bool:
-    """Whether ``row`` is the art for ``item`` as this document describes it.
+RowState = Literal["ready", "failed", "outstanding"]
 
-    Its digest matches; or it was drawn after this document was last written,
-    from a newer story's look (stories share the course's cast; the newest
-    one's look wins, and an older document must not ask for it again).
+
+def row_state(row: Any, accepted: Mapping[str, str], *, now: datetime) -> RowState:
+    """How one stored image stands against the looks that count as current.
+
+    ``outstanding`` (a run draws it): no row, a look no live story uses any
+    more, an older :data:`ART_VERSION`, or a transient failure whose wait is
+    over. ``failed``: a final failure, or a transient one still waiting.
     """
-    if row.look_digest == item.digest:
-        return True
-    updated = getattr(row, "updated_at", None)
-    return bool(document_updated_at and updated and updated >= document_updated_at)
+    if row is None or row.look_digest not in accepted or row.art_version != ART_VERSION:
+        return "outstanding"
+    if row.status == STATUS_READY:
+        return "ready"
+    if row.retry_after is not None and row.retry_after <= now:
+        return "outstanding"
+    return "failed"
+
+
+def _accepted_for(item: ArtItem, accepted: AcceptedLooks | None) -> Mapping[str, str]:
+    """The current looks of ``item``'s key; its own look when the course has none."""
+    return (accepted or {}).get((item.kind, item.key)) or {item.digest: item.look}
+
+
+def item_states(
+    item: ArtItem,
+    by_item: Mapping[tuple[str, str, str], Any],
+    accepted: Mapping[str, str],
+    *,
+    now: datetime,
+) -> dict[str, RowState]:
+    """:func:`row_state` of each of ``item``'s images.
+
+    A character's poses are edits of its idle, so while the idle is not ready
+    they share its state: redrawn with it, or failed with it.
+    """
+    states = {
+        pose: row_state(by_item.get((item.kind, item.key, pose)), accepted, now=now)
+        for pose in item.poses
+    }
+    if item.kind == KIND_CHARACTER and states[POSE_IDLE] != "ready":
+        for pose in CHARACTER_POSES[1:]:
+            states[pose] = states[POSE_IDLE]
+    return states
+
+
+def _by_item(rows: Iterable[Any]) -> dict[tuple[str, str, str], Any]:
+    return {(row.kind, row.key, row.pose): row for row in rows}
 
 
 def build_art_map(
     items: Iterable[ArtItem],
     rows: Iterable[Any],
     *,
-    document_updated_at: datetime | None = None,
+    accepted: AcceptedLooks | None = None,
+    now: datetime | None = None,
 ) -> ArtMap:
     """The contract's ``art`` map for a document whose looks are ``items``.
+
+    Each image is judged by :func:`row_state` against ``accepted``, the
+    course's current looks (:attr:`CourseLooks.accepted`), as :func:`plan_art`
+    judges it; a key the course does not know is judged against the
+    document's own look.
 
     ``status`` is ``none`` when the document has no looks, ``ready`` when every
     image is ready, ``pending`` when none is ready yet and some are still to be
     drawn, and ``partial`` otherwise: some are ready, and the rest are still to
     be drawn or failed. The player draws a placeholder for anything missing.
     """
-    by_item = {(row.kind, row.key, row.pose): row for row in rows}
+    now = now or datetime.now(UTC)
+    by_item = _by_item(rows)
     characters: dict[str, dict[str, str]] = {}
     places: dict[str, str] = {}
     ready = failed = outstanding = 0
     for item in items:
-        for pose in item.poses:
-            row = by_item.get((item.kind, item.key, pose))
-            if row is None or not _covers(row, item, document_updated_at):
+        states = item_states(item, by_item, _accepted_for(item, accepted), now=now)
+        for pose, state in states.items():
+            if state == "outstanding":
                 outstanding += 1
-            elif row.status == STATUS_READY:
+            elif state == "ready":
                 ready += 1
+                row = by_item[(item.kind, item.key, pose)]
                 if item.kind == KIND_CHARACTER:
                     characters.setdefault(item.key, {})[pose] = art_url(row.id)
                 else:
@@ -477,9 +584,7 @@ class ArtJob:
 
     @property
     def cost(self) -> int:
-        """Images this job draws (the edits of a character with no idle draw nothing)."""
-        if self.item.kind == KIND_CHARACTER and POSE_IDLE not in self.poses:
-            return len(self.poses) if self.idle_row_id is not None else 0
+        """Images this job draws."""
         return len(self.poses)
 
 
@@ -487,42 +592,38 @@ def plan_art(
     items: Iterable[ArtItem],
     rows: Iterable[Any],
     *,
+    accepted: AcceptedLooks | None = None,
     retry_failed: bool = False,
+    now: datetime | None = None,
 ) -> list[ArtJob]:
-    """What a run must draw: every image missing, or stale for its current look.
+    """What a run must draw: every image :func:`row_state` calls ``outstanding``.
 
-    A ``ready`` row with the current digest is kept. A ``failed`` one is kept
-    too (it was tried twice already) unless ``retry_failed``. When a
+    ``items`` are the newest looks (what is drawn), ``accepted`` the looks that
+    count as current (:class:`CourseLooks`). A ``failed`` image is drawn again
+    only when its wait is over, or when ``retry_failed`` (operators). When a
     character's idle is (re)drawn, its other poses are redrawn with it: they
-    are edits of the idle, and a new idle has a new face.
+    are edits of the idle, and a new idle has a new face. A pose missing beside
+    a kept idle is an edit of the stored idle, drawn as the look of that idle.
     """
-    by_item = {(row.kind, row.key, row.pose): row for row in rows}
+    now = now or datetime.now(UTC)
+    by_item = _by_item(rows)
     jobs: list[ArtJob] = []
     for item in items:
-
-        def needed(pose: str, item: ArtItem = item) -> bool:
-            row = by_item.get((item.kind, item.key, pose))
-            if row is None or row.look_digest != item.digest:
-                return True
-            return row.status != STATUS_READY and retry_failed
-
-        if item.kind != KIND_CHARACTER:
-            if needed(POSE_BACKDROP):
-                jobs.append(ArtJob(item=item, poses=(POSE_BACKDROP,)))
+        looks = _accepted_for(item, accepted)
+        states = item_states(item, by_item, looks, now=now)
+        needed = [
+            pose
+            for pose, state in states.items()
+            if state == "outstanding" or (state == "failed" and retry_failed)
+        ]
+        if not needed:
             continue
-        if needed(POSE_IDLE):
-            jobs.append(ArtJob(item=item, poses=CHARACTER_POSES))
+        if item.kind != KIND_CHARACTER or POSE_IDLE in needed:
+            jobs.append(ArtJob(item=item, poses=item.poses))
             continue
-        poses = tuple(pose for pose in CHARACTER_POSES[1:] if needed(pose))
-        if poses:
-            idle = by_item[(item.kind, item.key, POSE_IDLE)]
-            jobs.append(
-                ArtJob(
-                    item=item,
-                    poses=poses,
-                    idle_row_id=idle.id if idle.status == STATUS_READY else None,
-                )
-            )
+        idle = by_item[(item.kind, item.key, POSE_IDLE)]  # ready, or the idle were needed
+        drawn = ArtItem(item.kind, item.key, looks.get(idle.look_digest, item.look))
+        jobs.append(ArtJob(item=drawn, poses=tuple(needed), idle_row_id=idle.id))
     return jobs
 
 
@@ -542,6 +643,106 @@ def apply_cap(jobs: list[ArtJob], cap: int) -> tuple[list[ArtJob], list[ArtJob]]
         else:
             skipped.append(job)
     return kept, skipped
+
+
+# -- Failures ----------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Failure:
+    """How an image failed: the stored error, and whether a later run tries again."""
+
+    error: str
+    #: Runs in a row that failed it transiently (0 for a deterministic failure).
+    failed_runs: int = 0
+    #: When a later run may try again; None when the failure is final.
+    retry_after: datetime | None = None
+
+
+def failure_is_transient(exc: BaseException | None) -> bool:
+    """Whether a later run may succeed where this one failed.
+
+    Deterministic (final until the look changes): the image was unusable
+    (:class:`ArtProcessingError`), the model cannot do the call, or the request
+    was refused (400, including moderation; 422). Transient: an outage or the
+    account (authentication, permission, unknown model, rate limit or quota,
+    timeout, connection, 5xx). Anything else is treated as deterministic, so an
+    unknown error never keeps being paid for.
+    """
+    import httpx
+    import openai
+
+    from app.ai.providers.image_provider import ImageCapabilityError
+
+    if exc is None:
+        return False
+    if isinstance(
+        exc,
+        ArtProcessingError
+        | ImageCapabilityError
+        | openai.BadRequestError
+        | openai.UnprocessableEntityError,
+    ):
+        return False
+    if isinstance(
+        exc,
+        openai.AuthenticationError
+        | openai.PermissionDeniedError
+        | openai.NotFoundError
+        | openai.ConflictError
+        | openai.RateLimitError
+        | openai.InternalServerError
+        | openai.APIConnectionError,  # APITimeoutError included
+    ):
+        return True
+    if isinstance(exc, openai.APIStatusError):
+        return exc.status_code >= 500 or exc.status_code == 408
+    return isinstance(exc, TimeoutError | ConnectionError | httpx.TransportError)
+
+
+def classify_failure(
+    exc: BaseException | None, previous: Any, digest: str, *, now: datetime
+) -> Failure:
+    """The :class:`Failure` to store for an image that just failed every attempt.
+
+    A transient failure waits :data:`TRANSIENT_RETRY_BACKOFF` (one more step
+    per run that failed it in a row, for the same look) and is final once the
+    waits are used up.
+    """
+    error = _error_text(exc or ImageFailed())
+    if not failure_is_transient(exc):
+        return Failure(error=error)
+    runs = 1
+    if (
+        previous is not None
+        and previous.status == STATUS_FAILED
+        and previous.look_digest == digest
+        and previous.art_version == ART_VERSION
+        and previous.failed_runs
+    ):
+        runs = previous.failed_runs + 1
+    retry_after = (
+        now + TRANSIENT_RETRY_BACKOFF[runs - 1] if runs <= len(TRANSIENT_RETRY_BACKOFF) else None
+    )
+    return Failure(error=error, failed_runs=runs, retry_after=retry_after)
+
+
+def rate_limit_wait(exc: BaseException) -> float | None:
+    """Seconds to wait before retrying a 429 (``retry-after``), or None if not one."""
+    import openai
+
+    if not isinstance(exc, openai.RateLimitError):
+        return None
+    headers = getattr(getattr(exc, "response", None), "headers", None) or {}
+    wait = RATE_LIMIT_WAIT_S
+    try:
+        if headers.get("retry-after-ms") is not None:
+            wait = float(headers["retry-after-ms"]) / 1000
+        elif headers.get("retry-after") is not None:
+            wait = float(headers["retry-after"])
+    except (TypeError, ValueError):
+        wait = RATE_LIMIT_WAIT_S
+    return max(0.0, min(wait, RATE_LIMIT_WAIT_CAP_S))
 
 
 # -- The run -----------------------------------------------------------------------
@@ -574,9 +775,10 @@ def _error_text(exc: BaseException) -> str:
 class StoryArtGenerator:
     """Draws a course's missing or stale story art (one run).
 
-    ``generate`` and ``edit`` default to the provider functions; tests pass
-    fakes. Every image is written in its own short transaction as soon as it
-    is ready, so a run cut short keeps what it drew.
+    ``generate``, ``edit`` and ``sleep`` default to the provider functions and
+    :func:`asyncio.sleep`; tests pass fakes. Every image is written in its own
+    short transaction as soon as it is ready, so a run cut short keeps what it
+    drew.
     """
 
     def __init__(
@@ -589,6 +791,7 @@ class StoryArtGenerator:
         retry_failed: bool = False,
         generate: Callable[..., Awaitable[tuple[bytes, str]]] | None = None,
         edit: Callable[..., Awaitable[tuple[bytes, str]]] | None = None,
+        sleep: Callable[[float], Awaitable[Any]] | None = None,
     ) -> None:
         from app.ai.providers.image_provider import edit_image, generate_image
 
@@ -599,13 +802,17 @@ class StoryArtGenerator:
         self._retry_failed = retry_failed
         self._generate = generate or generate_image
         self._edit = edit or edit_image
+        self._sleep = sleep or asyncio.sleep
         self._semaphore: asyncio.Semaphore | None = None
+        #: The rows as the run found them, for the transient-failure count.
+        self._previous: dict[tuple[str, str, str], Any] = {}
 
     async def run(self, course_id: uuid.UUID) -> dict[str, Any]:
         async with self._session_factory() as session:
-            items = await load_course_looks(session, course_id)
+            looks = await load_course_looks(session, course_id)
             rows = await load_art_rows(session, course_id)
-        jobs = plan_art(items, rows, retry_failed=self._retry_failed)
+        self._previous = _by_item(rows)
+        jobs = plan_art(looks.items, rows, accepted=looks.accepted, retry_failed=self._retry_failed)
         kept, skipped = apply_cap(jobs, self._max_images)
         report = RunReport(skipped=[job.item.key for job in skipped])
         if skipped:
@@ -619,7 +826,7 @@ class StoryArtGenerator:
         logger.info(
             "story_art.run_started",
             course_id=str(course_id),
-            items=len(items),
+            items=len(looks.items),
             jobs=len(kept),
             images=planned,
             model=self._model,
@@ -649,15 +856,19 @@ class StoryArtGenerator:
                 item,
                 POSE_BACKDROP,
                 lambda: self._generate(
-                    place_prompt(item.look), model=self._model, size=BACKDROP_SIZE
+                    place_prompt(item.look),
+                    model=self._model,
+                    size=BACKDROP_SIZE,
+                    max_retries=SDK_MAX_RETRIES,
                 ),
                 process_backdrop,
                 report,
             )
             return
 
+        idle_failure: Failure | None = None
         if POSE_IDLE in job.poses:
-            raw_idle = await self._draw(
+            raw_idle, idle_failure = await self._draw(
                 course_id,
                 item,
                 POSE_IDLE,
@@ -666,6 +877,7 @@ class StoryArtGenerator:
                     model=self._model,
                     size=CHARACTER_SIZE,
                     background="transparent",
+                    max_retries=SDK_MAX_RETRIES,
                 ),
                 process_character,
                 report,
@@ -677,10 +889,20 @@ class StoryArtGenerator:
         poses = [pose for pose in job.poses if pose != POSE_IDLE]
         if reference is None:
             # No idle to edit from: the poses cannot share its face, so they are
-            # not drawn at all (nothing is paid) and stay failed until the look
-            # changes or a run is asked to retry failures.
+            # not drawn at all (nothing is paid). They fail as the idle did, so
+            # they come back with it when its failure is transient.
+            failure = idle_failure or Failure(error="idle pose unavailable")
             for pose in poses:
-                await self._store_failed(course_id, item, pose, "idle pose unavailable")
+                await self._store_failed(
+                    course_id,
+                    item,
+                    pose,
+                    Failure(
+                        error="idle pose unavailable",
+                        failed_runs=failure.failed_runs,
+                        retry_after=failure.retry_after,
+                    ),
+                )
                 report.failed += 1
             return
 
@@ -696,6 +918,8 @@ class StoryArtGenerator:
                         model=self._model,
                         size=CHARACTER_SIZE,
                         background="transparent",
+                        max_retries=SDK_MAX_RETRIES,
+                        timeout=EDIT_TIMEOUT_S,
                     ),
                     process_character,
                     report,
@@ -712,8 +936,14 @@ class StoryArtGenerator:
         call: Callable[[], Awaitable[tuple[bytes, str]]],
         process: Callable[[bytes], tuple[bytes, int, int]],
         report: RunReport,
-    ) -> bytes | None:
-        """Draw, post-process and store one image; its raw bytes, or None if it failed."""
+    ) -> tuple[bytes | None, Failure | None]:
+        """Draw, post-process and store one image.
+
+        Returns ``(raw bytes, None)``, or ``(None, failure)`` when every
+        attempt failed. A rate-limited (429, not billed) first attempt waits
+        for the server's ``retry-after`` before the second, outside the
+        semaphore.
+        """
         assert self._semaphore is not None
         last: BaseException | None = None
         for attempt in range(1, ATTEMPTS_PER_IMAGE + 1):
@@ -731,6 +961,9 @@ class StoryArtGenerator:
                     attempt=attempt,
                     error=_error_text(exc),
                 )
+                wait = rate_limit_wait(exc)
+                if wait and attempt < ATTEMPTS_PER_IMAGE:
+                    await self._sleep(wait)
                 continue
             await self._store(
                 course_id,
@@ -743,10 +976,16 @@ class StoryArtGenerator:
                 model=model,
             )
             report.ready += 1
-            return raw
-        await self._store_failed(course_id, item, pose, _error_text(last or ImageFailed()))
+            return raw, None
+        failure = classify_failure(
+            last,
+            self._previous.get((item.kind, item.key, pose)),
+            item.digest,
+            now=datetime.now(UTC),
+        )
+        await self._store_failed(course_id, item, pose, failure)
         report.failed += 1
-        return None
+        return None, failure
 
     async def _stored_idle(self, idle_row_id: uuid.UUID | None) -> bytes | None:
         if idle_row_id is None:
@@ -764,9 +1003,17 @@ class StoryArtGenerator:
             return None
 
     async def _store_failed(
-        self, course_id: uuid.UUID, item: ArtItem, pose: str, error: str
+        self, course_id: uuid.UUID, item: ArtItem, pose: str, failure: Failure
     ) -> None:
-        await self._store(course_id, item, pose, status=STATUS_FAILED, error=error)
+        await self._store(
+            course_id,
+            item,
+            pose,
+            status=STATUS_FAILED,
+            error=failure.error,
+            failed_runs=failure.failed_runs,
+            retry_after=failure.retry_after,
+        )
 
     async def _store(
         self,
@@ -780,6 +1027,8 @@ class StoryArtGenerator:
         height: int | None = None,
         model: str | None = None,
         error: str | None = None,
+        failed_runs: int = 0,
+        retry_after: datetime | None = None,
     ) -> None:
         """Replace the item's row with a new one (a new id, so a new immutable URL)."""
         try:
@@ -806,6 +1055,9 @@ class StoryArtGenerator:
                         model=model,
                         status=status,
                         error=error,
+                        art_version=ART_VERSION,
+                        failed_runs=failed_runs,
+                        retry_after=retry_after,
                     )
                 )
                 await session.commit()

@@ -26,12 +26,15 @@ from app.tasks.content_generation import (
 logger = structlog.get_logger(__name__)
 
 #: A run's worst case: about 26 images (at most MAX_IMAGES_PER_RUN, 40), three
-#: in flight at a time, each up to two attempts of up to 120 s (the image
-#: client's timeout); a character's poses wait for its idle. Usual runs take a
-#: few minutes. Every image is stored as soon as it is drawn, so a run cut
-#: short keeps its work and the next view starts a run for the rest.
-STORY_ART_SOFT_LIMIT = 1800
-STORY_ART_HARD_LIMIT = 1860
+#: in flight at a time, each at most two attempts with the SDK's own retries
+#: off: a generation times out at 120 s, a high-fidelity edit at 210 s, and a
+#: rate-limited first attempt waits up to 60 s before the second. A
+#: character's poses wait for its idle, so one character takes at most about
+#: 300 + 480 s. Usual runs take a few minutes. Every image is stored as soon as
+#: it is drawn, so a run cut short keeps its work and the next view starts a
+#: run for the rest.
+STORY_ART_SOFT_LIMIT = 2400
+STORY_ART_HARD_LIMIT = 2460
 
 #: The API's dedup key for a course's art run lives this long (claimed at
 #: dispatch, armed again when the task starts). It stays under the broker's
@@ -67,12 +70,17 @@ def generate_story_art(
     edits go to gpt-image-1 when that model cannot do them. Images already
     ready for their current look are skipped; a run draws at most
     ``MAX_IMAGES_PER_RUN`` images and logs what it skipped. A failed image is
-    retried once, then stored as ``failed`` and not tried again until its look
-    changes, unless ``retry_failed`` (for operators).
+    retried once, then stored as ``failed``: a deterministic failure is not
+    tried again until its look changes (unless ``retry_failed``, for
+    operators); a transient one (outage, quota, timeout) is tried again by a
+    later run after a backoff.
 
-    ``dedup_key`` is the API's Redis key for this course; it is released when
-    the task ends, however it ends. Never retried by Celery: a retry would pay
-    for the images again.
+    One run per course: the task holds the course's Redis key (``dedup_key``,
+    the API's key, or the same key for an operator's run) for its whole run,
+    and returns ``{"status": "skipped"}`` without drawing anything when
+    another task holds it. The key is released when the task ends, however it
+    ends. Without Redis the run goes ahead. Never retried by Celery: a retry
+    would pay for the images again.
     """
     import asyncio
 
@@ -102,8 +110,18 @@ def generate_story_art(
             await _await_other_tasks(20.0)
             await engine.dispose()
 
+    key = dedup_key or story_art_dispatch_key(course_id)
     try:
-        _hold_story_dispatch(dedup_key, self.request.id, STORY_ART_DISPATCH_TTL_S)
+        if _hold_story_dispatch(key, self.request.id, STORY_ART_DISPATCH_TTL_S) == 0:
+            # The course's key names another task (this one waited in the queue
+            # past the key's TTL and a later view dispatched again, or the
+            # broker redelivered it): that run draws; two would pay twice.
+            logger.warning(
+                "Story art run skipped: another run holds the course",
+                course_id=course_id,
+                task_id=self.request.id,
+            )
+            return {"status": "skipped", "reason": "another_run_holds_course"}
         result = asyncio.run(_run())
         logger.info(
             "Story art generation completed",
@@ -128,4 +146,6 @@ def generate_story_art(
         )
         return {"status": "failed", "error": str(exc)}
     finally:
-        _release_story_dispatch(dedup_key, self.request.id)
+        # A compare-and-delete on this task's id: a key another task holds is
+        # left alone (the skipped case above included).
+        _release_story_dispatch(key, self.request.id)

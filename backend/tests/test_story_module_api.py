@@ -1478,7 +1478,15 @@ class TestOnARealDatabase:
         self._as("admin")
         resp = await client.get(url, params={"language": "en", "generate": "false"})
         assert resp.status_code == 200
-        assert resp.json() == stored.record.content
+        # Served as stored, plus the art map (#2675), which is never stored.
+        body = resp.json()
+        art = body.pop("art")
+        assert body == stored.record.content
+        assert "art" not in stored.record.content
+        assert set(art) == {"status", "characters", "places"}
+        # No looks yet ("none"), or looks whose art cannot be read here: this
+        # scratch database has no story_art table ("pending").
+        assert art["status"] in ("none", "pending")
         status_body = (await client.get(f"{url}/status", params={"language": "en"})).json()
         assert status_body == {
             "state": "ready",

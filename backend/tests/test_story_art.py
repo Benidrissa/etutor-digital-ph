@@ -18,6 +18,8 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
+import openai
 import pytest
 import sqlalchemy as sa
 from httpx import ASGITransport, AsyncClient
@@ -136,13 +138,20 @@ def decode(data: bytes) -> Image.Image:
     return image
 
 
+NOW = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)
+#: A story whose only look is the mentor's (MENTOR).
+MENTOR_ONLY = {"cast": [{"id": "mentor", "look": MENTOR.look}]}
+
+
 def row(
     item: ArtItem,
     pose: str,
     *,
     status: str = "ready",
     digest: str | None = None,
-    updated_at: datetime | None = None,
+    art_version: int | None = None,
+    failed_runs: int = 0,
+    retry_after: datetime | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         id=uuid.uuid4(),
@@ -151,12 +160,27 @@ def row(
         pose=pose,
         look_digest=digest if digest is not None else item.digest,
         status=status,
-        updated_at=updated_at,
+        art_version=svc.ART_VERSION if art_version is None else art_version,
+        failed_runs=failed_runs,
+        retry_after=retry_after,
     )
 
 
 def ready_rows(items: list[ArtItem]) -> list[SimpleNamespace]:
     return [row(item, pose) for item in items for pose in item.poses]
+
+
+def course_of(*documents: dict) -> svc.CourseLooks:
+    """The course looks of ``documents``, newest first."""
+    return svc.collect_course_looks(documents)
+
+
+def looks_of(items: list[ArtItem]) -> svc.CourseLooks:
+    """Course looks made of exactly ``items`` (one look per key)."""
+    return svc.CourseLooks(
+        items=list(items),
+        accepted={(item.kind, item.key): {item.digest: item.look} for item in items},
+    )
 
 
 # --------------------------------------------------------------------------
@@ -212,6 +236,19 @@ class TestCollectLooks:
         assert len(item.look) == svc.MAX_LOOK_CHARS
 
 
+class TestCourseLooks:
+    def test_each_key_has_one_course_look_the_first_document_wins(self):
+        first = {"cast": [{"id": "mentor", "look": "mentor B"}]}
+        looks = course_of(first, DOC)
+        drawn = {item.key: item.look for item in looks.items}
+        assert drawn["mentor"] == "mentor B"
+        mentor_b = ArtItem("character", "mentor", "mentor B")
+        assert looks.accepted[("character", "mentor")] == {mentor_b.digest: "mentor B"}
+        assert looks.accepted[("place", "market")] == {MARKET.digest: MARKET.look}
+        # Keys only the later document has still come from it.
+        assert {"hero:girl", "margo", "school"} <= set(drawn)
+
+
 class TestLookDigest:
     def test_same_look_same_digest_whitespace_aside(self):
         assert look_digest("a  teacher\n") == look_digest("a teacher")
@@ -219,10 +256,10 @@ class TestLookDigest:
     def test_a_changed_look_changes_the_digest(self):
         assert look_digest("a teacher") != look_digest("a tall teacher")
 
-    def test_the_art_version_is_part_of_it(self):
+    def test_the_art_version_is_not_part_of_it(self):
         before = look_digest("a teacher")
         with patch.object(svc, "ART_VERSION", svc.ART_VERSION + 1):
-            assert look_digest("a teacher") != before
+            assert look_digest("a teacher") == before
 
 
 class TestLoadCourseLooks:
@@ -236,16 +273,21 @@ class TestLoadCourseLooks:
                 older = (DOC["cast"], DOC["places"])
                 return SimpleNamespace(all=lambda: [newer, older])
 
-        items = await svc.load_course_looks(Session(), COURSE_ID)
+        looks = await svc.load_course_looks(Session(), COURSE_ID)
         sql = str(captured[0].compile(dialect=sa.dialects.postgresql.dialect()))
         # Only the two sub-objects are selected, never the whole document.
         assert sql.startswith("SELECT story_courses.content[") and ", story_courses.content[" in sql
         assert "story_courses.content," not in sql and "story_courses.id" not in sql
-        assert "ORDER BY story_courses.updated_at DESC" in sql
+        # Module stories (the course bible) first, then the rest; newest first.
+        order = sql.split("ORDER BY", 1)[1]
+        assert order.index("CASE WHEN") < order.index("story_courses.updated_at DESC")
+        assert "story_courses.module_id IS NOT NULL" in order
+        assert "story_courses.module_unit_id IS NULL" in order
         assert "story_courses.status !=" in sql
         assert "story_courses.course_id =" in sql
-        assert {item.key: item.look for item in items}["mentor"] == "newer"
-        assert len(items) == len(ALL_ITEMS)
+        assert {item.key: item.look for item in looks.items}["mentor"] == "newer"
+        assert len(looks.items) == len(ALL_ITEMS)
+        assert len(looks.accepted[("character", "mentor")]) == 1
 
 
 # --------------------------------------------------------------------------
@@ -287,14 +329,153 @@ class TestPlan:
         rows = [row(MARKET, "backdrop", status="failed", digest="old")]
         assert plan_art([MARKET], rows) == [ArtJob(MARKET, ("backdrop",))]
 
-    def test_poses_without_a_ready_idle_cost_nothing(self):
-        rows = [row(GIRL, "idle", status="failed")]
-        (job,) = plan_art([GIRL], rows)
-        assert job.poses == CHARACTER_POSES[1:] and job.idle_row_id is None and job.cost == 0
+    def test_a_failed_idle_keeps_its_poses_failed_and_draws_nothing(self):
+        assert plan_art([GIRL], [row(GIRL, "idle", status="failed")]) == []
 
     def test_a_failed_idle_is_retried_with_its_poses_on_request(self):
         rows = [row(GIRL, pose, status="failed") for pose in CHARACTER_POSES]
         assert plan_art([GIRL], rows, retry_failed=True) == [ArtJob(GIRL, CHARACTER_POSES)]
+
+    def test_an_older_art_version_is_redrawn(self):
+        old = [row(MARKET, "backdrop", art_version=svc.ART_VERSION - 1)]
+        assert plan_art([MARKET], old) == [ArtJob(MARKET, ("backdrop",))]
+        # Bumping the version makes every current row stale, with no story written.
+        current = ready_rows(ALL_ITEMS)
+        with patch.object(svc, "ART_VERSION", svc.ART_VERSION + 1):
+            assert len(plan_art(ALL_ITEMS, current)) == len(ALL_ITEMS)
+            assert build_art_map(ALL_ITEMS, current).outstanding == 4 * 4 + 2
+
+    def test_art_of_the_course_look_is_kept_whatever_the_other_stories_say(self):
+        # The bible (first) says mentor look; a later authored week says mentor B.
+        authored = {"cast": [{"id": "mentor", "look": "mentor B"}]}
+        looks = course_of(MENTOR_ONLY, authored)
+        assert plan_art(looks.items, ready_rows([MENTOR]), accepted=looks.accepted) == []
+
+    def test_art_of_a_look_that_is_no_longer_the_courses_is_redrawn(self):
+        looks = course_of({"cast": [{"id": "mentor", "look": "mentor B"}]}, MENTOR_ONLY)
+        (job,) = plan_art(looks.items, ready_rows([MENTOR]), accepted=looks.accepted)
+        assert job.item.look == "mentor B" and job.poses == CHARACTER_POSES
+
+    def test_a_pose_missing_beside_the_kept_idle_is_edited_as_the_course_look(self):
+        looks = course_of(MENTOR_ONLY)
+        idle = row(MENTOR, "idle")
+        (job,) = plan_art(looks.items, [idle], accepted=looks.accepted)
+        assert job.item == MENTOR and job.idle_row_id == idle.id
+        assert job.poses == CHARACTER_POSES[1:]
+
+
+class TestTransientFailures:
+    def _row(self, retry_after: datetime | None, runs: int = 1) -> SimpleNamespace:
+        return row(MARKET, "backdrop", status="failed", failed_runs=runs, retry_after=retry_after)
+
+    def test_a_waiting_failure_is_neither_drawn_nor_outstanding(self):
+        rows = [self._row(NOW + timedelta(minutes=5))]
+        assert plan_art([MARKET], rows, now=NOW) == []
+        result = build_art_map([MARKET], rows, now=NOW)
+        assert result.outstanding == 0 and result.art["status"] == "partial"
+
+    def test_after_its_wait_it_is_drawn_and_outstanding_again(self):
+        rows = [self._row(NOW - timedelta(seconds=1))]
+        assert plan_art([MARKET], rows, now=NOW) == [ArtJob(MARKET, ("backdrop",))]
+        assert build_art_map([MARKET], rows, now=NOW).outstanding == 1
+
+    def test_a_given_up_failure_is_final(self):
+        rows = [self._row(None, runs=4)]
+        assert plan_art([MARKET], rows, now=NOW) == []
+
+    def test_a_waiting_idle_holds_back_its_poses_too(self):
+        rows = [
+            row(GIRL, pose, status="failed", failed_runs=1, retry_after=NOW + timedelta(hours=1))
+            for pose in CHARACTER_POSES
+        ]
+        assert plan_art([GIRL], rows, now=NOW) == []
+        assert build_art_map([GIRL], rows, now=NOW).outstanding == 0
+        later = NOW + timedelta(hours=2)
+        assert plan_art([GIRL], rows, now=later) == [ArtJob(GIRL, CHARACTER_POSES)]
+        assert build_art_map([GIRL], rows, now=later).outstanding == 4
+
+
+class TestClassifyFailure:
+    def _http(self, status: int, headers: dict | None = None) -> httpx.Response:
+        return httpx.Response(
+            status, request=httpx.Request("POST", "https://api.test/images"), headers=headers
+        )
+
+    def _status_error(self, cls, status: int, headers: dict | None = None):
+        return cls("boom", response=self._http(status, headers), body=None)
+
+    @pytest.mark.parametrize(
+        ("cls", "status"),
+        [
+            (openai.AuthenticationError, 401),
+            (openai.PermissionDeniedError, 403),
+            (openai.RateLimitError, 429),
+            (openai.InternalServerError, 500),
+            (openai.NotFoundError, 404),
+        ],
+    )
+    def test_outages_and_account_errors_are_transient(self, cls, status):
+        assert svc.failure_is_transient(self._status_error(cls, status))
+
+    def test_timeouts_and_connections_are_transient(self):
+        request = httpx.Request("POST", "https://api.test/images")
+        assert svc.failure_is_transient(openai.APITimeoutError(request=request))
+        assert svc.failure_is_transient(openai.APIConnectionError(request=request))
+        assert svc.failure_is_transient(TimeoutError())
+
+    def test_refusals_and_unusable_images_are_deterministic(self):
+        from app.ai.providers.image_provider import ImageCapabilityError
+
+        assert not svc.failure_is_transient(self._status_error(openai.BadRequestError, 400))
+        assert not svc.failure_is_transient(ArtProcessingError("empty"))
+        assert not svc.failure_is_transient(ImageCapabilityError("no edit"))
+        assert not svc.failure_is_transient(RuntimeError("unknown"))
+
+    def test_a_first_transient_failure_waits_an_hour(self):
+        exc = self._status_error(openai.RateLimitError, 429)
+        failure = svc.classify_failure(exc, None, MARKET.digest, now=NOW)
+        assert failure.failed_runs == 1 and failure.retry_after == NOW + timedelta(hours=1)
+        assert failure.error.startswith("RateLimitError")
+
+    def test_each_run_in_a_row_waits_longer_then_gives_up(self):
+        exc = self._status_error(openai.InternalServerError, 503)
+        waits = []
+        previous = None
+        for _ in range(4):
+            failure = svc.classify_failure(exc, previous, MARKET.digest, now=NOW)
+            waits.append(failure.retry_after)
+            previous = row(
+                MARKET,
+                "backdrop",
+                status="failed",
+                failed_runs=failure.failed_runs,
+                retry_after=failure.retry_after,
+            )
+        assert waits == [
+            NOW + timedelta(hours=1),
+            NOW + timedelta(hours=6),
+            NOW + timedelta(hours=24),
+            None,  # given up: final
+        ]
+
+    def test_a_new_look_starts_the_count_again(self):
+        exc = self._status_error(openai.InternalServerError, 503)
+        previous = row(MARKET, "backdrop", status="failed", failed_runs=3, digest="old look")
+        assert svc.classify_failure(exc, previous, MARKET.digest, now=NOW).failed_runs == 1
+
+    def test_a_deterministic_failure_is_final(self):
+        failure = svc.classify_failure(RuntimeError("refused"), None, MARKET.digest, now=NOW)
+        assert failure.retry_after is None and failure.failed_runs == 0
+
+    def test_the_rate_limit_wait_follows_retry_after_within_the_cap(self):
+        def wait(headers):
+            return svc.rate_limit_wait(self._status_error(openai.RateLimitError, 429, headers))
+
+        assert wait({"retry-after": "7"}) == 7.0
+        assert wait({"retry-after-ms": "1500"}) == 1.5
+        assert wait({"retry-after": "600"}) == svc.RATE_LIMIT_WAIT_CAP_S
+        assert wait({}) == svc.RATE_LIMIT_WAIT_S
+        assert svc.rate_limit_wait(RuntimeError("x")) is None
 
 
 class TestCap:
@@ -364,17 +545,75 @@ class TestArtMap:
         result = build_art_map([MARKET], [row(MARKET, "backdrop", status="failed")])
         assert result.art["status"] == "partial" and result.outstanding == 0
 
+    def test_a_failed_idle_hides_poses_drawn_before_it(self):
+        rows = [row(GIRL, "idle", status="failed")] + [row(GIRL, p) for p in CHARACTER_POSES[1:]]
+        result = build_art_map([GIRL], rows)
+        assert result.art["characters"] == {} and result.outstanding == 0
+
     def test_stale_art_is_not_served_and_is_outstanding(self):
         rows = [row(MARKET, "backdrop", digest="old")]
         result = build_art_map([MARKET], rows)
         assert result.art["status"] == "pending" and result.outstanding == 1
 
-    def test_art_drawn_after_the_document_from_a_newer_look_is_served(self):
-        written = datetime(2026, 11, 1, tzinfo=UTC)
-        newer = [row(MARKET, "backdrop", digest="newer", updated_at=written + timedelta(hours=1))]
-        older = [row(MARKET, "backdrop", digest="older", updated_at=written - timedelta(hours=1))]
-        assert build_art_map([MARKET], newer, document_updated_at=written).art["status"] == "ready"
-        assert build_art_map([MARKET], older, document_updated_at=written).outstanding == 1
+    def test_an_older_art_version_is_outstanding(self):
+        rows = [row(MARKET, "backdrop", art_version=svc.ART_VERSION - 1)]
+        assert build_art_map([MARKET], rows).outstanding == 1
+
+    def test_a_document_with_a_replaced_look_is_served_the_courses_art(self):
+        # Symptom 1 of the review: week1 says mentor A, the newest story says
+        # mentor B and the art was drawn from B. week1 is served B's art,
+        # nothing is outstanding, and the plan is empty: no dispatch storm.
+        week1 = {"cast": [{"id": "mentor", "look": "mentor A"}]}
+        week2 = {"cast": [{"id": "mentor", "look": "mentor B"}]}
+        mentor_b = ArtItem("character", "mentor", "mentor B")
+        looks = course_of(week2, week1)
+        rows = ready_rows([mentor_b])
+        served = build_art_map(collect_looks([week1]), rows, accepted=looks.accepted)
+        assert served.art["status"] == "ready" and served.outstanding == 0
+        assert plan_art(looks.items, rows, accepted=looks.accepted) == []
+
+    def test_outstanding_matches_what_the_course_plan_draws(self):
+        week1 = {"cast": [{"id": "mentor", "look": "mentor A"}]}
+        week2 = {"cast": [{"id": "mentor", "look": "mentor B"}]}
+        looks = course_of(week2, week1)
+        # Art of a look no live story uses: both say "draw it".
+        rows = ready_rows([ArtItem("character", "mentor", "mentor Z")])
+        served = build_art_map(collect_looks([week1]), rows, accepted=looks.accepted)
+        assert served.outstanding == 4
+        (job,) = plan_art(looks.items, rows, accepted=looks.accepted)
+        assert job.item.look == "mentor B"
+
+    def test_stories_that_disagree_never_make_the_art_flip(self):
+        # Symptom 2: a module story (the bible) says mentor A; an authored week
+        # and a lesson chapter say mentor B and are written again and again.
+        # The course look stays the bible's (module stories come first,
+        # whatever the write order), so no write and no view ever redraws it.
+        bible = {"cast": [{"id": "mentor", "look": "mentor A"}]}
+        week = {"cast": [{"id": "mentor", "look": "mentor B"}]}
+        chapter = {"cast": [{"id": "mentor", "look": "mentor C"}]}
+        rows = ready_rows([ArtItem("character", "mentor", "mentor A")])
+        for others_newest_first in ((week, chapter), (chapter, week), (week, chapter)):
+            looks = course_of(bible, *others_newest_first)
+            assert plan_art(looks.items, rows, accepted=looks.accepted) == []
+            for doc in (bible, *others_newest_first):
+                served = build_art_map(collect_looks([doc]), rows, accepted=looks.accepted)
+                assert served.art["status"] == "ready" and served.outstanding == 0
+
+    def test_a_new_bible_is_drawn_while_old_chapters_still_say_the_old_look(self):
+        new_bible = {"cast": [{"id": "mentor", "look": "mentor N"}]}
+        old_chapter = {"cast": [{"id": "mentor", "look": "mentor A"}]}
+        rows = ready_rows([ArtItem("character", "mentor", "mentor A")])
+        looks = course_of(new_bible, old_chapter)
+        (job,) = plan_art(looks.items, rows, accepted=looks.accepted)
+        assert job.item.look == "mentor N"
+        # Meanwhile the old chapter is not served the stale art.
+        served = build_art_map(collect_looks([old_chapter]), rows, accepted=looks.accepted)
+        assert served.outstanding == 4 and served.art["characters"] == {}
+
+    def test_a_key_the_course_lacks_is_judged_by_the_documents_own_look(self):
+        rows = ready_rows([MARKET])
+        result = build_art_map([MARKET], rows, accepted={})
+        assert result.art["status"] == "ready"
 
 
 # --------------------------------------------------------------------------
@@ -505,19 +744,37 @@ class TestStoredReference:
 # --------------------------------------------------------------------------
 
 
-class FakeImages:
-    """Records every image call; fails the prompts that contain a needle."""
+def _api_error(cls, status: int, headers: dict | None = None):
+    response = httpx.Response(
+        status, request=httpx.Request("POST", "https://api.test/images"), headers=headers
+    )
+    return cls("boom", response=response, body=None)
 
-    def __init__(self, failures: dict[str, int] | None = None, delay: float = 0.0) -> None:
+
+class FakeImages:
+    """Records every image call; fails the prompts that contain a needle.
+
+    ``failures`` maps a needle to how many calls fail (with ``RuntimeError``,
+    a deterministic failure); ``errors`` maps a needle to the exceptions the
+    next calls raise, in order.
+    """
+
+    def __init__(
+        self,
+        failures: dict[str, int] | None = None,
+        delay: float = 0.0,
+        errors: dict[str, list[BaseException]] | None = None,
+    ) -> None:
         self.calls: list[SimpleNamespace] = []
         self.failures = dict(failures or {})
+        self.errors = {needle: list(excs) for needle, excs in (errors or {}).items()}
         self.delay = delay
         self.in_flight = 0
         self.max_in_flight = 0
 
-    async def _call(self, kind: str, prompt: str, image: bytes | None, size: str, background):
+    async def _call(self, kind: str, prompt: str, image: bytes | None, size: str, **options):
         call = SimpleNamespace(
-            kind=kind, prompt=prompt, image=image, size=size, background=background, returned=None
+            kind=kind, prompt=prompt, image=image, size=size, returned=None, **options
         )
         self.calls.append(call)
         self.in_flight += 1
@@ -526,6 +783,9 @@ class FakeImages:
             await asyncio.sleep(self.delay)
         finally:
             self.in_flight -= 1
+        for needle, excs in self.errors.items():
+            if excs and needle in prompt:
+                raise excs.pop(0)
         for needle, left in self.failures.items():
             if left and needle in prompt:
                 self.failures[needle] = left - 1
@@ -536,11 +796,31 @@ class FakeImages:
             call.returned = figure_png(shade=len(self.calls))
         return call.returned, "gpt-image-1"
 
-    async def generate(self, prompt, *, model, size, background=None):
-        return await self._call("generate", prompt, None, size, background)
+    async def generate(
+        self, prompt, *, model, size, background=None, max_retries=None, timeout=None
+    ):
+        return await self._call(
+            "generate",
+            prompt,
+            None,
+            size,
+            background=background,
+            max_retries=max_retries,
+            timeout=timeout,
+        )
 
-    async def edit(self, prompt, image, *, model, size, background=None):
-        return await self._call("edit", prompt, image, size, background)
+    async def edit(
+        self, prompt, image, *, model, size, background=None, max_retries=None, timeout=None
+    ):
+        return await self._call(
+            "edit",
+            prompt,
+            image,
+            size,
+            background=background,
+            max_retries=max_retries,
+            timeout=timeout,
+        )
 
 
 class FakeSessions:
@@ -594,8 +874,9 @@ async def run_generator(
 ) -> tuple[dict, FakeImages, FakeSessions]:
     images = images or FakeImages()
     sessions = sessions or FakeSessions()
+    kwargs.setdefault("sleep", AsyncMock())
     with (
-        patch.object(svc, "load_course_looks", AsyncMock(return_value=list(items))),
+        patch.object(svc, "load_course_looks", AsyncMock(return_value=looks_of(items))),
         patch.object(svc, "load_art_rows", AsyncMock(return_value=list(rows or []))),
     ):
         generator = StoryArtGenerator(
@@ -716,14 +997,14 @@ class TestRun:
     async def test_garbage_from_the_model_counts_as_a_failed_attempt(self):
         calls = 0
 
-        async def generate(prompt, *, model, size, background=None):
+        async def generate(prompt, *, model, size, background=None, **_options):
             nonlocal calls
             calls += 1
             return (b"garbage" if calls == 1 else backdrop_png()), "gpt-image-1"
 
         sessions = FakeSessions()
         with (
-            patch.object(svc, "load_course_looks", AsyncMock(return_value=[MARKET])),
+            patch.object(svc, "load_course_looks", AsyncMock(return_value=looks_of([MARKET]))),
             patch.object(svc, "load_art_rows", AsyncMock(return_value=[])),
         ):
             await StoryArtGenerator(
@@ -753,6 +1034,76 @@ class TestRun:
         generator = StoryArtGenerator(FakeSessions(), model="gpt-image-1")
         assert generator._generate is image_provider.generate_image
         assert generator._edit is image_provider.edit_image
+        assert generator._sleep is asyncio.sleep
+
+    async def test_sdk_retries_are_off_and_edits_get_a_longer_timeout(self):
+        _, images, _ = await run_generator([GIRL, MARKET])
+        assert {call.max_retries for call in images.calls} == {svc.SDK_MAX_RETRIES} == {0}
+        for call in images.calls:
+            expected = svc.EDIT_TIMEOUT_S if call.kind == "edit" else None
+            assert call.timeout == expected, call.kind
+        assert 180 <= svc.EDIT_TIMEOUT_S <= 240
+
+    async def test_every_stored_row_carries_the_art_version(self):
+        _, _, sessions = await run_generator([GIRL, MARKET])
+        assert {art.art_version for art in sessions.written} == {svc.ART_VERSION}
+        assert {art.failed_runs for art in sessions.written} == {0}
+        assert {art.retry_after for art in sessions.written} == {None}
+
+    async def test_a_rate_limited_attempt_waits_for_retry_after_before_the_second(self):
+        limited = _api_error(openai.RateLimitError, 429, {"retry-after": "7"})
+        images = FakeImages(errors={"market look": [limited]})
+        sleep = AsyncMock()
+        report, images, _ = await run_generator([MARKET], images=images, sleep=sleep)
+        sleep.assert_awaited_once_with(7.0)
+        assert len(images.calls) == 2 and report["ready"] == 1
+
+    async def test_no_wait_after_the_last_attempt_or_for_other_errors(self):
+        limited = _api_error(openai.RateLimitError, 429, {"retry-after": "7"})
+        images = FakeImages(errors={"market look": [RuntimeError("x"), limited]})
+        sleep = AsyncMock()
+        await run_generator([MARKET], images=images, sleep=sleep)
+        sleep.assert_not_awaited()
+
+    async def test_a_transient_failure_is_stored_to_be_tried_again_later(self):
+        down = _api_error(openai.InternalServerError, 503)
+        images = FakeImages(errors={"market look": [down, down]})
+        before = datetime.now(UTC)
+        _, images, sessions = await run_generator([MARKET], images=images)
+        assert len(images.calls) == 2
+        art = sessions.by_item()[("market", "backdrop")]
+        assert art.status == "failed" and art.failed_runs == 1
+        assert art.retry_after - before >= timedelta(minutes=59)
+        assert art.retry_after - before <= timedelta(hours=1, minutes=1)
+
+    async def test_a_transient_failure_counts_the_runs_in_a_row(self):
+        down = _api_error(openai.AuthenticationError, 401)
+        previous = row(
+            MARKET, "backdrop", status="failed", failed_runs=1, retry_after=NOW - timedelta(1)
+        )
+        images = FakeImages(errors={"market look": [down, down]})
+        _, _, sessions = await run_generator([MARKET], [previous], images=images)
+        art = sessions.by_item()[("market", "backdrop")]
+        assert art.failed_runs == 2 and art.retry_after is not None
+
+    async def test_a_deterministic_failure_is_final(self):
+        images = FakeImages(failures={"market look": 5})
+        _, _, sessions = await run_generator([MARKET], images=images)
+        art = sessions.by_item()[("market", "backdrop")]
+        assert art.retry_after is None and art.failed_runs == 0
+
+    async def test_poses_of_a_transiently_failed_idle_come_back_with_it(self):
+        down = _api_error(openai.RateLimitError, 429)
+        images = FakeImages(errors={f"alone: {GIRL.look}": [down, down]})
+        _, images, sessions = await run_generator([GIRL], images=images)
+        assert [call.kind for call in images.calls] == ["generate", "generate"]
+        stored = sessions.by_item()
+        idle = stored[("hero:girl", "idle")]
+        assert idle.retry_after is not None and idle.failed_runs == 1
+        for pose in CHARACTER_POSES[1:]:
+            art = stored[("hero:girl", pose)]
+            assert art.error == "idle pose unavailable"
+            assert (art.retry_after, art.failed_runs) == (idle.retry_after, idle.failed_runs)
 
 
 # --------------------------------------------------------------------------
@@ -769,20 +1120,34 @@ def _settings(*, google: str = "", openai: str = "ok") -> SimpleNamespace:
     )
 
 
-def _response(payload: bytes = b"IMG") -> MagicMock:
+def _usage(input_tokens: int, image: int, text: int, output: int) -> SimpleNamespace:
+    return SimpleNamespace(
+        input_tokens=input_tokens,
+        input_tokens_details=SimpleNamespace(image_tokens=image, text_tokens=text),
+        output_tokens=output,
+        total_tokens=input_tokens + output,
+    )
+
+
+def _response(payload: bytes = b"IMG", usage: Any = None) -> MagicMock:
     import base64
 
     response = MagicMock()
     response.data = [MagicMock(b64_json=base64.b64encode(payload).decode())]
+    response.usage = usage
     return response
 
 
 @pytest.fixture
 def openai_client():
-    """A fake AsyncOpenAI client shared by every provider built in the test."""
+    """A fake AsyncOpenAI client shared by every provider built in the test.
+
+    ``with_options`` returns the same fake, so its calls are recorded on it.
+    """
     client = MagicMock()
     client.images.generate = AsyncMock(return_value=_response(b"GEN"))
     client.images.edit = AsyncMock(return_value=_response(b"EDIT"))
+    client.with_options.return_value = client
     with patch("app.ai.providers.image_provider.AsyncOpenAI", return_value=client) as cls:
         client.cls = cls
         yield client
@@ -851,6 +1216,33 @@ class TestOpenAIProvider:
         await OpenAIImageProvider(api_key="ok", model="gpt-image-1-mini").edit("p", b"REF")
         assert "input_fidelity" not in openai_client.images.edit.call_args.kwargs
 
+    async def test_retries_and_timeout_are_set_per_call_only_when_asked(self, openai_client):
+        provider = OpenAIImageProvider(api_key="ok")
+        await provider.generate("p")
+        openai_client.with_options.assert_not_called()  # lesson illustrations: unchanged
+        await provider.generate("p", max_retries=0)
+        openai_client.with_options.assert_called_with(max_retries=0)
+        await provider.edit("p", b"REF", max_retries=0, timeout=210.0)
+        openai_client.with_options.assert_called_with(max_retries=0, timeout=210.0)
+
+    async def test_the_reported_token_usage_is_kept(self, openai_client):
+        openai_client.images.edit.return_value = _response(
+            b"EDIT", usage=_usage(4200, image=4160, text=40, output=1584)
+        )
+        provider = OpenAIImageProvider(api_key="ok")
+        await provider.edit("p", b"REF")
+        assert provider.last_usage == {
+            "input_tokens": 4200,
+            "output_tokens": 1584,
+            "input_image_tokens": 4160,
+            "input_text_tokens": 40,
+        }
+
+    async def test_no_usage_is_kept_when_none_is_reported(self, openai_client):
+        provider = OpenAIImageProvider(api_key="ok")
+        await provider.generate("p")
+        assert provider.last_usage is None
+
 
 class TestGeminiProvider:
     async def test_cannot_edit(self, openai_client):
@@ -882,6 +1274,7 @@ class TestRouting:
             "model": "gpt-image-1",
             "operation": "image",
             "images_count": 1,
+            "usage": None,
         }
 
     async def test_a_transparent_render_with_gemini_configured_goes_to_gpt_image_1(
@@ -943,6 +1336,83 @@ class TestRouting:
         rows = [c.kwargs for c in ledger.await_args_list]
         assert [r["model"] for r in rows] == ["gemini-2.5-flash-image", "gpt-image-1"]
         assert rows[0]["success"] is False and rows[1]["images_count"] == 1
+
+    async def test_no_sdk_retries_reach_the_fallback_client_too(self, openai_client, ledger):
+        openai_client.images.generate.side_effect = [RuntimeError("429"), _response(b"FB")]
+        with patch(
+            "app.ai.providers.image_provider.get_settings", return_value=_settings(google="gk")
+        ):
+            await generate_image("p", model="gemini-2.5-flash-image", max_retries=0)
+        # Once for the Gemini primary, once for the gpt-image-1 fallback.
+        assert openai_client.with_options.call_args_list == [
+            ((), {"max_retries": 0}),
+            ((), {"max_retries": 0}),
+        ]
+
+    async def test_the_edit_timeout_and_retries_reach_the_client(self, openai_client, ledger):
+        with patch("app.ai.providers.image_provider.get_settings", return_value=_settings()):
+            await edit_image("p", b"REF", model="gpt-image-1", max_retries=0, timeout=210.0)
+        openai_client.with_options.assert_called_once_with(max_retries=0, timeout=210.0)
+
+    async def test_the_ledger_gets_the_calls_token_usage(self, openai_client, ledger):
+        openai_client.images.edit.return_value = _response(
+            b"EDIT", usage=_usage(4200, image=4160, text=40, output=1584)
+        )
+        with patch("app.ai.providers.image_provider.get_settings", return_value=_settings()):
+            await edit_image("p", b"REF", model="gpt-image-1")
+        assert ledger.await_args.kwargs["usage"] == {
+            "input_tokens": 4200,
+            "output_tokens": 1584,
+            "input_image_tokens": 4160,
+            "input_text_tokens": 40,
+        }
+
+
+class TestImagePricing:
+    """gpt-image-1 calls with reported usage are priced by tokens (#2675)."""
+
+    def test_an_edit_is_priced_by_its_input_and_output_tokens(self):
+        from app.ai.providers.pricing import estimate_cost_cents
+
+        usage = {
+            "input_tokens": 4200,
+            "output_tokens": 1584,
+            "input_image_tokens": 4160,
+            "input_text_tokens": 40,
+        }
+        cents, estimated = estimate_cost_cents(
+            model="gpt-image-1", operation="image", usage=usage, images_count=1
+        )
+        # 40 x $5/M + 4160 x $10/M + 1584 x $40/M
+        assert cents == pytest.approx((40 * 500 + 4160 * 1000 + 1584 * 4000) / 1_000_000)
+        assert estimated is False
+        flat, _ = estimate_cost_cents(model="gpt-image-1", operation="image", images_count=1)
+        assert cents > flat  # the reference image is no longer free
+
+    def test_without_the_split_the_input_is_priced_as_text(self):
+        from app.ai.providers.pricing import estimate_cost_cents
+
+        cents, _ = estimate_cost_cents(
+            model="gpt-image-1",
+            operation="image",
+            usage={"input_tokens": 100, "output_tokens": 1584},
+            images_count=1,
+        )
+        assert cents == pytest.approx((100 * 500 + 1584 * 4000) / 1_000_000)
+
+    def test_without_usage_the_per_image_price_still_applies(self):
+        from app.ai.providers.pricing import estimate_cost_cents
+
+        assert estimate_cost_cents(
+            model="gpt-image-1", operation="image", usage=None, images_count=2
+        ) == (12.6, False)
+        # Gemini reports no tokens: unchanged.
+        assert estimate_cost_cents(
+            model="gemini-2.5-flash-image",
+            operation="image",
+            usage={"input_tokens": 5, "output_tokens": 5},
+            images_count=1,
+        ) == (6.3, True)
 
 
 # --------------------------------------------------------------------------
@@ -1052,18 +1522,64 @@ def _user(role: str = "user") -> AuthenticatedUser:
     )
 
 
+class _Savepoint:
+    def __init__(self, db: _Db) -> None:
+        self.db = db
+
+    async def __aenter__(self) -> _Savepoint:
+        self.db.savepoints += 1
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> bool:
+        if exc_type is not None:
+            self.db.savepoint_rollbacks += 1
+        return False
+
+
 class _Db:
-    """A session stub for the story routes: the module lookup and one record."""
+    """A session stub for the story routes: the module lookup and one record.
+
+    ``rollback`` behaves like a real one for the record: after it, every
+    loaded instance is expired (:class:`_LoadedRecord`).
+    """
 
     def __init__(self, record: Any = None) -> None:
         self.record = record
-        self.rollback = AsyncMock()
+        self.savepoints = 0
+        self.savepoint_rollbacks = 0
+        self.expired = False
+
+    def begin_nested(self) -> _Savepoint:
+        return _Savepoint(self)
+
+    async def rollback(self) -> None:
+        self.expired = True
 
     async def execute(self, statement):
         sql = str(statement)
         if "FROM modules" in sql:
             return SimpleNamespace(first=lambda: (MODULE_ID,))
         return SimpleNamespace(scalar_one_or_none=lambda: self.record)
+
+
+class _LoadedRecord:
+    """A record loaded by the request's session: unreadable once the session rolls back.
+
+    That is what an ORM instance does on an AsyncSession (the read would lazy
+    load: MissingGreenlet, a 500).
+    """
+
+    def __init__(self, db: _Db, values: dict[str, Any]) -> None:
+        object.__setattr__(self, "_db", db)
+        object.__setattr__(self, "_values", values)
+
+    def __getattr__(self, name: str) -> Any:
+        if self._db.expired:
+            raise AssertionError(f"read {name!r} of an expired record (MissingGreenlet)")
+        try:
+            return self._values[name]
+        except KeyError:
+            raise AttributeError(name) from None
 
 
 def _story(**overrides: Any) -> SimpleNamespace:
@@ -1074,7 +1590,6 @@ def _story(**overrides: Any) -> SimpleNamespace:
         "module_id": MODULE_ID,
         "module_unit_id": None,
         "course_id": COURSE_ID,
-        "updated_at": datetime(2026, 11, 1, tzinfo=UTC),
         "content": dict(DOC),
     }
     values.update(overrides)
@@ -1106,12 +1621,13 @@ def routes():
         patch.object(api, "load_story_units", AsyncMock(return_value=[unit])),
         patch.object(api, "find_module_story", AsyncMock(return_value=None)) as find,
         patch.object(api, "module_story_is_fresh", AsyncMock(return_value=True)),
+        patch.object(api, "load_course_looks", AsyncMock(return_value=course_of(DOC))) as looks,
         patch.object(api, "load_art_rows", AsyncMock(return_value=[])) as rows,
         patch.object(
             api, "dispatch_story_art_generation", AsyncMock(return_value="art-task")
         ) as dispatch,
     ):
-        yield SimpleNamespace(find=find, rows=rows, dispatch=dispatch)
+        yield SimpleNamespace(find=find, looks=looks, rows=rows, dispatch=dispatch)
 
 
 def _install(db: _Db, role: str = "user") -> None:
@@ -1130,7 +1646,8 @@ class TestModuleStoryArt:
     async def test_missing_art_is_dispatched_and_reported_pending(self, client, routes):
         record = _story()
         routes.find.return_value = record
-        _install(_Db())
+        db = _Db()
+        _install(db)
         resp = await client.get(MODULE_URL, params={"language": "fr"})
         assert resp.status_code == 200
         body = resp.json()
@@ -1138,6 +1655,8 @@ class TestModuleStoryArt:
         assert body["cast"] == DOC["cast"]
         routes.dispatch.assert_awaited_once_with(COURSE_ID)
         assert routes.rows.await_args.args[1] == COURSE_ID
+        assert routes.looks.await_args.args[1] == COURSE_ID
+        assert db.savepoints == 1  # the art reads run in a savepoint
         assert "art" not in record.content  # never stored
 
     async def test_ready_art_is_served_without_a_dispatch(self, client, routes):
@@ -1163,6 +1682,33 @@ class TestModuleStoryArt:
         assert set(body["art"]["characters"]) == {"hero:girl"}
         routes.dispatch.assert_awaited_once()
 
+    async def test_a_story_whose_look_another_story_replaced_dispatches_nothing(
+        self, client, routes
+    ):
+        # The served (older) story says "mentor look"; the newest says "mentor B",
+        # and the art was drawn from it. Nothing for a run to draw: no dispatch.
+        newer = {"cast": [{"id": "mentor", "look": "mentor B"}]}
+        routes.looks.return_value = course_of(newer, DOC)
+        mentor_b = ArtItem("character", "mentor", "mentor B")
+        others = [item for item in ALL_ITEMS if item.key != "mentor"]
+        routes.rows.return_value = ready_rows([*others, mentor_b])
+        routes.find.return_value = _story()
+        _install(_Db())
+        body = (await client.get(MODULE_URL)).json()
+        assert body["art"]["status"] == "ready"
+        assert set(body["art"]["characters"]["mentor"]) == set(CHARACTER_POSES)
+        routes.dispatch.assert_not_awaited()
+
+    async def test_work_elsewhere_in_the_course_is_dispatched(self, client, routes):
+        other = {"places": [{"id": "clinic", "look": "a clinic"}]}
+        routes.looks.return_value = course_of(other, DOC)
+        routes.rows.return_value = ready_rows(ALL_ITEMS)
+        routes.find.return_value = _story()
+        _install(_Db())
+        body = (await client.get(MODULE_URL)).json()
+        assert body["art"]["status"] == "ready"  # this story's art is complete
+        routes.dispatch.assert_awaited_once_with(COURSE_ID)
+
     async def test_an_old_story_without_looks_has_no_art(self, client, routes):
         routes.find.return_value = _story(content={"format": "story-course/1", "cast": []})
         _install(_Db())
@@ -1186,7 +1732,8 @@ class TestModuleStoryArt:
         assert resp.status_code == 200
         assert resp.json()["art"]["status"] == "pending"
         routes.dispatch.assert_not_awaited()
-        db.rollback.assert_awaited()
+        # Only the savepoint is rolled back, never the request's session.
+        assert db.savepoint_rollbacks == 1 and db.expired is False
 
     async def test_a_dispatch_failure_never_fails_the_story(self, client, routes):
         routes.dispatch.side_effect = RuntimeError("boom")
@@ -1197,6 +1744,8 @@ class TestModuleStoryArt:
 
 
 class TestSlugRouteArt:
+    URL = "/api/v1/story-courses/maths-u1-w01"
+
     def _authored(self, **overrides: Any) -> SimpleNamespace:
         return _story(slug="maths-u1-w01", module_id=None, **overrides)
 
@@ -1204,7 +1753,7 @@ class TestSlugRouteArt:
         self, client, routes
     ):
         _install(_Db(self._authored()))
-        resp = await client.get("/api/v1/story-courses/maths-u1-w01")
+        resp = await client.get(self.URL)
         assert resp.status_code == 200
         assert resp.json()["art"]["status"] == "pending"
         assert resp.headers["cache-control"] == "public, no-cache"
@@ -1213,9 +1762,49 @@ class TestSlugRouteArt:
     async def test_an_authored_week_with_its_art_ready_keeps_the_hour(self, client, routes):
         routes.rows.return_value = ready_rows(ALL_ITEMS)
         _install(_Db(self._authored()))
-        resp = await client.get("/api/v1/story-courses/maths-u1-w01")
+        resp = await client.get(self.URL)
         assert resp.json()["art"]["status"] == "ready"
         assert resp.headers["cache-control"] == "public, max-age=3600"
+
+    async def test_a_final_partial_keeps_the_hour(self, client, routes):
+        # One image failed for good: nothing is being drawn, so nothing changes.
+        failed = row(MARKET, "backdrop", status="failed")
+        rows = [r for r in ready_rows(ALL_ITEMS) if r.key != "market"] + [failed]
+        routes.rows.return_value = rows
+        _install(_Db(self._authored()))
+        resp = await client.get(self.URL)
+        assert resp.json()["art"]["status"] == "partial"
+        assert resp.headers["cache-control"] == "public, max-age=3600"
+        routes.dispatch.assert_not_awaited()
+
+    async def test_an_art_read_failure_serves_the_week_without_touching_the_record(
+        self, client, routes
+    ):
+        db = _Db()
+        db.record = _LoadedRecord(db, vars(self._authored()))
+        routes.rows.side_effect = RuntimeError("relation story_art does not exist")
+        _install(db)
+        resp = await client.get(self.URL)
+        assert resp.status_code == 200
+        assert resp.json()["art"]["status"] == "pending"
+        assert resp.headers["cache-control"] == "public, no-cache"
+        assert db.expired is False and db.savepoint_rollbacks == 1
+        routes.dispatch.assert_not_awaited()
+
+    async def test_the_record_is_read_before_the_art_queries(self, client, routes):
+        # Even if the art code expired the session's instances, the route would
+        # not read the record again.
+        db = _Db()
+        db.record = _LoadedRecord(db, vars(self._authored()))
+
+        async def rows_then_expire(*_a, **_k):
+            db.expired = True
+            return []
+
+        routes.rows.side_effect = rows_then_expire
+        _install(db)
+        resp = await client.get(self.URL)
+        assert resp.status_code == 200 and resp.json()["art"]["status"] == "pending"
 
     async def test_an_admin_reading_a_module_story_gets_its_art(self, client, routes):
         routes.rows.return_value = ready_rows(ALL_ITEMS)
@@ -1309,7 +1898,7 @@ def task_wiring():
             "app.domain.services.platform_settings_service.SettingsCache.instance",
             return_value=cache,
         ),
-        patch.object(story_art_task, "_hold_story_dispatch") as hold,
+        patch.object(story_art_task, "_hold_story_dispatch", return_value=1) as hold,
         patch.object(story_art_task, "_release_story_dispatch") as release,
     ):
         yield SimpleNamespace(
@@ -1343,6 +1932,40 @@ class TestTask:
     def test_operators_can_retry_failures(self, task_wiring):
         run_task(str(COURSE_ID), retry_failed=True)
         assert task_wiring.generator_cls.call_args.kwargs["retry_failed"] is True
+
+    def test_a_run_skips_when_another_task_holds_the_course(self, task_wiring):
+        task_wiring.hold.return_value = 0
+        result = run_task(str(COURSE_ID), dedup_key=KEY)
+        assert result == {"status": "skipped", "reason": "another_run_holds_course"}
+        task_wiring.generator.run.assert_not_awaited()
+        task_wiring.generator_cls.assert_not_called()
+        # Its release is a compare-and-delete on its own id: the holder's key stays.
+        task_wiring.release.assert_called_once_with(KEY, TASK_ID)
+
+    def test_a_run_goes_ahead_when_it_holds_the_key_or_redis_is_down(self, task_wiring):
+        for answer in (1, None):
+            task_wiring.hold.return_value = answer
+            task_wiring.generator.run.reset_mock()
+            run_task(str(COURSE_ID), dedup_key=KEY)
+            task_wiring.generator.run.assert_awaited_once_with(COURSE_ID)
+
+    def test_the_hold_reports_the_scripts_answer(self):
+        from app.tasks import content_generation
+
+        client = MagicMock()
+        with patch("redis.Redis.from_url", return_value=client):
+            client.eval.return_value = 0
+            assert content_generation._hold_story_dispatch("k", "t", 10) == 0
+            client.eval.return_value = 1
+            assert content_generation._hold_story_dispatch("k", "t", 10) == 1
+            client.eval.side_effect = ConnectionError("redis down")
+            assert content_generation._hold_story_dispatch("k", "t", 10) is None
+        assert content_generation._hold_story_dispatch(None, "t", 10) is None
+
+    def test_an_operators_run_is_deduplicated_on_the_course_key_too(self, task_wiring):
+        run_task(str(COURSE_ID), retry_failed=True)
+        task_wiring.hold.assert_called_once_with(KEY, TASK_ID, STORY_ART_DISPATCH_TTL_S)
+        task_wiring.release.assert_called_once_with(KEY, TASK_ID)
 
     def test_the_task_is_never_autoretried_and_has_a_bounded_key(self):
         task = story_art_task.generate_story_art
@@ -1518,7 +2141,22 @@ def test_on_postgres_a_run_stores_skips_and_redraws_under_new_ids():
                     *(("mentor", pose) for pose in CHARACTER_POSES),
                     ("market", "backdrop"),
                 }
-                assert build_art_map(looks, rows).art["status"] == "ready"
+                assert build_art_map(looks.items, rows, accepted=looks.accepted).art == {
+                    "status": "ready",
+                    "characters": {
+                        "mentor": {
+                            r.pose: f"/api/v1/story-art/{r.id}/data"
+                            for r in rows
+                            if r.key == "mentor"
+                        }
+                    },
+                    "places": {
+                        "market": next(
+                            f"/api/v1/story-art/{r.id}/data" for r in rows if r.key == "market"
+                        )
+                    },
+                }
+                assert {r.art_version for r in rows} == {svc.ART_VERSION}
                 ids = {(r.key, r.pose): r.id for r in rows}
 
                 # Nothing changed: nothing is drawn.
@@ -1548,6 +2186,76 @@ def test_on_postgres_a_run_stores_skips_and_redraws_under_new_ids():
                 assert new_ids[("market", "backdrop")] != ids[("market", "backdrop")]
                 assert all(new_ids[k] == ids[k] for k in ids if k[0] == "mentor")
                 assert is_webp(data)
+            finally:
+                await engine.dispose()
+
+        asyncio.run(scenario())
+
+
+def test_on_postgres_the_slug_route_survives_an_unreadable_story_art_table():
+    """Review item 1: the art read fails (no story_art table) on a real session.
+
+    The reads run in a savepoint, so the record the route loaded is not
+    expired: the week is served (200) with a ``pending`` map, never a 500.
+    """
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    from app.domain.models.course import Course
+    from app.domain.models.story_course import StoryCourseRecord
+    from tests._story_db import create_tables, scratch_database, story_tables
+
+    with scratch_database("story_art_route") as url:
+        create_tables(url, story_tables())  # story_art left out on purpose
+
+        async def scenario() -> None:
+            engine = create_async_engine(url)
+            maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+            slug = f"art-week-{uuid.uuid4().hex[:8]}"
+            try:
+                course_id = uuid.uuid4()
+                async with maker() as session:
+                    session.add(
+                        Course(
+                            id=course_id,
+                            slug=f"course-{course_id.hex[:8]}",
+                            title_en="Course",
+                            title_fr="Cours",
+                        )
+                    )
+                    await session.flush()
+                    session.add(
+                        StoryCourseRecord(
+                            slug=slug,
+                            course_id=course_id,
+                            course_label="Course",
+                            week=1,
+                            title={"en": "T", "fr": "T"},
+                            languages={"target": "en", "home": "fr"},
+                            format_version="story-course/1",
+                            content=SMALL_DOC,
+                            status="published",
+                            is_valid=True,
+                        )
+                    )
+                    await session.commit()
+
+                async def session_dependency():
+                    async with maker() as session:
+                        yield session
+
+                app.dependency_overrides[get_db] = session_dependency
+                app.dependency_overrides[get_current_user] = lambda: _user()
+                try:
+                    with patch.object(api, "dispatch_story_art_generation", AsyncMock()) as sent:
+                        transport = ASGITransport(app=app)
+                        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                            resp = await ac.get(f"/api/v1/story-courses/{slug}")
+                    assert resp.status_code == 200, resp.text
+                    assert resp.json()["art"]["status"] == "pending"
+                    assert resp.headers["cache-control"] == "public, no-cache"
+                    sent.assert_not_awaited()
+                finally:
+                    app.dependency_overrides.clear()
             finally:
                 await engine.dispose()
 

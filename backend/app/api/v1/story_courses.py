@@ -17,9 +17,10 @@ to a learner, and the authoring routes cannot write one.
 
 from __future__ import annotations
 
-import contextlib
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Literal
 
 from celery.result import AsyncResult
@@ -56,6 +57,8 @@ from app.domain.services.story_art_service import (
     collect_looks,
     empty_art,
     load_art_rows,
+    load_course_looks,
+    plan_art,
 )
 from app.domain.services.story_course_validator import validate_story_course
 from app.domain.services.story_from_lesson_service import (
@@ -384,40 +387,59 @@ async def dispatch_story_art_generation(course_id: uuid.UUID) -> str | None:
     return task_id
 
 
-async def _story_art(db: AsyncSession, record: StoryCourseRecord, content: dict) -> dict:
-    """The ``art`` map for a story served from ``record`` (contract #2672).
+@dataclass
+class _ServedArt:
+    """The ``art`` map of a served story, and whether it may still change soon."""
+
+    art: dict
+    #: A run has something to draw for the course (one was dispatched or
+    #: joined), or the art could not be read: the map is not final yet.
+    drawing: bool = False
+
+
+async def _story_art(db: AsyncSession, course_id: uuid.UUID | None, content: dict) -> _ServedArt:
+    """The ``art`` map for a served story of course ``course_id`` (contract #2672).
 
     ``none`` when the document has no looks (an old story) or no course to
-    hold its art. Otherwise the ready images' URLs; when some are missing or
-    stale for the document's looks, the course's art run is dispatched
-    (deduplicated) and the map says ``pending`` or ``partial``. Never waits
-    for a drawing, and never fails the story: on any error the story is
+    hold its art. Otherwise the ready images' URLs. The document's images are
+    judged against the course's current looks, by the very rule the run plans
+    with, and the course's art run is dispatched (deduplicated) exactly when
+    that plan has something to draw: never for a document whose look another
+    story has replaced, and never for nothing. Never waits for a drawing, and
+    never fails the story: the reads run in a savepoint, so a failure leaves
+    the request's session (and the record it loaded) intact, and the story is
     served with a ``pending`` map and nothing dispatched.
     """
     items = collect_looks([content])
-    course_id = getattr(record, "course_id", None)
     if not items or course_id is None:
-        return empty_art("none")
+        return _ServedArt(empty_art("none"))
     try:
-        rows = await load_art_rows(db, course_id)
+        async with db.begin_nested():
+            looks = await load_course_looks(db, course_id)
+            rows = await load_art_rows(db, course_id)
     except Exception as exc:
         logger.warning("Story art unavailable", course_id=str(course_id), error=str(exc))
-        with contextlib.suppress(Exception):
-            await db.rollback()
-        return empty_art("pending")
-    art_map = build_art_map(items, rows, document_updated_at=getattr(record, "updated_at", None))
-    if art_map.outstanding:
+        return _ServedArt(empty_art("pending"), drawing=True)
+    now = datetime.now(UTC)
+    art_map = build_art_map(items, rows, accepted=looks.accepted, now=now)
+    plan = plan_art(looks.items, rows, accepted=looks.accepted, now=now)
+    if plan:
         try:
             await dispatch_story_art_generation(course_id)
         except Exception as exc:
             logger.warning("Story art not dispatched", course_id=str(course_id), error=str(exc))
-    return art_map.art
+    return _ServedArt(art_map.art, drawing=bool(plan))
 
 
-async def _served(db: AsyncSession, record: StoryCourseRecord) -> dict:
-    """The stored document as served: a copy with the ``art`` map (never stored)."""
+async def _served(db: AsyncSession, record: StoryCourseRecord) -> tuple[dict, bool]:
+    """The stored document as served (a copy with the ``art`` map, never stored).
+
+    Returns it with :attr:`_ServedArt.drawing`. Everything needed from
+    ``record`` is read before the art queries run.
+    """
     content = record.content if isinstance(record.content, dict) else {}
-    return {**content, "art": await _story_art(db, record, content)}
+    served_art = await _story_art(db, getattr(record, "course_id", None), content)
+    return {**content, "art": served_art.art}, served_art.drawing
 
 
 # -- Module story mode --------------------------------------------------------
@@ -529,8 +551,9 @@ async def get_module_story(
     record = await find_module_story(db, module_uuid, language)
     if record is not None and not force and await module_story_is_fresh(db, record, units=units):
         if record.is_valid and record.status == "published":
+            served, _drawing = await _served(db, record)
             return JSONResponse(
-                content=await _served(db, record),
+                content=served,
                 status_code=status.HTTP_200_OK,
                 headers={"Cache-Control": "private, no-cache"},
             )
@@ -695,14 +718,17 @@ async def get_story_course(
             detail={"error": "story_course_not_found", "message": f"No week {slug!r}"},
         )
 
-    served = await _served(db, record)
+    # Read before the art queries: whatever they do, the record is not touched again.
+    is_published = record.status == "published"
+    served, drawing = await _served(db, record)
     if is_generated:
         response.headers["Cache-Control"] = _PRIVATE_NO_STORE
-    elif record.status != "published":
+    elif not is_published:
         response.headers["Cache-Control"] = "no-store"
-    elif served["art"]["status"] in ("pending", "partial"):
-        # Its art is still being drawn: a shared cache would keep serving the
-        # placeholders for an hour.
+    elif drawing:
+        # Its art is being drawn (or could not be read): a shared cache would
+        # keep serving the placeholders for an hour. A final ``partial`` (an
+        # image that failed for good) keeps the hour.
         response.headers["Cache-Control"] = "public, no-cache"
     else:
         # Published weeks are immutable in practice but can be corrected, so

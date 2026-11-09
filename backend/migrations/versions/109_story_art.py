@@ -9,9 +9,11 @@ row per ``(course_id, kind, key, pose)``.
 * ``kind`` ``place``: ``key`` is a place id; ``pose`` is ``backdrop``.
 
 ``image_data`` is a WebP (characters with alpha). ``look_digest`` names the
-look it was drawn from, so a changed look is redrawn. ``status`` is ``ready`` or
-``failed`` (with ``error``). Plain strings with CHECK constraints rather than PG
-enums, so a new pose never needs an enum migration.
+look it was drawn from and ``art_version`` the prompts' version, so a changed
+look or a new version is redrawn. ``status`` is ``ready`` or ``failed`` (with
+``error``); a transient failure records ``failed_runs`` and ``retry_after``,
+when a later run may try again. Plain strings with CHECK constraints rather
+than PG enums, so a new pose never needs an enum migration.
 
 The upgrade is additive. The downgrade drops the table: the art is generated
 and regenerates on demand.
@@ -50,6 +52,9 @@ def upgrade() -> None:
         sa.Column("model", sa.String(100), nullable=True),
         sa.Column("status", sa.String(16), nullable=False),
         sa.Column("error", sa.Text(), nullable=True),
+        sa.Column("art_version", sa.Integer(), nullable=False, server_default="1"),
+        sa.Column("failed_runs", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("retry_after", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),

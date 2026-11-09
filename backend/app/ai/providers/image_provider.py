@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import base64
 from collections.abc import Awaitable, Callable
-from typing import Literal, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, runtime_checkable
 
 import structlog
 from openai import AsyncOpenAI
@@ -51,6 +51,46 @@ class ImageCapabilityError(RuntimeError):
     """The provider cannot do what was asked (an edit, a transparent background)."""
 
 
+def _usage_of(response: Any) -> dict[str, int] | None:
+    """The token usage gpt-image-1 reports, as a ledger ``usage`` dict, or None.
+
+    ``input_tokens`` and ``output_tokens`` are what the ledger stores; the
+    image/text split of the input only feeds the token pricing (image input
+    is billed at twice the text rate, and high-fidelity edits are mostly that).
+    """
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return None
+    input_tokens = getattr(usage, "input_tokens", None)
+    output_tokens = getattr(usage, "output_tokens", None)
+    if not isinstance(input_tokens, int) or not isinstance(output_tokens, int):
+        return None
+    result = {"input_tokens": input_tokens, "output_tokens": output_tokens}
+    details = getattr(usage, "input_tokens_details", None)
+    image_tokens = getattr(details, "image_tokens", None)
+    text_tokens = getattr(details, "text_tokens", None)
+    if isinstance(image_tokens, int) and isinstance(text_tokens, int):
+        result["input_image_tokens"] = image_tokens
+        result["input_text_tokens"] = text_tokens
+    return result
+
+
+def _client_with(client: AsyncOpenAI, *, max_retries: int | None, timeout: float | None):
+    """``client``, or a copy with its own retry count and timeout for this call.
+
+    The SDK re-sends a request on a timeout, 408/409/429 or 5xx (twice by
+    default). A paid image call that runs past the timeout is often still
+    completed and billed, so callers that retry on their own (story art)
+    pass ``max_retries=0``. Callers that pass neither keep the client as is.
+    """
+    options: dict[str, Any] = {}
+    if max_retries is not None:
+        options["max_retries"] = max_retries
+    if timeout is not None:
+        options["timeout"] = timeout
+    return client.with_options(**options) if options else client
+
+
 @runtime_checkable
 class ImageProvider(Protocol):
     """Generates (or edits) one image from a text prompt and returns the raw bytes."""
@@ -60,9 +100,17 @@ class ImageProvider(Protocol):
     supports_edit: bool
     #: Whether ``background="transparent"`` is honoured.
     supports_transparency: bool
+    #: Token usage of the last successful call, when the backend reports it.
+    last_usage: dict[str, int] | None
 
     async def generate(
-        self, prompt: str, *, size: str = "1536x1024", background: Background | None = None
+        self,
+        prompt: str,
+        *,
+        size: str = "1536x1024",
+        background: Background | None = None,
+        max_retries: int | None = None,
+        timeout: float | None = None,
     ) -> bytes: ...
 
     async def edit(
@@ -72,6 +120,8 @@ class ImageProvider(Protocol):
         *,
         size: str = "1024x1536",
         background: Background | None = None,
+        max_retries: int | None = None,
+        timeout: float | None = None,
     ) -> bytes: ...
 
 
@@ -84,21 +134,30 @@ class OpenAIImageProvider:
     def __init__(self, *, api_key: str, model: str = _FALLBACK_IMAGE_MODEL) -> None:
         self._client = AsyncOpenAI(api_key=api_key, timeout=_TIMEOUT_SECONDS)
         self.model = model
+        self.last_usage: dict[str, int] | None = None
 
     async def generate(
-        self, prompt: str, *, size: str = "1536x1024", background: Background | None = None
+        self,
+        prompt: str,
+        *,
+        size: str = "1536x1024",
+        background: Background | None = None,
+        max_retries: int | None = None,
+        timeout: float | None = None,
     ) -> bytes:
         extra: dict = {}
         if background is not None:
             # A transparent background needs a format with alpha: PNG.
             extra = {"background": background, "output_format": "png"}
-        response = await self._client.images.generate(
+        client = _client_with(self._client, max_retries=max_retries, timeout=timeout)
+        response = await client.images.generate(
             model=self.model,
             prompt=prompt,
             size=size,
             quality="medium",
             **extra,
         )
+        self.last_usage = _usage_of(response)
         return base64.b64decode(response.data[0].b64_json)
 
     async def edit(
@@ -108,6 +167,8 @@ class OpenAIImageProvider:
         *,
         size: str = "1024x1536",
         background: Background | None = None,
+        max_retries: int | None = None,
+        timeout: float | None = None,
     ) -> bytes:
         """Edit ``image`` (PNG bytes) by ``prompt``; the reference keeps the identity.
 
@@ -120,7 +181,8 @@ class OpenAIImageProvider:
             extra = {"background": background, "output_format": "png"}
         if "mini" not in self.model.lower():
             extra["input_fidelity"] = "high"
-        response = await self._client.images.edit(
+        client = _client_with(self._client, max_retries=max_retries, timeout=timeout)
+        response = await client.images.edit(
             model=self.model,
             image=("ref.png", image, "image/png"),
             prompt=prompt,
@@ -128,6 +190,7 @@ class OpenAIImageProvider:
             quality="medium",
             **extra,
         )
+        self.last_usage = _usage_of(response)
         return base64.b64decode(response.data[0].b64_json)
 
 
@@ -143,19 +206,28 @@ class GeminiImageProvider:
     def __init__(self, *, api_key: str, model: str, base_url: str) -> None:
         self._client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=_TIMEOUT_SECONDS)
         self.model = model
+        self.last_usage: dict[str, int] | None = None
 
     async def generate(
-        self, prompt: str, *, size: str = "1536x1024", background: Background | None = None
+        self,
+        prompt: str,
+        *,
+        size: str = "1536x1024",
+        background: Background | None = None,
+        max_retries: int | None = None,
+        timeout: float | None = None,
     ) -> bytes:
         if background == "transparent":
             raise ImageCapabilityError(f"{self.model} cannot render a transparent background")
         # Gemini's compat endpoint controls aspect via the prompt, not a size arg;
         # request base64 so we get bytes back (not a URL) and resize downstream.
-        response = await self._client.images.generate(
+        client = _client_with(self._client, max_retries=max_retries, timeout=timeout)
+        response = await client.images.generate(
             model=self.model,
             prompt=prompt,
             response_format="b64_json",
         )
+        self.last_usage = _usage_of(response)
         return base64.b64decode(response.data[0].b64_json)
 
     async def edit(
@@ -165,6 +237,8 @@ class GeminiImageProvider:
         *,
         size: str = "1024x1536",
         background: Background | None = None,
+        max_retries: int | None = None,
+        timeout: float | None = None,
     ) -> bytes:
         raise ImageCapabilityError(f"{self.model} cannot edit images")
 
@@ -205,8 +279,14 @@ def _image_billing_provider(model: str) -> str:
     return "google" if m.startswith(("gemini", "imagen")) else "openai"
 
 
-async def _record_attempt(model: str, *, error: Exception | None = None) -> None:
-    """One ``ai_usage_events`` row (#2629) for one image call, failed or not."""
+async def _record_attempt(
+    model: str, *, error: Exception | None = None, usage: dict[str, int] | None = None
+) -> None:
+    """One ``ai_usage_events`` row (#2629) for one image call, failed or not.
+
+    ``usage`` is the call's token usage when the backend reports it (gpt-image-1):
+    the ledger then prices it by tokens, which counts an edit's reference image.
+    """
     from app.domain.services.ai_usage_service import record_ai_usage
 
     if error is None:
@@ -215,6 +295,7 @@ async def _record_attempt(model: str, *, error: Exception | None = None) -> None
             model=model,
             operation="image",
             images_count=1,
+            usage=usage,
         )
     else:
         await record_ai_usage(
@@ -252,9 +333,9 @@ async def _call_with_fallback(
         except Exception as fallback_exc:
             await _record_attempt(fallback.model, error=fallback_exc)
             raise
-        await _record_attempt(fallback.model)
+        await _record_attempt(fallback.model, usage=fallback.last_usage)
         return image, fallback.model
-    await _record_attempt(provider.model)
+    await _record_attempt(provider.model, usage=provider.last_usage)
     return image, provider.model
 
 
@@ -290,6 +371,8 @@ async def generate_image(
     model: str,
     size: str = "1536x1024",
     background: Background | None = None,
+    max_retries: int | None = None,
+    timeout: float | None = None,
 ) -> tuple[bytes, str]:
     """Generate an image for ``model``, falling back to gpt-image-1 on any error.
 
@@ -299,11 +382,17 @@ async def generate_image(
     so image generation never hard-fails. Returns ``(image_bytes, model_used)``.
 
     ``background="transparent"`` (a PNG with alpha) goes straight to gpt-image-1
-    when ``model`` cannot honour it (Gemini).
+    when ``model`` cannot honour it (Gemini). ``max_retries``/``timeout``
+    override the SDK client's for this call, the fallback's included (story
+    art passes ``max_retries=0``: it retries itself, and each HTTP request
+    then has its own ledger row); left unset, nothing changes.
     """
     provider = _capable_provider(model, edit=False, transparent=background == "transparent")
     return await _call_with_fallback(
-        provider, lambda p: p.generate(prompt, size=size, background=background)
+        provider,
+        lambda p: p.generate(
+            prompt, size=size, background=background, max_retries=max_retries, timeout=timeout
+        ),
     )
 
 
@@ -314,6 +403,8 @@ async def edit_image(
     model: str,
     size: str = "1024x1536",
     background: Background | None = None,
+    max_retries: int | None = None,
+    timeout: float | None = None,
 ) -> tuple[bytes, str]:
     """Edit ``image`` (PNG bytes) by ``prompt`` with ``model``; see :func:`generate_image`.
 
@@ -323,5 +414,13 @@ async def edit_image(
     """
     provider = _capable_provider(model, edit=True, transparent=background == "transparent")
     return await _call_with_fallback(
-        provider, lambda p: p.edit(prompt, image, size=size, background=background)
+        provider,
+        lambda p: p.edit(
+            prompt,
+            image,
+            size=size,
+            background=background,
+            max_retries=max_retries,
+            timeout=timeout,
+        ),
     )
