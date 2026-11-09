@@ -54,6 +54,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.ai.usage_context import ai_usage_context
 from app.api.v1.schemas.story_course import StoryCourse, ValidationIssue, ValidationReport
@@ -362,7 +363,7 @@ async def chapters_are_fresh(
     records: Sequence[StoryCourseRecord],
     *,
     builders: Sequence[Any] | None = None,
-    covering: Mapping[uuid.UUID, uuid.UUID | None] | None = None,
+    covering: Mapping[uuid.UUID | None, uuid.UUID | None] | None = None,
 ) -> list[bool]:
     """:func:`story_sources_are_fresh` for many chapter rows: one query of their sources.
 
@@ -420,16 +421,17 @@ async def chapters_are_fresh(
             covering.update(covering_quiz_units([u for u in roster if u.module_id == module_id]))
     covering = covering or {}
 
-    source_ids: list[uuid.UUID] = []
-    for i in candidates:
-        source_ids.append(records[i].source_lesson_content_id)
-        if records[i].source_quiz_content_id is not None:
-            source_ids.append(records[i].source_quiz_content_id)
+    source_ids = [
+        source_id
+        for i in candidates
+        for source_id in (records[i].source_lesson_content_id, records[i].source_quiz_content_id)
+        if source_id is not None
+    ]
     quiz_units = sorted(
         {q for i in no_quiz if (q := covering.get(records[i].module_unit_id)) is not None},
         key=str,
     )
-    conditions = [GeneratedContent.id.in_(source_ids)]
+    conditions: list[ColumnElement[bool]] = [GeneratedContent.id.in_(source_ids)]
     if quiz_units:
         conditions.append(
             and_(
@@ -464,11 +466,13 @@ async def chapters_are_fresh(
             continue
         if record.source_quiz_revision is not None:
             quiz = by_id.get(record.source_quiz_content_id)
-            if not _source_unchanged(quiz, record.source_quiz_revision, record.source_quiz_digest):
-                continue
-            if quiz.module_unit_id == record.module_unit_id:
-                continue  # the lesson unit's own quiz: never a source now
-            results[i] = True
+            # The lesson unit's own quiz is never a source now: rebuild from
+            # the covering quiz.
+            results[i] = (
+                _source_unchanged(quiz, record.source_quiz_revision, record.source_quiz_digest)
+                and quiz is not None
+                and quiz.module_unit_id != record.module_unit_id
+            )
             continue
         quiz_unit = covering.get(record.module_unit_id)
         results[i] = quiz_unit is None or (quiz_unit, record.language) not in quizzes_by_unit
